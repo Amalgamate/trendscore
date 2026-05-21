@@ -58,6 +58,33 @@ const getSeriesDisplayName = (test, fallbackType) => {
   return formatTestTypeLabel(fallbackType);
 };
 
+const formatSeriesDate = (tests = []) => {
+  const rawDate = tests.find((test) => test?.testDate)?.testDate || tests.find((test) => test?.createdAt)?.createdAt;
+  if (!rawDate) return null;
+
+  const date = new Date(rawDate);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return date.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).toUpperCase();
+};
+
+const getSeriesTestTypeLabel = (tests = [], displayName = '') => {
+  const source = `${displayName} ${tests.map((test) => `${test?.title || ''} ${test?.testType || ''}`).join(' ')}`.toUpperCase();
+
+  if (source.includes('MOCK')) return 'MOCK EXAM';
+  if (source.includes('MONTH')) return 'MONTHLY ASSESSMENT';
+  if (source.includes('WEEK')) return 'WEEKLY TEST';
+
+  const firstType = normalizeTestType(tests[0]?.testType) || 'ASSESSMENT';
+  if (firstType === 'OTHER') return 'MOCK EXAM';
+
+  return formatTestTypeLabel(firstType).toUpperCase();
+};
+
 const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
   const { showSuccess, showError } = useNotifications();
   const { user } = useAuth();
@@ -270,10 +297,14 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
           displayType,   // e.g. "Opener"
           displayTerm,   // e.g. "Term 1"
           academicYear: test.academicYear,
+          displayDate: null,
+          displayTestType: null,
           tests: []
         };
       }
       grouped[gradeKey][seriesKey].tests.push(test);
+      grouped[gradeKey][seriesKey].displayDate = formatSeriesDate(grouped[gradeKey][seriesKey].tests);
+      grouped[gradeKey][seriesKey].displayTestType = getSeriesTestTypeLabel(grouped[gradeKey][seriesKey].tests, displayType);
     });
     return grouped;
   }, [filteredTests]);
@@ -583,7 +614,7 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
                                 <div className="flex flex-col">
                                   <span className="text-sm font-medium text-slate-800 leading-tight">{data.displayType}</span>
                                   <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-widest mt-1">
-                                    Summative Series • {data.displayTerm} {data.academicYear}
+                                    {data.displayTestType || 'ASSESSMENT'}{data.displayDate ? ` • ${data.displayDate}` : ''} • {data.displayTerm} {data.academicYear}
                                   </span>
                                 </div>
                               </td>
