@@ -35,6 +35,29 @@ const isJuniorGrade = (grade) => {
   return g === 'PLAYGROUP' || g === 'PP1' || g === 'PP2' || /^GRADE_[1-9]$/.test(g);
 };
 
+const getSeriesDisplayName = (test, fallbackType) => {
+  const title = String(test?.title || '').trim();
+  const learningArea = String(test?.learningArea || '').trim();
+
+  if (title) {
+    const areaMarker = learningArea ? ` - ${learningArea} - ` : null;
+    const markerIndex = areaMarker ? title.indexOf(areaMarker) : -1;
+    if (markerIndex > 0) {
+      return title.slice(0, markerIndex).trim();
+    }
+
+    const term = String(test?.term || '').replace(/_/g, ' ');
+    const suffixPatterns = [
+      /\s+-\s+(OPENER|MID TERM|MID_TERM|END TERM|END_TERM|CAT|ASSESSMENT|OTHER)\s+-\s+TERM\s+\d+\s+\d{4}$/i,
+      term ? new RegExp(`\\s+-\\s+${term}\\s+\\d{4}$`, 'i') : null,
+    ].filter(Boolean);
+    const cleaned = suffixPatterns.reduce((value, pattern) => value.replace(pattern, ''), title).trim();
+    if (cleaned) return cleaned;
+  }
+
+  return formatTestTypeLabel(fallbackType);
+};
+
 const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
   const { showSuccess, showError } = useNotifications();
   const { user } = useAuth();
@@ -228,14 +251,14 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
         grouped[gradeKey] = {};
       }
 
-      // Group key: testType + term + academicYear — this is the "series"
-      // e.g. all OPENER tests for TERM_1 2026 form one series row
+      // Group key: title-derived series name + term + academicYear.
+      // The DB enum has no MOCK/MONTHLY/WEEKLY values, so relying only on
+      // testType collapses custom series into "OTHER" or "ASSESSMENT".
       const canonicalTestType = normalizeTestType(test.testType) || 'ASSESSMENT';
-      const seriesKey = `${canonicalTestType}__${test.term || ''}__${test.academicYear || ''}`;
+      const displayType = getSeriesDisplayName(test, canonicalTestType);
+      const seriesKey = `${displayType}__${test.term || ''}__${test.academicYear || ''}`;
 
       if (!grouped[gradeKey][seriesKey]) {
-        // Human-readable type from canonical mapping
-        const displayType = formatTestTypeLabel(canonicalTestType);
         // Human-readable term: TERM_1 → Term 1
         const displayTerm = (test.term || '')
           .replace(/_/g, ' ')
