@@ -21,7 +21,7 @@
     "seed:coa": "ts-node scripts/seed-accounting.ts",
     "seed:apps": "ts-node scripts/seed-apps.ts",
     "seed:ss:learning-areas": "ts-node prisma/seed-ss-learning-areas.ts",
-    "seed:ss:official-catalog": "ts-node prisma/seed-senior-official-catalog.ts",
+    "seed:ss:official-catalog": "node scripts/seed-senior-official-catalog.js",
     "seed:learners:demo": "ts-node prisma/seed-learners-demo.ts",
     "seed:parent-dashboard-demo": "ts-node prisma/seed-parent-dashboard-demo.ts",
     "seed:backfill-streams-classes": "ts-node prisma/seeders/seed-streams-classes.ts",
