@@ -50,17 +50,118 @@ type ParsedUploadRow = {
   data: Record<string, any>;
 };
 
+const HEADER_ALIASES: Record<string, string> = {
+  LEARNERNAME: 'Learner Name',
+  LEANERNAME: 'Learner Name',
+  STUDENTNAME: 'Learner Name',
+  PUPILNAME: 'Learner Name',
+  FULLNAME: 'Learner Name',
+  NAME: 'Learner Name',
+  ADMISSIONNO: 'Adm No',
+  ADMISSIONNUMBER: 'Adm No',
+  ADMNO: 'Adm No',
+  ADMNUMBER: 'Adm No',
+  ADMISSION: 'Adm No',
+  ADM: 'Adm No',
+  CLASS: 'Class',
+  GRADE: 'Class',
+  GRADECLASS: 'Class',
+  LEVEL: 'Class',
+  STREAM: 'Stream',
+  TERM: 'Term',
+  YEAR: 'Year',
+  GENDER: 'Gender',
+  SEX: 'Gender',
+  DOB: 'DOB',
+  DATEOFBIRTH: 'Date of Birth',
+  BIRTHDATE: 'Date of Birth',
+  PARENTGUARDIAN: 'Parent/Guardian',
+  GUARDIAN: 'Parent/Guardian',
+  PARENT: 'Parent/Guardian',
+  PARENTNAME: 'Parent/Guardian',
+  GUARDIANNAME: 'Parent/Guardian',
+  PHONE1: 'Phone 1',
+  PHONE: 'Phone 1',
+  PHONENO: 'Phone 1',
+  PHONENUMBER: 'Phone 1',
+  CONTACT: 'Phone 1',
+  CONTACTNO: 'Phone 1',
+  PHONE2: 'Phone 2',
+  ALTERNATEPHONE: 'Phone 2',
+  REGDATE: 'Reg Date',
+  REGISTRATIONDATE: 'Reg Date',
+  ADMISSIONDATE: 'Reg Date',
+  BALDUE: 'Bal Due',
+  BALANCE: 'Bal Due',
+};
+
 function normalizeCellValue(value: any): string {
   if (value === null || value === undefined) return '';
   return String(value).trim();
 }
 
+function normalizeHeaderKey(key: any): string {
+  return normalizeCellValue(key).toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function canonicalHeaderName(key: any): string {
+  const normalized = normalizeHeaderKey(key);
+  return HEADER_ALIASES[normalized] || normalizeCellValue(key);
+}
+
 function normalizeUploadRow(row: Record<string, any>): Record<string, string> {
   const normalized: Record<string, string> = {};
   for (const [key, value] of Object.entries(row || {})) {
-    normalized[String(key).trim()] = normalizeCellValue(value);
+    const canonicalKey = canonicalHeaderName(key);
+    if (!canonicalKey || canonicalKey.startsWith('__EMPTY')) continue;
+    const normalizedValue = normalizeCellValue(value);
+    if (normalized[canonicalKey] === undefined || normalized[canonicalKey] === '') {
+      normalized[canonicalKey] = normalizedValue;
+    }
   }
   return normalized;
+}
+
+function isKnownHeaderCell(value: any): boolean {
+  return Boolean(HEADER_ALIASES[normalizeHeaderKey(value)]);
+}
+
+function findHeaderRowIndex(rows: any[][]): number {
+  return rows.findIndex((row) => {
+    const knownHeaders = row.filter(isKnownHeaderCell).map(canonicalHeaderName);
+    return (
+      knownHeaders.includes('Learner Name') &&
+      (knownHeaders.includes('Class') || knownHeaders.includes('Adm No') || knownHeaders.includes('Year'))
+    );
+  });
+}
+
+function isEmptyExcelRow(row: any[]): boolean {
+  return row.every((cell) => normalizeCellValue(cell) === '');
+}
+
+function isSectionRow(row: any[]): boolean {
+  const populatedCells = row.filter((cell) => normalizeCellValue(cell) !== '');
+  if (populatedCells.length !== 1) return false;
+  return /GRADE|CLASS|PLAYGROUP|PP1|PP2/i.test(normalizeCellValue(populatedCells[0]));
+}
+
+function rowToRecord(headers: string[], values: any[]): Record<string, string> {
+  const record: Record<string, string> = {};
+  headers.forEach((header, index) => {
+    if (!header) return;
+    const value = normalizeCellValue(values[index]);
+    if (record[header] === undefined || record[header] === '') {
+      record[header] = value;
+    }
+  });
+  return normalizeUploadRow(record);
+}
+
+function shouldSkipParsedRow(row: Record<string, any>): boolean {
+  const learnerName = normalizeCellValue(row['Learner Name'] || row['Leaner Name'] || row['Name']);
+  const learnerClass = normalizeCellValue(row['Class']);
+  return learnerName === '' && learnerClass === '';
 }
 
 function isExcelUpload(file: Express.Multer.File): boolean {
@@ -79,14 +180,22 @@ async function parseUploadRows(file: Express.Multer.File): Promise<ParsedUploadR
     const firstSheetName = workbook.SheetNames[0];
     if (!firstSheetName) return [];
 
-    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(workbook.Sheets[firstSheetName], {
+    const rows = XLSX.utils.sheet_to_json<any[]>(workbook.Sheets[firstSheetName], {
+      header: 1,
       defval: '',
       raw: false,
     });
-    return rows.map((row, index) => ({
-      line: index + 2,
-      data: normalizeUploadRow(row),
-    }));
+    const headerRowIndex = findHeaderRowIndex(rows);
+    if (headerRowIndex === -1) return [];
+
+    const headers = rows[headerRowIndex].map(canonicalHeaderName);
+    return rows
+      .slice(headerRowIndex + 1)
+      .map((row, index) => ({
+        line: headerRowIndex + index + 2,
+        data: rowToRecord(headers, row),
+      }))
+      .filter((row) => !isEmptyExcelRow(Object.values(row.data)) && !isSectionRow(Object.values(row.data)));
   }
 
   const rows: ParsedUploadRow[] = [];
@@ -184,8 +293,10 @@ router.post(
     const results: any[] = [];
     const errors: any[] = [];
     const parsedRows = await parseUploadRows(req.file);
+    const importRows = parsedRows.filter((row) => !shouldSkipParsedRow(row.data));
+    const skippedRows = parsedRows.length - importRows.length;
 
-    for (const row of parsedRows) {
+    for (const row of importRows) {
       try {
         const validated = learnerSchema.parse(row.data);
         results.push({
@@ -380,11 +491,12 @@ router.post(
     res.json({
       success: true,
       summary: {
-        total: parsedRows.length,
+        total: importRows.length,
         processed: results.length,
         created: created.length,
         updated: updated.length,
         studentAccountsCreated,
+        skipped: skippedRows,
         failed: failed.length + errors.length,
         validationErrors: errors.length
       },
