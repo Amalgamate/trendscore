@@ -433,6 +433,7 @@ model Learner {
   meanGrades             MeanGrade[]
   unitEnrollments        UnitEnrollment[]
   unitResults            UnitResult[]
+  pathwaySelections      LearnerPathwaySelection[]
 
   @@index([admissionNumber])
   @@index([parentId])
@@ -458,8 +459,193 @@ model Pathway {
   learners      Learner[]
   learningAreas LearningArea[]
   categories    SubjectCategory[]
+  tracks        PathwayTrack[]
+  officialLearningAreas OfficialLearningArea[]
+  combinationRules SubjectCombinationRule[]
+  learnerPathwaySelections LearnerPathwaySelection[]
 
   @@map("pathways")
+}
+
+model PathwayTrack {
+  id          String   @id @default(uuid())
+  pathwayId   String
+  code        String
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  pathway     Pathway  @relation(fields: [pathwayId], references: [id], onDelete: Cascade)
+  officialLearningAreas OfficialLearningArea[]
+  combinationRules SubjectCombinationRule[]
+  learnerPathwaySelections LearnerPathwaySelection[]
+
+  @@unique([pathwayId, code])
+  @@index([pathwayId])
+  @@map("pathway_tracks")
+}
+
+model OfficialLearningArea {
+  id                   String      @id @default(uuid())
+  officialCode         String      @unique
+  officialName         String
+  subjectType          SubjectType
+  pathwayId            String?
+  trackId              String?
+  examinable           Boolean     @default(true)
+  active               Boolean     @default(true)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  pathway              Pathway?    @relation(fields: [pathwayId], references: [id])
+  track                PathwayTrack? @relation(fields: [trackId], references: [id])
+  aliases              LearningAreaAlias[]
+  combinationItems     SubjectCombinationRuleItem[]
+  schoolOfferings      SchoolLearningAreaOffering[]
+  selectionItems       LearnerPathwaySelectionItem[]
+
+  @@index([subjectType])
+  @@index([pathwayId])
+  @@index([trackId])
+  @@map("official_learning_areas")
+}
+
+model LearningAreaAlias {
+  id                     String   @id @default(uuid())
+  officialLearningAreaId String
+  alias                  String   @unique
+  source                 String?
+  active                 Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  officialLearningArea   OfficialLearningArea @relation(fields: [officialLearningAreaId], references: [id], onDelete: Cascade)
+
+  @@index([officialLearningAreaId])
+  @@map("learning_area_aliases")
+}
+
+model SubjectCombinationRule {
+  id             String   @id @default(uuid())
+  pathwayId      String
+  trackId        String
+  code           String   @unique
+  name           String
+  officialSource String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  pathway        Pathway      @relation(fields: [pathwayId], references: [id])
+  track          PathwayTrack @relation(fields: [trackId], references: [id])
+  items          SubjectCombinationRuleItem[]
+  selections     LearnerPathwaySelection[]
+
+  @@index([pathwayId])
+  @@index([trackId])
+  @@map("subject_combination_rules")
+}
+
+model SubjectCombinationRuleItem {
+  id                     String @id @default(uuid())
+  ruleId                 String
+  officialLearningAreaId String
+  position               Int
+  rule                   SubjectCombinationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  officialLearningArea   OfficialLearningArea   @relation(fields: [officialLearningAreaId], references: [id])
+
+  @@unique([ruleId, officialLearningAreaId])
+  @@index([officialLearningAreaId])
+  @@map("subject_combination_rule_items")
+}
+
+model SchoolLearningAreaOffering {
+  id                     String   @id @default(uuid())
+  schoolId               String?
+  officialLearningAreaId String
+  active                 Boolean  @default(true)
+  capacity               Int?
+  teacherCount           Int?
+  notes                  String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  officialLearningArea   OfficialLearningArea @relation(fields: [officialLearningAreaId], references: [id])
+
+  @@unique([schoolId, officialLearningAreaId])
+  @@index([schoolId])
+  @@index([officialLearningAreaId])
+  @@map("school_learning_area_offerings")
+}
+
+model LearnerPathwaySelection {
+  id                String                 @id @default(uuid())
+  learnerId          String
+  pathwayId          String
+  trackId            String?
+  combinationRuleId  String?
+  status             PathwaySelectionStatus @default(DRAFT)
+  locked             Boolean                @default(false)
+  lockedAt           DateTime?
+  lockedBy           String?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  learner            Learner                @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  pathway            Pathway                @relation(fields: [pathwayId], references: [id])
+  track              PathwayTrack?          @relation(fields: [trackId], references: [id])
+  combinationRule    SubjectCombinationRule? @relation(fields: [combinationRuleId], references: [id])
+  items              LearnerPathwaySelectionItem[]
+  approvals          PathwayApproval[]
+  history            PathwaySelectionHistory[]
+
+  @@index([learnerId])
+  @@index([pathwayId])
+  @@index([trackId])
+  @@index([combinationRuleId])
+  @@index([status])
+  @@map("learner_pathway_selections")
+}
+
+model LearnerPathwaySelectionItem {
+  id                     String      @id @default(uuid())
+  selectionId             String
+  officialLearningAreaId  String
+  subjectType             SubjectType
+  createdAt               DateTime    @default(now())
+  selection               LearnerPathwaySelection @relation(fields: [selectionId], references: [id], onDelete: Cascade)
+  officialLearningArea    OfficialLearningArea    @relation(fields: [officialLearningAreaId], references: [id])
+
+  @@unique([selectionId, officialLearningAreaId])
+  @@index([officialLearningAreaId])
+  @@map("learner_pathway_selection_items")
+}
+
+model PathwayApproval {
+  id           String   @id @default(uuid())
+  selectionId  String
+  approverRole String
+  approverId   String?
+  status       String
+  comment      String?
+  createdAt    DateTime @default(now())
+  approvedAt   DateTime?
+  selection    LearnerPathwaySelection @relation(fields: [selectionId], references: [id], onDelete: Cascade)
+
+  @@index([selectionId])
+  @@index([status])
+  @@map("pathway_approvals")
+}
+
+model PathwaySelectionHistory {
+  id          String   @id @default(uuid())
+  selectionId String
+  action      String
+  actorId     String?
+  snapshot    Json?
+  reason      String?
+  createdAt   DateTime @default(now())
+  selection   LearnerPathwaySelection @relation(fields: [selectionId], references: [id], onDelete: Cascade)
+
+  @@index([selectionId])
+  @@index([action])
+  @@map("pathway_selection_history")
 }
 
 model SubjectCategory {
@@ -2420,6 +2606,23 @@ enum InstitutionType {
   PRIMARY_CBC
   SECONDARY
   TERTIARY
+}
+
+enum SubjectType {
+  EXAMINABLE_CORE
+  EXAMINABLE_OPTIONAL
+  SUPPORT_SUBJECT
+  NON_EXAMINABLE
+}
+
+enum PathwaySelectionStatus {
+  DRAFT
+  SUBMITTED
+  TEACHER_REVIEW
+  PARENT_REVIEW
+  APPROVED
+  REJECTED
+  LOCKED
 }
 
 enum AssessmentMode {

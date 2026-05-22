@@ -42,6 +42,7 @@ import { changelogAPI } from './changelog.api';
 import { mpesaAPI } from './mpesa.api';
 import { systemLogsAPI } from './systemLogs.api';
 import { pathwayAPI } from './pathway.api';
+import { seniorPathwayAPI } from './seniorPathway.api';
 
 export { API_BASE_URL, clearApiCache };
 
@@ -85,6 +86,7 @@ export { idTemplateAPI };
 export { mpesaAPI };
 export { systemLogsAPI };
 export { pathwayAPI };
+export { seniorPathwayAPI };
 
 const api = {
   // ── Core Axios-like Methods ───────────────────────────────────────────
@@ -163,6 +165,7 @@ const api = {
   mpesa: mpesaAPI,
   systemLogs: systemLogsAPI,
   pathways: pathwayAPI,
+  seniorPathways: seniorPathwayAPI,
   gitNotifications: {
     preview: async (data) => fetchWithAuth('/git-notifications/preview', { method: 'POST', body: JSON.stringify(data) }),
     publish: async (data) => fetchWithAuth('/git-notifications/publish', { method: 'POST', body: JSON.stringify(data) }),

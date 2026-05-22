@@ -85,6 +85,12 @@ const STEPS = [
   { id: 4, label: 'Review' },
 ];
 
+const getOfficialAreaCode = (area) =>
+  String(area?.code || area?.officialLearningArea?.code || '').toUpperCase();
+
+const getOfficialAreaName = (area) =>
+  area?.name || area?.officialLearningArea?.name || 'Unnamed subject';
+
 // ─── component ───────────────────────────────────────────────────────────────
 
 const PathwaysWizard = ({ learner, brandingSettings }) => {
@@ -94,10 +100,13 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
   const [pathwayCatalog, setPathwayCatalog] = useState([]);
   const [pathwayCategories, setPathwayCategories] = useState([]);
   const [pathwaySubjects, setPathwaySubjects] = useState([]);
+  const [officialCatalog, setOfficialCatalog] = useState(null);
+  const [officialCombinations, setOfficialCombinations] = useState([]);
 
   // selection state
   const [selectedPathwayCode, setSelectedPathwayCode] = useState('');
   const [selectedSubjectIds, setSelectedSubjectIds] = useState(new Set());
+  const [selectedOfficialCombinationId, setSelectedOfficialCombinationId] = useState('');
 
   // ui state
   const [step, setStep] = useState(1);
@@ -128,6 +137,54 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
     () => pathwayCatalog.find((p) => p.code === selectedPathwayCode) || null,
     [pathwayCatalog, selectedPathwayCode]
   );
+
+  const selectedOfficialPathway = useMemo(
+    () =>
+      officialCatalog?.pathways?.find((p) => p.code === selectedPathwayCode) ||
+      null,
+    [officialCatalog, selectedPathwayCode]
+  );
+
+  const selectedOfficialCombination = useMemo(
+    () =>
+      officialCombinations.find((combo) => combo.id === selectedOfficialCombinationId) ||
+      null,
+    [officialCombinations, selectedOfficialCombinationId]
+  );
+
+  const officialCoreSubjects = useMemo(() => {
+    const core = officialCatalog?.coreSubjects || [];
+    const findByCode = (code) =>
+      core.find((area) => getOfficialAreaCode(area) === code);
+    const mathCode = selectedPathwayCode === 'STEM' ? 'CORE_MATH' : 'ESS_MATH';
+    return [
+      findByCode('ENG'),
+      findByCode('KIS') || findByCode('KSL'),
+      findByCode(mathCode),
+      findByCode('CSL'),
+    ].filter(Boolean);
+  }, [officialCatalog, selectedPathwayCode]);
+
+  const officialSupportSubjects = useMemo(() => {
+    const support = officialCatalog?.supportSubjects || [];
+    return support.filter((area) =>
+      ['PE', 'ICT'].includes(getOfficialAreaCode(area))
+    );
+  }, [officialCatalog]);
+
+  const officialSelectedAreas = useMemo(() => {
+    if (!selectedOfficialCombination) return [];
+    const optional = (selectedOfficialCombination.items || [])
+      .map((item) => item.officialLearningArea)
+      .filter(Boolean);
+    return [...officialCoreSubjects, ...optional, ...officialSupportSubjects];
+  }, [selectedOfficialCombination, officialCoreSubjects, officialSupportSubjects]);
+
+  const officialModeAvailable = officialCombinations.length > 0;
+  const officialSelectionReady =
+    officialModeAvailable &&
+    Boolean(selectedOfficialPathway?.id && selectedOfficialCombination?.id) &&
+    officialCoreSubjects.length === 4;
 
   const categoryById = useMemo(
     () => new Map(pathwayCategories.map((c) => [c.id, c])),
@@ -283,6 +340,7 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
   ]);
 
   const isValid = complianceIssues.length === 0 && !!selectedPathwayCode;
+  const canSaveSelection = officialModeAvailable ? officialSelectionReady : isValid;
 
   const selectedAreas = useMemo(
     () =>
@@ -296,6 +354,39 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
         ),
     [selectedSubjectIds, canonicalSubjects, isCoreSubject]
   );
+
+  const displaySelectedAreas = useMemo(() => {
+    if (!selectedOfficialCombination) {
+      return selectedAreas.map((row) => ({
+        ...row,
+        displayCategory: isCoreSubject(row) ? 'Core' : resolveCategoryLabel(row),
+      }));
+    }
+
+    const optionalIds = new Set(
+      (selectedOfficialCombination.items || [])
+        .map((item) => item.officialLearningArea?.id)
+        .filter(Boolean)
+    );
+    const supportIds = new Set(officialSupportSubjects.map((area) => area.id));
+
+    return officialSelectedAreas.map((area) => ({
+      id: area.id,
+      name: area.name,
+      displayCategory: optionalIds.has(area.id)
+        ? 'Combination'
+        : supportIds.has(area.id)
+        ? 'Support'
+        : 'Core',
+    }));
+  }, [
+    selectedOfficialCombination,
+    selectedAreas,
+    isCoreSubject,
+    resolveCategoryLabel,
+    officialSelectedAreas,
+    officialSupportSubjects,
+  ]);
 
   // ── data loading ───────────────────────────────────────────────────────────
 
@@ -330,6 +421,17 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
         setPathwayCatalog(pathways);
         setPathwaySubjects(Array.isArray(areaRows) ? areaRows : []);
 
+        const [officialCatalogRes, officialSelectionRes] = await Promise.all([
+          api.seniorPathways.getCatalog().catch(() => null),
+          api.seniorPathways.getLearnerSelection(learner.id).catch(() => null),
+        ]);
+        const officialData = officialCatalogRes?.data || null;
+        const officialSelection = officialSelectionRes?.data || null;
+        setOfficialCatalog(officialData);
+        if (officialSelection?.combinationRule?.id) {
+          setSelectedOfficialCombinationId(officialSelection.combinationRule.id);
+        }
+
         const pathwayCode = profile?.pathway?.code || '';
         if (pathwayCode) {
           setSelectedPathwayCode(pathwayCode);
@@ -363,6 +465,30 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [learner?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadCombinations = async () => {
+      if (!selectedOfficialPathway?.id) {
+        setOfficialCombinations([]);
+        setSelectedOfficialCombinationId('');
+        return;
+      }
+      const res = await api.seniorPathways
+        .getCombinations({ pathwayId: selectedOfficialPathway.id })
+        .catch(() => null);
+      if (cancelled) return;
+      const combos = Array.isArray(res?.data) ? res.data : [];
+      setOfficialCombinations(combos);
+      setSelectedOfficialCombinationId((current) =>
+        combos.some((combo) => combo.id === current) ? current : ''
+      );
+    };
+    loadCombinations();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedOfficialPathway?.id]);
 
   // auto-select cores when pathway changes
   useEffect(() => {
@@ -403,6 +529,7 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
       setPathwaySubjects(Array.isArray(areaRows) ? areaRows : []);
       setSelectedPathwayCode(code);
       setSelectedSubjectIds(new Set());
+      setSelectedOfficialCombinationId('');
       showSuccess('Pathway updated');
       setStep(2);
     } catch (e) {
@@ -452,17 +579,40 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
     setSelectedSubjectIds(next);
   };
 
+  const buildOfficialSelectionPayload = () => {
+    if (!officialSelectionReady) return null;
+    const optionalSubjectIds = (selectedOfficialCombination.items || [])
+      .map((item) => item.officialLearningArea?.id)
+      .filter(Boolean);
+    return {
+      learnerId: learner.id,
+      pathwayId: selectedOfficialPathway.id,
+      trackId: selectedOfficialCombination.trackId || selectedOfficialCombination.track?.id,
+      combinationRuleId: selectedOfficialCombination.id,
+      compulsorySubjectIds: officialCoreSubjects.map((area) => area.id),
+      optionalSubjectIds,
+      supportSubjectIds: officialSupportSubjects.map((area) => area.id),
+    };
+  };
+
   const handleSave = async () => {
     if (subjectSelectionLocked) {
       showError('Subject selection is locked after pathway approval.');
       return;
     }
-    if (!isValid) {
+    if (!canSaveSelection) {
       showError('Fix compliance issues before saving.');
       return;
     }
     setSaving(true);
     try {
+      const officialPayload = buildOfficialSelectionPayload();
+      if (officialPayload) {
+        await api.seniorPathways.saveSelection(officialPayload);
+        showSuccess('Official pathway combination saved successfully!');
+        return;
+      }
+
       const coreIds = coreSubjects.map((r) => r.id);
       const allIds = Array.from(
         new Set([...Array.from(selectedSubjectIds), ...coreIds])
@@ -485,20 +635,20 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
 
   const handleDownloadPdf = async () => {
     try {
-      if (selectedAreas.length === 0) {
+      if (displaySelectedAreas.length === 0) {
         showError('No selected subjects to export.');
         return;
       }
       const { default: jsPDF } = await import('jspdf');
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
 
-      const rows = selectedAreas
+      const rows = displaySelectedAreas
         .slice()
         .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
         .map((row, idx) => ({
           no: idx + 1,
           subject: row.name,
-          category: isCoreSubject(row) ? 'Core' : 'Elective',
+          category: row.displayCategory || 'Subject',
         }));
 
       const fallbackBranding = getSchoolBranding();
@@ -617,11 +767,15 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
       ws.addRow(['Adm No', learner?.admissionNumber || 'N/A']);
       ws.addRow(['Grade', gradeLabel(learner?.grade)]);
       ws.addRow(['Pathway', selectedPathwayCode]);
+      if (selectedOfficialCombination) {
+        ws.addRow(['Track', selectedOfficialCombination.track?.name || 'N/A']);
+        ws.addRow(['Official Combination', selectedOfficialCombination.name]);
+      }
       ws.addRow(['Generated', new Date().toLocaleString()]);
       ws.addRow([]);
       ws.addRow(['#', 'Subject', 'Category']);
-      selectedAreas.forEach((row, i) =>
-        ws.addRow([i + 1, row.name, isCoreSubject(row) ? 'Core' : resolveCategoryLabel(row)])
+      displaySelectedAreas.forEach((row, i) =>
+        ws.addRow([i + 1, row.name, row.displayCategory || 'Subject'])
       );
       ws.getRow(1).font = { bold: true, size: 13 };
       ws.getRow(8).font = { bold: true };
@@ -873,12 +1027,17 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
               <div className="px-5 pt-4 pb-0 shrink-0">
                 <div className="flex items-start justify-between gap-2 mb-3">
                   <div>
-                    <h2 className="text-base font-bold text-gray-900">Elective Subjects</h2>
+                    <h2 className="text-base font-bold text-gray-900">
+                      {officialModeAvailable ? 'Approved Subject Combinations' : 'Elective Subjects'}
+                    </h2>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      Pick subjects from each category as per the rules.
+                      {officialModeAvailable
+                        ? 'Choose one official CBE combination. The system will save the approved combination, not a loose min/max pick.'
+                        : 'Pick subjects from each category as per the rules.'}
                     </p>
                   </div>
-                  <div className="flex gap-1.5 shrink-0">
+                  {!officialModeAvailable && (
+                    <div className="flex gap-1.5 shrink-0">
                   <button
                     type="button"
                     title="Apply minimum rules pack"
@@ -897,10 +1056,80 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
                   >
                       Pure Sci
                     </button>
-                  </div>
+                    </div>
+                  )}
                 </div>
 
+                {officialModeAvailable && (
+                  <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
+                    <div className="flex items-start gap-2">
+                      <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-blue-700" />
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wider text-blue-900">
+                          Official combination mode
+                        </p>
+                        <p className="mt-1 text-xs text-blue-800">
+                          Core subjects are added automatically: {officialCoreSubjects.map(getOfficialAreaName).join(', ') || 'pending catalog setup'}.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {officialModeAvailable && (
+                  <div className="max-h-[52vh] overflow-y-auto pr-1 space-y-2 pb-3">
+                    {officialCombinations.map((combo) => {
+                      const selected = selectedOfficialCombinationId === combo.id;
+                      const subjects = (combo.items || [])
+                        .map((item) => item.officialLearningArea)
+                        .filter(Boolean);
+                      return (
+                        <button
+                          key={combo.id}
+                          type="button"
+                          onClick={() => setSelectedOfficialCombinationId(combo.id)}
+                          disabled={subjectSelectionLocked}
+                          className={`w-full text-left rounded-xl border p-3 transition ${
+                            selected
+                              ? 'border-brand-purple bg-brand-purple/5 ring-2 ring-brand-purple/20'
+                              : 'border-gray-200 bg-white hover:border-brand-purple/40 hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
+                              selected ? 'border-brand-purple bg-brand-purple text-white' : 'border-gray-300 bg-white'
+                            }`}>
+                              {selected && <Check size={11} strokeWidth={3} />}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-sm font-bold text-gray-900">{combo.name}</p>
+                                {combo.track?.name && (
+                                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-gray-600">
+                                    {combo.track.name}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {subjects.map((area) => (
+                                  <span
+                                    key={area.id}
+                                    className="rounded-full border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-700"
+                                  >
+                                    {area.name}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {/* category tab bar */}
+                {!officialModeAvailable && (
                 <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-none">
                   {electivesByCategory.map((g, idx) => {
                     const cat = g.category;
@@ -937,9 +1166,11 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
                     );
                   })}
                 </div>
+                )}
               </div>
 
               {/* search + subject list */}
+              {!officialModeAvailable && (
               <div className="px-5 pt-3 flex-1 overflow-y-auto min-h-0 pb-4">
                 {activeCategory && (
                   <>
@@ -1019,6 +1250,7 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
                   </div>
                 )}
               </div>
+              )}
 
               {/* nav */}
               <div className="px-5 pb-4 pt-2 border-t border-gray-100 shrink-0">
@@ -1054,34 +1286,89 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
                   </p>
                 </div>
                 <span className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
-                  isValid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                  canSaveSelection ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
                 }`}>
-                  {isValid ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
-                  {isValid ? 'Valid Combination' : 'Needs Attention'}
+                  {canSaveSelection ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+                  {canSaveSelection ? 'Valid Combination' : 'Needs Attention'}
                 </span>
               </div>
+
+              {selectedOfficialCombination && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+                  <p className="text-xs font-bold uppercase tracking-widest text-blue-900">
+                    Official CBE Combination
+                  </p>
+                  <p className="mt-1 text-sm font-bold text-gray-900">
+                    {selectedOfficialCombination.name}
+                  </p>
+                  {selectedOfficialCombination.track?.name && (
+                    <p className="mt-0.5 text-xs font-semibold text-blue-800">
+                      Track: {selectedOfficialCombination.track.name}
+                    </p>
+                  )}
+                  <div className="mt-3 grid gap-2">
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Compulsory</p>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {officialCoreSubjects.map((area) => (
+                          <span key={area.id} className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-gray-700">
+                            {area.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Combination Subjects</p>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {(selectedOfficialCombination.items || []).map((item) => (
+                          <span key={item.officialLearningArea?.id || item.id} className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-gray-700">
+                            {item.officialLearningArea?.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    {officialSupportSubjects.length > 0 && (
+                      <div>
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Support / Non-examinable</p>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {officialSupportSubjects.map((area) => (
+                            <span key={area.id} className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-gray-700">
+                              {area.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* summary cards */}
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-xl bg-gray-50 border border-gray-200 p-3 text-center">
-                  <p className="text-xl font-bold text-brand-purple">{selectedAreas.length}</p>
+                  <p className="text-xl font-bold text-brand-purple">
+                    {selectedOfficialCombination ? officialSelectedAreas.length : selectedAreas.length}
+                  </p>
                   <p className="text-[11px] text-gray-500 font-medium mt-0.5">Total</p>
                 </div>
                 <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-center">
                   <p className="text-xl font-bold text-slate-700">
-                    {selectedAreas.filter((r) => isCoreSubject(r)).length}
+                    {selectedOfficialCombination ? officialCoreSubjects.length : selectedAreas.filter((r) => isCoreSubject(r)).length}
                   </p>
                   <p className="text-[11px] text-gray-500 font-medium mt-0.5">Core</p>
                 </div>
                 <div className="rounded-xl bg-indigo-50 border border-indigo-200 p-3 text-center">
                   <p className="text-xl font-bold text-indigo-700">
-                    {selectedAreas.filter((r) => !isCoreSubject(r)).length}
+                    {selectedOfficialCombination
+                      ? (selectedOfficialCombination.items || []).length
+                      : selectedAreas.filter((r) => !isCoreSubject(r)).length}
                   </p>
                   <p className="text-[11px] text-gray-500 font-medium mt-0.5">Electives</p>
                 </div>
               </div>
 
               {/* per-category breakdown */}
+              {!selectedOfficialCombination && (
               <div className="space-y-2">
                 {electivesByCategory.map((g, idx) => {
                   const cat = g.category;
@@ -1106,6 +1393,7 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
                   );
                 })}
               </div>
+              )}
 
               {/* errors */}
               {complianceIssues.length > 0 && (
@@ -1130,7 +1418,7 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={!isValid || saving || subjectSelectionLocked}
+                  disabled={!canSaveSelection || saving || subjectSelectionLocked}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-brand-purple text-white text-sm font-semibold hover:bg-brand-purple/90 disabled:opacity-50 transition"
                 >
                   {saving ? (
@@ -1160,7 +1448,7 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
             <button
               type="button"
               onClick={handleDownloadExcel}
-              disabled={selectedAreas.length === 0}
+              disabled={displaySelectedAreas.length === 0}
               title="Download Excel"
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition"
             >
@@ -1169,7 +1457,7 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
             <button
               type="button"
               onClick={handleDownloadPdf}
-              disabled={selectedAreas.length === 0}
+              disabled={displaySelectedAreas.length === 0}
               title="Download PDF"
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-brand-purple text-white text-xs font-semibold hover:bg-brand-purple/90 disabled:opacity-40 transition"
             >
@@ -1198,7 +1486,7 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
               </p>
             </div>
 
-            {selectedAreas.length === 0 ? (
+            {displaySelectedAreas.length === 0 ? (
               <div className="py-10 flex flex-col items-center gap-2 text-gray-400">
                 <BookOpen size={28} className="opacity-30" />
                 <p className="text-xs">No subjects selected yet.</p>
@@ -1214,11 +1502,11 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedAreas.map((row, i) => (
+                    {displaySelectedAreas.map((row, i) => (
                       <tr key={row.id} className="odd:bg-white even:bg-gray-50">
                         <td className="px-4 py-2 border-b border-gray-100">{i + 1}</td>
                         <td className="px-4 py-2 border-b border-gray-100">{row.name}</td>
-                        <td className="px-4 py-2 border-b border-gray-100">{isCoreSubject(row) ? 'Core' : 'Elective'}</td>
+                        <td className="px-4 py-2 border-b border-gray-100">{row.displayCategory || 'Subject'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1227,13 +1515,13 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
             )}
 
             {/* slip footer */}
-            {selectedAreas.length > 0 && (
+            {displaySelectedAreas.length > 0 && (
               <div className="px-4 py-2.5 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
                 <p className="text-[10px] text-gray-400">
                   Generated {new Date().toLocaleString()}
                 </p>
                 <p className="text-[10px] text-gray-400 font-medium">
-                  {selectedAreas.length} subject{selectedAreas.length !== 1 ? 's' : ''}
+                  {displaySelectedAreas.length} subject{displaySelectedAreas.length !== 1 ? 's' : ''}
                 </p>
               </div>
             )}
@@ -1242,15 +1530,15 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
           {/* ── Live Compliance Check ── */}
           <div className="rounded-xl border bg-white overflow-hidden">
             <div className={`px-4 py-3 flex items-center gap-2 ${
-              complianceIssues.length === 0 && selectedPathwayCode
+              canSaveSelection && selectedPathwayCode
                 ? 'bg-emerald-50 border-b border-emerald-100'
-                : complianceIssues.length > 0
+                : selectedPathwayCode
                 ? 'bg-amber-50 border-b border-amber-100'
                 : 'bg-gray-50 border-b border-gray-100'
             }`}>
-              {complianceIssues.length === 0 && selectedPathwayCode ? (
+              {canSaveSelection && selectedPathwayCode ? (
                 <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
-              ) : complianceIssues.length > 0 ? (
+              ) : selectedPathwayCode ? (
                 <AlertTriangle size={15} className="text-amber-600 shrink-0" />
               ) : (
                 <Zap size={15} className="text-gray-400 shrink-0" />
@@ -1267,11 +1555,15 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
                   <p className="text-sm text-gray-700">Core Subjects</p>
                   <div className="flex items-center gap-2">
                     <span className={`text-xs font-bold ${
-                      coreSubjects.length > 0 ? 'text-emerald-600' : 'text-gray-400'
+                      (selectedOfficialCombination ? officialCoreSubjects.length > 0 : coreSubjects.length > 0)
+                        ? 'text-emerald-600'
+                        : 'text-gray-400'
                     }`}>
-                      {selectedAreas.filter((r) => isCoreSubject(r)).length} selected
+                      {selectedOfficialCombination
+                        ? officialCoreSubjects.length
+                        : selectedAreas.filter((r) => isCoreSubject(r)).length} selected
                     </span>
-                    {coreSubjects.length > 0
+                    {(selectedOfficialCombination ? officialCoreSubjects.length > 0 : coreSubjects.length > 0)
                       ? <CheckCircle2 size={14} className="text-emerald-500" />
                       : <XCircle size={14} className="text-gray-300" />
                     }
@@ -1279,8 +1571,20 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
                 </div>
               )}
 
+              {selectedOfficialCombination && (
+                <div className="px-4 py-2.5 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm text-gray-700">Official Combination</p>
+                    <p className="text-[11px] text-gray-500">
+                      {selectedOfficialCombination.track?.name || 'Track'} · {selectedOfficialCombination.name}
+                    </p>
+                  </div>
+                  <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
+                </div>
+              )}
+
               {/* category compliance rows */}
-              {pathwayCategories.map((cat) => {
+              {!selectedOfficialCombination && pathwayCategories.map((cat) => {
                 const picked = countByCategory[cat.id] || 0;
                 const min = Number(cat.minSelect || 0);
                 const max = cat.maxSelect == null ? null : Number(cat.maxSelect);
@@ -1314,19 +1618,23 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
               {/* overall verdict */}
               {selectedPathwayCode && (
                 <div className={`px-4 py-3 ${
-                  complianceIssues.length === 0
+                  canSaveSelection
                     ? 'bg-emerald-50'
                     : 'bg-amber-50'
                 }`}>
                   <p className={`text-xs font-semibold ${
-                    complianceIssues.length === 0 ? 'text-emerald-800' : 'text-amber-800'
+                    canSaveSelection ? 'text-emerald-800' : 'text-amber-800'
                   }`}>
-                    {complianceIssues.length === 0
-                      ? '✓ Subject combination is valid.'
+                    {canSaveSelection
+                      ? selectedOfficialCombination
+                        ? '✓ Official CBE combination is valid.'
+                        : '✓ Subject combination is valid.'
+                      : selectedOfficialCombination
+                      ? 'Official combination is incomplete. Confirm compulsory subjects are available in the catalog.'
                       : `${complianceIssues.length} issue${complianceIssues.length > 1 ? 's' : ''} to resolve before saving.`
                     }
                   </p>
-                  {complianceIssues.length > 0 && (
+                  {!selectedOfficialCombination && complianceIssues.length > 0 && (
                     <ul className="mt-1.5 space-y-0.5">
                       {complianceIssues.map((issue, i) => (
                         <li key={i} className="text-[11px] text-amber-700">
