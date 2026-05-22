@@ -1495,15 +1495,28 @@ const SECTION_LABELS = {
   leads: 'Leads & CRM',
 };
 
-function showSection(id) {
+function sectionFromHash() {
+  const raw = decodeURIComponent(window.location.hash || '').replace(/^#\/?/, '');
+  return SECTIONS.includes(raw) ? raw : 'overview';
+}
+
+function showSection(id, options = {}) {
+  const targetSection = SECTIONS.includes(id) ? id : 'overview';
   SECTIONS.forEach(section => {
     const el = $(`section-${section}`);
-    if (el) el.className = section === id ? 'section-visible' : 'section-hidden';
+    if (el) el.className = section === targetSection ? 'section-visible' : 'section-hidden';
   });
   document.querySelectorAll('.nav-item').forEach(el => {
-    el.classList.toggle('active', el.dataset.section === id);
+    el.classList.toggle('active', el.dataset.section === targetSection);
   });
-  if ($('breadcrumb-active')) $('breadcrumb-active').textContent = SECTION_LABELS[id] || id;
+  if ($('breadcrumb-active')) $('breadcrumb-active').textContent = SECTION_LABELS[targetSection] || targetSection;
+
+  if (!options.skipHashUpdate) {
+    const nextHash = `#${targetSection}`;
+    if (window.location.hash !== nextHash) {
+      history.pushState(null, '', nextHash);
+    }
+  }
 }
 
 document.querySelectorAll('.nav-item').forEach(el => {
@@ -1511,6 +1524,10 @@ document.querySelectorAll('.nav-item').forEach(el => {
     event.preventDefault();
     showSection(el.dataset.section);
   });
+});
+
+window.addEventListener('hashchange', () => {
+  showSection(sectionFromHash(), { skipHashUpdate: true });
 });
 
 // Modals
@@ -2190,6 +2207,7 @@ $('lead-modal-submit')?.addEventListener('click', async () => {
 
 async function init() {
   bindModalEvents();
+  showSection(sectionFromHash(), { skipHashUpdate: true });
   await loadLeadsFromApi();
   await refreshFromRuntime();
   renderEverything();
