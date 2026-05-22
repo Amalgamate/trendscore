@@ -44,8 +44,10 @@ const NGINX_SITES_DIR = process.env.CONSOLE_NGINX_SITES_DIR || '/etc/nginx/sites
 const DEFAULT_DOMAIN_SUFFIX = process.env.CONSOLE_DEFAULT_DOMAIN_SUFFIX || 'elimcrown.co.ke';
 
 // ── Persistent stores ─────────────────────────────────────────────────────
-const LEADS_STORE_FILE = path.join(__dirname, 'leads.store.json');
-const AUDIT_STORE_FILE = path.join(__dirname, 'audit.store.json');
+const CONSOLE_DATA_DIR = process.env.CONSOLE_DATA_DIR || __dirname;
+fs.mkdirSync(CONSOLE_DATA_DIR, { recursive: true });
+const LEADS_STORE_FILE = path.join(CONSOLE_DATA_DIR, 'leads.store.json');
+const AUDIT_STORE_FILE = path.join(CONSOLE_DATA_DIR, 'audit.store.json');
 const MAX_AUDIT_ENTRIES = 2000;
 
 // In-memory deployment log (ephemeral — only tracks this process session)
