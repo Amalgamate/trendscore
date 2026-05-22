@@ -22,6 +22,18 @@ const BulkOperationsModal = ({
   if (!isOpen) return null;
 
   const canUpload = () => !!file;
+  const isSupportedUploadFile = (selectedFile) => {
+    if (!selectedFile) return false;
+    const name = selectedFile.name.toLowerCase();
+    return (
+      selectedFile.type === 'text/csv' ||
+      selectedFile.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      selectedFile.type === 'application/vnd.ms-excel' ||
+      name.endsWith('.csv') ||
+      name.endsWith('.xlsx') ||
+      name.endsWith('.xls')
+    );
+  };
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -40,11 +52,11 @@ const BulkOperationsModal = ({
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const droppedFile = e.dataTransfer.files[0];
-      if (droppedFile.type === 'text/csv' || droppedFile.name.endsWith('.csv')) {
+      if (isSupportedUploadFile(droppedFile)) {
         setFile(droppedFile);
         setUploadResult(null);
       } else {
-        alert('Please upload a CSV file');
+        alert('Please upload a CSV or Excel file');
       }
     }
   };
@@ -52,11 +64,11 @@ const BulkOperationsModal = ({
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
-      if (selectedFile.type === 'text/csv' || selectedFile.name.endsWith('.csv')) {
+      if (isSupportedUploadFile(selectedFile)) {
         setFile(selectedFile);
         setUploadResult(null);
       } else {
-        alert('Please select a CSV file');
+        alert('Please select a CSV or Excel file');
       }
     }
   };
@@ -175,7 +187,11 @@ const BulkOperationsModal = ({
     const { failed, validationErrors } = uploadResult.details;
     const allErrors = [
       ...failed.map(f => ({ Line: f.line, Resource: f.email || f.admissionNumber || 'N/A', Error: f.reason })),
-      ...validationErrors.map(v => ({ Line: v.line, Resource: 'N/A', Error: 'Validation failed' }))
+      ...validationErrors.map(v => ({
+        Line: v.line,
+        Resource: v.data?.['Adm No'] || v.data?.['Learner Name'] || 'N/A',
+        Error: Array.isArray(v.error) ? v.error.map((entry) => entry.message).join('; ') : 'Validation failed'
+      }))
     ];
 
     if (allErrors.length === 0) return;
@@ -362,14 +378,14 @@ const BulkOperationsModal = ({
                     <Upload size={32} />
                   </div>
                   <div className="space-y-1">
-                    <p className="text-sm font-medium text-gray-700">Drop your CSV file here</p>
+                    <p className="text-sm font-medium text-gray-700">Drop your CSV or Excel file here</p>
                     <p className="text-xs text-gray-400">
                       Or <label className="text-[var(--brand-purple)] cursor-pointer hover:underline font-medium">
                         browse files
                         <input
                           ref={fileInputRef}
                           type="file"
-                          accept=".csv"
+                          accept=".csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                           onChange={handleFileChange}
                           className="hidden"
                         />
@@ -449,7 +465,9 @@ const BulkOperationsModal = ({
                                   <span className="font-medium text-gray-400 min-w-[24px]">L{err.line}</span>
                                   <div className="flex-1 min-w-0">
                                     <p className="font-medium text-gray-800">Validation Error</p>
-                                    <p className="text-rose-400 italic">Check template format</p>
+                                    <p className="text-rose-400 italic">
+                                      {Array.isArray(err.error) ? err.error.map((entry) => entry.message).join('; ') : 'Check template format'}
+                                    </p>
                                   </div>
                                 </div>
                               ))}

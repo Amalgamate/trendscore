@@ -12,7 +12,9 @@ import csvParser from 'csv-parser';
 import { Parser } from 'json2csv';
 import { Readable } from 'stream';
 import { z } from 'zod';
+import * as XLSX from 'xlsx';
 import { ensureStudentAccountForLearner } from '../../services/studentAccount.service';
+import { generateAdmissionNumber } from '../../services/admissionNumber.service';
 
 const router = Router();
 
@@ -25,7 +27,7 @@ const learnerSchema = z.object({
   'Learner Name': z.string().optional(),
   'Leaner Name': z.string().optional(),
   'Name': z.string().optional(),
-  'Adm No': z.string().min(1, 'Admission number is required'),
+  'Adm No': z.string().optional(),
   'Class': z.string().min(1, 'Class is required'),
   'Stream': z.string().optional(),
   'Term': z.string().optional(),
@@ -42,6 +44,87 @@ const learnerSchema = z.object({
   message: "Learner Name is required",
   path: ['Learner Name']
 });
+
+type ParsedUploadRow = {
+  line: number;
+  data: Record<string, any>;
+};
+
+function normalizeCellValue(value: any): string {
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+}
+
+function normalizeUploadRow(row: Record<string, any>): Record<string, string> {
+  const normalized: Record<string, string> = {};
+  for (const [key, value] of Object.entries(row || {})) {
+    normalized[String(key).trim()] = normalizeCellValue(value);
+  }
+  return normalized;
+}
+
+function isExcelUpload(file: Express.Multer.File): boolean {
+  const name = String(file.originalname || '').toLowerCase();
+  return (
+    name.endsWith('.xlsx') ||
+    name.endsWith('.xls') ||
+    file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    file.mimetype === 'application/vnd.ms-excel'
+  );
+}
+
+async function parseUploadRows(file: Express.Multer.File): Promise<ParsedUploadRow[]> {
+  if (isExcelUpload(file)) {
+    const workbook = XLSX.read(file.buffer, { type: 'buffer', cellDates: false });
+    const firstSheetName = workbook.SheetNames[0];
+    if (!firstSheetName) return [];
+
+    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(workbook.Sheets[firstSheetName], {
+      defval: '',
+      raw: false,
+    });
+    return rows.map((row, index) => ({
+      line: index + 2,
+      data: normalizeUploadRow(row),
+    }));
+  }
+
+  const rows: ParsedUploadRow[] = [];
+  let lineNumber = 1;
+  const stream = Readable.from(file.buffer.toString());
+
+  await new Promise<void>((resolve, reject) => {
+    stream
+      .pipe(csvParser())
+      .on('data', (data) => {
+        lineNumber++;
+        rows.push({
+          line: lineNumber,
+          data: normalizeUploadRow(data),
+        });
+      })
+      .on('end', resolve)
+      .on('error', reject);
+  });
+
+  return rows;
+}
+
+async function generateBulkAdmissionNumber(stream: string, academicYear: number): Promise<string> {
+  try {
+    return await generateAdmissionNumber(stream || 'A', academicYear);
+  } catch (error: any) {
+    // Bulk imports must still work when school settings are in manual mode.
+    // Use a deterministic fallback and check uniqueness before returning.
+    let seq = await prisma.learner.count();
+    while (true) {
+      seq += 1;
+      const candidate = `ADM-${academicYear}-${String(seq).padStart(4, '0')}`;
+      const exists = await prisma.learner.findUnique({ where: { admissionNumber: candidate } });
+      if (!exists) return candidate;
+    }
+  }
+}
 
 /**
  * Normalise a raw class/grade string from a CSV into a Prisma Grade enum value.
@@ -100,34 +183,25 @@ router.post(
 
     const results: any[] = [];
     const errors: any[] = [];
-    let lineNumber = 1;
+    const parsedRows = await parseUploadRows(req.file);
 
-    const stream = Readable.from(req.file.buffer.toString());
-
-    await new Promise((resolve, reject) => {
-      stream
-        .pipe(csvParser())
-        .on('data', (data) => {
-          lineNumber++;
-          try {
-            const validated = learnerSchema.parse(data);
-            results.push({
-              line: lineNumber,
-              data: validated,
-              valid: true
-            });
-          } catch (error) {
-            errors.push({
-              line: lineNumber,
-              data,
-              error: error instanceof z.ZodError ? error.errors : 'Validation failed',
-              valid: false
-            });
-          }
-        })
-        .on('end', resolve)
-        .on('error', reject);
-    });
+    for (const row of parsedRows) {
+      try {
+        const validated = learnerSchema.parse(row.data);
+        results.push({
+          line: row.line,
+          data: validated,
+          valid: true
+        });
+      } catch (error) {
+        errors.push({
+          line: row.line,
+          data: row.data,
+          error: error instanceof z.ZodError ? error.errors : 'Validation failed',
+          valid: false
+        });
+      }
+    }
 
     const created: any[] = [];
     const updated: any[] = [];
@@ -137,9 +211,11 @@ router.post(
     for (const item of results) {
       try {
         const csvData = item.data;
-        const admNo = csvData['Adm No'];
-
         const grade = resolveGrade((csvData['Class'] || '').toString());
+        const academicYear = Number.parseInt(String(csvData['Year'] || ''), 10) || new Date().getFullYear();
+        const streamCode = csvData['Stream'] || 'A';
+        const providedAdmNo = String(csvData['Adm No'] || '').trim();
+        const admNo = providedAdmNo || await generateBulkAdmissionNumber(streamCode, academicYear);
 
         const rawName = csvData['Learner Name'] || csvData['Leaner Name'] || csvData['Name'] || '';
         const nameParts = rawName.trim().split(/\s+/);
@@ -222,7 +298,7 @@ router.post(
                 dateOfBirth: dob,
                 gender: gender,
                 grade,
-                stream: csvData['Stream'] || 'A',
+                stream: streamCode,
                 status: 'ACTIVE',
                 admissionDate,
                 guardianName: csvData['Parent/Guardian'] || undefined,
@@ -273,7 +349,7 @@ router.post(
               dateOfBirth: dob,
               gender: gender,
               grade,
-              stream: csvData['Stream'] || 'A',
+              stream: streamCode,
               status: 'ACTIVE',
               admissionDate,
               guardianName: csvData['Parent/Guardian'] || undefined,
@@ -304,7 +380,7 @@ router.post(
     res.json({
       success: true,
       summary: {
-        total: lineNumber - 1,
+        total: parsedRows.length,
         processed: results.length,
         created: created.length,
         updated: updated.length,
