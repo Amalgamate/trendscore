@@ -183,6 +183,42 @@ env_value() {
   fi
 }
 
+odoo_base_installed() {
+  local project="$1"
+  local compose_file="$2"
+  local env_file="$3"
+  local db_name="$4"
+  local db_user="$5"
+
+  "${COMPOSE_CMD[@]}" --env-file "${env_file}" -p "${project}" -f "${compose_file}" exec -T db \
+    psql -U "${db_user}" -d "${db_name}" -tAc "select 1 from pg_tables where schemaname='public' and tablename='ir_module_module';" \
+    | tr -d '[:space:]' | grep -q '^1$'
+}
+
+bootstrap_odoo_base_if_needed() {
+  local project="$1"
+  local compose_file="$2"
+  local env_file="$3"
+  local db_name="$4"
+  local db_user="$5"
+
+  if odoo_base_installed "${project}" "${compose_file}" "${env_file}" "${db_name}" "${db_user}"; then
+    echo "[provision] odoo base schema already present for ${db_name}"
+    return 0
+  fi
+
+  echo "[provision] odoo base schema missing for ${db_name}; initializing"
+  "${COMPOSE_CMD[@]}" --env-file "${env_file}" -p "${project}" -f "${compose_file}" run -T --rm odoo \
+    odoo -d "${db_name}" -i base --without-demo=all --stop-after-init < /dev/null
+
+  if ! odoo_base_installed "${project}" "${compose_file}" "${env_file}" "${db_name}" "${db_user}"; then
+    echo "[provision] odoo base schema initialization failed for ${db_name}" >&2
+    return 1
+  fi
+
+  echo "[provision] odoo base schema initialized for ${db_name}"
+}
+
 read FE_MIN FE_MAX < <(range_for_app "${APP_TYPE}" fe)
 read BE_MIN BE_MAX < <(range_for_app "${APP_TYPE}" be)
 
@@ -288,6 +324,10 @@ else
   DB_NAME="$(env_value DB_NAME "${DB_NAME}")"
 fi
 
+# Ensure runtime variables are always loaded from env file for new and reused runs.
+DB_USER="$(env_value DB_USER "${DB_USER:-zawadi}")"
+DB_PASSWORD="$(env_value DB_PASSWORD "${DB_PASSWORD:-}")"
+
 if [[ "${APP_TYPE}" == "wordpress" ]]; then
   if grep -q '^WORDPRESS_CONFIG_EXTRA=' "${ENV_FILE}"; then
     sed -i "s#^WORDPRESS_CONFIG_EXTRA=.*#WORDPRESS_CONFIG_EXTRA=${WORDPRESS_CONFIG_EXTRA_DEFAULT}#" "${ENV_FILE}"
@@ -361,6 +401,8 @@ volumes:
 EOF
   fi
   "${COMPOSE_CMD[@]}" --env-file "${ENV_FILE}" -p "${PROJECT_NAME}" -f "${ODOO_COMPOSE_FILE}" up -d db odoo
+  bootstrap_odoo_base_if_needed "${PROJECT_NAME}" "${ODOO_COMPOSE_FILE}" "${ENV_FILE}" "${DB_NAME}" "${DB_USER}"
+  "${COMPOSE_CMD[@]}" --env-file "${ENV_FILE}" -p "${PROJECT_NAME}" -f "${ODOO_COMPOSE_FILE}" up -d --force-recreate odoo
 elif [[ "${APP_TYPE}" == "wordpress" ]]; then
   cat > "${WORDPRESS_COMPOSE_FILE}" <<'EOF'
 services:
