@@ -1530,6 +1530,33 @@ window.addEventListener('hashchange', () => {
   showSection(sectionFromHash(), { skipHashUpdate: true });
 });
 
+function setSidebarCollapsed(collapsed) {
+  const shell = $('app-shell');
+  const toggle = $('sidebar-toggle');
+  if (!shell || !toggle) return;
+  shell.classList.toggle('sidebar-collapsed', collapsed);
+  toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  toggle.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+  toggle.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+  try {
+    window.localStorage.setItem('console.sidebar.collapsed', collapsed ? '1' : '0');
+  } catch (_) {}
+}
+
+function initSidebarToggle() {
+  const toggle = $('sidebar-toggle');
+  if (!toggle) return;
+  let collapsed = false;
+  try {
+    collapsed = window.localStorage.getItem('console.sidebar.collapsed') === '1';
+  } catch (_) {}
+  setSidebarCollapsed(collapsed);
+  toggle.addEventListener('click', () => {
+    const isCollapsed = $('app-shell')?.classList.contains('sidebar-collapsed');
+    setSidebarCollapsed(!isCollapsed);
+  });
+}
+
 // Modals
 function openModal(appKey = 'school', sourceLeadId = null) {
   pendingProvisionLeadId = sourceLeadId;
@@ -2207,6 +2234,7 @@ $('lead-modal-submit')?.addEventListener('click', async () => {
 
 async function init() {
   bindModalEvents();
+  initSidebarToggle();
   showSection(sectionFromHash(), { skipHashUpdate: true });
   await loadLeadsFromApi();
   await refreshFromRuntime();
