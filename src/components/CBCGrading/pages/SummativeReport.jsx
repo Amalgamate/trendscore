@@ -1134,6 +1134,11 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
 
   // Apply staged filters to actual state
   const applyFilters = () => {
+    if (stagedType === 'CUSTOM_REPORT') {
+      if (typeof onNavigate === 'function') onNavigate('assess-custom-reports');
+      else showInfo('Custom reports page is unavailable in this context.');
+      return;
+    }
     setSelectedType(stagedType);
     setSelectedGrade(stagedGrade);
     setSelectedStream(stagedStream);
@@ -1196,9 +1201,12 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     { value: 'GRADE_REPORT', label: 'Grade Sheet' },
     { value: 'STREAM_REPORT', label: 'Stream Sheet' },
     { value: 'LEARNER_REPORT', label: 'Learner Sheet' },
+  ];
+  const detailedReportTypes = [
     { value: 'STREAM_RANKING_REPORT', label: 'Stream Ranking Sheet' },
     { value: 'STREAM_ANALYSIS_REPORT', label: 'Stream Analysis Sheet' },
-    { value: 'GRADE_ANALYSIS_REPORT', label: 'Grade Analysis Sheet' }
+    { value: 'GRADE_ANALYSIS_REPORT', label: 'Grade Analysis Sheet' },
+    { value: 'CUSTOM_REPORT', label: 'Custom Reports' },
   ];
 
   // Local state for grade, stream, term selections (instead of relying on setup hook)
@@ -2414,7 +2422,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     }
 
     // Validation for Learner Reports
-    if (selectedType === 'LEARNER_REPORT' || selectedType === 'LEARNER_TERMLY_REPORT') {
+    if (selectedType === 'LEARNER_REPORT') {
       if (!learners || learners.length === 0) {
         setStatusMessage('❌ Error: No learners available');
         showError('No learners found in the system');
@@ -2971,6 +2979,13 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                 {t.label}
               </option>
             ))}
+            <optgroup label="Detailed Reports">
+              {detailedReportTypes.map(t => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </optgroup>
           </select>
 
           {/* Grade Selector */}
@@ -3049,7 +3064,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           </select>
 
           {/* Learner Selector */}
-          {(stagedType === 'LEARNER_REPORT' || stagedType === 'LEARNER_TERMLY_REPORT') && (
+          {stagedType === 'LEARNER_REPORT' && (
             <div className="relative w-full md:w-auto flex-1 md:flex-none" ref={learnerOptionsRef}>
               <button
                 onClick={() => setShowLearnerOptions(!showLearnerOptions)}
@@ -3173,17 +3188,6 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           >
             <FileText size={16} />
             <span>Generate</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (typeof onNavigate === 'function') onNavigate('assess-custom-reports');
-              else showInfo('Custom report builder is unavailable in this context.');
-            }}
-            className="h-9 px-3 rounded border border-slate-300 bg-white text-slate-700 flex items-center justify-center hover:bg-slate-50 transition text-xs font-medium whitespace-nowrap w-full md:w-auto mt-2 md:mt-0"
-          >
-            Customize Reports
           </button>
 
           {/* Status Message */}
