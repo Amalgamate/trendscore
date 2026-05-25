@@ -291,6 +291,7 @@ const calculatePathwayInsights = (results) => {
 const formatTestName = (str) => (formatTestTypeLabel(str) || '').toUpperCase();
 const resolveTestGroup = (item) => resolveTestType(item);
 const compareTestGroups = (a, b) => compareTestTypes(a, b);
+const CORE_GROUPS_WITHOUT_STAMP = new Set(['OPENER', 'MID_TERM', 'END_TERM']);
 
 const CATEGORY_KEYWORDS = {
   STEM: PATHWAY_MAP.STEM,
@@ -1445,6 +1446,23 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
 
     const groups = Array.from(groupsSet);
     return groups.sort(compareTestGroups);
+  }, [availableTests]);
+
+  const groupDateStampMap = useMemo(() => {
+    const map = {};
+    if (!availableTests || availableTests.length === 0) return map;
+
+    availableTests.forEach((test) => {
+      const group = getTestGroup(test);
+      if (!group) return;
+      const ts = new Date(test?.testDate || test?.updatedAt || test?.createdAt || 0).getTime();
+      const prev = map[group] ? new Date(map[group]).getTime() : 0;
+      if (ts > prev) {
+        map[group] = test?.testDate || test?.updatedAt || test?.createdAt || '';
+      }
+    });
+
+    return map;
   }, [availableTests]);
 
   // Derive tests within the selected test group(s)
@@ -3153,8 +3171,13 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                         Reset Group Selection
                       </button>
                     </div>
-                    {availableTestGroups.map(group => (
-                      <label key={group} className="flex items-center gap-2 p-2 px-3 hover:bg-slate-50 cursor-pointer text-xs">
+                    {availableTestGroups.map(group => {
+                      const normalizedGroup = String(group || '').toUpperCase().replace(/[\s-]+/g, '_');
+                      const showDateStamp = !CORE_GROUPS_WITHOUT_STAMP.has(normalizedGroup);
+                      const stampRaw = groupDateStampMap[group];
+                      const dateStamp = stampRaw ? new Date(stampRaw).toLocaleDateString('en-GB') : '';
+                      return (
+                      <label key={group} className="flex items-start gap-2 p-2 px-3 hover:bg-slate-50 cursor-pointer text-xs">
                         <input
                           type="checkbox"
                           checked={stagedTestGroups.includes(group)}
@@ -3168,9 +3191,14 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                           }}
                           className="rounded border-slate-300 text-brand-teal focus:ring-brand-teal"
                         />
-                        <span className="truncate">{formatTestName(group)}</span>
+                        <span className="min-w-0 flex flex-col leading-tight">
+                          <span className="truncate">{formatTestName(group)}</span>
+                          {showDateStamp && dateStamp && (
+                            <span className="text-[10px] text-slate-400">{dateStamp}</span>
+                          )}
+                        </span>
                       </label>
-                    ))}
+                    )})}
                   </>
                 )}
               </div>
