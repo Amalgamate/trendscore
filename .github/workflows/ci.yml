@@ -17,6 +17,9 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/zawadi_sms?schema=public
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/zawadi_sms?schema=public
     services:
       postgres:
         image: postgres:15-alpine
@@ -48,9 +51,6 @@ jobs:
       - name: Prisma Generate
         run: npx prisma generate
       - name: Prisma Migrate
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/zawadi_sms?schema=public
-          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/zawadi_sms?schema=public
         run: npx prisma migrate deploy
       - name: Typecheck
         run: npx tsc --noEmit
@@ -58,8 +58,6 @@ jobs:
         run: npm run lint
       - name: Test
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/zawadi_sms?schema=public
-          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/zawadi_sms?schema=public
           JWT_SECRET: ci_dummy_jwt_secret_minimum_32_chars________
           JWT_REFRESH_SECRET: ci_dummy_refresh_secret_minimum_32_chars_
         run: npm test
