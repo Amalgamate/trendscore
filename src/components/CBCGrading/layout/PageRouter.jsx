@@ -335,7 +335,7 @@ const PageRouter = ({
           case 'assess-summative-tests': return <ErrorBoundary><SummativeTestsRouter onNavigate={handleNavigate} defaultTestType={pageParams.defaultTestType} /></ErrorBoundary>;
           case 'assess-summative-assessment': return <ErrorBoundary><SummativeAssessmentRouter learners={learners} initialTestId={pageParams.initialTestId} defaultTestType={pageParams.defaultTestType} brandingSettings={brandingSettings} /></ErrorBoundary>;
           case 'assess-summative-report': return <ErrorBoundary><SummativeReport learners={learners} onFetchLearners={fetchLearners} brandingSettings={brandingSettings} user={user} pageParams={pageParams} onNavigate={handleNavigate} /></ErrorBoundary>;
-          case 'assess-custom-reports': return <ErrorBoundary><CustomReportsPage /></ErrorBoundary>;
+          case 'assess-custom-reports': return <ErrorBoundary><CustomReportsPage onNavigate={handleNavigate} user={user} brandingSettings={brandingSettings} /></ErrorBoundary>;
           case 'assess-summary-report': return <ErrorBoundary><SummaryReportPage pageParams={pageParams} /></ErrorBoundary>;
           case 'assess-termly-report': return <ErrorBoundary><TermlyReport learners={learners} brandingSettings={brandingSettings} user={user} pageParams={pageParams} /></ErrorBoundary>;
           case 'assess-values': return <ValuesAssessment learners={learners} />;

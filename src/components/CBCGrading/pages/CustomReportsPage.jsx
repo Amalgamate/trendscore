@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react';
 import api from '../../../services/api';
 import { getAcademicYearOptions, getCurrentAcademicYear, getCurrentTerm } from '../utils/academicYear';
 import { useSchoolData } from '../../../contexts/SchoolDataContext';
+import ExcelJS from 'exceljs';
+import { ArrowLeft, FileSpreadsheet, Printer } from 'lucide-react';
 
 const CATEGORY_OPTIONS = [
   { key: 'OVERALL', label: 'Overall' },
@@ -76,7 +78,7 @@ const takeRanked = (rows, count, mode, includeTies) => {
   return sorted.filter((r) => (mode === 'TOP' ? r.score >= threshold : r.score <= threshold));
 };
 
-const CustomReportsPage = () => {
+const CustomReportsPage = ({ onNavigate, user, brandingSettings }) => {
   const { grades, streams, terms } = useSchoolData();
   const [grade, setGrade] = useState('');
   const [stream, setStream] = useState('');
@@ -91,6 +93,7 @@ const CustomReportsPage = () => {
   const [status, setStatus] = useState('');
   const [results, setResults] = useState({});
   const effectiveTerms = (Array.isArray(terms) && terms.length > 0) ? terms : FALLBACK_TERMS;
+  const schoolName = (brandingSettings?.schoolName || user?.school?.name || 'SCHOOL').toUpperCase();
 
   const availableStreams = useMemo(() => {
     if (!grade) return streams || [];
@@ -170,7 +173,7 @@ const CustomReportsPage = () => {
         return {
           learnerId: learner.id,
           learnerName: `${learner.firstName || ''} ${learner.lastName || ''}`.trim(),
-          admNo: learner.admissionNo || learner.admNo || '—',
+          admNo: learner.admissionNo || learner.admissionNumber || learner.admission_number || learner.admNo || learner.admNumber || '—',
           stream: learner.stream || '—',
           scores,
         };
@@ -196,12 +199,86 @@ const CustomReportsPage = () => {
     }
   };
 
+  const handleBack = () => {
+    if (typeof onNavigate === 'function') onNavigate('assess-summative-report');
+    else window.history.back();
+  };
+
+  const handlePrintPdf = () => window.print();
+
+  const handleExportExcel = async () => {
+    const workbook = new ExcelJS.Workbook();
+    const ws = workbook.addWorksheet('Custom Reports');
+    ws.addRow([schoolName]);
+    ws.addRow([`CUSTOM REPORTS - ${String(term || '').replace('_', ' ')} ${academicYear}`]);
+    ws.addRow([`Grade: ${String(grade || '').replace('_', ' ')}${stream ? ` | Stream: ${stream}` : ''}`]);
+    ws.addRow([`Generated: ${new Date().toLocaleString()}`]);
+    ws.addRow([]);
+
+    selectedCategories.forEach((category) => {
+      const title = CATEGORY_OPTIONS.find((c) => c.key === category)?.label || category;
+      ws.addRow([`${title} (${rankMode} ${rankCount}${includeTies ? ', ties included' : ''})`]);
+      ws.addRow(['Rank', 'Learner', 'Adm No', 'Stream', 'Score']);
+      (results[category] || []).forEach((row, idx) => {
+        ws.addRow([idx + 1, row.learnerName, row.admNo, row.stream, `${row.score}%`]);
+      });
+      ws.addRow([]);
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `custom_reports_${String(term || '').toLowerCase()}_${academicYear}.xlsx`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="bg-slate-50 min-h-[calc(100vh-140px)] p-4 md:p-6">
       <div className="max-w-[1280px] mx-auto space-y-4">
         <div className="bg-white rounded-xl border border-slate-200 p-4 md:p-5">
-          <h1 className="text-lg font-semibold text-slate-900">Customize Reports</h1>
+          <div className="flex items-center justify-between gap-2 mb-3 no-print">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="h-9 px-3 rounded border border-slate-300 bg-white text-slate-700 text-xs font-medium inline-flex items-center gap-1.5 hover:bg-slate-50"
+            >
+              <ArrowLeft size={14} />
+              Back
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                className="h-9 px-3 rounded border border-slate-300 bg-white text-slate-700 text-xs font-medium inline-flex items-center gap-1.5 hover:bg-slate-50"
+              >
+                <FileSpreadsheet size={14} />
+                Excel
+              </button>
+              <button
+                type="button"
+                onClick={handlePrintPdf}
+                className="h-9 px-3 rounded border border-slate-300 bg-white text-slate-700 text-xs font-medium inline-flex items-center gap-1.5 hover:bg-slate-50"
+              >
+                <Printer size={14} />
+                PDF
+              </button>
+            </div>
+          </div>
+          <h1 className="text-lg font-semibold text-slate-900">Custom Reports</h1>
           <p className="text-xs text-slate-500 mt-1">Build ranking reports for top or bottom learners across multiple categories.</p>
+        </div>
+
+        <div className="bg-white rounded-xl border border-slate-200 p-4 md:p-5">
+          <div className="text-center border-b border-slate-200 pb-3">
+            <div className="text-base font-bold text-slate-900 tracking-wide">{schoolName}</div>
+            <div className="text-xs text-slate-600 mt-1">CUSTOM REPORTS</div>
+            <div className="text-xs text-slate-500 mt-1">
+              {String(grade || '').replace('_', ' ')} {stream ? `• Stream ${stream}` : ''} • {String(term || '').replace('_', ' ')} • {academicYear}
+            </div>
+          </div>
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200 p-4 md:p-5 space-y-3">
