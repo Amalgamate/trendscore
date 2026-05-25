@@ -2970,7 +2970,14 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           {/* Type Selector */}
           <select
             value={stagedType}
-            onChange={(e) => setStagedType(e.target.value)}
+            onChange={(e) => {
+              const nextType = e.target.value;
+              setStagedType(nextType);
+              if (nextType === 'CUSTOM_REPORT') {
+                if (typeof onNavigate === 'function') onNavigate('assess-custom-reports');
+                else showInfo('Custom reports page is unavailable in this context.');
+              }
+            }}
             className="h-9 px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-brand-teal focus:border-brand-teal outline-none flex-1 md:flex-none min-w-[140px]"
           >
             {reportTypes.map(t => (
