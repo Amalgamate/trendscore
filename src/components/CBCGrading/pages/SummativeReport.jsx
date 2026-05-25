@@ -475,9 +475,9 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
     ].filter((row) => row.averagePercentage !== undefined);
   }, [tableRows, getGrade]);
   const effectiveCategoryAverages =
-    Array.isArray(categoryAverages) && categoryAverages.length > 0
-      ? categoryAverages
-      : fallbackCategoryAverages;
+    Array.isArray(fallbackCategoryAverages) && fallbackCategoryAverages.length > 0
+      ? fallbackCategoryAverages
+      : (Array.isArray(categoryAverages) ? categoryAverages : []);
 
   const isJSS = /\b(GRADE_7|GRADE_8|GRADE_9|7|8|9)\b/.test((learner.grade || '').toUpperCase());
   const pdfTypeWeight = {
@@ -912,23 +912,6 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
             );
           })()}
         </div>
-
-        {effectiveCategoryAverages.length > 0 && (
-          <div style={{ marginBottom: '10px', border: '1px solid #e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
-            <div style={{ padding: '6px 10px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '10px', fontWeight: '800', textTransform: 'uppercase', color: '#4b5563', letterSpacing: '0.4px' }}>
-              Category Averages
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)' }}>
-              {effectiveCategoryAverages.map((row) => (
-                <div key={row.key} style={{ padding: '8px 10px', borderRight: row.key === 'ARTS' ? 'none' : '1px solid #e5e7eb', textAlign: 'center', background: row.bg }}>
-                  <div style={{ fontSize: '9px', fontWeight: '800', textTransform: 'uppercase', color: '#6b7280' }}>{row.label}</div>
-                  <div style={{ fontSize: '16px', fontWeight: '900', color: '#111827', marginTop: '2px' }}>{row.averagePercentage}%</div>
-                  <div style={{ fontSize: '10px', fontWeight: '800', color: row.color }}>{row.grade}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Grading Key — full width below */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '30px', marginBottom: '2px' }}>
@@ -2493,24 +2476,41 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     try {
       const isSeniorSecondaryGrade = (grade) => ['GRADE_10', 'GRADE_11', 'GRADE_12'].includes(String(grade || ''));
       const computeCategoryAveragesFromResults = (rows = []) => {
-        const buckets = { STEM: [], SOCIAL: [], ARTS: [] };
+        const buckets = {
+          STEM: { total: 0, max: 0, subjectCount: 0 },
+          SOCIAL: { total: 0, max: 0, subjectCount: 0 },
+          ARTS: { total: 0, max: 0, subjectCount: 0 },
+        };
         rows.forEach((r) => {
           const area = String(r.learningArea || r.test?.learningArea || '').toUpperCase();
           if (!area) return;
-          const percentage = Number(r.percentage ?? ((Number(r.totalMarks || 0) > 0) ? (Number(r.score || 0) / Number(r.totalMarks || 1)) * 100 : 0));
-          if (CATEGORY_KEYWORDS.STEM.some((k) => area.includes(k))) buckets.STEM.push(percentage);
-          else if (CATEGORY_KEYWORDS.SOCIAL.some((k) => area.includes(k))) buckets.SOCIAL.push(percentage);
-          else if (CATEGORY_KEYWORDS.ARTS.some((k) => area.includes(k))) buckets.ARTS.push(percentage);
+          const score = Number(r.score || 0);
+          const totalMarks = Number(r.totalMarks || 0);
+          if (totalMarks <= 0) return;
+
+          if (CATEGORY_KEYWORDS.STEM.some((k) => area.includes(k))) {
+            buckets.STEM.total += score;
+            buckets.STEM.max += totalMarks;
+            buckets.STEM.subjectCount += 1;
+          } else if (CATEGORY_KEYWORDS.SOCIAL.some((k) => area.includes(k))) {
+            buckets.SOCIAL.total += score;
+            buckets.SOCIAL.max += totalMarks;
+            buckets.SOCIAL.subjectCount += 1;
+          } else if (CATEGORY_KEYWORDS.ARTS.some((k) => area.includes(k))) {
+            buckets.ARTS.total += score;
+            buckets.ARTS.max += totalMarks;
+            buckets.ARTS.subjectCount += 1;
+          }
         });
         return Object.entries(buckets)
-          .filter(([, values]) => values.length > 0)
+          .filter(([, values]) => values.max > 0)
           .map(([category, values]) => {
-            const avg = Math.round(values.reduce((sum, v) => sum + v, 0) / values.length);
+            const avg = Math.round((values.total / values.max) * 100);
             return {
               category,
               averagePercentage: avg,
               grade: getCBCGrade(avg)?.grade || '—',
-              subjectCount: values.length,
+              subjectCount: values.subjectCount,
             };
           });
       };
