@@ -39,22 +39,6 @@ const CATEGORY_KEYWORDS = {
 
 const normalizeText = (v) => String(v || '').trim().toUpperCase();
 
-const extractRowsFromSummativePayload = (payload) => {
-  const data = payload?.data || payload || {};
-  const candidates = [
-    payload?.results,
-    payload?.rows,
-    data?.data?.results,
-    data?.data?.rows,
-    data?.results,
-    data?.summative?.results,
-    data?.subjectSummary?.rows,
-    data?.subjectSummary?.subjects,
-    data?.rows,
-  ].find((arr) => Array.isArray(arr));
-  return Array.isArray(candidates) ? candidates : [];
-};
-
 const mapRow = (r) => {
   const learningArea = r?.learningArea || r?.area || r?.test?.learningArea || '';
   const score = Number(r?.score ?? r?.totalScore ?? r?.marksAwarded ?? r?.marksObtained ?? 0);
@@ -139,8 +123,9 @@ const CustomReportsPage = () => {
     setError('');
     setStatus('Loading learners...');
     try {
+      const normalizedGrade = normalizeText(grade);
       const learnerResp = await api.learners.getAll({
-        grade,
+        grade: normalizedGrade,
         ...(stream && stream !== 'all' ? { stream } : {}),
         limit: 1000,
       });
@@ -152,34 +137,44 @@ const CustomReportsPage = () => {
         return;
       }
 
-      const metricRows = [];
-      const batchSize = 12;
-      for (let i = 0; i < learnerRows.length; i += batchSize) {
-        const chunk = learnerRows.slice(i, i + batchSize);
-        setStatus(`Analyzing learner results... ${Math.min(i + chunk.length, learnerRows.length)}/${learnerRows.length}`);
-        const chunkResults = await Promise.all(
-          chunk.map(async (learner) => {
-            try {
-              const resp = await api.assessments.getSummativeByLearner(learner.id, { term, academicYear });
-              const rows = extractRowsFromSummativePayload(resp);
-              const scores = {};
-              selectedCategories.forEach((category) => {
-                scores[category] = computeMetric(rows, category);
-              });
-              return {
-                learnerId: learner.id,
-                learnerName: `${learner.firstName || ''} ${learner.lastName || ''}`.trim(),
-                admNo: learner.admissionNo || learner.admNo || '—',
-                stream: learner.stream || '—',
-                scores,
-              };
-            } catch {
-              return null;
-            }
-          })
-        );
-        metricRows.push(...chunkResults.filter(Boolean));
-      }
+      setStatus('Loading summative results...');
+      const bulkParams = {
+        grade: normalizedGrade,
+        term,
+        academicYear,
+      };
+      if (stream && stream !== 'all') bulkParams.stream = stream;
+      const bulkResp = await api.assessments.getBulkResults(bulkParams);
+      const bulkRows = bulkResp?.data || bulkResp?.results || [];
+
+      const byLearner = new Map();
+      bulkRows.forEach((row) => {
+        const learnerId = row?.learnerId;
+        if (!learnerId) return;
+        if (!byLearner.has(learnerId)) byLearner.set(learnerId, []);
+        byLearner.get(learnerId).push({
+          ...row,
+          score: row?.score ?? row?.marksObtained ?? row?.marksAwarded ?? 0,
+          totalMarks: row?.totalMarks ?? row?.test?.totalMarks ?? row?.maxScore ?? 0,
+          learningArea: row?.learningArea || row?.test?.learningArea || '',
+        });
+      });
+
+      const metricRows = learnerRows.map((learner, idx) => {
+        const learnerResults = byLearner.get(learner.id) || [];
+        setStatus(`Analyzing learner results... ${idx + 1}/${learnerRows.length}`);
+        const scores = {};
+        selectedCategories.forEach((category) => {
+          scores[category] = computeMetric(learnerResults, category);
+        });
+        return {
+          learnerId: learner.id,
+          learnerName: `${learner.firstName || ''} ${learner.lastName || ''}`.trim(),
+          admNo: learner.admissionNo || learner.admNo || '—',
+          stream: learner.stream || '—',
+          scores,
+        };
+      });
 
       const nextResults = {};
       selectedCategories.forEach((category) => {
