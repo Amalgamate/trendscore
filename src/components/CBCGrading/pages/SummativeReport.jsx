@@ -994,7 +994,7 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
 };
 
 
-const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pageParams = {} }) => {
+const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pageParams = {}, onNavigate }) => {
   const { showSuccess, showError, showInfo, showToast, toastMessage, toastType, hideNotification } = useNotifications();
 
   // Use centralized hooks for assessment state management
@@ -1196,7 +1196,6 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     { value: 'GRADE_REPORT', label: 'Grade Sheet' },
     { value: 'STREAM_REPORT', label: 'Stream Sheet' },
     { value: 'LEARNER_REPORT', label: 'Learner Sheet' },
-    { value: 'LEARNER_TERMLY_REPORT', label: 'Learner Termly Sheet' },
     { value: 'STREAM_RANKING_REPORT', label: 'Stream Ranking Sheet' },
     { value: 'STREAM_ANALYSIS_REPORT', label: 'Stream Analysis Sheet' },
     { value: 'GRADE_ANALYSIS_REPORT', label: 'Grade Analysis Sheet' }
@@ -3174,6 +3173,17 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           >
             <FileText size={16} />
             <span>Generate</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof onNavigate === 'function') onNavigate('assess-custom-reports');
+              else showInfo('Custom report builder is unavailable in this context.');
+            }}
+            className="h-9 px-3 rounded border border-slate-300 bg-white text-slate-700 flex items-center justify-center hover:bg-slate-50 transition text-xs font-medium whitespace-nowrap w-full md:w-auto mt-2 md:mt-0"
+          >
+            Customize Reports
           </button>
 
           {/* Status Message */}

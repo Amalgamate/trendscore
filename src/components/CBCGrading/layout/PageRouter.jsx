@@ -28,6 +28,7 @@ const MobileAssessmentsDashboard = lazy(() => import('../pages/MobileAssessments
 const SummativeTestsRouter = lazy(() => import('../pages/SummativeTestsRouter'));
 const SummativeAssessmentRouter = lazy(() => import('../pages/SummativeAssessmentRouter'));
 const SummativeReport = lazy(() => import('../pages/SummativeReport'));
+const CustomReportsPage = lazy(() => import('../pages/CustomReportsPage'));
 const TermlyReport = lazy(() => import('../pages/TermlyReport'));
 const ValuesAssessment = lazy(() => import('../pages/ValuesAssessment'));
 const CoCurricularActivities = lazy(() => import('../pages/CoCurricularActivities'));
@@ -333,7 +334,8 @@ const PageRouter = ({
           case 'assess-formative-report': return <ErrorBoundary><FormativeReport learners={learners} brandingSettings={brandingSettings} user={user} /></ErrorBoundary>;
           case 'assess-summative-tests': return <ErrorBoundary><SummativeTestsRouter onNavigate={handleNavigate} defaultTestType={pageParams.defaultTestType} /></ErrorBoundary>;
           case 'assess-summative-assessment': return <ErrorBoundary><SummativeAssessmentRouter learners={learners} initialTestId={pageParams.initialTestId} defaultTestType={pageParams.defaultTestType} brandingSettings={brandingSettings} /></ErrorBoundary>;
-          case 'assess-summative-report': return <ErrorBoundary><SummativeReport learners={learners} onFetchLearners={fetchLearners} brandingSettings={brandingSettings} user={user} pageParams={pageParams} /></ErrorBoundary>;
+          case 'assess-summative-report': return <ErrorBoundary><SummativeReport learners={learners} onFetchLearners={fetchLearners} brandingSettings={brandingSettings} user={user} pageParams={pageParams} onNavigate={handleNavigate} /></ErrorBoundary>;
+          case 'assess-custom-reports': return <ErrorBoundary><CustomReportsPage /></ErrorBoundary>;
           case 'assess-summary-report': return <ErrorBoundary><SummaryReportPage pageParams={pageParams} /></ErrorBoundary>;
           case 'assess-termly-report': return <ErrorBoundary><TermlyReport learners={learners} brandingSettings={brandingSettings} user={user} pageParams={pageParams} /></ErrorBoundary>;
           case 'assess-values': return <ValuesAssessment learners={learners} />;
