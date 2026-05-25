@@ -10,14 +10,14 @@ Trends CORE V1.0 is a modern School Management System specifically engineered to
 > [!IMPORTANT]
 > This is an **active project** and is currently a **Work in Progress**. Features are being rapidly iterated to stay at the forefront of CBC learning requirements.
 
-## � First Time Login (Superadmin)
+## First Time Login (Superadmin)
 To ensure immediate access upon deployment, the system automatically creates/updates a Superadmin account during server startup.
 
-- **Email**: `admin@trendscore.app`
-- **Password**: `Admin@123!`
+- Set `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD` in `server/.env` before first boot.
+- Do not commit real credentials to git. Rotate credentials immediately if they were ever shared publicly.
 
 > [!TIP]
-> This setup is handled by the `ensureSuperAdmin` utility in the backend, ensuring the credentials are ready the moment your PostgreSQL database is connected.
+> This setup is handled by the `ensureSuperAdmin` utility in the backend.
 
 ## �🚀 Key CBC Features (In Development)
 - **Learning Area Management**: Dynamic tracking of CBC learning areas and strands.

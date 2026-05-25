@@ -1,0 +1,6 @@
+src/__tests__/
+**/*.d.ts
+dist/
+coverage/
+tmp/
+

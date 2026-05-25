@@ -1,15 +1,65 @@
 name: Trends CORE V1.0 CI Pipeline
 on: [push, pull_request]
+
 jobs:
-  verify:
+  frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Build Frontend
-        run: npm install && npm run build
-      - name: Verify Backend
+          cache: 'npm'
+      - name: Install
+        run: npm ci
+      - name: Build
+        run: npm run build
+
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: zawadi_sms
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d zawadi_sms"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    defaults:
+      run:
         working-directory: ./server
-        run: npm install && npx prisma generate && npx tsc --noEmit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Prisma Validate
+        run: npx prisma validate
+      - name: Prisma Generate
+        run: npx prisma generate
+      - name: Prisma Migrate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/zawadi_sms?schema=public
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/zawadi_sms?schema=public
+        run: npx prisma migrate deploy
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/zawadi_sms?schema=public
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/zawadi_sms?schema=public
+          JWT_SECRET: ci_dummy_jwt_secret_minimum_32_chars________
+          JWT_REFRESH_SECRET: ci_dummy_refresh_secret_minimum_32_chars_
+        run: npm test
