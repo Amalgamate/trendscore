@@ -114,6 +114,7 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
 
 
   const [availableTestTypes, setAvailableTestTypes] = useState([]);
+  const [examTypeTimestamps, setExamTypeTimestamps] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const mergedExamTypes = useMemo(() => {
     const merged = [...new Set([...(availableTestTypes || []), ...CORE_EXAM_TYPES])];
@@ -130,6 +131,7 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
   const lastFetchRef = useRef(null);
   const isFetchingRef = useRef(false);
   const initializedFromParamsRef = useRef(false);
+  const latestDefaultsAppliedGradeRef = useRef('');
 
   useEffect(() => {
     if (initializedFromParamsRef.current) return;
@@ -186,7 +188,18 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
         });
         const tests = resp?.data || [];
         const types = [...new Set(tests.map((t: any) => resolveTestType(t)).filter(Boolean))].sort() as string[];
+        const typeDateMap: Record<string, string> = {};
+        tests.forEach((t: any) => {
+          const type = resolveTestType(t);
+          if (!type) return;
+          const ts = new Date(t?.testDate || t?.updatedAt || t?.createdAt || 0).getTime();
+          const prev = typeDateMap[type] ? new Date(typeDateMap[type]).getTime() : 0;
+          if (ts > prev) {
+            typeDateMap[type] = t?.testDate || t?.updatedAt || t?.createdAt || '';
+          }
+        });
         setAvailableTestTypes(types);
+        setExamTypeTimestamps(typeDateMap);
         const latestTest = [...tests].sort((a: any, b: any) => {
           const da = new Date(a?.testDate || a?.updatedAt || a?.createdAt || 0).getTime();
           const db = new Date(b?.testDate || b?.updatedAt || b?.createdAt || 0).getTime();
@@ -212,6 +225,38 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
     };
     fetchTestTypes();
   }, [stagedGrade, stagedTerm, stagedYear]);
+
+  // Strict default on load: use the latest available test's term, year and exam type.
+  useEffect(() => {
+    const applyLatestExamDefaults = async () => {
+      if (!stagedGrade || latestDefaultsAppliedGradeRef.current === stagedGrade) return;
+      try {
+        const resp = await assessmentAPI.getTests({ grade: stagedGrade });
+        const allTests = Array.isArray(resp?.data) ? resp.data : [];
+        if (!allTests.length) return;
+        const latest = [...allTests].sort((a: any, b: any) => {
+          const da = new Date(a?.testDate || a?.updatedAt || a?.createdAt || 0).getTime();
+          const db = new Date(b?.testDate || b?.updatedAt || b?.createdAt || 0).getTime();
+          return db - da;
+        })[0];
+        const latestType = resolveTestType(latest) || 'OPENER';
+        const latestTerm = String(latest?.term || '').toUpperCase();
+        const latestYear = Number(latest?.academicYear);
+
+        if (['TERM_1', 'TERM_2', 'TERM_3'].includes(latestTerm)) {
+          setStagedTerm(latestTerm);
+        }
+        if (Number.isFinite(latestYear) && latestYear > 0) {
+          setStagedYear(latestYear);
+        }
+        setStagedTestType(latestType);
+        latestDefaultsAppliedGradeRef.current = stagedGrade;
+      } catch (error) {
+        console.error('Failed to apply latest exam defaults:', error);
+      }
+    };
+    applyLatestExamDefaults();
+  }, [stagedGrade]);
 
   // Keep a stable ref to the latest filter values so the generate function
   // never needs to be in the auto-generate effect's dep array.
@@ -727,7 +772,13 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
                 className="w-full h-9 px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-purple appearance-none cursor-pointer hover:border-slate-400 transition-colors"
               >
                 {mergedExamTypes.map(t => (
-                  <option key={t} value={t}>{String(formatTestTypeLabel(t) || t).toUpperCase()}</option>
+                  <option key={t} value={t}>
+                    {`${String(formatTestTypeLabel(t) || t).toUpperCase()}${
+                      examTypeTimestamps[t]
+                        ? ` • ${new Date(examTypeTimestamps[t]).toLocaleDateString('en-GB')}`
+                        : ''
+                    }`}
+                  </option>
                 ))}
               </select>
             </div>
