@@ -17,21 +17,22 @@ describe('Admin routes RBAC', () => {
 
   it('rejects non-authenticated requests', async () => {
     const app = buildApp();
-    const res = await request(app).get('/admin/schools');
+    const res = await request(app).get('/admin/modules');
     expect(res.status).toBe(401);
   });
 
   it('rejects non-super-admin role', async () => {
-    const token = generateAccessToken({ ...baseUser, role: 'ADMIN', schoolId: 'S1' } as any);
+    // Admin routes allow SUPER_ADMIN and ADMIN. Use a role that is not allowed.
+    const token = generateAccessToken({ ...baseUser, role: 'PARENT', schoolId: 'S1' } as any);
     const app = buildApp();
-    const res = await request(app).get('/admin/schools').set('Authorization', `Bearer ${token}`);
+    const res = await request(app).get('/admin/modules').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(403);
   });
 
   it('allows SUPER_ADMIN access', async () => {
     const token = generateAccessToken({ ...baseUser, role: 'SUPER_ADMIN' } as any);
     const app = buildApp();
-    const res = await request(app).get('/admin/schools').set('Authorization', `Bearer ${token}`);
+    const res = await request(app).get('/admin/modules').set('Authorization', `Bearer ${token}`);
     // May still fail inside route due to DB; just assert auth/role passed
     expect([200, 500]).toContain(res.status);
   });

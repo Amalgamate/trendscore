@@ -10,7 +10,8 @@
  */
 
 import { jest, describe, it, expect, beforeEach, afterEach, beforeAll } from '@jest/globals';
-import type { Mock } from 'jest-mock';
+// Keep mock typing permissive in this suite; we prioritize runtime behavior over strict mock generics.
+type Mock = any;
 
 // ─── Mocks: must be declared BEFORE any service imports ──────────────────────
 
