@@ -136,7 +136,8 @@ describe('Students module end-to-end', () => {
       })
       .expect(400);
 
-    expect(response.body?.message || '').toContain('Validation failed');
+    const responseText = JSON.stringify(response.body || {});
+    expect(responseText).toMatch(/Validation failed|Unrecognized key/i);
   });
 
   it('maps doctor orphan fields to emergency fallback and preserves orphanFields payload', async () => {

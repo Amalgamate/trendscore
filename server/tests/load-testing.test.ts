@@ -12,6 +12,7 @@
 
 import http from 'http';
 import https from 'https';
+import { describe, it, expect } from '@jest/globals';
 
 interface LoadTestConfig {
   concurrentUsers: number;
@@ -228,6 +229,15 @@ async function main() {
   }
 }
 
-main().catch(console.error);
+describe('Load Testing Script Compatibility', () => {
+  it('exports callable load-testing helpers for scripted runs', () => {
+    expect(typeof runLoadTest).toBe('function');
+    expect(typeof printResults).toBe('function');
+  });
+});
+
+if (!process.env.JEST_WORKER_ID) {
+  main().catch(console.error);
+}
 
 export { runLoadTest, printResults };

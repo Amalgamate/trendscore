@@ -389,7 +389,11 @@ describe('HRService', () => {
 
     // ── 2.3 Payroll Generation ────────────────────────────────────────────────
     describe('generateMonthlyPayroll', () => {
-        const setupMocks = (gross = 55000, allowances = [{ id: 'a1', type: 'HOUSE', label: 'House', amount: 5000 }], deductions = []) => {
+        const setupMocks = (
+            gross = 55000,
+            allowances: Array<{ id: string; type: string; label: string; amount: number }> = [{ id: 'a1', type: 'HOUSE', label: 'House', amount: 5000 }],
+            deductions: Array<{ id: string; type: string; label: string; amount: number; totalMonths: number; monthsApplied: number; isActive: boolean }> = []
+        ) => {
             (mockPrisma.user.findMany as Mock).mockResolvedValue([makeStaff({ basicSalary: 50000 })]);
             (mockPrisma.payrollRecord.findUnique as Mock).mockResolvedValue(null); // no existing record
             (mockPrisma.staffAllowance.findMany as Mock).mockResolvedValue(allowances);

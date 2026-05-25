@@ -7,6 +7,7 @@
 
 import http from 'http';
 import https from 'https';
+import { describe, it, expect } from '@jest/globals';
 
 interface TestResult {
   name: string;
@@ -299,7 +300,18 @@ async function runTests() {
   process.exit(passedCount === totalCount ? 0 : 1);
 }
 
-// Run tests
-runTests().catch(console.error);
+describe('Security Validation Script Compatibility', () => {
+  it('exports callable security helpers for scripted runs', () => {
+    expect(typeof testRateLimiting).toBe('function');
+    expect(typeof testInputValidation).toBe('function');
+    expect(typeof testAuthentication).toBe('function');
+    expect(typeof testSecurityHeaders).toBe('function');
+  });
+});
+
+// Keep CLI behavior for `npm run test:security` while avoiding Jest side effects.
+if (!process.env.JEST_WORKER_ID) {
+  runTests().catch(console.error);
+}
 
 export { testRateLimiting, testInputValidation, testAuthentication, testSecurityHeaders };

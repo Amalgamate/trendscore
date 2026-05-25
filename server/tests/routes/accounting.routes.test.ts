@@ -14,6 +14,7 @@ jest.mock('../../src/middleware/auth.middleware', () => ({
 }));
 
 jest.mock('../../src/middleware/permissions.middleware', () => ({
+    requireRole: () => (req: any, res: any, next: any) => next(),
     auditLog: () => (req: any, res: any, next: any) => next(),
 }));
 
@@ -28,7 +29,18 @@ jest.mock('../../src/controllers/accounting.controller', () => {
     getAccounts: jest.fn().mockImplementation((req: any, res: any) => res.json({ success: true })),
     createAccount: jest.fn().mockImplementation((req: any, res: any) => res.status(201).json({ success: true })),
     getJournals: jest.fn().mockImplementation((req: any, res: any) => res.json({ success: true })),
+    initializeCoA: jest.fn().mockImplementation((req: any, res: any) => res.json({ success: true })),
     createJournalEntry: jest.fn().mockImplementation((req: any, res: any) => res.status(201).json({ success: true })),
+    postJournalEntry: jest.fn().mockImplementation((req: any, res: any) => res.json({ success: true })),
+    getJournalEntries: jest.fn().mockImplementation((req: any, res: any) => res.json({ success: true })),
+    getTrialBalance: jest.fn().mockImplementation((req: any, res: any) => res.json({ success: true })),
+    getVendors: jest.fn().mockImplementation((req: any, res: any) => res.json({ success: true })),
+    createVendor: jest.fn().mockImplementation((req: any, res: any) => res.status(201).json({ success: true })),
+    getExpenses: jest.fn().mockImplementation((req: any, res: any) => res.json({ success: true })),
+    recordExpense: jest.fn().mockImplementation((req: any, res: any) => res.status(201).json({ success: true })),
+    getBankStatements: jest.fn().mockImplementation((req: any, res: any) => res.json({ success: true })),
+    importBankStatement: jest.fn().mockImplementation((req: any, res: any) => res.json({ success: true })),
+    reconcileLine: jest.fn().mockImplementation((req: any, res: any) => res.json({ success: true })),
     suggestMatches: jest.fn().mockImplementation((req: any, res: any) => res.json({ success: true })),
   };
   return {
@@ -81,7 +93,10 @@ describe('Accounting Routes — Validation Tests', () => {
               .post('/api/accounting/entries')
               .send({ 
                   journalId: 'j1', 
-                  items: [{ accountId: 'a1', debit: 100 }] 
+                  items: [
+                    { accountId: 'a1', debit: 100 },
+                    { accountId: 'a2', credit: 100 }
+                  ] 
               });
 
           expect(response.status).toBe(201);

@@ -42,6 +42,7 @@ describe('LMS Courses API', () => {
       id: user.id,
       email: user.email,
       role: user.role,
+      institutionType: 'SECONDARY',
     });
   });
 

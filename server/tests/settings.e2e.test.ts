@@ -31,7 +31,8 @@ describe('Settings module end-to-end', () => {
   const authToken = generateAccessToken({
     id: 'test-settings-admin-id',
     email: 'test-settings-admin@example.com',
-    role: 'SUPER_ADMIN' as Role
+    role: 'SUPER_ADMIN' as Role,
+    institutionType: 'PRIMARY_CBC',
   });
 
   const testYear = new Date().getFullYear() + 4;

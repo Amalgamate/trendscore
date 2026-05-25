@@ -59,7 +59,8 @@ describe('Fee collection end-to-end', () => {
   const authToken = generateAccessToken({
     id: 'test-super-admin-id',
     email: 'test-super-admin@example.com',
-    role: 'SUPER_ADMIN' as Role
+    role: 'SUPER_ADMIN' as Role,
+    institutionType: 'PRIMARY_CBC',
   });
 
   const guardianPhone = '0713612141';

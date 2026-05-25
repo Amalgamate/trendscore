@@ -19,7 +19,8 @@ describe('Biometric module end-to-end', () => {
   const authToken = generateAccessToken({
     id: 'test-biometric-admin-id',
     email: 'test-biometric-admin@example.com',
-    role: 'SUPER_ADMIN' as Role
+    role: 'SUPER_ADMIN' as Role,
+    institutionType: 'PRIMARY_CBC',
   });
 
   const learnerAdmissionNumber = `TEST-BIO-${Date.now()}`;

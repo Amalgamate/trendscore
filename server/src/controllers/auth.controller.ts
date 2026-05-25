@@ -266,7 +266,7 @@ export class AuthController {
    * Verify → revoke consumed token → issue new pair.
    */
   async refresh(req: Request, res: Response) {
-    const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
+    const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
     if (!refreshToken) throw new ApiError(400, 'Refresh token required');
 
     const revoked = await isRefreshTokenRevoked(refreshToken);
@@ -353,7 +353,7 @@ export class AuthController {
   }
 
   async logout(req: AuthRequest, res: Response) {
-    const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
+    const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
     if (refreshToken) {
       try { await revokeRefreshToken(refreshToken); } catch { /* non-blocking */ }
     }

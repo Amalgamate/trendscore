@@ -59,7 +59,8 @@ describe('Assessment module end-to-end', () => {
   const authToken = generateAccessToken({
     id: 'test-assessment-admin-id',
     email: 'test-assessment-admin@example.com',
-    role: 'SUPER_ADMIN' as Role
+    role: 'SUPER_ADMIN' as Role,
+    institutionType: 'PRIMARY_CBC',
   });
 
   const guardianPhone = '0713612142';

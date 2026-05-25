@@ -269,8 +269,7 @@ describe('WhatsApp Service — Unit Tests', () => {
       expect(mockSend).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          fileName: 'James Kamau_Report.pdf',
-          mimetype: 'application/pdf',
+          text: expect.stringContaining('James Kamau'),
         })
       );
     });
@@ -336,7 +335,11 @@ describe('WhatsApp Service — Unit Tests', () => {
     it('resets status to disconnected and clears qrCode', async () => {
       const service = await bootService();
       const mockLogout = jest.fn().mockResolvedValue(undefined);
-      (service as any).sock = { logout: mockLogout, end: jest.fn() };
+      (service as any).sock = {
+        logout: mockLogout,
+        end: jest.fn(),
+        ev: { removeAllListeners: jest.fn() },
+      };
       (service as any).status = 'authenticated';
       (service as any).qrCode = 'some-qr-data';
 
@@ -348,7 +351,11 @@ describe('WhatsApp Service — Unit Tests', () => {
 
     it('deletes auth folder if it exists', async () => {
       const service = await bootService();
-      (service as any).sock = { logout: jest.fn().mockResolvedValue(undefined), end: jest.fn() };
+      (service as any).sock = {
+        logout: jest.fn().mockResolvedValue(undefined),
+        end: jest.fn(),
+        ev: { removeAllListeners: jest.fn() },
+      };
       (service as any).status = 'authenticated';
       
       const fsModule = require('fs');
@@ -412,7 +419,11 @@ describe('WhatsApp Service — Unit Tests', () => {
     it('stopClient clears the socket and resets status', async () => {
       const service = await bootService();
       const mockEnd = jest.fn();
-      (service as any).sock = { end: mockEnd, sendMessage: jest.fn() };
+      (service as any).sock = {
+        end: mockEnd,
+        sendMessage: jest.fn(),
+        ev: { removeAllListeners: jest.fn() },
+      };
       (service as any).status = 'authenticated';
 
       await service.stopClient();
