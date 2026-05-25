@@ -271,16 +271,6 @@ const CustomReportsPage = ({ onNavigate, user, brandingSettings }) => {
           <p className="text-xs text-slate-500 mt-1">Build ranking reports for top or bottom learners across multiple categories.</p>
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 p-4 md:p-5">
-          <div className="text-center border-b border-slate-200 pb-3">
-            <div className="text-base font-bold text-slate-900 tracking-wide">{schoolName}</div>
-            <div className="text-xs text-slate-600 mt-1">CUSTOM REPORTS</div>
-            <div className="text-xs text-slate-500 mt-1">
-              {String(grade || '').replace('_', ' ')} {stream ? `• Stream ${stream}` : ''} • {String(term || '').replace('_', ' ')} • {academicYear}
-            </div>
-          </div>
-        </div>
-
         <div className="bg-white rounded-xl border border-slate-200 p-4 md:p-5 space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
             <select value={grade} onChange={(e) => setGrade(e.target.value)} className="h-9 px-2.5 border border-slate-300 rounded text-xs">

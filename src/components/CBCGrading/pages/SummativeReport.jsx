@@ -1139,6 +1139,10 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       else showInfo('Custom reports page is unavailable in this context.');
       return;
     }
+    if (stagedType === 'DETAILED_REPORTS') {
+      showInfo('Select Custom Reports to open the detailed reports page.');
+      return;
+    }
     setSelectedType(stagedType);
     setSelectedGrade(stagedGrade);
     setSelectedStream(stagedStream);
@@ -1201,11 +1205,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     { value: 'GRADE_REPORT', label: 'Grade Sheet' },
     { value: 'STREAM_REPORT', label: 'Stream Sheet' },
     { value: 'LEARNER_REPORT', label: 'Learner Sheet' },
-  ];
-  const detailedReportTypes = [
-    { value: 'STREAM_RANKING_REPORT', label: 'Stream Ranking Sheet' },
-    { value: 'STREAM_ANALYSIS_REPORT', label: 'Stream Analysis Sheet' },
-    { value: 'GRADE_ANALYSIS_REPORT', label: 'Grade Analysis Sheet' },
+    { value: 'DETAILED_REPORTS', label: 'Detailed Reports' },
     { value: 'CUSTOM_REPORT', label: 'Custom Reports' },
   ];
 
@@ -2979,13 +2979,6 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                 {t.label}
               </option>
             ))}
-            <optgroup label="Detailed Reports">
-              {detailedReportTypes.map(t => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </optgroup>
           </select>
 
           {/* Grade Selector */}
