@@ -10,6 +10,12 @@ const CATEGORY_OPTIONS = [
   { key: 'ARTS', label: 'Arts & Sports' },
 ];
 
+const FALLBACK_TERMS = [
+  { value: 'TERM_1', label: 'Term 1' },
+  { value: 'TERM_2', label: 'Term 2' },
+  { value: 'TERM_3', label: 'Term 3' },
+];
+
 const CATEGORY_KEYWORDS = {
   STEM: [
     'MATHEMATICS', 'MATH', 'MAT',
@@ -36,6 +42,10 @@ const normalizeText = (v) => String(v || '').trim().toUpperCase();
 const extractRowsFromSummativePayload = (payload) => {
   const data = payload?.data || payload || {};
   const candidates = [
+    payload?.results,
+    payload?.rows,
+    data?.data?.results,
+    data?.data?.rows,
     data?.results,
     data?.summative?.results,
     data?.subjectSummary?.rows,
@@ -47,8 +57,8 @@ const extractRowsFromSummativePayload = (payload) => {
 
 const mapRow = (r) => {
   const learningArea = r?.learningArea || r?.area || r?.test?.learningArea || '';
-  const score = Number(r?.score ?? r?.totalScore ?? r?.marksAwarded ?? 0);
-  const totalMarks = Number(r?.totalMarks ?? r?.maxMarks ?? r?.test?.totalMarks ?? 0);
+  const score = Number(r?.score ?? r?.totalScore ?? r?.marksAwarded ?? r?.marksObtained ?? 0);
+  const totalMarks = Number(r?.totalMarks ?? r?.maxMarks ?? r?.test?.totalMarks ?? r?.maxScore ?? 0);
   const percentage = Number.isFinite(Number(r?.percentage))
     ? Number(r?.percentage)
     : (totalMarks > 0 ? (score / totalMarks) * 100 : 0);
@@ -96,6 +106,7 @@ const CustomReportsPage = () => {
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [results, setResults] = useState({});
+  const effectiveTerms = (Array.isArray(terms) && terms.length > 0) ? terms : FALLBACK_TERMS;
 
   const availableStreams = useMemo(() => {
     if (!grade) return streams || [];
@@ -114,6 +125,10 @@ const CustomReportsPage = () => {
   const runReport = async () => {
     if (!grade) {
       setError('Select a grade first.');
+      return;
+    }
+    if (!term) {
+      setError('Select a term first.');
       return;
     }
     if (selectedCategories.length === 0) {
@@ -215,7 +230,7 @@ const CustomReportsPage = () => {
             </select>
 
             <select value={term} onChange={(e) => setTerm(e.target.value)} className="h-9 px-2.5 border border-slate-300 rounded text-xs">
-              {(terms || []).map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              {effectiveTerms.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
 
             <select value={academicYear} onChange={(e) => setAcademicYear(Number(e.target.value))} className="h-9 px-2.5 border border-slate-300 rounded text-xs">
@@ -316,4 +331,3 @@ const CustomReportsPage = () => {
 };
 
 export default CustomReportsPage;
-
