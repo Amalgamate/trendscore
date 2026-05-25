@@ -65,6 +65,13 @@ const TestPicker = ({ tests, value, onChange, disabled }) => {
 
   const selected = tests.find(t => String(t.id) === String(value));
   const hasResults = (t) => (t._count?.results ?? 0) > 0;
+  const getDisplayTitle = (t) => {
+    const rawTitle = String(t?.title || t?.name || '').trim();
+    const resolvedType = String(formatTestTypeLabel(resolveTestType(t)) || '').toUpperCase();
+    if (!rawTitle) return '';
+    if (!resolvedType || resolvedType === 'OTHER') return rawTitle;
+    return rawTitle.replace(/\bOTHER\b/gi, resolvedType);
+  };
   const getTypeAndTime = (t) => {
     const typeLabel = String(formatTestTypeLabel(resolveTestType(t)) || 'Assessment').toUpperCase();
     const dt = t?.testDate || t?.updatedAt || t?.createdAt;
@@ -95,7 +102,7 @@ const TestPicker = ({ tests, value, onChange, disabled }) => {
           <CheckCircle2 size={13} className="text-green-500 flex-shrink-0" />
         )}
         <span className="flex-1 truncate text-slate-900">
-          {selected ? `${selected.title || selected.name} - ${getTypeAndTime(selected)}` : 'Test'}
+          {selected ? `${getDisplayTitle(selected)} - ${getTypeAndTime(selected)}` : 'Test'}
         </span>
         <ChevronDown size={12} className={`ml-1 flex-shrink-0 transition-transform text-slate-400 ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -134,7 +141,7 @@ const TestPicker = ({ tests, value, onChange, disabled }) => {
                   <span className="w-[14px] flex-shrink-0" />
                 )}
                 <div className="leading-snug min-w-0">
-                  <div className="truncate">{t.title || t.name}</div>
+                  <div className="truncate">{getDisplayTitle(t)}</div>
                   <div className="text-[10px] uppercase tracking-wide text-slate-400">{getTypeAndTime(t)}</div>
                 </div>
               </div>
