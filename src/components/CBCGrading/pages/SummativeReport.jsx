@@ -18,7 +18,7 @@ import { useAssessmentSetup } from '../hooks/useAssessmentSetup';
 import { getLearningAreasByGrade, getAllLearningAreas } from '../../../constants/learningAreas';
 import { useSchoolData } from '../../../contexts/SchoolDataContext';
 import { reportAPI } from '../../../services/api/report.api';
-import { getAcademicYearOptions, getCurrentAcademicYear } from '../utils/academicYear';
+import { getAcademicYearOptions, getCurrentAcademicYear, getCurrentTerm } from '../utils/academicYear';
 import { resolveTestType, formatTestTypeLabel, compareTestTypes } from '../utils/testType';
 import Toast from '../shared/Toast';
 import {
@@ -998,7 +998,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
   const { showSuccess, showError, showInfo, showToast, toastMessage, toastType, hideNotification } = useNotifications();
 
   // Use centralized hooks for assessment state management
-  const setup = useAssessmentSetup({ defaultTerm: 'TERM_1' });
+  const setup = useAssessmentSetup({ defaultTerm: getCurrentTerm() });
 
   const [selectedType, setSelectedType] = useState('LEARNER_REPORT');
   const [selectedTestGroups, setSelectedTestGroups] = useState([]);
@@ -1205,13 +1205,13 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
   // Local state for grade, stream, term selections (instead of relying on setup hook)
   const [selectedGrade, setSelectedGrade] = useState('');
   const [selectedStream, setSelectedStream] = useState('');
-  const [selectedTerm, setSelectedTerm] = useState('TERM_1');
+  const [selectedTerm, setSelectedTerm] = useState(getCurrentTerm());
 
   // Staged filter state - filters only apply when button is clicked
   const [stagedType, setStagedType] = useState('LEARNER_REPORT');
   const [stagedGrade, setStagedGrade] = useState('');
   const [stagedStream, setStagedStream] = useState('');
-  const [stagedTerm, setStagedTerm] = useState('TERM_1');
+  const [stagedTerm, setStagedTerm] = useState(getCurrentTerm());
   const [stagedAcademicYear, setStagedAcademicYear] = useState(getCurrentAcademicYear());
   const [stagedTestGroups, setStagedTestGroups] = useState([]);
   const [stagedTestIds, setStagedTestIds] = useState([]);

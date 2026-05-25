@@ -19,6 +19,19 @@ export const getCurrentAcademicYear = () => {
 };
 
 /**
+ * Get current school term based on date (Kenya CBC calendar approximation)
+ * Term 1: Jan-Apr, Term 2: May-Aug, Term 3: Sep-Dec
+ *
+ * @returns {string} TERM_1 | TERM_2 | TERM_3
+ */
+export const getCurrentTerm = () => {
+  const month = new Date().getMonth() + 1; // 1-12
+  if (month >= 1 && month <= 4) return 'TERM_1';
+  if (month >= 5 && month <= 8) return 'TERM_2';
+  return 'TERM_3';
+};
+
+/**
  * Get academic year options for dropdown
  * Returns current year and 2 years on either side
  * 
@@ -66,6 +79,7 @@ export const isValidAcademicYear = (year) => {
 
 const academicYearConfig = {
   getCurrentAcademicYear,
+  getCurrentTerm,
   getAcademicYearOptions,
   formatAcademicYear,
   isValidAcademicYear
