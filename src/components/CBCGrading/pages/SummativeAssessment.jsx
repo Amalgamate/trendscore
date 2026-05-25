@@ -21,7 +21,7 @@ import { useTeacherWorkload } from '../hooks/useTeacherWorkload';
 import { useSchoolData } from '../../../contexts/SchoolDataContext';
 import { getLearningAreasByGrade } from '../../../constants/learningAreas';
 import { getAcademicYearOptions, getCurrentAcademicYear } from '../utils/academicYear';
-import { normalizeTestType } from '../utils/testType';
+import { normalizeTestType, resolveTestType, formatTestTypeLabel } from '../utils/testType';
 
 const SECONDARY_GRADES = ['GRADE10', 'GRADE11', 'GRADE12'];
 const JUNIOR_GRADE_ORDER = ['PLAYGROUP', 'PP1', 'PP2', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9'];
@@ -65,6 +65,12 @@ const TestPicker = ({ tests, value, onChange, disabled }) => {
 
   const selected = tests.find(t => String(t.id) === String(value));
   const hasResults = (t) => (t._count?.results ?? 0) > 0;
+  const getTypeAndTime = (t) => {
+    const typeLabel = String(formatTestTypeLabel(resolveTestType(t)) || 'Assessment').toUpperCase();
+    const dt = t?.testDate || t?.updatedAt || t?.createdAt;
+    const stamp = dt ? new Date(dt).toLocaleDateString('en-GB') : null;
+    return stamp ? `${typeLabel} • ${stamp}` : typeLabel;
+  };
 
   if (disabled) {
     return (
@@ -89,7 +95,7 @@ const TestPicker = ({ tests, value, onChange, disabled }) => {
           <CheckCircle2 size={13} className="text-green-500 flex-shrink-0" />
         )}
         <span className="flex-1 truncate text-slate-900">
-          {selected ? (selected.title || selected.name) : 'Test'}
+          {selected ? `${selected.title || selected.name} - ${getTypeAndTime(selected)}` : 'Test'}
         </span>
         <ChevronDown size={12} className={`ml-1 flex-shrink-0 transition-transform text-slate-400 ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -127,7 +133,10 @@ const TestPicker = ({ tests, value, onChange, disabled }) => {
                 ) : (
                   <span className="w-[14px] flex-shrink-0" />
                 )}
-                <span className="leading-snug">{t.title || t.name}</span>
+                <div className="leading-snug min-w-0">
+                  <div className="truncate">{t.title || t.name}</div>
+                  <div className="text-[10px] uppercase tracking-wide text-slate-400">{getTypeAndTime(t)}</div>
+                </div>
               </div>
             );
           })}

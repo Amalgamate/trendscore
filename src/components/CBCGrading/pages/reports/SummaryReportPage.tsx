@@ -25,6 +25,7 @@ import api, { configAPI, assessmentAPI, learnerAPI } from '../../../../services/
 import { useSchoolData } from '../../../../contexts/SchoolDataContext';
 import VirtualizedTable from '../../shared/VirtualizedTable';
 import { getAcademicYearOptions, getCurrentAcademicYear } from '../../utils/academicYear';
+import { resolveTestType, formatTestTypeLabel } from '../../utils/testType';
 import { learningAreas } from '../../data/learningAreas';
 import { gradeStructure } from '../../data/gradeStructure';
 import ExcelJS from 'exceljs';
@@ -70,7 +71,7 @@ const LEARNING_AREA_ABBREVIATIONS = {
   'INDIGENOUS LANGUAGE': 'INDI',
   'LANGUAGE ACTIVITIES': 'LANG'
 };
-const CORE_EXAM_TYPES = ['OPENER', 'MID_TERM', 'END_TERM'];
+const CORE_EXAM_TYPES = ['OPENER', 'MID_TERM', 'END_TERM', 'MOCK'];
 
 const getAbbreviatedName = (name) => {
   if (!name) return '';
@@ -184,13 +185,19 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
           academicYear: stagedYear
         });
         const tests = resp?.data || [];
-        // Extract unique testTypes — normalize to uppercase for dedup
-        const types = [...new Set(tests.map((t: any) => t.testType).filter(Boolean))].sort() as string[];
+        const types = [...new Set(tests.map((t: any) => resolveTestType(t)).filter(Boolean))].sort() as string[];
         setAvailableTestTypes(types);
+        const latestTest = [...tests].sort((a: any, b: any) => {
+          const da = new Date(a?.testDate || a?.updatedAt || a?.createdAt || 0).getTime();
+          const db = new Date(b?.testDate || b?.updatedAt || b?.createdAt || 0).getTime();
+          return db - da;
+        })[0];
+        const latestType = latestTest ? resolveTestType(latestTest) : null;
         // Keep existing valid selection; otherwise default to OPENER, then first.
         setStagedTestType((prev: string) => {
           const nextTypes = [...new Set([...(types || []), ...CORE_EXAM_TYPES])];
           if (nextTypes.length === 0) return '';
+          if (latestType && nextTypes.includes(latestType)) return latestType;
           // Accept if the exact value OR a case-insensitive normalized match exists
           const prevNorm = prev.toUpperCase().replace(/[\s-]+/g, '_');
           const hasMatch = nextTypes.some(t => t === prev || t.toUpperCase().replace(/[\s-]+/g, '_') === prevNorm);
@@ -720,7 +727,7 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
                 className="w-full h-9 px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-purple appearance-none cursor-pointer hover:border-slate-400 transition-colors"
               >
                 {mergedExamTypes.map(t => (
-                  <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
+                  <option key={t} value={t}>{String(formatTestTypeLabel(t) || t).toUpperCase()}</option>
                 ))}
               </select>
             </div>

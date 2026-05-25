@@ -57,6 +57,7 @@ export const normalizeTestType = (rawType) => {
   if (normalized.includes('WEEK')) return 'WEEKLY';
   if (normalized.includes('CAT')) return 'CAT';
   if (normalized.includes('MOCK')) return 'MOCK';
+  if (normalized === 'OTHER') return 'MOCK';
   if (normalized.includes('RANDOM')) return 'RANDOM';
   if (normalized.includes('ASSESS')) return 'ASSESSMENT';
 

@@ -1205,7 +1205,6 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     { value: 'GRADE_REPORT', label: 'Grade Sheet' },
     { value: 'STREAM_REPORT', label: 'Stream Sheet' },
     { value: 'LEARNER_REPORT', label: 'Learner Sheet' },
-    { value: 'DETAILED_REPORTS', label: 'Detailed Reports' },
     { value: 'CUSTOM_REPORT', label: 'Custom Reports' },
   ];
 
