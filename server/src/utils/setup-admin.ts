@@ -100,7 +100,8 @@ export async function ensureSuperAdmin() {
             console.log('ℹ️ Extra demo users are disabled (CREATE_EXTRA_DEMO_USERS=false).');
         }
 
-        // Ensure every fresh tenant DB has a resolvable active school context.
+        // Ensure every fresh tenant DB has a resolvable active school context
+        // without overwriting an already-provisioned school.
         const schoolCode = (process.env.SCHOOL_CODE || 'school').trim().toLowerCase();
         const schoolNameRaw = (process.env.SCHOOL_NAME || '').trim();
         const schoolName = schoolNameRaw || schoolCode
@@ -109,23 +110,38 @@ export async function ensureSuperAdmin() {
             .map(part => part.charAt(0).toUpperCase() + part.slice(1))
             .join(' ') || 'School';
 
-        await prisma.school.upsert({
-            where: { id: schoolCode },
-            create: {
-                id: schoolCode,
-                name: schoolName,
+        const existingActiveSchool = await prisma.school.findFirst({
+            where: {
                 active: true,
-                status: 'ACTIVE',
                 archived: false,
             },
-            update: {
-                name: schoolName,
-                active: true,
-                status: 'ACTIVE',
-                archived: false,
-            },
+            orderBy: [
+                { updatedAt: 'desc' },
+                { createdAt: 'desc' },
+            ],
         });
-        console.log(`✅ School context ready: ${schoolCode} (${schoolName})`);
+
+        if (existingActiveSchool) {
+            console.log(`✅ School context ready: ${existingActiveSchool.id} (${existingActiveSchool.name})`);
+        } else {
+            await prisma.school.upsert({
+                where: { id: schoolCode },
+                create: {
+                    id: schoolCode,
+                    name: schoolName,
+                    active: true,
+                    status: 'ACTIVE',
+                    archived: false,
+                },
+                update: {
+                    name: schoolName,
+                    active: true,
+                    status: 'ACTIVE',
+                    archived: false,
+                },
+            });
+            console.log(`✅ School context ready: ${schoolCode} (${schoolName})`);
+        }
     } catch (error: any) {
         console.error('❌ Error during user setup:', error.message);
     }

@@ -342,7 +342,13 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
 
       window.dispatchEvent(new Event('storage'));
     } catch (error) {
-      toast.error(error.message || 'Failed to sync with server.');
+      const serverMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.error ||
+        error.message ||
+        'Failed to sync with server.';
+      toast.error(serverMessage);
     } finally {
       setSaving(false);
     }

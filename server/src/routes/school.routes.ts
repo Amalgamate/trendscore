@@ -29,8 +29,8 @@ const ROLE_SCHOOL_ADMIN = ['SUPER_ADMIN', 'ADMIN'] as const;
 const updateSchoolSchema = z.object({
   name: z.string().min(3).max(100).optional().nullable(),
   email: z.string().email().or(z.literal('')).optional().nullable(),
-  phone: z.string().max(20).optional().nullable(),
-  address: z.string().max(255).optional().nullable(),
+  phone: z.string().max(80).optional().nullable(),
+  address: z.string().max(500).optional().nullable(),
   motto: z.string().max(255).optional().nullable(),
   vision: z.string().max(2000).optional().nullable(),
   mission: z.string().max(2000).optional().nullable(),

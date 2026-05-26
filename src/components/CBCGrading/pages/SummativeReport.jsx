@@ -15,7 +15,7 @@ import { useNotifications } from '../hooks/useNotifications';
 import api, { configAPI, communicationAPI } from '../../../services/api';
 import { gradingAPI } from '../../../services/api/grading.api';
 import { useAssessmentSetup } from '../hooks/useAssessmentSetup';
-import { getLearningAreasByGrade, getAllLearningAreas } from '../../../constants/learningAreas';
+import { getLearningAreasByGrade } from '../../../constants/learningAreas';
 import { useSchoolData } from '../../../contexts/SchoolDataContext';
 import { reportAPI } from '../../../services/api/report.api';
 import { getAcademicYearOptions, getCurrentAcademicYear, getCurrentTerm } from '../utils/academicYear';
@@ -1426,6 +1426,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           // Reset selections when available tests change significantly
           setStagedTestGroups([]);
           setStagedTestIds([]);
+          setStagedSubjectNames([]);
 
           setAvailableTests(res.data || []);
         }
@@ -1488,30 +1489,19 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     return filtered;
   }, [availableTests, stagedTestGroups]);
 
-  const availableSubjectOptions = useMemo(() => {
-    const subjectSet = new Set();
-    const sourceTests = testsInGroups?.length ? testsInGroups : availableTests;
+  const formatAnalysisTestLabel = (test) => {
+    if (!test) return 'Select Test';
+    const subject = formatSubjectName(String(test.learningArea || 'Test').trim());
+    const title = String(test.title || formatTestName(getTestGroup(test)) || '').trim();
+    return title && normalize(title) !== normalize(subject)
+      ? `${subject} - ${title}`
+      : subject;
+  };
 
-    (sourceTests || []).forEach((test) => {
-      const name = String(test?.learningArea || '').trim();
-      if (name) subjectSet.add(name);
-    });
-
-    if (subjectSet.size === 0) {
-      const fallbackSubjects =
-        stagedGrade && stagedGrade !== 'all'
-          ? getLearningAreasByGrade(stagedGrade)
-          : getAllLearningAreas();
-      (fallbackSubjects || []).forEach((name) => {
-        const subjectName = String(name || '').trim();
-        if (subjectName) subjectSet.add(subjectName);
-      });
-    }
-
-    return Array.from(subjectSet)
-      .sort((a, b) => a.localeCompare(b))
-      .map((name) => ({ value: name, label: formatSubjectName(name) }));
-  }, [testsInGroups, availableTests, stagedGrade]);
+  const selectedAnalysisTest = useMemo(() => {
+    if (!stagedTestIds.length) return null;
+    return (testsInGroups || availableTests || []).find((test) => test.id === stagedTestIds[0]) || null;
+  }, [stagedTestIds, testsInGroups, availableTests]);
 
   // Derive unique streams from stream configurations (Source of Truth)
   // Falls back to learner streams if configs not loaded yet
@@ -2499,9 +2489,9 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       return;
     }
 
-    if (selectedType === 'SUBJECT_ANALYSIS' && selectedSubjectNames.length === 0) {
-      setStatusMessage('❌ Error: Please select at least one subject');
-      showError('Please select at least one subject');
+    if (selectedType === 'SUBJECT_ANALYSIS' && selectedTestIds.length !== 1) {
+      setStatusMessage('❌ Error: Please select one test');
+      showError('Please select one test');
       return;
     }
 
@@ -2974,9 +2964,18 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           if (gradeDist[simpleGrade] !== undefined) gradeDist[simpleGrade]++;
         });
 
+        const selectedAnalysisSubjects = Array.from(new Set(
+          targetTests
+            .map((test) => String(test?.learningArea || '').trim())
+            .filter(Boolean)
+        ));
+        const analysisTitlePrefix = selectedAnalysisSubjects.length === 1
+          ? formatSubjectName(selectedAnalysisSubjects[0])
+          : 'Subject';
+
         setReportData({
           type: selectedType,
-          title: `Performance Analysis - ${selectedGrade}`,
+          title: `${analysisTitlePrefix} Performance Analysis - ${selectedGrade}`,
           subjectStats,
           gradeDist,
           generatedAt: new Date(),
@@ -3037,6 +3036,8 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
             onChange={(e) => {
               const nextType = e.target.value;
               setStagedType(nextType);
+              setStagedTestIds([]);
+              setStagedSubjectNames([]);
               if (nextType === 'CUSTOM_REPORT') {
                 if (typeof onNavigate === 'function') onNavigate('assess-custom-reports');
                 else showInfo('Custom reports page is unavailable in this context.');
@@ -3192,64 +3193,40 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
             </div>
           )}
 
-          {/* Subject Selector */}
+          {/* Test Selector */}
           {stagedType === 'SUBJECT_ANALYSIS' && (
             <div className="relative w-full md:w-auto flex-1 md:flex-none" ref={subjectOptionsRef}>
               <button
                 type="button"
                 onClick={() => setShowSubjectOptions(!showSubjectOptions)}
-                className="h-9 px-3 py-1.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-brand-teal focus:border-brand-teal outline-none flex items-center justify-between min-w-[180px] md:max-w-[280px] bg-white text-gray-700 w-full"
+                className="h-9 px-3 py-1.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-brand-teal focus:border-brand-teal outline-none flex items-center justify-between min-w-[220px] md:max-w-[320px] bg-white text-gray-700 w-full"
               >
                 <span className="truncate">
-                  {stagedSubjectNames.length === 0 ? 'Select Subject(s)'
-                    : stagedSubjectNames.length === availableSubjectOptions.length ? `All Subjects (${availableSubjectOptions.length})`
-                      : `${stagedSubjectNames.length} Selected`}
+                  {selectedAnalysisTest ? formatAnalysisTestLabel(selectedAnalysisTest) : 'Select Test'}
                 </span>
                 <span className="text-gray-400 ml-2 text-[10px]">▼</span>
               </button>
 
               {showSubjectOptions && (
-                <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-slate-200 rounded-md shadow-lg z-50 max-h-60 flex flex-col">
-                  <div className="p-2 border-b bg-slate-50 flex gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setStagedSubjectNames(availableSubjectOptions.map(s => s.value))}
-                      className="text-[10px] font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded hover:bg-indigo-100 flex-1 transition-colors"
-                    >
-                      Select All
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setStagedSubjectNames([])}
-                      className="text-[10px] font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded hover:bg-slate-200 flex-1 transition-colors"
-                    >
-                      Clear
-                    </button>
-                  </div>
+                <div className="absolute top-full left-0 mt-1 w-80 bg-white border border-slate-200 rounded-md shadow-lg z-50 max-h-60 flex flex-col">
                   <div className="overflow-y-auto flex-1">
-                    {availableSubjectOptions.length === 0 ? (
-                      <div className="p-3 text-center text-xs text-gray-500">No subjects found for this selection</div>
+                    {testsInGroups.length === 0 ? (
+                      <div className="p-3 text-center text-xs text-gray-500">No tests found for this selection</div>
                     ) : (
                       <div className="p-1">
-                        {availableSubjectOptions.map(subject => (
-                          <label
-                            key={subject.value}
-                            className="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer text-xs"
+                        {testsInGroups.map(test => (
+                          <button
+                            type="button"
+                            key={test.id}
+                            onClick={() => {
+                              setStagedTestIds([test.id]);
+                              setStagedSubjectNames(test.learningArea ? [test.learningArea] : []);
+                              setShowSubjectOptions(false);
+                            }}
+                            className={`w-full text-left p-2 hover:bg-slate-50 rounded cursor-pointer text-xs ${stagedTestIds[0] === test.id ? 'bg-brand-teal/10 text-brand-teal font-medium' : 'text-slate-700'}`}
                           >
-                            <input
-                              type="checkbox"
-                              checked={stagedSubjectNames.includes(subject.value)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setStagedSubjectNames(prev => [...prev, subject.value]);
-                                } else {
-                                  setStagedSubjectNames(prev => prev.filter(name => name !== subject.value));
-                                }
-                              }}
-                              className="rounded border-slate-300 text-brand-teal focus:ring-brand-teal"
-                            />
-                            <span className="truncate">{subject.label}</span>
-                          </label>
+                            <span className="block truncate">{formatAnalysisTestLabel(test)}</span>
+                          </button>
                         ))}
                       </div>
                     )}
@@ -3266,7 +3243,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
               className="h-9 px-3 py-1.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-brand-teal focus:border-brand-teal outline-none flex items-center justify-between min-w-full md:min-w-[140px] md:max-w-[200px] bg-white text-gray-700"
             >
               <span className="truncate">
-                {stagedTestGroups.length === 0 ? 'All Test Groups' : `${stagedTestGroups.length} Groups Selected`}
+                {stagedTestGroups.length === 0 ? 'All Test Groups' : stagedType === 'SUBJECT_ANALYSIS' ? formatTestName(stagedTestGroups[0]) : `${stagedTestGroups.length} Groups Selected`}
               </span>
               <span className="text-gray-400 ml-2 text-[10px]">▼</span>
             </button>
@@ -3278,7 +3255,11 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                   <>
                     <div className="p-2 border-b bg-slate-50 flex gap-2 shrink-0">
                       <button
-                        onClick={() => setStagedTestGroups([])}
+                        onClick={() => {
+                          setStagedTestGroups([]);
+                          setStagedTestIds([]);
+                          setStagedSubjectNames([]);
+                        }}
                         className="text-[10px] font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded hover:bg-slate-200 w-full transition-colors"
                       >
                         Reset Group Selection
@@ -3289,6 +3270,28 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                       const showDateStamp = !CORE_GROUPS_WITHOUT_STAMP.has(normalizedGroup);
                       const stampRaw = groupDateStampMap[group];
                       const dateStamp = stampRaw ? new Date(stampRaw).toLocaleDateString('en-GB') : '';
+                      if (stagedType === 'SUBJECT_ANALYSIS') {
+                        return (
+                          <button
+                            type="button"
+                            key={group}
+                            onClick={() => {
+                              setStagedTestGroups([group]);
+                              setStagedTestIds([]);
+                              setStagedSubjectNames([]);
+                              setShowTestGroupOptions(false);
+                            }}
+                            className={`w-full text-left p-2 px-3 hover:bg-slate-50 cursor-pointer text-xs ${stagedTestGroups[0] === group ? 'bg-brand-teal/10 text-brand-teal font-medium' : 'text-slate-700'}`}
+                          >
+                            <span className="min-w-0 flex flex-col leading-tight">
+                              <span className="truncate">{formatTestName(group)}</span>
+                              {showDateStamp && dateStamp && (
+                                <span className="text-[10px] text-slate-400">{dateStamp}</span>
+                              )}
+                            </span>
+                          </button>
+                        );
+                      }
                       return (
                       <label key={group} className="flex items-start gap-2 p-2 px-3 hover:bg-slate-50 cursor-pointer text-xs">
                         <input
