@@ -1679,10 +1679,10 @@ export const getTestResults = async (req: Request, res: Response) => {
  */
 export const getBulkSummativeResults = async (req: AuthRequest, res: Response) => {
   try {
-    const { grade, stream, academicYear, term, testType, testId } = req.query;
+    const { grade, stream, academicYear, term, testType, testId, testDate } = req.query;
 
     logger.info('━━━ 📊 [ASSESSMENT] getBulkSummativeResults STARTED', {
-      grade, stream, academicYear, term, testType, testId,
+      grade, stream, academicYear, term, testType, testId, testDate,
       timestamp: new Date().toISOString()
     });
 
@@ -1690,7 +1690,9 @@ export const getBulkSummativeResults = async (req: AuthRequest, res: Response) =
       return res.status(400).json({ success: false, message: 'Missing required filters: grade, academicYear, term' });
     }
 
-    logger.info('[getBulkSummativeResults] Filters:', { grade, stream, academicYear, term, testType, testId });
+    logger.info('[getBulkSummativeResults] Filters:', { grade, stream, academicYear, term, testType, testId, testDate });
+
+    const parsedTestDate = testDate ? new Date(String(testDate)) : null;
 
     const normalizedTerm = String(term || '')
       .toUpperCase()
@@ -1719,6 +1721,7 @@ export const getBulkSummativeResults = async (req: AuthRequest, res: Response) =
         term: normalizedTerm,
         archived: false,
         ...(testId ? { id: String(testId) } : {}),
+        ...(parsedTestDate && !Number.isNaN(parsedTestDate.getTime()) ? { testDate: parsedTestDate } : {}),
         ...(testTypeFilter ? { testType: { in: testTypeFilter } } : {})
       }
     };
@@ -1767,6 +1770,9 @@ export const getBulkSummativeResults = async (req: AuthRequest, res: Response) =
 
         if (stream) conditions.push(Prisma.sql`l.stream = ${String(stream)}`);
         if (testId) conditions.push(Prisma.sql`st.id = ${String(testId)}`);
+        if (parsedTestDate && !Number.isNaN(parsedTestDate.getTime())) {
+          conditions.push(Prisma.sql`st."testDate" = ${parsedTestDate}`);
+        }
         if (testTypeFilter) {
           const dbVariants: string[] = [];
           if (testTypeFilter.includes('MID_TERM')) {
@@ -1871,6 +1877,9 @@ export const getBulkSummativeResults = async (req: AuthRequest, res: Response) =
 
       if (stream) conditions.push(Prisma.sql`l.stream = ${String(stream)}`);
       if (testId) conditions.push(Prisma.sql`st.id = ${String(testId)}`);
+      if (parsedTestDate && !Number.isNaN(parsedTestDate.getTime())) {
+        conditions.push(Prisma.sql`st."testDate" = ${parsedTestDate}`);
+      }
       if (testTypeFilter) {
         // Map the normalized filter back to what might actually be in the database
         const dbVariants: string[] = [];
@@ -1953,7 +1962,7 @@ export const getBulkSummativeResults = async (req: AuthRequest, res: Response) =
 
     logger.info('📦 [ASSESSMENT] Results fetched:', {
       resultsCount: results.length,
-      filters: { grade, stream, academicYear, term, testType, testId },
+      filters: { grade, stream, academicYear, term, testType, testId, testDate },
       uniqueLearnerStreams: Array.from(new Set(results.map(r => r.learner?.stream))),
       uniqueTestTypes: Array.from(new Set(results.map(r => r.test?.testType))),
       firstResult: results[0] ? {
