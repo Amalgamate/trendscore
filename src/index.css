@@ -24,10 +24,22 @@
   /* 0 = flat panels; bump if you want subtle rounding app-wide */
   --radius: 0;
 
-  --brand-purple: #030b82;
-  --brand-purple-dark: #02075e;
+  --brand-primary: #030b82;
+  --brand-primary-dark: #02075e;
+  --brand-primary-rgb: 3 11 130;
+  --brand-secondary: #0D9488;
+  --brand-secondary-dark: #0a736a;
+  --brand-secondary-rgb: 13 148 136;
+  --brand-accent-1: #3b82f6;
+  --brand-accent-1-rgb: 59 130 246;
+  --brand-accent-2: #e11d48;
+  --brand-accent-2-rgb: 225 29 72;
+  --brand-purple: var(--brand-primary);
+  --brand-purple-rgb: var(--brand-primary-rgb);
+  --brand-purple-dark: var(--brand-primary-dark);
   --brand-purple-light: #1e26a1;
-  --brand-teal: #0D9488;
+  --brand-teal: var(--brand-secondary);
+  --brand-teal-rgb: var(--brand-secondary-rgb);
   /* Unified premium table palette (Fee Collection-inspired) */
   --table-border: #d1d5db;
   --table-header-bg: #f9fafb;

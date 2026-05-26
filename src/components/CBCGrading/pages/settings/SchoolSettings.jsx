@@ -3,7 +3,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { School, Save, Upload, X, AlertTriangle, MapPin, Loader2, Palette, Image as ImageIcon, Info, Phone, Mail, MessageSquare } from 'lucide-react';
+import { School, Save, Upload, X, AlertTriangle, MapPin, Loader2, Image as ImageIcon, Info, Phone, Mail, MessageSquare } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useNotifications } from '../../hooks/useNotifications';
 import axiosInstance from '../../../../services/api/axiosConfig';
@@ -39,7 +39,6 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
     mission: '',
     latitude: null,
     longitude: null,
-    brandColor: normalizeHexColor(brandingSettings?.brandColor, '#030b82'),
     primaryColor: normalizeHexColor(brandingSettings?.primaryColor, '#030b82'),
     secondaryColor: normalizeHexColor(brandingSettings?.secondaryColor, '#0D9488'),
     accentColor1: normalizeHexColor(brandingSettings?.accentColor1, '#3b82f6'),
@@ -76,7 +75,6 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
       mission: '',
       latitude: null,
       longitude: null,
-      brandColor: normalizeHexColor(brandingSettings?.brandColor, '#030b82'),
       primaryColor: normalizeHexColor(brandingSettings?.primaryColor, '#030b82'),
       secondaryColor: normalizeHexColor(brandingSettings?.secondaryColor, '#0D9488'),
       accentColor1: normalizeHexColor(brandingSettings?.accentColor1, '#3b82f6'),
@@ -134,7 +132,6 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
             mission: school.mission || '',
             latitude: school.latitude || null,
             longitude: school.longitude || null,
-            brandColor: normalizeHexColor(school.brandColor, '#030b82'),
             primaryColor: normalizeHexColor(school.primaryColor, '#030b82'),
             secondaryColor: normalizeHexColor(school.secondaryColor, '#0D9488'),
             accentColor1: normalizeHexColor(school.accentColor1, '#3b82f6'),
@@ -265,7 +262,6 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
         faviconUrl: settings.faviconUrl,
         pwaLogoUrl: settings.pwaLogoUrl,
         stampUrl: settings.stampUrl,
-        brandColor: settings.brandColor,
         primaryColor: settings.primaryColor,
         secondaryColor: settings.secondaryColor,
         accentColor1: settings.accentColor1,
@@ -302,7 +298,6 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
           pwaLogoUrl: settings.pwaLogoUrl,
           stampUrl: settings.stampUrl,
           schoolName: settings.schoolName,
-          brandColor: settings.brandColor,
           primaryColor: settings.primaryColor,
           secondaryColor: settings.secondaryColor,
           accentColor1: settings.accentColor1,
@@ -333,7 +328,6 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
             user.school.motto = settings.motto;
             user.school.logoUrl = settings.logoUrl;
             user.school.pwaLogoUrl = settings.pwaLogoUrl;
-            user.school.brandColor = settings.brandColor;
             user.school.primaryColor = settings.primaryColor;
             user.school.secondaryColor = settings.secondaryColor;
             user.school.accentColor1 = settings.accentColor1;
@@ -522,16 +516,6 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
                   </div>
                 </div>
 
-                <div className="mt-6 mb-4">
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5 flex items-center gap-2">
-                    <Palette size={16} className="text-gray-400" />
-                    Legacy Brand Color (Deprecating)
-                  </label>
-                  <div className="flex items-center gap-4 opacity-50 pointer-events-none">
-                    <input type="color" value={settings.brandColor} readOnly className="w-12 h-12 rounded border-0 p-0 overflow-hidden shadow-sm" />
-                    <input type="text" value={settings.brandColor} readOnly className="flex-1 px-4 py-2 border border-gray-200 rounded-lg font-mono text-sm uppercase" />
-                  </div>
-                </div>
               </div>
             </div>
 

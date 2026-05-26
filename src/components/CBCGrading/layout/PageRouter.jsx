@@ -337,6 +337,7 @@ const PageRouter = ({
           case 'assess-summative-report': return <ErrorBoundary><SummativeReport learners={learners} onFetchLearners={fetchLearners} brandingSettings={brandingSettings} user={user} pageParams={pageParams} onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'assess-custom-reports': return <ErrorBoundary><CustomReportsPage onNavigate={handleNavigate} user={user} brandingSettings={brandingSettings} /></ErrorBoundary>;
           case 'assess-summary-report': return <ErrorBoundary><SummaryReportPage pageParams={pageParams} /></ErrorBoundary>;
+          case 'assess-subject-analysis': return <ResultsWorkbench variant="subject" pageParams={pageParams} onNavigate={handleNavigate} />;
           case 'assess-termly-report': return <ErrorBoundary><TermlyReport learners={learners} brandingSettings={brandingSettings} user={user} pageParams={pageParams} /></ErrorBoundary>;
           case 'assess-values': return <ValuesAssessment learners={learners} />;
           case 'assess-cocurricular': return <CoCurricularActivities learners={learners} />;

@@ -1,8 +1,0 @@
-
-C:\Amalgamate\Projects\Zawadi SMS\src\components\CBCGrading\CBCGradingSystem.jsx
-  31:5   warning  'sidebarOpen' is assigned a value but never used     no-unused-vars
-  31:18  warning  'setSidebarOpen' is assigned a value but never used  no-unused-vars
-  33:17  warning  'toggleSection' is assigned a value but never used   no-unused-vars
-
-✖ 3 problems (0 errors, 3 warnings)
-

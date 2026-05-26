@@ -46,8 +46,8 @@ export default {
         },
         brand: {
           dark: '#111827',
-          teal: '#0D9488',
-          purple: '#030b82',
+          teal: 'rgb(var(--brand-secondary-rgb, 13 148 136) / <alpha-value>)',
+          purple: 'rgb(var(--brand-primary-rgb, 3 11 130) / <alpha-value>)',
           yellow: '#F59E0B',
           light: '#F9FAFB',
         }

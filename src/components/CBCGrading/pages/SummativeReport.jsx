@@ -1107,6 +1107,9 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       if (learnerOptionsRef.current && !learnerOptionsRef.current.contains(event.target)) {
         setShowLearnerOptions(false);
       }
+      if (subjectOptionsRef.current && !subjectOptionsRef.current.contains(event.target)) {
+        setShowSubjectOptions(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
@@ -1151,6 +1154,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     setSelectedTestGroups(stagedTestGroups);
     setSelectedTestIds(stagedTestIds);
     setSelectedLearnerIds(stagedLearnerIds);
+    setSelectedSubjectNames(stagedSubjectNames);
 
     // Trigger handleGenerate after state has been set
     setGenerateTrigger(prev => prev + 1);
@@ -1206,6 +1210,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     { value: 'GRADE_REPORT', label: 'Grade Sheet' },
     { value: 'STREAM_REPORT', label: 'Stream Sheet' },
     { value: 'LEARNER_REPORT', label: 'Learner Sheet' },
+    { value: 'SUBJECT_ANALYSIS', label: 'Subject Analysis' },
     { value: 'CUSTOM_REPORT', label: 'Custom Reports' },
   ];
 
@@ -1223,6 +1228,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
   const [stagedTestGroups, setStagedTestGroups] = useState([]);
   const [stagedTestIds, setStagedTestIds] = useState([]);
   const [stagedLearnerIds, setStagedLearnerIds] = useState([]);
+  const [stagedSubjectNames, setStagedSubjectNames] = useState([]);
 
   // Get terms from hook
   const terms = setup.terms;
@@ -1231,7 +1237,10 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
   // Selection mappings - use local state for learner selection
   const [selectedLearnerIds, setSelectedLearnerIds] = useState([]);
   const [showLearnerOptions, setShowLearnerOptions] = useState(false);
+  const [selectedSubjectNames, setSelectedSubjectNames] = useState([]);
+  const [showSubjectOptions, setShowSubjectOptions] = useState(false);
   const learnerOptionsRef = useRef(null);
+  const subjectOptionsRef = useRef(null);
   const initializedFromParamsRef = useRef(false);
 
   // Helper to normalize strings for comparison (e.g., "Grade 1" -> "GRADE_1")
@@ -1478,6 +1487,31 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     });
     return filtered;
   }, [availableTests, stagedTestGroups]);
+
+  const availableSubjectOptions = useMemo(() => {
+    const subjectSet = new Set();
+    const sourceTests = testsInGroups?.length ? testsInGroups : availableTests;
+
+    (sourceTests || []).forEach((test) => {
+      const name = String(test?.learningArea || '').trim();
+      if (name) subjectSet.add(name);
+    });
+
+    if (subjectSet.size === 0) {
+      const fallbackSubjects =
+        stagedGrade && stagedGrade !== 'all'
+          ? getLearningAreasByGrade(stagedGrade)
+          : getAllLearningAreas();
+      (fallbackSubjects || []).forEach((name) => {
+        const subjectName = String(name || '').trim();
+        if (subjectName) subjectSet.add(subjectName);
+      });
+    }
+
+    return Array.from(subjectSet)
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ value: name, label: formatSubjectName(name) }));
+  }, [testsInGroups, availableTests, stagedGrade]);
 
   // Derive unique streams from stream configurations (Source of Truth)
   // Falls back to learner streams if configs not loaded yet
@@ -2465,6 +2499,12 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       return;
     }
 
+    if (selectedType === 'SUBJECT_ANALYSIS' && selectedSubjectNames.length === 0) {
+      setStatusMessage('❌ Error: Please select at least one subject');
+      showError('Please select at least one subject');
+      return;
+    }
+
     setLoading(true);
     setStatusMessage('⏳ Generating report...');
     setSelectedReportRows([]); // Reset selection on new report
@@ -2860,6 +2900,11 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           targetTests = currentTests.filter(t => selectedTestGroups.includes(getTestGroup(t)));
         }
 
+        if (selectedSubjectNames.length > 0) {
+          const selectedSubjectSet = new Set(selectedSubjectNames.map((name) => normalize(name)));
+          targetTests = targetTests.filter((test) => selectedSubjectSet.has(normalize(test.learningArea)));
+        }
+
         if (targetTests.length === 0) {
           showError('No tests available for analysis');
           setLoading(false);
@@ -2938,7 +2983,8 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           meta: {
             grade: selectedGrade,
             stream: selectedStream,
-            term: selectedTerm
+            term: selectedTerm,
+            subjects: selectedSubjectNames
           }
         });
         showSuccess('Analysis report generated');
@@ -3136,6 +3182,73 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                               className="rounded border-slate-300 text-brand-teal focus:ring-brand-teal"
                             />
                             <span className="truncate">{learner.firstName} {learner.lastName}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Subject Selector */}
+          {stagedType === 'SUBJECT_ANALYSIS' && (
+            <div className="relative w-full md:w-auto flex-1 md:flex-none" ref={subjectOptionsRef}>
+              <button
+                type="button"
+                onClick={() => setShowSubjectOptions(!showSubjectOptions)}
+                className="h-9 px-3 py-1.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-brand-teal focus:border-brand-teal outline-none flex items-center justify-between min-w-[180px] md:max-w-[280px] bg-white text-gray-700 w-full"
+              >
+                <span className="truncate">
+                  {stagedSubjectNames.length === 0 ? 'Select Subject(s)'
+                    : stagedSubjectNames.length === availableSubjectOptions.length ? `All Subjects (${availableSubjectOptions.length})`
+                      : `${stagedSubjectNames.length} Selected`}
+                </span>
+                <span className="text-gray-400 ml-2 text-[10px]">▼</span>
+              </button>
+
+              {showSubjectOptions && (
+                <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-slate-200 rounded-md shadow-lg z-50 max-h-60 flex flex-col">
+                  <div className="p-2 border-b bg-slate-50 flex gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setStagedSubjectNames(availableSubjectOptions.map(s => s.value))}
+                      className="text-[10px] font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded hover:bg-indigo-100 flex-1 transition-colors"
+                    >
+                      Select All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStagedSubjectNames([])}
+                      className="text-[10px] font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded hover:bg-slate-200 flex-1 transition-colors"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  <div className="overflow-y-auto flex-1">
+                    {availableSubjectOptions.length === 0 ? (
+                      <div className="p-3 text-center text-xs text-gray-500">No subjects found for this selection</div>
+                    ) : (
+                      <div className="p-1">
+                        {availableSubjectOptions.map(subject => (
+                          <label
+                            key={subject.value}
+                            className="flex items-center gap-2 p-2 hover:bg-slate-50 rounded cursor-pointer text-xs"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={stagedSubjectNames.includes(subject.value)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setStagedSubjectNames(prev => [...prev, subject.value]);
+                                } else {
+                                  setStagedSubjectNames(prev => prev.filter(name => name !== subject.value));
+                                }
+                              }}
+                              className="rounded border-slate-300 text-brand-teal focus:ring-brand-teal"
+                            />
+                            <span className="truncate">{subject.label}</span>
                           </label>
                         ))}
                       </div>

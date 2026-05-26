@@ -1,10 +1,5 @@
 /**
  * Sidebar Component — Industry-Grade Rewrite
- *
- * Institution theming (sidebar background only — all nav chrome stays white-on-dark):
- *   PRIMARY_CBC  → brand navy   #030b82 / #02075e   (original, unchanged)
- *   SECONDARY    → deep indigo  #1e1b4b / #13102d
- *   TERTIARY     → dark teal    #134e4a / #0d3330
  */
 
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
@@ -18,24 +13,42 @@ import {
 import { useNavigation } from '../hooks/useNavigation';
 import { useInstitutionLabels } from '../../../hooks/useInstitutionLabels';
 import { usePermissions } from '../../../hooks/usePermissions';
-import { useAuth } from '../../../hooks/useAuth';
 
 // ─── constants ────────────────────────────────────────────────────────────────
 const SIDEBAR_COLLAPSED_W = 64;
 const SIDEBAR_EXPANDED_W  = 224;
 const HEADER_H            = 72;
 
-// ─── Institution-aware sidebar palette ───────────────────────────────────────
-const getSidebarTheme = (institutionType) => {
-  switch (institutionType) {
-    case 'SECONDARY':
-      return { bg: '#1e1b4b', dark: '#13102d', accent: '#818cf8' }; // deep indigo / indigo-400
-    case 'TERTIARY':
-      return { bg: '#134e4a', dark: '#0d3330', accent: '#2dd4bf' }; // dark teal / teal-400
-    case 'PRIMARY_CBC':
-    default:
-      return { bg: '#030b82', dark: '#02075e', accent: '#0D9488' }; // brand navy / brand-teal (original)
+// ─── Branding-driven sidebar palette ─────────────────────────────────────────
+const normalizeHexColor = (value) => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed;
+  if (/^#[0-9a-fA-F]{3}$/.test(trimmed)) {
+    return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`;
   }
+  return null;
+};
+
+const darkenHex = (hex, amount = 0.78) => {
+  const color = normalizeHexColor(hex);
+  if (!color) return 'var(--brand-secondary-dark)';
+  const raw = color.slice(1);
+  const darken = (pair) => Math.max(0, Math.floor(parseInt(pair, 16) * amount)).toString(16).padStart(2, '0');
+  return `#${darken(raw.slice(0, 2))}${darken(raw.slice(2, 4))}${darken(raw.slice(4, 6))}`;
+};
+
+const getSidebarTheme = (brandingSettings) => {
+  const primary = normalizeHexColor(
+    brandingSettings?.primaryColor
+  ) || 'var(--brand-primary)';
+  const secondary = normalizeHexColor(brandingSettings?.secondaryColor) || 'var(--brand-secondary)';
+
+  return {
+    bg: secondary,
+    dark: darkenHex(secondary),
+    accent: primary,
+  };
 };
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -117,11 +130,8 @@ const Sidebar = React.memo(({
 }) => {
   const labels = useInstitutionLabels();
   const { role } = usePermissions();
-  const { institutionType } = useAuth();
 
-  // Compute per-institution colour tokens — memoised so it only re-runs when
-  // institutionType changes (which is essentially never mid-session).
-  const theme = useMemo(() => getSidebarTheme(institutionType), [institutionType]);
+  const theme = useMemo(() => getSidebarTheme(brandingSettings), [brandingSettings]);
 
   const {
     dashboardSection,

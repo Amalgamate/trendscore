@@ -273,13 +273,13 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
     setErrors({});
   };
 
-  const brandColor = brandingSettings?.brandColor || 'var(--brand-purple)';
+  const loginBackgroundColor = brandingSettings?.primaryColor || 'var(--brand-primary)';
 
   return (
     <div
       className="w-full min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden"
       style={{
-        backgroundColor: brandColor
+        backgroundColor: loginBackgroundColor
       }}
     >
 
@@ -465,7 +465,7 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
       {showInstitutionSetupModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="w-full max-w-2xl rounded-2xl overflow-hidden border border-white/20 shadow-2xl bg-white">
-            <div className="px-6 py-5 bg-gradient-to-r from-[#030b82] to-[#1f3ce1] text-white">
+            <div className="px-6 py-5 bg-[var(--brand-primary)] text-white">
               <p className="text-[11px] uppercase tracking-[0.22em] font-semibold text-white/80">First-Time Configuration</p>
               <h2 className="mt-2 text-2xl font-bold text-white">Set Institution Type</h2>
               <p className="mt-1 text-sm text-white/85">
@@ -491,19 +491,19 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
                       className={cn(
                         "w-full text-left rounded-xl border p-4 transition-all duration-150",
                         selected
-                          ? "border-[#030b82] bg-[#eef2ff] shadow-sm"
-                          : "border-gray-200 bg-white hover:border-[#7f90ff] hover:bg-[#f8f9ff]"
+                          ? "border-[var(--brand-primary)] bg-[var(--brand-primary)]/5 shadow-sm"
+                          : "border-gray-200 bg-white hover:border-[var(--brand-primary)]/40 hover:bg-[var(--brand-primary)]/5"
                       )}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-base font-bold text-black">{option.label}</p>
-                          <p className="text-xs uppercase tracking-wider font-semibold text-[#030b82]">{option.subtitle}</p>
+                          <p className="text-xs uppercase tracking-wider font-semibold text-[var(--brand-primary)]">{option.subtitle}</p>
                           <p className="mt-1 text-sm text-black/75">{option.description}</p>
                         </div>
                         <div className={cn(
                           "mt-0.5 h-6 w-6 rounded-full border flex items-center justify-center",
-                          selected ? "border-[#030b82] bg-[#030b82] text-white" : "border-gray-300 text-transparent"
+                          selected ? "border-[var(--brand-primary)] bg-[var(--brand-primary)] text-white" : "border-gray-300 text-transparent"
                         )}>
                           <Check size={14} />
                         </div>
@@ -517,14 +517,14 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-black">Institution Setup Readiness</p>
                   {institutionSetupProgress?.summary && (
-                    <p className="text-xs font-bold text-[#030b82]">
+                    <p className="text-xs font-bold text-[var(--brand-primary)]">
                       {institutionSetupProgress.summary.completed}/{institutionSetupProgress.summary.total}
                     </p>
                   )}
                 </div>
                 <div className="mt-2 h-2.5 w-full rounded-full bg-slate-200 overflow-hidden">
                   <div
-                    className="h-full bg-[#030b82] transition-all duration-300"
+                    className="h-full bg-[var(--brand-primary)] transition-all duration-300"
                     style={{ width: `${institutionSetupProgress?.summary?.percent || 0}%` }}
                   />
                 </div>
@@ -570,7 +570,7 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
                 </Button>
                 <Button
                   type="button"
-                  className="bg-[#030b82] hover:bg-[#02075f] text-white min-w-[180px]"
+                  className="bg-[var(--brand-primary)] hover:brightness-90 text-white min-w-[180px]"
                   onClick={institutionSetupSuccess ? handleContinueAfterInstitutionSetup : handleConfirmInstitutionSetup}
                   disabled={isLockingInstitution}
                 >

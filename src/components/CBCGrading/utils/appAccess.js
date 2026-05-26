@@ -31,6 +31,7 @@ const PAGE_APP_REQUIREMENTS = {
   'assess-summative-report': 'exams',
   'assess-custom-reports': 'exams',
   'assess-summary-report': 'exams',
+  'assess-subject-analysis': 'exams',
   'assess-termly-report': 'exams',
 
   'comm-notices': 'announcements',

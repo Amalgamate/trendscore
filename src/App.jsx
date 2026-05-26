@@ -41,7 +41,6 @@ const DEFAULT_BRANDING = {
   faviconUrl: '/branding/favicon.png',
   pwaLogoUrl: '/logo512.png',
   stampUrl: '/branding/stamp.svg',
-  brandColor: '#030b82',
   primaryColor: '#030b82',
   secondaryColor: '#0D9488',
   accentColor1: '#3b82f6',
@@ -133,20 +132,48 @@ function AppContent() {
   // CSS variables
   useEffect(() => {
     const root = document.documentElement;
-    const color = brandingSettings?.primaryColor || brandingSettings?.brandColor || '#030b82';
-    root.style.setProperty('--brand-purple', color);
-    if (brandingSettings?.secondaryColor)
+    const primary = brandingSettings?.primaryColor || '#030b82';
+    const setRgbVar = (name, value) => {
+      if (typeof value !== 'string' || !value.startsWith('#') || value.length !== 7) return;
+      const r = parseInt(value.slice(1, 3), 16);
+      const g = parseInt(value.slice(3, 5), 16);
+      const b = parseInt(value.slice(5, 7), 16);
+      root.style.setProperty(name, `${r} ${g} ${b}`);
+    };
+
+    root.style.setProperty('--brand-primary', primary);
+    root.style.setProperty('--brand-purple', primary);
+    setRgbVar('--brand-primary-rgb', primary);
+    setRgbVar('--brand-purple-rgb', primary);
+    if (brandingSettings?.secondaryColor) {
+      root.style.setProperty('--brand-secondary', brandingSettings.secondaryColor);
       root.style.setProperty('--brand-teal', brandingSettings.secondaryColor);
-    if (brandingSettings?.accentColor1)
+      setRgbVar('--brand-secondary-rgb', brandingSettings.secondaryColor);
+      setRgbVar('--brand-teal-rgb', brandingSettings.secondaryColor);
+      if (brandingSettings.secondaryColor.startsWith('#') && brandingSettings.secondaryColor.length === 7) {
+        const r = parseInt(brandingSettings.secondaryColor.slice(1, 3), 16);
+        const g = parseInt(brandingSettings.secondaryColor.slice(3, 5), 16);
+        const b = parseInt(brandingSettings.secondaryColor.slice(5, 7), 16);
+        const darken = (v) => Math.max(0, Math.floor(v * 0.78)).toString(16).padStart(2, '0');
+        root.style.setProperty('--brand-secondary-dark', `#${darken(r)}${darken(g)}${darken(b)}`);
+      }
+    }
+    if (brandingSettings?.accentColor1) {
       root.style.setProperty('--brand-accent-1', brandingSettings.accentColor1);
-    if (brandingSettings?.accentColor2)
+      setRgbVar('--brand-accent-1-rgb', brandingSettings.accentColor1);
+    }
+    if (brandingSettings?.accentColor2) {
       root.style.setProperty('--brand-accent-2', brandingSettings.accentColor2);
-    if (color.startsWith('#') && color.length === 7) {
-      const r = parseInt(color.slice(1, 3), 16);
-      const g = parseInt(color.slice(3, 5), 16);
-      const b = parseInt(color.slice(5, 7), 16);
+      setRgbVar('--brand-accent-2-rgb', brandingSettings.accentColor2);
+    }
+    if (primary.startsWith('#') && primary.length === 7) {
+      const r = parseInt(primary.slice(1, 3), 16);
+      const g = parseInt(primary.slice(3, 5), 16);
+      const b = parseInt(primary.slice(5, 7), 16);
       const darken = (v) => Math.max(0, Math.floor(v * 0.85)).toString(16).padStart(2, '0');
-      root.style.setProperty('--brand-purple-dark', `#${darken(r)}${darken(g)}${darken(b)}`);
+      const dark = `#${darken(r)}${darken(g)}${darken(b)}`;
+      root.style.setProperty('--brand-primary-dark', dark);
+      root.style.setProperty('--brand-purple-dark', dark);
     }
   }, [brandingSettings]);
 
