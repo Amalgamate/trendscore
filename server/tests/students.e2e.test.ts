@@ -18,6 +18,8 @@ jest.mock('../src/services/fee.service', () => {
 import express from 'express';
 import request from 'supertest';
 import learnerRoutes from '../src/routes/learner.routes';
+import { errorHandler } from '../src/middleware/error.middleware';
+import { redisCacheService } from '../src/services/redis-cache.service';
 import prisma from '../src/config/database';
 import { generateAccessToken } from '../src/utils/jwt.util';
 import { Role } from '../src/config/permissions';
@@ -29,6 +31,7 @@ process.env.JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 const app = express();
 app.use(express.json());
 app.use('/api/learners', learnerRoutes);
+app.use(errorHandler);
 
 describe('Students module end-to-end', () => {
   const authToken = generateAccessToken({
@@ -70,6 +73,7 @@ describe('Students module end-to-end', () => {
     }
 
     await prisma.$disconnect();
+    redisCacheService.destroy();
   });
 
   it('creates a learner and returns an admission number', async () => {

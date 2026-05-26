@@ -334,7 +334,9 @@ describe('HRService', () => {
             (mockPrisma.user.findMany as Mock).mockResolvedValue([makeStaff()]);
             const result = await service.getStaffDirectory();
             expect(result).toHaveLength(1);
-            expect((mockPrisma.user.findMany as Mock).mock.calls[0][0].where.role.notIn).toContain('PARENT');
+            const roleFilter = (mockPrisma.user.findMany as Mock).mock.calls[0][0].where.role;
+            expect(roleFilter.in).toEqual(expect.arrayContaining(['ADMIN', 'HEAD_TEACHER', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST']));
+            expect(roleFilter.in).not.toEqual(expect.arrayContaining(['PARENT', 'SUPER_ADMIN']));
         });
     });
 
@@ -395,7 +397,7 @@ describe('HRService', () => {
             deductions: Array<{ id: string; type: string; label: string; amount: number; totalMonths: number; monthsApplied: number; isActive: boolean }> = []
         ) => {
             (mockPrisma.user.findMany as Mock).mockResolvedValue([makeStaff({ basicSalary: 50000 })]);
-            (mockPrisma.payrollRecord.findUnique as Mock).mockResolvedValue(null); // no existing record
+            (mockPrisma.payrollRecord.findMany as Mock).mockResolvedValue([]); // no existing records
             (mockPrisma.staffAllowance.findMany as Mock).mockResolvedValue(allowances);
             (mockPrisma.staffDeduction.findMany as Mock).mockResolvedValue(deductions);
             (mockPrisma.payrollRecord.create as Mock).mockImplementation(async ({ data }: any) => ({
@@ -416,7 +418,7 @@ describe('HRService', () => {
 
         it('skips staff with no existing record (idempotent — returns existing)', async () => {
             (mockPrisma.user.findMany as Mock).mockResolvedValue([makeStaff()]);
-            (mockPrisma.payrollRecord.findUnique as Mock).mockResolvedValue(makePayrollRecord()); // already exists
+            (mockPrisma.payrollRecord.findMany as Mock).mockResolvedValue([makePayrollRecord()]); // already exists
             const result = await service.generateMonthlyPayroll(4, 2026, 'admin-001');
             expect(result.count).toBe(1);
             expect(mockPrisma.payrollRecord.create).not.toHaveBeenCalled();
@@ -610,13 +612,14 @@ describe('HRService', () => {
         });
 
         it('throws if requesting more days than balance remaining', async () => {
-            // 21 days already used up
-            const usedLeaves = Array.from({ length: 21 }, (_, i) => ({
-                startDate: new Date(2026, 0, i * 1 + 1),
-                endDate: new Date(2026, 0, i * 1 + 1),
+            // The service counts business days only. With 1 weekday already used,
+            // this 4-business-day request exceeds a 4-day annual allowance.
+            const usedLeaves = [{
+                startDate: new Date('2026-04-13T00:00:00.000Z'),
+                endDate: new Date('2026-04-13T00:00:00.000Z'),
                 status: 'APPROVED'
-            }));
-            (mockPrisma.leaveType.findUnique as Mock).mockResolvedValue(makeLeaveType({ maxDays: 21 }));
+            }];
+            (mockPrisma.leaveType.findUnique as Mock).mockResolvedValue(makeLeaveType({ maxDays: 4 }));
             (mockPrisma.leaveRequest.findMany as Mock).mockResolvedValue(usedLeaves);
 
             await expect(service.submitLeaveRequest(STAFF_ID, {
@@ -677,8 +680,8 @@ describe('HRService', () => {
 
             const balances = await service.getLeaveBalance(STAFF_ID, 2026);
             expect(balances).toHaveLength(1);
-            expect(balances[0].usedDays).toBe(5);
-            expect(balances[0].remainingDays).toBe(21 - 5);
+            expect(balances[0].usedDays).toBe(4);
+            expect(balances[0].remainingDays).toBe(21 - 4);
         });
 
         it('returns maxDays as remaining when no leave taken', async () => {
@@ -925,6 +928,7 @@ describe('HR Routes — API smoke tests', () => {
         const express = (await import('express')).default;
         request = (await import('supertest')).default;
         hrRoutes = (await import('../src/routes/hr.routes')).default;
+        const { errorHandler } = await import('../src/middleware/error.middleware');
         const jwt = await import('jsonwebtoken');
 
         // Mint a valid JWT for ADMIN
@@ -933,6 +937,7 @@ describe('HR Routes — API smoke tests', () => {
         app = express();
         app.use(express.json());
         app.use('/api/hr', hrRoutes);
+        app.use(errorHandler);
     });
 
     // Helper — creates request with auth header
@@ -966,7 +971,7 @@ describe('HR Routes — API smoke tests', () => {
     describe('POST /api/hr/payroll/generate', () => {
         it('returns 200 with generated payroll count', async () => {
             (mockPrisma.user.findMany as Mock).mockResolvedValue([makeStaff({ basicSalary: 50000 })]);
-            (mockPrisma.payrollRecord.findUnique as Mock).mockResolvedValue(null);
+            (mockPrisma.payrollRecord.findMany as Mock).mockResolvedValue([]);
             (mockPrisma.staffAllowance.findMany as Mock).mockResolvedValue([]);
             (mockPrisma.staffDeduction.findMany as Mock).mockResolvedValue([]);
             (mockPrisma.payrollRecord.create as Mock).mockResolvedValue(makePayrollRecord());
