@@ -103,6 +103,7 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
   const [stagedTerm, setStagedTerm] = useState('TERM_1');
   const [stagedYear, setStagedYear] = useState(getCurrentAcademicYear());
   const [stagedTestType, setStagedTestType] = useState('');
+  const [stagedTestId, setStagedTestId] = useState('');
 
 
 
@@ -113,19 +114,15 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
   const [availableStreams, setAvailableStreams] = useState([]);
 
 
-  const [availableTestTypes, setAvailableTestTypes] = useState([]);
-  const [examTypeTimestamps, setExamTypeTimestamps] = useState<Record<string, string>>({});
+  const [availableTests, setAvailableTests] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const mergedExamTypes = useMemo(() => {
-    const merged = [...new Set([...(availableTestTypes || []), ...CORE_EXAM_TYPES])];
-    return merged.sort((a, b) => {
-      const order = { OPENER: 1, MID_TERM: 2, END_TERM: 3 };
-      const ao = order[a] || 99;
-      const bo = order[b] || 99;
-      if (ao !== bo) return ao - bo;
-      return a.localeCompare(b);
+  const testOptions = useMemo(() => {
+    return [...availableTests].sort((a, b) => {
+      const da = new Date(a?.testDate || a?.updatedAt || a?.createdAt || 0).getTime();
+      const db = new Date(b?.testDate || b?.updatedAt || b?.createdAt || 0).getTime();
+      return db - da;
     });
-  }, [availableTestTypes]);
+  }, [availableTests]);
   
   // Track last fetched configuration to avoid loops but allow auto-switching
   const lastFetchRef = useRef(null);
@@ -177,7 +174,8 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
   useEffect(() => {
     const fetchTestTypes = async () => {
       if (!stagedGrade || !stagedTerm || !stagedYear) {
-        setAvailableTestTypes([]);
+        setAvailableTests([]);
+        setStagedTestId('');
         return;
       }
       try {
@@ -186,28 +184,22 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
           term: stagedTerm,
           academicYear: stagedYear
         });
-        const tests = resp?.data || [];
-        const types = [...new Set(tests.map((t: any) => resolveTestType(t)).filter(Boolean))].sort() as string[];
-        const typeDateMap: Record<string, string> = {};
-        tests.forEach((t: any) => {
-          const type = resolveTestType(t);
-          if (!type) return;
-          const ts = new Date(t?.testDate || t?.updatedAt || t?.createdAt || 0).getTime();
-          const prev = typeDateMap[type] ? new Date(typeDateMap[type]).getTime() : 0;
-          if (ts > prev) {
-            typeDateMap[type] = t?.testDate || t?.updatedAt || t?.createdAt || '';
-          }
-        });
-        setAvailableTestTypes(types);
-        setExamTypeTimestamps(typeDateMap);
+        const tests = Array.isArray(resp?.data) ? resp.data : [];
+        setAvailableTests(tests);
         const latestTest = [...tests].sort((a: any, b: any) => {
           const da = new Date(a?.testDate || a?.updatedAt || a?.createdAt || 0).getTime();
           const db = new Date(b?.testDate || b?.updatedAt || b?.createdAt || 0).getTime();
           return db - da;
         })[0];
         const latestType = latestTest ? resolveTestType(latestTest) : null;
-        // Keep existing valid selection; otherwise default to OPENER, then first.
+        // Keep the current test selection if it still exists, otherwise use latest.
+        setStagedTestId((prev: string) => {
+          if (prev && tests.some((t: any) => String(t.id) === String(prev))) return prev;
+          return latestTest?.id ? String(latestTest.id) : '';
+        });
+        // Keep existing valid type selection; otherwise default from latest.
         setStagedTestType((prev: string) => {
+          const types = [...new Set(tests.map((t: any) => resolveTestType(t)).filter(Boolean))].sort() as string[];
           const nextTypes = [...new Set([...(types || []), ...CORE_EXAM_TYPES])];
           if (nextTypes.length === 0) return '';
           if (latestType && nextTypes.includes(latestType)) return latestType;
@@ -219,7 +211,8 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
           return nextTypes[0];
         });
       } catch {
-        setAvailableTestTypes([]);
+        setAvailableTests([]);
+        setStagedTestId('');
         setStagedTestType('OPENER');
       }
     };
@@ -260,18 +253,18 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
 
   // Keep a stable ref to the latest filter values so the generate function
   // never needs to be in the auto-generate effect's dep array.
-  const filtersRef = useRef({ stagedGrade, stagedStream, stagedTerm, stagedYear, stagedTestType });
+  const filtersRef = useRef({ stagedGrade, stagedStream, stagedTerm, stagedYear, stagedTestType, stagedTestId });
   useEffect(() => {
-    filtersRef.current = { stagedGrade, stagedStream, stagedTerm, stagedYear, stagedTestType };
+    filtersRef.current = { stagedGrade, stagedStream, stagedTerm, stagedYear, stagedTestType, stagedTestId };
   });
 
   // Handle Generation — stable function reference (no filter deps needed
   // because it reads from filtersRef instead of closing over state directly).
   const handleGenerate = useCallback(async (forced = false) => {
-    const { stagedGrade, stagedStream, stagedTerm, stagedYear, stagedTestType } = filtersRef.current;
+    const { stagedGrade, stagedStream, stagedTerm, stagedYear, stagedTestType, stagedTestId } = filtersRef.current;
     if (!stagedGrade) return;
 
-    const currentConfig = `${stagedGrade}-${stagedStream}-${stagedTerm}-${stagedYear}-${stagedTestType}`;
+    const currentConfig = `${stagedGrade}-${stagedStream}-${stagedTerm}-${stagedYear}-${stagedTestType}-${stagedTestId}`;
 
     // Prevent overlapping or redundant calls
     if (!forced && (isFetchingRef.current || lastFetchRef.current === currentConfig)) {
@@ -297,6 +290,9 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
       }
       if (stagedTestType) {
           apiParams.testType = stagedTestType;
+      }
+      if (stagedTestId) {
+          apiParams.testId = stagedTestId;
       }
 
       // 1. Fetch Students & Results concurrently
@@ -469,7 +465,7 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
       handleGenerate();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stagedGrade, stagedStream, stagedTerm, stagedYear, stagedTestType]);
+  }, [stagedGrade, stagedStream, stagedTerm, stagedYear, stagedTestType, stagedTestId]);
 
   // Filtered Rows (Search)
   const filteredRows = useMemo(() => {
@@ -767,19 +763,29 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
             <div className="w-40">
               <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1 px-1">Exam Type</label>
               <select
-                value={stagedTestType}
-                onChange={(e) => setStagedTestType(e.target.value)}
+                value={stagedTestId}
+                onChange={(e) => {
+                  const nextId = e.target.value;
+                  setStagedTestId(nextId);
+                  const selected = testOptions.find((t: any) => String(t.id) === String(nextId));
+                  if (selected) {
+                    setStagedTestType(resolveTestType(selected) || '');
+                  }
+                }}
                 className="w-full h-9 px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-purple appearance-none cursor-pointer hover:border-slate-400 transition-colors"
               >
-                {mergedExamTypes.map(t => (
-                  <option key={t} value={t}>
-                    {`${String(formatTestTypeLabel(t) || t).toUpperCase()}${
-                      examTypeTimestamps[t]
-                        ? ` • ${new Date(examTypeTimestamps[t]).toLocaleDateString('en-GB')}`
-                        : ''
-                    }`}
-                  </option>
-                ))}
+                <option value="">Select Exam...</option>
+                {testOptions.map((t: any) => {
+                  const type = resolveTestType(t) || t?.testType || 'ASSESSMENT';
+                  const dateValue = t?.testDate || t?.updatedAt || t?.createdAt;
+                  const dateLabel = dateValue ? new Date(dateValue).toLocaleDateString('en-GB') : '';
+                  const title = String(t?.title || '').trim();
+                  return (
+                    <option key={t.id} value={t.id}>
+                      {`${title || String(formatTestTypeLabel(type) || type).toUpperCase()}${dateLabel ? ` • ${dateLabel}` : ''}`}
+                    </option>
+                  );
+                })}
               </select>
             </div>
 
