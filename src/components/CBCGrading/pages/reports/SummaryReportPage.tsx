@@ -71,7 +71,26 @@ const LEARNING_AREA_ABBREVIATIONS = {
   'INDIGENOUS LANGUAGE': 'INDI',
   'LANGUAGE ACTIVITIES': 'LANG'
 };
-const CORE_EXAM_TYPES = ['OPENER', 'MID_TERM', 'END_TERM', 'MOCK'];
+const CORE_EXAM_TYPES = ['OPENER', 'MID_TERM', 'END_TERM', 'WEEKLY', 'MOCK', 'MONTHLY'];
+const EXAM_TYPE_DROPDOWN_LABELS: Record<string, string> = {
+  OPENER: 'OPENER',
+  MID_TERM: 'MID TERM',
+  END_TERM: 'END TERM',
+  WEEKLY: 'WEEKLY',
+  MOCK: 'MOCK',
+  MONTHLY: 'MONTHLY',
+};
+const GENERIC_TEST_TYPES = new Set(['ASSESSMENT', 'RANDOM']);
+
+const resolveCycleType = (test: any): string => {
+  const resolved = resolveTestType(test) || 'ASSESSMENT';
+  if (!GENERIC_TEST_TYPES.has(resolved)) return resolved;
+  const inferred = resolveTestType({
+    testType: '',
+    title: test?.title || test?.name || test?.testName || ''
+  });
+  return inferred || resolved;
+};
 
 const getAbbreviatedName = (name) => {
   if (!name) return '';
@@ -119,7 +138,7 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
   const examCycleOptions = useMemo(() => {
     const byCycle = new Map<string, { type: string; date: string; ts: number }>();
     availableTests.forEach((t: any) => {
-      const type = resolveTestType(t) || 'ASSESSMENT';
+      const type = resolveCycleType(t);
       const dateRaw = t?.testDate ? String(t.testDate).slice(0, 10) : '';
       if (!dateRaw) return;
       const key = `${type}|${dateRaw}`;
@@ -127,7 +146,9 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
       const prev = byCycle.get(key);
       if (!prev || ts > prev.ts) byCycle.set(key, { type, date: dateRaw, ts });
     });
-    return [...byCycle.values()].sort((a, b) => b.ts - a.ts);
+    return [...byCycle.values()]
+      .filter((c) => CORE_EXAM_TYPES.includes(c.type))
+      .sort((a, b) => b.ts - a.ts);
   }, [availableTests]);
   
   // Track last fetched configuration to avoid loops but allow auto-switching
@@ -197,17 +218,16 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
           const db = new Date(b?.testDate || b?.updatedAt || b?.createdAt || 0).getTime();
           return db - da;
         })[0];
-        const latestType = latestTest ? resolveTestType(latestTest) : null;
+        const latestType = latestTest ? resolveCycleType(latestTest) : null;
         // Keep existing valid type selection; otherwise default from latest.
         setStagedTestType((prev: string) => {
-          const types = [...new Set(tests.map((t: any) => resolveTestType(t)).filter(Boolean))].sort() as string[];
+          const types = tests
+            .map((t: any) => resolveCycleType(t))
+            .filter((t: string) => CORE_EXAM_TYPES.includes(t));
           const nextTypes = [...new Set([...(types || []), ...CORE_EXAM_TYPES])];
           if (nextTypes.length === 0) return '';
           if (latestType && nextTypes.includes(latestType)) return latestType;
-          // Accept if the exact value OR a case-insensitive normalized match exists
-          const prevNorm = prev.toUpperCase().replace(/[\s-]+/g, '_');
-          const hasMatch = nextTypes.some(t => t === prev || t.toUpperCase().replace(/[\s-]+/g, '_') === prevNorm);
-          if (hasMatch) return prev;
+          if (nextTypes.includes(prev)) return prev;
           if (nextTypes.includes('OPENER')) return 'OPENER';
           return nextTypes[0];
         });
@@ -237,7 +257,7 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
           const db = new Date(b?.testDate || b?.updatedAt || b?.createdAt || 0).getTime();
           return db - da;
         })[0];
-        const latestType = resolveTestType(latest) || 'OPENER';
+        const latestType = resolveCycleType(latest) || 'OPENER';
         const latestTerm = String(latest?.term || '').toUpperCase();
         const latestYear = Number(latest?.academicYear);
 
@@ -777,7 +797,7 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
                 <option value="">Select Exam...</option>
                 {examCycleOptions.map((c) => (
                   <option key={`${c.type}|${c.date}`} value={`${c.type}|${c.date}`}>
-                    {`${String(formatTestTypeLabel(c.type) || c.type).toUpperCase()} • ${new Date(`${c.date}T00:00:00`).toLocaleDateString('en-GB')}`}
+                    {`${EXAM_TYPE_DROPDOWN_LABELS[c.type] || String(formatTestTypeLabel(c.type) || c.type).toUpperCase()} • ${new Date(`${c.date}T00:00:00`).toLocaleDateString('en-GB')}`}
                   </option>
                 ))}
               </select>
