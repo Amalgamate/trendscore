@@ -127,7 +127,13 @@ read_env_value() {
 
 write_deploy_env_file() {
   local path="$1"
-  printf 'FRONTEND_IMAGE=%s\nBACKEND_IMAGE=%s\n' "${FRONTEND_IMAGE}" "${BACKEND_IMAGE}" > "${path}"
+  local base_env="${2:-}"
+  if [[ -n "${base_env}" && -f "${base_env}" ]]; then
+    grep -v -E '^(FRONTEND_IMAGE|BACKEND_IMAGE)=' "${base_env}" > "${path}" || true
+  else
+    : > "${path}"
+  fi
+  printf 'FRONTEND_IMAGE=%s\nBACKEND_IMAGE=%s\n' "${FRONTEND_IMAGE}" "${BACKEND_IMAGE}" >> "${path}"
 }
 
 compose_with_pinned_images() {
@@ -138,18 +144,15 @@ compose_with_pinned_images() {
 
   local deploy_env
   deploy_env="$(mktemp /tmp/trendscore-deploy-env.XXXXXX)"
-  write_deploy_env_file "${deploy_env}"
 
   if [[ "${kind}" == "main" ]]; then
+    write_deploy_env_file "${deploy_env}" "${MAIN_DIR}/.env"
     cd "${MAIN_DIR}"
-    if [[ -f "${MAIN_DIR}/.env" ]]; then
-      sudo docker compose --env-file "${MAIN_DIR}/.env" --env-file "${deploy_env}" "$@"
-    else
-      sudo docker compose --env-file "${deploy_env}" "$@"
-    fi
+    sudo docker compose --env-file "${deploy_env}" "$@"
   else
+    write_deploy_env_file "${deploy_env}" "${stack_env}"
     cd "${APPS_DIR}"
-    sudo docker compose --env-file "${stack_env}" --env-file "${deploy_env}" \
+    sudo docker compose --env-file "${deploy_env}" \
       -p "${project}" -f "${STACK_COMPOSE_FILE}" "$@"
   fi
 
@@ -169,21 +172,16 @@ publish_frontend_static() {
   [[ -n "${image}" ]] && log "Frontend container image: ${image}"
 
   local -a targets=()
-  local root duplicate=0 t
+  local root legacy duplicate=0 t
   if [[ -n "${static_dir}" ]]; then
-    targets+=("${static_dir}")
+    append_unique_target targets "${static_dir}"
   fi
   while IFS= read -r root; do
-    [[ -n "${root}" ]] || continue
-    duplicate=0
-    for t in "${targets[@]}"; do
-      if [[ "${t}" == "${root}" ]]; then
-        duplicate=1
-        break
-      fi
-    done
-    [[ "${duplicate}" -eq 0 ]] && targets+=("${root}")
+    append_unique_target targets "${root}"
   done < <(discover_nginx_static_roots "${public_domain}")
+  while IFS= read -r legacy; do
+    append_unique_target targets "${legacy}"
+  done < <(discover_legacy_frontend_dirs)
 
   [[ "${#targets[@]}" -gt 0 ]] || {
     log "No static publish targets configured"
@@ -217,18 +215,46 @@ publish_frontend_static() {
 
 discover_nginx_static_roots() {
   local domain="$1"
-  local sites_dir="${NGINX_SITES_DIR:-/etc/nginx/sites-enabled}"
   [[ -n "${domain}" ]] || return 0
-  [[ -d "${sites_dir}" ]] || return 0
 
-  local conf
-  for conf in "${sites_dir}"/*; do
+  local dir conf
+  for dir in /etc/nginx/sites-enabled /etc/nginx/sites-available /etc/nginx/conf.d; do
+    [[ -d "${dir}" ]] || continue
+    for conf in "${dir}"/*; do
+      [[ -f "${conf}" ]] || continue
+      sudo grep -q "${domain}" "${conf}" 2>/dev/null || continue
+      sudo grep -E '^[[:space:]]*root[[:space:]]+' "${conf}" 2>/dev/null \
+        | sed -E 's/^[[:space:]]*root[[:space:]]+([^;[:space:]]+).*$/\1/' \
+        | tr -d '"' | tr -d "'"
+    done
+  done
+
+  sudo grep -rl "${domain}" /etc/nginx 2>/dev/null | while IFS= read -r conf; do
     [[ -f "${conf}" ]] || continue
-    sudo grep -q "${domain}" "${conf}" 2>/dev/null || continue
     sudo grep -E '^[[:space:]]*root[[:space:]]+' "${conf}" 2>/dev/null \
       | sed -E 's/^[[:space:]]*root[[:space:]]+([^;[:space:]]+).*$/\1/' \
       | tr -d '"' | tr -d "'"
   done | sort -u
+}
+
+discover_legacy_frontend_dirs() {
+  sudo find /srv /var/www -type f -path '*/assets/CBCGradingSystem*.js' 2>/dev/null \
+    | while IFS= read -r asset; do
+        if sudo grep -q 'settings-apps' "${asset}" 2>/dev/null; then
+          dirname "$(dirname "${asset}")"
+        fi
+      done | sort -u
+}
+
+append_unique_target() {
+  local -n _targets_ref=$1
+  local candidate="$2"
+  local existing
+  [[ -n "${candidate}" ]] || return 0
+  for existing in "${_targets_ref[@]}"; do
+    [[ "${existing}" == "${candidate}" ]] && return 0
+  done
+  _targets_ref+=("${candidate}")
 }
 
 verify_static_bundle() {
