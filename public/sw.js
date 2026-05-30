@@ -1,4 +1,4 @@
-const CACHE_NAME = 'trends-core-cache-v1';
+const CACHE_NAME = 'trends-core-cache-v2';
 const APP_SHELL_ASSETS = [
   '/manifest.json',
   '/favicon.png',

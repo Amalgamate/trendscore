@@ -1,13 +1,14 @@
 # Build stage
 FROM node:20-alpine AS builder
 
+ARG BUILD_SHA=dev
 WORKDIR /app
 
 COPY package*.json ./
 RUN npm install
 
 COPY . .
-RUN npm run build
+RUN echo "frontend build ${BUILD_SHA}" && npm run build
 
 # Production stage
 FROM nginx:stable-alpine
