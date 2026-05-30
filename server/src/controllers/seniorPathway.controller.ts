@@ -159,7 +159,7 @@ export const seniorPathwayController = {
 
   updateSchoolOfferings: async (req: AuthRequest, res: Response) => {
     const schoolId = resolveRequiredSchoolId(req);
-    const rawIds = Array.isArray(req.body?.officialLearningAreaIds)
+    const rawIds: unknown[] = Array.isArray(req.body?.officialLearningAreaIds)
       ? req.body.officialLearningAreaIds
       : Array.isArray(req.body?.subjectIds)
         ? req.body.subjectIds
@@ -168,8 +168,8 @@ export const seniorPathwayController = {
     const officialLearningAreaIds: string[] = Array.from(
       new Set(
         rawIds
-          .map((id: unknown) => String(id || '').trim())
-          .filter((id): id is string => Boolean(id))
+          .map((id) => String(id ?? '').trim())
+          .filter((id): id is string => id.length > 0)
       )
     );
 
