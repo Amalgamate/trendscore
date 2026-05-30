@@ -484,49 +484,49 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
 
       {showInstitutionSetupModal && (
         <div className="fixed inset-0 z-50 bg-white">
-          <div className="flex min-h-screen w-full flex-col overflow-y-auto lg:grid lg:grid-cols-[300px_minmax(0,1fr)] lg:overflow-hidden">
-            <aside className="bg-[var(--brand-primary)] px-6 py-6 text-white lg:min-h-screen lg:px-7">
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/20 bg-white/10">
-                  <Building2 size={20} />
+          <div className="flex min-h-screen w-full flex-col overflow-y-auto lg:grid lg:grid-cols-[252px_minmax(0,1fr)] lg:overflow-hidden">
+            <aside className="bg-[var(--brand-primary)] px-5 py-5 text-white lg:min-h-screen">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-md border border-white/20 bg-white/10">
+                  <Building2 size={18} />
                 </div>
-                <p className="text-xl font-semibold">TrendScore</p>
+                <p className="text-lg font-semibold">TrendScore</p>
               </div>
 
-              <div className="mt-7 border-t border-white/15 pt-7">
-                <p className="text-2xl font-semibold leading-tight">Welcome to TrendScore</p>
-                <p className="mt-3 text-sm leading-6 text-white/75">
+              <div className="mt-5 border-t border-white/15 pt-5">
+                <p className="text-xl font-semibold leading-tight">Welcome to TrendScore</p>
+                <p className="mt-2 text-xs leading-5 text-white/75">
                   Set up the institution profile and confirm the structure this system will use.
                 </p>
               </div>
 
-              <div className="mt-7 border-t border-white/15 pt-6">
-                <p className="text-xs font-semibold uppercase text-white/70">Setup Progress</p>
-                <div className="mt-4 flex items-center gap-5">
+              <div className="mt-5 border-t border-white/15 pt-5">
+                <p className="text-[11px] font-semibold uppercase text-white/70">Setup Progress</p>
+                <div className="mt-3 flex items-center gap-4">
                   <div
-                    className="grid h-24 w-24 shrink-0 place-items-center rounded-full"
+                    className="grid h-20 w-20 shrink-0 place-items-center rounded-full"
                     style={{
                       background: `conic-gradient(#7c3aed ${(institutionSetupProgress?.summary?.percent || 0) * 3.6}deg, rgba(255,255,255,0.14) 0deg)`,
                     }}
                   >
-                    <div className="grid h-16 w-16 place-items-center rounded-full bg-[var(--brand-primary)]">
+                    <div className="grid h-[52px] w-[52px] place-items-center rounded-full bg-[var(--brand-primary)]">
                       <div className="text-center">
-                        <p className="text-2xl font-bold">{institutionSetupProgress?.summary?.percent || 0}%</p>
-                        <p className="text-xs text-white/75">Complete</p>
+                        <p className="text-xl font-bold">{institutionSetupProgress?.summary?.percent || 0}%</p>
+                        <p className="text-[10px] text-white/75">Complete</p>
                       </div>
                     </div>
                   </div>
                   {institutionSetupProgress?.summary && (
-                    <p className="text-sm font-semibold text-emerald-200">
+                    <p className="text-xs font-semibold leading-5 text-emerald-200">
                       {institutionSetupProgress.summary.completed} of {institutionSetupProgress.summary.total} steps completed
                     </p>
                   )}
                 </div>
               </div>
 
-              <div className="mt-8 hidden border-t border-white/15 pt-7 lg:block">
-                <p className="text-xs font-semibold uppercase text-white/70">Setup Checklist</p>
-                <div className="mt-4 space-y-2.5">
+              <div className="mt-5 hidden border-t border-white/15 pt-5 lg:block">
+                <p className="text-[11px] font-semibold uppercase text-white/70">Setup Checklist</p>
+                <div className="mt-3 space-y-2">
                   {[
                     ['Institution Type', false],
                     ['School Profile', true],
@@ -537,12 +537,12 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
                     ['Fee Structure', true],
                     ['Users & Permissions', true],
                   ].map(([label, done]) => (
-                    <div key={label} className="flex items-center gap-3 text-sm">
+                    <div key={label} className="flex items-center gap-2.5 text-xs">
                       <span className={cn(
-                        "grid h-5 w-5 place-items-center rounded-full border",
+                        "grid h-4 w-4 place-items-center rounded-full border",
                         done ? "border-emerald-300 bg-emerald-300 text-[var(--brand-primary)]" : "border-violet-300 text-violet-200"
                       )}>
-                        {done ? <Check size={12} /> : <span className="h-2 w-2 rounded-full bg-current" />}
+                        {done ? <Check size={10} /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />}
                       </span>
                       <span className={done ? 'text-white' : 'text-violet-200'}>{label}</span>
                     </div>
@@ -550,45 +550,45 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
                 </div>
               </div>
 
-              <div className="mt-7 hidden rounded-lg border border-white/15 bg-white/10 p-4 lg:block">
-                <div className="flex items-start gap-3">
-                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-violet-400 text-white">
-                    <HelpCircle size={17} />
+              <div className="mt-5 hidden rounded-md border border-white/15 bg-white/10 p-3 lg:block">
+                <div className="flex items-start gap-2.5">
+                  <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-violet-400 text-white">
+                    <HelpCircle size={15} />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold">Need help?</p>
-                    <p className="mt-1 text-xs leading-5 text-white/75">Check the setup guide or contact support.</p>
+                    <p className="text-xs font-semibold">Need help?</p>
+                    <p className="mt-1 text-[11px] leading-4 text-white/75">Check the setup guide or contact support.</p>
                   </div>
-                  <ExternalLink size={15} className="ml-auto shrink-0 text-white/75" />
+                  <ExternalLink size={13} className="ml-auto shrink-0 text-white/75" />
                 </div>
               </div>
             </aside>
 
-            <main className="flex min-h-screen flex-col bg-white px-5 py-6 sm:px-8 lg:h-screen lg:overflow-y-auto lg:px-12 lg:py-6 xl:px-16">
-              <div className="flex items-start justify-between gap-6">
+            <main className="flex min-h-screen flex-col bg-white px-4 py-4 sm:px-6 lg:h-screen lg:overflow-y-auto lg:px-8 lg:py-4 xl:px-10">
+              <div className="flex items-start justify-between gap-5">
                 <div>
-                  <p className="text-sm font-semibold text-[var(--brand-primary)]">Step 1 of 3</p>
-                  <h2 className="mt-2 text-3xl font-bold leading-tight text-slate-950">Select Institution Type</h2>
-                  <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+                  <p className="text-xs font-semibold text-[var(--brand-primary)]">Step 1 of 3</p>
+                  <h2 className="mt-1 text-2xl font-bold leading-tight text-slate-950">Select Institution Type</h2>
+                  <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-600">
                     Choose the active institution for this system. After saving, this will be locked for data safety.
                   </p>
                 </div>
-                <div className="hidden items-center gap-3 text-right lg:flex">
-                  <ShieldCheck className="h-9 w-9 text-[var(--brand-primary)]" />
+                <div className="hidden items-center gap-2.5 text-right lg:flex">
+                  <ShieldCheck className="h-7 w-7 text-[var(--brand-primary)]" />
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">Your data is safe with us</p>
+                    <p className="text-xs font-semibold text-slate-900">Your data is safe with us</p>
                     <p className="mt-1 text-xs text-slate-500">We follow strict security standards</p>
                   </div>
                 </div>
               </div>
 
               {institutionSetupSuccess && (
-                <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+                <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
                   {institutionSetupSuccess}
                 </div>
               )}
 
-              <div className="mt-6 grid gap-5 lg:grid-cols-3">
+              <div className="mt-4 grid gap-4 lg:grid-cols-3">
                 {INSTITUTION_OPTIONS.map((option) => {
                   const selected = institutionChoice === option.value;
                   const Icon = option.icon;
@@ -598,24 +598,24 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
                       type="button"
                       onClick={() => setInstitutionChoice(option.value)}
                       className={cn(
-                        "relative min-h-[185px] rounded-lg border bg-white p-5 text-center shadow-sm transition-all duration-150",
+                        "relative min-h-[132px] rounded-md border bg-white p-4 text-center shadow-sm transition-all duration-150",
                         selected
                           ? "border-[var(--brand-primary)] ring-1 ring-[var(--brand-primary)]/30"
                           : "border-slate-200 hover:border-[var(--brand-primary)]/50 hover:shadow-md"
                       )}
                     >
                       {selected && (
-                        <span className="absolute right-5 top-5 grid h-7 w-7 place-items-center rounded-full bg-[var(--brand-primary)] text-white">
-                          <Check size={16} />
+                        <span className="absolute right-3 top-3 grid h-6 w-6 place-items-center rounded-full bg-[var(--brand-primary)] text-white">
+                          <Check size={13} />
                         </span>
                       )}
-                      <span className="mx-auto grid h-14 w-14 place-items-center rounded-full border border-violet-100 bg-violet-50 text-[var(--brand-primary)]">
-                        <Icon size={27} />
+                      <span className="mx-auto grid h-10 w-10 place-items-center rounded-full border border-violet-100 bg-violet-50 text-[var(--brand-primary)]">
+                        <Icon size={21} />
                       </span>
-                      <p className="mt-4 text-lg font-bold text-slate-950">{option.label}</p>
-                      <p className="mt-2 text-xs font-bold uppercase text-[var(--brand-primary)]">{option.subtitle}</p>
-                      <p className="mx-auto mt-3 max-w-[240px] text-sm leading-5 text-slate-600">{option.description}</p>
-                      <span className="mt-4 inline-flex min-h-[32px] items-center rounded-md bg-violet-50 px-4 text-sm font-medium text-[var(--brand-primary)]">
+                      <p className="mt-3 text-base font-bold text-slate-950">{option.label}</p>
+                      <p className="mt-1 text-[11px] font-bold uppercase text-[var(--brand-primary)]">{option.subtitle}</p>
+                      <p className="mx-auto mt-2 max-w-[230px] text-xs leading-4 text-slate-600">{option.description}</p>
+                      <span className="mt-3 inline-flex min-h-[26px] items-center rounded-md bg-violet-50 px-3 text-xs font-medium text-[var(--brand-primary)]">
                         {option.range}
                       </span>
                     </button>
@@ -623,45 +623,45 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
                 })}
               </div>
 
-              <section className="mt-6 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="flex items-start justify-between gap-4">
+              <section className="mt-4 rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-base font-semibold text-slate-950">Institution Setup Readiness</p>
-                    <p className="mt-1 text-sm text-slate-600">
+                    <p className="text-sm font-semibold text-slate-950">Institution Setup Readiness</p>
+                    <p className="mt-1 text-xs text-slate-600">
                       {isLoadingInstitutionSetupProgress
                         ? 'Checking current setup...'
                         : "You're almost there. Complete the remaining items to finish setup."}
                     </p>
                   </div>
                   {institutionSetupProgress?.summary && (
-                    <p className="text-lg font-bold text-[var(--brand-primary)]">
+                    <p className="text-base font-bold text-[var(--brand-primary)]">
                       {institutionSetupProgress.summary.completed}/{institutionSetupProgress.summary.total}
                     </p>
                   )}
                 </div>
-                <div className="mt-4 h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
+                <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-200">
                   <div
                     className="h-full rounded-full bg-[var(--brand-primary)] transition-all duration-300"
                     style={{ width: `${institutionSetupProgress?.summary?.percent || 0}%` }}
                   />
                 </div>
-                <p className="mt-2 text-sm font-semibold text-[var(--brand-primary)]">
+                <p className="mt-1.5 text-xs font-semibold text-[var(--brand-primary)]">
                   {institutionSetupProgress?.summary?.percent || 0}% complete
                 </p>
                 {!isLoadingInstitutionSetupProgress && Array.isArray(institutionSetupProgress?.items) && (
-                  <div className="mt-4 grid gap-2.5 lg:grid-cols-2">
+                  <div className="mt-3 grid gap-2 lg:grid-cols-2">
                     {institutionSetupProgress.items.map((item) => (
-                      <div key={item.key} className="flex min-h-[38px] items-center justify-between gap-4 rounded-md border border-slate-200 px-3 py-2">
-                        <div className="flex min-w-0 items-center gap-3">
+                      <div key={item.key} className="flex min-h-[31px] items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-1.5">
+                        <div className="flex min-w-0 items-center gap-2.5">
                           <span className={cn(
-                            "grid h-5 w-5 shrink-0 place-items-center rounded-full",
+                            "grid h-4 w-4 shrink-0 place-items-center rounded-full",
                             item.completed ? 'bg-emerald-600 text-white' : 'bg-amber-50 text-amber-600'
                           )}>
-                            {item.completed ? <CheckCircle size={14} /> : <Clock3 size={13} />}
+                            {item.completed ? <CheckCircle size={11} /> : <Clock3 size={11} />}
                           </span>
-                          <p className="truncate text-sm font-medium text-slate-800">{item.label}</p>
+                          <p className="truncate text-xs font-medium text-slate-800">{item.label}</p>
                         </div>
-                        <p className="shrink-0 text-sm font-bold text-slate-900">{item.current}/{item.target}</p>
+                        <p className="shrink-0 text-xs font-bold text-slate-900">{item.current}/{item.target}</p>
                       </div>
                     ))}
                   </div>
@@ -669,16 +669,16 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
               </section>
 
               {institutionSetupError && (
-                <div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
                   {institutionSetupError}
                 </div>
               )}
 
-              <div className="mt-5 flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-3 sm:flex-row sm:items-center sm:justify-between">
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-11 border-gray-300 px-6 text-black"
+                  className="h-9 border-gray-300 px-5 text-sm text-black"
                   onClick={() => {
                     setShowInstitutionSetupModal(false);
                     setPendingCredentialsData(null);
@@ -693,14 +693,14 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
                   <Button
                     type="button"
                     variant="outline"
-                    className="h-11 border-gray-300 px-8 text-black"
+                    className="h-9 border-gray-300 px-7 text-sm text-black"
                     disabled
                   >
                     Back
                   </Button>
                   <Button
                     type="button"
-                    className="h-11 min-w-[160px] bg-[var(--brand-primary)] px-8 text-white hover:brightness-90"
+                    className="h-9 min-w-[140px] bg-[var(--brand-primary)] px-7 text-sm text-white hover:brightness-90"
                     onClick={institutionSetupSuccess ? handleContinueAfterInstitutionSetup : handleConfirmInstitutionSetup}
                     disabled={isLockingInstitution}
                   >
