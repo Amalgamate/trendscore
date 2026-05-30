@@ -159,14 +159,93 @@ compose_with_pinned_images() {
 publish_frontend_static() {
   local kind="$1"
   local static_dir="${2:-}"
+  local public_domain="${3:-}"
 
   [[ "${kind}" == "main" ]] || return 0
-  [[ -n "${static_dir}" ]] || return 0
 
   local container="zawadi-frontend"
-  log "━━ Publish static frontend: ${container} → ${static_dir} ━━"
-  sudo mkdir -p "${static_dir}"
-  sudo docker cp "${container}:/usr/share/nginx/html/." "${static_dir}/"
+  local image
+  image="$(sudo docker inspect "${container}" --format '{{.Config.Image}}' 2>/dev/null || true)"
+  [[ -n "${image}" ]] && log "Frontend container image: ${image}"
+
+  local -a targets=()
+  local root duplicate=0 t
+  if [[ -n "${static_dir}" ]]; then
+    targets+=("${static_dir}")
+  fi
+  while IFS= read -r root; do
+    [[ -n "${root}" ]] || continue
+    duplicate=0
+    for t in "${targets[@]}"; do
+      if [[ "${t}" == "${root}" ]]; then
+        duplicate=1
+        break
+      fi
+    done
+    [[ "${duplicate}" -eq 0 ]] && targets+=("${root}")
+  done < <(discover_nginx_static_roots "${public_domain}")
+
+  [[ "${#targets[@]}" -gt 0 ]] || {
+    log "No static publish targets configured"
+    return 0
+  }
+
+  log "Static publish targets: ${targets[*]}"
+  local target verified=0
+  for target in "${targets[@]}"; do
+    log "━━ Publish static frontend: ${container} → ${target} ━━"
+    sudo mkdir -p "${target}"
+    sudo docker cp "${container}:/usr/share/nginx/html/." "${target}/"
+    if id www-data >/dev/null 2>&1; then
+      sudo chown -R www-data:www-data "${target}" 2>/dev/null || true
+    fi
+    if verify_static_bundle "${target}"; then
+      verified=1
+    fi
+  done
+
+  [[ "${verified}" -eq 1 ]] || fail "Published bundle still contains Apps menu"
+
+  if command -v nginx >/dev/null 2>&1; then
+    if sudo nginx -t >/dev/null 2>&1; then
+      sudo systemctl reload nginx >/dev/null 2>&1 && log "Nginx reloaded"
+    else
+      log "WARNING: nginx -t failed; skipped reload"
+    fi
+  fi
+}
+
+discover_nginx_static_roots() {
+  local domain="$1"
+  local sites_dir="${NGINX_SITES_DIR:-/etc/nginx/sites-enabled}"
+  [[ -n "${domain}" ]] || return 0
+  [[ -d "${sites_dir}" ]] || return 0
+
+  local conf
+  for conf in "${sites_dir}"/*; do
+    [[ -f "${conf}" ]] || continue
+    sudo grep -q "${domain}" "${conf}" 2>/dev/null || continue
+    sudo grep -E '^[[:space:]]*root[[:space:]]+' "${conf}" 2>/dev/null \
+      | sed -E 's/^[[:space:]]*root[[:space:]]+([^;[:space:]]+).*$/\1/' \
+      | tr -d '"' | tr -d "'"
+  done | sort -u
+}
+
+verify_static_bundle() {
+  local dir="$1"
+  local index="${dir}/index.html"
+  [[ -f "${index}" ]] || {
+    log "Missing index.html in ${dir}"
+    return 1
+  }
+
+  if grep -rql 'settings-apps' "${dir}/assets/" 2>/dev/null; then
+    log "Apps menu still present under ${dir}/assets"
+    return 1
+  fi
+
+  log "Verified: Apps menu removed in ${dir}"
+  return 0
 }
 
 verify_target() {
@@ -360,6 +439,7 @@ deploy_one() {
   local project="${3:-}"
   local env_file="${4:-}"
   local static_dir="${5:-}"
+  local public_domain="${6:-}"
 
   verify_target "${id}" "${kind}" "${project}" "${env_file}" || return 1
   if [[ "${DRY_RUN}" == "true" ]]; then
@@ -370,7 +450,7 @@ deploy_one() {
   pull_images "${kind}" "${project}" "${env_file}" || return 1
   run_migrations "${kind}" "${project}" "${env_file}" || return 1
   restart_services "${kind}" "${project}" "${env_file}" || return 1
-  publish_frontend_static "${kind}" "${static_dir}" || return 1
+  publish_frontend_static "${kind}" "${static_dir}" "${public_domain}" || return 1
   health_check_instance "${id}" "${kind}" "${project}" || return 1
 }
 
@@ -403,10 +483,14 @@ while IFS= read -r row; do
   project="$(printf '%s' "${row}" | jq -r '.compose_project // empty')"
   env_file="$(printf '%s' "${row}" | jq -r '.env_file // empty')"
   static_dir="$(printf '%s' "${row}" | jq -r '.static_publish_dir // empty')"
+  public_domain="$(printf '%s' "${row}" | jq -r '.public_domain // empty')"
   if [[ -z "${static_dir}" && "${kind}" == "main" ]]; then
     static_dir="$(jq -r '.defaults.static_publish_dir // empty' "${MANIFEST_PATH}")"
   fi
-  if deploy_one "${id}" "${kind}" "${project}" "${env_file}" "${static_dir}"; then
+  if [[ -z "${public_domain}" && "${kind}" == "main" ]]; then
+    public_domain="$(jq -r '.defaults.public_domain // empty' "${MANIFEST_PATH}")"
+  fi
+  if deploy_one "${id}" "${kind}" "${project}" "${env_file}" "${static_dir}" "${public_domain}"; then
     SUCCEEDED=$((SUCCEEDED + 1))
   else
     FAILED=$((FAILED + 1))

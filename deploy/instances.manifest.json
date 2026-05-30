@@ -18,6 +18,7 @@
       "label": "Trends CORE Demo (main stack)",
       "tier": "demo",
       "kind": "main",
+      "public_domain": "demoschool.trendscore.co.ke",
       "auto_deploy_on_main": true
     }
   ],
