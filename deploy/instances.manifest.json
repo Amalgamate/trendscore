@@ -9,7 +9,8 @@
     "frontend_image": "ghcr.io/amalgamate/zawadi-frontend",
     "backend_image": "ghcr.io/amalgamate/zawadi-backend",
     "console_image": "ghcr.io/amalgamate/zawadi-console",
-    "health_host": "127.0.0.1"
+    "health_host": "127.0.0.1",
+    "static_publish_dir": "/srv/zawadi/apps/zawadijrn/build"
   },
   "instances": [
     {

@@ -142,7 +142,11 @@ compose_with_pinned_images() {
 
   if [[ "${kind}" == "main" ]]; then
     cd "${MAIN_DIR}"
-    sudo docker compose --env-file "${deploy_env}" "$@"
+    if [[ -f "${MAIN_DIR}/.env" ]]; then
+      sudo docker compose --env-file "${MAIN_DIR}/.env" --env-file "${deploy_env}" "$@"
+    else
+      sudo docker compose --env-file "${deploy_env}" "$@"
+    fi
   else
     cd "${APPS_DIR}"
     sudo docker compose --env-file "${stack_env}" --env-file "${deploy_env}" \
@@ -150,6 +154,19 @@ compose_with_pinned_images() {
   fi
 
   rm -f "${deploy_env}"
+}
+
+publish_frontend_static() {
+  local kind="$1"
+  local static_dir="${2:-}"
+
+  [[ "${kind}" == "main" ]] || return 0
+  [[ -n "${static_dir}" ]] || return 0
+
+  local container="zawadi-frontend"
+  log "━━ Publish static frontend: ${container} → ${static_dir} ━━"
+  sudo mkdir -p "${static_dir}"
+  sudo docker cp "${container}:/usr/share/nginx/html/." "${static_dir}/"
 }
 
 verify_target() {
@@ -241,12 +258,12 @@ run_migrations() {
 
   if [[ "${kind}" == "main" ]]; then
     compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
-      run -T --rm backend npx prisma migrate deploy < /dev/null
+      run -T --no-deps --rm backend npx prisma migrate deploy < /dev/null
     return 0
   fi
 
   compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
-    run -T --rm backend npx prisma migrate deploy < /dev/null
+    run -T --no-deps --rm backend npx prisma migrate deploy < /dev/null
 }
 
 restart_services() {
@@ -258,12 +275,12 @@ restart_services() {
 
   if [[ "${kind}" == "main" ]]; then
     compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
-      up -d --force-recreate backend frontend
+      up -d --no-deps --force-recreate backend frontend
     return 0
   fi
 
   compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
-    up -d --force-recreate backend frontend
+    up -d --no-deps --force-recreate backend frontend
 }
 
 health_check_instance() {
@@ -342,6 +359,7 @@ deploy_one() {
   local kind="$2"
   local project="${3:-}"
   local env_file="${4:-}"
+  local static_dir="${5:-}"
 
   verify_target "${id}" "${kind}" "${project}" "${env_file}" || return 1
   if [[ "${DRY_RUN}" == "true" ]]; then
@@ -352,6 +370,7 @@ deploy_one() {
   pull_images "${kind}" "${project}" "${env_file}" || return 1
   run_migrations "${kind}" "${project}" "${env_file}" || return 1
   restart_services "${kind}" "${project}" "${env_file}" || return 1
+  publish_frontend_static "${kind}" "${static_dir}" || return 1
   health_check_instance "${id}" "${kind}" "${project}" || return 1
 }
 
@@ -383,7 +402,11 @@ while IFS= read -r row; do
   kind="$(printf '%s' "${row}" | jq -r '.kind')"
   project="$(printf '%s' "${row}" | jq -r '.compose_project // empty')"
   env_file="$(printf '%s' "${row}" | jq -r '.env_file // empty')"
-  if deploy_one "${id}" "${kind}" "${project}" "${env_file}"; then
+  static_dir="$(printf '%s' "${row}" | jq -r '.static_publish_dir // empty')"
+  if [[ -z "${static_dir}" && "${kind}" == "main" ]]; then
+    static_dir="$(jq -r '.defaults.static_publish_dir // empty' "${MANIFEST_PATH}")"
+  fi
+  if deploy_one "${id}" "${kind}" "${project}" "${env_file}" "${static_dir}"; then
     SUCCEEDED=$((SUCCEEDED + 1))
   else
     FAILED=$((FAILED + 1))
