@@ -44,7 +44,7 @@ jobs:
           images: ${{ env.FRONTEND_IMAGE }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=sha-
+            type=sha,prefix=sha-,format=long
             type=ref,event=tag
 
       - name: Backend image metadata
@@ -54,7 +54,7 @@ jobs:
           images: ${{ env.BACKEND_IMAGE }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=sha-
+            type=sha,prefix=sha-,format=long
             type=ref,event=tag
 
       - name: Console image metadata
@@ -64,7 +64,7 @@ jobs:
           images: ${{ env.CONSOLE_IMAGE }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=sha-
+            type=sha,prefix=sha-,format=long
             type=ref,event=tag
 
       - name: Build and publish frontend
@@ -77,8 +77,8 @@ jobs:
             BUILD_SHA=${{ github.sha }}
           tags: ${{ steps.frontend_meta.outputs.tags }}
           labels: ${{ steps.frontend_meta.outputs.labels }}
-          cache-from: type=gha,scope=frontend
-          cache-to: type=gha,mode=max,scope=frontend
+          cache-from: type=gha,scope=frontend-v2
+          cache-to: type=gha,mode=max,scope=frontend-v2
 
       - name: Build and publish backend
         uses: docker/build-push-action@v6

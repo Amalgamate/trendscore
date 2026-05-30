@@ -190,8 +190,12 @@ pull_images() {
   local env_file="${3:-}"
 
   log "━━ Pull images: ${FRONTEND_IMAGE} / ${BACKEND_IMAGE} ━━"
-  sudo docker pull "${FRONTEND_IMAGE}"
-  sudo docker pull "${BACKEND_IMAGE}"
+  if ! sudo docker pull "${FRONTEND_IMAGE}"; then
+    fail "Failed to pull frontend image: ${FRONTEND_IMAGE}"
+  fi
+  if ! sudo docker pull "${BACKEND_IMAGE}"; then
+    fail "Failed to pull backend image: ${BACKEND_IMAGE}"
+  fi
 
   if [[ "${kind}" == "main" ]]; then
     cd "${MAIN_DIR}"
