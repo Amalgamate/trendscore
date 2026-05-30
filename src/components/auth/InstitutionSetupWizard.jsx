@@ -12,7 +12,6 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { configAPI, schoolAPI } from '../../services/api';
-import { appsApi } from '../../services/api/apps.api';
 import { toast } from 'react-hot-toast';
 
 const INSTITUTION_TYPES = [
@@ -79,24 +78,11 @@ const InstitutionSetupWizard = ({ brandingSettings, onComplete }) => {
         return;
       }
 
-      // Re-fetch the now-activated core apps and patch them into the live session.
-      // This avoids a full re-login and makes the sidebar render correctly immediately.
-      let freshActiveApps = [];
-      try {
-        const appsRes = await appsApi.list();
-        freshActiveApps = (appsRes.data?.data || [])
-          .filter(a => a.isActive)
-          .map(a => a.slug);
-      } catch (e) {
-        console.warn('Could not fetch app list post-setup:', e);
-      }
-
-      // Patch the in-memory user: institution locked, setup done, fresh activeApps
+      // Patch the in-memory user: institution locked and setup done.
       updateUser({
         institutionType: selected,
         institutionTypeLocked: true,
         requiresInstitutionSetup: false,
-        activeApps: freshActiveApps,
       });
 
       toast.success('Institution configured! Setting up your dashboard…');
@@ -127,14 +113,11 @@ const InstitutionSetupWizard = ({ brandingSettings, onComplete }) => {
         }
       }
 
-      // Small delay so the success toast is visible before the transition
-      setTimeout(() => {
-        if (typeof onComplete === 'function') {
-          onComplete(selected);
-        } else {
-          navigate('/app', { replace: true });
-        }
-      }, 600);
+      if (typeof onComplete === 'function') {
+        onComplete(selected);
+      } else {
+        setTimeout(() => navigate('/app', { replace: true }), 600);
+      }
     } catch (err) {
       console.error('Institution setup error:', err);
       toast.error(err?.message || 'Could not reach the server. Please try again.');

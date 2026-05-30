@@ -145,7 +145,7 @@ export class AuthController {
         select: {
           id: true, password: true, status: true, loginAttempts: true, lockedUntil: true,
           role: true, roles: true, email: true, firstName: true, lastName: true,
-          phone: true, lastLogin: true, institutionType: true,
+          phone: true, lastLogin: true, institutionType: true, emailVerified: true,
           // mustChangePassword indicator — set on auto-created parent/student accounts
           passwordResetToken: true,
         }
@@ -178,6 +178,17 @@ export class AuthController {
 
     if (user.status !== 'ACTIVE') throw new ApiError(403, 'Account is not active');
 
+    const userRolesForVerify = ((user.roles && user.roles.length > 0) ? user.roles : [user.role]) as string[];
+    if (
+      !user.emailVerified &&
+      userRolesForVerify.some((r) => ['SUPER_ADMIN', 'ADMIN'].includes(r))
+    ) {
+      throw new ApiError(
+        403,
+        'Please verify your account before signing in. Complete phone verification or use the link in your welcome email.'
+      );
+    }
+
     // ── C1 fix: detect auto-created accounts that must change their password ──
     // passwordResetToken is set on parent/student accounts created via learner admission.
     // We surface this as mustChangePassword so the frontend can intercept and redirect.
@@ -198,6 +209,8 @@ export class AuthController {
 
     const schoolId = (user as any).schoolId || (req as any).school?.id;
     const schoolConfig = await prisma.school.findFirst({
+      where: { archived: false },
+      orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }, { createdAt: 'desc' }],
       select: { id: true, institutionType: true, institutionTypeLocked: true }
     });
     // Single-tenant fallback: the user record has no schoolId column, so we
@@ -211,16 +224,6 @@ export class AuthController {
     });
     const otpEnabled = (communicationConfig?.emailTemplates as any)?.__security?.otpEnabled !== false;
     const requiresOtp = otpEnabled && !userRoles.some(r => ['SUPER_ADMIN', 'STUDENT'].includes(r));
-    let activeApps: string[] = [];
-    
-    if (resolvedSchoolId) {
-      const appConfigs = await prisma.schoolAppConfig.findMany({
-        where: { schoolId: resolvedSchoolId, isActive: true },
-        include: { app: { select: { slug: true } } }
-      });
-      activeApps = appConfigs.map(c => c.app.slug);
-    }
-
     res.json({
       success: true,
       user: {
@@ -231,7 +234,6 @@ export class AuthController {
         institutionTypeLocked: schoolConfig?.institutionTypeLocked === true,
         requiresInstitutionSetup,
         availableInstitutionTypes: ['PRIMARY_CBC', 'SECONDARY', 'TERTIARY'],
-        activeApps
       },
       token: accessToken, // Return actual token for cross-domain headers fallback
       refreshToken: refreshToken,
@@ -242,9 +244,19 @@ export class AuthController {
   }
 
   async checkAvailability(req: Request, res: Response) {
-    const { email } = req.body;
-    if (!email) throw new ApiError(400, 'Email required');
-    const user = await prisma.user.findUnique({ where: { email } });
+    const { email, phone } = req.body;
+    if (!email && !phone) throw new ApiError(400, 'Email or phone required');
+
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          ...(email ? [{ email: String(email).trim() }] : []),
+          ...(phone ? [{ phone: String(phone).replace(/\s+/g, '') }] : []),
+        ],
+      },
+      select: { id: true },
+    });
+
     res.json({ success: true, available: !user });
   }
 
@@ -376,18 +388,12 @@ export class AuthController {
     const schoolId = (user as any).schoolId || (req as any).school?.id;
     const school = schoolId
       ? null
-      : await prisma.school.findFirst({ select: { id: true } });
-    const resolvedSchoolId = schoolId || school?.id;
-    let activeApps: string[] = [];
-    
-    if (resolvedSchoolId) {
-      const appConfigs = await prisma.schoolAppConfig.findMany({
-        where: { schoolId: resolvedSchoolId, isActive: true },
-        include: { app: { select: { slug: true } } }
+      : await prisma.school.findFirst({
+        where: { archived: false },
+        orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }, { createdAt: 'desc' }],
+        select: { id: true }
       });
-      activeApps = appConfigs.map(c => c.app.slug);
-    }
-
+    const resolvedSchoolId = schoolId || school?.id;
     const { passwordResetToken, ...userPublic } = user;
     res.json({
       success: true,
@@ -397,7 +403,6 @@ export class AuthController {
         roles: user.roles && user.roles.length > 0 ? user.roles : [user.role],
         institutionType: user.institutionType || (req as any).school?.institutionType || 'PRIMARY_CBC',
         mustChangePassword: !!passwordResetToken,
-        activeApps,
       }
     });
   }

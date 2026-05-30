@@ -339,7 +339,6 @@ export const allNavSections = [
         icon: Settings,
         permission: 'SCHOOL_SETTINGS',
         items: [
-            { id: 'settings-apps',           label: 'Apps',                    path: 'settings-apps',           permission: 'SCHOOL_SETTINGS'   },
             { id: 'settings-school',         label: 'School Settings',         path: 'settings-school',         permission: 'SCHOOL_SETTINGS'   },
             { id: 'settings-academic',       label: 'Academic Settings',       path: 'settings-academic',       permission: 'ACADEMIC_SETTINGS' },
             { id: 'settings-communication',  label: 'Communication Settings',  path: 'settings-communication',  permission: 'SCHOOL_SETTINGS'   },
@@ -409,16 +408,9 @@ export const useNavigation = () => {
     // nav array and category groupings differ.
 
     const buildNav = (sourceSections) => {
-        const activeApps = user?.activeApps || [];
-        const activeAppsLoaded = Array.isArray(user?.activeApps);
-        const isSuperAdmin = user?.role === 'SUPER_ADMIN';
-
         const isItemVisible = (item) => {
-            // 1. App Gating: if the item requires an app, it must be active
-            if (item.app && activeAppsLoaded && !activeApps.includes(item.app) && !isSuperAdmin) return false;
             if (item.path === 'learners-admissions' && isRole('TEACHER')) return true;
              
-            // 2. Permission Gating: must have required permission
             if (item.permission && !can(item.permission)) return false;
             
             return true;
@@ -435,13 +427,8 @@ export const useNavigation = () => {
         }, []);
 
         return sourceSections.filter(section => {
-            // 1. App Gating for whole section
-            if (section.app && activeAppsLoaded && !activeApps.includes(section.app) && !isSuperAdmin) return false;
-
-            // 2. Permission Gating for whole section
             if (section.permission && !can(section.permission)) return false;
 
-            // 3. Recursive check for children
             if (section.items.length > 0) {
                 return processItems(section.items).length > 0;
             }
@@ -542,11 +529,7 @@ export const useNavigation = () => {
     // ── CBC (default) ─────────────────────────────────────────────────────────
 
     const navSections = useMemo(() => {
-        const activeApps = user?.activeApps || [];
-        const activeAppsLoaded = Array.isArray(user?.activeApps);
-        const isSuperAdmin = user?.role === 'SUPER_ADMIN';
         const isItemVisible = (item) => {
-            if (item.app && activeAppsLoaded && !activeApps.includes(item.app) && !isSuperAdmin) return false;
             if (item.path === 'learners-admissions' && isRole('TEACHER')) return true;
             if (item.permission && !can(item.permission)) return false;
             return true;
@@ -578,7 +561,6 @@ export const useNavigation = () => {
             if (!focusModules.includes(section.id)) return false;
             if (section.id === 'settings') return false;
             if (role === 'STUDENT' && section.id === 'lms') return false;
-            if (section.app && activeAppsLoaded && !activeApps.includes(section.app) && !isSuperAdmin) return false;
             if (section.permission && !can(section.permission)) return false;
             if (section.items.length > 0) {
                 const visibleItems = processItems(section.items);
@@ -604,7 +586,7 @@ export const useNavigation = () => {
             built = transformNavForParentRole(built);
         }
         return built;
-    }, [can, role, isRole, labels, user?.activeApps, user?.role]);
+    }, [can, role, isRole, labels]);
 
     const dashboardSection = navSections.find(s => s.id === 'dashboard');
     const lmsSection = navSections.find(s => s.id === 'lms');

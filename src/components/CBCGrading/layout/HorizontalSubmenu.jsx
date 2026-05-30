@@ -88,7 +88,7 @@ const GroupDropdown = ({ group, currentPage, onNavigate, color }) => {
   const handleToggle = () => {
     if (!open && btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect();
-      setMenuPos({ top: rect.bottom + 6, left: rect.left });
+      setMenuPos({ top: rect.bottom, left: rect.left });
     }
     setOpen(v => !v);
   };
@@ -123,7 +123,7 @@ const GroupDropdown = ({ group, currentPage, onNavigate, color }) => {
     <div
       ref={menuRef}
       style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 9999 }}
-      className="bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-[200px]"
+      className="bg-white border border-gray-200 shadow-sm min-w-[250px] py-1"
     >
       {items.map((item, i) => {
         const isActive = currentPage === item.path;
@@ -133,16 +133,16 @@ const GroupDropdown = ({ group, currentPage, onNavigate, color }) => {
             type="button"
             onClick={() => { if (!item.comingSoon) { onNavigate(item.path); setOpen(false); } }}
             disabled={!!item.comingSoon}
-            className={`w-full text-left px-4 py-2 text-xs font-semibold transition-colors flex items-center gap-2.5 ${
+            className={`w-full text-left px-5 py-2.5 text-sm font-semibold transition-colors flex items-center gap-3 ${
               isActive
-                ? `${color.trigger} bg-gray-50 font-medium`
+                ? `${color.trigger} bg-gray-50`
                 : item.comingSoon
                   ? 'text-gray-300 cursor-not-allowed'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  : 'text-black hover:bg-gray-50'
             }`}
           >
             {isActive && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${color.dot}`} />}
-            <span className={isActive ? '' : 'ml-4'}>{item.label}</span>
+            <span className={isActive ? '' : 'ml-5'}>{item.label}</span>
           </button>
         );
       })}
@@ -155,10 +155,10 @@ const GroupDropdown = ({ group, currentPage, onNavigate, color }) => {
         ref={btnRef}
         type="button"
         onClick={handleToggle}
-        className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md border transition-all ${
+        className={`flex items-center gap-2 text-sm font-medium px-3 py-2 border transition-all ${
           isAnyActive
-            ? `${color.trigger} ${color.activeBg} border-current`
-            : `text-gray-600 hover:text-gray-900 border-transparent ${color.hover}`
+            ? `${color.trigger} ${color.activeBg} border-gray-900`
+            : `text-black hover:text-gray-900 border-transparent ${color.hover}`
         }`}
       >
         {group.label}

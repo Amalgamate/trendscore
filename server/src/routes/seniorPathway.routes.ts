@@ -6,6 +6,7 @@ const router = Router();
 
 router.get('/catalog', seniorPathwayController.getCatalog);
 router.get('/combinations', seniorPathwayController.getCombinations);
+router.get('/offerings', seniorPathwayController.getSchoolOfferings);
 router.get('/school-offerings', seniorPathwayController.getSchoolOfferings);
 router.get('/learners/:learnerId/selection', seniorPathwayController.getLearnerSelection);
 router.get('/learners/:learnerId/legacy-preview', seniorPathwayController.previewLegacySelection);
@@ -19,6 +20,20 @@ router.post(
 );
 
 router.post('/validate-selection', seniorPathwayController.validateSelection);
+
+router.put(
+  '/offerings',
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM']),
+  auditLog('UPDATE_SENIOR_SCHOOL_OFFERINGS'),
+  seniorPathwayController.updateSchoolOfferings
+);
+
+router.put(
+  '/school-offerings',
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM']),
+  auditLog('UPDATE_SENIOR_SCHOOL_OFFERINGS'),
+  seniorPathwayController.updateSchoolOfferings
+);
 
 router.post(
   '/selections',

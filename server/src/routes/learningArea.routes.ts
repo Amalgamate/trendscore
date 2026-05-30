@@ -38,6 +38,11 @@ const createLearningAreaSchema = z.object({
   icon: z.string().optional(),
   color: z.string().optional(),
   description: z.string().max(500).optional(),
+  isCore: z.boolean().optional(),
+  pathway: z.string().optional(),
+  category: z.string().optional(),
+  pathwayId: z.string().optional(),
+  categoryId: z.string().optional(),
   // strip legacy / multi-tenant fields silently
   code: z.string().optional(),
   schoolId: z.string().optional(),
@@ -50,6 +55,11 @@ const updateLearningAreaSchema = z.object({
   icon: z.string().optional(),
   color: z.string().optional(),
   description: z.string().max(500).optional(),
+  isCore: z.boolean().optional(),
+  pathway: z.string().optional(),
+  category: z.string().optional(),
+  pathwayId: z.string().optional(),
+  categoryId: z.string().optional(),
 });
 
 // authenticate is applied in index.ts — do NOT add router.use(authenticate) here

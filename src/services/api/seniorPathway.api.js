@@ -15,6 +15,11 @@ export const seniorPathwayAPI = {
   getCombinations: async (params = {}) =>
     fetchWithAuth(`/senior-pathways/combinations${toQueryString(params)}`),
   getSchoolOfferings: async () => fetchWithAuth('/senior-pathways/offerings'),
+  updateSchoolOfferings: async (officialLearningAreaIds = []) =>
+    fetchWithAuth('/senior-pathways/offerings', {
+      method: 'PUT',
+      body: JSON.stringify({ officialLearningAreaIds }),
+    }),
   getLearnerSelection: async (learnerId) =>
     fetchWithAuth(`/senior-pathways/learners/${learnerId}/selection`),
   previewLegacySelection: async (learnerId) =>

@@ -94,6 +94,17 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
     []
   );
 
+  const setupChecklist = useMemo(() => {
+    const progressItems = institutionSetupProgress?.items;
+    if (Array.isArray(progressItems) && progressItems.length > 0) {
+      return progressItems.map((item) => [item.label, item.completed]);
+    }
+    return [
+      ['Institution Type', wizardStep === 'profile' || !!institutionSetupSuccess],
+      ['School Profile', !!institutionSetupSuccess],
+    ];
+  }, [institutionSetupProgress, wizardStep, institutionSetupSuccess]);
+
   const resolveInstitutionType = (email, apiUser) => {
     // Junior remains default. Only force SECONDARY for SS demo accounts.
     const normalized = String(email || apiUser?.email || '').toLowerCase();
@@ -167,7 +178,6 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
       branchId: user.branchId || user.branch?.id || null,
       school: user.school || null,
       branch: user.branch || null,
-      activeApps: Array.isArray(user.activeApps) ? user.activeApps : [],
       mustChangePassword
     };
 
@@ -225,6 +235,7 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
 
       await schoolAPI.updateCurrent(cleanProfile, pendingCredentialsData.token);
       await schoolAPI.lockInstitutionType(institutionChoice, pendingCredentialsData.token);
+      const progressResponse = await schoolAPI.getInstitutionSetupProgress(institutionChoice, pendingCredentialsData.token);
 
       const nextCredentialsData = {
         ...pendingCredentialsData,
@@ -241,6 +252,7 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
       };
 
       setPendingCredentialsData(nextCredentialsData);
+      setInstitutionSetupProgress(progressResponse?.data || null);
       setInstitutionSetupSuccess('School profile saved. You can now continue to the dashboard.');
       toast.success('School profile saved. Reports, receipts, and the login page can now use these details.', { id: toastId });
     } catch (error) {
@@ -355,7 +367,6 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
       branchId: pendingUserData.user.branchId || pendingUserData.user.branch?.id || null,
       school: school,
       branch: pendingUserData.user.branch || null,
-      activeApps: Array.isArray(pendingUserData.user.activeApps) ? pendingUserData.user.activeApps : [],
       mustChangePassword: pendingUserData.mustChangePassword
     };
 
@@ -607,16 +618,7 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
               <div className="mt-5 hidden border-t border-white/15 pt-5 lg:block">
                 <p className="text-[11px] font-semibold uppercase text-white/70">Setup Checklist</p>
                 <div className="mt-3 space-y-2">
-                  {[
-                    ['Institution Type', wizardStep === 'profile' || !!institutionSetupSuccess],
-                    ['School Profile', !!institutionSetupSuccess],
-                    ['Academic Structure', true],
-                    ['Streams & Classes', true],
-                    ['Subjects', true],
-                    ['Grading System', true],
-                    ['Fee Structure', true],
-                    ['Users & Permissions', true],
-                  ].map(([label, done]) => (
+                  {setupChecklist.map(([label, done]) => (
                     <div key={label} className="flex items-center gap-2.5 text-xs">
                       <span className={cn(
                         "grid h-4 w-4 place-items-center rounded-full border",

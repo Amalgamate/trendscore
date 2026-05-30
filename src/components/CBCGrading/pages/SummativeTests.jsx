@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, Edit, Trash2, Eye, Loader, Database, ChevronDown, GraduationCap, RefreshCw, Search, X } from 'lucide-react';
+import { ArrowLeft, Plus, Edit, Trash2, Eye, Loader, Database, ChevronDown, GraduationCap, RefreshCw, Search, X } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 import { useAuth } from '../../../hooks/useAuth';
 import { assessmentAPI, classAPI } from '../../../services/api';
@@ -13,7 +13,7 @@ import BulkCreateTest from './BulkCreateTest';
 import ResetUtility from '../../../pages/assessments/ResetUtility';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import EmptyState from '../shared/EmptyState';
-import { normalizeTestType, formatTestTypeLabel } from '../utils/testType';
+import { CANONICAL_TEST_TYPE_OPTIONS, normalizeTestType, resolveTestType, formatTestTypeLabel } from '../utils/testType';
 
 // Shadcn UI components
 import { Button } from '../../ui/button';
@@ -215,20 +215,26 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
   const [filterGrade, setFilterGrade] = useState('');
   const [filterTerm, setFilterTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [filterTestType, setFilterTestType] = useState('');
   const normalizedDefaultTestType = useMemo(
     () => normalizeTestType(defaultTestType),
     [defaultTestType]
   );
 
+  useEffect(() => {
+    setFilterTestType(normalizedDefaultTestType || '');
+  }, [normalizedDefaultTestType]);
+
   // Derived filter options from loaded tests
   const availableGrades = useMemo(() => [...new Set(tests.map(t => t.grade).filter(Boolean))].sort(), [tests]);
   const availableTerms = useMemo(() => [...new Set(tests.map(t => t.term).filter(Boolean))].sort(), [tests]);
-  const activeFilterCount = [filterGrade, filterTerm, filterStatus, normalizedDefaultTestType].filter(Boolean).length;
+  const activeFilterCount = [filterGrade, filterTerm, filterStatus, filterTestType].filter(Boolean).length;
   const clearAllFilters = () => {
     setSearchQuery('');
     setFilterGrade('');
     setFilterTerm('');
     setFilterStatus('');
+    setFilterTestType('');
   };
   const toggleGrade = (grade) => {
     setExpandedGrades(prev =>
@@ -264,11 +270,9 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
     if (filterGrade) result = result.filter(t => toCanonicalGrade(t.grade) === toCanonicalGrade(filterGrade));
     if (filterTerm) result = result.filter(t => (t.term || '') === filterTerm);
     if (filterStatus) result = result.filter(t => (t.status || '').toUpperCase() === filterStatus.toUpperCase());
-    if (normalizedDefaultTestType) {
-      result = result.filter(t => normalizeTestType(t.testType) === normalizedDefaultTestType);
-    }
+    if (filterTestType) result = result.filter(t => resolveTestType(t) === filterTestType);
     return result;
-  }, [tests, searchQuery, filterGrade, filterTerm, filterStatus, normalizedDefaultTestType]);
+  }, [tests, searchQuery, filterGrade, filterTerm, filterStatus, filterTestType]);
 
   const groupedData = useMemo(() => {
     const grouped = {};
@@ -377,12 +381,20 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
 
   const stats = useMemo(() => ({ total: tests.length }), [tests]);
 
+  const handleBack = () => {
+    if (normalizedDefaultTestType) {
+      onNavigate?.('sec-mark-entry');
+      return;
+    }
+    if (window.history.length > 1) window.history.back();
+  };
+
 
 
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
       <SummativeTestForm
-        initialTestType={viewMode === 'create' ? normalizedDefaultTestType : null}
+        initialTestType={viewMode === 'create' ? (filterTestType || normalizedDefaultTestType) : null}
         onBack={() => setViewMode('list')}
         onSuccess={(createdTest, selectedLearners) => {
           fetchTests(); // Refresh the tests list
@@ -443,6 +455,14 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
             </div>
           ) : (
             <div className="flex items-center gap-4 overflow-x-auto pb-2 md:pb-0 shrink-0">
+              <button
+                type="button"
+                onClick={handleBack}
+                className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-50 transition"
+              >
+                <ArrowLeft size={14} />
+                Back
+              </button>
               <div className="text-right border-r pr-4 border-gray-200 min-w-[80px]">
                 <p className="text-[10px] text-gray-500 uppercase font-medium tracking-wider">Total Tests</p>
                 <p className="text-xl font-medium text-gray-800 leading-none">{filteredTests.length}</p>
@@ -491,6 +511,17 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
               <option value="PUBLISHED">Published</option>
               <option value="DRAFT">Draft</option>
               <option value="ARCHIVED">Archived</option>
+            </select>
+            <select
+              value={filterTestType}
+              onChange={(e) => setFilterTestType(e.target.value)}
+              className="h-9 px-2.5 border border-slate-300 rounded-xl text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-purple cursor-pointer hover:border-slate-400 transition-colors"
+            >
+              <option value="">All Test Types</option>
+              {CANONICAL_TEST_TYPE_OPTIONS.map(type => (
+                <option key={type.value} value={type.value}>{type.label}</option>
+              ))}
+              <option value="ASSESSMENT">Custom Assessment</option>
             </select>
             {/* Clear */}
             {(searchQuery || activeFilterCount > 0) && (
@@ -676,7 +707,7 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
                                           </div>
 
                                           <div className="flex items-center gap-1">
-                                            <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-brand-teal" onClick={() => onNavigate('summative-results', { testId: test.id })}><Eye size={14} /></Button>
+                                            <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-brand-teal" onClick={() => onNavigate('assess-summative-assessment', { initialTestId: test.id, defaultTestType: resolveTestType(test) })}><Eye size={14} /></Button>
                                             {(user?.role !== 'TEACHER' || test.createdBy === user?.id) && (
                                               <>
                                                 <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-400 hover:text-green-600" onClick={() => { setSelectedTest(test); setViewMode('edit'); }}><Edit size={14} /></Button>

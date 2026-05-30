@@ -1,8 +1,7 @@
 import React, { useState, useCallback } from 'react';
-import { User, Mail, Lock, Eye, EyeOff, CheckCircle, Loader2, XCircle, Globe, Building2, MapPin } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, CheckCircle, Loader2, XCircle, Building2, MapPin } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { onboardingAPI, authAPI } from '../../services/api';
-import { useSubdomainCheck } from '../../hooks/useSubdomain';
 import debounce from 'lodash/debounce';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -25,19 +24,14 @@ export default function RegisterForm({ onSwitchToLogin, onRegisterSuccess, brand
     county: '',
     subCounty: '',
     ward: '',
-    subdomain: '',
     termsAccepted: false
   });
-  const [suggestedSubdomain, setSuggestedSubdomain] = useState('');
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
-
-  // Subdomain hook
-  const { checkAvailability: checkSubdomainAvailability, suggestSubdomain } = useSubdomainCheck();
 
   // validationStatus: { [field]: 'valid' | 'invalid' | 'loading' | null }
   const [fieldStatus, setFieldStatus] = useState({});
@@ -56,7 +50,13 @@ export default function RegisterForm({ onSwitchToLogin, onRegisterSuccess, brand
       setFieldStatus(prev => ({ ...prev, [field]: 'loading' }));
 
       try {
-        await authAPI.checkAvailability({ [field]: value });
+        const result = await authAPI.checkAvailability({ [field]: value });
+        if (result?.available === false) {
+          const msg = `${field === 'email' ? 'Email' : 'Phone'} already exists`;
+          setFieldStatus(prev => ({ ...prev, [field]: 'invalid' }));
+          setErrors(prev => ({ ...prev, [field]: msg }));
+          return;
+        }
         setFieldStatus(prev => ({ ...prev, [field]: 'valid' }));
         setErrors(prev => ({ ...prev, [field]: '' }));
       } catch (error) {
@@ -92,8 +92,9 @@ export default function RegisterForm({ onSwitchToLogin, onRegisterSuccess, brand
         setFieldStatus(prev => ({ ...prev, [name]: 'invalid' }));
         return;
       }
-      if (name === 'phone' && !/^\d{9,12}$/.test(value) && value.length > 0) {
-        // wait for full length
+      if (name === 'phone') {
+        const fullPhone = countryCode + phoneNumber;
+        if (fullPhone.length >= 10) checkAvailability('phone', fullPhone);
       } else {
         checkAvailability(name, value);
       }
@@ -220,72 +221,6 @@ export default function RegisterForm({ onSwitchToLogin, onRegisterSuccess, brand
     return Object.keys(newErrors).length === 0;
   };
 
-  // Handle subdomain suggestion
-  const handleSchoolNameBlur = async () => {
-    if (!formData.schoolName.trim()) return;
-
-    // Show loading indicator on subdomain field
-    setFieldStatus(prev => ({ ...prev, subdomain: 'loading' }));
-
-    try {
-      const result = await suggestSubdomain(formData.schoolName);
-      setSuggestedSubdomain(result.suggested);
-
-      // Auto-fill if empty OR if existing value matches previous suggestion (meaning user hasn't customized it)
-      if (!formData.subdomain || formData.subdomain === suggestedSubdomain) {
-        setFormData(prev => ({ ...prev, subdomain: result.suggested }));
-
-        // Check availability of the new suggestion
-        const availability = await checkSubdomainAvailability(result.suggested);
-        if (availability.available) {
-          setFieldStatus(prev => ({ ...prev, subdomain: 'valid' }));
-          setErrors(prev => ({ ...prev, subdomain: '' }));
-        } else {
-          setFieldStatus(prev => ({ ...prev, subdomain: 'invalid' }));
-          setErrors(prev => ({ ...prev, subdomain: availability.message }));
-        }
-      } else {
-        // If user has customized it, just turn off loading
-        setFieldStatus(prev => ({ ...prev, subdomain: fieldStatus.subdomain === 'valid' ? 'valid' : fieldStatus.subdomain === 'invalid' ? 'invalid' : null }));
-      }
-    } catch (error) {
-      console.error('Error suggesting subdomain:', error);
-      setFieldStatus(prev => ({ ...prev, subdomain: null }));
-    }
-  };
-
-  const handleSubdomainChange = async (e) => {
-    const value = e.target.value.toLowerCase();
-    setFormData(prev => ({ ...prev, subdomain: value }));
-
-    if (!value.trim()) {
-      setFieldStatus(prev => ({ ...prev, subdomain: null }));
-      setErrors(prev => ({ ...prev, subdomain: '' }));
-      return;
-    }
-
-    if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(value)) {
-      setFieldStatus(prev => ({ ...prev, subdomain: 'invalid' }));
-      setErrors(prev => ({ ...prev, subdomain: 'Only lowercase letters, numbers, and hyphens allowed' }));
-      return;
-    }
-
-    setFieldStatus(prev => ({ ...prev, subdomain: 'loading' }));
-    try {
-      const result = await checkSubdomainAvailability(value);
-      if (result.available) {
-        setFieldStatus(prev => ({ ...prev, subdomain: 'valid' }));
-        setErrors(prev => ({ ...prev, subdomain: '' }));
-      } else {
-        setFieldStatus(prev => ({ ...prev, subdomain: 'invalid' }));
-        setErrors(prev => ({ ...prev, subdomain: result.message }));
-      }
-    } catch (error) {
-      setFieldStatus(prev => ({ ...prev, subdomain: 'invalid' }));
-      setErrors(prev => ({ ...prev, subdomain: 'Error checking subdomain availability' }));
-    }
-  };
-
   // Kenya county coordinates
   const kenyaCounties = {
     'Baringo': { bounds: [[0.05, 35.26], [1.27, 36.47]] },
@@ -356,25 +291,25 @@ export default function RegisterForm({ onSwitchToLogin, onRegisterSuccess, brand
         county: formData.county,
         subCounty: formData.subCounty,
         ward: formData.ward,
-        subdomain: formData.subdomain || suggestedSubdomain
       };
 
       const data = await onboardingAPI.registerFull(requestBody);
-      if (data) {
-        toast.success('Registration successful! Redirecting...');
+      if (data?.success && data?.data?.user) {
+        toast.success('Registration successful! Verify your phone to continue.');
         setTimeout(() => {
           onRegisterSuccess({
             email: data.data.user.email,
             phone: data.data.user.phone,
             name: `${data.data.user.firstName} ${data.data.user.lastName}`,
-            role: data.data.user.role
+            role: data.data.user.role,
           });
-        }, 1000);
+        }, 600);
       } else {
-        const errorMessage = data.error || data.message || 'Registration failed';
+        const errorMessage = data?.error || data?.message || 'Registration failed';
         toast.error(errorMessage);
         if (errorMessage.toLowerCase().includes('phone')) setErrors({ phone: errorMessage });
         else if (errorMessage.toLowerCase().includes('email')) setErrors({ email: errorMessage });
+        else setErrors({ form: errorMessage });
       }
     } catch (error) {
       let errorMsg = 'Unable to connect to server.';
@@ -655,7 +590,6 @@ export default function RegisterForm({ onSwitchToLogin, onRegisterSuccess, brand
                           name="schoolName"
                           value={formData.schoolName}
                           onChange={handleChange}
-                          onBlur={handleSchoolNameBlur}
                           className={cn(
                             "h-12 pl-12 pr-12 border-gray-200 focus:border-brand-purple focus:ring-brand-purple/20 transition-all",
                             (fieldStatus.schoolName === 'invalid' || (showErrors && errors.schoolName)) && "border-red-500 bg-red-50"
@@ -688,36 +622,6 @@ export default function RegisterForm({ onSwitchToLogin, onRegisterSuccess, brand
                       {showErrors && errors.schoolType && <p className="text-[10px] text-red-600 font-medium uppercase ml-1">{errors.schoolType}</p>}
                     </div>
 
-                    {/* Domain */}
-                    <div className="space-y-2">
-                      <Label htmlFor="subdomain" className="text-gray-700 font-medium ml-1">School Domain (Optional)</Label>
-                      <div className={cn(
-                        "relative flex items-center border border-gray-200 rounded-md overflow-hidden h-12 transition-all focus-within:ring-2 focus-within:ring-brand-purple/20 focus-within:border-brand-purple",
-                        fieldStatus.subdomain === 'invalid' && "border-red-500 bg-red-50",
-                        fieldStatus.subdomain === 'valid' && "border-green-500"
-                      )}>
-                        <div className="bg-gray-50 h-full px-4 flex items-center border-r border-gray-200 text-gray-500 group-focus-within:text-brand-purple">
-                          <Globe size={18} />
-                        </div>
-                        <input
-                          id="subdomain"
-                          type="text"
-                          value={formData.subdomain || suggestedSubdomain}
-                          onChange={handleSubdomainChange}
-                          className="flex-1 px-4 h-full outline-none text-gray-900 font-medium placeholder-gray-400 bg-transparent"
-                          placeholder="your-school"
-                        />
-                        <div className="absolute inset-y-0 right-32 pr-4 flex items-center">
-                          {fieldStatus.subdomain === 'loading' && <Loader2 className="animate-spin h-5 w-5 text-gray-400" />}
-                          {fieldStatus.subdomain === 'valid' && <CheckCircle className="h-5 w-5 text-green-500 animate-in fade-in zoom-in" />}
-                          {fieldStatus.subdomain === 'invalid' && <XCircle className="h-5 w-5 text-red-500 animate-in fade-in zoom-in" />}
-                        </div>
-                        <div className="bg-gray-100/50 h-full px-4 flex items-center border-l border-gray-200 text-gray-500 text-[10px] font-semibold uppercase tracking-tighter">
-                          .{brandingSettings?.schoolName ? brandingSettings.schoolName.toLowerCase().replace(/\s+/g, '') : 'zawadi-sms'}.co.ke
-                        </div>
-                      </div>
-                      {showErrors && errors.subdomain && <p className="text-[10px] text-red-600 font-medium uppercase ml-1">{errors.subdomain}</p>}
-                    </div>
                   </div>
                 </div>
 

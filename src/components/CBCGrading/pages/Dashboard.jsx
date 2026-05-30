@@ -7,7 +7,6 @@ import React from 'react';
 import {
   Users, GraduationCap, BookOpen, Activity, Calendar, ShieldCheck, Zap, Target
 } from 'lucide-react';
-import SchoolOnboardingWizard from './onboarding/SchoolOnboardingWizard';
 import CompactMetricBanner from './dashboard/CompactMetricBanner';
 import DashboardResponsiveWrapper from '../DashboardResponsiveWrapper';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, BarChart, Bar, Legend } from 'recharts';
@@ -32,22 +31,18 @@ const financeData = [
   { name: 'Grade 4', collected: 55, pending: 45 },
 ];
 
-const Dashboard = ({ learners, teachers }) => {
-  const [showOnboarding, setShowOnboarding] = useState(false);
-
+const Dashboard = ({ learners, teachers, onNavigate }) => {
   const activeLearners = learners?.filter(l => l.status === 'Active' || l.status === 'ACTIVE').length || 0;
   const activeTeachers = teachers?.filter(t => t.status === 'Active' || t.status === 'ACTIVE').length || 0;
+  const [showEmptyHint, setShowEmptyHint] = useState(false);
 
   useEffect(() => {
-    // Show onboarding if no learners exist and not previously dismissed in this session
     const dismissed = sessionStorage.getItem('onboarding_dismissed');
-    if (activeLearners === 0 && !dismissed) {
-      setShowOnboarding(true);
-    }
+    setShowEmptyHint(activeLearners === 0 && !dismissed);
   }, [activeLearners]);
 
-  const handleOnboardingComplete = () => {
-    setShowOnboarding(false);
+  const dismissEmptyHint = () => {
+    setShowEmptyHint(false);
     sessionStorage.setItem('onboarding_dismissed', 'true');
   };
 
@@ -65,7 +60,34 @@ const Dashboard = ({ learners, teachers }) => {
       }}
     >
       <div className="space-y-6">
-        {showOnboarding && <SchoolOnboardingWizard onComplete={handleOnboardingComplete} />}
+        {showEmptyHint && (
+          <div className="rounded-lg border border-brand-purple/20 bg-brand-purple/5 px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Get started with your school</p>
+              <p className="text-xs text-gray-600 mt-1">
+                No active learners yet. Register your first student in Admissions to populate the dashboard.
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              {typeof onNavigate === 'function' && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('learners-admissions')}
+                  className="px-4 py-2 text-xs font-semibold uppercase tracking-wide rounded-md bg-brand-purple text-white hover:bg-brand-purple/90"
+                >
+                  Add learners
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={dismissEmptyHint}
+                className="px-4 py-2 text-xs font-semibold uppercase tracking-wide rounded-md border border-gray-300 text-gray-700 hover:bg-white"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
         {/* Compact Metrics Banner */}
         <CompactMetricBanner
           metrics={[

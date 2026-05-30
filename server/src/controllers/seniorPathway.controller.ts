@@ -8,6 +8,40 @@ import { previewLegacyPathwaySelection } from '../services/legacy-pathway-select
 
 const resolveSchoolId = (req: AuthRequest) => req.school?.id || null;
 const resolveUserId = (req: AuthRequest) => req.user?.userId || null;
+const SENIOR_PATHWAY_CODES = ['STEM', 'SOCIAL_SCIENCES', 'ARTS_SPORTS'];
+
+const resolveRequiredSchoolId = (req: AuthRequest) => {
+  const schoolId = String(req.body?.schoolId || req.query?.schoolId || resolveSchoolId(req) || '').trim();
+  if (!schoolId) throw new ApiError(400, 'School context is required to configure Senior School offerings');
+  return schoolId;
+};
+
+const officialLearningAreaSelect = {
+  id: true,
+  officialCode: true,
+  officialName: true,
+  subjectType: true,
+  examinable: true,
+  pathwayId: true,
+  trackId: true,
+  pathway: { select: { id: true, code: true, name: true } },
+  track: { select: { id: true, code: true, name: true } },
+} as const;
+
+const getActiveSchoolOfferings = async (schoolId: string) =>
+  prisma.schoolLearningAreaOffering.findMany({
+    where: { schoolId, active: true },
+    select: {
+      id: true,
+      schoolId: true,
+      active: true,
+      capacity: true,
+      teacherCount: true,
+      notes: true,
+      officialLearningArea: { select: officialLearningAreaSelect },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
 
 const buildValidationInput = (req: AuthRequest) => ({
   learnerId: String(req.body.learnerId || ''),
@@ -31,7 +65,7 @@ export const seniorPathwayController = {
   getCatalog: async (_req: AuthRequest, res: Response) => {
     const [pathways, coreSubjects, supportSubjects] = await Promise.all([
       prisma.pathway.findMany({
-        where: { code: { in: ['STEM', 'SOCIAL_SCIENCES', 'ARTS_SPORTS'] }, active: true },
+        where: { code: { in: SENIOR_PATHWAY_CODES }, active: true },
         select: {
           id: true,
           code: true,
@@ -102,26 +136,80 @@ export const seniorPathwayController = {
   },
 
   getSchoolOfferings: async (req: AuthRequest, res: Response) => {
-    const schoolId = String(req.query.schoolId || resolveSchoolId(req) || '');
+    const schoolId = resolveRequiredSchoolId(req);
     const offerings = await prisma.schoolLearningAreaOffering.findMany({
       where: {
-        ...(schoolId ? { schoolId } : {}),
+        schoolId,
         active: true,
       },
       select: {
         id: true,
         schoolId: true,
+        active: true,
         capacity: true,
         teacherCount: true,
         notes: true,
-        officialLearningArea: {
-          select: { id: true, officialCode: true, officialName: true, subjectType: true, pathwayId: true, trackId: true },
-        },
+        officialLearningArea: { select: officialLearningAreaSelect },
       },
       orderBy: { createdAt: 'asc' },
     });
 
     res.json({ success: true, data: offerings });
+  },
+
+  updateSchoolOfferings: async (req: AuthRequest, res: Response) => {
+    const schoolId = resolveRequiredSchoolId(req);
+    const rawIds = Array.isArray(req.body?.officialLearningAreaIds)
+      ? req.body.officialLearningAreaIds
+      : Array.isArray(req.body?.subjectIds)
+        ? req.body.subjectIds
+        : [];
+
+    const officialLearningAreaIds = Array.from(
+      new Set(rawIds.map((id: unknown) => String(id || '').trim()).filter(Boolean))
+    );
+
+    const validAreas = officialLearningAreaIds.length
+      ? await prisma.officialLearningArea.findMany({
+          where: {
+            id: { in: officialLearningAreaIds },
+            active: true,
+            OR: [
+              { pathway: { code: { in: SENIOR_PATHWAY_CODES } } },
+              { pathwayId: null },
+            ],
+          },
+          select: { id: true },
+        })
+      : [];
+
+    const validIds = new Set(validAreas.map((area) => area.id));
+    const missingIds = officialLearningAreaIds.filter((id) => !validIds.has(id));
+    if (missingIds.length) {
+      throw new ApiError(400, `Invalid Senior School subject id(s): ${missingIds.join(', ')}`);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.schoolLearningAreaOffering.updateMany({
+        where: { schoolId },
+        data: { active: false },
+      });
+
+      for (const officialLearningAreaId of officialLearningAreaIds) {
+        await tx.schoolLearningAreaOffering.upsert({
+          where: { schoolId_officialLearningAreaId: { schoolId, officialLearningAreaId } },
+          update: { active: true },
+          create: { schoolId, officialLearningAreaId, active: true },
+        });
+      }
+    });
+
+    const offerings = await getActiveSchoolOfferings(schoolId);
+    res.json({
+      success: true,
+      message: 'Senior School offerings updated',
+      data: offerings,
+    });
   },
 
   validateSelection: async (req: AuthRequest, res: Response) => {

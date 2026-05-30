@@ -133,14 +133,35 @@ export class OtpService {
         try {
             // 1. Find user
             const user = await prisma.user.findUnique({
-                where: { email }
+                where: { email },
+                select: {
+                    id: true,
+                    email: true,
+                    firstName: true,
+                    lastName: true,
+                    role: true,
+                    roles: true,
+                    status: true,
+                    phone: true,
+                    institutionType: true,
+                    phoneVerificationCode: true,
+                    phoneVerificationSentAt: true,
+                },
             });
 
             if (!user) return { success: false, message: 'User not found' };
 
-            // Skip OTP verification for super admins
+            // Skip OTP verification for super admins (still mark account verified)
             if (user.role === 'SUPER_ADMIN') {
                 console.log(`\n🔑 OTP verification bypassed for super admin: ${user.email}\n`);
+                await prisma.user.update({
+                    where: { id: user.id },
+                    data: {
+                        emailVerified: true,
+                        phoneVerificationCode: null,
+                        phoneVerificationSentAt: null,
+                    },
+                });
                 return {
                     success: true,
                     message: 'OTP verification not required for super admins',
@@ -150,13 +171,24 @@ export class OtpService {
                         firstName: user.firstName,
                         lastName: user.lastName,
                         role: user.role,
+                        roles: user.roles?.length ? user.roles : [user.role],
                         status: user.status,
-                        phone: user.phone
+                        phone: user.phone,
+                        institutionType: user.institutionType,
+                        emailVerified: true,
                     }
                 };
             }
 
             if (this.shouldSkipOtp()) {
+                await prisma.user.update({
+                    where: { id: user.id },
+                    data: {
+                        emailVerified: true,
+                        phoneVerificationCode: null,
+                        phoneVerificationSentAt: null,
+                    },
+                });
                 return {
                     success: true,
                     message: 'OTP skipped in development environment',
@@ -166,8 +198,11 @@ export class OtpService {
                         firstName: user.firstName,
                         lastName: user.lastName,
                         role: user.role,
+                        roles: user.roles?.length ? user.roles : [user.role],
                         status: user.status,
-                        phone: user.phone
+                        phone: user.phone,
+                        institutionType: user.institutionType,
+                        emailVerified: true,
                     }
                 };
             }
@@ -214,7 +249,10 @@ export class OtpService {
                     firstName: user.firstName,
                     lastName: user.lastName,
                     role: user.role,
+                    roles: user.roles?.length ? user.roles : [user.role],
                     status: user.status,
+                    institutionType: user.institutionType,
+                    emailVerified: true,
                     phone: user.phone
                 }
             };

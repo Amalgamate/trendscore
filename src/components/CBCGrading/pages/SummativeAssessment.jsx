@@ -21,7 +21,7 @@ import { useTeacherWorkload } from '../hooks/useTeacherWorkload';
 import { useSchoolData } from '../../../contexts/SchoolDataContext';
 import { getLearningAreasByGrade } from '../../../constants/learningAreas';
 import { getAcademicYearOptions, getCurrentAcademicYear } from '../utils/academicYear';
-import { normalizeTestType, resolveTestType, formatTestTypeLabel } from '../utils/testType';
+import { CANONICAL_TEST_TYPE_OPTIONS, normalizeTestType, resolveTestType, formatTestTypeLabel } from '../utils/testType';
 
 const SECONDARY_GRADES = ['GRADE10', 'GRADE11', 'GRADE12'];
 const JUNIOR_GRADE_ORDER = ['PLAYGROUP', 'PP1', 'PP2', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9'];
@@ -46,6 +46,14 @@ const formatGradeLabel = (grade) => {
   if (g === 'PLAYGROUP') return 'Playgroup';
   return g.replace(/_/g, ' ');
 };
+const matchesAcademicYear = (testYear, selectedYear) => {
+  if (!selectedYear) return true;
+  return String(testYear || '').trim() === String(selectedYear).trim();
+};
+const ASSESSMENT_TEST_TYPE_OPTIONS = [
+  ...CANONICAL_TEST_TYPE_OPTIONS,
+  { value: 'ASSESSMENT', label: 'Assessment' },
+];
 
 // ─── Custom Test Picker ────────────────────────────────────────────────────────
 // Replaces the native <select> so we can render a green tick next to tests that
@@ -165,6 +173,10 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
   });
   const learningAreasMgr = useLearningAreas(setup.selectedGrade);
   const teacherWorkload = useTeacherWorkload();
+  const normalizedDefaultTestType = useMemo(
+    () => normalizeTestType(defaultTestType),
+    [defaultTestType]
+  );
 
   // View State
   const [step, setStep] = useState(() => {
@@ -190,7 +202,8 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
   // Data State
   const [tests, setTests] = useState([]);
   const [selectedLearningArea, setSelectedLearningArea] = useState(() => localStorage.getItem('cbc_summative_appliedLearningArea') || '');
-  const [selectedTestId, setSelectedTestId] = useState(() => localStorage.getItem('cbc_summative_appliedTestId') || '');
+  const [selectedTestId, setSelectedTestId] = useState(() => initialTestId || localStorage.getItem('cbc_summative_appliedTestId') || '');
+  const [selectedTestType, setSelectedTestType] = useState(() => normalizedDefaultTestType || localStorage.getItem('cbc_summative_appliedTestType') || '');
   const [marks, setMarks] = useState({});
   const [gradingScale, setGradingScale] = useState(null);
   const [isDraft, setIsDraft] = useState(false);
@@ -207,8 +220,21 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
   const [stagedStream, setStagedStream] = useState(() => localStorage.getItem('cbc_summative_stagedStream') || '');
   const [stagedTerm, setStagedTerm] = useState(() => localStorage.getItem('cbc_summative_stagedTerm') || '');
   const [stagedAcademicYear, setStagedAcademicYear] = useState(() => parseInt(localStorage.getItem('cbc_summative_stagedYear')) || getCurrentAcademicYear());
+  const [stagedTestType, setStagedTestType] = useState(() => normalizedDefaultTestType || localStorage.getItem('cbc_summative_stagedTestType') || '');
   const [stagedLearningArea, setStagedLearningArea] = useState(() => localStorage.getItem('cbc_summative_stagedLearningArea') || '');
-  const [stagedTestId, setStagedTestId] = useState(() => localStorage.getItem('cbc_summative_stagedTestId') || '');
+  const [stagedTestId, setStagedTestId] = useState(() => initialTestId || localStorage.getItem('cbc_summative_stagedTestId') || '');
+
+  const resetStagedLearningAreaAndTest = useCallback(() => {
+    setStagedLearningArea('');
+    setStagedTestId('');
+  }, []);
+
+  useEffect(() => {
+    if (!normalizedDefaultTestType) return;
+    setSelectedTestType(normalizedDefaultTestType);
+    setStagedTestType(normalizedDefaultTestType);
+    resetStagedLearningAreaAndTest();
+  }, [normalizedDefaultTestType, resetStagedLearningAreaAndTest]);
 
   // Persist staged filters and step
   useEffect(() => {
@@ -216,12 +242,13 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     localStorage.setItem('cbc_summative_stagedStream', stagedStream);
     localStorage.setItem('cbc_summative_stagedTerm', stagedTerm);
     localStorage.setItem('cbc_summative_stagedYear', stagedAcademicYear);
+    localStorage.setItem('cbc_summative_stagedTestType', stagedTestType);
     localStorage.setItem('cbc_summative_stagedLearningArea', stagedLearningArea);
     localStorage.setItem('cbc_summative_stagedTestId', stagedTestId);
     if (!initialTestId) {
       localStorage.setItem('cbc_summative_step', step);
     }
-  }, [stagedGrade, stagedStream, stagedTerm, stagedAcademicYear, stagedLearningArea, stagedTestId, step, initialTestId]);
+  }, [stagedGrade, stagedStream, stagedTerm, stagedAcademicYear, stagedTestType, stagedLearningArea, stagedTestId, step, initialTestId]);
 
   // Handler to apply filters when green button clicked
   const applyFilters = useCallback(() => {
@@ -229,6 +256,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     setup.updateStream(stagedStream);
     setup.updateTerm(stagedTerm);
     setup.updateAcademicYear(stagedAcademicYear);
+    setSelectedTestType(stagedTestType);
     setSelectedLearningArea(stagedLearningArea);
     setSelectedTestId(stagedTestId);
 
@@ -241,6 +269,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     localStorage.setItem('cbc_summative_appliedStream', stagedStream);
     localStorage.setItem('cbc_summative_appliedTerm', stagedTerm);
     localStorage.setItem('cbc_summative_appliedYear', stagedAcademicYear);
+    localStorage.setItem('cbc_summative_appliedTestType', stagedTestType);
     localStorage.setItem('cbc_summative_appliedLearningArea', stagedLearningArea);
     localStorage.setItem('cbc_summative_appliedTestId', stagedTestId);
 
@@ -248,7 +277,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     if (stagedTestId !== selectedTestId) {
       setMarks({});
     }
-  }, [stagedGrade, stagedStream, stagedTerm, stagedAcademicYear, stagedLearningArea, stagedTestId, selectedTestId, setup]);
+  }, [stagedGrade, stagedStream, stagedTerm, stagedAcademicYear, stagedTestType, stagedLearningArea, stagedTestId, selectedTestId, setup]);
 
   const [generatingAI, setGeneratingAI] = useState({});
 
@@ -277,10 +306,6 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
   // User Context removed schoolId for single-tenant mode
   const { user } = useAuth();
   const isSecondaryPortal = String(user?.institutionType || '').toUpperCase() === 'SECONDARY';
-  const normalizedDefaultTestType = useMemo(
-    () => normalizeTestType(defaultTestType),
-    [defaultTestType]
-  );
   const schoolId = null;
 
   // Load Tests
@@ -373,6 +398,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
   // learner-fetch effect can read it synchronously without depending on the
   // setup hook state which may lag one render behind applyFilters().
   const appliedStreamRef = useRef(localStorage.getItem('cbc_summative_appliedStream') || '');
+  const initialTestAppliedRef = useRef(false);
 
   // Load Terms, and Streams for selectors
   const loadOptions = useCallback(async () => {
@@ -431,13 +457,14 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
         const testTerm = (t.term || '').toUpperCase().trim();
         if (testTerm !== normalizedTerm) return false;
       }
-      if (normalizedDefaultTestType) {
-        const testType = normalizeTestType(t.testType);
-        if (testType !== normalizedDefaultTestType) return false;
+      if (!matchesAcademicYear(t.academicYear, setup.academicYear)) return false;
+      if (selectedTestType) {
+        const testType = resolveTestType(t);
+        if (testType !== selectedTestType) return false;
       }
       return true;
     }),
-    [tests, setup.selectedGrade, setup.selectedTerm, normalizedDefaultTestType]
+    [tests, setup.selectedGrade, setup.selectedTerm, setup.academicYear, selectedTestType]
   );
 
   // Staged filtered tests - for dropdown options while editing
@@ -453,13 +480,14 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
         const testTerm = (t.term || '').toUpperCase().trim();
         if (testTerm !== normalizedTerm) return false;
       }
-      if (normalizedDefaultTestType) {
-        const testType = normalizeTestType(t.testType);
-        if (testType !== normalizedDefaultTestType) return false;
+      if (!matchesAcademicYear(t.academicYear, stagedAcademicYear)) return false;
+      if (stagedTestType) {
+        const testType = resolveTestType(t);
+        if (testType !== stagedTestType) return false;
       }
       return true;
     }),
-    [tests, stagedGrade, stagedTerm, normalizedDefaultTestType]
+    [tests, stagedGrade, stagedTerm, stagedAcademicYear, stagedTestType]
   );
 
   const availableLearningAreas = useMemo(() => {
@@ -545,6 +573,19 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     });
   }, [stagedFilteredTestsBySelection, stagedLearningArea]);
 
+  const loadDisabledReason = useMemo(() => {
+    if (!stagedGrade) return 'Select grade first';
+    if (availableStreams.length > 0 && !stagedStream) return 'Select stream first';
+    if (!stagedTerm) return 'Select term first';
+    if (!stagedAcademicYear) return 'Select academic year first';
+    if (!stagedTestType) return 'Select exam type first';
+    if (!stagedLearningArea) return 'Select learning area first';
+    if (!stagedTestId) return 'Select test first';
+    return '';
+  }, [availableStreams.length, stagedAcademicYear, stagedGrade, stagedLearningArea, stagedStream, stagedTerm, stagedTestId, stagedTestType]);
+
+  const canLoadAssessment = !loadDisabledReason;
+
   const filteredGrades = useMemo(() => {
     const gradesFromTests = [...new Set(
       tests
@@ -553,8 +594,10 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
         .map((grade) => grade.replace(/\s+/g, '_').toUpperCase())
     )];
 
-    let mergedGrades = [...new Set([...(availableGrades || []), ...(fallbackGrades || []), ...gradesFromTests])]
-      .map(toCanonicalGrade);
+    let mergedGrades = [...new Set(
+      [...(availableGrades || []), ...(fallbackGrades || []), ...gradesFromTests]
+        .map(toCanonicalGrade)
+    )];
     mergedGrades = mergedGrades.filter((g) => (isSecondaryPortal ? isSecondaryGrade(g) : isJuniorGrade(g)));
 
     let grades = !teacherWorkload.isTeacher
@@ -568,13 +611,20 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     });
   }, [availableGrades, fallbackGrades, tests, teacherWorkload.isTeacher, teacherWorkload.assignedGrades, isSecondaryPortal]);
 
+  const handleBack = useCallback(() => {
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    window.location.hash = '#/app#assessment';
+  }, []);
+
   useEffect(() => {
     if (stagedGrade && !filteredGrades.includes(toCanonicalGrade(stagedGrade))) {
-      setStagedGrade(filteredGrades[0] || '');
-      setStagedLearningArea('');
-      setStagedTestId('');
+      setStagedGrade('');
+      resetStagedLearningAreaAndTest();
     }
-  }, [stagedGrade, filteredGrades]);
+  }, [stagedGrade, filteredGrades, resetStagedLearningAreaAndTest]);
 
 
   // Effects for Auto-selection & Prefill
@@ -802,9 +852,44 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     loadTestDetails();
   }, [selectedTestId, tests, schoolId]);
 
+  useEffect(() => {
+    if (!initialTestId || loading || initialTestAppliedRef.current) return;
+
+    const test = tests.find((item) => String(item.id) === String(initialTestId));
+    if (!test) return;
+
+    const grade = toCanonicalGrade(test.grade || '');
+    const term = test.term || '';
+    const year = test.academicYear || getCurrentAcademicYear();
+    const testType = resolveTestType(test);
+    const learningArea = test.learningArea || '';
+
+    setup.updateGrade(grade);
+    setup.updateTerm(term);
+    setup.updateAcademicYear(year);
+    setSelectedTestType(testType);
+    setSelectedLearningArea(learningArea);
+    setSelectedTestId(test.id);
+    setStagedGrade(grade);
+    setStagedTerm(term);
+    setStagedAcademicYear(year);
+    setStagedTestType(testType);
+    setStagedLearningArea(learningArea);
+    setStagedTestId(test.id);
+    setStep(2);
+    initialTestAppliedRef.current = true;
+  }, [
+    initialTestId,
+    loading,
+    tests,
+    setup.updateAcademicYear,
+    setup.updateGrade,
+    setup.updateTerm,
+  ]);
+
   // Clear stale selected test IDs from localStorage/context if they no longer exist
   useEffect(() => {
-    if (!selectedTestId) return;
+    if (!selectedTestId || loading) return;
 
     const exists = tests.some((test) => String(test.id) === String(selectedTestId));
     if (!exists) {
@@ -1383,13 +1468,22 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
         {/* Filter Bar - Always visible below header */}
         <div className="border-t border-slate-200 px-6 py-3.5">
           <div className="flex flex-wrap gap-2 items-center">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="h-9 px-3 rounded border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-1.5 flex-shrink-0"
+              title="Go back"
+            >
+              <ArrowLeft size={14} />
+              Back
+            </button>
+
             {/* Grade - Compact Input */}
             <select
               value={stagedGrade}
               onChange={(e) => {
                 setStagedGrade(e.target.value);
-                setStagedLearningArea('');
-                setStagedTestId('');
+                resetStagedLearningAreaAndTest();
               }}
               className="h-9 px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-purple appearance-none cursor-pointer hover:border-slate-400 transition-colors w-28"
               title="Select Grade"
@@ -1406,10 +1500,11 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
             <select
               value={stagedStream}
               onChange={(e) => setStagedStream(e.target.value)}
-              className="h-9 px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-purple appearance-none cursor-pointer hover:border-slate-400 transition-colors w-24"
+              disabled={!stagedGrade || availableStreams.length === 0}
+              className="h-9 px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-purple appearance-none cursor-pointer hover:border-slate-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-50 w-24"
               title="Select Stream"
             >
-              <option value="">— Stream —</option>
+              <option value="">{availableStreams.length === 0 ? 'No Streams' : '— Stream —'}</option>
               {availableStreams.map(s => (
                 <option key={s} value={s}>{s}</option>
               ))}
@@ -1420,8 +1515,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
               value={stagedTerm}
               onChange={(e) => {
                 setStagedTerm(e.target.value);
-                setStagedLearningArea('');
-                setStagedTestId('');
+                resetStagedLearningAreaAndTest();
               }}
               className="h-9 px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-purple appearance-none cursor-pointer hover:border-slate-400 transition-colors w-24"
               title="Select Term"
@@ -1436,9 +1530,8 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
             <select
               value={stagedAcademicYear}
               onChange={(e) => {
-                setStagedAcademicYear(parseInt(e.target.value));
-                setStagedLearningArea('');
-                setStagedTestId('');
+                setStagedAcademicYear(e.target.value ? parseInt(e.target.value, 10) : '');
+                resetStagedLearningAreaAndTest();
               }}
               className="h-9 px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-purple appearance-none cursor-pointer hover:border-slate-400 transition-colors w-24"
               title="Select Academic Year"
@@ -1449,6 +1542,25 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
               ))}
             </select>
 
+            {/* Exam Type */}
+            <select
+              value={stagedTestType}
+              onChange={(e) => {
+                setStagedTestType(e.target.value);
+                resetStagedLearningAreaAndTest();
+              }}
+              disabled={!stagedGrade || !stagedTerm || !stagedAcademicYear}
+              className="h-9 px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-purple appearance-none cursor-pointer hover:border-slate-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-50 w-36"
+              title="Select Exam Type"
+            >
+              <option value="">— Exam Type —</option>
+              {ASSESSMENT_TEST_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+
             {/* Learning Area */}
             <select
               value={stagedLearningArea}
@@ -1456,12 +1568,12 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
                 setStagedLearningArea(e.target.value);
                 setStagedTestId('');
               }}
-              disabled={!stagedGrade || !stagedTerm || stagedAvailableLearningAreas.length === 0}
+              disabled={!stagedGrade || !stagedTerm || !stagedAcademicYear || !stagedTestType || stagedAvailableLearningAreas.length === 0}
               className="h-9 px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-purple appearance-none cursor-pointer hover:border-slate-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-50 flex-1 min-w-[140px]"
               title="Select Learning Area"
             >
               <option value="">
-                {!stagedGrade ? '← Select Grade first' : !stagedTerm ? '← Select Term first' : '— Subject / Area —'}
+                {!stagedGrade ? '← Select Grade first' : !stagedTerm ? '← Select Term first' : !stagedAcademicYear ? '← Select Year first' : !stagedTestType ? '← Select Exam Type first' : '— Subject / Area —'}
               </option>
               {stagedFilteredLearningAreasByWorkload.map(area => (
                 <option key={area} value={area}>{area}</option>
@@ -1476,11 +1588,11 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
               tests={stagedFinalTests}
               value={stagedTestId}
               onChange={(id) => setStagedTestId(id)}
-              disabled={stagedFinalTests.length === 0}
+              disabled={!stagedLearningArea || stagedFinalTests.length === 0}
             />
 
             {/* No tests hint */}
-            {stagedGrade && stagedTerm && stagedLearningArea && stagedFinalTests.length === 0 && (
+            {stagedGrade && stagedTerm && stagedAcademicYear && stagedLearningArea && stagedFinalTests.length === 0 && (
               <span className="text-[10px] text-amber-600 font-medium bg-amber-50 border border-amber-200 rounded px-2 py-1 whitespace-nowrap">
                 No tests found for selection
               </span>
@@ -1489,9 +1601,9 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
             {/* Apply Filters Button - Green button clicked to apply filters */}
             <button
               onClick={applyFilters}
-              disabled={!stagedTestId}
+              disabled={!canLoadAssessment}
               className="h-9 px-3 rounded bg-brand-teal hover:bg-brand-teal/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 flex-shrink-0"
-              title={stagedTestId ? 'Click to load assessment' : 'Select a test first'}
+              title={canLoadAssessment ? 'Click to load assessment' : loadDisabledReason}
             >
               <PlayCircle size={16} className="text-white" />
               <span className="text-xs font-medium text-white">Load</span>

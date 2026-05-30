@@ -11,19 +11,20 @@ describe('appAccess', () => {
 
   it('treats unknown pages as unrestricted', () => {
     expect(getRequiredAppForPage('dashboard')).toBeNull();
-    expect(hasPageAccess({ role: 'ADMIN', activeApps: [] }, 'dashboard')).toBe(true);
+    expect(hasPageAccess({ role: 'ADMIN' }, 'dashboard')).toBe(true);
+  });
+
+  it('keeps legacy app gates open for every user', () => {
+    const user = { role: 'ADMIN' };
+    expect(hasAppAccess(user, 'inventory')).toBe(true);
+    expect(hasPageAccess(user, 'learners-list')).toBe(true);
+    expect(hasPageAccess(user, 'attendance-daily')).toBe(true);
+    expect(hasPageAccess(user, 'inventory-items')).toBe(true);
+    expect(hasPageAccess(user, 'assess-summative-report')).toBe(true);
   });
 
   it('allows super admins through every app gate', () => {
-    expect(hasAppAccess({ role: 'SUPER_ADMIN', activeApps: [] }, 'inventory')).toBe(true);
-    expect(hasPageAccess({ role: 'SUPER_ADMIN', activeApps: [] }, 'inventory-items')).toBe(true);
-  });
-
-  it('blocks disabled module pages for non-super-admin users', () => {
-    const user = { role: 'ADMIN', activeApps: ['student-registry', 'attendance'] };
-    expect(hasPageAccess(user, 'learners-list')).toBe(true);
-    expect(hasPageAccess(user, 'attendance-daily')).toBe(true);
-    expect(hasPageAccess(user, 'inventory-items')).toBe(false);
-    expect(hasPageAccess(user, 'assess-summative-report')).toBe(false);
+    expect(hasAppAccess({ role: 'SUPER_ADMIN' }, 'inventory')).toBe(true);
+    expect(hasPageAccess({ role: 'SUPER_ADMIN' }, 'inventory-items')).toBe(true);
   });
 });

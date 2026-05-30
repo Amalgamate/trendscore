@@ -46,7 +46,6 @@ const CodingPlayground = lazy(() => import('../pages/CodingPlayground'));
 const ClassList = lazy(() => import('../pages/ClassList'));
 const CreateClassForm = lazy(() => import('../pages/CreateClassForm'));
 const ClassDetailPage = lazy(() => import('../pages/ClassDetailPage'));
-const AppsPage = lazy(() => import('../pages/settings/AppsPage'));
 const SchoolSettings = lazy(() => import('../pages/settings/SchoolSettings'));
 const AcademicSettings = lazy(() => import('../pages/settings/AcademicSettings'));
 const UserManagement = lazy(() => import('../pages/settings/UserManagement'));
@@ -75,10 +74,8 @@ const IDPrintingPage = lazy(() => import('../pages/IDPrintingPage'));
 const PathwaysHub = lazy(() => import('../pages/secondary/PathwaysHub'));
 const SubjectManagement = lazy(() => import('../pages/secondary/SubjectManagement'));
 const FormGroups = lazy(() => import('../pages/secondary/FormGroups'));
-const MarkEntryHub = lazy(() => import('../pages/secondary/MarkEntryHub'));
 const ReportsHub = lazy(() => import('../pages/secondary/ReportsHub'));
 const ResultsWorkbench = lazy(() => import('../pages/secondary/ResultsWorkbench'));
-const SecondaryExamWorkbench = lazy(() => import('../pages/secondary/SecondaryExamWorkbench'));
 
 // HR Module
 const HRManager = lazy(() => import('../pages/hr/HRManager'));
@@ -449,7 +446,6 @@ const PageRouter = ({
           case 'hr-documents': return <StaffDocuments />;
           case 'hr-performance': return <PerformanceManager />;
 
-          case 'settings-apps': return <ErrorBoundary><AppsPage /></ErrorBoundary>;
           case 'settings-school': return <SchoolSettings brandingSettings={brandingSettings} setBrandingSettings={handlers.setBrandingSettings} />;
           case 'settings-academic': return <AcademicSettings />;
           case 'settings-users': return <UserManagement />;
@@ -468,11 +464,11 @@ const PageRouter = ({
           case 'sec-subjects':        return <SubjectManagement />;
           case 'sec-form-groups':     return <FormGroups />;
           case 'sec-schemes':         return <PlannerLayout currentPage="planner-schemes" onNavigate={handleNavigate} />;
-          case 'sec-mark-entry':      return <MarkEntryHub onNavigate={handleNavigate} defaultTestType={pageParams.defaultTestType} />;
-          case 'sec-cats':            return <MarkEntryHub onNavigate={handleNavigate} defaultTestType="CAT" />;
-          case 'sec-mid-term':        return <MarkEntryHub onNavigate={handleNavigate} defaultTestType="MID_TERM" />;
-          case 'sec-end-term':        return <MarkEntryHub onNavigate={handleNavigate} defaultTestType="END_TERM" />;
-          case 'sec-kcse-mock':       return <MarkEntryHub onNavigate={handleNavigate} defaultTestType="MOCK" />;
+          case 'sec-mark-entry':      return <ErrorBoundary><SummativeAssessmentRouter learners={learners} defaultTestType={pageParams.defaultTestType} brandingSettings={brandingSettings} /></ErrorBoundary>;
+          case 'sec-cats':            return <ErrorBoundary><SummativeAssessmentRouter learners={learners} defaultTestType="CAT" brandingSettings={brandingSettings} /></ErrorBoundary>;
+          case 'sec-mid-term':        return <ErrorBoundary><SummativeAssessmentRouter learners={learners} defaultTestType="MID_TERM" brandingSettings={brandingSettings} /></ErrorBoundary>;
+          case 'sec-end-term':        return <ErrorBoundary><SummativeAssessmentRouter learners={learners} defaultTestType="END_TERM" brandingSettings={brandingSettings} /></ErrorBoundary>;
+          case 'sec-kcse-mock':       return <ErrorBoundary><SummativeAssessmentRouter learners={learners} defaultTestType="MOCK" brandingSettings={brandingSettings} /></ErrorBoundary>;
           case 'sec-mean-grades':     return <ResultsWorkbench variant="mean" pageParams={pageParams} onNavigate={handleNavigate} />;
           case 'sec-rankings':        return <ResultsWorkbench variant="rankings" pageParams={pageParams} onNavigate={handleNavigate} />;
           case 'sec-subject-analysis':return <ResultsWorkbench variant="subject" pageParams={pageParams} onNavigate={handleNavigate} />;

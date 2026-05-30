@@ -190,11 +190,19 @@ function AppContent() {
   useEffect(() => {
     if (loading) return;
     if (isAuthenticated) {
-      if (!pathname.startsWith('/app')) navigate('/app', { replace: true });
+      if (user?.requiresInstitutionSetup) {
+        if (pathname !== '/auth/setup-institution') navigate('/auth/setup-institution', { replace: true });
+      } else if (
+        !pathname.startsWith('/app') &&
+        pathname !== '/auth/setup-institution' &&
+        pathname !== '/auth/reset-password'
+      ) {
+        navigate('/app', { replace: true });
+      }
     } else {
       if (pathname.startsWith('/app')) navigate('/auth/login', { replace: true });
     }
-  }, [isAuthenticated, loading, pathname, navigate]);
+  }, [isAuthenticated, loading, pathname, navigate, user?.requiresInstitutionSetup]);
 
   const handleAuthSuccess = (userData, token, refreshToken) => {
     // Always clear bootstrap and UI state on login. The incoming user may
@@ -248,6 +256,24 @@ function AppContent() {
           {isAuthenticated ? (
             <Routes>
               <Route
+                path="/auth/setup-institution"
+                element={
+                  <Auth
+                    onAuthSuccess={handleAuthSuccess}
+                    brandingSettings={brandingSettings}
+                  />
+                }
+              />
+              <Route
+                path="/auth/reset-password"
+                element={
+                  <Auth
+                    onAuthSuccess={handleAuthSuccess}
+                    brandingSettings={brandingSettings}
+                  />
+                }
+              />
+              <Route
                 path="/app/*"
                 element={
                   <SchoolDataProvider>
@@ -264,7 +290,15 @@ function AppContent() {
                   </SchoolDataProvider>
                 }
               />
-              <Route path="*" element={<Navigate to="/app" replace />} />
+              <Route
+                path="*"
+                element={
+                  <Navigate
+                    to={user?.requiresInstitutionSetup ? '/auth/setup-institution' : '/app'}
+                    replace
+                  />
+                }
+              />
             </Routes>
           ) : (
             <Routes>

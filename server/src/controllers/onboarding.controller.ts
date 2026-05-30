@@ -2,16 +2,25 @@ import { Request, Response } from 'express';
 import prisma from '../config/database';
 import bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
+import type { InstitutionType } from '@prisma/client';
 import { gradingService } from '../services/grading.service';
 import { EmailService } from '../services/email-resend.service';
 import { SmsService } from '../services/sms.service';
 import { encrypt } from '../utils/encryption.util';
 
 import logger from '../utils/logger';
+
+function mapSchoolTypeToInstitution(schoolType?: string): InstitutionType {
+  const s = String(schoolType || '').toLowerCase();
+  if (s.includes('secondary')) return 'SECONDARY';
+  if (s.includes('tertiary') || s.includes('college') || s.includes('university')) return 'TERTIARY';
+  return 'PRIMARY_CBC';
+}
+
 export class OnboardingController {
   /**
-   * Full system registration — creates admin user, seeds defaults.
-   * Should only be called once on first setup.
+   * Full system registration — creates school, super-admin, and seeds defaults.
+   * Allowed only on empty installs unless ALLOW_PUBLIC_REGISTRATION=true.
    * POST /api/onboarding/register
    */
   async registerFull(req: Request, res: Response) {
@@ -65,21 +74,38 @@ export class OnboardingController {
         });
       }
 
+      const allowPublic = process.env.ALLOW_PUBLIC_REGISTRATION === 'true';
+      const [userCount, schoolCount] = await Promise.all([
+        prisma.user.count(),
+        prisma.school.count({ where: { archived: false } }),
+      ]);
+
+      if ((userCount > 0 || schoolCount > 0) && !allowPublic) {
+        return res.status(403).json({
+          success: false,
+          error: 'Registration is closed for this installation. Contact your administrator.',
+        });
+      }
+
       const existingUser = await prisma.user.findFirst({
         where: { OR: [{ email }, { phone }] },
-        select: { id: true }
+        select: { id: true },
       });
       if (existingUser) {
         return res.status(400).json({ success: false, error: 'Email or phone already exists' });
       }
 
-      const result = await prisma.$transaction(async (tx) => {
-        // Admission sequence for current year
-        await tx.admissionSequence.create({
-          data: { academicYear: new Date().getFullYear(), currentValue: 0 },
-        });
+      const institutionType = mapSchoolTypeToInstitution(schoolType);
 
-        // Default streams — write to the `Stream` table (canonical model used by config.service)
+      const result = await prisma.$transaction(async (tx) => {
+        const year = new Date().getFullYear();
+        const existingSeq = await tx.admissionSequence.findUnique({ where: { academicYear: year } });
+        if (!existingSeq) {
+          await tx.admissionSequence.create({
+            data: { academicYear: year, currentValue: 0 },
+          });
+        }
+
         for (const name of ['A', 'B', 'C', 'D']) {
           await tx.stream.upsert({
             where: { name },
@@ -88,20 +114,37 @@ export class OnboardingController {
           });
         }
 
-        // Communication config
-        await tx.communicationConfig.create({
+        const existingComm = await tx.communicationConfig.findFirst({ select: { id: true } });
+        if (!existingComm) {
+          await tx.communicationConfig.create({
+            data: {
+              smsEnabled: true,
+              smsProvider: 'mobilesasa',
+              smsBaseUrl: 'https://api.mobilesasa.com',
+              smsApiKey: process.env.MOBILESASA_API_KEY
+                ? encrypt(process.env.MOBILESASA_API_KEY)
+                : null,
+              hasApiKey: !!process.env.MOBILESASA_API_KEY,
+            },
+          });
+        }
+
+        const school = await tx.school.create({
           data: {
-            smsEnabled: true,
-            smsProvider: 'mobilesasa',
-            smsBaseUrl: 'https://api.mobilesasa.com',
-            smsApiKey: process.env.MOBILESASA_API_KEY
-              ? encrypt(process.env.MOBILESASA_API_KEY)
-              : null,
-            hasApiKey: !!process.env.MOBILESASA_API_KEY,
+            name: schoolName.trim(),
+            address: address.trim(),
+            county: county.trim(),
+            subCounty: subCounty?.trim() || null,
+            ward: ward?.trim() || null,
+            schoolType: schoolType?.trim() || null,
+            email: email.trim(),
+            phone: phone.replace(/\s+/g, ''),
+            institutionType,
+            institutionTypeLocked: false,
           },
+          select: { id: true, name: true, institutionType: true },
         });
 
-        // Admin user
         const [firstName, ...rest] = fullName.trim().split(' ');
         const lastName = rest.join(' ') || ' ';
         const hashed = await bcrypt.hash(password, 12);
@@ -113,8 +156,10 @@ export class OnboardingController {
             password: hashed,
             firstName,
             lastName,
-            role: 'ADMIN',
-            phone,
+            role: 'SUPER_ADMIN',
+            roles: ['SUPER_ADMIN'],
+            phone: phone.replace(/\s+/g, ''),
+            institutionType,
             emailVerified: false,
             emailVerificationToken: token,
             emailVerificationSentAt: new Date(),
@@ -125,15 +170,16 @@ export class OnboardingController {
             firstName: true,
             lastName: true,
             role: true,
+            roles: true,
             phone: true,
+            institutionType: true,
             createdAt: true,
           },
         });
 
-        return { user, token };
+        return { user, token, school };
       });
 
-      // Seed default grading systems
       try {
         await gradingService.getGradingSystem('SUMMATIVE');
         await gradingService.getGradingSystem('CBC');
@@ -141,25 +187,33 @@ export class OnboardingController {
         logger.warn('Warning: Failed to initialise grading systems:', err);
       }
 
-      // Welcome notifications (non-blocking)
-      const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`;
+      const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/#/auth/login`;
 
       EmailService.sendOnboardingEmail({
         to: result.user.email,
-        schoolName,
+        schoolName: result.school.name,
         adminName: `${result.user.firstName} ${result.user.lastName}`,
         loginUrl,
+        email: result.user.email,
       }).catch((err) => logger.error('Failed to send onboarding email:', err));
 
       if (result.user.phone) {
-        SmsService.sendWelcomeSms(result.user.phone, schoolName).catch((err) =>
+        SmsService.sendWelcomeSms(result.user.phone, result.school.name).catch((err) =>
           logger.error('Failed to send welcome SMS:', err)
         );
       }
 
       res.status(201).json({
         success: true,
-        data: { user: result.user },
+        data: {
+          user: {
+            ...result.user,
+            requiresInstitutionSetup: true,
+            institutionTypeLocked: false,
+            schoolId: result.school.id,
+          },
+          school: result.school,
+        },
         meta: {
           emailVerificationToken:
             process.env.NODE_ENV === 'development' ? result.token : undefined,
@@ -167,6 +221,9 @@ export class OnboardingController {
       });
     } catch (error: any) {
       logger.error('Onboarding registerFull error:', error);
+      if (error?.code === 'P2002') {
+        return res.status(400).json({ success: false, error: 'School or user already exists' });
+      }
       res.status(500).json({ success: false, error: 'Failed to register' });
     }
   }
@@ -183,7 +240,7 @@ export class OnboardingController {
       }
       const user = await prisma.user.findFirst({
         where: { emailVerificationToken: String(token) },
-        select: { id: true }
+        select: { id: true },
       });
       if (!user) {
         return res.status(404).json({ success: false, error: 'Invalid token' });
@@ -210,14 +267,18 @@ export class OnboardingController {
       }
       const user = await prisma.user.findUnique({
         where: { email },
-        select: { id: true, phoneVerificationCode: true }
+        select: { id: true, phoneVerificationCode: true },
       });
       if (!user || user.phoneVerificationCode !== code) {
         return res.status(400).json({ success: false, error: 'Invalid code' });
       }
       await prisma.user.update({
         where: { id: user.id },
-        data: { phoneVerificationCode: null },
+        data: {
+          phoneVerificationCode: null,
+          phoneVerificationSentAt: null,
+          emailVerified: true,
+        },
       });
       res.json({ success: true });
     } catch {

@@ -43,15 +43,31 @@ function Auth({ onAuthSuccess, brandingSettings, basePath = '/auth' }) {
     navigate(`${basePath}/verify-email`, { state: { userData: user }, replace: true });
   };
 
+  const mapVerifiedUserToLogin = (user) => {
+    const roles = Array.isArray(user?.roles) && user.roles.length > 0 ? user.roles : [user?.role];
+    return {
+      email: user.email,
+      name: `${user.firstName} ${user.lastName}`,
+      role: user.role,
+      roles,
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      institutionType: user.institutionType || 'PRIMARY_CBC',
+      schoolId: user.schoolId || null,
+      institutionTypeLocked: user.institutionTypeLocked === true,
+      requiresInstitutionSetup: user.requiresInstitutionSetup === true,
+      school: user.school || null,
+    };
+  };
+
   const handleVerifySuccess = (verificationResponse) => {
-    // If we have tokens from the verification response, log the user in immediately
-    if (verificationResponse && verificationResponse.token) {
-      const { user, token, refreshToken } = verificationResponse;
-      onAuthSuccess(user, token, refreshToken);
+    if (verificationResponse?.token && verificationResponse?.user) {
+      const { token, refreshToken, user } = verificationResponse;
+      onAuthSuccess(mapVerifiedUserToLogin(user), token, refreshToken);
       return;
     }
 
-    // Fallback if no tokens (though verifyOTP returns them)
     if (!userData) {
       toLogin();
       return;
@@ -69,8 +85,7 @@ function Auth({ onAuthSuccess, brandingSettings, basePath = '/auth' }) {
   };
 
   const handleGetStarted = () => {
-    if (userData) onAuthSuccess(userData);
-    else toLogin();
+    toLogin();
   };
 
   if ((view === 'verify-email' || view === 'welcome') && !userData) {
@@ -127,12 +142,7 @@ function Auth({ onAuthSuccess, brandingSettings, basePath = '/auth' }) {
         )}
         {view === 'setup-institution' && (
           <InstitutionSetupWizard
-            onComplete={(institutionType) => {
-              // Navigate into the app after the institution type has been locked
-              onAuthSuccess && onAuthSuccess.__goToApp
-                ? onAuthSuccess.__goToApp()
-                : navigate('/app', { replace: true });
-            }}
+            onComplete={() => navigate('/app', { replace: true })}
             brandingSettings={brandingSettings}
           />
         )}

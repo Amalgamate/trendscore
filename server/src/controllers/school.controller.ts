@@ -237,22 +237,6 @@ export const getPublicManifest = async (_req: Request, res: Response) => {
   });
 };
 
-// Core apps that are mandatory and auto-activated on institution setup.
-// These reflect the user-facing modules: Student, Tutor/Parent, Assessment,
-// Finance, Transport, Attendance, and basic Communication.
-// All other add-on modules start inactive/hidden — only SUPER_ADMIN can activate them.
-const CORE_APP_SLUGS = [
-  'student-registry', // Students & Admissions
-  'academic-year',    // Terms & Academic Year
-  'attendance',       // Daily Attendance
-  'gradebook',        // Formative & Summative Assessment
-  'exams',            // Reports & Exam Results
-  'fee-management',   // Finance / Fee Collection
-  'transport',        // Transport Module
-  'announcements',    // Notices & Basic Communication
-  'curriculum',       // Learning Areas & Schemes
-];
-
 export const configureInstitutionTypeLock = async (req: AuthRequest, res: Response) => {
   const requestedType = validInstitutionTypeOrThrow(req.body?.institutionType);
 
@@ -280,40 +264,10 @@ export const configureInstitutionTypeLock = async (req: AuthRequest, res: Respon
     clearSchoolCache();
   }
 
-  // ── Activate core apps as mandatory; hide all add-on modules ──────────────
-  // This runs every time (idempotent) so re-locking after a partial setup
-  // is safe. The admin sees core apps as locked-on; SUPER_ADMIN can later
-  // activate/show add-on modules from the Apps settings page.
-  const allApps = await prisma.app.findMany({ select: { id: true, slug: true } });
-
-  await Promise.all(allApps.map(app => {
-    const isCore = CORE_APP_SLUGS.includes(app.slug);
-    return prisma.schoolAppConfig.upsert({
-      where: { schoolId_appId: { schoolId: school!.id, appId: app.id } },
-      update: {
-        isActive:    isCore,
-        isMandatory: isCore,  // Core apps cannot be toggled off by non-super-admin
-        isVisible:   isCore,  // Add-on apps hidden from admin — only SUPER_ADMIN sees them
-      },
-      create: {
-        schoolId:    school!.id,
-        appId:       app.id,
-        isActive:    isCore,
-        isMandatory: isCore,
-        isVisible:   isCore,
-      },
-    });
-  }));
-
-  const activatedSlugs = CORE_APP_SLUGS.filter(slug => allApps.some(a => a.slug === slug));
-
   res.status(school ? 200 : 201).json({
     success: true,
     message: 'Institution type configured and locked',
-    data: {
-      ...school,
-      activatedModules: activatedSlugs,
-    },
+    data: school,
   });
 };
 
@@ -334,6 +288,8 @@ export const getInstitutionSetupProgress = async (req: AuthRequest, res: Respons
     unitCount,
   ] = await Promise.all([
     prisma.school.findFirst({
+      where: { archived: false },
+      orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }, { createdAt: 'desc' }],
       select: { name: true, motto: true, phone: true, email: true, address: true, logoUrl: true }
     }),
     prisma.termConfig.count({ where: { isActive: true } }),
@@ -352,9 +308,9 @@ export const getInstitutionSetupProgress = async (req: AuthRequest, res: Respons
     {
       key: 'school_profile',
       label: 'School profile configured',
-      current: school?.name && (school?.phone || school?.email) ? 1 : 0,
+      current: school?.name ? 1 : 0,
       target: 1,
-      note: 'Name plus at least one contact is required.'
+      note: 'School name is required.'
     },
     {
       key: 'active_term',

@@ -179,18 +179,13 @@ const isInstitutionPageAllowed = (institutionTypeRaw, page) => {
   return institutionType === 'PRIMARY_CBC' || institutionType === 'SECONDARY' || institutionType === 'TERTIARY';
 };
 
-export const getUserActiveApps = (user) => user?.activeApps || [];
-
 export const getRequiredAppForPage = (page) => {
   const normalizedPage = page?.split('?')[0];
   return PAGE_APP_REQUIREMENTS[normalizedPage] || null;
 };
 
 export const hasAppAccess = (user, slug) => {
-  if (!slug) return true;
-  if (user?.role === 'SUPER_ADMIN') return true;
-  if (!Array.isArray(user?.activeApps)) return true;
-  return getUserActiveApps(user).includes(slug);
+  return true;
 };
 
 export const hasPageAccess = (user, page) => {
@@ -206,7 +201,7 @@ export const hasPageAccess = (user, page) => {
     return false;
   }
 
-  return hasAppAccess(user, getRequiredAppForPage(normalizedPage));
+  return true;
 };
 
 export { PAGE_APP_REQUIREMENTS };

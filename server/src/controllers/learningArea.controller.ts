@@ -28,7 +28,7 @@ const normalizeGradeLevel = (value?: string | null): string => {
 export const getLearningAreas = async (req: AuthRequest, res: Response) => {
   try {
     const institutionType = resolveInstitutionType(req);
-    const { gradeLevel } = (req.query || {}) as { gradeLevel?: string };
+    const { gradeLevel, pathway, category } = (req.query || {}) as { gradeLevel?: string; pathway?: string; category?: string };
     const normalizedGradeLevel = normalizeGradeLevel(gradeLevel);
 
     const learningAreas = await prisma.learningArea.findMany({
@@ -42,6 +42,8 @@ export const getLearningAreas = async (req: AuthRequest, res: Response) => {
               ],
             }
           : {}),
+        ...(pathway ? { pathway: String(pathway) } : {}),
+        ...(category ? { category: String(category) } : {}),
       },
       orderBy: [
         { gradeLevel: 'asc' },
@@ -85,7 +87,7 @@ export const getLearningArea = async (req: AuthRequest, res: Response) => {
  */
 export const createLearningArea = async (req: AuthRequest, res: Response) => {
   try {
-    const { name, shortName, gradeLevel, icon, color, description } = req.body;
+    const { name, shortName, gradeLevel, icon, color, description, isCore, pathway, category, pathwayId, categoryId } = req.body;
     const institutionType = resolveInstitutionType(req);
 
     if (!name || !gradeLevel) {
@@ -111,6 +113,11 @@ export const createLearningArea = async (req: AuthRequest, res: Response) => {
         shortName: shortName || name.split(' ')[0],
         gradeLevel,
         institutionType,
+        isCore: Boolean(isCore),
+        pathway: pathway || null,
+        category: category || null,
+        pathwayId: pathwayId || null,
+        categoryId: categoryId || null,
         icon: icon || '📚',
         color: color || '#3b82f6',
         description
@@ -131,7 +138,7 @@ export const createLearningArea = async (req: AuthRequest, res: Response) => {
 export const updateLearningArea = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, shortName, gradeLevel, icon, color, description } = req.body;
+    const { name, shortName, gradeLevel, icon, color, description, isCore, pathway, category, pathwayId, categoryId } = req.body;
     const institutionType = resolveInstitutionType(req);
 
     const learningArea = await prisma.learningArea.findUnique({
@@ -164,6 +171,11 @@ export const updateLearningArea = async (req: AuthRequest, res: Response) => {
         ...(name && { name }),
         ...(shortName && { shortName }),
         ...(gradeLevel && { gradeLevel }),
+        ...(isCore !== undefined && { isCore: Boolean(isCore) }),
+        ...(pathway !== undefined && { pathway: pathway || null }),
+        ...(category !== undefined && { category: category || null }),
+        ...(pathwayId !== undefined && { pathwayId: pathwayId || null }),
+        ...(categoryId !== undefined && { categoryId: categoryId || null }),
         ...(icon && { icon }),
         ...(color && { color }),
         ...(description !== undefined && { description })

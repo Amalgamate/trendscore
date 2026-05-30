@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { OtpService } from '../services/otp.service';
-import { generateAccessToken } from '../utils/jwt.util';
+import { generateAccessToken, generateRefreshToken } from '../utils/jwt.util';
+import prisma from '../config/database';
 import fs from 'fs';
 
 import logger from '../utils/logger';
@@ -84,16 +85,36 @@ export const verifyOTP = async (req: Request, res: Response) => {
             });
         }
 
-        // Generate JWT tokens
-        const token = generateAccessToken(result.user);
-        const refreshToken = (await import('../utils/jwt.util')).generateRefreshToken(result.user);
+        const schoolConfig = await prisma.school.findFirst({
+            where: { archived: false },
+            orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }, { createdAt: 'desc' }],
+            select: { id: true, institutionType: true, institutionTypeLocked: true, name: true },
+        });
+
+        const userRoles = (result.user?.roles?.length ? result.user.roles : [result.user?.role]) as string[];
+        const requiresInstitutionSetup =
+            userRoles.includes('SUPER_ADMIN') && !(schoolConfig?.institutionTypeLocked === true);
+
+        const userPayload = {
+            ...result.user,
+            roles: userRoles,
+            schoolId: schoolConfig?.id || null,
+            institutionType:
+                result.user?.institutionType || schoolConfig?.institutionType || 'PRIMARY_CBC',
+            institutionTypeLocked: schoolConfig?.institutionTypeLocked === true,
+            requiresInstitutionSetup,
+            school: schoolConfig ? { id: schoolConfig.id, name: schoolConfig.name } : null,
+        };
+
+        const token = generateAccessToken(userPayload);
+        const refreshToken = generateRefreshToken(userPayload);
 
         res.status(200).json({
             success: true,
             message: 'Login successful',
             token,
             refreshToken,
-            user: result.user
+            user: userPayload,
         });
 
     } catch (error: any) {

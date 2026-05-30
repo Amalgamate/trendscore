@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { assessmentAPI, gradingAPI, configAPI, classAPI } from '../services/api';
+import { assessmentAPI, gradingAPI, configAPI, classAPI, seniorPathwayAPI } from '../services/api';
 import { getLearningAreasByGrade } from '../constants/learningAreas';
 import { useSchoolData } from '../contexts/SchoolDataContext';
 import { normalizeTestType } from '../components/CBCGrading/utils/testType';
@@ -42,6 +42,7 @@ export const useSummativeTestForm = ({ initialTestType = null } = {}) => {
   const [scales, setScales] = useState([]);
   const [terms, setTerms] = useState([]);
   const [allLearningAreas, setAllLearningAreas] = useState([]);
+  const [schoolOfferings, setSchoolOfferings] = useState([]);
   const [availableLearningAreas, setAvailableLearningAreas] = useState([]);
   const [loadingScales, setLoadingScales] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -102,10 +103,21 @@ export const useSummativeTestForm = ({ initialTestType = null } = {}) => {
     }
   }, []);
 
+  const loadSchoolOfferings = useCallback(async () => {
+    try {
+      const response = await seniorPathwayAPI.getSchoolOfferings();
+      const offeringsData = response?.data || response;
+      setSchoolOfferings(Array.isArray(offeringsData) ? offeringsData : []);
+    } catch {
+      setSchoolOfferings([]);
+    }
+  }, []);
+
   useEffect(() => {
     loadScales();
     loadLearningAreas();
-  }, [loadScales, loadLearningAreas]);
+    loadSchoolOfferings();
+  }, [loadScales, loadLearningAreas, loadSchoolOfferings]);
 
   useEffect(() => {
     const loadFallbackGrades = async () => {
@@ -131,9 +143,33 @@ export const useSummativeTestForm = ({ initialTestType = null } = {}) => {
       try {
         const resp = await configAPI.getLearningAreas({ gradeLevel: formData.grade });
         const rows = Array.isArray(resp?.data) ? resp.data : (Array.isArray(resp) ? resp : []);
-        // For senior secondary, keep only pathway-mapped or core subjects.
-        const filteredRows = SENIOR_SECONDARY_GRADES.has(formData.grade)
-          ? rows.filter((row) => row?.isCore || row?.pathway)
+        const isSeniorGrade = SENIOR_SECONDARY_GRADES.has(formData.grade);
+        const configuredOfferings = isSeniorGrade
+          ? schoolOfferings
+              .map((offering) => offering?.officialLearningArea)
+              .filter(Boolean)
+          : [];
+
+        const filteredRows = isSeniorGrade
+          ? (
+              configuredOfferings.length > 0
+                ? configuredOfferings.map((subject) => {
+                    const match = rows.find((row) =>
+                      String(row?.name || '').trim().toLowerCase() === String(subject?.officialName || '').trim().toLowerCase() ||
+                      String(row?.shortName || '').trim().toLowerCase() === String(subject?.officialCode || '').trim().toLowerCase()
+                    );
+                    return match || {
+                      id: subject.id,
+                      name: subject.officialName,
+                      shortName: subject.officialCode,
+                      gradeLevel: formData.grade,
+                      isCore: subject.subjectType === 'EXAMINABLE_CORE',
+                      pathway: subject.pathway?.code || null,
+                      category: subject.track?.code || null,
+                    };
+                  })
+                : rows.filter((row) => row?.isCore || row?.pathway)
+            )
           : rows;
 
         // Deduplicate by name (keep first occurrence)
@@ -160,7 +196,7 @@ export const useSummativeTestForm = ({ initialTestType = null } = {}) => {
 
     // Reset learning area and scale when grade changes
     setFormData(prev => ({ ...prev, learningArea: '', scaleId: '' }));
-  }, [formData.grade, allLearningAreas]);
+  }, [formData.grade, allLearningAreas, schoolOfferings]);
 
 
 

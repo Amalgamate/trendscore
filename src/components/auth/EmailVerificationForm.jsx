@@ -214,7 +214,7 @@ export default function EmailVerificationForm({ email, phone, onVerifySuccess, b
               <CheckCircle className="text-white" size={48} />
             </div>
             <h1 className="text-3xl font-medium text-gray-900 mb-3">Verification Successful!</h1>
-            <p className="text-gray-600 text-lg">Your account has been verified. Redirecting you to the dashboard...</p>
+            <p className="text-gray-600 text-lg">Your account has been verified. Setting up your school…</p>
           </div>
         </div>
       </div>

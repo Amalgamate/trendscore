@@ -44,9 +44,6 @@ const humanizeAuditLog = (path: string, method: string, action: string) => {
       ? 'viewed learners list'
       : 'updated learner records';
   }
-  if (path.includes('/settings/apps')) {
-    return 'changed app/module settings';
-  }
   if (path.includes('/schools')) {
     return method === 'GET'
       ? 'viewed school settings'
@@ -117,7 +114,6 @@ export const getSystemLogs = async (req: AuthRequest, res: Response) => {
           { path: { contains: '/learners' } },
           { path: { contains: '/admissions' } },
           { path: { contains: '/config/grades' } },
-          { path: { contains: '/settings/apps' } },
           { path: { contains: '/schools' } },
         ]
       }

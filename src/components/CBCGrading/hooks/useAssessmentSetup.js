@@ -23,14 +23,15 @@ export const useAssessmentSetup = (options = {}) => {
   const {
     defaultGrade = '',
     defaultStream = '',
-    defaultTerm = 'TERM_1'
+    defaultTerm = 'TERM_1',
+    defaultAcademicYear = getCurrentAcademicYear()
   } = options;
 
   // Context state
   const [selectedGrade, setSelectedGrade] = useState(defaultGrade);
   const [selectedStream, setSelectedStream] = useState(defaultStream);
   const [selectedTerm, setSelectedTerm] = useState(defaultTerm);
-  const [selectedAcademicYear, setSelectedAcademicYear] = useState(getCurrentAcademicYear());
+  const [selectedAcademicYear, setSelectedAcademicYear] = useState(defaultAcademicYear || getCurrentAcademicYear());
   const { grades: dynamicGrades, streams: dynamicStreams } = useSchoolData();
 
   // Reset all selections
@@ -38,7 +39,8 @@ export const useAssessmentSetup = (options = {}) => {
     setSelectedGrade(defaultGrade);
     setSelectedStream(defaultStream);
     setSelectedTerm(defaultTerm);
-  }, [defaultGrade, defaultStream, defaultTerm]);
+    setSelectedAcademicYear(defaultAcademicYear || getCurrentAcademicYear());
+  }, [defaultGrade, defaultStream, defaultTerm, defaultAcademicYear]);
 
   // Update grade
   const updateGrade = useCallback((grade) => {

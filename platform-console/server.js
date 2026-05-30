@@ -41,7 +41,7 @@ const docker = process.env.DOCKER_HOST
 const APP_VERSION = process.env.CONSOLE_APP_VERSION || 'live';
 const INSTANCE_PROVISION_SCRIPT = process.env.CONSOLE_INSTANCE_PROVISION_SCRIPT || '';
 const NGINX_SITES_DIR = process.env.CONSOLE_NGINX_SITES_DIR || '/etc/nginx/sites-enabled';
-const DEFAULT_DOMAIN_SUFFIX = process.env.CONSOLE_DEFAULT_DOMAIN_SUFFIX || 'elimcrown.co.ke';
+const DEFAULT_DOMAIN_SUFFIX = process.env.CONSOLE_DEFAULT_DOMAIN_SUFFIX || 'trendscore.co.ke';
 
 // ── Persistent stores ─────────────────────────────────────────────────────
 const CONSOLE_DATA_DIR = process.env.CONSOLE_DATA_DIR || __dirname;
@@ -415,6 +415,26 @@ function slugifyName(value) {
     .replace(/^-+|-+$/g, '');
 }
 
+const SCHOOL_DOMAIN_OVERRIDES = {
+  'kambigarba-cs': 'kambigarba-cs.trendscore.co.ke',
+  'kambi-garba-cs': 'kambigarba-cs.trendscore.co.ke',
+  'kambi-garba': 'kambigarba-cs.trendscore.co.ke',
+  kambigarba: 'kambigarba-cs.trendscore.co.ke',
+  lionscomplex: 'lionscomplex.trendscore.co.ke',
+  'lions-complex': 'lionscomplex.trendscore.co.ke',
+  lions: 'lionscomplex.trendscore.co.ke',
+  mck: 'mck.trendscore.co.ke',
+  'merti-cs': 'merti-cs.trendscore.co.ke',
+  mertics: 'merti-cs.trendscore.co.ke',
+  merti: 'merti-cs.trendscore.co.ke',
+  zawadi: 'zawadi.trendscore.co.ke',
+};
+
+function getSchoolDomainOverride(name) {
+  const key = slugifyName(name);
+  return SCHOOL_DOMAIN_OVERRIDES[key] || null;
+}
+
 function nextAvailablePort(min, max, usedPorts) {
   for (let p = Number(min); p <= Number(max); p += 1) {
     if (!usedPorts.has(p)) return p;
@@ -447,7 +467,7 @@ async function getUsedPublishedPorts() {
   return usedPorts;
 }
 
-async function buildAutoAllocation({ name, appType, appRange, instances }) {
+async function buildAutoAllocation({ name, appType, appRange, instances, preferredDomain = '' }) {
   const usedPorts = await getUsedPublishedPorts();
 
   const fePort = nextAvailablePort(appRange.fe[0], appRange.fe[1], usedPorts);
@@ -463,7 +483,8 @@ async function buildAutoAllocation({ name, appType, appRange, instances }) {
 
   const knownDomains = listKnownDomains(instances);
   const baseSlug = slugifyName(name || appType || 'school');
-  const domain = nextAvailableDomain(baseSlug, knownDomains);
+  const normalizedPreferredDomain = String(preferredDomain || '').trim().toLowerCase();
+  const domain = normalizedPreferredDomain || getSchoolDomainOverride(baseSlug) || nextAvailableDomain(baseSlug, knownDomains);
   if (!domain) throw new Error('No available subdomain could be generated.');
 
   return { domain, fePort, bePort };
@@ -624,6 +645,7 @@ app.post('/api/instances/suggest', requireAuth, requireRole('super_admin'), asyn
   const {
     appType = 'school',
     name = '',
+    domain = '',
   } = req.body || {};
 
   const normalizedAppType = String(appType || 'school').toLowerCase();
@@ -640,6 +662,7 @@ app.post('/api/instances/suggest', requireAuth, requireRole('super_admin'), asyn
       appType: normalizedAppType,
       appRange,
       instances,
+      preferredDomain: isDomainLike(domain) ? String(domain).trim().toLowerCase() : '',
     });
     return res.json({ ok: true, autoAssigned });
   } catch (error) {
@@ -652,6 +675,7 @@ app.post('/api/instances/preflight', requireAuth, requireRole('super_admin'), as
     appType = 'school',
     name = '',
     image = '',
+    domain = '',
   } = req.body || {};
 
   const normalizedAppType = String(appType || 'school').toLowerCase();
@@ -664,6 +688,11 @@ app.post('/api/instances/preflight', requireAuth, requireRole('super_admin'), as
   }
 
   if (!String(name || '').trim()) issues.push('Instance name is required.');
+
+  const requestedDomain = String(domain || '').trim().toLowerCase();
+  if (requestedDomain && !isDomainLike(requestedDomain)) {
+    issues.push('Domain is invalid.');
+  }
 
   if (APP_TYPE_SET.has(normalizedAppType) && image && !validateImageForAppType(normalizedAppType, image)) {
     issues.push(`Image "${image}" does not look valid for app type "${normalizedAppType}".`);
@@ -678,6 +707,7 @@ app.post('/api/instances/preflight', requireAuth, requireRole('super_admin'), as
         appType: normalizedAppType,
         appRange,
         instances,
+        preferredDomain: requestedDomain,
       });
       if (!isDomainLike(suggested.domain)) {
         issues.push('Auto-generated domain is invalid.');
@@ -771,6 +801,7 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
     image = '',
     adminEmail = '',
     notes = '',
+    domain = '',
     db,
   } = req.body || {};
 
@@ -782,6 +813,11 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
 
   if (!name) {
     return res.status(400).json({ error: 'name is required' });
+  }
+
+  const requestedDomain = String(domain || '').trim().toLowerCase();
+  if (requestedDomain && !isDomainLike(requestedDomain)) {
+    return res.status(400).json({ error: 'Domain is invalid.' });
   }
 
   if (!INSTANCE_PROVISION_SCRIPT) {
@@ -799,6 +835,7 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
       appType: normalizedAppType,
       appRange,
       instances,
+      preferredDomain: requestedDomain,
     });
   } catch (error) {
     return res.status(400).json({ error: `Auto-assignment failed: ${error.message}` });

@@ -5,7 +5,7 @@ set -euo pipefail
 # Payload keys:
 #   name, domain, type, appType, version, image, fePort, bePort, db, requestedBy
 # Example:
-#   ./provision-instance.sh '{"name":"School D","domain":"schoold.elimucrown.co.ke","fePort":3003,"bePort":5003,"db":"trends_core_school_d","requestedBy":"admin@elimucrown.co.ke"}'
+#   ./provision-instance.sh '{"name":"School D","domain":"schoold.trendscore.co.ke","fePort":3003,"bePort":5003,"db":"trends_core_school_d","requestedBy":"admin@trendscore.app"}'
 
 PAYLOAD_JSON="${1:-}"
 if [[ -z "${PAYLOAD_JSON}" ]]; then
@@ -87,7 +87,7 @@ mapfile -t PARSED < <(printf '%s' "${PAYLOAD_JSON}" | jq -r '
   | [
       $name,
       $slug,
-      (if $domain == "" then "\($slug).elimucrown.co.ke" else $domain end),
+      (if $domain == "" then "\($slug).trendscore.co.ke" else $domain end),
       (if $requestedBy == "" then "console" else $requestedBy end),
       (if $type == "" then "PRIMARY_CBC" else $type end),
       (if ($appType == "") then "school" else $appType end),

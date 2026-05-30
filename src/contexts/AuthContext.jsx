@@ -37,8 +37,7 @@ export const AuthProvider = ({ children }) => {
       : (u.institutionType || 'PRIMARY_CBC');
     const localOverride = isLocalhost ? localStorage.getItem('selectedInstitutionType') : null;
     const resolvedInstitutionType = localOverride || institutionType;
-    const activeApps = Array.isArray(u.activeApps) ? u.activeApps : undefined;
-    return { ...u, institutionType: resolvedInstitutionType, activeApps };
+    return { ...u, institutionType: resolvedInstitutionType };
   }, []);
 
   // Keep the axios interceptor and bootstrap cache in sync whenever user changes

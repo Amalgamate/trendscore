@@ -6,7 +6,7 @@
 let INSTANCES = [
   {
     name: 'Trends CORE Main',
-    domain: 'core.elimucrown.co.ke',
+    domain: 'core.trendscore.co.ke',
     status: 'Online',
     type: 'PRIMARY_CBC',
     typeLabel: 'Junior CBC',
@@ -27,7 +27,7 @@ let INSTANCES = [
   },
   {
     name: 'School B',
-    domain: 'schoolb.elimucrown.co.ke',
+    domain: 'schoolb.trendscore.co.ke',
     status: 'Online',
     type: 'SECONDARY',
     typeLabel: 'Senior CBC',
@@ -48,7 +48,7 @@ let INSTANCES = [
   },
   {
     name: 'School C',
-    domain: 'schoolc.elimucrown.co.ke',
+    domain: 'schoolc.trendscore.co.ke',
     status: 'Degraded',
     type: 'TERTIARY',
     typeLabel: 'Tertiary',
@@ -143,10 +143,10 @@ let DEPLOYMENTS = [
 ];
 
 let AUDIT_LOGS = [
-  { time: '10:47 EAT', action: 'Redeploy', instance: 'All Instances', by: 'system@elimucrown.co.ke', details: 'Latest GHCR images deployed', status: 'Success' },
-  { time: '10:36 EAT', action: 'Config Update', instance: 'Trends CORE Main', by: 'admin@elimucrown.co.ke', details: 'Health retry window changed', status: 'Success' },
-  { time: '10:20 EAT', action: 'Image Pull', instance: 'School B', by: 'system@elimucrown.co.ke', details: 'Frontend and backend image pull', status: 'Success' },
-  { time: '09:55 EAT', action: 'Restart', instance: 'School C', by: 'admin@elimucrown.co.ke', details: 'Manual restart after degraded check', status: 'Warning' },
+  { time: '10:47 EAT', action: 'Redeploy', instance: 'All Instances', by: 'system@trendscore.app', details: 'Latest GHCR images deployed', status: 'Success' },
+  { time: '10:36 EAT', action: 'Config Update', instance: 'Trends CORE Main', by: 'admin@trendscore.app', details: 'Health retry window changed', status: 'Success' },
+  { time: '10:20 EAT', action: 'Image Pull', instance: 'School B', by: 'system@trendscore.app', details: 'Frontend and backend image pull', status: 'Success' },
+  { time: '09:55 EAT', action: 'Restart', instance: 'School C', by: 'admin@trendscore.app', details: 'Manual restart after degraded check', status: 'Warning' },
 ];
 
 const FEATURE_MATRIX = [
@@ -202,7 +202,18 @@ let editingPlanId = null;
 let liveMode = false;
 let RUNTIME_METRICS = null;
 const DOMAIN_OVERRIDES = {
-  mertics: 'merti-cs.elimcrown.co.ke',
+  'kambigarba-cs': 'kambigarba-cs.trendscore.co.ke',
+  'kambi-garba-cs': 'kambigarba-cs.trendscore.co.ke',
+  'kambi-garba': 'kambigarba-cs.trendscore.co.ke',
+  kambigarba: 'kambigarba-cs.trendscore.co.ke',
+  lionscomplex: 'lionscomplex.trendscore.co.ke',
+  'lions-complex': 'lionscomplex.trendscore.co.ke',
+  lions: 'lionscomplex.trendscore.co.ke',
+  mck: 'mck.trendscore.co.ke',
+  'merti-cs': 'merti-cs.trendscore.co.ke',
+  mertics: 'merti-cs.trendscore.co.ke',
+  merti: 'merti-cs.trendscore.co.ke',
+  zawadi: 'zawadi.trendscore.co.ke',
 };
 
 function toast(message) {
@@ -219,7 +230,7 @@ function addAudit({ action, instance, details, status = 'Success' }) {
     time: nowLabel(),
     action,
     instance,
-    by: 'admin@elimucrown.co.ke',
+    by: 'admin@trendscore.app',
     details,
     status,
   });
@@ -367,7 +378,7 @@ const APP_PROVISIONING_CATALOG = {
     namePlaceholder: 'e.g. Sunshine Academy',
     modalTitle: 'Provision New School',
     submitLabel: 'Provision School',
-    defaultDomainSuffix: 'elimucrown.co.ke',
+    defaultDomainSuffix: 'trendscore.co.ke',
     feLabel: 'Frontend Port',
     beLabel: 'Backend Port',
     versions: [
@@ -383,7 +394,7 @@ const APP_PROVISIONING_CATALOG = {
     namePlaceholder: 'e.g. Acme Limited',
     modalTitle: 'Provision Odoo Instance',
     submitLabel: 'Provision Odoo',
-    defaultDomainSuffix: 'elimucrown.co.ke',
+    defaultDomainSuffix: 'trendscore.co.ke',
     feLabel: 'HTTP Port',
     beLabel: 'Longpolling Port',
     versions: [
@@ -400,7 +411,7 @@ const APP_PROVISIONING_CATALOG = {
     namePlaceholder: 'e.g. Acme Foundation',
     modalTitle: 'Provision WordPress Instance',
     submitLabel: 'Provision WordPress',
-    defaultDomainSuffix: 'elimucrown.co.ke',
+    defaultDomainSuffix: 'trendscore.co.ke',
     feLabel: 'HTTP Port',
     beLabel: 'PHP-FPM/Admin Port',
     versions: [
@@ -417,7 +428,7 @@ const APP_PROVISIONING_CATALOG = {
     namePlaceholder: 'e.g. Umoja Sacco',
     modalTitle: 'Provision New Sacco',
     submitLabel: 'Provision Sacco',
-    defaultDomainSuffix: 'elimucrown.co.ke',
+    defaultDomainSuffix: 'trendscore.co.ke',
     feLabel: 'HTTP Port',
     beLabel: 'API Port',
     versions: [
@@ -433,7 +444,7 @@ const APP_PROVISIONING_CATALOG = {
     namePlaceholder: 'e.g. St. Mary Hospital',
     modalTitle: 'Provision New Hospital',
     submitLabel: 'Provision Hospital',
-    defaultDomainSuffix: 'elimucrown.co.ke',
+    defaultDomainSuffix: 'trendscore.co.ke',
     feLabel: 'HTTP Port',
     beLabel: 'API Port',
     versions: [
@@ -449,7 +460,7 @@ const APP_PROVISIONING_CATALOG = {
     namePlaceholder: 'e.g. Skyline Hotel',
     modalTitle: 'Provision New Hotel',
     submitLabel: 'Provision Hotel',
-    defaultDomainSuffix: 'elimucrown.co.ke',
+    defaultDomainSuffix: 'trendscore.co.ke',
     feLabel: 'HTTP Port',
     beLabel: 'API Port',
     versions: [
@@ -465,7 +476,7 @@ const APP_PROVISIONING_CATALOG = {
     namePlaceholder: 'e.g. Bright Future NGO',
     modalTitle: 'Provision New Organization',
     submitLabel: 'Provision Organization',
-    defaultDomainSuffix: 'elimucrown.co.ke',
+    defaultDomainSuffix: 'trendscore.co.ke',
     feLabel: 'HTTP Port',
     beLabel: 'API Port',
     versions: [
@@ -695,7 +706,7 @@ async function refreshFromRuntime() {
     if (runtime?.ok && Array.isArray(runtime.instances)) {
       INSTANCES = runtime.instances.map(item => ({
         ...item,
-        domain: item.domain || DOMAIN_OVERRIDES[inferGroupKey(item)] || `${slugify(item.name).replace(/-(frontend|backend|db|database)-?\d*$/i, '')}.elimcrown.co.ke`,
+        domain: item.domain || DOMAIN_OVERRIDES[inferGroupKey(item)] || `${slugify(item.name).replace(/-(frontend|backend|db|database)-?\d*$/i, '')}.trendscore.co.ke`,
         type: item.type || 'PRIMARY_CBC',
         typeLabel: item.typeLabel || 'Managed',
         planId: item.planId || 'professional',
@@ -1211,7 +1222,7 @@ function renderInstances() {
 
   const renderGroupHeader = group => {
     const primary = group.items.find(item => Number(item.fe) > 0) || group.items[0] || {};
-    const domain = primary.domain || DOMAIN_OVERRIDES[group.key] || `${slugify(group.name).replace(/-(frontend|backend|db|database)-?\d*$/i, '')}.elimcrown.co.ke`;
+    const domain = primary.domain || DOMAIN_OVERRIDES[group.key] || `${slugify(group.name).replace(/-(frontend|backend|db|database)-?\d*$/i, '')}.trendscore.co.ke`;
     const feLabel = Number.isFinite(group.fePort) ? `${serverIp}:${group.fePort}` : '-';
     const openIpUrl = Number.isFinite(group.fePort) ? `http://${serverIp}:${group.fePort}` : '';
     const openDomainUrl = domain ? `https://${domain}` : '';
@@ -1942,6 +1953,7 @@ function bindModalEvents() {
 
       const version = selectedProvisionVersion(currentProvisionApp);
       const appRange = APP_PORT_RANGES[currentProvisionApp] || APP_PORT_RANGES.school;
+      const domainWasUserEdited = $('f-domain')?.dataset.userEdited === 'true';
       const payload = {
         appType: currentProvisionApp,
         name,
@@ -1985,12 +1997,14 @@ function bindModalEvents() {
             return;
           }
           if (preflight?.autoAssigned) {
-            payload.domain = preflight.autoAssigned.domain || payload.domain;
+            if (!domainWasUserEdited) {
+              payload.domain = preflight.autoAssigned.domain || payload.domain;
+            }
             payload.fePort = Number(preflight.autoAssigned.fePort || payload.fePort || 0);
             payload.bePort = appRange.requireBe
               ? Number(preflight.autoAssigned.bePort || payload.bePort || 0)
               : 0;
-            if ($('f-domain')) $('f-domain').value = payload.domain || '';
+            if (!domainWasUserEdited && $('f-domain')) $('f-domain').value = payload.domain || '';
             if ($('f-port-fe')) $('f-port-fe').value = payload.fePort || '';
             if ($('f-port-be') && appRange.requireBe) $('f-port-be').value = payload.bePort || '';
             renderComposePreview();
