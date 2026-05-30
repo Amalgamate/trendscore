@@ -125,6 +125,33 @@ read_env_value() {
   grep -E "^${key}=" "${file}" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '\r' || true
 }
 
+write_deploy_env_file() {
+  local path="$1"
+  printf 'FRONTEND_IMAGE=%s\nBACKEND_IMAGE=%s\n' "${FRONTEND_IMAGE}" "${BACKEND_IMAGE}" > "${path}"
+}
+
+compose_with_pinned_images() {
+  local kind="$1"
+  local project="${2:-}"
+  local stack_env="${3:-}"
+  shift 3
+
+  local deploy_env
+  deploy_env="$(mktemp /tmp/trendscore-deploy-env.XXXXXX)"
+  write_deploy_env_file "${deploy_env}"
+
+  if [[ "${kind}" == "main" ]]; then
+    cd "${MAIN_DIR}"
+    sudo docker compose --env-file "${deploy_env}" "$@"
+  else
+    cd "${APPS_DIR}"
+    sudo docker compose --env-file "${stack_env}" --env-file "${deploy_env}" \
+      -p "${project}" -f "${STACK_COMPOSE_FILE}" "$@"
+  fi
+
+  rm -f "${deploy_env}"
+}
+
 verify_target() {
   local id="$1"
   local kind="$2"
@@ -198,15 +225,11 @@ pull_images() {
   fi
 
   if [[ "${kind}" == "main" ]]; then
-    cd "${MAIN_DIR}"
-    sudo FRONTEND_IMAGE="${FRONTEND_IMAGE}" BACKEND_IMAGE="${BACKEND_IMAGE}" \
-      docker compose pull backend frontend
+    compose_with_pinned_images "${kind}" "${project}" "${env_file}" pull backend frontend
     return 0
   fi
 
-  cd "${APPS_DIR}"
-  sudo FRONTEND_IMAGE="${FRONTEND_IMAGE}" BACKEND_IMAGE="${BACKEND_IMAGE}" \
-    docker compose --env-file "${env_file}" -p "${project}" -f "${STACK_COMPOSE_FILE}" pull backend frontend
+  compose_with_pinned_images "${kind}" "${project}" "${env_file}" pull backend frontend
 }
 
 run_migrations() {
@@ -215,16 +238,14 @@ run_migrations() {
   local env_file="${3:-}"
 
   log "━━ Migrations (prisma migrate deploy) ━━"
-  export FRONTEND_IMAGE BACKEND_IMAGE
 
   if [[ "${kind}" == "main" ]]; then
-    cd "${MAIN_DIR}"
-    sudo -E docker compose run -T --rm backend npx prisma migrate deploy < /dev/null
+    compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
+      run -T --rm backend npx prisma migrate deploy < /dev/null
     return 0
   fi
 
-  cd "${APPS_DIR}"
-  sudo -E docker compose --env-file "${env_file}" -p "${project}" -f "${STACK_COMPOSE_FILE}" \
+  compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
     run -T --rm backend npx prisma migrate deploy < /dev/null
 }
 
@@ -236,15 +257,12 @@ restart_services() {
   log "━━ Restart containers ━━"
 
   if [[ "${kind}" == "main" ]]; then
-    cd "${MAIN_DIR}"
-    sudo FRONTEND_IMAGE="${FRONTEND_IMAGE}" BACKEND_IMAGE="${BACKEND_IMAGE}" \
-      docker compose up -d --force-recreate backend frontend
+    compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
+      up -d --force-recreate backend frontend
     return 0
   fi
 
-  cd "${APPS_DIR}"
-  sudo FRONTEND_IMAGE="${FRONTEND_IMAGE}" BACKEND_IMAGE="${BACKEND_IMAGE}" \
-    docker compose --env-file "${env_file}" -p "${project}" -f "${STACK_COMPOSE_FILE}" \
+  compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
     up -d --force-recreate backend frontend
 }
 
