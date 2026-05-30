@@ -1,5 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Eye, EyeOff, AlertCircle, Check } from 'lucide-react';
+import {
+  Eye,
+  EyeOff,
+  AlertCircle,
+  Check,
+  Building2,
+  GraduationCap,
+  Landmark,
+  ShieldCheck,
+  HelpCircle,
+  ExternalLink,
+  ArrowRight,
+  CheckCircle,
+  Clock3,
+} from 'lucide-react';
 import { authAPI, schoolAPI } from '../../services/api';
 import { setBranchId, setSelectedInstitutionType } from '../../services/schoolContext';
 import OTPVerificationForm from './OTPVerificationForm';
@@ -17,18 +31,24 @@ const INSTITUTION_OPTIONS = [
     label: 'Primary CBC',
     subtitle: 'Junior School',
     description: 'Use CBC structure for lower and upper primary workflows.',
+    range: 'PP1 - Grade 9',
+    icon: Building2,
   },
   {
     value: 'SECONDARY',
     label: 'Secondary',
     subtitle: 'High School',
     description: 'Enable secondary classes, subjects, and reporting structure.',
+    range: 'Form 1 - Form 4',
+    icon: GraduationCap,
   },
   {
     value: 'TERTIARY',
     label: 'Tertiary',
     subtitle: 'College / University',
     description: 'Use tertiary departments, programs, and unit-based setup.',
+    range: 'College / University',
+    icon: Landmark,
   },
 ];
 
@@ -463,101 +483,202 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
       </Card>
 
       {showInstitutionSetupModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-2xl overflow-hidden border border-white/20 shadow-2xl bg-white">
-            <div className="px-6 py-5 bg-[var(--brand-primary)] text-white">
-              <p className="text-[11px] uppercase tracking-[0.22em] font-semibold text-white/80">First-Time Configuration</p>
-              <h2 className="mt-2 text-2xl font-bold text-white">Set Institution Type</h2>
-              <p className="mt-1 text-sm text-white/85">
-                Choose the active institution for this system. After saving, this is locked for data safety.
-              </p>
-            </div>
+        <div className="fixed inset-0 z-50 bg-white">
+          <div className="flex min-h-screen w-full flex-col overflow-y-auto lg:grid lg:grid-cols-[300px_minmax(0,1fr)] lg:overflow-hidden">
+            <aside className="bg-[var(--brand-primary)] px-6 py-6 text-white lg:min-h-screen lg:px-7">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/20 bg-white/10">
+                  <Building2 size={20} />
+                </div>
+                <p className="text-xl font-semibold">TrendScore</p>
+              </div>
 
-            <div className="px-6 py-6">
+              <div className="mt-7 border-t border-white/15 pt-7">
+                <p className="text-2xl font-semibold leading-tight">Welcome to TrendScore</p>
+                <p className="mt-3 text-sm leading-6 text-white/75">
+                  Set up the institution profile and confirm the structure this system will use.
+                </p>
+              </div>
+
+              <div className="mt-7 border-t border-white/15 pt-6">
+                <p className="text-xs font-semibold uppercase text-white/70">Setup Progress</p>
+                <div className="mt-4 flex items-center gap-5">
+                  <div
+                    className="grid h-24 w-24 shrink-0 place-items-center rounded-full"
+                    style={{
+                      background: `conic-gradient(#7c3aed ${(institutionSetupProgress?.summary?.percent || 0) * 3.6}deg, rgba(255,255,255,0.14) 0deg)`,
+                    }}
+                  >
+                    <div className="grid h-16 w-16 place-items-center rounded-full bg-[var(--brand-primary)]">
+                      <div className="text-center">
+                        <p className="text-2xl font-bold">{institutionSetupProgress?.summary?.percent || 0}%</p>
+                        <p className="text-xs text-white/75">Complete</p>
+                      </div>
+                    </div>
+                  </div>
+                  {institutionSetupProgress?.summary && (
+                    <p className="text-sm font-semibold text-emerald-200">
+                      {institutionSetupProgress.summary.completed} of {institutionSetupProgress.summary.total} steps completed
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-8 hidden border-t border-white/15 pt-7 lg:block">
+                <p className="text-xs font-semibold uppercase text-white/70">Setup Checklist</p>
+                <div className="mt-4 space-y-2.5">
+                  {[
+                    ['Institution Type', false],
+                    ['School Profile', true],
+                    ['Academic Structure', true],
+                    ['Streams & Classes', true],
+                    ['Subjects', true],
+                    ['Grading System', true],
+                    ['Fee Structure', true],
+                    ['Users & Permissions', true],
+                  ].map(([label, done]) => (
+                    <div key={label} className="flex items-center gap-3 text-sm">
+                      <span className={cn(
+                        "grid h-5 w-5 place-items-center rounded-full border",
+                        done ? "border-emerald-300 bg-emerald-300 text-[var(--brand-primary)]" : "border-violet-300 text-violet-200"
+                      )}>
+                        {done ? <Check size={12} /> : <span className="h-2 w-2 rounded-full bg-current" />}
+                      </span>
+                      <span className={done ? 'text-white' : 'text-violet-200'}>{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-7 hidden rounded-lg border border-white/15 bg-white/10 p-4 lg:block">
+                <div className="flex items-start gap-3">
+                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-violet-400 text-white">
+                    <HelpCircle size={17} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">Need help?</p>
+                    <p className="mt-1 text-xs leading-5 text-white/75">Check the setup guide or contact support.</p>
+                  </div>
+                  <ExternalLink size={15} className="ml-auto shrink-0 text-white/75" />
+                </div>
+              </div>
+            </aside>
+
+            <main className="flex min-h-screen flex-col bg-white px-5 py-6 sm:px-8 lg:h-screen lg:overflow-y-auto lg:px-12 lg:py-6 xl:px-16">
+              <div className="flex items-start justify-between gap-6">
+                <div>
+                  <p className="text-sm font-semibold text-[var(--brand-primary)]">Step 1 of 3</p>
+                  <h2 className="mt-2 text-3xl font-bold leading-tight text-slate-950">Select Institution Type</h2>
+                  <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+                    Choose the active institution for this system. After saving, this will be locked for data safety.
+                  </p>
+                </div>
+                <div className="hidden items-center gap-3 text-right lg:flex">
+                  <ShieldCheck className="h-9 w-9 text-[var(--brand-primary)]" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Your data is safe with us</p>
+                    <p className="mt-1 text-xs text-slate-500">We follow strict security standards</p>
+                  </div>
+                </div>
+              </div>
+
               {institutionSetupSuccess && (
-                <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+                <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
                   {institutionSetupSuccess}
                 </div>
               )}
 
-              <div className="grid gap-3">
+              <div className="mt-6 grid gap-5 lg:grid-cols-3">
                 {INSTITUTION_OPTIONS.map((option) => {
                   const selected = institutionChoice === option.value;
+                  const Icon = option.icon;
                   return (
                     <button
                       key={option.value}
                       type="button"
                       onClick={() => setInstitutionChoice(option.value)}
                       className={cn(
-                        "w-full text-left rounded-xl border p-4 transition-all duration-150",
+                        "relative min-h-[185px] rounded-lg border bg-white p-5 text-center shadow-sm transition-all duration-150",
                         selected
-                          ? "border-[var(--brand-primary)] bg-[var(--brand-primary)]/5 shadow-sm"
-                          : "border-gray-200 bg-white hover:border-[var(--brand-primary)]/40 hover:bg-[var(--brand-primary)]/5"
+                          ? "border-[var(--brand-primary)] ring-1 ring-[var(--brand-primary)]/30"
+                          : "border-slate-200 hover:border-[var(--brand-primary)]/50 hover:shadow-md"
                       )}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-base font-bold text-black">{option.label}</p>
-                          <p className="text-xs uppercase tracking-wider font-semibold text-[var(--brand-primary)]">{option.subtitle}</p>
-                          <p className="mt-1 text-sm text-black/75">{option.description}</p>
-                        </div>
-                        <div className={cn(
-                          "mt-0.5 h-6 w-6 rounded-full border flex items-center justify-center",
-                          selected ? "border-[var(--brand-primary)] bg-[var(--brand-primary)] text-white" : "border-gray-300 text-transparent"
-                        )}>
-                          <Check size={14} />
-                        </div>
-                      </div>
+                      {selected && (
+                        <span className="absolute right-5 top-5 grid h-7 w-7 place-items-center rounded-full bg-[var(--brand-primary)] text-white">
+                          <Check size={16} />
+                        </span>
+                      )}
+                      <span className="mx-auto grid h-14 w-14 place-items-center rounded-full border border-violet-100 bg-violet-50 text-[var(--brand-primary)]">
+                        <Icon size={27} />
+                      </span>
+                      <p className="mt-4 text-lg font-bold text-slate-950">{option.label}</p>
+                      <p className="mt-2 text-xs font-bold uppercase text-[var(--brand-primary)]">{option.subtitle}</p>
+                      <p className="mx-auto mt-3 max-w-[240px] text-sm leading-5 text-slate-600">{option.description}</p>
+                      <span className="mt-4 inline-flex min-h-[32px] items-center rounded-md bg-violet-50 px-4 text-sm font-medium text-[var(--brand-primary)]">
+                        {option.range}
+                      </span>
                     </button>
                   );
                 })}
               </div>
 
-              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-black">Institution Setup Readiness</p>
+              <section className="mt-6 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-base font-semibold text-slate-950">Institution Setup Readiness</p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      {isLoadingInstitutionSetupProgress
+                        ? 'Checking current setup...'
+                        : "You're almost there. Complete the remaining items to finish setup."}
+                    </p>
+                  </div>
                   {institutionSetupProgress?.summary && (
-                    <p className="text-xs font-bold text-[var(--brand-primary)]">
+                    <p className="text-lg font-bold text-[var(--brand-primary)]">
                       {institutionSetupProgress.summary.completed}/{institutionSetupProgress.summary.total}
                     </p>
                   )}
                 </div>
-                <div className="mt-2 h-2.5 w-full rounded-full bg-slate-200 overflow-hidden">
+                <div className="mt-4 h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
                   <div
-                    className="h-full bg-[var(--brand-primary)] transition-all duration-300"
+                    className="h-full rounded-full bg-[var(--brand-primary)] transition-all duration-300"
                     style={{ width: `${institutionSetupProgress?.summary?.percent || 0}%` }}
                   />
                 </div>
-                <p className="mt-2 text-xs font-medium text-slate-700">
-                  {isLoadingInstitutionSetupProgress
-                    ? 'Checking current setup...'
-                    : `${institutionSetupProgress?.summary?.percent || 0}% pre-configured for ${institutionOptionMap[institutionChoice]?.label || institutionChoice}.`}
+                <p className="mt-2 text-sm font-semibold text-[var(--brand-primary)]">
+                  {institutionSetupProgress?.summary?.percent || 0}% complete
                 </p>
                 {!isLoadingInstitutionSetupProgress && Array.isArray(institutionSetupProgress?.items) && (
-                  <div className="mt-3 grid gap-2">
+                  <div className="mt-4 grid gap-2.5 lg:grid-cols-2">
                     {institutionSetupProgress.items.map((item) => (
-                      <div key={item.key} className="flex items-start justify-between text-xs gap-3">
-                        <p className={cn("font-medium", item.completed ? 'text-emerald-700' : 'text-slate-800')}>
-                          {item.completed ? 'Done' : 'Pending'}: {item.label}
-                        </p>
-                        <p className="text-slate-600 whitespace-nowrap">{item.current}/{item.target}</p>
+                      <div key={item.key} className="flex min-h-[38px] items-center justify-between gap-4 rounded-md border border-slate-200 px-3 py-2">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className={cn(
+                            "grid h-5 w-5 shrink-0 place-items-center rounded-full",
+                            item.completed ? 'bg-emerald-600 text-white' : 'bg-amber-50 text-amber-600'
+                          )}>
+                            {item.completed ? <CheckCircle size={14} /> : <Clock3 size={13} />}
+                          </span>
+                          <p className="truncate text-sm font-medium text-slate-800">{item.label}</p>
+                        </div>
+                        <p className="shrink-0 text-sm font-bold text-slate-900">{item.current}/{item.target}</p>
                       </div>
                     ))}
                   </div>
                 )}
-              </div>
+              </section>
 
               {institutionSetupError && (
-                <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+                <div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
                   {institutionSetupError}
                 </div>
               )}
 
-              <div className="mt-6 flex items-center justify-end gap-3">
+              <div className="mt-5 flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
                 <Button
                   type="button"
                   variant="outline"
-                  className="border-gray-300 text-black"
+                  className="h-11 border-gray-300 px-6 text-black"
                   onClick={() => {
                     setShowInstitutionSetupModal(false);
                     setPendingCredentialsData(null);
@@ -566,18 +687,29 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
                   }}
                   disabled={isLockingInstitution}
                 >
-                  Cancel Login
+                  Cancel Setup
                 </Button>
-                <Button
-                  type="button"
-                  className="bg-[var(--brand-primary)] hover:brightness-90 text-white min-w-[180px]"
-                  onClick={institutionSetupSuccess ? handleContinueAfterInstitutionSetup : handleConfirmInstitutionSetup}
-                  disabled={isLockingInstitution}
-                >
-                  {isLockingInstitution ? 'Saving Configuration...' : institutionSetupSuccess ? 'Continue to Dashboard' : 'Confirm & Continue'}
-                </Button>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 border-gray-300 px-8 text-black"
+                    disabled
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    type="button"
+                    className="h-11 min-w-[160px] bg-[var(--brand-primary)] px-8 text-white hover:brightness-90"
+                    onClick={institutionSetupSuccess ? handleContinueAfterInstitutionSetup : handleConfirmInstitutionSetup}
+                    disabled={isLockingInstitution}
+                  >
+                    <span>{isLockingInstitution ? 'Saving...' : institutionSetupSuccess ? 'Continue' : 'Continue'}</span>
+                    {!isLockingInstitution && <ArrowRight size={16} className="ml-2" />}
+                  </Button>
+                </div>
               </div>
-            </div>
+            </main>
           </div>
         </div>
       )}
