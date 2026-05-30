@@ -107,6 +107,7 @@ describe('Tier A smoke (real DB)', () => {
         lastName: 'A',
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
+        emailVerified: true,
         phone: '0712345678'
       },
       create: {
@@ -118,6 +119,7 @@ describe('Tier A smoke (real DB)', () => {
         lastName: 'A',
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',
+        emailVerified: true,
         phone: '0712345678',
         createdAt: new Date()
       } as any
