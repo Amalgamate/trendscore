@@ -194,7 +194,6 @@ export class OnboardingController {
         schoolName: result.school.name,
         adminName: `${result.user.firstName} ${result.user.lastName}`,
         loginUrl,
-        email: result.user.email,
       }).catch((err) => logger.error('Failed to send onboarding email:', err));
 
       if (result.user.phone) {

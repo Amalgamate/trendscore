@@ -165,8 +165,12 @@ export const seniorPathwayController = {
         ? req.body.subjectIds
         : [];
 
-    const officialLearningAreaIds = Array.from(
-      new Set(rawIds.map((id: unknown) => String(id || '').trim()).filter(Boolean))
+    const officialLearningAreaIds: string[] = Array.from(
+      new Set(
+        rawIds
+          .map((id: unknown) => String(id || '').trim())
+          .filter((id): id is string => Boolean(id))
+      )
     );
 
     const validAreas = officialLearningAreaIds.length
