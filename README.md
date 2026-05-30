@@ -152,6 +152,17 @@ You will need to create `.env` files in both the root and the `/server` director
 
 ---
 
+## 🚢 Deployment (CI/CD)
+
+- **Push to `main`**: builds Docker images, then deploys **demo only** (see `.github/workflows/deploy-demo.yml`).
+- **Production / pilot / individual schools**: run the **Promote Release** workflow manually with an image tag and target (see `.github/workflows/promote-release.yml`).
+- **Instance registry**: `deploy/instances.manifest.json` — add each school stack (`tier`, `compose_project`, `env_file`).
+- **Full guide**: [deploy/DEPLOYMENT.md](deploy/DEPLOYMENT.md)
+
+Configure GitHub Environments `deploy-demo`, `deploy-pilot`, `deploy-production-school`, and `deploy-production-all` with required reviewers for production promotes.
+
+---
+
 ## 👨‍💻 Detailed Installation
 
 ### Step 1: Clone and Root Setup

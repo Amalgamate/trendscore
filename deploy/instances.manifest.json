@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "defaults": {
+    "apps_dir": "/srv/zawadi/apps",
+    "main_dir": "/srv/zawadi/apps/zawadijrn",
+    "env_dir": "/srv/zawadi/apps/env",
+    "backup_dir": "/srv/zawadi/backups",
+    "stack_compose_file": "docker-compose.stack.yml",
+    "frontend_image": "ghcr.io/amalgamate/zawadi-frontend",
+    "backend_image": "ghcr.io/amalgamate/zawadi-backend",
+    "console_image": "ghcr.io/amalgamate/zawadi-console",
+    "health_host": "127.0.0.1"
+  },
+  "instances": [
+    {
+      "id": "demo",
+      "label": "Trends CORE Demo (main stack)",
+      "tier": "demo",
+      "kind": "main",
+      "auto_deploy_on_main": true
+    }
+  ],
+  "discovery": {
+    "enabled": true,
+    "default_tier": "production",
+    "school_stack_only": true,
+    "exclude_compose_projects": []
+  },
+  "_comments": {
+    "instances": "Add one entry per school stack. kind=stack requires compose_project and env_file. tier=pilot|production|demo.",
+    "pilot_example": {
+      "id": "schoolb",
+      "label": "Pilot School B",
+      "tier": "pilot",
+      "kind": "stack",
+      "compose_project": "zawadi-schoolb",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-schoolb.env"
+    }
+  }
+}

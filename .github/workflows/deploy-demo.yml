@@ -1,0 +1,73 @@
+name: Deploy Demo (main only)
+
+# After images are published from main, deploy ONLY the demo instance.
+# Production / pilot / other schools require the "Promote Release" workflow.
+
+on:
+  workflow_run:
+    workflows: ["Publish Docker Images"]
+    types: [completed]
+
+concurrency:
+  group: deploy-demo-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-demo:
+    runs-on: ubuntu-latest
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    environment: deploy-demo
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Verify demo target
+        run: |
+          set -euo pipefail
+          DEMO_COUNT="$(jq '[.instances[] | select(.tier == "demo")] | length' deploy/instances.manifest.json)"
+          if [[ "${DEMO_COUNT}" -lt 1 ]]; then
+            echo "No demo instance defined in deploy/instances.manifest.json" >&2
+            exit 1
+          fi
+          echo "Demo instances in manifest: ${DEMO_COUNT}"
+          jq -r '.instances[] | select(.tier == "demo") | "  - \(.id) (\(.label // .id))"' deploy/instances.manifest.json
+
+      - name: Upload deploy assets
+        run: |
+          set -euo pipefail
+          scp deploy/instances.manifest.json production:/tmp/trendscore-instances.manifest.json
+          scp scripts/deploy-release.sh production:/tmp/trendscore-deploy-release.sh
+          ssh production "chmod +x /tmp/trendscore-deploy-release.sh"
+
+      - name: Deploy demo instance
+        env:
+          IMAGE_TAG: sha-${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          ssh production \
+            "DEPLOY_TARGET=demo IMAGE_TAG=${IMAGE_TAG} MANIFEST_PATH=/tmp/trendscore-instances.manifest.json bash /tmp/trendscore-deploy-release.sh"
+
+      - name: Report success
+        if: success()
+        run: |
+          echo "## Demo deploy succeeded" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image tag: \`sha-${{ github.event.workflow_run.head_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Target: demo only (see deploy/instances.manifest.json)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report failure
+        if: failure()
+        run: |
+          echo "## Demo deploy failed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Check the job log. Production and pilot instances were not changed." >> "$GITHUB_STEP_SUMMARY"
