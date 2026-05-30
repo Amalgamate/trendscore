@@ -190,16 +190,19 @@ pull_images() {
   local env_file="${3:-}"
 
   log "━━ Pull images: ${FRONTEND_IMAGE} / ${BACKEND_IMAGE} ━━"
-  export FRONTEND_IMAGE BACKEND_IMAGE
+  sudo docker pull "${FRONTEND_IMAGE}"
+  sudo docker pull "${BACKEND_IMAGE}"
 
   if [[ "${kind}" == "main" ]]; then
     cd "${MAIN_DIR}"
-    sudo -E docker compose pull backend frontend
+    sudo FRONTEND_IMAGE="${FRONTEND_IMAGE}" BACKEND_IMAGE="${BACKEND_IMAGE}" \
+      docker compose pull backend frontend
     return 0
   fi
 
   cd "${APPS_DIR}"
-  sudo -E docker compose --env-file "${env_file}" -p "${project}" -f "${STACK_COMPOSE_FILE}" pull backend frontend
+  sudo FRONTEND_IMAGE="${FRONTEND_IMAGE}" BACKEND_IMAGE="${BACKEND_IMAGE}" \
+    docker compose --env-file "${env_file}" -p "${project}" -f "${STACK_COMPOSE_FILE}" pull backend frontend
 }
 
 run_migrations() {
@@ -227,16 +230,17 @@ restart_services() {
   local env_file="${3:-}"
 
   log "━━ Restart containers ━━"
-  export FRONTEND_IMAGE BACKEND_IMAGE
 
   if [[ "${kind}" == "main" ]]; then
     cd "${MAIN_DIR}"
-    sudo -E docker compose up -d --force-recreate backend frontend
+    sudo FRONTEND_IMAGE="${FRONTEND_IMAGE}" BACKEND_IMAGE="${BACKEND_IMAGE}" \
+      docker compose up -d --force-recreate backend frontend
     return 0
   fi
 
   cd "${APPS_DIR}"
-  sudo -E docker compose --env-file "${env_file}" -p "${project}" -f "${STACK_COMPOSE_FILE}" \
+  sudo FRONTEND_IMAGE="${FRONTEND_IMAGE}" BACKEND_IMAGE="${BACKEND_IMAGE}" \
+    docker compose --env-file "${env_file}" -p "${project}" -f "${STACK_COMPOSE_FILE}" \
     up -d --force-recreate backend frontend
 }
 
