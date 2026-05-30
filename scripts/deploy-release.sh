@@ -125,38 +125,22 @@ read_env_value() {
   grep -E "^${key}=" "${file}" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '\r' || true
 }
 
-write_deploy_env_file() {
-  local path="$1"
-  local base_env="${2:-}"
-  if [[ -n "${base_env}" && -f "${base_env}" ]]; then
-    grep -v -E '^(FRONTEND_IMAGE|BACKEND_IMAGE)=' "${base_env}" > "${path}" || true
-  else
-    : > "${path}"
-  fi
-  printf 'FRONTEND_IMAGE=%s\nBACKEND_IMAGE=%s\n' "${FRONTEND_IMAGE}" "${BACKEND_IMAGE}" >> "${path}"
-}
-
 compose_with_pinned_images() {
   local kind="$1"
   local project="${2:-}"
   local stack_env="${3:-}"
   shift 3
 
-  local deploy_env
-  deploy_env="$(mktemp /tmp/trendscore-deploy-env.XXXXXX)"
-
   if [[ "${kind}" == "main" ]]; then
-    write_deploy_env_file "${deploy_env}" "${MAIN_DIR}/.env"
+    pin_runtime_images_in_env "${MAIN_DIR}/.env"
     cd "${MAIN_DIR}"
-    sudo docker compose --env-file "${deploy_env}" "$@"
+    sudo docker compose "$@"
   else
-    write_deploy_env_file "${deploy_env}" "${stack_env}"
+    pin_runtime_images_in_env "${stack_env}"
     cd "${APPS_DIR}"
-    sudo docker compose --env-file "${deploy_env}" \
+    sudo docker compose --env-file "${stack_env}" \
       -p "${project}" -f "${STACK_COMPOSE_FILE}" "$@"
   fi
-
-  rm -f "${deploy_env}"
 }
 
 publish_frontend_static() {
@@ -182,6 +166,9 @@ publish_frontend_static() {
   while IFS= read -r legacy; do
     append_unique_target targets "${legacy}"
   done < <(discover_legacy_frontend_dirs)
+  while IFS= read -r live_dir; do
+    append_unique_target targets "${live_dir}"
+  done < <(discover_live_frontend_publish_dirs "${public_domain}")
 
   [[ "${#targets[@]}" -gt 0 ]] || {
     log "No static publish targets configured"
@@ -211,6 +198,10 @@ publish_frontend_static() {
       log "WARNING: nginx -t failed; skipped reload"
     fi
   fi
+
+  if [[ -n "${public_domain}" ]]; then
+    verify_live_site_bundle "${public_domain}" || fail "Live site still serving Apps menu for ${public_domain}"
+  fi
 }
 
 discover_nginx_static_roots() {
@@ -238,12 +229,78 @@ discover_nginx_static_roots() {
 }
 
 discover_legacy_frontend_dirs() {
-  sudo find /srv /var/www -type f -path '*/assets/CBCGradingSystem*.js' 2>/dev/null \
-    | while IFS= read -r asset; do
-        if sudo grep -q 'settings-apps' "${asset}" 2>/dev/null; then
-          dirname "$(dirname "${asset}")"
-        fi
+  local search_roots=(/srv /var/www /var /opt /home /usr/share/nginx /usr/share)
+  local root asset
+  for root in "${search_roots[@]}"; do
+    [[ -d "${root}" ]] || continue
+    while IFS= read -r asset; do
+      [[ -n "${asset}" ]] || continue
+      if sudo grep -q 'settings-apps' "${asset}" 2>/dev/null; then
+        dirname "$(dirname "${asset}")"
+      fi
+    done < <(sudo find "${root}" -type f -path '*/assets/CBCGradingSystem*.js' 2>/dev/null)
+  done | sort -u
+}
+
+discover_live_frontend_publish_dirs() {
+  local domain="$1"
+  [[ -n "${domain}" ]] || return 0
+
+  local html index_js
+  html="$(curl -fsS -H "Host: ${domain}" http://127.0.0.1/ 2>/dev/null || true)"
+  if [[ -z "${html}" ]]; then
+    html="$(curl -fsSk "https://${domain}/" 2>/dev/null || true)"
+  fi
+  index_js="$(printf '%s' "${html}" | grep -oE 'assets/index-[^"]+\.js' | head -1 | sed 's|^assets/||')"
+  [[ -n "${index_js}" ]] || return 0
+
+  log "Live site bundle marker: ${index_js}"
+  sudo find /srv /var /opt /home /usr /root -type f -name "${index_js}" 2>/dev/null \
+    | while IFS= read -r file; do
+        dirname "${file}"
       done | sort -u
+}
+
+pin_runtime_images_in_env() {
+  local env_file="$1"
+  [[ -f "${env_file}" ]] || return 0
+  if sudo grep -q '^FRONTEND_IMAGE=' "${env_file}" 2>/dev/null; then
+    sudo sed -i "s|^FRONTEND_IMAGE=.*|FRONTEND_IMAGE=${FRONTEND_IMAGE}|" "${env_file}"
+  else
+    printf 'FRONTEND_IMAGE=%s\n' "${FRONTEND_IMAGE}" | sudo tee -a "${env_file}" >/dev/null
+  fi
+  if sudo grep -q '^BACKEND_IMAGE=' "${env_file}" 2>/dev/null; then
+    sudo sed -i "s|^BACKEND_IMAGE=.*|BACKEND_IMAGE=${BACKEND_IMAGE}|" "${env_file}"
+  else
+    printf 'BACKEND_IMAGE=%s\n' "${BACKEND_IMAGE}" | sudo tee -a "${env_file}" >/dev/null
+  fi
+}
+
+verify_live_site_bundle() {
+  local domain="$1"
+  local html chunk asset_dir
+  html="$(curl -fsS -H "Host: ${domain}" http://127.0.0.1/ 2>/dev/null || true)"
+  if [[ -z "${html}" ]]; then
+    html="$(curl -fsSk "https://${domain}/" 2>/dev/null || true)"
+  fi
+  chunk="$(printf '%s' "${html}" | grep -oE 'CBCGradingSystem-[^"]+\.js' | head -1 | sed 's|^assets/||')"
+  [[ -n "${chunk}" ]] || {
+    log "WARNING: could not resolve live CBC bundle for ${domain}"
+    return 0
+  }
+
+  while IFS= read -r asset_dir; do
+    [[ -f "${asset_dir}/assets/${chunk}" ]] || continue
+    if grep -q 'settings-apps' "${asset_dir}/assets/${chunk}" 2>/dev/null; then
+      log "Live bundle still contains Apps menu: ${asset_dir}/assets/${chunk}"
+      return 1
+    fi
+    log "Live bundle verified for ${domain}: ${asset_dir}/assets/${chunk}"
+    return 0
+  done < <(discover_live_frontend_publish_dirs "${domain}")
+
+  log "WARNING: could not verify live bundle path on disk for ${domain}"
+  return 0
 }
 
 append_unique_target() {
