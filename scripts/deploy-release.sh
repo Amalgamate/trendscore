@@ -34,6 +34,19 @@ require_cmd() {
 
 require_cmd jq
 require_cmd curl
+
+run_as_root() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+docker_cmd() {
+  run_as_root docker "$@"
+}
+
 [[ -f "${MANIFEST_PATH}" ]] || fail "Manifest not found: ${MANIFEST_PATH}"
 
 APPS_DIR="${APPS_DIR:-$(jq -r '.defaults.apps_dir' "${MANIFEST_PATH}")}"
@@ -57,7 +70,7 @@ if [[ "${DEPLOY_TARGET}" == "school" && -z "${SCHOOL_ID}" ]]; then
 fi
 
 discover_running_stacks() {
-  sudo docker ps \
+  docker_cmd ps \
     --filter "label=com.docker.compose.service=frontend" \
     --format '{{.Label "com.docker.compose.project"}}|{{.Label "com.docker.compose.project.config_files"}}|{{.Label "com.docker.compose.project.environment_file"}}' \
     | awk -F'|' 'NF>=3 && $2 ~ /docker-compose\.stack\.yml$/ && length($1)>0 && length($3)>0 {print $1 "|" $3}' \
@@ -165,11 +178,11 @@ compose_with_pinned_images() {
   if [[ "${kind}" == "main" ]]; then
     pin_runtime_images_in_env "${MAIN_DIR}/.env"
     cd "${MAIN_DIR}"
-    sudo docker compose "$@"
+    docker_cmd compose "$@"
   else
     pin_runtime_images_in_env "${stack_env}"
     cd "${APPS_DIR}"
-    sudo docker compose --env-file "${stack_env}" \
+    docker_cmd compose --env-file "${stack_env}" \
       -p "${project}" -f "${STACK_COMPOSE_FILE}" "$@"
   fi
 }
@@ -183,7 +196,7 @@ publish_frontend_static() {
 
   local container="zawadi-frontend"
   local image
-  image="$(sudo docker inspect "${container}" --format '{{.Config.Image}}' 2>/dev/null || true)"
+  image="$(docker_cmd inspect "${container}" --format '{{.Config.Image}}' 2>/dev/null || true)"
   [[ -n "${image}" ]] && log "Frontend container image: ${image}"
 
   local -a targets=()
@@ -211,7 +224,7 @@ publish_frontend_static() {
   for target in "${targets[@]}"; do
     log "━━ Publish static frontend: ${container} → ${target} ━━"
     sudo mkdir -p "${target}"
-    sudo docker cp "${container}:/usr/share/nginx/html/." "${target}/"
+    docker_cmd cp "${container}:/usr/share/nginx/html/." "${target}/"
     if id www-data >/dev/null 2>&1; then
       sudo chown -R www-data:www-data "${target}" 2>/dev/null || true
     fi
@@ -379,7 +392,7 @@ verify_target() {
   [[ -n "${project}" ]] || { log "Stack ${id}: missing compose_project"; return 1; }
   [[ -f "${env_file}" ]] || { log "Stack ${id}: env file not found: ${env_file}"; return 1; }
   [[ -f "${STACK_COMPOSE_FILE}" ]] || { log "Stack compose file missing: ${STACK_COMPOSE_FILE}"; return 1; }
-  if ! sudo docker ps --filter "label=com.docker.compose.project=${project}" --format '{{.Names}}' | grep -q .; then
+  if ! docker_cmd ps --filter "label=com.docker.compose.project=${project}" --format '{{.Names}}' | grep -q .; then
     log "WARNING: no running containers for project ${project} (deploy will still proceed)"
   fi
 }
@@ -403,7 +416,7 @@ backup_database() {
     db_name="$(read_env_value "${MAIN_DIR}/.env" DB_NAME)"
     db_user="${db_user:-postgres}"
     db_name="${db_name:-zawadi_sms}"
-    sudo docker compose exec -T db pg_dump -U "${db_user}" "${db_name}" \
+    docker_cmd compose exec -T db pg_dump -U "${db_user}" "${db_name}" \
       | sudo tee "${dest}/database.sql" >/dev/null
     echo "${dest}/database.sql" | sudo tee "${dest}/LATEST" >/dev/null
     return 0
@@ -415,7 +428,7 @@ backup_database() {
   db_name="$(read_env_value "${env_file}" DB_NAME)"
   db_user="${db_user:-postgres}"
   db_name="${db_name:-postgres}"
-  sudo docker compose --env-file "${env_file}" -p "${project}" -f "${STACK_COMPOSE_FILE}" \
+  docker_cmd compose --env-file "${env_file}" -p "${project}" -f "${STACK_COMPOSE_FILE}" \
     exec -T db pg_dump -U "${db_user}" "${db_name}" \
     | sudo tee "${dest}/database.sql" >/dev/null
   echo "${dest}/database.sql" | sudo tee "${dest}/LATEST" >/dev/null
@@ -427,10 +440,10 @@ pull_images() {
   local env_file="${3:-}"
 
   log "━━ Pull images: ${FRONTEND_IMAGE} / ${BACKEND_IMAGE} ━━"
-  if ! sudo docker pull "${FRONTEND_IMAGE}"; then
+  if ! docker_cmd pull "${FRONTEND_IMAGE}"; then
     fail "Failed to pull frontend image: ${FRONTEND_IMAGE}"
   fi
-  if ! sudo docker pull "${BACKEND_IMAGE}"; then
+  if ! docker_cmd pull "${BACKEND_IMAGE}"; then
     fail "Failed to pull backend image: ${BACKEND_IMAGE}"
   fi
 
@@ -486,7 +499,7 @@ health_check_instance() {
   if [[ "${kind}" == "main" ]]; then
     backend_container="zawadi-backend"
   else
-    backend_container="$(sudo docker ps \
+    backend_container="$(docker_cmd ps \
       --filter "label=com.docker.compose.project=${project}" \
       --filter "label=com.docker.compose.service=backend" \
       --format '{{.Names}}' | head -n1)"
@@ -495,7 +508,7 @@ health_check_instance() {
   [[ -n "${backend_container}" ]] || { log "Backend container not found for ${id}"; return 1; }
 
   local port
-  port="$(sudo docker port "${backend_container}" 5000/tcp | awk -F: 'NR==1{print $NF}')"
+  port="$(docker_cmd port "${backend_container}" 5000/tcp | awk -F: 'NR==1{print $NF}')"
   [[ -n "${port}" ]] || { log "Could not resolve backend port for ${backend_container}"; return 1; }
 
   local url="http://${HEALTH_HOST}:${port}/api/health"
@@ -521,10 +534,10 @@ deploy_console() {
   local console_env="${CONSOLE_ENV_FILE:-${APPS_DIR}/.env.console}"
   local console_data="${CONSOLE_DATA_DIR:-${APPS_DIR}/console-data}"
 
-  sudo docker pull "${CONSOLE_IMAGE}"
+  docker_cmd pull "${CONSOLE_IMAGE}"
   sudo mkdir -p "${console_data}"
-  sudo docker rm -f zawadi-console >/dev/null 2>&1 || true
-  sudo docker run -d \
+  docker_cmd rm -f zawadi-console >/dev/null 2>&1 || true
+  docker_cmd run -d \
     --name zawadi-console \
     --restart always \
     --label com.zawadi.service=platform-console \

@@ -94,7 +94,7 @@ jobs:
       - name: Build and publish console
         uses: docker/build-push-action@v6
         with:
-          context: ./platform-console
+          context: .
           file: ./platform-console/Dockerfile
           push: true
           tags: ${{ steps.console_meta.outputs.tags }}

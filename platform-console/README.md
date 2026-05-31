@@ -75,6 +75,13 @@ Scheme: http
 After HTTPS is enabled in NGINX Proxy Manager, set `CONSOLE_COOKIE_SECURE=true`
 in `/srv/zawadi/apps/.env.console`.
 
+Promote Release assets (updated by CI on each deploy):
+
+```bash
+/srv/zawadi/apps/deploy/deploy-release.sh
+/srv/zawadi/apps/deploy/instances.manifest.json
+```
+
 ---
 
 ## File structure

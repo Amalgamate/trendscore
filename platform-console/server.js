@@ -53,9 +53,38 @@ const MAX_AUDIT_ENTRIES = 2000;
 // In-memory deployment log (ephemeral — only tracks this process session)
 const deploymentLog = [];
 const DEPLOY_STORE_FILE = path.join(CONSOLE_DATA_DIR, 'deployments.store.json');
-const CONSOLE_MANIFEST_PATH = process.env.CONSOLE_MANIFEST_PATH || '/srv/zawadi/apps/zawadijrn/deploy/instances.manifest.json';
-const CONSOLE_DEPLOY_SCRIPT = process.env.CONSOLE_DEPLOY_SCRIPT || '/srv/zawadi/apps/zawadijrn/scripts/deploy-release.sh';
+const CONSOLE_MANIFEST_PATH = resolveDeployAssetPath('manifest', [
+  process.env.CONSOLE_MANIFEST_PATH,
+  '/srv/zawadi/apps/deploy/instances.manifest.json',
+  '/tmp/trendscore-instances.manifest.json',
+  '/srv/zawadi/apps/zawadijrn/deploy/instances.manifest.json',
+  path.join(__dirname, 'deploy', 'instances.manifest.json'),
+]);
+const CONSOLE_DEPLOY_SCRIPT = resolveDeployAssetPath('script', [
+  process.env.CONSOLE_DEPLOY_SCRIPT,
+  '/srv/zawadi/apps/deploy/deploy-release.sh',
+  '/tmp/trendscore-deploy-release.sh',
+  '/srv/zawadi/apps/scripts/deploy-release.sh',
+  '/srv/zawadi/apps/zawadijrn/scripts/deploy-release.sh',
+  path.join(__dirname, 'deploy', 'deploy-release.sh'),
+]);
 const FRONTEND_IMAGE_REPO = process.env.CONSOLE_FRONTEND_IMAGE || 'ghcr.io/amalgamate/zawadi-frontend';
+
+function resolveDeployAssetPath(kind, candidates) {
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return candidates.find(Boolean) || '';
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
+function shouldRunDeployOnHost(scriptPath) {
+  return scriptPath.startsWith('/srv/zawadi/') || scriptPath.startsWith('/tmp/trendscore-');
+}
 
 function readDeployStore() {
   if (!fs.existsSync(DEPLOY_STORE_FILE)) return [];
@@ -186,19 +215,61 @@ async function buildDeployTargets() {
 }
 
 async function runDeployRelease({ deployTarget, imageTag, schoolId }) {
-  if (!fs.existsSync(CONSOLE_DEPLOY_SCRIPT)) {
-    throw new Error(`Deploy script not found: ${CONSOLE_DEPLOY_SCRIPT}`);
+  const scriptPath = CONSOLE_DEPLOY_SCRIPT;
+  const manifestPath = CONSOLE_MANIFEST_PATH;
+  if (!scriptPath || !fs.existsSync(scriptPath)) {
+    throw new Error(
+      `Deploy script not found. Expected at /srv/zawadi/apps/deploy/deploy-release.sh `
+      + `(install via CI or set CONSOLE_DEPLOY_SCRIPT). Tried: ${scriptPath || 'none'}`,
+    );
   }
+  if (!manifestPath || !fs.existsSync(manifestPath)) {
+    throw new Error(
+      `Deploy manifest not found. Expected at /srv/zawadi/apps/deploy/instances.manifest.json `
+      + `(install via CI or set CONSOLE_MANIFEST_PATH). Tried: ${manifestPath || 'none'}`,
+    );
+  }
+
   const env = {
     ...process.env,
     DEPLOY_TARGET: deployTarget,
     IMAGE_TAG: imageTag,
-    MANIFEST_PATH: CONSOLE_MANIFEST_PATH,
+    MANIFEST_PATH: manifestPath,
   };
   if (schoolId) env.SCHOOL_ID = schoolId;
 
-  const { stdout, stderr } = await execFileAsync('bash', [CONSOLE_DEPLOY_SCRIPT], {
+  if (shouldRunDeployOnHost(scriptPath)) {
+    return runDeployReleaseOnHost(scriptPath, env);
+  }
+
+  const { stdout, stderr } = await execFileAsync('bash', [scriptPath], {
     env,
+    timeout: 45 * 60 * 1000,
+    maxBuffer: 20 * 1024 * 1024,
+  });
+  return { stdout: String(stdout || ''), stderr: String(stderr || '') };
+}
+
+async function runDeployReleaseOnHost(scriptPath, env) {
+  const envPairs = Object.entries(env)
+    .filter(([key]) => ['DEPLOY_TARGET', 'IMAGE_TAG', 'MANIFEST_PATH', 'SCHOOL_ID', 'DEPLOY_CONSOLE'].includes(key))
+    .filter(([, value]) => value != null && String(value).length > 0);
+
+  const innerEnv = envPairs.map(([key, value]) => `${key}=${value}`).join(' ');
+  const innerCmd = `${innerEnv} bash ${scriptPath}`;
+  const chrootCmd = `chroot /host /bin/bash -lc ${shellQuote(innerCmd)}`;
+
+  const dockerArgs = [
+    'run', '--rm',
+    '--privileged',
+    '--pid', 'host',
+    '-v', '/:/host',
+    '-v', '/var/run/docker.sock:/var/run/docker.sock',
+    'alpine:3.20',
+    'sh', '-c', chrootCmd,
+  ];
+
+  const { stdout, stderr } = await execFileAsync('docker', dockerArgs, {
     timeout: 45 * 60 * 1000,
     maxBuffer: 20 * 1024 * 1024,
   });
@@ -1056,7 +1127,13 @@ app.get('/api/audit-logs', requireAuth, (req, res) => {
 app.get('/api/deploy/targets', requireAuth, requireRole('super_admin'), async (_req, res) => {
   try {
     const targets = await buildDeployTargets();
-    res.json({ ok: true, targets, manifestPath: CONSOLE_MANIFEST_PATH });
+    res.json({
+      ok: true,
+      targets,
+      manifestPath: CONSOLE_MANIFEST_PATH,
+      deployScriptPath: CONSOLE_DEPLOY_SCRIPT,
+      deployReady: Boolean(CONSOLE_DEPLOY_SCRIPT && fs.existsSync(CONSOLE_DEPLOY_SCRIPT)),
+    });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
   }

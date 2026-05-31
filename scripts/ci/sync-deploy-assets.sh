@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Copy deploy manifest + script to the production server (SSH host alias: production).
+# Installs a persistent copy under /srv/zawadi/apps/deploy for the platform console.
+set -euo pipefail
+
+REMOTE_DEPLOY_DIR="${REMOTE_DEPLOY_DIR:-/srv/zawadi/apps/deploy}"
+TMP_MANIFEST="/tmp/trendscore-instances.manifest.json"
+TMP_SCRIPT="/tmp/trendscore-deploy-release.sh"
+
+scp deploy/instances.manifest.json "production:${TMP_MANIFEST}"
+scp scripts/deploy-release.sh "production:${TMP_SCRIPT}"
+
+ssh production "set -euo pipefail
+  sudo mkdir -p '${REMOTE_DEPLOY_DIR}'
+  sudo cp '${TMP_MANIFEST}' '${REMOTE_DEPLOY_DIR}/instances.manifest.json'
+  sudo cp '${TMP_SCRIPT}' '${REMOTE_DEPLOY_DIR}/deploy-release.sh'
+  sudo chmod 755 '${REMOTE_DEPLOY_DIR}/deploy-release.sh'
+  echo 'Deploy assets installed:'
+  ls -la '${REMOTE_DEPLOY_DIR}/'
+"

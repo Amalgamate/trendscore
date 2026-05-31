@@ -134,11 +134,7 @@ jobs:
           esac
 
       - name: Upload deploy assets
-        run: |
-          set -euo pipefail
-          scp deploy/instances.manifest.json production:/tmp/trendscore-instances.manifest.json
-          scp scripts/deploy-release.sh production:/tmp/trendscore-deploy-release.sh
-          ssh production "chmod +x /tmp/trendscore-deploy-release.sh"
+        run: bash scripts/ci/sync-deploy-assets.sh
 
       - name: Promote release on server
         id: deploy
@@ -153,7 +149,7 @@ jobs:
             EXTRA="SCHOOL_ID=${SCHOOL_ID}"
           fi
           ssh production \
-            "DEPLOY_TARGET=${DEPLOY_TARGET} IMAGE_TAG=${IMAGE_TAG} MANIFEST_PATH=/tmp/trendscore-instances.manifest.json ${EXTRA} bash /tmp/trendscore-deploy-release.sh"
+            "DEPLOY_TARGET=${DEPLOY_TARGET} IMAGE_TAG=${IMAGE_TAG} MANIFEST_PATH=/srv/zawadi/apps/deploy/instances.manifest.json ${EXTRA} bash /srv/zawadi/apps/deploy/deploy-release.sh"
 
       - name: Report success
         if: success()
