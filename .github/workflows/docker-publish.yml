@@ -91,10 +91,17 @@ jobs:
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
 
+      - name: Stage deploy assets for console image
+        run: |
+          set -euo pipefail
+          mkdir -p platform-console/deploy
+          cp scripts/deploy-release.sh platform-console/deploy/deploy-release.sh
+          cp deploy/instances.manifest.json platform-console/deploy/instances.manifest.json
+
       - name: Build and publish console
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ./platform-console
           file: ./platform-console/Dockerfile
           push: true
           tags: ${{ steps.console_meta.outputs.tags }}
