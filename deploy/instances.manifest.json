@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "defaults": {
     "apps_dir": "/srv/zawadi/apps",
     "main_dir": "/srv/zawadi/apps/zawadijrn",
@@ -15,28 +15,102 @@
   "instances": [
     {
       "id": "demo",
-      "label": "Trends CORE Demo (main stack)",
+      "label": "Canary — Demo School",
       "tier": "demo",
       "kind": "main",
       "public_domain": "demoschool.trendscore.co.ke",
-      "auto_deploy_on_main": true
+      "auto_deploy_on_main": true,
+      "notes": "Single canary tenant (zawadijrn main stack). Auto-deploys on every main build."
+    },
+    {
+      "id": "amalgamate",
+      "label": "Amalgamate",
+      "tier": "production",
+      "kind": "stack",
+      "compose_project": "zawadi-amalgamate",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-amalgamate.env",
+      "public_domain": "amalgamate.trendscore.co.ke"
+    },
+    {
+      "id": "ighs",
+      "label": "IGHS",
+      "tier": "production",
+      "kind": "stack",
+      "compose_project": "zawadi-ighs",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-ighs.env",
+      "public_domain": "ighs.trendscore.co.ke"
+    },
+    {
+      "id": "jrn",
+      "label": "JRN",
+      "tier": "production",
+      "kind": "stack",
+      "compose_project": "zawadi-jrn",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-jrn.env",
+      "public_domain": "jrn.trendscore.co.ke"
+    },
+    {
+      "id": "kambigarba-cs",
+      "label": "Kambi Garba CS",
+      "tier": "production",
+      "kind": "stack",
+      "compose_project": "zawadi-kambigarba-cs",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-kambigarba-cs.env",
+      "public_domain": "kambigarba-cs.trendscore.co.ke"
+    },
+    {
+      "id": "lionscomplex",
+      "label": "Lions Complex",
+      "tier": "production",
+      "kind": "stack",
+      "compose_project": "zawadi-lionscomplex",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-lionscomplex.env",
+      "public_domain": "lionscomplex.trendscore.co.ke"
+    },
+    {
+      "id": "mck",
+      "label": "MCK",
+      "tier": "production",
+      "kind": "stack",
+      "compose_project": "zawadi-mck",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-mck.env",
+      "public_domain": "mck.trendscore.co.ke"
+    },
+    {
+      "id": "merti-cs",
+      "label": "Merti Complex School",
+      "tier": "production",
+      "kind": "stack",
+      "compose_project": "zawadi-merti-cs",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-merti-cs.env",
+      "public_domain": "merti-cs.trendscore.co.ke"
+    },
+    {
+      "id": "naet",
+      "label": "NAET",
+      "tier": "production",
+      "kind": "stack",
+      "compose_project": "zawadi-naet",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-naet.env",
+      "public_domain": "naet.trendscore.co.ke"
+    },
+    {
+      "id": "zayan",
+      "label": "Zayan Electricals",
+      "tier": "production",
+      "kind": "stack",
+      "compose_project": "zawadi-zayan",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-zayan.env",
+      "public_domain": "zayan.trendscore.co.ke"
     }
   ],
   "discovery": {
     "enabled": true,
     "default_tier": "production",
     "school_stack_only": true,
-    "exclude_compose_projects": []
-  },
-  "_comments": {
-    "instances": "Add one entry per school stack. kind=stack requires compose_project and env_file. tier=pilot|production|demo.",
-    "pilot_example": {
-      "id": "schoolb",
-      "label": "Pilot School B",
-      "tier": "pilot",
-      "kind": "stack",
-      "compose_project": "zawadi-schoolb",
-      "env_file": "/srv/zawadi/apps/env/.zawadi-schoolb.env"
-    }
+    "exclude_compose_projects": [
+      "zawadijrn"
+    ],
+    "notes": "Merges unknown running school stacks into all_schools only. Manifest entries win over discovery."
   }
 }

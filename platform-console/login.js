@@ -25,6 +25,8 @@
   const errorBox   = document.getElementById('lg-error');
   const userChip   = document.getElementById('user-chip');
   const chipLabel  = document.getElementById('user-chip-label');
+  const chipRole   = document.getElementById('user-chip-role');
+  const chipAvatar = document.getElementById('user-chip-avatar');
   const logoutBtn  = document.getElementById('btn-logout');
   const roleBtns   = document.querySelectorAll('.lg-role-btn');
 
@@ -57,6 +59,17 @@
     submitBtn.textContent = on ? 'Signing in…' : 'Sign in to control panel';
   }
 
+  function initialsForUser(user) {
+    const source = String(user?.name || user?.email || '?').trim();
+    const parts = source.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    return source.slice(0, 2).toUpperCase();
+  }
+
+  function roleLabel(role) {
+    return role === 'super_admin' ? 'Super Admin' : 'Platform Owner';
+  }
+
   function formatDuration(ms) {
     if (ms <= 0) return 'Expired';
     const totalMin = Math.floor(ms / 60000);
@@ -80,14 +93,14 @@
   // ── Session countdown timer ──────────────────────────────────────────────
   function startSessionTimer() {
     if (!timerPill || !timerLabel) return;
-    timerPill.style.display = '';
+    timerPill.hidden = false;
 
     function tick() {
       const elapsed = Date.now() - sessionStart;
       const remaining = SESSION_DURATION_MS - elapsed;
 
       timerLabel.textContent = formatDuration(remaining);
-      timerPill.classList.toggle('expiring-soon', remaining < EXPIRY_WARN_MS);
+      timerPill.classList.toggle('is-warning', remaining < EXPIRY_WARN_MS);
 
       // Update logout modal timer display if it's open
       if (logoutTimerDisplay) {
@@ -111,7 +124,7 @@
   function stopSessionTimer() {
     if (sessionTimerRAF) cancelAnimationFrame(sessionTimerRAF);
     sessionTimerRAF = null;
-    if (timerPill) timerPill.style.display = 'none';
+    if (timerPill) timerPill.hidden = true;
   }
 
   // ── Show / hide overlay ──────────────────────────────────────────────────
@@ -148,7 +161,10 @@
     overlay.classList.add('hidden');
     shell.classList.remove('auth-locked');
 
-    chipLabel.textContent = `${user.name} · ${user.role === 'super_admin' ? 'Super Admin' : 'Platform Owner'}`;
+    const roleText = roleLabel(user.role);
+    if (chipLabel) chipLabel.textContent = user.name || user.email || roleText;
+    if (chipRole) chipRole.textContent = roleText;
+    if (chipAvatar) chipAvatar.textContent = initialsForUser(user);
     userChip.classList.add('visible');
 
     // Show Sign Out button with the .visible class

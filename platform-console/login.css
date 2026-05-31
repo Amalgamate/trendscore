@@ -257,29 +257,9 @@
   text-decoration: none;
 }
 
-/* Logged-in user chip in topbar */
-#user-chip {
-  display: none;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--muted);
-  border: 1px solid var(--border);
-  background: #fff;
-  padding: 4px 12px;
-  cursor: default;
-}
-
+/* Logged-in user chip — layout in styles.css (.topbar-user) */
 #user-chip.visible {
   display: flex;
-}
-
-.user-role-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--brand);
-  flex-shrink: 0;
 }
 
 #btn-logout {
@@ -287,7 +267,7 @@
 }
 
 #btn-logout.visible {
-  display: inline-block;
+  display: inline-flex;
 }
 
 /* Section fully locked — used as defence-in-depth for restricted roles */

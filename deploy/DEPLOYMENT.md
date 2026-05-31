@@ -1,9 +1,11 @@
 # Deployment model
 
+See **[WORKFLOW.md](./WORKFLOW.md)** for the segmented canary → promote process (school app vs platform console).
+
 ## Automatic (push to `main`)
 
-1. **Publish Docker Images** builds and pushes `ghcr.io/amalgamate/zawadi-frontend` and `zawadi-backend` with tags `latest` and `sha-<commit>`.
-2. **Deploy Demo (main only)** runs after a successful publish and deploys **only** instances with `tier: "demo"` in `deploy/instances.manifest.json`.
+1. **Publish Docker Images** builds and pushes `ghcr.io/amalgamate/zawadi-frontend`, `zawadi-backend`, and `zawadi-console` with tags `latest` and `sha-<commit>`.
+2. **Deploy Demo (main only)** runs after a successful publish and deploys **only** the canary (`tier: "demo"` in `deploy/instances.manifest.json`) and rolls the **platform console** to the same tag.
 
 Production and pilot schools are **not** updated on git push.
 
@@ -55,9 +57,9 @@ Edit `deploy/instances.manifest.json`:
 }
 ```
 
-- **demo** — `kind: "main"` uses `defaults.main_dir` (default `/srv/zawadi/apps/zawadijrn`).  
+- **demo** — `kind: "main"` uses `defaults.main_dir` (canary / demoschool).  
 - **pilot** — all entries with `tier: "pilot"`.  
-- **all_schools** — all `kind: "stack"` entries plus any running stack discovered on the server.  
+- **all_schools** — all `kind: "stack"` entries in the manifest, plus any running school stack discovered on the server (excluding `discovery.exclude_compose_projects`).
 
 Set `ALLOW_PUBLIC_REGISTRATION` is unrelated; for deploys set secrets `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`.
 
@@ -67,8 +69,13 @@ Set `ALLOW_PUBLIC_REGISTRATION` is unrelated; for deploys set secrets `DEPLOY_HO
 export DEPLOY_TARGET=demo          # demo | pilot | school | all_schools
 export IMAGE_TAG=sha-<commit>
 export SCHOOL_ID=merti-cs          # when DEPLOY_TARGET=school
-export MANIFEST_PATH=/srv/zawadi/apps/trendscore/deploy/instances.manifest.json
-bash scripts/deploy-release.sh
+export MANIFEST_PATH=/srv/zawadi/apps/deploy/instances.manifest.json
+bash /srv/zawadi/apps/deploy/deploy-release.sh
+
+# Platform console only (no school stacks)
+export DEPLOY_CONSOLE_ONLY=true
+export IMAGE_TAG=sha-<commit>
+bash /srv/zawadi/apps/deploy/deploy-release.sh
 ```
 
 ## Legacy

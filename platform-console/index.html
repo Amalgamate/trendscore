@@ -129,35 +129,35 @@
   <!-- MAIN -->
   <div class="main">
     <!-- TOPBAR -->
-    <div class="topbar">
+    <header class="topbar">
       <div class="topbar-left">
-        <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar">☰</button>
-        <div class="topbar-title">The Silicone Sahara — Super Admin</div>
-        <div class="breadcrumb">
-          <span>The Silicone Sahara</span>
-          <span>›</span>
-          <b id="breadcrumb-active">Overview</b>
-        </div>
+        <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <h1 class="topbar-page-title" id="breadcrumb-active">Overview</h1>
       </div>
       <div class="topbar-right">
-        <div class="pill">
-          <span class="pill-dot"></span>
-          <span id="last-updated">Loading…</span>
+        <div class="topbar-meta">
+          <span class="topbar-live" id="last-updated" title="Data freshness">Loading…</span>
+          <span class="topbar-session" id="session-timer-pill" hidden>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <span id="session-timer-label">8h 00m</span>
+          </span>
         </div>
-        <div class="pill session-timer-pill" id="session-timer-pill" style="display:none">
-          <span class="session-timer-icon">⏱</span>
-          <span id="session-timer-label">8h 00m</span>
+        <div class="topbar-user" id="user-chip">
+          <span class="topbar-user-avatar" id="user-chip-avatar" aria-hidden="true">—</span>
+          <span class="topbar-user-text">
+            <span class="topbar-user-name" id="user-chip-label">—</span>
+            <span class="topbar-user-role" id="user-chip-role"></span>
+          </span>
         </div>
-        <div id="user-chip">
-          <span class="user-role-dot"></span>
-          <span id="user-chip-label">—</span>
-        </div>
-        <button class="btn btn-signout" id="btn-logout" type="button">Sign out</button>
-        <button class="btn" id="btn-refresh" type="button">↺ Refresh</button>
-        <button class="btn teal" id="btn-header-promote" type="button">🚀 Promote Release</button>
-        <button class="btn primary" id="btn-create-school" type="button">+ New School</button>
+        <button class="topbar-btn topbar-btn--promote" id="btn-header-promote" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          Promote
+        </button>
+        <button class="topbar-btn topbar-btn--logout" id="btn-logout" type="button">Sign out</button>
       </div>
-    </div>
+    </header>
     <div class="install-progress" id="install-progress" aria-live="polite" aria-hidden="true">
       <div class="install-progress-line" id="install-progress-line"></div>
     </div>
@@ -343,65 +343,83 @@
       <div id="section-deployments" class="section-hidden">
         <div class="page-header">
           <div>
-            <div class="page-eyebrow">The Silicone Sahara · v1</div>
-            <div class="page-title">Promote Release</div>
-            <div class="page-sub">Deploy a tested image tag to demo and production schools</div>
-          </div>
-          <div class="page-actions">
-            <button class="btn" type="button" id="btn-deploy-refresh">Refresh targets</button>
-            <button class="btn teal" type="button" id="btn-deploy-open-promote">Promote selected</button>
+            <div class="page-eyebrow">Release operations</div>
+            <div class="page-title">Promote release</div>
+            <div class="page-sub">School apps (frontend + backend) and the admin console deploy separately — same tag family, different targets</div>
           </div>
         </div>
 
-        <div class="deploy-layout">
-          <div class="panel">
+        <div class="deploy-segments">
+          <section class="deploy-segment panel">
             <div class="panel-header">
               <div>
-                <div class="panel-title">Release image</div>
-                <div class="panel-sub">Use the same tag verified on demo (sha-… from CI)</div>
+                <div class="panel-title">School application</div>
+                <div class="panel-sub">ghcr.io/amalgamate/zawadi-frontend + zawadi-backend — all tenant stacks</div>
               </div>
+              <button class="btn teal" type="button" id="btn-deploy-open-promote">Promote schools</button>
             </div>
-            <div class="panel-body deploy-form">
-              <label class="form-label" for="deploy-image-tag">Image tag</label>
-              <div class="deploy-tag-row">
-                <select class="form-input" id="deploy-image-tag"></select>
-                <input class="form-input" id="deploy-image-tag-custom" placeholder="Or paste sha-… tag" />
-              </div>
-              <label class="form-label" style="margin-top:16px">Deploy scope</label>
-              <label class="deploy-check-row">
-                <input type="checkbox" id="deploy-all-schools" />
-                <span><strong>All production schools</strong> — every running school stack on this server</span>
-              </label>
-              <label class="deploy-check-row">
-                <input type="checkbox" id="deploy-include-demo" />
-                <span><strong>Include demo</strong> — demoschool.trendscore.co.ke</span>
-              </label>
-              <div class="deploy-target-toolbar">
-                <span class="form-label" style="margin:0">Select schools</span>
-                <div class="deploy-target-actions">
-                  <button class="btn" type="button" id="deploy-select-all">All schools</button>
-                  <button class="btn" type="button" id="deploy-select-none">None</button>
+            <div class="deploy-layout deploy-layout--segment">
+              <div class="panel panel--nested">
+                <div class="panel-body deploy-form">
+                  <label class="form-label" for="deploy-image-tag">Image tag (tested on canary)</label>
+                  <div class="deploy-tag-row">
+                    <select class="form-input" id="deploy-image-tag"></select>
+                    <input class="form-input" id="deploy-image-tag-custom" placeholder="sha-…" />
+                  </div>
+                  <label class="form-label" style="margin-top:16px">Scope</label>
+                  <label class="deploy-check-row">
+                    <input type="checkbox" id="deploy-all-schools" />
+                    <span><strong>All production schools</strong> — manifest stacks + any discovered on this server (excludes canary)</span>
+                  </label>
+                  <label class="deploy-check-row">
+                    <input type="checkbox" id="deploy-include-demo" />
+                    <span><strong>Include canary</strong> — demoschool.trendscore.co.ke (auto-deployed on main)</span>
+                  </label>
+                  <div class="deploy-target-toolbar">
+                    <span class="form-label" style="margin:0">Or pick schools</span>
+                    <div class="deploy-target-actions">
+                      <button class="btn" type="button" id="deploy-select-all">Production only</button>
+                      <button class="btn" type="button" id="deploy-select-none">None</button>
+                    </div>
+                  </div>
+                  <div class="deploy-target-list" id="deploy-target-list">
+                    <div class="deploy-target-empty">Loading schools…</div>
+                  </div>
+                  <button class="btn teal deploy-promote-btn" type="button" id="deploy-promote-btn">Promote school release</button>
                 </div>
               </div>
-              <div class="deploy-target-list" id="deploy-target-list">
-                <div class="deploy-target-empty">Loading schools…</div>
+              <div class="panel panel--nested">
+                <div class="panel-header">
+                  <div>
+                    <div class="panel-title">Deploy output</div>
+                    <div class="panel-sub">Per school: backup → pull → migrate → restart → health</div>
+                  </div>
+                  <button class="btn" type="button" id="btn-deploy-clear-log">Clear</button>
+                </div>
+                <div class="log-viewer deploy-log-viewer" id="deploy-progress-log">
+                  <span class="log-placeholder">Choose scope and promote the school application.</span>
+                </div>
               </div>
-              <button class="btn teal deploy-promote-btn" type="button" id="deploy-promote-btn">🚀 Promote release</button>
             </div>
-          </div>
+          </section>
 
-          <div class="panel">
+          <section class="deploy-segment panel deploy-segment--console">
             <div class="panel-header">
               <div>
-                <div class="panel-title">Deploy output</div>
-                <div class="panel-sub">Backup → pull image → migrate → restart → health check</div>
+                <div class="panel-title">Platform console</div>
+                <div class="panel-sub">ghcr.io/amalgamate/zawadi-console — admin panel only (this UI)</div>
               </div>
-              <button class="btn" type="button" id="btn-deploy-clear-log">Clear</button>
             </div>
-            <div class="log-viewer deploy-log-viewer" id="deploy-progress-log">
-              <span class="log-placeholder">Select schools and click Promote release.</span>
+            <div class="panel-body deploy-console-only">
+              <label class="form-label" for="deploy-console-image-tag">Console image tag</label>
+              <div class="deploy-tag-row">
+                <select class="form-input" id="deploy-console-image-tag"></select>
+                <input class="form-input" id="deploy-console-image-tag-custom" placeholder="sha-…" />
+              </div>
+              <p class="deploy-hint">Does not change school sites. Use after UI or console API changes, or when main deploy already updated the canary.</p>
+              <button class="btn" type="button" id="deploy-console-btn">Update admin console</button>
             </div>
-          </div>
+          </section>
         </div>
 
         <div class="two-col-lower" style="margin-top:14px">
@@ -410,20 +428,13 @@
             <div class="timeline" id="timeline-full"></div>
           </div>
           <div class="panel" style="align-self:start">
-            <div class="panel-header"><div class="panel-title">Pipeline</div></div>
-            <div class="panel-body">
-              <div style="margin-bottom:14px">
-                <div class="m-label" style="margin-bottom:4px">Registry</div>
-                <div class="code-block">ghcr.io/amalgamate/zawadi-frontend</div>
-              </div>
-              <div style="margin-bottom:14px">
-                <div class="m-label" style="margin-bottom:4px">Deploy script</div>
-                <div class="code-block">scripts/deploy-release.sh</div>
-              </div>
-              <div>
-                <div class="m-label" style="margin-bottom:4px">Flow</div>
-                <div style="font-size:13px;color:var(--muted)">Push to <b style="color:var(--brand)">main</b> builds images and auto-deploys <b>demo only</b>. Use this panel to promote the same tag to other schools.</div>
-              </div>
+            <div class="panel-header"><div class="panel-title">Workflow</div></div>
+            <div class="panel-body deploy-workflow-steps">
+              <div class="deploy-step"><span class="deploy-step-num">1</span><span><b>Push main</b> builds all images</span></div>
+              <div class="deploy-step"><span class="deploy-step-num">2</span><span><b>Canary</b> auto-deploys demoschool + console</span></div>
+              <div class="deploy-step"><span class="deploy-step-num">3</span><span><b>QA</b> on demoschool.trendscore.co.ke</span></div>
+              <div class="deploy-step"><span class="deploy-step-num">4</span><span><b>Promote</b> same <code>sha-…</code> to production schools</span></div>
+              <p class="deploy-hint" style="margin-top:12px">Full guide: <code>deploy/WORKFLOW.md</code></p>
             </div>
           </div>
         </div>

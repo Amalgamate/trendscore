@@ -221,6 +221,8 @@ const DOMAIN_OVERRIDES = {
   mertics: 'merti-cs.trendscore.co.ke',
   merti: 'merti-cs.trendscore.co.ke',
   naet: 'naet.trendscore.co.ke',
+  'zayan-electricals': 'zayan.trendscore.co.ke',
+  zayan: 'zayan.trendscore.co.ke',
   zawadi: 'zawadi.trendscore.co.ke',
 };
 
@@ -735,7 +737,10 @@ async function refreshFromRuntime() {
 }
 
 function renderRuntimeStamp(label = liveMode ? 'Live' : 'Fallback') {
-  if ($('last-updated')) $('last-updated').textContent = `${label} · ${nowLabel()}`;
+  const el = $('last-updated');
+  if (!el) return;
+  el.textContent = `${label} · ${nowLabel()}`;
+  el.classList.toggle('is-fallback', label === 'Fallback');
 }
 
 async function pollRuntimeAndRender() {
@@ -1533,6 +1538,21 @@ function selectedDeployImageTag() {
   return $('deploy-image-tag')?.value.trim() || '';
 }
 
+function selectedConsoleImageTag() {
+  const custom = $('deploy-console-image-tag-custom')?.value.trim();
+  if (custom) return custom;
+  return $('deploy-console-image-tag')?.value.trim() || '';
+}
+
+function fillDeployTagSelect(selectEl, tags) {
+  if (!selectEl) return;
+  selectEl.innerHTML = (Array.isArray(tags) ? tags : []).map(row => {
+    const tag = row.tag || row;
+    const label = row.createdAt ? `${tag} (${row.createdAt})` : tag;
+    return `<option value="${esc(tag)}">${esc(label)}</option>`;
+  }).join('');
+}
+
 function appendDeployLogLine(text, type = 'info') {
   const el = $('deploy-progress-log');
   if (!el) return;
@@ -1544,7 +1564,7 @@ function appendDeployLogLine(text, type = 'info') {
   el.scrollTop = el.scrollHeight;
 }
 
-function clearDeployLog(message = 'Select schools and click Promote release.') {
+function clearDeployLog(message = 'Choose scope and promote the school application.') {
   const el = $('deploy-progress-log');
   if (!el) return;
   el.innerHTML = `<span class="log-placeholder">${esc(message)}</span>`;
@@ -1560,14 +1580,18 @@ function renderDeployTargets(selectedIds = new Set()) {
 
   list.innerHTML = DEPLOY_TARGETS.map(target => {
     const checked = selectedIds.has(target.id) ? 'checked' : '';
-    const badge = target.tier === 'demo'
-      ? '<span class="deploy-target-badge">demo</span>'
-      : (target.discovered && !target.inManifest ? '<span class="deploy-target-badge">discovered</span>' : '');
+    const allMode = Boolean($('deploy-all-schools')?.checked);
+    const disabled = allMode ? 'disabled' : '';
+    let badge = '';
+    if (target.tier === 'demo') badge = '<span class="deploy-target-badge deploy-target-badge--canary">canary</span>';
+    else if (target.inManifest) badge = '<span class="deploy-target-badge deploy-target-badge--manifest">manifest</span>';
+    else if (target.discovered) badge = '<span class="deploy-target-badge">discovered</span>';
+    const tierLabel = target.tier === 'demo' ? 'canary' : (target.tier || 'production');
     return `<label class="deploy-target-item">
-      <input type="checkbox" class="deploy-target-cb" value="${esc(target.id)}" ${checked} />
+      <input type="checkbox" class="deploy-target-cb" value="${esc(target.id)}" ${checked} ${disabled} />
       <span>
         <strong>${esc(target.label)}</strong>${badge}
-        <div class="deploy-target-meta">${esc(target.domain || target.composeProject || target.id)} · ${esc(target.tier || 'production')}</div>
+        <div class="deploy-target-meta">${esc(target.domain || target.composeProject || target.id)} · ${esc(tierLabel)}</div>
       </span>
     </label>`;
   }).join('');
@@ -1579,27 +1603,27 @@ function getSelectedDeploySchoolIds() {
 
 async function refreshDeployPanel(prefill = null) {
   try {
-    const [targetsResp, releasesResp] = await Promise.all([
+    const [targetsResp, schoolReleasesResp, consoleReleasesResp] = await Promise.all([
       fetch('/api/deploy/targets', { credentials: 'same-origin' }),
-      fetch('/api/deploy/releases', { credentials: 'same-origin' }),
+      fetch('/api/deploy/releases?segment=school', { credentials: 'same-origin' }),
+      fetch('/api/deploy/releases?segment=console', { credentials: 'same-origin' }),
     ]);
 
     if (targetsResp.ok) {
       const data = await targetsResp.json();
       DEPLOY_TARGETS = Array.isArray(data.targets) ? data.targets.filter(t => t.selectable !== false) : [];
+      if (!data.deployReady && data.deployScriptPath) {
+        toast('Deploy script missing on server — install via CI to /srv/zawadi/apps/deploy/');
+      }
     }
 
-    if (releasesResp.ok) {
-      const data = await releasesResp.json();
-      const select = $('deploy-image-tag');
-      if (select) {
-        const tags = Array.isArray(data.tags) ? data.tags : [];
-        select.innerHTML = tags.map(row => {
-          const tag = row.tag || row;
-          const label = row.createdAt ? `${tag} (${row.createdAt})` : tag;
-          return `<option value="${esc(tag)}">${esc(label)}</option>`;
-        }).join('');
-      }
+    if (schoolReleasesResp.ok) {
+      const data = await schoolReleasesResp.json();
+      fillDeployTagSelect($('deploy-image-tag'), data.tags);
+    }
+    if (consoleReleasesResp.ok) {
+      const data = await consoleReleasesResp.json();
+      fillDeployTagSelect($('deploy-console-image-tag'), data.tags);
     }
 
     const selected = new Set();
@@ -1611,6 +1635,9 @@ async function refreshDeployPanel(prefill = null) {
     }
     if ($('deploy-include-demo')) {
       $('deploy-include-demo').checked = Boolean(prefill?.includeDemo);
+      if ($('deploy-include-demo')) {
+        $('deploy-include-demo').disabled = Boolean($('deploy-all-schools')?.checked);
+      }
     }
 
     renderDeployTargets(selected);
@@ -1636,13 +1663,13 @@ async function runPromoteDeploy() {
     return;
   }
   if (!allSchools && !includeDemo && schoolIds.length === 0) {
-    toast('Select at least one school, include demo, or choose all production schools.');
+    toast('Select production schools, include canary, or choose all production schools.');
     return;
   }
 
   const summary = allSchools
-    ? 'all production schools'
-    : [...(includeDemo ? ['demo'] : []), ...schoolIds].join(', ');
+    ? 'all production school apps'
+    : [...(includeDemo ? ['canary'] : []), ...schoolIds].join(', ');
 
   openConfirm({
     title: 'Promote release',
@@ -1694,6 +1721,53 @@ async function executePromoteDeploy({ imageTag, allSchools, includeDemo, schoolI
   } finally {
     if (btn) btn.disabled = false;
   }
+}
+
+async function executeConsoleDeploy(imageTag) {
+  clearDeployLog('Updating platform console…');
+  appendDeployLogLine(`[${nowLabel()}] Console deploy ${imageTag}…`);
+  const btn = $('deploy-console-btn');
+  if (btn) btn.disabled = true;
+  try {
+    const response = await fetch('/api/deploy/console', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageTag }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      appendDeployLogLine(data.error || `Console deploy failed (HTTP ${response.status})`, 'error');
+      if (data.results?.[0]?.log) appendDeployLogLine(data.results[0].log);
+      toast(data.error || 'Console update failed.');
+      return;
+    }
+    (data.results || []).forEach(result => {
+      appendDeployLogLine(`✓ ${result.target} (${result.durationSec || '?'}s)`);
+      if (result.log) appendDeployLogLine(result.log);
+    });
+    appendDeployLogLine(`[${nowLabel()}] Console update complete. Hard-refresh this page (Ctrl+F5).`);
+    toast('Admin console updated. Hard-refresh to load the new UI.');
+  } catch (error) {
+    appendDeployLogLine(error.message || 'Network error', 'error');
+    toast('Console update request failed.');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function runConsoleDeploy() {
+  const imageTag = selectedConsoleImageTag();
+  if (!imageTag) {
+    toast('Choose or paste a console image tag.');
+    return;
+  }
+  openConfirm({
+    title: 'Update admin console',
+    body: `Roll platform console to ${imageTag}? School sites are not changed.`,
+    confirmLabel: 'Update console',
+    onConfirm: () => executeConsoleDeploy(imageTag),
+  });
 }
 
 // Navigation
@@ -2481,8 +2555,8 @@ function bindDeployEvents() {
       openPromote();
     }
   });
-  $('btn-deploy-refresh')?.addEventListener('click', () => refreshDeployPanel());
   $('btn-deploy-clear-log')?.addEventListener('click', () => clearDeployLog());
+  $('deploy-console-btn')?.addEventListener('click', runConsoleDeploy);
   $('deploy-select-all')?.addEventListener('click', () => {
     document.querySelectorAll('.deploy-target-cb').forEach(cb => {
       const target = DEPLOY_TARGETS.find(t => t.id === cb.value);
@@ -2498,6 +2572,7 @@ function bindDeployEvents() {
     const disabled = event.target.checked;
     document.querySelectorAll('.deploy-target-cb').forEach(cb => { cb.disabled = disabled; });
     if ($('deploy-include-demo')) $('deploy-include-demo').disabled = disabled;
+    renderDeployTargets(new Set(getSelectedDeploySchoolIds()));
   });
 }
 

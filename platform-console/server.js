@@ -69,6 +69,7 @@ const CONSOLE_DEPLOY_SCRIPT = resolveDeployAssetPath('script', [
   path.join(__dirname, 'deploy', 'deploy-release.sh'),
 ]);
 const FRONTEND_IMAGE_REPO = process.env.CONSOLE_FRONTEND_IMAGE || 'ghcr.io/amalgamate/zawadi-frontend';
+const CONSOLE_IMAGE_REPO = process.env.CONSOLE_CONSOLE_IMAGE || 'ghcr.io/amalgamate/zawadi-console';
 
 function resolveDeployAssetPath(kind, candidates) {
   for (const candidate of candidates) {
@@ -132,10 +133,10 @@ function slugFromComposeProject(project = '') {
   return String(project || '').replace(/^zawadi-/, '');
 }
 
-async function listFrontendImageTags(limit = 12) {
+async function listImageTags(imageRepo, limit = 12) {
   try {
     const { stdout } = await execFileAsync('docker', [
-      'images', FRONTEND_IMAGE_REPO,
+      'images', imageRepo,
       '--format', '{{.Tag}}\t{{.CreatedAt}}',
     ], { timeout: 15000, maxBuffer: 1024 * 1024 });
     const rows = String(stdout || '').split(/\r?\n/).filter(Boolean).map(line => {
@@ -149,6 +150,10 @@ async function listFrontendImageTags(limit = 12) {
   } catch {
     return [{ tag: 'latest', createdAt: '' }];
   }
+}
+
+async function listFrontendImageTags(limit = 12) {
+  return listImageTags(FRONTEND_IMAGE_REPO, limit);
 }
 
 async function buildDeployTargets() {
@@ -176,7 +181,7 @@ async function buildDeployTargets() {
       if (!byId.has('demo')) {
         byId.set('demo', {
           id: 'demo',
-          label: 'Demo School',
+          label: 'Canary — Demo School',
           tier: 'demo',
           kind: 'main',
           domain: getSchoolDomainOverride('demo') || inst.domain || 'demoschool.trendscore.co.ke',
@@ -252,7 +257,7 @@ async function runDeployRelease({ deployTarget, imageTag, schoolId }) {
 
 async function runDeployReleaseOnHost(scriptPath, env) {
   const envPairs = Object.entries(env)
-    .filter(([key]) => ['DEPLOY_TARGET', 'IMAGE_TAG', 'MANIFEST_PATH', 'SCHOOL_ID', 'DEPLOY_CONSOLE'].includes(key))
+    .filter(([key]) => ['DEPLOY_TARGET', 'IMAGE_TAG', 'MANIFEST_PATH', 'SCHOOL_ID', 'DEPLOY_CONSOLE', 'DEPLOY_CONSOLE_ONLY'].includes(key))
     .filter(([, value]) => value != null && String(value).length > 0);
 
   const innerEnv = envPairs.map(([key, value]) => `${key}=${value}`).join(' ');
@@ -271,6 +276,28 @@ async function runDeployReleaseOnHost(scriptPath, env) {
 
   const { stdout, stderr } = await execFileAsync('docker', dockerArgs, {
     timeout: 45 * 60 * 1000,
+    maxBuffer: 20 * 1024 * 1024,
+  });
+  return { stdout: String(stdout || ''), stderr: String(stderr || '') };
+}
+
+async function runDeployConsoleOnly(imageTag) {
+  const scriptPath = CONSOLE_DEPLOY_SCRIPT;
+  if (!scriptPath || !fs.existsSync(scriptPath)) {
+    throw new Error(`Deploy script not found: ${scriptPath || 'none'}`);
+  }
+  const env = {
+    ...process.env,
+    DEPLOY_CONSOLE_ONLY: 'true',
+    IMAGE_TAG: imageTag,
+    MANIFEST_PATH: CONSOLE_MANIFEST_PATH,
+  };
+  if (shouldRunDeployOnHost(scriptPath)) {
+    return runDeployReleaseOnHost(scriptPath, env);
+  }
+  const { stdout, stderr } = await execFileAsync('bash', [scriptPath], {
+    env,
+    timeout: 20 * 60 * 1000,
     maxBuffer: 20 * 1024 * 1024,
   });
   return { stdout: String(stdout || ''), stderr: String(stderr || '') };
@@ -658,6 +685,8 @@ const SCHOOL_DOMAIN_OVERRIDES = {
   mertics: 'merti-cs.trendscore.co.ke',
   merti: 'merti-cs.trendscore.co.ke',
   naet: 'naet.trendscore.co.ke',
+  'zayan-electricals': 'zayan.trendscore.co.ke',
+  zayan: 'zayan.trendscore.co.ke',
   zawadi: 'zawadi.trendscore.co.ke',
 };
 
@@ -1139,12 +1168,47 @@ app.get('/api/deploy/targets', requireAuth, requireRole('super_admin'), async (_
   }
 });
 
-app.get('/api/deploy/releases', requireAuth, requireRole('super_admin'), async (_req, res) => {
+app.get('/api/deploy/releases', requireAuth, requireRole('super_admin'), async (req, res) => {
   try {
-    const tags = await listFrontendImageTags();
-    res.json({ ok: true, tags, imageRepo: FRONTEND_IMAGE_REPO });
+    const segment = String(req.query.segment || 'school').toLowerCase();
+    const imageRepo = segment === 'console' ? CONSOLE_IMAGE_REPO : FRONTEND_IMAGE_REPO;
+    const tags = await listImageTags(imageRepo);
+    res.json({ ok: true, tags, imageRepo, segment });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.post('/api/deploy/console', requireAuth, requireRole('super_admin'), async (req, res) => {
+  const imageTag = String(req.body?.imageTag || '').trim();
+  if (!imageTag) {
+    return res.status(400).json({ error: 'imageTag is required' });
+  }
+  try {
+    const started = Date.now();
+    const { stdout, stderr } = await runDeployConsoleOnly(imageTag);
+    const durationSec = Math.round((Date.now() - started) / 1000);
+    pushAudit('DEPLOY', 'Platform console', req.user.email, `Console ${imageTag} (${durationSec}s)`, 'Success');
+    pushDeployment({
+      title: `Console ${imageTag}`,
+      copy: `Platform admin panel only. By ${req.user.email}.`,
+      status: 'Success',
+      imageTag,
+      targets: ['platform-console'],
+    });
+    return res.json({
+      ok: true,
+      imageTag,
+      results: [{
+        target: 'Platform console',
+        ok: true,
+        durationSec,
+        log: `${stdout}\n${stderr}`.trim(),
+      }],
+    });
+  } catch (error) {
+    pushAudit('DEPLOY', 'Console failed', req.user.email, error.message, 'Warning');
+    return res.status(500).json({ ok: false, error: error.message });
   }
 });
 
@@ -1160,21 +1224,21 @@ app.post('/api/deploy/promote', requireAuth, requireRole('super_admin'), async (
     return res.status(400).json({ error: 'imageTag is required' });
   }
   if (!allSchools && !includeDemo && schoolIds.length === 0) {
-    return res.status(400).json({ error: 'Select at least one school, include demo, or choose all schools' });
+    return res.status(400).json({ error: 'Select at least one school, include canary, or choose all production schools' });
   }
 
   const results = [];
   const jobs = [];
 
   if (allSchools) {
-    jobs.push({ deployTarget: 'all_schools', label: 'All production schools' });
+    jobs.push({ deployTarget: 'all_schools', label: 'All production school apps' });
   } else {
     if (includeDemo && !schoolIds.includes('demo')) {
-      jobs.push({ deployTarget: 'demo', label: 'Demo school' });
+      jobs.push({ deployTarget: 'demo', label: 'Canary (demo school)' });
     }
     for (const id of schoolIds) {
       if (id === 'demo') {
-        jobs.push({ deployTarget: 'demo', label: 'Demo school' });
+        jobs.push({ deployTarget: 'demo', label: 'Canary (demo school)' });
       } else {
         jobs.push({ deployTarget: 'school', schoolId: id, label: id });
       }

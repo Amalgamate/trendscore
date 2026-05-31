@@ -1,8 +1,7 @@
 name: Deploy Demo (main only)
 
-# After images are published from main, deploy ONLY the demo instance
-# and roll the platform console to the same image tag.
-# Production / pilot / other schools require the "Promote Release" workflow.
+# After images are published from main, deploy the canary school (demoschool) and
+# roll the platform console. Production stacks require Promote Release.
 
 on:
   workflow_run:
