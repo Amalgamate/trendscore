@@ -154,6 +154,7 @@
         </div>
         <button class="btn btn-signout" id="btn-logout" type="button">Sign out</button>
         <button class="btn" id="btn-refresh" type="button">↺ Refresh</button>
+        <button class="btn teal" id="btn-header-promote" type="button">🚀 Promote Release</button>
         <button class="btn primary" id="btn-create-school" type="button">+ New School</button>
       </div>
     </div>
@@ -170,7 +171,10 @@
           <div>
             <div class="page-eyebrow">The Silicone Sahara · v1</div>
             <div class="page-title">Platform Overview</div>
-            <div class="page-sub">Live snapshot of all managed school instances · Demo mode</div>
+            <div class="page-sub" id="overview-sub">Live snapshot of all managed school instances</div>
+          </div>
+          <div class="page-actions">
+            <button class="btn teal" id="btn-overview-promote" type="button">🚀 Promote Release</button>
           </div>
         </div>
 
@@ -193,11 +197,11 @@
             <div class="m-sub">DB · Uploads · Backups</div>
             <div class="m-badge up">+1.2 GB</div>
           </div>
-          <div class="metric-card amber">
+          <div class="metric-card amber" id="metric-last-deploy" role="button" tabindex="0" title="Open Promote Release">
             <div class="m-label">Last Deploy</div>
-            <div class="m-value mono" id="m-deploy">91a4982</div>
-            <div class="m-sub">GitHub automated pipeline</div>
-            <div class="m-badge warn">Today 10:47</div>
+            <div class="m-value mono" id="m-deploy">—</div>
+            <div class="m-sub" id="m-deploy-sub">Click to promote a release</div>
+            <div class="m-badge warn" id="m-deploy-badge">Promote →</div>
           </div>
         </div>
 

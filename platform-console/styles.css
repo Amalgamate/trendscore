@@ -687,6 +687,8 @@ input:checked + .toggle-slider::before{transform:translateX(18px)}
   color:#4338ca;
   margin-left:6px
 }
+.metric-card.amber#metric-last-deploy{cursor:pointer}
+.metric-card.amber#metric-last-deploy:hover{box-shadow:0 0 0 2px rgba(245,158,11,.25)}
 .deploy-promote-btn{width:100%;margin-top:16px}
 .deploy-log-viewer{min-height:320px;max-height:420px}
 .deploy-log-viewer .log-line{

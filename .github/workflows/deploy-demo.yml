@@ -1,6 +1,7 @@
 name: Deploy Demo (main only)
 
-# After images are published from main, deploy ONLY the demo instance.
+# After images are published from main, deploy ONLY the demo instance
+# and roll the platform console to the same image tag.
 # Production / pilot / other schools require the "Promote Release" workflow.
 
 on:
@@ -57,7 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           ssh production \
-            "DEPLOY_TARGET=demo IMAGE_TAG=${IMAGE_TAG} MANIFEST_PATH=/tmp/trendscore-instances.manifest.json bash /tmp/trendscore-deploy-release.sh"
+            "DEPLOY_TARGET=demo DEPLOY_CONSOLE=true IMAGE_TAG=${IMAGE_TAG} MANIFEST_PATH=/tmp/trendscore-instances.manifest.json bash /tmp/trendscore-deploy-release.sh"
 
       - name: Report success
         if: success()
@@ -65,6 +66,7 @@ jobs:
           echo "## Demo deploy succeeded" >> "$GITHUB_STEP_SUMMARY"
           echo "- Image tag: \`sha-${{ github.event.workflow_run.head_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Target: demo only (see deploy/instances.manifest.json)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Platform console: rolled to the same tag (\`DEPLOY_CONSOLE=true\`)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report failure
         if: failure()

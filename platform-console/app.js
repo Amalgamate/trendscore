@@ -1276,6 +1276,22 @@ function renderMetrics() {
   if ($('m-schools')) $('m-schools').textContent = Number.isFinite(Number(RUNTIME_METRICS?.liveSchools)) ? RUNTIME_METRICS.liveSchools : schoolGroups;
   if ($('m-containers')) $('m-containers').textContent = RUNTIME_METRICS?.containersHealthy || `${healthy}/${total}`;
   if ($('m-storage')) $('m-storage').textContent = `${fmt(Number(RUNTIME_METRICS?.storageUsedGb ?? totalStorage))} GB`;
+
+  const latestDeploy = DEPLOYMENTS[0];
+  if ($('m-deploy')) {
+    $('m-deploy').textContent = latestDeploy?.imageTag || latestDeploy?.title?.replace(/^Promoted /, '')?.slice(0, 12) || '—';
+  }
+  if ($('m-deploy-sub')) {
+    $('m-deploy-sub').textContent = latestDeploy?.copy || 'Promote tested demo build to schools';
+  }
+  if ($('m-deploy-badge')) {
+    $('m-deploy-badge').textContent = latestDeploy?.time ? latestDeploy.time : 'Promote →';
+  }
+  if ($('overview-sub')) {
+    $('overview-sub').textContent = liveMode
+      ? 'Live snapshot of all managed school instances'
+      : 'Live snapshot of all managed school instances · waiting for live metrics';
+  }
 }
 
 function renderTimeline(elId, maxItems = 99) {
@@ -2453,8 +2469,18 @@ $('lead-modal-submit')?.addEventListener('click', async () => {
 });
 
 function bindDeployEvents() {
+  const openPromote = () => openPromoteDeploy();
   $('deploy-promote-btn')?.addEventListener('click', runPromoteDeploy);
   $('btn-deploy-open-promote')?.addEventListener('click', runPromoteDeploy);
+  $('btn-header-promote')?.addEventListener('click', openPromote);
+  $('btn-overview-promote')?.addEventListener('click', openPromote);
+  $('metric-last-deploy')?.addEventListener('click', openPromote);
+  $('metric-last-deploy')?.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openPromote();
+    }
+  });
   $('btn-deploy-refresh')?.addEventListener('click', () => refreshDeployPanel());
   $('btn-deploy-clear-log')?.addEventListener('click', () => clearDeployLog());
   $('deploy-select-all')?.addEventListener('click', () => {
