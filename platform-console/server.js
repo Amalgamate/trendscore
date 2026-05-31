@@ -239,6 +239,18 @@ async function buildDeployTargets() {
   });
 }
 
+async function assertSchoolPromotable(schoolId) {
+  const id = String(schoolId || '').trim();
+  if (!id || id === 'demo') return;
+  const targets = await buildDeployTargets();
+  const target = targets.find(t => t.id === id);
+  if (!target) {
+    throw new Error(
+      `School "${id}" is not on this server. Run Deploy Demo (main) to sync the manifest, or pick a discovered stack.`,
+    );
+  }
+}
+
 async function runDeployRelease({ deployTarget, imageTag, schoolId }) {
   const scriptPath = CONSOLE_DEPLOY_SCRIPT;
   const manifestPath = CONSOLE_MANIFEST_PATH;
@@ -263,11 +275,14 @@ async function runDeployRelease({ deployTarget, imageTag, schoolId }) {
   };
   if (schoolId) env.SCHOOL_ID = schoolId;
 
+  const scriptArgs = [scriptPath];
+  if (deployTarget === 'school' && schoolId) scriptArgs.push(schoolId);
+
   if (shouldRunDeployOnHost(scriptPath)) {
-    return runDeployReleaseOnHost(scriptPath, env);
+    return runDeployReleaseOnHost(scriptPath, env, scriptArgs.slice(1));
   }
 
-  const { stdout, stderr } = await execFileAsync('bash', [scriptPath], {
+  const { stdout, stderr } = await execFileAsync('bash', scriptArgs, {
     env,
     timeout: 45 * 60 * 1000,
     maxBuffer: 20 * 1024 * 1024,
@@ -275,13 +290,14 @@ async function runDeployRelease({ deployTarget, imageTag, schoolId }) {
   return { stdout: String(stdout || ''), stderr: String(stderr || '') };
 }
 
-async function runDeployReleaseOnHost(scriptPath, env) {
+async function runDeployReleaseOnHost(scriptPath, env, extraScriptArgs = []) {
   const envPairs = Object.entries(env)
     .filter(([key]) => ['DEPLOY_TARGET', 'IMAGE_TAG', 'MANIFEST_PATH', 'SCHOOL_ID', 'DEPLOY_CONSOLE', 'DEPLOY_CONSOLE_ONLY'].includes(key))
     .filter(([, value]) => value != null && String(value).length > 0);
 
   const envArgs = envPairs.map(([key, value]) => `${key}=${shellQuote(value)}`).join(' ');
-  const chrootCmd = `chroot /host /usr/bin/env ${envArgs} /bin/bash ${shellQuote(scriptPath)}`;
+  const bashArgs = [shellQuote(scriptPath), ...extraScriptArgs.map(shellQuote)].join(' ');
+  const chrootCmd = `chroot /host /usr/bin/env ${envArgs} /bin/bash ${bashArgs}`;
 
   const dockerArgs = [
     'run', '--rm',
@@ -1285,6 +1301,9 @@ app.post('/api/deploy/promote', requireAuth, requireRole('super_admin'), async (
 
   try {
     for (const job of uniqueJobs) {
+      if (job.deployTarget === 'school' && job.schoolId) {
+        await assertSchoolPromotable(job.schoolId);
+      }
       const started = Date.now();
       const { stdout, stderr } = await runDeployRelease({
         deployTarget: job.deployTarget,

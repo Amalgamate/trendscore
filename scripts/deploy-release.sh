@@ -22,11 +22,15 @@ MANIFEST_PATH="${MANIFEST_PATH:-${REPO_ROOT}/deploy/instances.manifest.json}"
 DEPLOY_TARGET="${DEPLOY_TARGET:-}"
 IMAGE_TAG="${IMAGE_TAG:-}"
 SCHOOL_ID="${SCHOOL_ID:-}"
+# Console chroot occasionally drops SCHOOL_ID from env; accept positional fallback.
+if [[ -n "${1:-}" && -z "${SCHOOL_ID}" ]]; then
+  SCHOOL_ID="$1"
+fi
 DEPLOY_CONSOLE="${DEPLOY_CONSOLE:-false}"
 DEPLOY_CONSOLE_ONLY="${DEPLOY_CONSOLE_ONLY:-false}"
 DRY_RUN="${DRY_RUN:-false}"
 
-log() { printf '[deploy] %s\n' "$*"; }
+log() { printf '[deploy] %s\n' "$*" >&2; }
 fail() { printf '[deploy] ERROR: %s\n' "$*" >&2; exit 1; }
 
 require_cmd() {
@@ -82,6 +86,8 @@ if [[ "${DEPLOY_TARGET}" == "school" && -z "${SCHOOL_ID}" ]]; then
   fail "SCHOOL_ID is required when DEPLOY_TARGET=school"
 fi
 
+log "Mode=${DEPLOY_TARGET} school_id=${SCHOOL_ID:-<unset>} manifest=${MANIFEST_PATH}"
+
 discover_running_stacks() {
   docker_cmd ps \
     --filter "label=com.docker.compose.service=frontend" \
@@ -99,22 +105,7 @@ resolve_manifest_targets() {
       jq -c '.instances[] | select(.tier == "pilot")' "${MANIFEST_PATH}"
       ;;
     school)
-      local match
-      match="$(resolve_school_target "${SCHOOL_ID}")"
-      if [[ -z "${match}" ]]; then
-        fail "Unknown school_id (manifest or running stack): ${SCHOOL_ID}"
-      fi
-      local kind
-      kind="$(printf '%s' "${match}" | jq -r '.kind')"
-      if [[ "${kind}" == "stack" ]]; then
-        printf '%s\n' "${match}"
-        return 0
-      fi
-      if [[ "${kind}" == "main" && "${SCHOOL_ID}" == "demo" ]]; then
-        printf '%s\n' "${match}"
-        return 0
-      fi
-      fail "Instance ${SCHOOL_ID} must be kind=stack or demo (main) for targeted deploy"
+      resolve_school_target "${SCHOOL_ID}" || fail "Unknown school_id (manifest or running stack): ${SCHOOL_ID}"
       ;;
     all_schools)
       jq -c '.instances[] | select(.kind == "stack")' "${MANIFEST_PATH}"
@@ -154,10 +145,12 @@ merge_discovered_stacks() {
 
 resolve_school_target() {
   local id="$1"
-  local match
+  local row match
   match="$(jq -c --arg id "${id}" '.instances[] | select(.id == $id)' "${MANIFEST_PATH}" 2>/dev/null || true)"
   if [[ -n "${match}" ]]; then
-    hydrate_stack_row "${match}"
+    row="$(hydrate_stack_row "${match}")"
+    [[ -n "${row}" ]] || fail "Could not resolve manifest entry for school_id=${id}"
+    printf '%s\n' "${row}"
     return 0
   fi
 
@@ -636,13 +629,19 @@ deploy_one() {
 TARGETS_BUFFER="[]"
 while IFS= read -r line; do
   [[ -n "${line}" ]] || continue
+  [[ "${line}" == \{* ]] || continue
   TARGETS_BUFFER="$(jq -c --argjson row "${line}" '. + [$row]' <<< "${TARGETS_BUFFER}")"
 done < <(resolve_manifest_targets)
 
 merge_discovered_stacks
 
 TARGET_COUNT="$(jq 'length' <<< "${TARGETS_BUFFER}")"
-[[ "${TARGET_COUNT}" -gt 0 ]] || fail "No deployment targets resolved for DEPLOY_TARGET=${DEPLOY_TARGET}"
+if [[ "${TARGET_COUNT}" -lt 1 ]]; then
+  if [[ "${DEPLOY_TARGET}" == "school" ]]; then
+    fail "No deployment target for school_id=${SCHOOL_ID:-<unset>}. If this site is demoschool/canary, promote Canary — Demo School (demo). Otherwise ensure ${MANIFEST_PATH} lists this id and stack zawadi-${SCHOOL_ID} exists on the host."
+  fi
+  fail "No deployment targets resolved for DEPLOY_TARGET=${DEPLOY_TARGET}"
+fi
 
 log "════════════════════════════════════════════════════════════"
 log "Deploy plan"
