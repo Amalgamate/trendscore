@@ -160,7 +160,7 @@ export class OnboardingController {
             roles: ['SUPER_ADMIN'],
             phone: phone.replace(/\s+/g, ''),
             institutionType,
-            emailVerified: false,
+            emailVerified: true,
             emailVerificationToken: token,
             emailVerificationSentAt: new Date(),
           },

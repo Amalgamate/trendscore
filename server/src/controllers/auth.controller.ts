@@ -179,9 +179,12 @@ export class AuthController {
     if (user.status !== 'ACTIVE') throw new ApiError(403, 'Account is not active');
 
     const userRolesForVerify = ((user.roles && user.roles.length > 0) ? user.roles : [user.role]) as string[];
+    const isSuperAdmin = userRolesForVerify.includes('SUPER_ADMIN');
+    // School admins must verify email/phone; platform SUPER_ADMIN is exempt (OTP also bypassed below).
     if (
       !user.emailVerified &&
-      userRolesForVerify.some((r) => ['SUPER_ADMIN', 'ADMIN'].includes(r))
+      !isSuperAdmin &&
+      userRolesForVerify.some((r) => r === 'ADMIN')
     ) {
       throw new ApiError(
         403,

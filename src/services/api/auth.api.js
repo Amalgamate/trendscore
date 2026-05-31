@@ -1,6 +1,16 @@
 import { fetchWithAuth } from './core';
 import axiosInstance from './axiosConfig';
 
+function extractApiErrorMessage(data, status = 500) {
+  if (!data) return `HTTP ${status}`;
+  let msg = data.message ?? data.error;
+  if (msg && typeof msg === 'object') {
+    msg = msg.message ?? msg.error ?? JSON.stringify(msg);
+  }
+  if (typeof msg === 'string' && msg.trim()) return msg.trim();
+  return `HTTP ${status}`;
+}
+
 export const authAPI = {
   login: async (credentials) => {
     try {
@@ -8,11 +18,7 @@ export const authAPI = {
       return response.data;
     } catch (error) {
       if (error.response?.data) {
-        const data = error.response?.data;
-        let msg = data.message || data.error;
-        if (!msg) msg = `HTTP ${error.response.status}`;
-        if (typeof msg === 'object') msg = JSON.stringify(msg);
-        throw new Error(msg);
+        throw new Error(extractApiErrorMessage(error.response.data, error.response.status));
       }
       throw error;
     }
@@ -53,11 +59,7 @@ export const authAPI = {
       return response.data;
     } catch (error) {
       if (error.response?.data) {
-        const d = error.response?.data;
-        let msg = d.message || d.error;
-        if (!msg) msg = `HTTP ${error.response.status}`;
-        if (typeof msg === 'object') msg = JSON.stringify(msg);
-        throw new Error(msg);
+        throw new Error(extractApiErrorMessage(error.response.data, error.response.status));
       }
       throw error;
     }
@@ -69,11 +71,7 @@ export const authAPI = {
       return response.data;
     } catch (error) {
       if (error.response?.data) {
-        const d = error.response?.data;
-        let msg = d.message || d.error;
-        if (!msg) msg = `HTTP ${error.response.status}`;
-        if (typeof msg === 'object') msg = JSON.stringify(msg);
-        throw new Error(msg);
+        throw new Error(extractApiErrorMessage(error.response.data, error.response.status));
       }
       throw error;
     }
