@@ -146,6 +146,9 @@ merge_discovered_stacks() {
 resolve_school_target() {
   local id="$1"
   local row match
+  case "${id}" in
+    demoschool|demo-school) id="demo" ;;
+  esac
   match="$(jq -c --arg id "${id}" '.instances[] | select(.id == $id)' "${MANIFEST_PATH}" 2>/dev/null || true)"
   if [[ -n "${match}" ]]; then
     row="$(hydrate_stack_row "${match}")"

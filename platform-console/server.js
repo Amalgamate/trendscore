@@ -146,6 +146,48 @@ function slugFromComposeProject(project = '') {
   return String(project || '').replace(/^zawadi-/, '');
 }
 
+/** Compose slugs that are the same tenant as manifest id "demo" (canary / main stack). */
+const CANARY_SLUG_ALIASES = new Set(['demoschool', 'demo-school', 'zawadijrn']);
+
+function normalizeDeploySchoolId(slugOrId = '') {
+  const slug = slugifyName(slugOrId);
+  if (!slug || CANARY_SLUG_ALIASES.has(slug)) return 'demo';
+  return slug;
+}
+
+function buildManifestDomainIndex(manifest = {}) {
+  const byId = new Map();
+  const byProject = new Map();
+  for (const inst of manifest.instances || []) {
+    const domain = String(inst.public_domain || '').trim().toLowerCase();
+    if (!domain) continue;
+    byId.set(inst.id, domain);
+    const project = inst.compose_project
+      || (inst.kind === 'main' ? 'zawadijrn' : `zawadi-${inst.id}`);
+    byProject.set(project, domain);
+    byProject.set(slugFromComposeProject(project), domain);
+  }
+  return { byId, byProject };
+}
+
+function resolveRuntimeDomain(instance, nginxMap, manifestIndex) {
+  const project = String(instance.composeProject || instance.key || '').trim();
+  const slug = slugifyName(slugFromComposeProject(project) || instance.key || instance.name);
+
+  const fromNginx = (instance.fe && nginxMap.byFePort[instance.fe])
+    || (instance.be && nginxMap.byBePort[instance.be])
+    || '';
+  if (fromNginx) return String(fromNginx).trim().toLowerCase();
+
+  const fromManifest = manifestIndex.byProject.get(project)
+    || manifestIndex.byId.get(normalizeDeploySchoolId(slug))
+    || manifestIndex.byId.get(slug)
+    || '';
+  if (fromManifest) return fromManifest;
+
+  return getSchoolDomainOverride(slug) || '';
+}
+
 async function listImageTags(imageRepo, limit = 12) {
   try {
     const { stdout } = await execFileAsync('docker', [
@@ -178,8 +220,29 @@ async function listFrontendImageTags(limit = 12) {
 
 async function buildDeployTargets() {
   const manifest = loadDeployManifest();
+  const manifestDomains = buildManifestDomainIndex(manifest);
   const { instances: runtimeInstances } = await collectRuntime();
   const byId = new Map();
+
+  const upsertDemoFromRuntime = inst => {
+    const existing = byId.get('demo');
+    const domain = inst?.domain
+      || existing?.domain
+      || manifestDomains.byId.get('demo')
+      || getSchoolDomainOverride('demo')
+      || 'demoschool.trendscore.co.ke';
+    byId.set('demo', {
+      id: 'demo',
+      label: existing?.label || 'Canary — Demo School',
+      tier: 'demo',
+      kind: 'main',
+      domain,
+      composeProject: inst?.composeProject || existing?.composeProject || 'zawadijrn',
+      inManifest: existing?.inManifest ?? false,
+      discovered: existing?.discovered || Boolean(inst),
+      selectable: true,
+    });
+  };
 
   for (const inst of manifest.instances || []) {
     byId.set(inst.id, {
@@ -187,7 +250,7 @@ async function buildDeployTargets() {
       label: inst.label || inst.id,
       tier: inst.tier || 'production',
       kind: inst.kind || 'stack',
-      domain: inst.public_domain || getSchoolDomainOverride(inst.id) || '',
+      domain: inst.public_domain || manifestDomains.byId.get(inst.id) || getSchoolDomainOverride(inst.id) || '',
       composeProject: inst.compose_project || (inst.kind === 'main' ? 'zawadijrn' : `zawadi-${inst.id}`),
       inManifest: true,
       selectable: true,
@@ -196,21 +259,10 @@ async function buildDeployTargets() {
 
   for (const inst of runtimeInstances) {
     if (!inst.hasFrontend || !inst.hasBackend) continue;
-    const slug = slugFromComposeProject(inst.composeProject || inst.key);
-    if (!slug || slug === 'zawadijrn') {
-      if (!byId.has('demo')) {
-        byId.set('demo', {
-          id: 'demo',
-          label: 'Canary — Demo School',
-          tier: 'demo',
-          kind: 'main',
-          domain: getSchoolDomainOverride('demo') || inst.domain || 'demoschool.trendscore.co.ke',
-          composeProject: inst.composeProject || 'zawadijrn',
-          inManifest: false,
-          discovered: true,
-          selectable: true,
-        });
-      }
+    const rawSlug = slugFromComposeProject(inst.composeProject || inst.key);
+    const slug = normalizeDeploySchoolId(rawSlug);
+    if (!rawSlug || slug === 'demo') {
+      upsertDemoFromRuntime(inst);
       continue;
     }
     if (byId.has(slug)) {
@@ -224,7 +276,7 @@ async function buildDeployTargets() {
       label: inst.name || slug,
       tier: 'production',
       kind: 'stack',
-      domain: inst.domain || getSchoolDomainOverride(slug) || '',
+      domain: inst.domain || manifestDomains.byId.get(slug) || getSchoolDomainOverride(slug) || '',
       composeProject: inst.composeProject || `zawadi-${slug}`,
       inManifest: false,
       discovered: true,
@@ -861,8 +913,9 @@ async function collectRuntime() {
 
   const instances = mapContainersToInstances(containers);
   const nginxMap = parseNginxDomainMap();
+  const manifestDomains = buildManifestDomainIndex(loadDeployManifest());
   for (const i of instances) {
-    i.domain = getSchoolDomainOverride(i.key || i.name) || (i.fe && nginxMap.byFePort[i.fe]) || (i.be && nginxMap.byBePort[i.be]) || i.domain || '';
+    i.domain = resolveRuntimeDomain(i, nginxMap, manifestDomains);
   }
 
   if (dockerDf && Array.isArray(dockerDf.Volumes)) {
