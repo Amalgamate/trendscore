@@ -83,6 +83,19 @@ function shellQuote(value) {
   return `'${String(value).replace(/'/g, "'\\''")}'`;
 }
 
+function deployExecOutput(error) {
+  return `${String(error?.stdout || '')}\n${String(error?.stderr || '')}`.trim();
+}
+
+function deployFailureMessage(stdout, stderr, fallback) {
+  const text = `${stdout || ''}\n${stderr || ''}`;
+  const deployLines = text.split(/\r?\n/).filter(line => line.includes('[deploy]'));
+  if (deployLines.length) {
+    return deployLines.slice(-6).join('\n');
+  }
+  return fallback || 'Deploy failed';
+}
+
 function shouldRunDeployOnHost(scriptPath) {
   return scriptPath.startsWith('/srv/zawadi/') || scriptPath.startsWith('/tmp/trendscore-');
 }
@@ -267,9 +280,8 @@ async function runDeployReleaseOnHost(scriptPath, env) {
     .filter(([key]) => ['DEPLOY_TARGET', 'IMAGE_TAG', 'MANIFEST_PATH', 'SCHOOL_ID', 'DEPLOY_CONSOLE', 'DEPLOY_CONSOLE_ONLY'].includes(key))
     .filter(([, value]) => value != null && String(value).length > 0);
 
-  const innerEnv = envPairs.map(([key, value]) => `${key}=${value}`).join(' ');
-  const innerCmd = `${innerEnv} bash ${scriptPath}`;
-  const chrootCmd = `chroot /host /bin/bash -lc ${shellQuote(innerCmd)}`;
+  const envArgs = envPairs.map(([key, value]) => `${key}=${shellQuote(value)}`).join(' ');
+  const chrootCmd = `chroot /host /usr/bin/env ${envArgs} /bin/bash ${shellQuote(scriptPath)}`;
 
   const dockerArgs = [
     'run', '--rm',
@@ -281,11 +293,20 @@ async function runDeployReleaseOnHost(scriptPath, env) {
     'sh', '-c', chrootCmd,
   ];
 
-  const { stdout, stderr } = await execFileAsync('docker', dockerArgs, {
-    timeout: 45 * 60 * 1000,
-    maxBuffer: 20 * 1024 * 1024,
-  });
-  return { stdout: String(stdout || ''), stderr: String(stderr || '') };
+  try {
+    const { stdout, stderr } = await execFileAsync('docker', dockerArgs, {
+      timeout: 45 * 60 * 1000,
+      maxBuffer: 20 * 1024 * 1024,
+    });
+    return { stdout: String(stdout || ''), stderr: String(stderr || '') };
+  } catch (error) {
+    const stdout = String(error.stdout || '');
+    const stderr = String(error.stderr || '');
+    const deployError = new Error(deployFailureMessage(stdout, stderr, error.message));
+    deployError.stdout = stdout;
+    deployError.stderr = stderr;
+    throw deployError;
+  }
 }
 
 async function runDeployConsoleOnly(imageTag) {
@@ -1214,8 +1235,10 @@ app.post('/api/deploy/console', requireAuth, requireRole('super_admin'), async (
       }],
     });
   } catch (error) {
-    pushAudit('DEPLOY', 'Console failed', req.user.email, error.message, 'Warning');
-    return res.status(500).json({ ok: false, error: error.message });
+    const deployLog = deployExecOutput(error);
+    const message = deployFailureMessage(error.stdout, error.stderr, error.message);
+    pushAudit('DEPLOY', 'Console failed', req.user.email, message, 'Warning');
+    return res.status(500).json({ ok: false, error: message, log: deployLog });
   }
 });
 
@@ -1291,16 +1314,29 @@ app.post('/api/deploy/promote', requireAuth, requireRole('super_admin'), async (
 
     return res.json({ ok: true, imageTag, results });
   } catch (error) {
-    pushAudit('DEPLOY', 'Promote failed', req.user.email, error.message, 'Warning');
+    const deployLog = deployExecOutput(error);
+    const failedJob = uniqueJobs[results.length] || uniqueJobs[uniqueJobs.length - 1];
+    if (deployLog) {
+      results.push({
+        target: failedJob?.label || 'deploy',
+        deployTarget: failedJob?.deployTarget || null,
+        schoolId: failedJob?.schoolId || null,
+        ok: false,
+        log: deployLog,
+      });
+    }
+    const message = deployFailureMessage(error.stdout, error.stderr, error.message);
+    pushAudit('DEPLOY', 'Promote failed', req.user.email, message, 'Warning');
     pushDeployment({
       title: `Deploy failed (${imageTag})`,
-      copy: error.message,
+      copy: message,
       status: 'Failed',
       imageTag,
     });
     return res.status(500).json({
       ok: false,
-      error: error.message,
+      error: message,
+      log: deployLog,
       results,
     });
   }

@@ -1723,6 +1723,7 @@ async function executePromoteDeploy({ imageTag, allSchools, includeDemo, schoolI
 
     if (!response.ok) {
       appendDeployLogLine(data.error || `Deploy failed (HTTP ${response.status})`, 'error');
+      if (data.log) appendDeployLogLine(data.log);
       if (Array.isArray(data.results)) {
         data.results.forEach(result => {
           appendDeployLogLine(`— ${result.target}: ${result.ok ? 'ok' : 'failed'}`, result.ok ? 'info' : 'error');
@@ -1765,6 +1766,7 @@ async function executeConsoleDeploy(imageTag) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       appendDeployLogLine(data.error || `Console deploy failed (HTTP ${response.status})`, 'error');
+      if (data.log) appendDeployLogLine(data.log);
       if (data.results?.[0]?.log) appendDeployLogLine(data.results[0].log);
       toast(data.error || 'Console update failed.');
       return;

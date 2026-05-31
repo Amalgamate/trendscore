@@ -39,8 +39,10 @@ require_cmd curl
 run_as_root() {
   if [[ "$(id -u)" -eq 0 ]]; then
     "$@"
-  else
+  elif command -v sudo >/dev/null 2>&1; then
     sudo "$@"
+  else
+    "$@"
   fi
 }
 
@@ -155,7 +157,7 @@ resolve_school_target() {
   local match
   match="$(jq -c --arg id "${id}" '.instances[] | select(.id == $id)' "${MANIFEST_PATH}" 2>/dev/null || true)"
   if [[ -n "${match}" ]]; then
-    printf '%s' "${match}"
+    hydrate_stack_row "${match}"
     return 0
   fi
 
@@ -172,6 +174,40 @@ resolve_school_target() {
     fi
   done < <(discover_running_stacks)
   return 1
+}
+
+hydrate_stack_row() {
+  local row="$1"
+  local kind id env_file project public_domain label
+  kind="$(printf '%s' "${row}" | jq -r '.kind')"
+  id="$(printf '%s' "${row}" | jq -r '.id')"
+  if [[ "${kind}" != "stack" ]]; then
+    printf '%s' "${row}"
+    return 0
+  fi
+  env_file="$(printf '%s' "${row}" | jq -r '.env_file // empty')"
+  if [[ -n "${env_file}" && -f "${env_file}" ]]; then
+    printf '%s' "${row}"
+    return 0
+  fi
+  log "Hydrating ${id}: manifest env missing (${env_file:-none}), checking discovery..."
+  while IFS='|' read -r discovered_project discovered_env; do
+    [[ -n "${discovered_project}" ]] || continue
+    local slug="${discovered_project#zawadi-}"
+    if [[ "${slug}" == "${id}" || "${discovered_project}" == "zawadi-${id}" ]]; then
+      label="$(printf '%s' "${row}" | jq -r '.label // empty')"
+      public_domain="$(printf '%s' "${row}" | jq -r '.public_domain // empty')"
+      jq -nc \
+        --arg id "${id}" \
+        --arg label "${label:-${id}}" \
+        --arg project "${discovered_project}" \
+        --arg env_file "${discovered_env}" \
+        --arg public_domain "${public_domain}" \
+        '{id: $id, label: $label, tier: "production", kind: "stack", compose_project: $project, env_file: $env_file, public_domain: (if $public_domain != "" then $public_domain else empty end)}'
+      return 0
+    fi
+  done < <(discover_running_stacks)
+  printf '%s' "${row}"
 }
 
 read_env_value() {
@@ -234,10 +270,10 @@ publish_frontend_static() {
   local target verified=0
   for target in "${targets[@]}"; do
     log "━━ Publish static frontend: ${container} → ${target} ━━"
-    sudo mkdir -p "${target}"
+    run_as_root mkdir -p "${target}"
     docker_cmd cp "${container}:/usr/share/nginx/html/." "${target}/"
     if id www-data >/dev/null 2>&1; then
-      sudo chown -R www-data:www-data "${target}" 2>/dev/null || true
+      run_as_root chown -R www-data:www-data "${target}" 2>/dev/null || true
     fi
     if verify_static_bundle "${target}"; then
       verified=1
@@ -247,8 +283,8 @@ publish_frontend_static() {
   [[ "${verified}" -eq 1 ]] || fail "Published bundle still contains Apps menu"
 
   if command -v nginx >/dev/null 2>&1; then
-    if sudo nginx -t >/dev/null 2>&1; then
-      sudo systemctl reload nginx >/dev/null 2>&1 && log "Nginx reloaded"
+    if run_as_root nginx -t >/dev/null 2>&1; then
+      run_as_root systemctl reload nginx >/dev/null 2>&1 && log "Nginx reloaded"
     else
       log "WARNING: nginx -t failed; skipped reload"
     fi
@@ -268,16 +304,16 @@ discover_nginx_static_roots() {
     [[ -d "${dir}" ]] || continue
     for conf in "${dir}"/*; do
       [[ -f "${conf}" ]] || continue
-      sudo grep -q "${domain}" "${conf}" 2>/dev/null || continue
-      sudo grep -E '^[[:space:]]*root[[:space:]]+' "${conf}" 2>/dev/null \
+      run_as_root grep -q "${domain}" "${conf}" 2>/dev/null || continue
+      run_as_root grep -E '^[[:space:]]*root[[:space:]]+' "${conf}" 2>/dev/null \
         | sed -E 's/^[[:space:]]*root[[:space:]]+([^;[:space:]]+).*$/\1/' \
         | tr -d '"' | tr -d "'"
     done
   done
 
-  sudo grep -rl "${domain}" /etc/nginx 2>/dev/null | while IFS= read -r conf; do
+  run_as_root grep -rl "${domain}" /etc/nginx 2>/dev/null | while IFS= read -r conf; do
     [[ -f "${conf}" ]] || continue
-    sudo grep -E '^[[:space:]]*root[[:space:]]+' "${conf}" 2>/dev/null \
+    run_as_root grep -E '^[[:space:]]*root[[:space:]]+' "${conf}" 2>/dev/null \
       | sed -E 's/^[[:space:]]*root[[:space:]]+([^;[:space:]]+).*$/\1/' \
       | tr -d '"' | tr -d "'"
   done | sort -u
@@ -290,10 +326,10 @@ discover_legacy_frontend_dirs() {
     [[ -d "${root}" ]] || continue
     while IFS= read -r asset; do
       [[ -n "${asset}" ]] || continue
-      if sudo grep -q 'settings-apps' "${asset}" 2>/dev/null; then
+      if run_as_root grep -q 'settings-apps' "${asset}" 2>/dev/null; then
         dirname "$(dirname "${asset}")"
       fi
-    done < <(sudo find "${root}" -type f -path '*/assets/CBCGradingSystem*.js' 2>/dev/null)
+    done < <(run_as_root find "${root}" -type f -path '*/assets/CBCGradingSystem*.js' 2>/dev/null)
   done | sort -u
 }
 
@@ -310,7 +346,7 @@ discover_live_frontend_publish_dirs() {
   [[ -n "${index_js}" ]] || return 0
 
   log "Live site bundle marker: ${index_js}"
-  sudo find /srv /var /opt /home /usr /root -type f -name "${index_js}" 2>/dev/null \
+  run_as_root find /srv /var /opt /home /usr /root -type f -name "${index_js}" 2>/dev/null \
     | while IFS= read -r file; do
         dirname "${file}"
       done | sort -u
@@ -319,15 +355,15 @@ discover_live_frontend_publish_dirs() {
 pin_runtime_images_in_env() {
   local env_file="$1"
   [[ -f "${env_file}" ]] || return 0
-  if sudo grep -q '^FRONTEND_IMAGE=' "${env_file}" 2>/dev/null; then
-    sudo sed -i "s|^FRONTEND_IMAGE=.*|FRONTEND_IMAGE=${FRONTEND_IMAGE}|" "${env_file}"
+  if run_as_root grep -q '^FRONTEND_IMAGE=' "${env_file}" 2>/dev/null; then
+    run_as_root sed -i "s|^FRONTEND_IMAGE=.*|FRONTEND_IMAGE=${FRONTEND_IMAGE}|" "${env_file}"
   else
-    printf 'FRONTEND_IMAGE=%s\n' "${FRONTEND_IMAGE}" | sudo tee -a "${env_file}" >/dev/null
+    printf 'FRONTEND_IMAGE=%s\n' "${FRONTEND_IMAGE}" | run_as_root tee -a "${env_file}" >/dev/null
   fi
-  if sudo grep -q '^BACKEND_IMAGE=' "${env_file}" 2>/dev/null; then
-    sudo sed -i "s|^BACKEND_IMAGE=.*|BACKEND_IMAGE=${BACKEND_IMAGE}|" "${env_file}"
+  if run_as_root grep -q '^BACKEND_IMAGE=' "${env_file}" 2>/dev/null; then
+    run_as_root sed -i "s|^BACKEND_IMAGE=.*|BACKEND_IMAGE=${BACKEND_IMAGE}|" "${env_file}"
   else
-    printf 'BACKEND_IMAGE=%s\n' "${BACKEND_IMAGE}" | sudo tee -a "${env_file}" >/dev/null
+    printf 'BACKEND_IMAGE=%s\n' "${BACKEND_IMAGE}" | run_as_root tee -a "${env_file}" >/dev/null
   fi
 }
 
@@ -401,7 +437,11 @@ verify_target() {
   fi
 
   [[ -n "${project}" ]] || { log "Stack ${id}: missing compose_project"; return 1; }
-  [[ -f "${env_file}" ]] || { log "Stack ${id}: env file not found: ${env_file}"; return 1; }
+  [[ -f "${env_file}" ]] || {
+    log "Stack ${id}: env file not found: ${env_file}"
+    log "Hint: if this school uses the canary/main stack, promote Canary (demo) instead of ${id}."
+    return 1
+  }
   [[ -f "${STACK_COMPOSE_FILE}" ]] || { log "Stack compose file missing: ${STACK_COMPOSE_FILE}"; return 1; }
   if ! docker_cmd ps --filter "label=com.docker.compose.project=${project}" --format '{{.Names}}' | grep -q .; then
     log "WARNING: no running containers for project ${project} (deploy will still proceed)"
@@ -416,7 +456,7 @@ backup_database() {
   local ts
   ts="$(date -u +%Y%m%dT%H%M%SZ)"
   local dest="${BACKUP_DIR}/${id}/${ts}"
-  sudo mkdir -p "${dest}"
+  run_as_root mkdir -p "${dest}"
 
   log "━━ Backup: ${id} → ${dest} ━━"
 
@@ -428,8 +468,8 @@ backup_database() {
     db_user="${db_user:-postgres}"
     db_name="${db_name:-zawadi_sms}"
     docker_cmd compose exec -T db pg_dump -U "${db_user}" "${db_name}" \
-      | sudo tee "${dest}/database.sql" >/dev/null
-    echo "${dest}/database.sql" | sudo tee "${dest}/LATEST" >/dev/null
+      | run_as_root tee "${dest}/database.sql" >/dev/null
+    echo "${dest}/database.sql" | run_as_root tee "${dest}/LATEST" >/dev/null
     return 0
   fi
 
@@ -441,8 +481,8 @@ backup_database() {
   db_name="${db_name:-postgres}"
   docker_cmd compose --env-file "${env_file}" -p "${project}" -f "${STACK_COMPOSE_FILE}" \
     exec -T db pg_dump -U "${db_user}" "${db_name}" \
-    | sudo tee "${dest}/database.sql" >/dev/null
-  echo "${dest}/database.sql" | sudo tee "${dest}/LATEST" >/dev/null
+    | run_as_root tee "${dest}/database.sql" >/dev/null
+  echo "${dest}/database.sql" | run_as_root tee "${dest}/LATEST" >/dev/null
 }
 
 pull_images() {
@@ -546,7 +586,7 @@ deploy_console() {
   local console_data="${CONSOLE_DATA_DIR:-${APPS_DIR}/console-data}"
 
   docker_cmd pull "${CONSOLE_IMAGE}"
-  sudo mkdir -p "${console_data}"
+  run_as_root mkdir -p "${console_data}"
   docker_cmd rm -f zawadi-console >/dev/null 2>&1 || true
   docker_cmd run -d \
     --name zawadi-console \
@@ -616,6 +656,7 @@ log "═════════════════════════
 FAILED=0
 SUCCEEDED=0
 while IFS= read -r row; do
+  row="$(hydrate_stack_row "${row}")"
   id="$(printf '%s' "${row}" | jq -r '.id')"
   kind="$(printf '%s' "${row}" | jq -r '.kind')"
   project="$(printf '%s' "${row}" | jq -r '.compose_project // empty')"
