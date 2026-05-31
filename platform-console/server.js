@@ -145,8 +145,15 @@ async function listImageTags(imageRepo, limit = 12) {
     }).filter(row => row.tag && row.tag !== '<none>');
 
     const shaTags = rows.filter(r => r.tag.startsWith('sha-'));
-    const others = rows.filter(r => !r.tag.startsWith('sha-') && ['latest', 'main'].includes(r.tag));
-    return [...shaTags, ...others].slice(0, limit);
+    const latestRow = rows.find(r => r.tag === 'latest');
+    const otherTags = rows.filter(r => !r.tag.startsWith('sha-') && r.tag !== 'latest' && r.tag !== 'main');
+    const ordered = [];
+    if (latestRow) ordered.push(latestRow);
+    ordered.push(...shaTags);
+    for (const row of otherTags) {
+      if (!ordered.some(r => r.tag === row.tag)) ordered.push(row);
+    }
+    return ordered.slice(0, limit);
   } catch {
     return [{ tag: 'latest', createdAt: '' }];
   }

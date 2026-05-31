@@ -8,13 +8,15 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Docker image tag (e.g. sha-<full-git-sha> or v1.2.3)"
+        description: "Docker image tag (default: latest from main)"
         required: true
         type: string
+        default: latest
       deployment_target:
         description: "Where to deploy"
         required: true
         type: choice
+        default: selected_school
         options:
           - demo
           - pilot

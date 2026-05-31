@@ -1544,13 +1544,33 @@ function selectedConsoleImageTag() {
   return $('deploy-console-image-tag')?.value.trim() || '';
 }
 
-function fillDeployTagSelect(selectEl, tags) {
+function fillDeployTagSelect(selectEl, tags, defaultTag = 'latest') {
   if (!selectEl) return;
-  selectEl.innerHTML = (Array.isArray(tags) ? tags : []).map(row => {
-    const tag = row.tag || row;
-    const label = row.createdAt ? `${tag} (${row.createdAt})` : tag;
+  const rows = (Array.isArray(tags) ? tags : []).map(row => (
+    typeof row === 'string' ? { tag: row, createdAt: '' } : row
+  )).filter(row => row?.tag);
+
+  rows.sort((a, b) => {
+    const tagA = a.tag || '';
+    const tagB = b.tag || '';
+    if (tagA === defaultTag) return -1;
+    if (tagB === defaultTag) return 1;
+    if (tagA.startsWith('sha-') && !tagB.startsWith('sha-')) return -1;
+    if (!tagA.startsWith('sha-') && tagB.startsWith('sha-')) return 1;
+    return tagB.localeCompare(tagA);
+  });
+
+  selectEl.innerHTML = rows.map(row => {
+    const tag = row.tag || '';
+    const label = tag === defaultTag
+      ? `${tag} (recommended — current main build)`
+      : (row.createdAt ? `${tag} (${row.createdAt})` : tag);
     return `<option value="${esc(tag)}">${esc(label)}</option>`;
   }).join('');
+
+  if (rows.some(row => row.tag === defaultTag)) {
+    selectEl.value = defaultTag;
+  }
 }
 
 function appendDeployLogLine(text, type = 'info') {
@@ -1635,12 +1655,19 @@ async function refreshDeployPanel(prefill = null) {
     }
     if ($('deploy-include-demo')) {
       $('deploy-include-demo').checked = Boolean(prefill?.includeDemo);
-      if ($('deploy-include-demo')) {
-        $('deploy-include-demo').disabled = Boolean($('deploy-all-schools')?.checked);
-      }
+      $('deploy-include-demo').disabled = Boolean($('deploy-all-schools')?.checked);
     }
 
     renderDeployTargets(selected);
+
+    const schoolSelect = $('deploy-image-tag');
+    if (schoolSelect && !prefill?.imageTag && schoolSelect.querySelector('option[value="latest"]')) {
+      schoolSelect.value = 'latest';
+    }
+    const consoleSelect = $('deploy-console-image-tag');
+    if (consoleSelect && !prefill?.imageTag && consoleSelect.querySelector('option[value="latest"]')) {
+      consoleSelect.value = 'latest';
+    }
   } catch (error) {
     renderDeployTargets(new Set());
     toast(`Could not load deploy targets: ${error.message}`);

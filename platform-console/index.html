@@ -361,30 +361,30 @@
             <div class="deploy-layout deploy-layout--segment">
               <div class="panel panel--nested">
                 <div class="panel-body deploy-form">
-                  <label class="form-label" for="deploy-image-tag">Image tag (tested on canary)</label>
+                  <label class="form-label" for="deploy-image-tag">Image tag</label>
                   <div class="deploy-tag-row">
                     <select class="form-input" id="deploy-image-tag"></select>
-                    <input class="form-input" id="deploy-image-tag-custom" placeholder="sha-…" />
+                    <input class="form-input" id="deploy-image-tag-custom" placeholder="Override tag (optional)" />
                   </div>
-                  <label class="form-label" style="margin-top:16px">Scope</label>
-                  <label class="deploy-check-row">
-                    <input type="checkbox" id="deploy-all-schools" />
-                    <span><strong>All production schools</strong> — manifest stacks + any discovered on this server (excludes canary)</span>
-                  </label>
-                  <label class="deploy-check-row">
-                    <input type="checkbox" id="deploy-include-demo" />
-                    <span><strong>Include canary</strong> — demoschool.trendscore.co.ke (auto-deployed on main)</span>
-                  </label>
+                  <label class="form-label" style="margin-top:16px">Scope — selected schools (default)</label>
                   <div class="deploy-target-toolbar">
-                    <span class="form-label" style="margin:0">Or pick schools</span>
+                    <span class="form-label" style="margin:0">Select schools to promote</span>
                     <div class="deploy-target-actions">
-                      <button class="btn" type="button" id="deploy-select-all">Production only</button>
-                      <button class="btn" type="button" id="deploy-select-none">None</button>
+                      <button class="btn" type="button" id="deploy-select-all">All production</button>
+                      <button class="btn" type="button" id="deploy-select-none">Clear</button>
                     </div>
                   </div>
                   <div class="deploy-target-list" id="deploy-target-list">
                     <div class="deploy-target-empty">Loading schools…</div>
                   </div>
+                  <label class="deploy-check-row" style="margin-top:12px">
+                    <input type="checkbox" id="deploy-include-demo" />
+                    <span><strong>Include canary</strong> — demoschool.trendscore.co.ke</span>
+                  </label>
+                  <label class="deploy-check-row">
+                    <input type="checkbox" id="deploy-all-schools" />
+                    <span><strong>All production schools</strong> — every manifest + discovered stack (not selected list)</span>
+                  </label>
                   <button class="btn teal deploy-promote-btn" type="button" id="deploy-promote-btn">Promote school release</button>
                 </div>
               </div>
@@ -414,7 +414,7 @@
               <label class="form-label" for="deploy-console-image-tag">Console image tag</label>
               <div class="deploy-tag-row">
                 <select class="form-input" id="deploy-console-image-tag"></select>
-                <input class="form-input" id="deploy-console-image-tag-custom" placeholder="sha-…" />
+                <input class="form-input" id="deploy-console-image-tag-custom" placeholder="Override tag (optional)" />
               </div>
               <p class="deploy-hint">Does not change school sites. Use after UI or console API changes, or when main deploy already updated the canary.</p>
               <button class="btn" type="button" id="deploy-console-btn">Update admin console</button>
