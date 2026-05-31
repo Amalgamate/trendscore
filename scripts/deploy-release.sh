@@ -148,6 +148,7 @@ resolve_school_target() {
   local row match
   case "${id}" in
     demoschool|demo-school) id="demo" ;;
+    jrn|zawadijrn) id="jrn" ;;
   esac
   match="$(jq -c --arg id "${id}" '.instances[] | select(.id == $id)' "${MANIFEST_PATH}" 2>/dev/null || true)"
   if [[ -n "${match}" ]]; then

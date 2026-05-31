@@ -203,12 +203,14 @@ let liveMode = false;
 let RUNTIME_METRICS = null;
 const DOMAIN_OVERRIDES = {
   amalgamate: 'amalgamate.trendscore.co.ke',
-  console: 'console.trendscore.co.ke',
+  console: 'admin.trendscore.co.ke',
+  admin: 'admin.trendscore.co.ke',
   demo: 'demoschool.trendscore.co.ke',
   demoschool: 'demoschool.trendscore.co.ke',
   'demo-school': 'demoschool.trendscore.co.ke',
   ighs: 'ighs.trendscore.co.ke',
-  jrn: 'jrn.trendscore.co.ke',
+  jrn: 'zawadi.trendscore.co.ke',
+  zawadijrn: 'zawadi.trendscore.co.ke',
   'kambigarba-cs': 'kambigarba-cs.trendscore.co.ke',
   'kambi-garba-cs': 'kambigarba-cs.trendscore.co.ke',
   'kambi-garba': 'kambigarba-cs.trendscore.co.ke',

@@ -64,7 +64,7 @@ The deployment script runs it on port `3100` using this server-side env file:
 /srv/zawadi/apps/.env.console
 ```
 
-Point `console.trendscore.co.ke` via NGINX Proxy Manager when ready:
+Point `admin.trendscore.co.ke` via NGINX Proxy Manager when ready:
 
 ```
 Forward host: 185.127.16.124
@@ -102,4 +102,4 @@ platform-console/
 - Replace demo data with a live console backend API
 - Connect Docker status, real storage metrics, deploy history
 - Audited start, stop, restart, backup, redeploy controls
-- NGINX Proxy Manager at console.trendscore.co.ke
+- NGINX Proxy Manager at admin.trendscore.co.ke

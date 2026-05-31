@@ -143,15 +143,21 @@ function loadDeployManifest() {
 }
 
 function slugFromComposeProject(project = '') {
-  return String(project || '').replace(/^zawadi-/, '');
+  const p = String(project || '').trim();
+  if (p === 'zawadijrn') return 'jrn';
+  return p.replace(/^zawadi-/, '');
 }
 
-/** Compose slugs that are the same tenant as manifest id "demo" (canary / main stack). */
-const CANARY_SLUG_ALIASES = new Set(['demoschool', 'demo-school', 'zawadijrn']);
+/** Compose slugs that map to manifest id "demo" (QA canary URL only). */
+const CANARY_SLUG_ALIASES = new Set(['demoschool', 'demo-school']);
+
+/** Main zawadijrn stack — live JRN at zawadi.trendscore.co.ke */
+const JRN_MAIN_ALIASES = new Set(['zawadijrn', 'jrn']);
 
 function normalizeDeploySchoolId(slugOrId = '') {
   const slug = slugifyName(slugOrId);
   if (!slug || CANARY_SLUG_ALIASES.has(slug)) return 'demo';
+  if (JRN_MAIN_ALIASES.has(slug)) return 'jrn';
   return slug;
 }
 
@@ -164,8 +170,11 @@ function buildManifestDomainIndex(manifest = {}) {
     byId.set(inst.id, domain);
     const project = inst.compose_project
       || (inst.kind === 'main' ? 'zawadijrn' : `zawadi-${inst.id}`);
-    byProject.set(project, domain);
-    byProject.set(slugFromComposeProject(project), domain);
+    // Shared main stack: production (JRN) domain wins for compose project lookup.
+    if (inst.tier !== 'demo' || !byProject.has(project)) {
+      byProject.set(project, domain);
+      byProject.set(slugFromComposeProject(project), domain);
+    }
   }
   return { byId, byProject };
 }
@@ -244,6 +253,26 @@ async function buildDeployTargets() {
     });
   };
 
+  const upsertJrnFromRuntime = inst => {
+    const existing = byId.get('jrn');
+    const domain = inst?.domain
+      || existing?.domain
+      || manifestDomains.byId.get('jrn')
+      || getSchoolDomainOverride('jrn')
+      || 'zawadi.trendscore.co.ke';
+    byId.set('jrn', {
+      id: 'jrn',
+      label: existing?.label || 'JRN — Zawadi',
+      tier: existing?.tier || 'production',
+      kind: existing?.kind || 'main',
+      domain,
+      composeProject: inst?.composeProject || existing?.composeProject || 'zawadijrn',
+      inManifest: existing?.inManifest ?? false,
+      discovered: existing?.discovered || Boolean(inst),
+      selectable: true,
+    });
+  };
+
   for (const inst of manifest.instances || []) {
     byId.set(inst.id, {
       id: inst.id,
@@ -259,10 +288,15 @@ async function buildDeployTargets() {
 
   for (const inst of runtimeInstances) {
     if (!inst.hasFrontend || !inst.hasBackend) continue;
-    const rawSlug = slugFromComposeProject(inst.composeProject || inst.key);
+    const rawSlug = slugFromComposeProject(inst.composeProject || inst.key)
+      || slugifyName(inst.composeProject || inst.key || '');
     const slug = normalizeDeploySchoolId(rawSlug);
-    if (!rawSlug || slug === 'demo') {
+    if (slug === 'demo') {
       upsertDemoFromRuntime(inst);
+      continue;
+    }
+    if (slug === 'jrn') {
+      upsertJrnFromRuntime(inst);
       continue;
     }
     if (byId.has(slug)) {
@@ -763,12 +797,14 @@ function slugifyName(value) {
 
 const SCHOOL_DOMAIN_OVERRIDES = {
   amalgamate: 'amalgamate.trendscore.co.ke',
-  console: 'console.trendscore.co.ke',
+  console: 'admin.trendscore.co.ke',
+  admin: 'admin.trendscore.co.ke',
   demo: 'demoschool.trendscore.co.ke',
   demoschool: 'demoschool.trendscore.co.ke',
   'demo-school': 'demoschool.trendscore.co.ke',
   ighs: 'ighs.trendscore.co.ke',
-  jrn: 'jrn.trendscore.co.ke',
+  jrn: 'zawadi.trendscore.co.ke',
+  zawadijrn: 'zawadi.trendscore.co.ke',
   'kambigarba-cs': 'kambigarba-cs.trendscore.co.ke',
   'kambi-garba-cs': 'kambigarba-cs.trendscore.co.ke',
   'kambi-garba': 'kambigarba-cs.trendscore.co.ke',

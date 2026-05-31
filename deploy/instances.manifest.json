@@ -18,9 +18,10 @@
       "label": "Canary — Demo School",
       "tier": "demo",
       "kind": "main",
+      "compose_project": "zawadijrn",
       "public_domain": "demoschool.trendscore.co.ke",
       "auto_deploy_on_main": true,
-      "notes": "Single canary tenant (zawadijrn main stack). Auto-deploys on every main build."
+      "notes": "QA canary URL on the zawadijrn main stack (same stack as JRN). Auto-deploys on every main build."
     },
     {
       "id": "amalgamate",
@@ -42,12 +43,12 @@
     },
     {
       "id": "jrn",
-      "label": "JRN",
+      "label": "JRN — Zawadi",
       "tier": "production",
-      "kind": "stack",
-      "compose_project": "zawadi-jrn",
-      "env_file": "/srv/zawadi/apps/env/.zawadi-jrn.env",
-      "public_domain": "jrn.trendscore.co.ke"
+      "kind": "main",
+      "compose_project": "zawadijrn",
+      "public_domain": "zawadi.trendscore.co.ke",
+      "notes": "Live JRN site on the main zawadijrn stack. demoschool is the QA canary URL on the same stack."
     },
     {
       "id": "kambigarba-cs",
