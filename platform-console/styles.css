@@ -616,6 +616,100 @@ input:checked + .toggle-slider::before{transform:translateX(18px)}
 .feat-cross{color:#d1d5db}
 .feat-plan-head{text-align:center;font-size:12px;font-weight:700;color:var(--ink)}
 
+.deploy-layout{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+  margin-bottom:0
+}
+.deploy-form .form-label{
+  display:block;
+  font-size:12px;
+  font-weight:600;
+  color:var(--muted);
+  margin-bottom:6px
+}
+.deploy-tag-row{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px
+}
+.deploy-check-row{
+  display:flex;
+  gap:10px;
+  align-items:flex-start;
+  font-size:13px;
+  color:var(--ink);
+  margin:8px 0;
+  cursor:pointer
+}
+.deploy-check-row input{margin-top:3px}
+.deploy-target-toolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin:14px 0 8px
+}
+.deploy-target-actions{display:flex;gap:6px}
+.deploy-target-list{
+  max-height:280px;
+  overflow:auto;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:#fafafa;
+  padding:8px
+}
+.deploy-target-item{
+  display:flex;
+  gap:10px;
+  align-items:flex-start;
+  padding:8px 10px;
+  border-radius:8px;
+  font-size:13px
+}
+.deploy-target-item:hover{background:#fff}
+.deploy-target-item input{margin-top:3px}
+.deploy-target-meta{
+  font-size:11px;
+  color:var(--muted);
+  margin-top:2px
+}
+.deploy-target-badge{
+  display:inline-block;
+  font-size:10px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  padding:2px 6px;
+  border-radius:999px;
+  background:#eef2ff;
+  color:#4338ca;
+  margin-left:6px
+}
+.deploy-promote-btn{width:100%;margin-top:16px}
+.deploy-log-viewer{min-height:320px;max-height:420px}
+.deploy-log-viewer .log-line{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:11px;
+  line-height:1.45;
+  white-space:pre-wrap;
+  word-break:break-word;
+  padding:2px 0;
+  color:var(--ink)
+}
+.deploy-log-viewer .log-line.log-error{color:var(--red)}
+.deploy-target-empty{
+  padding:16px;
+  text-align:center;
+  color:var(--muted);
+  font-size:13px
+}
+@media(max-width:1100px){
+  .deploy-layout{grid-template-columns:1fr}
+  .deploy-tag-row{grid-template-columns:1fr}
+}
+
 @media(max-width:1100px){
   .controls-layout{grid-template-columns:1fr}
   .controls-layout .panel:nth-child(2){grid-column:1;grid-row:auto}

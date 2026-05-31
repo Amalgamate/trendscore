@@ -202,6 +202,13 @@ let editingPlanId = null;
 let liveMode = false;
 let RUNTIME_METRICS = null;
 const DOMAIN_OVERRIDES = {
+  amalgamate: 'amalgamate.trendscore.co.ke',
+  console: 'console.trendscore.co.ke',
+  demo: 'demoschool.trendscore.co.ke',
+  demoschool: 'demoschool.trendscore.co.ke',
+  'demo-school': 'demoschool.trendscore.co.ke',
+  ighs: 'ighs.trendscore.co.ke',
+  jrn: 'jrn.trendscore.co.ke',
   'kambigarba-cs': 'kambigarba-cs.trendscore.co.ke',
   'kambi-garba-cs': 'kambigarba-cs.trendscore.co.ke',
   'kambi-garba': 'kambigarba-cs.trendscore.co.ke',
@@ -213,6 +220,7 @@ const DOMAIN_OVERRIDES = {
   'merti-cs': 'merti-cs.trendscore.co.ke',
   mertics: 'merti-cs.trendscore.co.ke',
   merti: 'merti-cs.trendscore.co.ke',
+  naet: 'naet.trendscore.co.ke',
   zawadi: 'zawadi.trendscore.co.ke',
 };
 
@@ -706,7 +714,7 @@ async function refreshFromRuntime() {
     if (runtime?.ok && Array.isArray(runtime.instances)) {
       INSTANCES = runtime.instances.map(item => ({
         ...item,
-        domain: item.domain || DOMAIN_OVERRIDES[inferGroupKey(item)] || `${slugify(item.name).replace(/-(frontend|backend|db|database)-?\d*$/i, '')}.trendscore.co.ke`,
+        domain: DOMAIN_OVERRIDES[inferGroupKey(item)] || item.domain || `${slugify(item.name).replace(/-(frontend|backend|db|database)-?\d*$/i, '')}.trendscore.co.ke`,
         type: item.type || 'PRIMARY_CBC',
         typeLabel: item.typeLabel || 'Managed',
         planId: item.planId || 'professional',
@@ -1222,7 +1230,7 @@ function renderInstances() {
 
   const renderGroupHeader = group => {
     const primary = group.items.find(item => Number(item.fe) > 0) || group.items[0] || {};
-    const domain = primary.domain || DOMAIN_OVERRIDES[group.key] || `${slugify(group.name).replace(/-(frontend|backend|db|database)-?\d*$/i, '')}.trendscore.co.ke`;
+    const domain = DOMAIN_OVERRIDES[group.key] || primary.domain || `${slugify(group.name).replace(/-(frontend|backend|db|database)-?\d*$/i, '')}.trendscore.co.ke`;
     const feLabel = Number.isFinite(group.fePort) ? `${serverIp}:${group.fePort}` : '-';
     const openIpUrl = Number.isFinite(group.fePort) ? `http://${serverIp}:${group.fePort}` : '';
     const openDomainUrl = domain ? `https://${domain}` : '';
@@ -1493,13 +1501,192 @@ function renderFeatureMatrix() {
     </tr>`).join('');
 }
 
+// Promote release (admin panel deploy)
+let DEPLOY_TARGETS = [];
+
+function instanceToDeployId(instanceName) {
+  const inst = INSTANCES.find(item => item.name === instanceName);
+  if (!inst) return slugify(instanceName).replace(/^zawadi-/, '');
+  const project = inst.composeProject || inst.key || inferGroupKey(inst);
+  return String(project).replace(/^zawadi-/, '') || slugify(instanceName);
+}
+
+function selectedDeployImageTag() {
+  const custom = $('deploy-image-tag-custom')?.value.trim();
+  if (custom) return custom;
+  return $('deploy-image-tag')?.value.trim() || '';
+}
+
+function appendDeployLogLine(text, type = 'info') {
+  const el = $('deploy-progress-log');
+  if (!el) return;
+  if (el.querySelector('.log-placeholder')) el.innerHTML = '';
+  const line = document.createElement('div');
+  line.className = `log-line${type === 'error' ? ' log-error' : ''}`;
+  line.textContent = text;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function clearDeployLog(message = 'Select schools and click Promote release.') {
+  const el = $('deploy-progress-log');
+  if (!el) return;
+  el.innerHTML = `<span class="log-placeholder">${esc(message)}</span>`;
+}
+
+function renderDeployTargets(selectedIds = new Set()) {
+  const list = $('deploy-target-list');
+  if (!list) return;
+  if (!DEPLOY_TARGETS.length) {
+    list.innerHTML = '<div class="deploy-target-empty">No school stacks found on this server.</div>';
+    return;
+  }
+
+  list.innerHTML = DEPLOY_TARGETS.map(target => {
+    const checked = selectedIds.has(target.id) ? 'checked' : '';
+    const badge = target.tier === 'demo'
+      ? '<span class="deploy-target-badge">demo</span>'
+      : (target.discovered && !target.inManifest ? '<span class="deploy-target-badge">discovered</span>' : '');
+    return `<label class="deploy-target-item">
+      <input type="checkbox" class="deploy-target-cb" value="${esc(target.id)}" ${checked} />
+      <span>
+        <strong>${esc(target.label)}</strong>${badge}
+        <div class="deploy-target-meta">${esc(target.domain || target.composeProject || target.id)} · ${esc(target.tier || 'production')}</div>
+      </span>
+    </label>`;
+  }).join('');
+}
+
+function getSelectedDeploySchoolIds() {
+  return Array.from(document.querySelectorAll('.deploy-target-cb:checked')).map(el => el.value);
+}
+
+async function refreshDeployPanel(prefill = null) {
+  try {
+    const [targetsResp, releasesResp] = await Promise.all([
+      fetch('/api/deploy/targets', { credentials: 'same-origin' }),
+      fetch('/api/deploy/releases', { credentials: 'same-origin' }),
+    ]);
+
+    if (targetsResp.ok) {
+      const data = await targetsResp.json();
+      DEPLOY_TARGETS = Array.isArray(data.targets) ? data.targets.filter(t => t.selectable !== false) : [];
+    }
+
+    if (releasesResp.ok) {
+      const data = await releasesResp.json();
+      const select = $('deploy-image-tag');
+      if (select) {
+        const tags = Array.isArray(data.tags) ? data.tags : [];
+        select.innerHTML = tags.map(row => {
+          const tag = row.tag || row;
+          const label = row.createdAt ? `${tag} (${row.createdAt})` : tag;
+          return `<option value="${esc(tag)}">${esc(label)}</option>`;
+        }).join('');
+      }
+    }
+
+    const selected = new Set();
+    if (prefill?.schoolIds) prefill.schoolIds.forEach(id => selected.add(id));
+    if (prefill?.includeDemo) selected.add('demo');
+
+    if ($('deploy-all-schools')) {
+      $('deploy-all-schools').checked = Boolean(prefill?.allSchools);
+    }
+    if ($('deploy-include-demo')) {
+      $('deploy-include-demo').checked = Boolean(prefill?.includeDemo);
+    }
+
+    renderDeployTargets(selected);
+  } catch (error) {
+    renderDeployTargets(new Set());
+    toast(`Could not load deploy targets: ${error.message}`);
+  }
+}
+
+function openPromoteDeploy(options = {}) {
+  showSection('deployments', { deployPrefill: options, skipDeployLoad: true });
+  refreshDeployPanel(options);
+}
+
+async function runPromoteDeploy() {
+  const imageTag = selectedDeployImageTag();
+  const allSchools = Boolean($('deploy-all-schools')?.checked);
+  const includeDemo = Boolean($('deploy-include-demo')?.checked);
+  const schoolIds = getSelectedDeploySchoolIds().filter(id => id !== 'demo');
+
+  if (!imageTag) {
+    toast('Choose or paste an image tag.');
+    return;
+  }
+  if (!allSchools && !includeDemo && schoolIds.length === 0) {
+    toast('Select at least one school, include demo, or choose all production schools.');
+    return;
+  }
+
+  const summary = allSchools
+    ? 'all production schools'
+    : [...(includeDemo ? ['demo'] : []), ...schoolIds].join(', ');
+
+  openConfirm({
+    title: 'Promote release',
+    body: `Deploy ${imageTag} to: ${summary}. Each target runs backup, migrate, and health check.`,
+    confirmLabel: 'Promote now',
+    onConfirm: () => executePromoteDeploy({ imageTag, allSchools, includeDemo, schoolIds }),
+  });
+}
+
+async function executePromoteDeploy({ imageTag, allSchools, includeDemo, schoolIds }) {
+  clearDeployLog('');
+  appendDeployLogLine(`[${nowLabel()}] Promoting ${imageTag}…`);
+  const btn = $('deploy-promote-btn');
+  if (btn) btn.disabled = true;
+
+  try {
+    const response = await fetch('/api/deploy/promote', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageTag, allSchools, includeDemo, schoolIds }),
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      appendDeployLogLine(data.error || `Deploy failed (HTTP ${response.status})`, 'error');
+      if (Array.isArray(data.results)) {
+        data.results.forEach(result => {
+          appendDeployLogLine(`— ${result.target}: ${result.ok ? 'ok' : 'failed'}`, result.ok ? 'info' : 'error');
+          if (result.log) appendDeployLogLine(result.log);
+        });
+      }
+      toast(data.error || 'Promote failed.');
+      return;
+    }
+
+    (data.results || []).forEach(result => {
+      appendDeployLogLine(`✓ ${result.target} (${result.durationSec || '?'}s)`);
+      if (result.log) appendDeployLogLine(result.log);
+    });
+    appendDeployLogLine(`[${nowLabel()}] Promote complete.`);
+
+    await refreshFromRuntime();
+    renderEverything();
+    toast(`Promoted ${imageTag} successfully.`);
+  } catch (error) {
+    appendDeployLogLine(error.message || 'Network error', 'error');
+    toast('Promote request failed.');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // Navigation
 const SECTIONS = ['overview', 'instances', 'storage', 'deployments', 'controls', 'pricing', 'logs', 'leads'];
 const SECTION_LABELS = {
   overview: 'Overview',
   instances: 'Instances',
   storage: 'Storage',
-  deployments: 'Deployments',
+  deployments: 'Promote Release',
   controls: 'Controls',
   pricing: 'Pricing Plans',
   logs: 'Audit Log',
@@ -1521,6 +1708,10 @@ function showSection(id, options = {}) {
     el.classList.toggle('active', el.dataset.section === targetSection);
   });
   if ($('breadcrumb-active')) $('breadcrumb-active').textContent = SECTION_LABELS[targetSection] || targetSection;
+
+  if (targetSection === 'deployments' && !options.skipDeployLoad) {
+    refreshDeployPanel(options.deployPrefill || null);
+  }
 
   if (!options.skipHashUpdate) {
     const nextHash = `#${targetSection}`;
@@ -1726,6 +1917,17 @@ async function handleControlButton(btn) {
   const action = btn.dataset.ctrl;
   const label = btn.dataset.label || action;
   const global = action?.endsWith('-all');
+
+  if (action === 'redeploy' || action === 'redeploy-all') {
+    if (global) {
+      openPromoteDeploy({ allSchools: true });
+    } else {
+      const active = selectedInstance();
+      openPromoteDeploy({ schoolIds: [instanceToDeployId(active.name)] });
+    }
+    return;
+  }
+
   const destructive = ['stop', 'drop', 'stop-all', 'restore', 'reset', 'purge', 'remove'].includes(action);
   const requireText = ['drop', 'reset', 'purge', 'remove'].includes(action);
 
@@ -1893,6 +2095,10 @@ document.body.addEventListener('click', event => {
 
   const action = btn.dataset.action;
   const school = btn.dataset.school;
+  if (action === 'Redeploy' && school) {
+    openPromoteDeploy({ schoolIds: [instanceToDeployId(school)] });
+    return;
+  }
   if (action && school) {
     selectedInstanceName = school;
     handleControlButton({ dataset: { ctrl: action.toLowerCase(), label: action } });
@@ -2246,8 +2452,32 @@ $('lead-modal-submit')?.addEventListener('click', async () => {
   toast(editId ? 'Lead updated' : 'Lead added successfully');
 });
 
+function bindDeployEvents() {
+  $('deploy-promote-btn')?.addEventListener('click', runPromoteDeploy);
+  $('btn-deploy-open-promote')?.addEventListener('click', runPromoteDeploy);
+  $('btn-deploy-refresh')?.addEventListener('click', () => refreshDeployPanel());
+  $('btn-deploy-clear-log')?.addEventListener('click', () => clearDeployLog());
+  $('deploy-select-all')?.addEventListener('click', () => {
+    document.querySelectorAll('.deploy-target-cb').forEach(cb => {
+      const target = DEPLOY_TARGETS.find(t => t.id === cb.value);
+      if (target?.tier !== 'demo') cb.checked = true;
+    });
+  });
+  $('deploy-select-none')?.addEventListener('click', () => {
+    document.querySelectorAll('.deploy-target-cb').forEach(cb => { cb.checked = false; });
+    if ($('deploy-include-demo')) $('deploy-include-demo').checked = false;
+    if ($('deploy-all-schools')) $('deploy-all-schools').checked = false;
+  });
+  $('deploy-all-schools')?.addEventListener('change', event => {
+    const disabled = event.target.checked;
+    document.querySelectorAll('.deploy-target-cb').forEach(cb => { cb.disabled = disabled; });
+    if ($('deploy-include-demo')) $('deploy-include-demo').disabled = disabled;
+  });
+}
+
 async function init() {
   bindModalEvents();
+  bindDeployEvents();
   initSidebarToggle();
   showSection(sectionFromHash(), { skipHashUpdate: true });
   await loadLeadsFromApi();

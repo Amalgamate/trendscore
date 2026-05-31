@@ -52,6 +52,158 @@ const MAX_AUDIT_ENTRIES = 2000;
 
 // In-memory deployment log (ephemeral — only tracks this process session)
 const deploymentLog = [];
+const DEPLOY_STORE_FILE = path.join(CONSOLE_DATA_DIR, 'deployments.store.json');
+const CONSOLE_MANIFEST_PATH = process.env.CONSOLE_MANIFEST_PATH || '/srv/zawadi/apps/zawadijrn/deploy/instances.manifest.json';
+const CONSOLE_DEPLOY_SCRIPT = process.env.CONSOLE_DEPLOY_SCRIPT || '/srv/zawadi/apps/zawadijrn/scripts/deploy-release.sh';
+const FRONTEND_IMAGE_REPO = process.env.CONSOLE_FRONTEND_IMAGE || 'ghcr.io/amalgamate/zawadi-frontend';
+
+function readDeployStore() {
+  if (!fs.existsSync(DEPLOY_STORE_FILE)) return [];
+  try {
+    const parsed = JSON.parse(fs.readFileSync(DEPLOY_STORE_FILE, 'utf8') || '{}');
+    return Array.isArray(parsed.deployments) ? parsed.deployments : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeDeployStore(deployments) {
+  fs.writeFileSync(DEPLOY_STORE_FILE, JSON.stringify({ deployments: deployments.slice(0, 100) }, null, 2), 'utf8');
+}
+
+function pushDeployment(entry) {
+  const deployments = readDeployStore();
+  const record = {
+    id: `D${Date.now()}`,
+    time: new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }) + ' EAT',
+    isoTime: new Date().toISOString(),
+    ...entry,
+  };
+  deployments.unshift(record);
+  if (deployments.length > 100) deployments.length = 100;
+  writeDeployStore(deployments);
+  deploymentLog.unshift({
+    time: record.time,
+    title: record.title,
+    copy: record.copy,
+    status: record.status,
+  });
+  if (deploymentLog.length > 50) deploymentLog.length = 50;
+  return record;
+}
+
+function loadDeployManifest() {
+  if (!fs.existsSync(CONSOLE_MANIFEST_PATH)) {
+    return { instances: [], defaults: {}, discovery: { enabled: true } };
+  }
+  return JSON.parse(fs.readFileSync(CONSOLE_MANIFEST_PATH, 'utf8'));
+}
+
+function slugFromComposeProject(project = '') {
+  return String(project || '').replace(/^zawadi-/, '');
+}
+
+async function listFrontendImageTags(limit = 12) {
+  try {
+    const { stdout } = await execFileAsync('docker', [
+      'images', FRONTEND_IMAGE_REPO,
+      '--format', '{{.Tag}}\t{{.CreatedAt}}',
+    ], { timeout: 15000, maxBuffer: 1024 * 1024 });
+    const rows = String(stdout || '').split(/\r?\n/).filter(Boolean).map(line => {
+      const [tag, ...rest] = line.split('\t');
+      return { tag: String(tag || '').trim(), createdAt: rest.join('\t').trim() };
+    }).filter(row => row.tag && row.tag !== '<none>');
+
+    const shaTags = rows.filter(r => r.tag.startsWith('sha-'));
+    const others = rows.filter(r => !r.tag.startsWith('sha-') && ['latest', 'main'].includes(r.tag));
+    return [...shaTags, ...others].slice(0, limit);
+  } catch {
+    return [{ tag: 'latest', createdAt: '' }];
+  }
+}
+
+async function buildDeployTargets() {
+  const manifest = loadDeployManifest();
+  const { instances: runtimeInstances } = await collectRuntime();
+  const byId = new Map();
+
+  for (const inst of manifest.instances || []) {
+    byId.set(inst.id, {
+      id: inst.id,
+      label: inst.label || inst.id,
+      tier: inst.tier || 'production',
+      kind: inst.kind || 'stack',
+      domain: inst.public_domain || getSchoolDomainOverride(inst.id) || '',
+      composeProject: inst.compose_project || (inst.kind === 'main' ? 'zawadijrn' : `zawadi-${inst.id}`),
+      inManifest: true,
+      selectable: true,
+    });
+  }
+
+  for (const inst of runtimeInstances) {
+    if (!inst.hasFrontend || !inst.hasBackend) continue;
+    const slug = slugFromComposeProject(inst.composeProject || inst.key);
+    if (!slug || slug === 'zawadijrn') {
+      if (!byId.has('demo')) {
+        byId.set('demo', {
+          id: 'demo',
+          label: 'Demo School',
+          tier: 'demo',
+          kind: 'main',
+          domain: getSchoolDomainOverride('demo') || inst.domain || 'demoschool.trendscore.co.ke',
+          composeProject: inst.composeProject || 'zawadijrn',
+          inManifest: false,
+          discovered: true,
+          selectable: true,
+        });
+      }
+      continue;
+    }
+    if (byId.has(slug)) {
+      const existing = byId.get(slug);
+      if (!existing.domain && inst.domain) existing.domain = inst.domain;
+      if (!existing.composeProject && inst.composeProject) existing.composeProject = inst.composeProject;
+      continue;
+    }
+    byId.set(slug, {
+      id: slug,
+      label: inst.name || slug,
+      tier: 'production',
+      kind: 'stack',
+      domain: inst.domain || getSchoolDomainOverride(slug) || '',
+      composeProject: inst.composeProject || `zawadi-${slug}`,
+      inManifest: false,
+      discovered: true,
+      selectable: true,
+    });
+  }
+
+  return Array.from(byId.values()).sort((a, b) => {
+    if (a.tier === 'demo') return -1;
+    if (b.tier === 'demo') return 1;
+    return String(a.label).localeCompare(String(b.label));
+  });
+}
+
+async function runDeployRelease({ deployTarget, imageTag, schoolId }) {
+  if (!fs.existsSync(CONSOLE_DEPLOY_SCRIPT)) {
+    throw new Error(`Deploy script not found: ${CONSOLE_DEPLOY_SCRIPT}`);
+  }
+  const env = {
+    ...process.env,
+    DEPLOY_TARGET: deployTarget,
+    IMAGE_TAG: imageTag,
+    MANIFEST_PATH: CONSOLE_MANIFEST_PATH,
+  };
+  if (schoolId) env.SCHOOL_ID = schoolId;
+
+  const { stdout, stderr } = await execFileAsync('bash', [CONSOLE_DEPLOY_SCRIPT], {
+    env,
+    timeout: 45 * 60 * 1000,
+    maxBuffer: 20 * 1024 * 1024,
+  });
+  return { stdout: String(stdout || ''), stderr: String(stderr || '') };
+}
 
 // ── Audit log helpers (file-backed, survives restarts) ────────────────────
 function ensureAuditStore() {
@@ -416,6 +568,13 @@ function slugifyName(value) {
 }
 
 const SCHOOL_DOMAIN_OVERRIDES = {
+  amalgamate: 'amalgamate.trendscore.co.ke',
+  console: 'console.trendscore.co.ke',
+  demo: 'demoschool.trendscore.co.ke',
+  demoschool: 'demoschool.trendscore.co.ke',
+  'demo-school': 'demoschool.trendscore.co.ke',
+  ighs: 'ighs.trendscore.co.ke',
+  jrn: 'jrn.trendscore.co.ke',
   'kambigarba-cs': 'kambigarba-cs.trendscore.co.ke',
   'kambi-garba-cs': 'kambigarba-cs.trendscore.co.ke',
   'kambi-garba': 'kambigarba-cs.trendscore.co.ke',
@@ -427,6 +586,7 @@ const SCHOOL_DOMAIN_OVERRIDES = {
   'merti-cs': 'merti-cs.trendscore.co.ke',
   mertics: 'merti-cs.trendscore.co.ke',
   merti: 'merti-cs.trendscore.co.ke',
+  naet: 'naet.trendscore.co.ke',
   zawadi: 'zawadi.trendscore.co.ke',
 };
 
@@ -558,7 +718,7 @@ async function collectRuntime() {
   const instances = mapContainersToInstances(containers);
   const nginxMap = parseNginxDomainMap();
   for (const i of instances) {
-    i.domain = (i.fe && nginxMap.byFePort[i.fe]) || (i.be && nginxMap.byBePort[i.be]) || i.domain || '';
+    i.domain = getSchoolDomainOverride(i.key || i.name) || (i.fe && nginxMap.byFePort[i.fe]) || (i.be && nginxMap.byBePort[i.be]) || i.domain || '';
   }
 
   if (dockerDf && Array.isArray(dockerDf.Volumes)) {
@@ -619,7 +779,7 @@ app.get('/api/runtime', requireAuth, async (_req, res) => {
     res.json({
       ok: true,
       ...runtime,
-      deployments: deploymentLog.slice(0, 50),
+      deployments: readDeployStore().slice(0, 50),
       auditLogs: readAuditStore().slice(0, 200),
       mode: 'live',
       generatedAt: new Date().toISOString(),
@@ -893,8 +1053,113 @@ app.get('/api/audit-logs', requireAuth, (req, res) => {
   res.json({ ok: true, logs: logs.slice(0, limit), total: logs.length });
 });
 
+app.get('/api/deploy/targets', requireAuth, requireRole('super_admin'), async (_req, res) => {
+  try {
+    const targets = await buildDeployTargets();
+    res.json({ ok: true, targets, manifestPath: CONSOLE_MANIFEST_PATH });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.get('/api/deploy/releases', requireAuth, requireRole('super_admin'), async (_req, res) => {
+  try {
+    const tags = await listFrontendImageTags();
+    res.json({ ok: true, tags, imageRepo: FRONTEND_IMAGE_REPO });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+app.post('/api/deploy/promote', requireAuth, requireRole('super_admin'), async (req, res) => {
+  const imageTag = String(req.body?.imageTag || '').trim();
+  const allSchools = Boolean(req.body?.allSchools);
+  const includeDemo = Boolean(req.body?.includeDemo);
+  const schoolIds = Array.isArray(req.body?.schoolIds)
+    ? req.body.schoolIds.map(id => String(id || '').trim()).filter(Boolean)
+    : [];
+
+  if (!imageTag) {
+    return res.status(400).json({ error: 'imageTag is required' });
+  }
+  if (!allSchools && !includeDemo && schoolIds.length === 0) {
+    return res.status(400).json({ error: 'Select at least one school, include demo, or choose all schools' });
+  }
+
+  const results = [];
+  const jobs = [];
+
+  if (allSchools) {
+    jobs.push({ deployTarget: 'all_schools', label: 'All production schools' });
+  } else {
+    if (includeDemo && !schoolIds.includes('demo')) {
+      jobs.push({ deployTarget: 'demo', label: 'Demo school' });
+    }
+    for (const id of schoolIds) {
+      if (id === 'demo') {
+        jobs.push({ deployTarget: 'demo', label: 'Demo school' });
+      } else {
+        jobs.push({ deployTarget: 'school', schoolId: id, label: id });
+      }
+    }
+  }
+
+  const seen = new Set();
+  const uniqueJobs = jobs.filter(job => {
+    const key = `${job.deployTarget}:${job.schoolId || 'all'}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  try {
+    for (const job of uniqueJobs) {
+      const started = Date.now();
+      const { stdout, stderr } = await runDeployRelease({
+        deployTarget: job.deployTarget,
+        imageTag,
+        schoolId: job.schoolId,
+      });
+      const durationSec = Math.round((Date.now() - started) / 1000);
+      results.push({
+        target: job.label,
+        deployTarget: job.deployTarget,
+        schoolId: job.schoolId || null,
+        ok: true,
+        durationSec,
+        log: `${stdout}\n${stderr}`.trim(),
+      });
+      pushAudit('DEPLOY', job.label, req.user.email, `Promoted ${imageTag} (${durationSec}s)`, 'Success');
+    }
+
+    const targetSummary = uniqueJobs.map(j => j.label).join(', ');
+    pushDeployment({
+      title: `Promoted ${imageTag}`,
+      copy: `Targets: ${targetSummary}. By ${req.user.email}.`,
+      status: 'Success',
+      imageTag,
+      targets: uniqueJobs.map(j => j.label),
+    });
+
+    return res.json({ ok: true, imageTag, results });
+  } catch (error) {
+    pushAudit('DEPLOY', 'Promote failed', req.user.email, error.message, 'Warning');
+    pushDeployment({
+      title: `Deploy failed (${imageTag})`,
+      copy: error.message,
+      status: 'Failed',
+      imageTag,
+    });
+    return res.status(500).json({
+      ok: false,
+      error: error.message,
+      results,
+    });
+  }
+});
+
 app.get('/api/deployments', requireAuth, (_req, res) => {
-  res.json({ ok: true, deployments: deploymentLog.slice(0, 50) });
+  res.json({ ok: true, deployments: readDeployStore().slice(0, 50) });
 });
 
 // ── Leads endpoints ───────────────────────────────────────────────────────

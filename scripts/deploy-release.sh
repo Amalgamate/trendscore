@@ -74,14 +74,21 @@ resolve_manifest_targets() {
       ;;
     school)
       local match
-      match="$(jq -c --arg id "${SCHOOL_ID}" '.instances[] | select(.id == $id)' "${MANIFEST_PATH}")"
+      match="$(resolve_school_target "${SCHOOL_ID}")"
       if [[ -z "${match}" ]]; then
-        fail "Unknown school_id in manifest: ${SCHOOL_ID}"
+        fail "Unknown school_id (manifest or running stack): ${SCHOOL_ID}"
       fi
       local kind
       kind="$(printf '%s' "${match}" | jq -r '.kind')"
-      [[ "${kind}" == "stack" ]] || fail "Instance ${SCHOOL_ID} must be kind=stack for targeted deploy"
-      printf '%s\n' "${match}"
+      if [[ "${kind}" == "stack" ]]; then
+        printf '%s\n' "${match}"
+        return 0
+      fi
+      if [[ "${kind}" == "main" && "${SCHOOL_ID}" == "demo" ]]; then
+        printf '%s\n' "${match}"
+        return 0
+      fi
+      fail "Instance ${SCHOOL_ID} must be kind=stack or demo (main) for targeted deploy"
       ;;
     all_schools)
       jq -c '.instances[] | select(.kind == "stack")' "${MANIFEST_PATH}"
@@ -117,6 +124,30 @@ merge_discovered_stacks() {
       '. + [{id: $id, label: $project, tier: "production", kind: "stack", compose_project: $project, env_file: $env_file}]' \
       <<< "${TARGETS_BUFFER:-[]}")"
   done < <(discover_running_stacks)
+}
+
+resolve_school_target() {
+  local id="$1"
+  local match
+  match="$(jq -c --arg id "${id}" '.instances[] | select(.id == $id)' "${MANIFEST_PATH}" 2>/dev/null || true)"
+  if [[ -n "${match}" ]]; then
+    printf '%s' "${match}"
+    return 0
+  fi
+
+  while IFS='|' read -r project env_file; do
+    [[ -n "${project}" ]] || continue
+    local slug="${project#zawadi-}"
+    if [[ "${slug}" == "${id}" || "${project}" == "${id}" || "${project}" == "zawadi-${id}" ]]; then
+      jq -nc \
+        --arg id "${slug}" \
+        --arg project "${project}" \
+        --arg env_file "${env_file}" \
+        '{id: $id, label: $project, tier: "production", kind: "stack", compose_project: $project, env_file: $env_file}'
+      return 0
+    fi
+  done < <(discover_running_stacks)
+  return 1
 }
 
 read_env_value() {

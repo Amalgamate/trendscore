@@ -96,7 +96,7 @@
       <span class="nav-icon">💾</span> Storage
     </a>
     <a class="nav-item" data-section="deployments" href="#">
-      <span class="nav-icon">🚀</span> Deployments
+      <span class="nav-icon">🚀</span> Promote Release
     </a>
 
     <div class="nav-section-label">Platform</div>
@@ -340,29 +340,85 @@
         <div class="page-header">
           <div>
             <div class="page-eyebrow">The Silicone Sahara · v1</div>
-            <div class="page-title">Deployment Timeline</div>
-            <div class="page-sub">Automated GitHub Actions pipeline history</div>
+            <div class="page-title">Promote Release</div>
+            <div class="page-sub">Deploy a tested image tag to demo and production schools</div>
+          </div>
+          <div class="page-actions">
+            <button class="btn" type="button" id="btn-deploy-refresh">Refresh targets</button>
+            <button class="btn teal" type="button" id="btn-deploy-open-promote">Promote selected</button>
           </div>
         </div>
-        <div class="two-col-lower">
+
+        <div class="deploy-layout">
           <div class="panel">
-            <div class="panel-header"><div class="panel-title">Release Events</div></div>
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Release image</div>
+                <div class="panel-sub">Use the same tag verified on demo (sha-… from CI)</div>
+              </div>
+            </div>
+            <div class="panel-body deploy-form">
+              <label class="form-label" for="deploy-image-tag">Image tag</label>
+              <div class="deploy-tag-row">
+                <select class="form-input" id="deploy-image-tag"></select>
+                <input class="form-input" id="deploy-image-tag-custom" placeholder="Or paste sha-… tag" />
+              </div>
+              <label class="form-label" style="margin-top:16px">Deploy scope</label>
+              <label class="deploy-check-row">
+                <input type="checkbox" id="deploy-all-schools" />
+                <span><strong>All production schools</strong> — every running school stack on this server</span>
+              </label>
+              <label class="deploy-check-row">
+                <input type="checkbox" id="deploy-include-demo" />
+                <span><strong>Include demo</strong> — demoschool.trendscore.co.ke</span>
+              </label>
+              <div class="deploy-target-toolbar">
+                <span class="form-label" style="margin:0">Select schools</span>
+                <div class="deploy-target-actions">
+                  <button class="btn" type="button" id="deploy-select-all">All schools</button>
+                  <button class="btn" type="button" id="deploy-select-none">None</button>
+                </div>
+              </div>
+              <div class="deploy-target-list" id="deploy-target-list">
+                <div class="deploy-target-empty">Loading schools…</div>
+              </div>
+              <button class="btn teal deploy-promote-btn" type="button" id="deploy-promote-btn">🚀 Promote release</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">Deploy output</div>
+                <div class="panel-sub">Backup → pull image → migrate → restart → health check</div>
+              </div>
+              <button class="btn" type="button" id="btn-deploy-clear-log">Clear</button>
+            </div>
+            <div class="log-viewer deploy-log-viewer" id="deploy-progress-log">
+              <span class="log-placeholder">Select schools and click Promote release.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="two-col-lower" style="margin-top:14px">
+          <div class="panel">
+            <div class="panel-header"><div class="panel-title">Release history</div></div>
             <div class="timeline" id="timeline-full"></div>
           </div>
           <div class="panel" style="align-self:start">
-            <div class="panel-header"><div class="panel-title">Pipeline Info</div></div>
+            <div class="panel-header"><div class="panel-title">Pipeline</div></div>
             <div class="panel-body">
               <div style="margin-bottom:14px">
                 <div class="m-label" style="margin-bottom:4px">Registry</div>
-                <div class="code-block">ghcr.io/amalgamate/zawadi-console:latest</div>
+                <div class="code-block">ghcr.io/amalgamate/zawadi-frontend</div>
               </div>
               <div style="margin-bottom:14px">
                 <div class="m-label" style="margin-bottom:4px">Deploy script</div>
-                <div class="code-block">scripts/deploy-server.sh</div>
+                <div class="code-block">scripts/deploy-release.sh</div>
               </div>
               <div>
-                <div class="m-label" style="margin-bottom:4px">Trigger</div>
-                <div style="font-size:13px;color:var(--muted)">Push to <b style="color:var(--brand)">main</b> branch triggers build → publish → rolling restart</div>
+                <div class="m-label" style="margin-bottom:4px">Flow</div>
+                <div style="font-size:13px;color:var(--muted)">Push to <b style="color:var(--brand)">main</b> builds images and auto-deploys <b>demo only</b>. Use this panel to promote the same tag to other schools.</div>
               </div>
             </div>
           </div>
@@ -399,7 +455,7 @@
               <button class="ctrl-btn primary" type="button" data-ctrl="start" data-label="Start Instance"><span class="ctrl-icon">▶️</span>Start Instance</button>
               <button class="ctrl-btn warn-ctrl" type="button" data-ctrl="stop" data-label="Stop Instance"><span class="ctrl-icon">⏹️</span>Stop Instance</button>
               <button class="ctrl-btn" type="button" data-ctrl="restart" data-label="Restart Containers"><span class="ctrl-icon">🔄</span>Restart Containers</button>
-              <button class="ctrl-btn teal-ctrl" type="button" data-ctrl="redeploy" data-label="Redeploy Latest"><span class="ctrl-icon">🚀</span>Redeploy Latest</button>
+              <button class="ctrl-btn teal-ctrl" type="button" data-ctrl="redeploy" data-label="Promote Release"><span class="ctrl-icon">🚀</span>Promote Release</button>
               <button class="ctrl-btn" type="button" data-ctrl="health" data-label="Health Check"><span class="ctrl-icon">❤️</span>Health Check</button>
               <button class="ctrl-btn" type="button" data-ctrl="backup" data-label="Create Backup"><span class="ctrl-icon">💾</span>Create Backup</button>
               <button class="ctrl-btn" type="button" data-ctrl="restore" data-label="Restore Backup"><span class="ctrl-icon">📦</span>Restore Backup…</button>
@@ -416,7 +472,7 @@
             <div class="ctrl-grid" style="grid-template-columns:1fr">
               <button class="ctrl-btn primary" type="button" data-ctrl="start-all" data-label="Start All Instances"><span class="ctrl-icon">▶️</span>Start All Instances</button>
               <button class="ctrl-btn warn-ctrl" type="button" data-ctrl="stop-all" data-label="Stop All Instances"><span class="ctrl-icon">⏹️</span>Stop All Instances</button>
-              <button class="ctrl-btn teal-ctrl" type="button" data-ctrl="redeploy-all" data-label="Redeploy All Instances"><span class="ctrl-icon">🚀</span>Redeploy All Instances</button>
+              <button class="ctrl-btn teal-ctrl" type="button" data-ctrl="redeploy-all" data-label="Promote All Schools"><span class="ctrl-icon">🚀</span>Promote All Schools</button>
               <button class="ctrl-btn" type="button" data-ctrl="backup-all" data-label="Backup All Instances"><span class="ctrl-icon">💾</span>Backup All Instances</button>
               <button class="ctrl-btn" type="button" data-ctrl="health-all" data-label="Global Health Check"><span class="ctrl-icon">❤️</span>Global Health Check</button>
             </div>
