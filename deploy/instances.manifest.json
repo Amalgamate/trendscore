@@ -24,21 +24,12 @@
       "notes": "QA canary URL on the zawadijrn main stack (same stack as JRN). Auto-deploys on every main build."
     },
     {
-      "id": "amalgamate",
-      "label": "Amalgamate",
-      "tier": "production",
-      "kind": "stack",
-      "compose_project": "zawadi-amalgamate",
-      "env_file": "/srv/zawadi/apps/env/.zawadi-amalgamate.env",
-      "public_domain": "amalgamate.trendscore.co.ke"
-    },
-    {
       "id": "ighs",
       "label": "IGHS",
       "tier": "production",
       "kind": "stack",
-      "compose_project": "zawadi-ighs",
-      "env_file": "/srv/zawadi/apps/env/.zawadi-ighs.env",
+      "compose_project": "ighs",
+      "env_file": "/srv/zawadi/apps/.env.ighs",
       "public_domain": "ighs.trendscore.co.ke"
     },
     {
@@ -73,8 +64,8 @@
       "label": "MCK",
       "tier": "production",
       "kind": "stack",
-      "compose_project": "zawadi-mck",
-      "env_file": "/srv/zawadi/apps/env/.zawadi-mck.env",
+      "compose_project": "mck",
+      "env_file": "/srv/zawadi/apps/.env.mck",
       "public_domain": "mck.trendscore.co.ke"
     },
     {
@@ -82,27 +73,9 @@
       "label": "Merti Complex School",
       "tier": "production",
       "kind": "stack",
-      "compose_project": "zawadi-merti-cs",
-      "env_file": "/srv/zawadi/apps/env/.zawadi-merti-cs.env",
+      "compose_project": "mertics",
+      "env_file": "/srv/zawadi/apps/.env.merti-cs",
       "public_domain": "merti-cs.trendscore.co.ke"
-    },
-    {
-      "id": "naet",
-      "label": "NAET",
-      "tier": "production",
-      "kind": "stack",
-      "compose_project": "zawadi-naet",
-      "env_file": "/srv/zawadi/apps/env/.zawadi-naet.env",
-      "public_domain": "naet.trendscore.co.ke"
-    },
-    {
-      "id": "zayan",
-      "label": "Zayan Electricals",
-      "tier": "production",
-      "kind": "stack",
-      "compose_project": "zawadi-zayan",
-      "env_file": "/srv/zawadi/apps/env/.zawadi-zayan.env",
-      "public_domain": "zayan.trendscore.co.ke"
     }
   ],
   "discovery": {
@@ -111,7 +84,10 @@
     "school_stack_only": true,
     "exclude_compose_projects": [
       "zawadijrn",
-      "zawadi-demoschool"
+      "zawadi-demoschool",
+      "zawadi-amalgamate-images",
+      "zawadi-naet",
+      "zawadi-zayan-electricals"
     ],
     "notes": "Merges unknown running school stacks into all_schools only. Manifest entries win over discovery."
   }
