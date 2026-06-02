@@ -47,6 +47,13 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
   
   const userName = user?.name || user?.firstName || user?.email?.split('@')[0] || 'Admin';
   const firstName = userName.split(' ')[0];
+  const formatKesAmount = (amount = 0) => {
+    const value = Number(amount) || 0;
+    if (value >= 1000000) return `KES ${(value / 1000000).toFixed(1)}M`;
+    if (value >= 1000) return `KES ${Math.round(value / 1000)}K`;
+    return `KES ${value.toLocaleString()}`;
+  };
+  const formatPercent = (value = 0) => `${Math.max(0, Math.min(100, Number(value) || 0))}%`;
   
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -104,17 +111,14 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
     ? Math.round(((stats.totalStudents - stats.totalMissedExams) / stats.totalStudents) * 100)
     : 0;
   const healthScore = Math.round((attendanceRate + collectionRate + assessmentRate) / 3);
+  const teacherActiveRate = stats.totalTeachers > 0
+    ? Math.round((stats.activeTeachers / stats.totalTeachers) * 100)
+    : 0;
+  const inactiveTeachers = Math.max(0, (Number(stats.totalTeachers) || 0) - (Number(stats.activeTeachers) || 0));
+  const operationsRate = teacherActiveRate;
 
   // Revenue trend data
-  const revenueTrendData = (metrics?.financials?.trendData || []).length > 0 
-    ? metrics.financials.trendData 
-    : [
-        { month: 'Jan', revenue: 450000 },
-        { month: 'Feb', revenue: 520000 },
-        { month: 'Mar', revenue: 480000 },
-        { month: 'Apr', revenue: 610000 },
-        { month: 'May', revenue: 580000 },
-      ];
+  const revenueTrendData = metrics?.financials?.trendData || [];
 
   // Attention items
   const attentionItems = [
@@ -206,7 +210,7 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
           {/* Health Badge */}
           <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-2xl px-4 py-3 shadow-sm min-w-[110px] flex flex-col items-center text-center transition-all hover:shadow-md">
             <span className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Health</span>
-            <span className="text-xl font-black mt-1 text-white">{healthScore || 89}%</span>
+            <span className="text-xl font-black mt-1 text-white">{formatPercent(healthScore)}</span>
           </div>
           
           {/* Active Students Badge */}
@@ -218,7 +222,7 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
           {/* Collection Rate Badge */}
           <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-2xl px-4 py-3 shadow-sm min-w-[110px] flex flex-col items-center text-center transition-all hover:shadow-md">
             <span className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Collection</span>
-            <span className="text-xl font-black text-white mt-1">{collectionRate || 82}%</span>
+            <span className="text-xl font-black text-white mt-1">{formatPercent(collectionRate)}</span>
           </div>
         </div>
       </div>
@@ -262,21 +266,18 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
                       strokeWidth="7"
                       fill="transparent"
                       strokeDasharray={2 * Math.PI * 40}
-                      strokeDashoffset={(2 * Math.PI * 40) - ((healthScore || 89) / 100) * (2 * Math.PI * 40)}
+                      strokeDashoffset={(2 * Math.PI * 40) - (healthScore / 100) * (2 * Math.PI * 40)}
                       strokeLinecap="round"
                       className="transition-all duration-1000 ease-out"
                     />
                   </svg>
                   {/* Inner Text */}
                   <div className="absolute flex flex-col items-center justify-center text-center">
-                    <span className="text-3xl font-extrabold text-gray-900 leading-none">{healthScore || 89}%</span>
+                    <span className="text-3xl font-extrabold text-gray-900 leading-none">{formatPercent(healthScore)}</span>
                     <span className="text-[10px] font-bold text-emerald-600 tracking-wider mt-1.5 uppercase">
-                      {(healthScore || 89) >= 80 ? 'GOOD' : (healthScore || 89) >= 60 ? 'STABLE' : 'ATTENTION'}
+                      {healthScore >= 80 ? 'GOOD' : healthScore >= 60 ? 'STABLE' : 'PENDING'}
                     </span>
-                    <div className="flex items-center gap-0.5 text-emerald-600 font-bold text-[9px] mt-1 bg-emerald-50 px-1.5 py-0.5 rounded-full">
-                      <span>↑ 4%</span>
-                    </div>
-                    <span className="text-[8px] text-gray-400 mt-0.5 font-medium">from last week</span>
+                    <span className="text-[8px] text-gray-400 mt-1 font-medium">live metrics</span>
                   </div>
                 </div>
               </div>
@@ -292,12 +293,12 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
                       </div>
                       <span className="text-gray-700 font-semibold text-[13px]">Finance</span>
                     </div>
-                    <span className="text-gray-950 font-bold text-[13px]">{collectionRate || 92}%</span>
+                    <span className="text-gray-950 font-bold text-[13px]">{formatPercent(collectionRate)}</span>
                   </div>
                   <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                     <div 
                       className="h-full bg-emerald-600 rounded-full transition-all duration-500" 
-                      style={{ width: `${collectionRate || 92}%` }}
+                      style={{ width: `${collectionRate}%` }}
                     />
                   </div>
                 </div>
@@ -311,12 +312,12 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
                       </div>
                       <span className="text-gray-700 font-semibold text-[13px]">Attendance</span>
                     </div>
-                    <span className="text-gray-950 font-bold text-[13px]">{attendanceRate || 96}%</span>
+                    <span className="text-gray-950 font-bold text-[13px]">{formatPercent(attendanceRate)}</span>
                   </div>
                   <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                     <div 
                       className="h-full bg-blue-600 rounded-full transition-all duration-500" 
-                      style={{ width: `${attendanceRate || 96}%` }}
+                      style={{ width: `${attendanceRate}%` }}
                     />
                   </div>
                 </div>
@@ -330,12 +331,12 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
                       </div>
                       <span className="text-gray-700 font-semibold text-[13px]">Academics</span>
                     </div>
-                    <span className="text-gray-950 font-bold text-[13px]">{assessmentRate || 78}%</span>
+                    <span className="text-gray-950 font-bold text-[13px]">{formatPercent(assessmentRate)}</span>
                   </div>
                   <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                     <div 
                       className="h-full bg-purple-600 rounded-full transition-all duration-500" 
-                      style={{ width: `${assessmentRate || 78}%` }}
+                      style={{ width: `${assessmentRate}%` }}
                     />
                   </div>
                 </div>
@@ -349,12 +350,12 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
                       </div>
                       <span className="text-gray-700 font-semibold text-[13px]">Operations</span>
                     </div>
-                    <span className="text-gray-950 font-bold text-[13px]">90%</span>
+                    <span className="text-gray-950 font-bold text-[13px]">{formatPercent(operationsRate)}</span>
                   </div>
                   <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                     <div 
                       className="h-full bg-orange-600 rounded-full transition-all duration-500" 
-                      style={{ width: `90%` }}
+                      style={{ width: `${operationsRate}%` }}
                     />
                   </div>
                 </div>
@@ -449,14 +450,14 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
               <div className="flex justify-between items-end mt-4 z-10">
                 <div className="space-y-0.5">
                   <div className="text-2xl font-black text-gray-955 tracking-tight leading-none">
-                    {stats.feeCollected > 0 ? `KES ${(stats.feeCollected / 1000000).toFixed(1)}M` : 'KES 8.7M'}
+                    {formatKesAmount(stats.feeCollected)}
                   </div>
                   <div className="text-[11px] text-gray-400 font-semibold tracking-wide uppercase">
                     Collected
                   </div>
                   <div className="text-xs font-bold text-emerald-600 mt-2 flex items-center gap-1 pt-1">
-                    <span>{collectionRate || 82}%</span>
-                    <span className="text-gray-500 font-semibold text-[10px] uppercase tracking-wider">Target achieved</span>
+                    <span>{formatPercent(collectionRate)}</span>
+                    <span className="text-gray-500 font-semibold text-[10px] uppercase tracking-wider">Target</span>
                   </div>
                 </div>
 
@@ -499,13 +500,13 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
               <div className="flex justify-between items-end mt-4 z-10">
                 <div className="space-y-0.5">
                   <div className="text-2xl font-black text-gray-955 tracking-tight leading-none">
-                    {attendanceRate > 0 ? `${attendanceRate}%` : '96%'}
+                    {formatPercent(attendanceRate)}
                   </div>
                   <div className="text-[11px] text-gray-400 font-semibold tracking-wide uppercase">
                     Present today
                   </div>
                   <div className="text-xs font-bold text-blue-600 mt-2 flex items-center gap-1 pt-1">
-                    <span>{stats.absentToday || 12}</span>
+                    <span>{stats.absentToday || 0}</span>
                     <span className="text-gray-500 font-semibold text-[10px] uppercase tracking-wider">Absent</span>
                   </div>
                 </div>
@@ -549,14 +550,14 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
               <div className="flex justify-between items-end mt-4 z-10">
                 <div className="space-y-0.5">
                   <div className="text-2xl font-black text-gray-955 tracking-tight leading-none">
-                    98%
+                    {formatPercent(teacherActiveRate)}
                   </div>
                   <div className="text-[11px] text-gray-400 font-semibold tracking-wide uppercase">
-                    Present today
+                    Active staff
                   </div>
                   <div className="text-xs font-bold text-purple-600 mt-2 flex items-center gap-1 pt-1">
-                    <span>1</span>
-                    <span className="text-gray-500 font-semibold text-[10px] uppercase tracking-wider">Absent</span>
+                    <span>{inactiveTeachers}</span>
+                    <span className="text-gray-500 font-semibold text-[10px] uppercase tracking-wider">Inactive</span>
                   </div>
                 </div>
 
@@ -599,13 +600,13 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
               <div className="flex justify-between items-end mt-4 z-10">
                 <div className="space-y-0.5">
                   <div className="text-2xl font-black text-gray-955 tracking-tight leading-none">
-                    {assessmentRate > 0 ? `${assessmentRate}%` : '87%'}
+                    {formatPercent(assessmentRate)}
                   </div>
                   <div className="text-[11px] text-gray-400 font-semibold tracking-wide uppercase">
                     Assessments complete
                   </div>
                   <div className="text-xs font-bold text-orange-600 mt-2 flex items-center gap-1 pt-1">
-                    <span>{stats.totalMissedExams > 0 ? stats.totalMissedExams : 3}</span>
+                    <span>{stats.totalMissedExams || 0}</span>
                     <span className="text-gray-500 font-semibold text-[10px] uppercase tracking-wider">Classes pending</span>
                   </div>
                 </div>
