@@ -64,8 +64,8 @@
       "label": "Lions Complex",
       "tier": "production",
       "kind": "stack",
-      "compose_project": "zawadi-lionscomplex",
-      "env_file": "/srv/zawadi/apps/env/.zawadi-lionscomplex.env",
+      "compose_project": "zawadi-lions-complex",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-lions-complex.env",
       "public_domain": "lionscomplex.trendscore.co.ke"
     },
     {
