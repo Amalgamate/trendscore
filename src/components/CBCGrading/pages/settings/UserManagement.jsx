@@ -198,6 +198,12 @@ const UserManagement = () => {
   const [resetTargetUser, setResetTargetUser] = useState(null);
   const [learnerStats, setLearnerStats] = useState({ total: 0 });
   const [syncingStudentUsers, setSyncingStudentUsers] = useState(false);
+  const [verificationSettings, setVerificationSettings] = useState({
+    requiresUserVerification: true,
+    schoolName: null
+  });
+  const [verificationSaving, setVerificationSaving] = useState(false);
+  const [verificationUserId, setVerificationUserId] = useState(null);
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -219,6 +225,7 @@ const UserManagement = () => {
 
   const currentUserRole = getStoredUser()?.role;
   const canSyncStudentUsers = ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'].includes(currentUserRole);
+  const canManageVerification = ['SUPER_ADMIN', 'ADMIN'].includes(currentUserRole);
 
   const loadUsers = useCallback(async () => {
     try {
@@ -251,6 +258,8 @@ const UserManagement = () => {
         role: user.role,
         roles: Array.isArray(user.roles) && user.roles.length > 0 ? user.roles : [user.role],
         status: user.archived ? 'ARCHIVED' : (user.status || 'ACTIVE'),
+        emailVerified: user.emailVerified === true,
+        verificationRequired: user.verificationRequired !== false,
         staffId: user.staffId || '',
         archived: user.archived || false,
         lastLogin: user.lastLogin
@@ -300,6 +309,24 @@ const UserManagement = () => {
   useEffect(() => {
     loadUsers();
   }, [loadUsers]);
+
+  const loadVerificationSettings = useCallback(async () => {
+    if (!canManageVerification) return;
+    try {
+      const response = await userAPI.getVerificationSettings();
+      const settings = response?.data || response;
+      setVerificationSettings({
+        requiresUserVerification: settings?.requiresUserVerification !== false,
+        schoolName: settings?.schoolName || null
+      });
+    } catch (error) {
+      console.warn('Failed to load verification settings', error);
+    }
+  }, [canManageVerification]);
+
+  useEffect(() => {
+    loadVerificationSettings();
+  }, [loadVerificationSettings]);
 
   const handleSave = async () => {
     try {
@@ -453,6 +480,55 @@ const UserManagement = () => {
       loadUsers();
     } catch (error) {
       showNotification('Bulk update failed', 'error');
+    }
+  };
+
+  const handleSchoolVerificationToggle = async () => {
+    if (!canManageVerification || verificationSaving) return;
+    const nextValue = !verificationSettings.requiresUserVerification;
+    const actionLabel = nextValue ? 'require verification for this school' : 'disable verification for this school';
+    if (!window.confirm(`Are you sure you want to ${actionLabel}?`)) return;
+
+    try {
+      setVerificationSaving(true);
+      const response = await userAPI.updateVerificationSettings({ requiresUserVerification: nextValue });
+      const settings = response?.data || response;
+      setVerificationSettings({
+        requiresUserVerification: settings?.requiresUserVerification !== false,
+        schoolName: settings?.name || verificationSettings.schoolName
+      });
+      addActivityLog(
+        'SCHOOL_VERIFICATION_UPDATED',
+        nextValue ? 'School-wide user verification enabled' : 'School-wide user verification disabled'
+      );
+      showNotification(nextValue ? 'School-wide verification enabled' : 'School-wide verification disabled');
+    } catch (error) {
+      showNotification(`Failed to update school verification: ${error.message}`, 'error');
+    } finally {
+      setVerificationSaving(false);
+    }
+  };
+
+  const handleUserVerificationToggle = async (user) => {
+    if (!canManageVerification || verificationUserId) return;
+    const nextValue = !user.verificationRequired;
+    const label = `${user.firstName} ${user.lastName}`;
+    const actionLabel = nextValue ? 'require verification for' : 'bypass verification for';
+    if (!window.confirm(`Are you sure you want to ${actionLabel} ${label}?`)) return;
+
+    try {
+      setVerificationUserId(user.id);
+      await userAPI.updateVerificationRequired(user.id, nextValue);
+      addActivityLog(
+        'USER_VERIFICATION_UPDATED',
+        `${label}: ${nextValue ? 'verification required' : 'verification bypassed'}`
+      );
+      showNotification(nextValue ? 'Verification required for user' : 'Verification bypassed for user');
+      await loadUsers();
+    } catch (error) {
+      showNotification(`Failed to update user verification: ${error.message}`, 'error');
+    } finally {
+      setVerificationUserId(null);
     }
   };
 
@@ -663,6 +739,55 @@ const UserManagement = () => {
               )}
             </div>
 
+            {canManageVerification && (
+              <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                    verificationSettings.requiresUserVerification
+                      ? 'bg-emerald-50 text-emerald-600'
+                      : 'bg-amber-50 text-amber-600'
+                  }`}>
+                    <Shield size={20} />
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-semibold text-gray-900">School Verification Requirement</h3>
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide ${
+                        verificationSettings.requiresUserVerification
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-amber-100 text-amber-700'
+                      }`}>
+                        {verificationSettings.requiresUserVerification ? 'Enabled' : 'Disabled'}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {verificationSettings.requiresUserVerification
+                        ? 'Unverified users are blocked unless their individual account is bypassed.'
+                        : 'Verification is bypassed for the whole school. Individual user settings remain saved.'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleSchoolVerificationToggle}
+                  disabled={verificationSaving}
+                  className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                    verificationSaving
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : verificationSettings.requiresUserVerification
+                        ? 'bg-amber-600 text-white hover:bg-amber-700'
+                        : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                  }`}
+                >
+                  <Shield size={16} />
+                  {verificationSaving
+                    ? 'Saving...'
+                    : verificationSettings.requiresUserVerification
+                      ? 'Disable for School'
+                      : 'Require for School'}
+                </button>
+              </div>
+            )}
+
             {/* Bulk Actions Menu Expanded */}
             {showBulkActions && selectedUsers.length > 0 && (
               <div className="p-4 bg-purple-50 rounded-xl border border-purple-200 shadow-inner flex flex-wrap items-center gap-3">
@@ -780,16 +905,34 @@ const UserManagement = () => {
                             </div>
                           </td>
                           <td className="px-4 py-4">
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium ${user.archived ? 'bg-gray-100 text-gray-400' :
-                              user.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' :
-                                'bg-amber-100 text-amber-700'
+                            <div className="flex flex-col gap-1.5 items-start">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium ${user.archived ? 'bg-gray-100 text-gray-400' :
+                                user.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' :
+                                  'bg-amber-100 text-amber-700'
+                                }`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${user.archived ? 'bg-gray-300' :
+                                  user.status === 'ACTIVE' ? 'bg-emerald-500 animate-pulse' :
+                                    'bg-amber-500'
+                                  }`}></span>
+                                {user.archived ? 'Archived' : user.status}
+                              </span>
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                !verificationSettings.requiresUserVerification
+                                  ? 'bg-gray-100 text-gray-500'
+                                  : user.verificationRequired
+                                    ? user.emailVerified
+                                      ? 'bg-emerald-50 text-emerald-700'
+                                      : 'bg-red-50 text-red-700'
+                                    : 'bg-amber-50 text-amber-700'
                               }`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${user.archived ? 'bg-gray-300' :
-                                user.status === 'ACTIVE' ? 'bg-emerald-500 animate-pulse' :
-                                  'bg-amber-500'
-                                }`}></span>
-                              {user.archived ? 'Archived' : user.status}
-                            </span>
+                                <Shield size={11} />
+                                {!verificationSettings.requiresUserVerification
+                                  ? 'School bypass'
+                                  : user.verificationRequired
+                                    ? user.emailVerified ? 'Verified' : 'Needs verification'
+                                    : 'Bypassed'}
+                              </span>
+                            </div>
                           </td>
                           <td className="px-4 py-4">
                             <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -803,6 +946,20 @@ const UserManagement = () => {
                                   title="WhatsApp"
                                 >
                                   <MessageCircle size={16} />
+                                </button>
+                              )}
+                              {canManageVerification && !user.archived && (
+                                <button
+                                  onClick={() => handleUserVerificationToggle(user)}
+                                  disabled={verificationUserId === user.id}
+                                  className={`p-2 rounded-lg transition ${
+                                    user.verificationRequired
+                                      ? 'text-amber-600 hover:bg-amber-100'
+                                      : 'text-emerald-600 hover:bg-emerald-100'
+                                  } ${verificationUserId === user.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                  title={user.verificationRequired ? 'Bypass verification for this user' : 'Require verification for this user'}
+                                >
+                                  <Shield size={16} />
                                 </button>
                               )}
                               <button

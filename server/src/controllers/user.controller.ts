@@ -15,6 +15,7 @@ import { whatsappService } from '../services/whatsapp.service';
 import { SmsService } from '../services/sms.service';
 import { SMS_MESSAGES } from '../config/communication.messages';
 import { generateStaffId } from '../services/staffId.service';
+import { redisCacheService } from '../services/redis-cache.service';
 
 const VALID_ROLES: Role[] = [
   'SUPER_ADMIN',
@@ -87,6 +88,8 @@ export class UserController {
         role: true,
         roles: true,
         status: true,
+        emailVerified: true,
+        verificationRequired: true,
         archived: true,
         createdAt: true,
         lastLogin: true,
@@ -125,6 +128,7 @@ export class UserController {
         roles: true,
         status: true,
         emailVerified: true,
+        verificationRequired: true,
         createdAt: true,
         updatedAt: true,
         lastLogin: true,
@@ -194,6 +198,7 @@ export class UserController {
         role: role as Role,
         roles: assignedRoles,
         status: 'ACTIVE',
+        verificationRequired: req.body.verificationRequired !== false,
         staffId,
         subject,
         gender,
@@ -211,6 +216,104 @@ export class UserController {
     });
 
     res.status(201).json({ success: true, data: user });
+  }
+
+  async getVerificationSettings(req: AuthRequest, res: Response) {
+    if (!['ADMIN', 'SUPER_ADMIN'].includes(req.user!.role)) {
+      throw new ApiError(403, 'Only admins can manage verification settings');
+    }
+
+    const school = await prisma.school.findFirst({
+      where: { archived: false },
+      orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }, { createdAt: 'desc' }],
+      select: { id: true, name: true, requiresUserVerification: true }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        schoolId: school?.id || null,
+        schoolName: school?.name || null,
+        requiresUserVerification: school?.requiresUserVerification !== false
+      }
+    });
+  }
+
+  async updateSchoolVerificationSettings(req: AuthRequest, res: Response) {
+    if (!['ADMIN', 'SUPER_ADMIN'].includes(req.user!.role)) {
+      throw new ApiError(403, 'Only admins can manage verification settings');
+    }
+
+    const requiresUserVerification = req.body?.requiresUserVerification;
+    if (typeof requiresUserVerification !== 'boolean') {
+      throw new ApiError(400, 'requiresUserVerification must be true or false');
+    }
+
+    const school = await prisma.school.findFirst({
+      where: { archived: false },
+      orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }, { createdAt: 'desc' }]
+    });
+    if (!school) throw new ApiError(404, 'School not found');
+
+    const updated = await prisma.school.update({
+      where: { id: school.id },
+      data: { requiresUserVerification },
+      select: { id: true, name: true, requiresUserVerification: true }
+    });
+
+    await redisCacheService.deleteByPrefix('auth:user:');
+
+    res.json({
+      success: true,
+      message: requiresUserVerification
+        ? 'User verification is now required for this school'
+        : 'User verification is now disabled for this school',
+      data: updated
+    });
+  }
+
+  async updateUserVerificationRequirement(req: AuthRequest, res: Response) {
+    const { id } = req.params;
+    const currentUserRole = req.user!.role;
+    const verificationRequired = req.body?.verificationRequired;
+
+    if (!['ADMIN', 'SUPER_ADMIN'].includes(currentUserRole)) {
+      throw new ApiError(403, 'Only admins can manage user verification');
+    }
+    if (typeof verificationRequired !== 'boolean') {
+      throw new ApiError(400, 'verificationRequired must be true or false');
+    }
+
+    const targetUser = await prisma.user.findUnique({ where: { id } });
+    if (!targetUser) throw new ApiError(404, 'User not found');
+    if (!canManageRole(currentUserRole, targetUser.role as Role)) {
+      throw new ApiError(403, 'Permission denied');
+    }
+
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { verificationRequired },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        status: true,
+        emailVerified: true,
+        verificationRequired: true
+      }
+    });
+
+    await redisCacheService.delete(`auth:user:${updated.email}`);
+
+    res.json({
+      success: true,
+      message: verificationRequired
+        ? 'Verification is now required for this user'
+        : 'Verification is now bypassed for this user',
+      data: updated
+    });
   }
 
   /**

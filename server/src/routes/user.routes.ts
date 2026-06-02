@@ -45,6 +45,20 @@ router.get(
   asyncHandler(userController.getUserStats)
 );
 
+router.get(
+  '/verification-settings',
+  requireRole(['ADMIN', 'SUPER_ADMIN']),
+  rateLimit({ windowMs: 60_000, maxRequests: 50 }),
+  asyncHandler(userController.getVerificationSettings)
+);
+
+router.put(
+  '/verification-settings',
+  requireRole(['ADMIN', 'SUPER_ADMIN']),
+  auditLog('UPDATE_VERIFICATION_SETTINGS'),
+  asyncHandler(userController.updateSchoolVerificationSettings)
+);
+
 /**
  * @route   GET /api/users/role/:role
  * @access  VIEW_ALL_USERS permission
@@ -90,6 +104,13 @@ router.put(
   rateLimit({ windowMs: 15 * 60 * 1000, maxRequests: 30 }),
   auditLog('UPDATE_USER'),
   asyncHandler(userController.updateUser)
+);
+
+router.put(
+  '/:id/verification-required',
+  requireRole(['ADMIN', 'SUPER_ADMIN']),
+  auditLog('UPDATE_USER_VERIFICATION_REQUIRED'),
+  asyncHandler(userController.updateUserVerificationRequirement)
 );
 
 /**

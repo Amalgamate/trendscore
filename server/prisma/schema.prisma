@@ -28,6 +28,7 @@ model User {
   emailVerificationSentAt   DateTime?
   phoneVerificationCode     String?
   phoneVerificationSentAt   DateTime?
+  verificationRequired      Boolean                  @default(true)
   staffId                   String?                  @unique
   idCardPhoto               String?
   idCardIssued              DateTime?
@@ -152,6 +153,7 @@ model School {
   status              String              @default("ACTIVE")
   institutionType     InstitutionType     @default(PRIMARY_CBC)
   institutionTypeLocked Boolean           @default(false)
+  requiresUserVerification Boolean        @default(true)
   curriculumType      CurriculumType      @default(CBC_AND_EXAM)
   assessmentMode      AssessmentMode      @default(MIXED)
   customGradingScale  Json?

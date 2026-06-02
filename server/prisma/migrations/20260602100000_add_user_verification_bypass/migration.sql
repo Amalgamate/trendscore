@@ -1,0 +1,5 @@
+ALTER TABLE "users"
+ADD COLUMN IF NOT EXISTS "verificationRequired" BOOLEAN NOT NULL DEFAULT true;
+
+ALTER TABLE "schools"
+ADD COLUMN IF NOT EXISTS "requiresUserVerification" BOOLEAN NOT NULL DEFAULT true;

@@ -146,6 +146,7 @@ export class AuthController {
           id: true, password: true, status: true, loginAttempts: true, lockedUntil: true,
           role: true, roles: true, email: true, firstName: true, lastName: true,
           phone: true, lastLogin: true, institutionType: true, emailVerified: true,
+          verificationRequired: true,
           // mustChangePassword indicator — set on auto-created parent/student accounts
           passwordResetToken: true,
         }
@@ -180,10 +181,19 @@ export class AuthController {
 
     const userRolesForVerify = ((user.roles && user.roles.length > 0) ? user.roles : [user.role]) as string[];
     const isSuperAdmin = userRolesForVerify.includes('SUPER_ADMIN');
+    const schoolConfig = await prisma.school.findFirst({
+      where: { archived: false },
+      orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }, { createdAt: 'desc' }],
+      select: { id: true, institutionType: true, institutionTypeLocked: true, requiresUserVerification: true }
+    });
+    const schoolRequiresVerification = schoolConfig?.requiresUserVerification !== false;
+    const userRequiresVerification = user.verificationRequired !== false;
     // School admins must verify email/phone; platform SUPER_ADMIN is exempt (OTP also bypassed below).
     if (
       !user.emailVerified &&
       !isSuperAdmin &&
+      schoolRequiresVerification &&
+      userRequiresVerification &&
       userRolesForVerify.some((r) => r === 'ADMIN')
     ) {
       throw new ApiError(
@@ -211,11 +221,6 @@ export class AuthController {
     const { password: _, passwordResetToken: __, ...userWithoutSensitive } = user;
 
     const schoolId = (user as any).schoolId || (req as any).school?.id;
-    const schoolConfig = await prisma.school.findFirst({
-      where: { archived: false },
-      orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }, { createdAt: 'desc' }],
-      select: { id: true, institutionType: true, institutionTypeLocked: true }
-    });
     // Single-tenant fallback: the user record has no schoolId column, so we
     // resolve the one-and-only school from the DB.
     const resolvedSchoolId: string | undefined = schoolId || schoolConfig?.id;
