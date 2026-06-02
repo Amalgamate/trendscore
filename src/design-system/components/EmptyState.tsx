@@ -17,12 +17,20 @@ interface EmptyStateProps {
   icon?: React.ReactNode;
   title: string;
   description?: string;
-  action?: React.ReactNode;
-  secondaryAction?: React.ReactNode;
+  action?: React.ReactNode | EmptyStateAction;
+  secondaryAction?: React.ReactNode | EmptyStateAction;
   variant?: 'default' | 'subtle' | 'outlined';
   fullHeight?: boolean;
   className?: string;
   iconSize?: 'sm' | 'md' | 'lg';
+}
+
+interface EmptyStateAction {
+  label: string;
+  onClick?: () => void;
+  href?: string;
+  disabled?: boolean;
+  variant?: 'primary' | 'secondary';
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = ({
@@ -58,6 +66,62 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   };
 
   const style = variantStyles[variant];
+
+  const renderAction = (actionConfig: React.ReactNode | EmptyStateAction) => {
+    if (!actionConfig) return null;
+
+    if (React.isValidElement(actionConfig) || typeof actionConfig !== 'object') {
+      return actionConfig;
+    }
+
+    const {
+      label,
+      onClick,
+      href,
+      disabled = false,
+      variant: actionVariant = 'primary',
+    } = actionConfig as EmptyStateAction;
+
+    if (!label) return null;
+
+    const actionStyle: React.CSSProperties = {
+      appearance: 'none',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: '40px',
+      padding: `0 ${TOKENS.spacing.gap.lg}`,
+      borderRadius: TOKENS.radius.button.default,
+      border: actionVariant === 'primary'
+        ? `1px solid ${TOKENS.colors.brand.primary}`
+        : `1px solid ${TOKENS.colors.border.subtle}`,
+      background: actionVariant === 'primary'
+        ? TOKENS.colors.brand.primary
+        : TOKENS.colors.surface.bg,
+      color: actionVariant === 'primary'
+        ? TOKENS.colors.text.inverse
+        : TOKENS.colors.text.primary,
+      fontSize: TOKENS.typography.fontSize.body.sm.size,
+      fontWeight: 700,
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? 0.6 : 1,
+      textDecoration: 'none',
+    };
+
+    if (href) {
+      return (
+        <a href={href} style={actionStyle} aria-disabled={disabled}>
+          {label}
+        </a>
+      );
+    }
+
+    return (
+      <button type="button" onClick={onClick} disabled={disabled} style={actionStyle}>
+        {label}
+      </button>
+    );
+  };
 
   return (
     <div
@@ -133,8 +197,8 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
             flexWrap: 'wrap',
           }}
         >
-          {action && <div>{action}</div>}
-          {secondaryAction && <div>{secondaryAction}</div>}
+          {action && <div>{renderAction(action)}</div>}
+          {secondaryAction && <div>{renderAction(secondaryAction)}</div>}
         </div>
       )}
     </div>
