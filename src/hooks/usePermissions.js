@@ -1,12 +1,18 @@
 /**
  * usePermissions Hook
  * Provides permission checking functionality based on user role
+ * Supports role preview mode for SUPER_ADMIN users
+ * 
+ * Security Note:
+ * When in preview mode, this hook uses effectiveRole for frontend rendering.
+ * Backend authorization always uses the real authenticated user role.
  * 
  * @module hooks/usePermissions
  */
 
 import { useMemo } from 'react';
 import { useAuth } from './useAuth';
+import { useRolePreview } from '../contexts/RolePreviewContext';
 import {
   hasPermission,
   hasAnyPermission,
@@ -18,13 +24,21 @@ import {
 
 export const usePermissions = () => {
   const { user } = useAuth();
-  const userRole = user?.role;
+  const rolePreview = useRolePreview();
+  
+  // Use effective role for UI rendering (respects preview mode)
+  const userRole = rolePreview?.effectiveRole || user?.role;
+  
   const userRoles = useMemo(() => {
     if (Array.isArray(user?.roles) && user.roles.length > 0) {
+      // For multiple roles, use the preview role if available
+      if (rolePreview?.isPreviewingRole) {
+        return [rolePreview.effectiveRole];
+      }
       return user.roles;
     }
     return userRole ? [userRole] : [];
-  }, [user?.roles, userRole]);
+  }, [user?.roles, userRole, rolePreview?.isPreviewingRole, rolePreview?.effectiveRole]);
 
   // Memoize permission checks to avoid recalculation
   const permissions = useMemo(() => {

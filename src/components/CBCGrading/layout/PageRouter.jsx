@@ -3,6 +3,7 @@ import ErrorBoundary from '../shared/ErrorBoundary';
 import EmptyState from '../shared/EmptyState';
 import ComingSoon from '../shared/ComingSoon';
 import { hasPageAccess } from '../utils/appAccess';
+import { useRolePreview } from '../../../contexts/RolePreviewContext';
 
 // ── Dashboard — EAGERLY imported: it's the first page every user sees after login.
 // Never lazy-load the default landing page — it forces a Suspense stall on every cold open.
@@ -166,6 +167,9 @@ const PageRouter = ({
   editingTeacher,
   handlers
 }) => {
+  const rolePreview = useRolePreview();
+  const effectiveRole = rolePreview?.effectiveRole || user?.role;
+  
   const {
     handleNavigate,
     fetchLearners,
@@ -213,7 +217,7 @@ const PageRouter = ({
       {(() => {
         switch (normalizedPage) {
           case 'dashboard':
-            return user?.role === 'STUDENT'
+            return effectiveRole === 'STUDENT'
               ? <StudentDashboardView user={user} onNavigate={handleNavigate} />
               : <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} />;
           case 'finance-dashboard':

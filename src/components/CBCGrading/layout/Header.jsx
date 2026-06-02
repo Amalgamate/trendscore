@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bell, LogOut, Zap, ChevronDown, ClipboardList, BarChart3, MessageSquare, Calendar, Gift, User as UserIcon, GitBranch } from 'lucide-react';
+import { Bell, Zap, ChevronDown, ClipboardList, BarChart3, MessageSquare, Calendar, Gift, User as UserIcon, GitBranch } from 'lucide-react';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { useAuth } from '../../../hooks/useAuth';
+import { useRolePreview } from '../../../contexts/RolePreviewContext';
 import api from '../../../services/api';
 import { getReminderDelay, shouldScheduleReminder } from './notificationReminder';
 import { clockInTeacher, clockOutTeacher, getCurrentUserClockInStatus, syncCurrentUserClockInStatus } from '../../../utils/teacherClockIn';
@@ -13,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../../ui/popover";
 import { cn } from "../../../utils/cn";
 import { useUserNotifications } from '../../../contexts/UserNotificationContext';
 import { refreshBus } from '../../../utils/refreshBus';
+import AccountSwitcherMenu from '../../common/AccountSwitcherMenu';
 import '../../../styles/notifications.css';
 
 const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate }) => {
@@ -723,26 +725,13 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
         )}
 
         <div className="flex items-center gap-3 pl-4 border-l border-gray-100 ml-2">
-          <div className="hidden lg:block text-right pr-1">
+          <div className="hidden lg:block text-right pr-2">
             <p className="text-sm font-semibold text-gray-900 leading-none">{user?.name || 'User'}</p>
             <p className="text-[9px] text-gray-400 font-medium uppercase tracking-wider mt-1">
               {user?.role || 'Guest'}
             </p>
           </div>
-          <div className="relative group">
-            <div className="w-10 h-10 bg-brand-purple rounded-full flex items-center justify-center text-white font-semibold text-sm border-2 border-white shadow-md transition-transform group-hover:scale-105">
-              {(user?.name || 'U').substring(0, 2).toUpperCase()}
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onLogout}
-            className="h-10 w-10 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all"
-            title="Logout"
-          >
-            <LogOut size={18} />
-          </Button>
+          <AccountSwitcherMenu user={user} onLogout={onLogout} />
         </div>
       </div>
 

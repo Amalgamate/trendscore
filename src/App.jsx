@@ -10,6 +10,7 @@ import { Toaster } from 'react-hot-toast';
 import { SchoolDataProvider } from './contexts/SchoolDataContext';
 import { FeeActionsProvider } from './contexts/FeeActionsContext';
 import { UserNotificationProvider } from './contexts/UserNotificationContext';
+import { RolePreviewProvider } from './contexts/RolePreviewContext';
 import axiosInstance from './services/api/axiosConfig';
 import { useBootstrapStore } from './store/useBootstrapStore';
 
@@ -279,12 +280,14 @@ function AppContent() {
                   <SchoolDataProvider>
                     <FeeActionsProvider>
                       <UserNotificationProvider>
-                        <CBCGradingSystem
-                          user={user}
-                          onLogout={handleLogout}
-                          brandingSettings={brandingSettings}
-                          setBrandingSettings={setBrandingSettings}
-                        />
+                        <RolePreviewProvider user={user}>
+                          <CBCGradingSystem
+                            user={user}
+                            onLogout={handleLogout}
+                            brandingSettings={brandingSettings}
+                            setBrandingSettings={setBrandingSettings}
+                          />
+                        </RolePreviewProvider>
                       </UserNotificationProvider>
                     </FeeActionsProvider>
                   </SchoolDataProvider>
