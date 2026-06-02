@@ -14,7 +14,7 @@ import TeacherDashboard from './TeacherDashboard';
 import ParentDashboard from './ParentDashboard';
 import AccountantDashboard from './AccountantDashboard';
 import ReceptionistDashboard from './ReceptionistDashboard';
-import MobileDashboard from './MobileDashboard';
+import MobileDashboard from '../../dashboard/MobileDashboard';
 import StudentDashboard from '../student/StudentDashboard';
 import ComingSoon from '../../shared/ComingSoon';
 import useMediaQuery from '../../hooks/useMediaQuery';

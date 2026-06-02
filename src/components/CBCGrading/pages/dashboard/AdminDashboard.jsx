@@ -1,120 +1,49 @@
 /**
- * Comprehensive Admin Dashboard
- * Modern, intuitive design with data visualizations
+ * Executive Admin Dashboard
+ * High-level school health metrics and KPIs
  */
 
-import React, { useEffect, useState } from 'react';
-import { schoolAPI, dashboardAPI } from '../../../../services/api';
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, BarChart, Bar, Legend } from 'recharts';
-import CompactMetricBanner from './CompactMetricBanner';
+import React, { useEffect, useState, Suspense } from 'react';
+import { dashboardAPI } from '../../../../services/api';
+import { ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Area, AreaChart } from 'recharts';
 import { hasPageAccess } from '../../utils/appAccess';
-
-// --- Dashboard Data Visualizations are computed dynamically from Real API Metrics ---
 import {
-  Users,
-  GraduationCap,
-  BookOpen,
-  UserCheck,
-  Calendar,
-  Award,
-  AlertCircle,
-  CheckCircle,
-  ArrowUp,
-  ArrowDown,
-  Eye,
-  Download,
-  Wallet,
-  Settings,
-  Activity,
-  ChevronRight,
+  AppCard,
+  KpiCard,
+  SectionHeader,
+  DashboardHero,
+  EmptyState
+} from '@/design-system/components';
+
+import {
   TrendingUp,
-  FileText,
-  Clock,
-  Briefcase,
-  X,
-  Filter,
-  UserPlus,
-  Receipt,
-  ClipboardCheck,
-  Package,
-  Brain,
-  Zap,
-  ShieldAlert
+  AlertTriangle,
+  Users,
+  DollarSign,
+  Calendar,
+  Activity,
+  Brain
 } from 'lucide-react';
 
-// Professional Metric Card with Premium Styling
-const MetricCard = ({ title, value, subtitle, icon: Icon, trend, trendValue, color = 'brand-purple' }) => {
-  return (
-    <div className="group relative bg-white p-4 rounded-lg border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300">
-      <div className="relative flex justify-between items-start mb-2">
-        <div className={`p-3 rounded-lg bg-${color}/5 group-hover:bg-${color}/10 transition-colors duration-300`}>
-          <Icon size={20} className={`text-${color}`} />
-        </div>
-        {trendValue && (
-          <span className={`flex items-center text-[10px] font-semibold px-2 py-1 rounded-full ${trend === 'up'
-            ? 'bg-emerald-50 text-emerald-600'
-            : 'bg-rose-50 text-rose-600'
-            }`}>
-            {trend === 'up' ? <ArrowUp size={10} strokeWidth={3} /> : <ArrowDown size={10} strokeWidth={3} />}
-            {trendValue}
-          </span>
-        )}
-      </div>
-      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">{title}</p>
-      <h3 className="text-2xl font-semibold text-gray-900 mt-1">{value}</h3>
-      {subtitle && <p className="text-[10px] font-medium text-gray-500 mt-1 truncate opacity-70">{subtitle}</p>}
-    </div>
-  );
-};
-
-// Tab Button with Premium Styling
-const TabButton = ({ active, label, icon: Icon, onClick }) => (
-  <button
-    onClick={onClick}
-    className={`flex items-center gap-2 px-6 py-3 text-sm font-medium transition-all duration-300 border-b-2 relative ${active
-      ? 'border-brand-purple text-brand-purple bg-brand-purple/10'
-      : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-white/50'
-      }`}
-  >
-    <Icon size={16} />
-    {label}
-    {active && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-purple"></div>}
-  </button>
-);
+// Intelligence Engine Widgets
+import AIInsights from '../../widgets/AIInsights';
+import RiskAlerts from '../../widgets/RiskAlerts';
+import FeeCollectionForecast from '../../widgets/FeeCollectionForecast';
+import AcademicInsights from '../../widgets/AcademicInsights';
 
 const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavigate }) => {
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview');
-  const [showUnAssessedSheet, setShowUnAssessedSheet] = useState(false);
-  const [timeFilter, setTimeFilter] = useState('term');
   const [metrics, setMetrics] = useState(null);
   const [apiError, setApiError] = useState(null);
-  const [insights, setInsights] = useState(null);
-  const [insightsLoading, setInsightsLoading] = useState(false);
-  const [insightsError, setInsightsError] = useState(null);
-  // Stable user id — prevents re-fetch every time the user object reference changes
+
   const userId = user?.id || user?.userId;
   const hasInstantData = learners.length > 0 || teachers.length > 0 || (pagination?.total || 0) > 0;
-  const visibleShortcuts = [
-    { label: 'Admissions', icon: UserPlus, color: 'bg-blue-500 text-white', path: 'learners-admissions' },
-    { label: 'Collect Fees', icon: Receipt, color: 'bg-emerald-500 text-white', path: 'fees-collection' },
-    { label: 'Attendance', icon: ClipboardCheck, color: 'bg-amber-500 text-white', path: 'attendance-daily' },
-    { label: 'Assessments', icon: BookOpen, color: 'bg-brand-purple text-white', path: 'assess-summative-assessment' },
-    { label: 'Inventory', icon: Package, color: 'bg-rose-500 text-white', path: 'inventory-items' },
-    { label: 'Settings', icon: Settings, color: 'bg-slate-700 text-white', path: 'settings-academic' },
-  ].filter((shortcut) => hasPageAccess(user, shortcut.path));
-  const visibleOperations = [
-    { label: 'Register New Student', icon: Users, page: 'learners-admissions' },
-    { label: 'Manage Staff Directory', icon: GraduationCap, page: 'teachers-list' },
-    { label: 'Academic Term Settings', icon: BookOpen, page: 'settings-academic' },
-    { label: 'Financial Statements', icon: FileText, page: 'accounting-reports' }
-  ].filter((action) => hasPageAccess(user, action.page));
 
-  const loadMetrics = async (filter) => {
+  const loadMetrics = async (filter = 'term') => {
     try {
       setRefreshing(true);
       setApiError(null);
-      const response = await dashboardAPI.getAdminMetrics(filter || timeFilter);
+      const response = await dashboardAPI.getAdminMetrics(filter);
       if (response.success) {
         setMetrics(response.data);
       } else {
@@ -122,1070 +51,458 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
       }
     } catch (error) {
       console.error('Failed to load dashboard metrics:', error);
-      setApiError(error.message || 'Could not reach the server. It may be waking up — please retry in a moment.');
+      setApiError(error.message || 'Could not reach the server.');
     } finally {
       setRefreshing(false);
     }
   };
 
   useEffect(() => {
-    loadMetrics(timeFilter);
+    loadMetrics('term');
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, timeFilter]);
+  }, [userId]);
 
-  const loadInsights = async (fresh = false) => {
-    try {
-      setInsightsLoading(true);
-      setInsightsError(null);
-      const response = await dashboardAPI.getInsights(fresh);
-      if (response.success) {
-        setInsights(response.data);
-      } else {
-        setInsightsError(response.message || 'Failed to load insights');
-      }
-    } catch (error) {
-      setInsightsError(error.message || 'Could not reach the server.');
-    } finally {
-      setInsightsLoading(false);
-    }
-  };
-
-  // Fetch insights only when the tab is first opened
-  useEffect(() => {
-    if (activeTab === 'ai-insights' && !insights && !insightsLoading) {
-      loadInsights();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
-
-  // ── Loading state: show skeleton only if we have absolutely no local data ─────
-  if (refreshing && !metrics && !hasInstantData) {
-    return (
-      <div className="space-y-6 animate-pulse">
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-2 lg:gap-4">
-          {[...Array(6)].map((_, i) => <div key={i} className="h-16 bg-gray-200 rounded-xl" />)}
-        </div>
-        <div className="h-10 w-96 bg-gray-200 rounded-lg" />
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="h-64 bg-gray-200 rounded-xl" />
-          <div className="h-64 bg-gray-200 rounded-xl" />
-          <div className="h-64 bg-gray-200 rounded-xl" />
-        </div>
-        <div className="h-72 bg-gray-200 rounded-xl" />
-      </div>
-    );
-  }
-
-  // ── Error state: server unreachable (cold start / network) ─────────────────
-  if (apiError && !metrics) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl max-w-md">
-          <div className="text-3xl mb-3">⚡</div>
-          <h3 className="text-base font-semibold text-amber-900 mb-1">Dashboard is warming up</h3>
-          <p className="text-xs text-amber-700 mb-4">{apiError}</p>
-          <button
-            onClick={() => loadMetrics(timeFilter)}
-            className="px-6 py-2 bg-brand-purple text-white text-xs font-semibold uppercase tracking-widest rounded-lg hover:bg-brand-purple/90 transition"
-          >
-            Retry Now
-          </button>
-        </div>
-      </div>
-    );
-  }
-
+  // Compute stats from metrics and local data
   const stats = {
     totalStudents: metrics?.stats?.totalStudents || pagination?.total || learners.length || 0,
     activeStudents: metrics?.stats?.activeStudents || learners.filter(l => l.status === 'ACTIVE').length || 0,
     totalTeachers: metrics?.stats?.totalTeachers || teachers.length || 0,
     activeTeachers: metrics?.stats?.activeTeachers || teachers.filter(t => t.status === 'ACTIVE').length || 0,
-    males: metrics?.stats?.males || learners.filter(l => (l.gender || '').toLowerCase().startsWith('m')).length || 0,
-    females: metrics?.stats?.females || learners.filter(l => (l.gender || '').toLowerCase().startsWith('f')).length || 0,
     presentToday: metrics?.stats?.presentToday || 0,
     absentToday: metrics?.stats?.absentToday || 0,
-    totalClasses: metrics?.stats?.totalClasses || 0,
-    totalAssessedClasses: metrics?.stats?.totalAssessedClasses || 0,
-    totalMissedExams: metrics?.stats?.totalMissedExams || 0,
-    currentTestSeries: metrics?.stats?.currentTestSeries || 'Current Series',
-    avgAttendance: metrics?.stats?.avgAttendance || 0,
     feeCollected: metrics?.stats?.feeCollected || 0,
     feePending: metrics?.stats?.feePending || 0,
-    studentTrend: metrics?.stats?.studentTrend,
-    teacherTrend: metrics?.stats?.teacherTrend,
-    atRiskStudents: metrics?.stats?.atRiskStudents || 0
+    totalMissedExams: metrics?.stats?.totalMissedExams || 0,
+    atRiskStudents: metrics?.stats?.atRiskStudents || 0,
+    totalAssessedClasses: metrics?.stats?.totalAssessedClasses || 0,
   };
 
-  const dynamicDemographicsData = [
-    { name: 'Present Today', value: stats.presentToday || 0, color: '#14b8a6' },
-    { name: 'Absent (Alert)', value: stats.absentToday || 0, color: '#f43f5e' }
-  ];
-  if (dynamicDemographicsData[0].value === 0 && dynamicDemographicsData[1].value === 0) {
-     dynamicDemographicsData[0].value = stats.activeStudents > 0 ? stats.activeStudents : 1;
-     dynamicDemographicsData[0].name = 'Enrolled';
+  // Calculate School Health Score (0-100)
+  const attendanceRate = stats.totalStudents > 0 
+    ? Math.round((stats.presentToday / (stats.presentToday + stats.absentToday || stats.totalStudents)) * 100) 
+    : 0;
+  const collectionRate = (stats.feeCollected + stats.feePending) > 0
+    ? Math.round((stats.feeCollected / (stats.feeCollected + stats.feePending)) * 100)
+    : 0;
+  const assessmentRate = stats.totalStudents > 0
+    ? Math.round(((stats.totalStudents - stats.totalMissedExams) / stats.totalStudents) * 100)
+    : 0;
+  const healthScore = Math.round((attendanceRate + collectionRate + assessmentRate) / 3);
+
+  // Revenue trend data
+  const revenueTrendData = (metrics?.financials?.trendData || []).length > 0 
+    ? metrics.financials.trendData 
+    : [
+        { month: 'Jan', revenue: 450000 },
+        { month: 'Feb', revenue: 520000 },
+        { month: 'Mar', revenue: 480000 },
+        { month: 'Apr', revenue: 610000 },
+        { month: 'May', revenue: 580000 },
+      ];
+
+  // Attention items
+  const attentionItems = [
+    stats.totalMissedExams > 0 && {
+      title: `${stats.totalMissedExams} Unassessed Students`,
+      description: 'Students pending assessment completion',
+      severity: 'high',
+      action: () => onNavigate('assess-summary-report')
+    },
+    stats.feePending > 0 && {
+      title: `KES ${Math.round(stats.feePending / 1000)}k Outstanding`,
+      description: 'Pending fee payments require follow-up',
+      severity: 'medium',
+      action: () => onNavigate('fees-collection')
+    },
+    stats.atRiskStudents > 0 && {
+      title: `${stats.atRiskStudents} At-Risk Learners`,
+      description: 'Students requiring additional support',
+      severity: 'high',
+      action: () => onNavigate('learners-list')
+    }
+  ].filter(Boolean);
+
+  // Top performing classes
+  const topClasses = (metrics?.topPerformingClasses || []).slice(0, 5).map((cls, idx) => ({
+    rank: idx + 1,
+    name: cls.grade || `Grade ${idx + 1}`,
+    score: cls.avg || 0,
+    status: cls.label || 'Stable'
+  }));
+
+  // Recent activity
+  const recentActivities = [
+    ...(metrics?.recentActivity?.admissions || []).slice(0, 3).map(item => ({
+      type: 'admission',
+      description: `${item.firstName} ${item.lastName} enrolled`,
+      timestamp: new Date(item.createdAt).toLocaleDateString(),
+      icon: Users
+    })),
+    ...(metrics?.recentActivity?.assessments || []).slice(0, 2).map(item => ({
+      type: 'assessment',
+      description: `${item.title} recorded for ${item.learner?.firstName} ${item.learner?.lastName}`,
+      timestamp: new Date(item.createdAt).toLocaleDateString(),
+      icon: Activity
+    }))
+  ].slice(0, 5);
+
+  if (apiError && !metrics) {
+    return (
+      <EmptyState
+        icon={<AlertTriangle size={48} />}
+        title="Dashboard unavailable"
+        description={apiError}
+        action={{
+          label: 'Retry',
+          onClick: () => loadMetrics('term')
+        }}
+      />
+    );
   }
 
-  const dynamicAssessmentData = [
-    { name: 'Assessed', value: stats.totalStudents - stats.totalMissedExams || 0, color: '#8b5cf6' },
-    { name: 'Missed (Warning)', value: stats.totalMissedExams || 0, color: '#f43f5e' }
-  ];
-
-  const dynamicFinanceData = (metrics?.financials?.streamBreakdown || []).map(row => ({
-    name: row.name,
-    collected: row.collected || 0,
-    pending: row.bal || 0
-  }));
-
-  const dynamicProficiencyData = (metrics?.distributions?.subjectProficiency || []).map(row => ({
-    name: row.area,
-    ee: row.ee || 0,
-    me: row.me || 0,
-    be: row.be || 0
-  }));
-
-  const calendarEvents = metrics?.upcomingEvents || [];
-  const eventsByCategory = Object.entries(
-    calendarEvents.reduce((acc, evt) => {
-      const key = evt?.category || 'General';
-      acc[key] = (acc[key] || 0) + 1;
-      return acc;
-    }, {})
-  ).map(([name, value], index) => ({
-    name,
-    value,
-    color: ['#0ea5e9', '#14b8a6', '#8b5cf6', '#f59e0b', '#f43f5e'][index % 5]
-  }));
-
-  const eventsByMonth = Object.entries(
-    calendarEvents.reduce((acc, evt) => {
-      const d = evt?.date ? new Date(evt.date) : null;
-      if (d && !Number.isNaN(d.getTime())) {
-        const month = d.toLocaleDateString('en-US', { month: 'short' });
-        acc[month] = (acc[month] || 0) + 1;
-      }
-      return acc;
-    }, {})
-  ).map(([month, count]) => ({ month, count }));
-
-  const hrStatusData = [
-    { name: 'Active', value: stats.activeTeachers || 0, color: '#14b8a6' },
-    { name: 'Inactive', value: Math.max(0, (stats.totalTeachers || 0) - (stats.activeTeachers || 0)), color: '#f43f5e' }
-  ];
-  const hrGenderData = [
-    { name: 'Male Learners', value: stats.males || 0, color: '#3b82f6' },
-    { name: 'Female Learners', value: stats.females || 0, color: '#ec4899' }
-  ];
-  const hrOpsData = [
-    { name: 'Staff', value: stats.totalTeachers || 0 },
-    { name: 'Students', value: stats.totalStudents || 0 },
-    { name: 'Open HR Actions', value: visibleOperations.length || 0 }
-  ];
-
-  const renderOverview = () => {
-    const bannerMetrics = [
-      {
-        title: 'Total Students',
-        value: stats.totalStudents,
-        subtitle: (
-          <span className="flex items-center gap-1.5 whitespace-nowrap">
-            <span>{stats.activeStudents} active</span>
-            <span className="text-pink-300 font-semibold text-[10px] border-l border-indigo-400/50 pl-1.5 opacity-90 drop-shadow-sm">
-              {stats.males} Male / {stats.females} Female
-            </span>
-          </span>
-        ),
-        icon: Users,
-        trend: stats.studentTrend?.startsWith('+') ? 'up' : 'down',
-        trendValue: stats.studentTrend,
-        colorTheme: 'primary',
-        onClick: () => onNavigate('learners-list')
-      },
-      {
-        title: 'Current Exam Series',
-        value: stats.currentTestSeries,
-        subtitle: 'Assessment Period',
-        icon: GraduationCap,
-        trend: null,
-        trendValue: null,
-        colorTheme: 'info',
-        onClick: () => onNavigate('assess-summary-report')
-      },
-      {
-        title: 'Total Un-Assessed',
-        value: stats.totalMissedExams,
-        subtitle: stats.currentTestSeries,
-        icon: AlertCircle,
-        trend: null,
-        trendValue: null,
-        colorTheme: 'warning',
-        onClick: () => setShowUnAssessedSheet(true)
-      },
-      {
-        title: 'Assessed Classes',
-        value: stats.totalAssessedClasses,
-        subtitle: 'Classes with active assessments',
-        icon: UserCheck,
-        trend: null,
-        trendValue: null,
-        colorTheme: 'success',
-        onClick: () => onNavigate('assess-summative-assessment')
-      }
-    ];
-
-    if (!metrics) {
-      return (
-        <div className="space-y-6">
-          <CompactMetricBanner metrics={bannerMetrics} />
-          <div className="rounded-xl border border-brand-teal/20 bg-brand-teal/5 px-4 py-3">
-            <p className="text-xs font-semibold text-brand-teal uppercase tracking-widest">Live Sync</p>
-            <p className="mt-1 text-xs text-gray-600">
-              Showing instant snapshot from local session data while full analytics load in the background.
-            </p>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-6">
-        <CompactMetricBanner metrics={bannerMetrics} />
-
-        {/* Charts Section */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          {/* Daily Attendance Pie */}
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 hover:shadow-md transition-shadow">
-            <h3 className="text-xs font-semibold text-gray-900 uppercase tracking-widest mb-4">Daily Attendance</h3>
-            <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={dynamicDemographicsData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={70}
-                    paddingAngle={5}
-                    dataKey="value"
-                    stroke="none"
-                  >
-                    {dynamicDemographicsData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                    itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
-                  />
-                  <Legend verticalAlign="bottom" height={20} iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: '500' }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Assessment Progress */}
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 hover:shadow-md transition-shadow">
-            <h3 className="text-xs font-semibold text-gray-900 uppercase tracking-widest mb-4 flex items-center justify-between">
-              Assessment Fulfillment
-              {stats.totalMissedExams > 0 && <span className="text-[9px] font-semibold uppercase text-rose-500 bg-rose-50 px-2 py-0.5 rounded">Action Req</span>}
-            </h3>
-            <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={dynamicAssessmentData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={70}
-                    paddingAngle={5}
-                    dataKey="value"
-                    stroke="none"
-                  >
-                    {dynamicAssessmentData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                    itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
-                  />
-                  <Legend verticalAlign="bottom" height={20} iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: '500' }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Finance Overview Bar */}
-          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 hover:shadow-md transition-shadow">
-            <h3 className="text-xs font-semibold text-gray-900 uppercase tracking-widest mb-4">Uncollected Balances</h3>
-            <div className="h-48">
-              {dynamicFinanceData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dynamicFinanceData} margin={{ top: 10, right: 0, left: -25, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={10} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dx={-10} tickFormatter={(val) => `${val >= 1000 ? val/1000 + 'k' : val}`} />
-                    <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Legend verticalAlign="bottom" height={20} iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: '500' }} />
-                    <Bar dataKey="collected" name="Collected" fill="#8b5cf6" radius={0} barSize={12} stackId="a" />
-                    <Bar dataKey="pending" name="Pending (Danger)" fill="#f43f5e" radius={0} barSize={12} stackId="a" />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full w-full flex items-center justify-center text-center text-xs text-gray-400 italic">No Financial Data</div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          {/* Recent Activity Table */}
-          <div className="xl:col-span-2 bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-widest">Recent Activity Log</h3>
-              <button className="text-xs font-medium text-brand-purple hover:underline">Download Audit</button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="text-[10px] uppercase tracking-wider">
-                  <tr>
-                    <th className="px-6 py-3">Timestamp</th>
-                    <th className="px-6 py-3">Category</th>
-                    <th className="px-6 py-3">Activity Description</th>
-                    <th className="px-6 py-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {metrics?.recentActivity?.admissions?.slice(0, 5).map((student, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
-                      <td className="px-6 py-4 text-xs text-gray-500">{new Date(student.createdAt).toLocaleDateString()}</td>
-                      <td className="px-6 py-4 text-xs font-medium text-blue-600">Admission</td>
-                      <td className="px-6 py-4 text-xs font-semibold text-gray-700">New student {student.firstName} {student.lastName} enrolled</td>
-                      <td className="px-6 py-4 text-xs"><span className="px-2 py-0.5 bg-green-50 text-green-700 rounded-full font-medium uppercase tracking-widest text-[9px]">Verified</span></td>
-                    </tr>
-                  ))}
-                  {metrics?.recentActivity?.assessments?.slice(0, 5).map((as, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
-                      <td className="px-6 py-4 text-xs text-gray-500">{new Date(as.createdAt).toLocaleDateString()}</td>
-                      <td className={`px-6 py-4 text-xs font-medium ${as.type === 'SUMMATIVE' ? 'text-brand-purple' : 'text-brand-teal'}`}>
-                        {as.type || 'Assessment'}
-                      </td>
-                      <td className="px-6 py-4 text-xs font-semibold text-gray-700">
-                        {as.title} recorded for {as.learner?.firstName} {as.learner?.lastName}
-                      </td>
-                      <td className="px-6 py-4 text-xs">
-                        <span className={`px-2 py-0.5 ${as.type === 'SUMMATIVE' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'} rounded-full font-medium uppercase tracking-widest text-[9px]`}>
-                          {as.type === 'SUMMATIVE' ? 'Graded' : 'Calculated'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                  {!metrics?.recentActivity?.admissions?.length && !metrics?.recentActivity?.assessments?.length && (
-                    <tr><td colSpan="4" className="px-6 py-12 text-center text-gray-400 text-xs italic">No activity recorded for this period</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Quick Actions Panel */}
-          <div className="space-y-4">
-            <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5">
-              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-widest mb-4">Operations Hub</h3>
-              <div className="grid grid-cols-1 gap-2">
-                {visibleOperations.map((action, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => onNavigate(action.page)}
-                    className="flex items-center justify-between p-3 border border-gray-100 rounded-lg hover:border-brand-purple hover:bg-brand-purple/5 group transition-all"
-                  >
-                    <div className="flex items-center gap-3">
-                      <action.icon size={18} className="text-gray-400 group-hover:text-brand-purple" />
-                      <span className="text-xs font-medium text-gray-700 group-hover:text-gray-900">{action.label}</span>
-                    </div>
-                    <ChevronRight size={14} className="text-gray-300 group-hover:text-brand-purple" />
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Critical Alerts */}
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-5">
-              <h3 className="text-xs font-semibold text-amber-900 uppercase tracking-widest mb-3 flex items-center gap-2">
-                <AlertCircle size={14} /> System Alerts
-              </h3>
-              <div className="space-y-3">
-                <div className="flex gap-2">
-                  <div className="w-1 h-8 bg-amber-400 rounded-full" />
-                  <div>
-                    <p className="text-[11px] font-medium text-amber-900">{metrics?.stats?.totalPendingAssessments || 0} Pending Assessments</p>
-                    <p className="text-[9px] text-amber-700 uppercase font-semibold">Requires Head Teacher Review</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderFinancials = () => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <MetricCard title="Total Revenue" value={`KES ${stats.feeCollected.toLocaleString()}`} icon={Wallet} subtitle="Termly Collection" />
-        <MetricCard title="Outstandings" value={`KES ${stats.feePending.toLocaleString()}`} icon={TrendingUp} subtitle="Pending Payments" />
-        <MetricCard title="Collection Rate" value={`${Math.round((stats.feeCollected / ((stats.feeCollected + stats.feePending) || 1)) * 100)}%`} icon={Activity} />
-      </div>
-
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 mb-6">
-         <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-widest mb-4 flex items-center justify-between">
-           Financial Collection Risks
-           {stats.feePending > 0 && <span className="text-[9px] font-semibold uppercase text-rose-500 bg-rose-50 px-2 py-0.5 rounded border border-rose-100">Action Required</span>}
-         </h3>
-         <div className="h-64">
-              {dynamicFinanceData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dynamicFinanceData} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={10} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dx={-10} tickFormatter={(val) => `${val >= 1000 ? val/1000 + 'k' : val}`} />
-                    <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Legend verticalAlign="bottom" height={20} iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: '500' }} />
-                    <Bar dataKey="collected" name="Collected Revenue" fill="#8b5cf6" radius={0} stackId="a" />
-                    <Bar dataKey="pending" name="High Risk Pending" fill="#f43f5e" radius={0} stackId="a" />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full w-full flex items-center justify-center text-center text-xs text-gray-400 italic">No Financial Data Available</div>
-              )}
-         </div>
-      </div>
-
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
-        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-widest">Revenue Breakdown by Stream</h3>
-          <div className="flex gap-2">
-            <button className="px-3 py-1 bg-white border border-gray-200 rounded text-[10px] font-medium uppercase hover:bg-gray-50 flex items-center gap-1"><Download size={12} /> XLS</button>
-            <button className="px-3 py-1 bg-white border border-gray-200 rounded text-[10px] font-medium uppercase hover:bg-gray-50 flex items-center gap-1"><FileText size={12} /> PDF</button>
-          </div>
-        </div>
-        <div className="p-0">
-          <table className="w-full text-left">
-            <thead className="bg-[color:var(--table-header-bg)] text-[10px] font-semibold text-[color:var(--table-header-fg)] uppercase tracking-widest">
-              <tr>
-                <th className="px-6 py-3">Grade Category</th>
-                <th className="px-6 py-3 text-right">Target Rev</th>
-                <th className="px-6 py-3 text-right">Collected</th>
-                <th className="px-6 py-3 text-right">Balance</th>
-                <th className="px-6 py-3">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {(metrics?.financials?.streamBreakdown?.length > 0 ? metrics.financials.streamBreakdown : []).map((row, idx) => (
-                <tr key={idx} className="text-xs font-semibold text-gray-700">
-                  <td className="px-6 py-4">{row.name}</td>
-                  <td className="px-6 py-4 text-right">KES {row.target?.toLocaleString()}</td>
-                  <td className="px-6 py-4 text-right">KES {row.collected?.toLocaleString()}</td>
-                  <td className="px-6 py-4 text-right text-rose-600">KES {row.bal?.toLocaleString()}</td>
-                  <td className="px-6 py-4">
-                    <div className="w-24 bg-gray-100 h-1.5 rounded-full overflow-hidden">
-                      <div className="bg-emerald-500 h-full" style={{ width: `${row.target > 0 ? (row.collected / row.target) * 100 : 0}%` }} />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {!metrics?.financials?.streamBreakdown?.length && (
-                <tr><td colSpan="5" className="px-6 py-12 text-center text-gray-400 text-xs italic">No financial data available for this period</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderPerformance = () => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        {/* Top Classes Table */}
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-widest">Ranking by Academic Average</h3>
-          </div>
-          <table className="w-full text-left">
-            <thead className="bg-[color:var(--table-header-bg)] text-[10px] font-semibold text-[color:var(--table-header-fg)] uppercase tracking-widest">
-              <tr>
-                <th className="px-6 py-3">Rank</th>
-                <th className="px-6 py-3">Grade Unit</th>
-                <th className="px-6 py-3 text-right">Avg Rating</th>
-                <th className="px-6 py-3 text-right">Proficiency</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {(metrics?.topPerformingClasses?.length > 0 ? metrics.topPerformingClasses : []).map((cls, idx) => (
-                <tr key={idx} className="text-xs font-medium text-gray-700">
-                  <td className="px-6 py-4 text-gray-400">#0{idx + 1}</td>
-                  <td className="px-6 py-4 text-gray-900">{cls.grade}</td>
-                  <td className="px-6 py-4 text-right">{cls.avg}</td>
-                  <td className="px-6 py-4 text-right"><span className="px-3 py-1 bg-brand-teal/10 text-brand-teal rounded-full text-[10px]">{cls.label}</span></td>
-                </tr>
-              ))}
-              {!metrics?.topPerformingClasses?.length && (
-                <tr><td colSpan="4" className="px-6 py-8 text-center text-gray-400 text-xs italic">Not enough assessment data to generate rankings</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Learning Area Statistics */}
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-widest mb-6 border-b border-gray-100 pb-2">Subject Proficiency Distribution</h3>
-          <div className="h-72">
-              {dynamicProficiencyData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dynamicProficiencyData} margin={{ top: 10, right: 20, left: -10, bottom: 0 }} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                    <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
-                    <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold', fill: '#475569' }} width={90} />
-                    <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Legend verticalAlign="bottom" height={20} iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: '500' }} />
-                    <Bar dataKey="ee" name="Exceeding" fill="#8b5cf6" stackId="a" radius={[0, 0, 0, 0]} />
-                    <Bar dataKey="me" name="Meeting" fill="#14b8a6" stackId="a" radius={[0, 0, 0, 0]} />
-                    <Bar dataKey="be" name="Below Expectation (Warning)" fill="#f43f5e" stackId="a" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full w-full flex items-center justify-center text-center text-xs text-gray-400 italic">No Proficiency Data Logged</div>
-              )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderOperations = () => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Upcoming Operational Deadlines */}
-        <div className="xl:col-span-2 bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-widest">Academic Calendar & Milestones</h3>
-          </div>
-          <div className="p-0">
-            {(metrics?.upcomingEvents?.length > 0 ? metrics.upcomingEvents : []).map((evt, idx) => (
-              <div key={idx} className="px-6 py-4 flex items-center justify-between border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
-                <div className="flex items-center gap-4">
-                  <div className="text-center p-2 min-w-[60px] bg-gray-100 rounded-md">
-                    <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest">{new Date(evt.date).toLocaleDateString('en-US', { month: 'short' })}</p>
-                    <p className="text-sm font-semibold text-gray-900">{new Date(evt.date).getDate()}</p>
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-semibold text-gray-900">{evt.title}</h4>
-                    <p className="text-[10px] font-medium text-gray-500 uppercase tracking-widest mt-0.5">{evt.category} • Lead: {evt.responsible}</p>
-                  </div>
-                </div>
-                <button onClick={() => onNavigate('events-calendar')} className="p-2 text-gray-400 hover:text-brand-purple hover:bg-brand-purple/5 rounded-md transition-all">
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-            ))}
-            {!metrics?.upcomingEvents?.length && (
-              <div className="px-6 py-8 text-center text-gray-400 text-xs italic">No upcoming events scheduled.</div>
-            )}
-          </div>
-        </div>
-
-        {/* Staff Utilization */}
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-widest mb-6 border-b border-gray-100 pb-2 flex items-center gap-2"><Briefcase size={16} className="text-gray-400" /> Staffing Capacity vs Deficit</h3>
-          
-          <div className="h-48 mb-6">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={[
-                      { name: 'Active Teachers', value: stats.activeTeachers || 0, color: '#14b8a6' },
-                      { name: 'Deficit/Inactive', value: Math.max(0, (stats.totalTeachers - stats.activeTeachers)) || (stats.activeTeachers === 0 ? 1 : 0), color: '#f43f5e' }
-                    ]}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={40}
-                    outerRadius={65}
-                    paddingAngle={5}
-                    dataKey="value"
-                    stroke="none"
-                  >
-                    <Cell fill="#14b8a6" />
-                    <Cell fill="#f43f5e" />
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                    itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
-                  />
-                  <Legend verticalAlign="bottom" height={20} iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: '500' }} />
-                </PieChart>
-              </ResponsiveContainer>
-          </div>
-          <div className="space-y-4">
-            <div className="p-4 bg-gray-50 border border-gray-100 rounded-lg">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-[10px] font-semibold uppercase text-gray-500 tracking-wider">Teaching Staff</span>
-                <span className="text-xs font-semibold text-brand-teal">{stats.activeTeachers} / {stats.totalTeachers} Active</span>
-              </div>
-              <div className="w-full bg-white border border-gray-200 h-1 rounded-full overflow-hidden">
-                <div className="bg-brand-teal h-full" style={{ width: `${(stats.activeTeachers / stats.totalTeachers) * 100}%` }} />
-              </div>
-            </div>
-
-            <div className="p-4 bg-gray-50 border border-gray-100 rounded-lg">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-[10px] font-semibold uppercase text-gray-500 tracking-wider">Teacher-Student Ratio</span>
-                <span className="text-xs font-semibold text-brand-purple">1 : {Math.round(stats.totalStudents / (stats.totalTeachers || 1))}</span>
-              </div>
-              <p className="text-[10px] text-gray-400 font-medium uppercase mt-1">Within optimal standard</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderSchoolCalendar = () => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <MetricCard title="Upcoming Events" value={calendarEvents.length} icon={Calendar} subtitle="Scheduled activities" />
-        <MetricCard title="Event Categories" value={eventsByCategory.length} icon={Filter} subtitle="Calendar groupings" />
-        <MetricCard title="This Term" value={timeFilter === 'term' ? 'Active' : 'Custom'} icon={CheckCircle} subtitle="Current filter scope" />
-        <MetricCard title="Navigations" value={visibleOperations.length} icon={ChevronRight} subtitle="Linked workflows" />
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-widest mb-4">Events by Category</h3>
-          <div className="h-64">
-            {eventsByCategory.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={eventsByCategory} cx="50%" cy="50%" innerRadius={55} outerRadius={85} dataKey="value" paddingAngle={4} stroke="none">
-                    {eventsByCategory.map((entry, idx) => <Cell key={`evt-cat-${idx}`} fill={entry.color} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  <Legend verticalAlign="bottom" height={20} iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: '500' }} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full w-full flex items-center justify-center text-center text-xs text-gray-400 italic">No calendar category data</div>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-widest mb-4">Monthly Event Distribution</h3>
-          <div className="h-64">
-            {eventsByMonth.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={eventsByMonth} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
-                  <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
-                  <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  <Area type="monotone" dataKey="count" stroke="#0ea5e9" fill="#0ea5e9" fillOpacity={0.18} strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full w-full flex items-center justify-center text-center text-xs text-gray-400 italic">No monthly calendar trend available</div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-widest">School Calendar</h3>
-          <button
-            onClick={() => onNavigate('events-calendar')}
-            className="px-3 py-1 bg-white border border-gray-200 rounded text-[10px] font-medium uppercase hover:bg-gray-50 flex items-center gap-1"
-          >
-            <Calendar size={12} /> Open Calendar
-          </button>
-        </div>
-        <div className="p-0">
-          {(metrics?.upcomingEvents?.length > 0 ? metrics.upcomingEvents : []).map((evt, idx) => (
-            <div key={idx} className="px-6 py-4 flex items-center justify-between border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
-              <div className="flex items-center gap-4">
-                <div className="text-center p-2 min-w-[60px] bg-gray-100 rounded-md">
-                  <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest">{new Date(evt.date).toLocaleDateString('en-US', { month: 'short' })}</p>
-                  <p className="text-sm font-semibold text-gray-900">{new Date(evt.date).getDate()}</p>
-                </div>
-                <div>
-                  <h4 className="text-xs font-semibold text-gray-900">{evt.title}</h4>
-                  <p className="text-[10px] font-medium text-gray-500 uppercase tracking-widest mt-0.5">{evt.category} • Lead: {evt.responsible}</p>
-                </div>
-              </div>
-              <span className="text-[10px] uppercase tracking-widest text-gray-400 font-semibold">{new Date(evt.date).toLocaleDateString()}</span>
-            </div>
-          ))}
-          {!metrics?.upcomingEvents?.length && (
-            <div className="px-6 py-16 text-center text-gray-400 text-xs italic">No calendar events scheduled</div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderHROverview = () => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <MetricCard title="Total Staff" value={stats.totalTeachers} icon={Briefcase} subtitle="All departments" />
-        <MetricCard title="Active Staff" value={stats.activeTeachers} icon={UserCheck} subtitle="Currently active" />
-        <MetricCard title="Open HR Actions" value={visibleOperations.length} icon={Clock} subtitle="Pending workflows" />
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-widest mb-4">Staff Status</h3>
-          <div className="h-56">
-            {hrStatusData.some((item) => item.value > 0) ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={hrStatusData} cx="50%" cy="50%" innerRadius={45} outerRadius={72} dataKey="value" paddingAngle={5} stroke="none">
-                    {hrStatusData.map((entry, idx) => <Cell key={`hr-status-${idx}`} fill={entry.color} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  <Legend verticalAlign="bottom" height={20} iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: '500' }} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full w-full flex items-center justify-center text-center text-xs text-gray-400 italic">No staff status data</div>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-widest mb-4">Learner Gender Profile</h3>
-          <div className="h-56">
-            {hrGenderData.some((item) => item.value > 0) ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={hrGenderData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
-                  <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
-                  <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  <Bar dataKey="value" name="Count" fill="#3b82f6" radius={0} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full w-full flex items-center justify-center text-center text-xs text-gray-400 italic">No learner demographic data</div>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-widest mb-4">HR Workload Snapshot</h3>
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={hrOpsData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
-                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
-                <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                <Area type="monotone" dataKey="value" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.18} strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-widest">HR Overview</h3>
-        </div>
-        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-3">
-          <button onClick={() => onNavigate('teachers-list')} className="px-4 py-3 bg-white border border-gray-200 rounded text-xs font-semibold uppercase tracking-widest text-left hover:bg-gray-50">Manage Staff Directory</button>
-          <button onClick={() => onNavigate('settings-academic')} className="px-4 py-3 bg-white border border-gray-200 rounded text-xs font-semibold uppercase tracking-widest text-left hover:bg-gray-50">Staff & Term Settings</button>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderAIInsights = () => (
-    <div className="space-y-6 animate-fade-in">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-2 bg-white rounded-2xl p-8 border border-gray-200 shadow-sm relative overflow-hidden group">
-          <div className="relative z-10 h-full flex flex-col">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-brand-purple/10 text-brand-purple rounded-lg">
-                <Brain size={24} />
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900">Zawadi Smart Insights</h2>
-            </div>
-            <p className="text-gray-500 text-sm max-w-md leading-relaxed mb-6">
-              Our AI engine analyzes longitudinal student performance, attendance patterns, and financial data to predict learning outcomes and identify students who may need additional support.
-            </p>
-            <div className="flex flex-wrap gap-4 mt-auto">
-              <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 flex-1 min-w-[140px] hover:border-brand-purple/30 transition-colors">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">System Accuracy</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">94.2%</p>
-              </div>
-              <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 flex-1 min-w-[140px] hover:border-brand-purple/30 transition-colors">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Insights Generated</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">1,240</p>
-              </div>
-            </div>
-          </div>
-          <Zap className="absolute -bottom-10 -right-10 w-64 h-64 text-brand-purple/[0.03] transform group-hover:scale-110 transition-transform duration-500" />
-        </div>
-
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Risk Monitoring</h3>
-              <ShieldAlert className="text-rose-500" size={20} />
-            </div>
-            <div className="text-center py-4">
-              <p className="text-4xl font-bold text-gray-900">{stats.atRiskStudents}</p>
-              <p className="text-xs font-medium text-gray-500 mt-1">Students flagged as High-Risk</p>
-            </div>
-          </div>
-          <button 
-            onClick={() => onNavigate('learners-list')}
-            className="w-full py-3 bg-gray-50 hover:bg-gray-100 text-gray-900 rounded-xl text-xs font-bold uppercase tracking-widest transition"
-          >
-            Review At-Risk Students
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest mb-4">Academic Risk Distribution</h3>
-          <div className="space-y-4">
-            {[
-              { label: 'Critically Behind (BE)', value: 12, color: 'bg-rose-500' },
-              { label: 'Needs Support (AE)', value: 45, color: 'bg-amber-500' },
-              { label: 'Stable (ME)', value: 120, color: 'bg-emerald-500' },
-              { label: 'Accelerated (EE)', value: 34, color: 'bg-brand-purple' },
-            ].map((item, idx) => (
-              <div key={idx}>
-                <div className="flex justify-between items-center mb-1.5">
-                  <span className="text-xs font-medium text-gray-600">{item.label}</span>
-                  <span className="text-xs font-bold text-gray-900">{item.value} Students</span>
-                </div>
-                <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
-                  <div className={`${item.color} h-full`} style={{ width: `${(item.value / 211) * 100}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest mb-4">Top AI Recommendations</h3>
-          <div className="space-y-3">
-            {[
-              { title: 'Grade 4 Science Review', desc: 'Cluster average dropped 8% this week. Suggest remedial session.', icon: AlertCircle, color: 'text-rose-500' },
-              { title: 'Automate Fee Reminders', desc: '72% of unpaid balances are for 10-day overdue invoices.', icon: Wallet, color: 'text-amber-500' },
-              { title: 'Accelerated Learning Hub', desc: '15% of Grade 7 students qualify for advanced coding path.', icon: Brain, color: 'text-brand-purple' },
-            ].map((item, idx) => (
-              <div key={idx} className="flex gap-4 p-3 hover:bg-gray-50 rounded-xl transition cursor-pointer border border-transparent hover:border-gray-100">
-                <div className={`p-2 rounded-lg bg-white shadow-sm ${item.color}`}>
-                  <item.icon size={18} />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-gray-900">{item.title}</h4>
-                  <p className="text-[10px] text-gray-500 leading-tight mt-0.5">{item.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  // ── Un-Assessed Students Detailed Sheet ────────────────────────────────────────
-  const UnAssessedSheet = () => {
-    const breakdown = metrics?.unAssessedBreakdown || [];
-    
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-end bg-slate-900/40 backdrop-blur-sm transition-opacity">
-        <div className="h-full w-full max-w-2xl bg-white shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-          {/* Header */}
-          <div className="bg-white border-b border-slate-100 p-6 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-brand-purple/10 rounded-lg text-brand-purple">
-                <AlertCircle size={20} />
-              </div>
-              <div>
-                <h2 className="text-xl font-medium text-slate-900">Un-Assessed Students</h2>
-                <p className="text-xs text-slate-500 font-medium tracking-tight">Progress breakdown for {stats.currentTestSeries}</p>
-              </div>
-            </div>
-            <button 
-              onClick={() => setShowUnAssessedSheet(false)}
-              className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors"
-            >
-              <X size={20} />
-            </button>
-          </div>
-
-          {/* Filters Layout - Matching Assessment Page Style */}
-          <div className="bg-slate-50/50 px-6 py-4 border-b border-slate-100 flex flex-wrap gap-4 items-center">
-             <div className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-md shadow-sm">
-                <Calendar size={14} className="text-slate-400 font-medium" />
-                <span className="text-xs font-semibold text-slate-600">2026</span>
-             </div>
-             <div className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-md shadow-sm">
-                <Filter size={14} className="text-slate-400 font-medium" />
-                <span className="text-xs font-semibold text-slate-600">TERM 1</span>
-             </div>
-             <div className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-md shadow-sm max-w-[150px]">
-                <GraduationCap size={14} className="text-slate-400 font-medium" />
-                <span className="text-xs font-semibold text-slate-600 truncate">{stats.currentTestSeries}</span>
-             </div>
-             <div className="ml-auto">
-                <div className="bg-brand-purple/10 text-brand-purple border border-brand-purple/20 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">
-                  Live Sync
-                </div>
-             </div>
-          </div>
-
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto p-6">
-            {breakdown.length > 0 ? (
-              <div className="space-y-6">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Total</p>
-                    <p className="text-2xl font-semibold text-slate-900">{stats.totalStudents}</p>
-                  </div>
-                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 border-l-4 border-l-brand-teal">
-                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Assessed</p>
-                    <p className="text-2xl font-semibold text-brand-teal">{stats.totalStudents - stats.totalMissedExams}</p>
-                  </div>
-                  <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
-                    <p className="text-[10px] font-semibold text-emerald-400 uppercase tracking-widest mb-1">Progress</p>
-                    <p className="text-2xl font-semibold text-emerald-600">{Math.round(((stats.totalStudents - stats.totalMissedExams) / stats.totalStudents) * 100)}%</p>
-                  </div>
-                  <div className="bg-rose-50 rounded-xl p-4 border border-rose-100 border-l-4 border-l-rose-500">
-                    <p className="text-[10px] font-semibold text-rose-400 uppercase tracking-widest mb-1">Un-Assessed</p>
-                    <p className="text-2xl font-semibold text-rose-600">{stats.totalMissedExams}</p>
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-[color:var(--table-header-bg)] border-b border-[color:var(--table-border)]">
-                        <th className="px-5 py-4 text-[10px] font-semibold text-[color:var(--table-header-fg)] uppercase tracking-widest">Grade</th>
-                        <th className="px-5 py-4 text-[10px] font-semibold text-[color:var(--table-header-fg)] uppercase tracking-widest text-center">Students</th>
-                        <th className="px-5 py-4 text-[10px] font-semibold uppercase tracking-widest text-center text-brand-teal">Done</th>
-                        <th className="px-5 py-4 text-[10px] font-semibold uppercase tracking-widest text-center text-rose-500">Left</th>
-                        <th className="px-5 py-4 text-[10px] font-semibold text-[color:var(--table-header-fg)] uppercase tracking-widest text-right">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium">
-                      {breakdown.map((item, idx) => {
-                        const pct = item.total > 0 ? Math.round((item.assessed / item.total) * 100) : 0;
-                        return (
-                          <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-5 py-3.5 text-sm font-medium text-slate-900 uppercase tracking-tighter">{item.grade}</td>
-                            <td className="px-5 py-3.5 text-sm text-center text-slate-600 font-medium">{item.total}</td>
-                            <td className="px-5 py-3.5 text-sm text-center text-brand-teal font-semibold">{item.assessed}</td>
-                            <td className="px-5 py-3.5 text-sm text-center text-rose-500 font-semibold">{item.unAssessed}</td>
-                            <td className="px-5 py-3.5 text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <span className="text-[10px] font-semibold text-slate-500">{pct}%</span>
-                                <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden">
-                                  <div 
-                                    className={`h-full rounded-full ${pct === 100 ? 'bg-brand-teal' : pct > 0 ? 'bg-brand-purple' : 'bg-slate-300'}`} 
-                                    style={{ width: `${pct}%` }}
-                                  />
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-64 text-center">
-                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-                  <Activity className="text-slate-300" size={32} />
-                </div>
-                <h3 className="text-lg font-medium text-slate-900">Synchronizing...</h3>
-                <p className="text-sm text-slate-500 max-w-xs">Connecting to the assessment matrix to fetch the latest grade-level progress.</p>
-              </div>
-            )}
-          </div>
-
-          {/* Footer */}
-          <div className="p-6 bg-slate-50 border-t border-slate-100">
-            <button 
-              onClick={() => { setShowUnAssessedSheet(false); onNavigate('assess-summary-report'); }}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-brand-purple text-white rounded-xl font-medium hover:bg-brand-purple/90 transition shadow-lg shadow-brand-purple/20"
-            >
-              Open Full Assessment Matrix <ChevronRight size={18} />
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
+  if (refreshing && !metrics && !hasInstantData) {
+    return <div className="animate-pulse space-y-6"><div className="h-96 bg-gray-200 rounded-xl" /></div>;
+  }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-6">
       {refreshing && (
         <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2">
           <p className="text-[11px] font-semibold text-blue-700 uppercase tracking-widest">
-            Syncing fresh dashboard analytics...
+            Syncing dashboard metrics...
           </p>
         </div>
       )}
 
-      {/* Quick Shortcuts */}
-      <div className="grid grid-cols-3 md:grid-cols-6 gap-2 lg:gap-4 mb-2">
-        {visibleShortcuts.map((shortcut, idx) => (
-          <button
-            key={idx}
-            onClick={() => onNavigate(shortcut.path)}
-            className="group flex flex-col items-center justify-start transition-all duration-300 active:scale-95"
-          >
-            <div className={`p-3.5 mb-2 rounded-full ${shortcut.color} shadow-md group-hover:shadow-lg group-hover:-translate-y-1 transition-transform duration-300 flex items-center justify-center`}>
-              <shortcut.icon size={20} strokeWidth={2.5} />
+      {/* Hero Section */}
+      <DashboardHero
+        variant="default"
+        title="School Executive Dashboard"
+        subtitle="Real-time school health and performance metrics"
+        stats={[
+          { label: 'Health Score', value: `${healthScore}%` },
+          { label: 'Active Students', value: stats.totalStudents.toLocaleString() },
+          { label: 'Collection Rate', value: `${collectionRate}%` }
+        ]}
+      />
+
+      {/* School Health Score */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <AppCard 
+          variant="elevated"
+          title="School Health Score"
+          subtitle="Overall institutional wellness"
+          className="lg:col-span-1"
+        >
+          <div className="space-y-6">
+            <div className="text-center py-8">
+              <div className="text-6xl font-bold text-brand-purple">{healthScore}</div>
+              <div className="text-sm text-gray-500 uppercase tracking-widest mt-2">Out of 100</div>
             </div>
-            <span className="text-[9px] sm:text-[10px] font-semibold uppercase tracking-widest text-gray-600 group-hover:text-brand-purple text-center leading-tight w-full truncate">
-              {shortcut.label}
-            </span>
+            
+            <div className="space-y-3">
+              <div>
+                <div className="flex justify-between text-xs font-semibold mb-1">
+                  <span className="text-gray-600">Attendance</span>
+                  <span className="text-gray-900">{attendanceRate}%</span>
+                </div>
+                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-brand-teal" 
+                    style={{ width: `${attendanceRate}%` }}
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <div className="flex justify-between text-xs font-semibold mb-1">
+                  <span className="text-gray-600">Fee Collection</span>
+                  <span className="text-gray-900">{collectionRate}%</span>
+                </div>
+                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-emerald-500" 
+                    style={{ width: `${collectionRate}%` }}
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <div className="flex justify-between text-xs font-semibold mb-1">
+                  <span className="text-gray-600">Assessment Progress</span>
+                  <span className="text-gray-900">{assessmentRate}%</span>
+                </div>
+                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-brand-purple" 
+                    style={{ width: `${assessmentRate}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </AppCard>
+
+        {/* KPIs Section */}
+        <div className="lg:col-span-2 space-y-4">
+          <SectionHeader 
+            variant="default"
+            title="Key Performance Indicators"
+            level="h3"
+          />
+          
+          <div className="grid grid-cols-2 gap-4">
+            <KpiCard 
+              variant="primary"
+              label="Revenue"
+              value={`KES ${Math.round(stats.feeCollected / 1000)}k`}
+              subvalue="Collected this term"
+              icon={<DollarSign size={20} />}
+              onClick={() => onNavigate('fees-collection')}
+            />
+            
+            <KpiCard 
+              variant="success"
+              label="Attendance"
+              value={`${attendanceRate}%`}
+              subvalue={`${stats.presentToday} present today`}
+              icon={<Calendar size={20} />}
+              onClick={() => onNavigate('attendance-daily')}
+            />
+            
+            <KpiCard 
+              variant="neutral"
+              label="Total Learners"
+              value={stats.totalStudents.toLocaleString()}
+              subvalue={`${stats.activeStudents} active`}
+              icon={<Users size={20} />}
+              onClick={() => onNavigate('learners-list')}
+            />
+            
+            <KpiCard 
+              variant="warning"
+              label="Teaching Staff"
+              value={stats.totalTeachers}
+              subvalue={`${stats.activeTeachers} active`}
+              icon={<Activity size={20} />}
+              onClick={() => onNavigate('teachers-list')}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Attention Required */}
+      {attentionItems.length > 0 && (
+        <AppCard 
+          variant="flat"
+          title="Attention Required"
+          subtitle="Items needing immediate action"
+        >
+          <div className="space-y-3">
+            {attentionItems.map((item, idx) => (
+              <button
+                key={idx}
+                onClick={item.action}
+                className={`w-full text-left p-4 rounded-lg border-l-4 transition-all hover:shadow-md ${
+                  item.severity === 'high' 
+                    ? 'border-l-rose-500 bg-rose-50 hover:bg-rose-100' 
+                    : 'border-l-amber-500 bg-amber-50 hover:bg-amber-100'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className={`font-semibold text-sm ${
+                      item.severity === 'high' ? 'text-rose-900' : 'text-amber-900'
+                    }`}>
+                      {item.title}
+                    </h4>
+                    <p className={`text-xs mt-1 ${
+                      item.severity === 'high' ? 'text-rose-700' : 'text-amber-700'
+                    }`}>
+                      {item.description}
+                    </p>
+                  </div>
+                  <div className={`text-lg font-bold ${
+                    item.severity === 'high' ? 'text-rose-500' : 'text-amber-500'
+                  }`}>
+                    →
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </AppCard>
+      )}
+
+      {/* School Pulse & Revenue Trend */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <AppCard 
+          title="School Pulse"
+          subtitle="Real-time activity metrics"
+        >
+          <div className="space-y-4">
+            <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-semibold text-blue-900">Students Present</span>
+                <span className="text-2xl font-bold text-blue-600">{stats.presentToday}</span>
+              </div>
+              <p className="text-xs text-blue-700 mt-1">of {stats.totalStudents} enrolled</p>
+            </div>
+
+            <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-100">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-semibold text-emerald-900">Classes Assessed</span>
+                <span className="text-2xl font-bold text-emerald-600">{stats.totalAssessedClasses}</span>
+              </div>
+              <p className="text-xs text-emerald-700 mt-1">Active assessment cycle</p>
+            </div>
+
+            <div className="p-4 bg-brand-purple/5 rounded-lg border border-brand-purple/20">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-semibold text-brand-purple">Fee Collections</span>
+                <span className="text-2xl font-bold text-brand-purple">{collectionRate}%</span>
+              </div>
+              <p className="text-xs text-brand-purple/70 mt-1">KES {Math.round(stats.feePending / 1000)}k outstanding</p>
+            </div>
+          </div>
+        </AppCard>
+
+        <AppCard 
+          title="Revenue Trend"
+          subtitle="Monthly fee collection pattern"
+        >
+          <div className="h-64">
+            {revenueTrendData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={revenueTrendData} margin={{ top: 10, right: 20, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#64748b' }} />
+                  <YAxis tick={{ fontSize: 12, fill: '#64748b' }} />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                    formatter={(value) => `KES ${Math.round(value / 1000)}k`}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="revenue" 
+                    stroke="#8b5cf6" 
+                    fill="#8b5cf6" 
+                    fillOpacity={0.1}
+                    strokeWidth={2}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyState icon={<TrendingUp size={48} />} title="No data" description="Revenue trend data pending" />
+            )}
+          </div>
+        </AppCard>
+      </div>
+
+      {/* AI Insights Placeholder */}
+      <AppCard 
+        variant="elevated"
+        title="AI Insights Placeholder"
+        subtitle="Smart analytics and recommendations coming soon"
+      >
+        <div className="text-center py-12">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-brand-purple/10 rounded-full mb-4">
+            <Brain size={32} className="text-brand-purple" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Zawadi AI Engine</h3>
+          <p className="text-sm text-gray-500 max-w-md mx-auto">
+            Predictive analytics and personalized recommendations will appear here once configured. 
+            Currently analyzing student performance patterns.
+          </p>
+          <button
+            onClick={() => onNavigate('settings-academic')}
+            className="mt-6 px-6 py-2 bg-brand-purple text-white rounded-lg font-semibold text-sm hover:bg-brand-purple/90 transition"
+          >
+            Configure AI Features
           </button>
-        ))}
-      </div>
+        </div>
+      </AppCard>
 
-      {/* Tabs Navigation */}
-      <div className="flex items-center overflow-x-auto border-b border-gray-200 bg-white px-2 rounded-lg shadow-md border border-gray-200">
-        <TabButton id="overview" label="General Overview" icon={Activity} active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} />
-        <TabButton id="financials" label="Financials" icon={Wallet} active={activeTab === 'financials'} onClick={() => setActiveTab('financials')} />
-        <TabButton id="performance" label="Academic Performance" icon={Award} active={activeTab === 'performance'} onClick={() => setActiveTab('performance')} />
-        <TabButton id="operations" label="School Operations" icon={Clock} active={activeTab === 'operations'} onClick={() => setActiveTab('operations')} />
-        <TabButton id="calendar" label="School Calendar" icon={Calendar} active={activeTab === 'calendar'} onClick={() => setActiveTab('calendar')} />
-        <TabButton id="ai-insights" label="AI Smart Insights" icon={Brain} active={activeTab === 'ai-insights'} onClick={() => setActiveTab('ai-insights')} />
-        <TabButton id="hr-overview" label="HR Overview" icon={Briefcase} active={activeTab === 'hr-overview'} onClick={() => setActiveTab('hr-overview')} />
-      </div>
+      {/* Top Classes */}
+      {topClasses.length > 0 && (
+        <AppCard title="Top Performing Classes" subtitle="Academic performance rankings">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left py-3 px-4 font-semibold text-gray-600 uppercase text-xs">Rank</th>
+                  <th className="text-left py-3 px-4 font-semibold text-gray-600 uppercase text-xs">Class</th>
+                  <th className="text-right py-3 px-4 font-semibold text-gray-600 uppercase text-xs">Score</th>
+                  <th className="text-left py-3 px-4 font-semibold text-gray-600 uppercase text-xs">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topClasses.map((cls) => (
+                  <tr key={cls.rank} className="border-b border-gray-50 hover:bg-gray-50 transition">
+                    <td className="py-3 px-4 font-bold text-gray-900">#{cls.rank}</td>
+                    <td className="py-3 px-4 text-gray-900">{cls.name}</td>
+                    <td className="py-3 px-4 text-right font-semibold text-gray-900">{cls.score.toFixed(1)}</td>
+                    <td className="py-3 px-4">
+                      <span className="inline-block px-3 py-1 bg-brand-teal/10 text-brand-teal rounded-full text-xs font-semibold">
+                        {cls.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </AppCard>
+      )}
 
-      {/* Tab Content */}
-      <div className="animate-in slide-in-from-bottom-2 duration-300 rounded-lg">
-        {showUnAssessedSheet && <UnAssessedSheet />}
-        {activeTab === 'overview' && renderOverview()}
-        {activeTab === 'financials' && renderFinancials()}
-        {activeTab === 'performance' && renderPerformance()}
-        {activeTab === 'operations' && renderOperations()}
-        {activeTab === 'calendar' && renderSchoolCalendar()}
-        {activeTab === 'ai-insights' && renderAIInsights()}
-        {activeTab === 'hr-overview' && renderHROverview()}
+      {/* Recent Activity */}
+      {recentActivities.length > 0 && (
+        <AppCard title="Recent Activity" subtitle="Latest actions and updates">
+          <div className="space-y-1">
+            {recentActivities.map((activity, idx) => (
+              <div key={idx} className="p-4 hover:bg-gray-50 rounded-lg transition flex items-start gap-4">
+                <div className="p-2 rounded-lg bg-gray-100">
+                  <activity.icon size={16} className="text-gray-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 truncate">{activity.description}</p>
+                  <p className="text-xs text-gray-500 mt-1">{activity.timestamp}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </AppCard>
+      )}
+
+      {/* Intelligence Engine Section */}
+      <div className="mt-8 pt-6 border-t border-gray-200">
+        <SectionHeader 
+          title="Intelligence Engine" 
+          level="h2"
+          subtitle="AI-powered insights and analytics"
+        />
+        
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+          {/* AI Insights */}
+          <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
+            <AIInsights contextType="school" contextId="default" />
+          </Suspense>
+
+          {/* Risk Alerts */}
+          <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
+            <RiskAlerts contextType="school" contextId="default" />
+          </Suspense>
+
+          {/* Fee Collection Forecast */}
+          <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
+            <FeeCollectionForecast contextType="school" contextId="default" />
+          </Suspense>
+
+          {/* Academic Insights */}
+          <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
+            <AcademicInsights contextType="school" contextId="default" />
+          </Suspense>
+        </div>
       </div>
     </div>
   );

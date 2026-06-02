@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import MobileDashboard from './MobileDashboard';
+import MobileDashboard from './dashboard/MobileDashboard';
 
 /**
  * Dashboard Responsive Wrapper

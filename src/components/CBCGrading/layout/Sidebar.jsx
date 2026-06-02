@@ -9,16 +9,19 @@ import {
   BarChart3,
   BookOpen,
   Building2,
+  Brain,
   ChevronDown,
   CreditCard,
   FileText,
   HelpCircle,
   Home,
   Mail,
+  MoreHorizontal,
   Receipt,
-  Rocket
+  Rocket,
+  Wrench
 } from 'lucide-react';
-import { useNavigation } from '../hooks/useNavigation';
+import { useNavigation, groupNavigationByCategory } from '../hooks/useNavigation';
 import { useInstitutionLabels } from '../../../hooks/useInstitutionLabels';
 import { usePermissions } from '../../../hooks/usePermissions';
 
@@ -181,16 +184,12 @@ const Sidebar = React.memo(({
 
   const theme = useMemo(() => getSidebarTheme(brandingSettings), [brandingSettings]);
 
-  const {
-    dashboardSection,
-    communicationSection,
-    schoolSections,
-    lmsSection,
-    studentLmsSection,
-    backOfficeSections,
-    docsCenterSection,
-    systemAdminSections,
-  } = useNavigation();
+  const navData = useNavigation();
+
+  // Group navigation into simplified categories
+  const groupedNav = useMemo(() => {
+    return groupNavigationByCategory(navData);
+  }, [navData]);
 
   const handleSectionClick = useCallback((section) => {
     const path = findDefaultPath(section.items);
@@ -333,41 +332,32 @@ const Sidebar = React.memo(({
 
       {/* ── Nav scroll area ──────────────────────────────────────────────── */}
       <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2 space-y-0.5 custom-scrollbar">
-
-        {dashboardSection && (
-          <SingleItem
-            section={dashboardSection}
-            currentPage={currentPage}
-            onNavigate={onNavigate}
-            sidebarOpen={sidebarOpen}
-            accentColor={theme.accent}
-          />
-        )}
-
-        {communicationSection && (
-          <NavSection key={communicationSection.id} section={communicationSection} {...sharedNavProps} />
-        )}
-
-        {schoolSections.length > 0 && (
-          <CategoryGroup label={labels.schoolGroup || 'School'} sidebarOpen={sidebarOpen}>
-            {schoolSections.map(s => <NavSection key={s.id} section={s} {...sharedNavProps} />)}
-          </CategoryGroup>
-        )}
-
-        {lmsSection && <NavSection key={lmsSection.id} section={lmsSection} {...sharedNavProps} />}
-        {studentLmsSection && <NavSection key={studentLmsSection.id} section={studentLmsSection} {...sharedNavProps} />}
-
-        {backOfficeSections.length > 0 && (
-          <CategoryGroup label={labels.backOfficeGroup || 'Back Office'} sidebarOpen={sidebarOpen}>
-            {backOfficeSections.map(s => <NavSection key={s.id} section={s} {...sharedNavProps} />)}
-          </CategoryGroup>
-        )}
-
-        {docsCenterSection && (
-          <div className="mt-2 pt-2 border-t border-white/10 -mx-2 px-2">
-            <NavSection key={docsCenterSection.id} section={docsCenterSection} {...sharedNavProps} />
+        {groupedNav.map((group) => (
+          <div key={group.id}>
+            {sidebarOpen && group.items.length > 0 && (
+              <div className="px-3 py-2 text-[11px] font-extrabold uppercase tracking-[0.18em] text-white/55 flex items-center gap-2">
+                {group.icon && <group.icon size={14} className="flex-shrink-0" />}
+                <span>{group.label}</span>
+              </div>
+            )}
+            <div className="space-y-0.5">
+              {group.items.map((section) => (
+                <NavSection
+                  key={section.id}
+                  section={section}
+                  handleSectionClick={handleSectionClick}
+                  sidebarOpen={sidebarOpen}
+                  currentPage={currentPage}
+                  onNavigate={onNavigate}
+                  accentColor={theme.accent}
+                />
+              ))}
+            </div>
+            {sidebarOpen && group.id !== groupedNav[groupedNav.length - 1].id && (
+              <div className="mt-3 mb-1 border-t border-white/10 -mx-2" />
+            )}
           </div>
-        )}
+        ))}
       </nav>
 
       {/* ── Footer ───────────────────────────────────────────────────────── */}
@@ -375,22 +365,15 @@ const Sidebar = React.memo(({
         style={{ backgroundColor: theme.dark }}
         className="flex-shrink-0 border-t border-white/10 px-2 py-2 space-y-0.5"
       >
-        {systemAdminSections.length > 0 && (
-          <>
-            {sidebarOpen && (
-              <p className="text-[9px] text-gray-400 font-medium uppercase tracking-wider mt-1 px-3">
-                {role === 'TEACHER'      ? labels.teacher :
-                 role === 'PARENT'       ? 'Parent' :
-                 role === 'ADMIN'        ? 'Administrator' :
-                 role === 'HEAD_TEACHER' ? (labels.headLabel || 'Principal') :
-                 role === 'SUPER_ADMIN'  ? 'Administrator' :
-                 (user?.role || 'Guest')}
-              </p>
-            )}
-            {systemAdminSections.map(s => (
-              <NavSection key={s.id} section={s} {...sharedNavProps} isBottom />
-            ))}
-          </>
+        {sidebarOpen && (
+          <p className="text-[9px] text-gray-400 font-medium uppercase tracking-wider mt-1 px-3">
+            {role === 'TEACHER'      ? labels.teacher :
+             role === 'PARENT'       ? 'Parent' :
+             role === 'ADMIN'        ? 'Administrator' :
+             role === 'HEAD_TEACHER' ? (labels.headLabel || 'Principal') :
+             role === 'SUPER_ADMIN'  ? 'Administrator' :
+             (user?.role || 'Guest')}
+          </p>
         )}
 
         {onOpenGitDialog && ['SUPER_ADMIN', 'ADMIN'].includes(role) && (

@@ -21,7 +21,7 @@ import {
     TrendingUp, Zap, CheckSquare, Settings, BookOpen,
     Users2, Truck, Fingerprint, CreditCard, PieChart,
     Package, Building2, HelpCircle, Receipt, FileText,
-    Shirt, ClipboardList, Video, PlayCircle, Gift, Wrench, Activity
+    Shirt, ClipboardList, Video, PlayCircle, Gift, Wrench, Activity, Brain, MoreHorizontal
 } from 'lucide-react';
 
 const focusModules = ['dashboard', 'communications', 'planner', 'learners', 'teachers', 'parents', 'assessment', 'learning-hub', 'lms', 'attendance', 'docs-center', 'facilities', 'settings', 'hr', 'finance', 'inventory', 'library', 'transport', 'biometric'];
@@ -772,6 +772,67 @@ export const useNavigation = () => {
         docsCenterSection,
         systemAdminSections
     ]);
+};
+
+/**
+ * Organizes navigation into simplified grouped categories:
+ * Home, Academics, Finance, Operations, Communication, Insights, More
+ */
+export const groupNavigationByCategory = (nav) => {
+    const groups = {
+        home: { id: 'home', label: 'Home', icon: nav.dashboardSection?.icon, items: [] },
+        academics: { id: 'academics', label: 'Academics', items: [] },
+        finance: { id: 'finance', label: 'Finance', icon: CreditCard, items: [] },
+        operations: { id: 'operations', label: 'Operations', icon: Wrench, items: [] },
+        communication: { id: 'communication', label: 'Communication', icon: Mail, items: [] },
+        insights: { id: 'insights', label: 'Insights', icon: Brain, items: [] },
+        more: { id: 'more', label: 'More', icon: MoreHorizontal, items: [], collapsed: true },
+    };
+
+    // Populate Home
+    if (nav.dashboardSection) {
+        groups.home.items.push(nav.dashboardSection);
+    }
+
+    // Populate Academics
+    if (nav.schoolSections && nav.schoolSections.length > 0) {
+        groups.academics.items.push(...nav.schoolSections);
+    }
+    if (nav.lmsSection) {
+        groups.academics.items.push(nav.lmsSection);
+    }
+    if (nav.studentLmsSection) {
+        groups.academics.items.push(nav.studentLmsSection);
+    }
+
+    // Populate Finance
+    const financeSection = nav.backOfficeSections?.find(s => s.id === 'finance');
+    if (financeSection) {
+        groups.finance.items.push(financeSection);
+    }
+
+    // Populate Operations
+    const operationsIds = ['hr', 'inventory', 'library', 'transport', 'biometric'];
+    const operationsSections = nav.backOfficeSections?.filter(s => operationsIds.includes(s.id)) || [];
+    if (operationsSections.length > 0) {
+        groups.operations.items.push(...operationsSections);
+    }
+
+    // Populate Communication
+    if (nav.communicationSection) {
+        groups.communication.items.push(nav.communicationSection);
+    }
+    if (nav.docsCenterSection) {
+        groups.communication.items.push(nav.docsCenterSection);
+    }
+
+    // Populate More (less-used sections)
+    if (nav.systemAdminSections && nav.systemAdminSections.length > 0) {
+        groups.more.items.push(...nav.systemAdminSections);
+    }
+
+    // Filter out empty groups
+    return Object.values(groups).filter(group => group.items.length > 0);
 };
 
 /**
