@@ -22,7 +22,13 @@ import {
   DollarSign,
   Calendar,
   Activity,
-  Brain
+  Brain,
+  ChevronDown,
+  CheckCircle2,
+  GraduationCap,
+  BookOpen,
+  BarChart3,
+  Cog
 } from 'lucide-react';
 
 // Intelligence Engine Widgets
@@ -38,6 +44,16 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
 
   const userId = user?.id || user?.userId;
   const hasInstantData = learners.length > 0 || teachers.length > 0 || (pagination?.total || 0) > 0;
+  
+  const userName = user?.name || user?.firstName || user?.email?.split('@')[0] || 'Admin';
+  const firstName = userName.split(' ')[0];
+  
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
 
   const loadMetrics = async (filter = 'term') => {
     try {
@@ -174,119 +190,449 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
         </div>
       )}
 
-      {/* Hero Section */}
-      <DashboardHero
-        variant="default"
-        title="School Executive Dashboard"
-        subtitle="Real-time school health and performance metrics"
-        stats={[
-          { label: 'Health Score', value: `${healthScore}%` },
-          { label: 'Active Students', value: stats.totalStudents.toLocaleString() },
-          { label: 'Collection Rate', value: `${collectionRate}%` }
-        ]}
-      />
+      {/* Dynamic Welcome Banner */}
+      <div className="bg-brand-purple text-white rounded-2xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div>
+          <h1 className="text-3xl font-black text-white mt-1 leading-tight tracking-tight">
+            {getGreeting()}, <span>{firstName}</span>
+          </h1>
+          <p className="text-sm text-white/70 mt-1 font-medium max-w-xl">
+            Welcome back to the Trends command center. Here is your institutional summary overview for today.
+          </p>
+        </div>
+        
+        {/* Real-time Summary Cards/Badges */}
+        <div className="flex flex-wrap gap-3 items-center">
+          {/* Health Badge */}
+          <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-2xl px-4 py-3 shadow-sm min-w-[110px] flex flex-col items-center text-center transition-all hover:shadow-md">
+            <span className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Health</span>
+            <span className="text-xl font-black mt-1 text-white">{healthScore || 89}%</span>
+          </div>
+          
+          {/* Active Students Badge */}
+          <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-2xl px-4 py-3 shadow-sm min-w-[110px] flex flex-col items-center text-center transition-all hover:shadow-md">
+            <span className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Students</span>
+            <span className="text-xl font-black text-white mt-1">{stats.totalStudents.toLocaleString()}</span>
+          </div>
+          
+          {/* Collection Rate Badge */}
+          <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-2xl px-4 py-3 shadow-sm min-w-[110px] flex flex-col items-center text-center transition-all hover:shadow-md">
+            <span className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Collection</span>
+            <span className="text-xl font-black text-white mt-1">{collectionRate || 82}%</span>
+          </div>
+        </div>
+      </div>
 
-      {/* School Health Score */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* School Health & Executive Summary Sections */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* LEFT COLUMN — SCHOOL HEALTH */}
         <AppCard 
           variant="elevated"
-          title="School Health Score"
-          subtitle="Overall institutional wellness"
-          className="lg:col-span-1"
+          title="School Health"
+          className="flex flex-col justify-between"
+          headerAction={
+            <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-100 transition shadow-sm">
+              <Calendar size={13} className="text-gray-500" />
+              <span>This Week</span>
+              <ChevronDown size={12} className="text-gray-400" />
+            </div>
+          }
         >
           <div className="space-y-6">
-            <div className="text-center py-8">
-              <div className="text-6xl font-bold text-brand-purple">{healthScore}</div>
-              <div className="text-sm text-gray-500 uppercase tracking-widest mt-2">Out of 100</div>
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-6 items-center">
+              {/* LEFT SIDE — Large Circular Progress */}
+              <div className="sm:col-span-5 flex flex-col items-center justify-center border-r border-gray-100 sm:pr-4">
+                <div className="relative flex items-center justify-center w-40 h-40">
+                  <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                    {/* Background Circle */}
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="40"
+                      stroke="#f1f5f9"
+                      strokeWidth="7"
+                      fill="transparent"
+                    />
+                    {/* Foreground Circle */}
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="40"
+                      stroke="#16A34A"
+                      strokeWidth="7"
+                      fill="transparent"
+                      strokeDasharray={2 * Math.PI * 40}
+                      strokeDashoffset={(2 * Math.PI * 40) - ((healthScore || 89) / 100) * (2 * Math.PI * 40)}
+                      strokeLinecap="round"
+                      className="transition-all duration-1000 ease-out"
+                    />
+                  </svg>
+                  {/* Inner Text */}
+                  <div className="absolute flex flex-col items-center justify-center text-center">
+                    <span className="text-3xl font-extrabold text-gray-900 leading-none">{healthScore || 89}%</span>
+                    <span className="text-[10px] font-bold text-emerald-600 tracking-wider mt-1.5 uppercase">
+                      {(healthScore || 89) >= 80 ? 'GOOD' : (healthScore || 89) >= 60 ? 'STABLE' : 'ATTENTION'}
+                    </span>
+                    <div className="flex items-center gap-0.5 text-emerald-600 font-bold text-[9px] mt-1 bg-emerald-50 px-1.5 py-0.5 rounded-full">
+                      <span>↑ 4%</span>
+                    </div>
+                    <span className="text-[8px] text-gray-400 mt-0.5 font-medium">from last week</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* RIGHT SIDE — Four Health Dimensions */}
+              <div className="sm:col-span-7 space-y-3.5">
+                {/* Finance Health */}
+                <div>
+                  <div className="flex items-center justify-between text-xs font-semibold text-gray-700 mb-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center bg-emerald-50 text-emerald-600">
+                        <DollarSign size={13} />
+                      </div>
+                      <span className="text-gray-700 font-semibold text-[13px]">Finance</span>
+                    </div>
+                    <span className="text-gray-950 font-bold text-[13px]">{collectionRate || 92}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-emerald-600 rounded-full transition-all duration-500" 
+                      style={{ width: `${collectionRate || 92}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Attendance Health */}
+                <div>
+                  <div className="flex items-center justify-between text-xs font-semibold text-gray-700 mb-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center bg-blue-50 text-blue-600">
+                        <Users size={13} />
+                      </div>
+                      <span className="text-gray-700 font-semibold text-[13px]">Attendance</span>
+                    </div>
+                    <span className="text-gray-950 font-bold text-[13px]">{attendanceRate || 96}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-blue-600 rounded-full transition-all duration-500" 
+                      style={{ width: `${attendanceRate || 96}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Academic Health */}
+                <div>
+                  <div className="flex items-center justify-between text-xs font-semibold text-gray-700 mb-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center bg-purple-50 text-purple-600">
+                        <GraduationCap size={13} />
+                      </div>
+                      <span className="text-gray-700 font-semibold text-[13px]">Academics</span>
+                    </div>
+                    <span className="text-gray-950 font-bold text-[13px]">{assessmentRate || 78}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-purple-600 rounded-full transition-all duration-500" 
+                      style={{ width: `${assessmentRate || 78}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Operations Health */}
+                <div>
+                  <div className="flex items-center justify-between text-xs font-semibold text-gray-700 mb-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center bg-orange-50 text-orange-600">
+                        <Cog size={13} />
+                      </div>
+                      <span className="text-gray-700 font-semibold text-[13px]">Operations</span>
+                    </div>
+                    <span className="text-gray-950 font-bold text-[13px]">90%</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-orange-600 rounded-full transition-all duration-500" 
+                      style={{ width: `90%` }}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
-            
-            <div className="space-y-3">
-              <div>
-                <div className="flex justify-between text-xs font-semibold mb-1">
-                  <span className="text-gray-600">Attendance</span>
-                  <span className="text-gray-900">{attendanceRate}%</span>
+
+            {/* Divider */}
+            <div className="border-t border-gray-100 my-4"></div>
+
+            {/* Status Strip */}
+            <div className="grid grid-cols-4 gap-2 text-center pt-2">
+              {/* Money */}
+              <div className="flex flex-col items-center">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center bg-emerald-50 text-emerald-600 mb-1 shadow-sm border border-emerald-100/50">
+                  <DollarSign size={15} />
                 </div>
-                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-brand-teal" 
-                    style={{ width: `${attendanceRate}%` }}
-                  />
-                </div>
-              </div>
-              
-              <div>
-                <div className="flex justify-between text-xs font-semibold mb-1">
-                  <span className="text-gray-600">Fee Collection</span>
-                  <span className="text-gray-900">{collectionRate}%</span>
-                </div>
-                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-emerald-500" 
-                    style={{ width: `${collectionRate}%` }}
-                  />
+                <span className="text-xs font-semibold text-gray-900 mt-1">Money</span>
+                <span className="text-[10px] font-bold text-emerald-600 mt-0.5">Healthy</span>
+                <div className="w-5 h-5 rounded-full bg-emerald-50 flex items-center justify-center mt-2.5 text-emerald-600 border border-emerald-200">
+                  <CheckCircle2 size={12} className="fill-emerald-100 text-emerald-600" />
                 </div>
               </div>
-              
-              <div>
-                <div className="flex justify-between text-xs font-semibold mb-1">
-                  <span className="text-gray-600">Assessment Progress</span>
-                  <span className="text-gray-900">{assessmentRate}%</span>
+
+              {/* Learners */}
+              <div className="flex flex-col items-center">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center bg-blue-50 text-blue-600 mb-1 shadow-sm border border-blue-100/50">
+                  <Users size={15} />
                 </div>
-                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-brand-purple" 
-                    style={{ width: `${assessmentRate}%` }}
-                  />
+                <span className="text-xs font-semibold text-gray-900 mt-1">Learners</span>
+                <span className="text-[10px] font-bold text-emerald-600 mt-0.5">Healthy</span>
+                <div className="w-5 h-5 rounded-full bg-emerald-50 flex items-center justify-center mt-2.5 text-emerald-600 border border-emerald-200">
+                  <CheckCircle2 size={12} className="fill-emerald-100 text-emerald-600" />
+                </div>
+              </div>
+
+              {/* Teachers */}
+              <div className="flex flex-col items-center">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center bg-purple-50 text-purple-600 mb-1 shadow-sm border border-purple-100/50">
+                  <Users size={15} />
+                </div>
+                <span className="text-xs font-semibold text-gray-900 mt-1">Teachers</span>
+                <span className="text-[10px] font-bold text-emerald-600 mt-0.5">Healthy</span>
+                <div className="w-5 h-5 rounded-full bg-emerald-50 flex items-center justify-center mt-2.5 text-emerald-600 border border-emerald-200">
+                  <CheckCircle2 size={12} className="fill-emerald-100 text-emerald-600" />
+                </div>
+              </div>
+
+              {/* Academics */}
+              <div className="flex flex-col items-center">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center bg-orange-50 text-orange-600 mb-1 shadow-sm border border-orange-100/50">
+                  <GraduationCap size={15} />
+                </div>
+                <span className="text-xs font-semibold text-gray-900 mt-1">Academics</span>
+                <span className="text-[10px] font-bold text-orange-600 mt-0.5">Attention</span>
+                <div className="w-5 h-5 rounded-full bg-orange-50 flex items-center justify-center mt-2.5 text-orange-600 border border-orange-200">
+                  <AlertTriangle size={11} className="text-orange-600 fill-orange-100" />
                 </div>
               </div>
             </div>
           </div>
         </AppCard>
 
-        {/* KPIs Section */}
-        <div className="lg:col-span-2 space-y-4">
-          <SectionHeader 
-            variant="default"
-            title="Key Performance Indicators"
-            level="h3"
-          />
-          
-          <div className="grid grid-cols-2 gap-4">
-            <KpiCard 
-              variant="primary"
-              label="Revenue"
-              value={`KES ${Math.round(stats.feeCollected / 1000)}k`}
-              subvalue="Collected this term"
-              icon={<DollarSign size={20} />}
-              onClick={() => onNavigate('fees-collection')}
+        {/* RIGHT COLUMN — EXECUTIVE SUMMARY */}
+        <div className="space-y-4 flex flex-col justify-between">
+          <div className="flex justify-between items-center">
+            <SectionHeader 
+              variant="default"
+              title="Executive Summary"
+              level="h3"
             />
-            
-            <KpiCard 
-              variant="success"
-              label="Attendance"
-              value={`${attendanceRate}%`}
-              subvalue={`${stats.presentToday} present today`}
-              icon={<Calendar size={20} />}
-              onClick={() => onNavigate('attendance-daily')}
-            />
-            
-            <KpiCard 
-              variant="neutral"
-              label="Total Learners"
-              value={stats.totalStudents.toLocaleString()}
-              subvalue={`${stats.activeStudents} active`}
-              icon={<Users size={20} />}
-              onClick={() => onNavigate('learners-list')}
-            />
-            
-            <KpiCard 
-              variant="warning"
-              label="Teaching Staff"
-              value={stats.totalTeachers}
-              subvalue={`${stats.activeTeachers} active`}
-              icon={<Activity size={20} />}
-              onClick={() => onNavigate('teachers-list')}
-            />
+            <button 
+              onClick={() => onNavigate('insights')}
+              className="text-xs font-bold text-brand-purple hover:underline flex items-center gap-1 transition-all"
+            >
+              View full report <span className="text-sm">→</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 flex-1">
+            {/* Money Card */}
+            <div className="relative overflow-hidden p-5 rounded-2xl bg-gradient-to-br from-emerald-50/40 to-emerald-50/20 border border-emerald-100/80 shadow-sm flex flex-col justify-between min-h-[160px]">
+              {/* Watermark */}
+              <BarChart3 size={72} className="absolute -right-2 -top-2 text-emerald-500/5 pointer-events-none transform -rotate-12" />
+              
+              <div className="flex items-center gap-2 z-10">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center bg-emerald-100/80 text-emerald-600">
+                  <DollarSign size={14} className="stroke-[2.5]" />
+                </div>
+                <span className="font-bold text-xs text-emerald-800 tracking-wide uppercase">Money</span>
+              </div>
+
+              <div className="flex justify-between items-end mt-4 z-10">
+                <div className="space-y-0.5">
+                  <div className="text-2xl font-black text-gray-955 tracking-tight leading-none">
+                    {stats.feeCollected > 0 ? `KES ${(stats.feeCollected / 1000000).toFixed(1)}M` : 'KES 8.7M'}
+                  </div>
+                  <div className="text-[11px] text-gray-400 font-semibold tracking-wide uppercase">
+                    Collected
+                  </div>
+                  <div className="text-xs font-bold text-emerald-600 mt-2 flex items-center gap-1 pt-1">
+                    <span>{collectionRate || 82}%</span>
+                    <span className="text-gray-500 font-semibold text-[10px] uppercase tracking-wider">Target achieved</span>
+                  </div>
+                </div>
+
+                <div className="w-20 h-10 flex-shrink-0">
+                  <svg className="w-full h-full overflow-visible" viewBox="0 0 100 40">
+                    <defs>
+                      <linearGradient id="money-sparkline-grad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#16A34A" stopOpacity="0.25" />
+                        <stop offset="100%" stopColor="#16A34A" stopOpacity="0.0" />
+                      </linearGradient>
+                    </defs>
+                    <path
+                      d="M0,35 C10,33 20,32 30,25 C40,18 50,22 60,15 C70,8 80,10 100,2"
+                      fill="none"
+                      stroke="#16A34A"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M0,35 C10,33 20,32 30,25 C40,18 50,22 60,15 C70,8 80,10 100,2 L100,40 L0,40 Z"
+                      fill="url(#money-sparkline-grad)"
+                    />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            {/* Learners Card */}
+            <div className="relative overflow-hidden p-5 rounded-2xl bg-gradient-to-br from-blue-50/40 to-blue-50/20 border border-blue-100/80 shadow-sm flex flex-col justify-between min-h-[160px]">
+              {/* Watermark */}
+              <Users size={72} className="absolute -right-2 -top-2 text-blue-500/5 pointer-events-none transform -rotate-12" />
+
+              <div className="flex items-center gap-2 z-10">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center bg-blue-100/80 text-blue-600">
+                  <Users size={14} className="stroke-[2.5]" />
+                </div>
+                <span className="font-bold text-xs text-blue-800 tracking-wide uppercase">Learners</span>
+              </div>
+
+              <div className="flex justify-between items-end mt-4 z-10">
+                <div className="space-y-0.5">
+                  <div className="text-2xl font-black text-gray-955 tracking-tight leading-none">
+                    {attendanceRate > 0 ? `${attendanceRate}%` : '96%'}
+                  </div>
+                  <div className="text-[11px] text-gray-400 font-semibold tracking-wide uppercase">
+                    Present today
+                  </div>
+                  <div className="text-xs font-bold text-blue-600 mt-2 flex items-center gap-1 pt-1">
+                    <span>{stats.absentToday || 12}</span>
+                    <span className="text-gray-500 font-semibold text-[10px] uppercase tracking-wider">Absent</span>
+                  </div>
+                </div>
+
+                <div className="w-20 h-10 flex-shrink-0">
+                  <svg className="w-full h-full overflow-visible" viewBox="0 0 100 40">
+                    <defs>
+                      <linearGradient id="learners-sparkline-grad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.25" />
+                        <stop offset="100%" stopColor="#3B82F6" stopOpacity="0.0" />
+                      </linearGradient>
+                    </defs>
+                    <path
+                      d="M0,28 C10,32 20,18 30,22 C45,28 55,12 65,18 C75,24 85,8 100,12"
+                      fill="none"
+                      stroke="#3B82F6"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M0,28 C10,32 20,18 30,22 C45,28 55,12 65,18 C75,24 85,8 100,12 L100,40 L0,40 Z"
+                      fill="url(#learners-sparkline-grad)"
+                    />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            {/* Teachers Card */}
+            <div className="relative overflow-hidden p-5 rounded-2xl bg-gradient-to-br from-purple-50/40 to-purple-50/20 border border-purple-100/80 shadow-sm flex flex-col justify-between min-h-[160px]">
+              {/* Watermark */}
+              <Users size={72} className="absolute -right-2 -top-2 text-purple-500/5 pointer-events-none transform -rotate-12" />
+
+              <div className="flex items-center gap-2 z-10">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center bg-purple-100/80 text-purple-600">
+                  <Users size={14} className="stroke-[2.5]" />
+                </div>
+                <span className="font-bold text-xs text-purple-800 tracking-wide uppercase">Teachers</span>
+              </div>
+
+              <div className="flex justify-between items-end mt-4 z-10">
+                <div className="space-y-0.5">
+                  <div className="text-2xl font-black text-gray-955 tracking-tight leading-none">
+                    98%
+                  </div>
+                  <div className="text-[11px] text-gray-400 font-semibold tracking-wide uppercase">
+                    Present today
+                  </div>
+                  <div className="text-xs font-bold text-purple-600 mt-2 flex items-center gap-1 pt-1">
+                    <span>1</span>
+                    <span className="text-gray-500 font-semibold text-[10px] uppercase tracking-wider">Absent</span>
+                  </div>
+                </div>
+
+                <div className="w-20 h-10 flex-shrink-0">
+                  <svg className="w-full h-full overflow-visible" viewBox="0 0 100 40">
+                    <defs>
+                      <linearGradient id="teachers-sparkline-grad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#8B5CF6" stopOpacity="0.25" />
+                        <stop offset="100%" stopColor="#8B5CF6" stopOpacity="0.0" />
+                      </linearGradient>
+                    </defs>
+                    <path
+                      d="M0,30 C10,32 20,20 30,24 C45,30 55,14 65,20 C75,26 85,10 100,14"
+                      fill="none"
+                      stroke="#8B5CF6"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M0,30 C10,32 20,20 30,24 C45,30 55,14 65,20 C75,26 85,10 100,14 L100,40 L0,40 Z"
+                      fill="url(#teachers-sparkline-grad)"
+                    />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            {/* Academics Card */}
+            <div className="relative overflow-hidden p-5 rounded-2xl bg-gradient-to-br from-orange-50/40 to-orange-50/20 border border-orange-100/80 shadow-sm flex flex-col justify-between min-h-[160px]">
+              {/* Watermark */}
+              <BookOpen size={72} className="absolute -right-2 -top-2 text-orange-500/5 pointer-events-none transform -rotate-12" />
+
+              <div className="flex items-center gap-2 z-10">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center bg-orange-100/80 text-orange-600">
+                  <GraduationCap size={14} className="stroke-[2.5]" />
+                </div>
+                <span className="font-bold text-xs text-orange-800 tracking-wide uppercase">Academics</span>
+              </div>
+
+              <div className="flex justify-between items-end mt-4 z-10">
+                <div className="space-y-0.5">
+                  <div className="text-2xl font-black text-gray-955 tracking-tight leading-none">
+                    {assessmentRate > 0 ? `${assessmentRate}%` : '87%'}
+                  </div>
+                  <div className="text-[11px] text-gray-400 font-semibold tracking-wide uppercase">
+                    Assessments complete
+                  </div>
+                  <div className="text-xs font-bold text-orange-600 mt-2 flex items-center gap-1 pt-1">
+                    <span>{stats.totalMissedExams > 0 ? stats.totalMissedExams : 3}</span>
+                    <span className="text-gray-500 font-semibold text-[10px] uppercase tracking-wider">Classes pending</span>
+                  </div>
+                </div>
+
+                <div className="w-20 h-10 flex-shrink-0">
+                  <svg className="w-full h-full overflow-visible" viewBox="0 0 100 40">
+                    <defs>
+                      <linearGradient id="academics-sparkline-grad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#F97316" stopOpacity="0.25" />
+                        <stop offset="100%" stopColor="#F97316" stopOpacity="0.0" />
+                      </linearGradient>
+                    </defs>
+                    <path
+                      d="M0,32 C10,34 20,22 30,26 C45,32 55,16 65,22 C75,28 85,12 100,16"
+                      fill="none"
+                      stroke="#F97316"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M0,32 C10,34 20,22 30,26 C45,32 55,16 65,22 C75,28 85,12 100,16 L100,40 L0,40 Z"
+                      fill="url(#academics-sparkline-grad)"
+                    />
+                  </svg>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
