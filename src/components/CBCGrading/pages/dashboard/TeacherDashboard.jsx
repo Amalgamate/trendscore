@@ -5,6 +5,7 @@
 
 import React, { useEffect, useState, Suspense } from 'react';
 import { dashboardAPI } from '../../../../services/api';
+import { useRolePreview } from '../../../../contexts/RolePreviewContext';
 import {
   AppCard,
   EmptyState
@@ -29,6 +30,7 @@ import AttendanceAnomalies from '../../widgets/AttendanceAnomalies';
 import AcademicInsights from '../../widgets/AcademicInsights';
 
 const TeacherDashboard = ({ user, onNavigate }) => {
+  const rolePreview = useRolePreview();
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState(null);
   const [apiError, setApiError] = useState(null);
@@ -47,6 +49,11 @@ const TeacherDashboard = ({ user, onNavigate }) => {
       }
     } catch (error) {
       console.error('Failed to load teacher metrics:', error);
+      if (rolePreview?.isPreviewingRole) {
+        setMetrics({});
+        setApiError(null);
+        return;
+      }
       setApiError(error.message || 'Could not reach the server.');
     } finally {
       setLoading(false);
@@ -56,7 +63,7 @@ const TeacherDashboard = ({ user, onNavigate }) => {
   useEffect(() => {
     loadMetrics();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [userId, rolePreview?.isPreviewingRole]);
 
   // Mock data for daily workflow
   const todaysClasses = [

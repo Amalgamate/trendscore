@@ -5,6 +5,7 @@
 
 import React, { useEffect, useState, Suspense } from 'react';
 import { dashboardAPI } from '../../../../services/api';
+import { useRolePreview } from '../../../../contexts/RolePreviewContext';
 import {
   AppCard,
   EmptyState
@@ -32,6 +33,7 @@ import AcademicInsights from '../../widgets/AcademicInsights';
 import RiskAlerts from '../../widgets/RiskAlerts';
 
 const ParentDashboard = ({ user, onNavigate }) => {
+  const rolePreview = useRolePreview();
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState(null);
   const [apiError, setApiError] = useState(null);
@@ -50,6 +52,11 @@ const ParentDashboard = ({ user, onNavigate }) => {
       }
     } catch (error) {
       console.error('Failed to load parent metrics:', error);
+      if (rolePreview?.isPreviewingRole) {
+        setMetrics({});
+        setApiError(null);
+        return;
+      }
       setApiError(error.message || 'Could not reach the server.');
     } finally {
       setLoading(false);
@@ -59,7 +66,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
   useEffect(() => {
     loadMetrics();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [userId, rolePreview?.isPreviewingRole]);
 
   // Mock data - child-centric
   const myChildren = [
