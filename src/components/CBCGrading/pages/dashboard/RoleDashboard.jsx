@@ -52,6 +52,7 @@ const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brand
       case 'ADMIN':
         return <SecondaryAdminDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
       case 'HEAD_TEACHER':
+      case 'HEAD_OF_CURRICULUM':
         return <HeadTeacherDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
       case 'TEACHER':
         return <TeacherDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
@@ -80,6 +81,7 @@ const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brand
       return <AdminDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
 
     case 'HEAD_TEACHER':
+    case 'HEAD_OF_CURRICULUM':
       return <HeadTeacherDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
 
     case 'TEACHER':
