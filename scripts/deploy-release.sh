@@ -464,7 +464,7 @@ backup_database() {
     db_name="$(read_env_value "${MAIN_DIR}/.env" DB_NAME)"
     db_user="${db_user:-postgres}"
     db_name="${db_name:-zawadi_sms}"
-    docker_cmd compose exec -T db pg_dump -U "${db_user}" "${db_name}" \
+    docker_cmd compose exec -T db pg_dump -U "${db_user}" "${db_name}" < /dev/null \
       | run_as_root tee "${dest}/database.sql" >/dev/null
     echo "${dest}/database.sql" | run_as_root tee "${dest}/LATEST" >/dev/null
     return 0
@@ -477,7 +477,7 @@ backup_database() {
   db_user="${db_user:-postgres}"
   db_name="${db_name:-postgres}"
   docker_cmd compose --env-file "${env_file}" -p "${project}" -f "${STACK_COMPOSE_FILE}" \
-    exec -T db pg_dump -U "${db_user}" "${db_name}" \
+    exec -T db pg_dump -U "${db_user}" "${db_name}" < /dev/null \
     | run_as_root tee "${dest}/database.sql" >/dev/null
   echo "${dest}/database.sql" | run_as_root tee "${dest}/LATEST" >/dev/null
 }
