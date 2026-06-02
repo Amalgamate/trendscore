@@ -216,6 +216,8 @@ const PageRouter = ({
             return user?.role === 'STUDENT'
               ? <StudentDashboardView user={user} onNavigate={handleNavigate} />
               : <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} />;
+          case 'finance-dashboard':
+            return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} />;
 
           // Planner Module
           case 'planner-calendar':
@@ -429,6 +431,7 @@ const PageRouter = ({
 
           case 'fees-structure': return <FeeStructurePage />;
           case 'fees-types': return <FeeTypesPage />;
+          case 'fees-invoices':
           case 'fees-collection': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} />;
           case 'fees-invoice-detail': return <InvoiceDetailPage invoice={pageParams.invoice} />;
           case 'fees-record-payment': return <RecordPaymentPage invoice={pageParams.invoice} initialMode={pageParams.initialMode} />;

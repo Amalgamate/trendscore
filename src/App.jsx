@@ -197,7 +197,7 @@ function AppContent() {
         pathname !== '/auth/setup-institution' &&
         pathname !== '/auth/reset-password'
       ) {
-        navigate('/app', { replace: true });
+        navigate(user?.role === 'ACCOUNTANT' ? '/app/accountant/dashboard' : '/app', { replace: true });
       }
     } else {
       if (pathname.startsWith('/app')) navigate('/auth/login', { replace: true });
@@ -223,7 +223,7 @@ function AppContent() {
       // type before entering the app. The backend signals this via requiresInstitutionSetup.
       navigate('/auth/setup-institution', { replace: true });
     } else {
-      navigate('/app', { replace: true });
+      navigate(userData.role === 'ACCOUNTANT' ? '/app/accountant/dashboard' : '/app', { replace: true });
     }
   };
 

@@ -633,3 +633,14 @@ code {
 .scroll-pb-nav {
   padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
 }
+
+.finance-dashboard-scope .text-slate-950 { color: #020617 !important; }
+.finance-dashboard-scope .text-slate-900 { color: #0f172a !important; }
+.finance-dashboard-scope .text-slate-800 { color: #1e293b !important; }
+.finance-dashboard-scope .text-slate-700 { color: #334155 !important; }
+.finance-dashboard-scope .text-slate-600 { color: #475569 !important; }
+.finance-dashboard-scope .text-slate-500 { color: #64748b !important; }
+.finance-dashboard-scope .text-slate-400 { color: #94a3b8 !important; }
+.finance-dashboard-scope .rounded-lg { border-radius: 12px !important; }
+.finance-dashboard-scope .rounded-md { border-radius: 8px !important; }
+.finance-dashboard-scope .rounded-full { border-radius: 9999px !important; }

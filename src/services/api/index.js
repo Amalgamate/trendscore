@@ -29,6 +29,7 @@ import { bookAPI, libraryAPI } from './book.api';
 import { sharingAPI } from './sharing.api';
 import { hrAPI } from './hr.api';
 import { accountingAPI } from './accounting.api';
+import { financeAPI } from './finance.api';
 import { inventoryAPI } from './inventory.api';
 import { noticesAPI } from './notices.api';
 import { aiAPI } from './ai.api';
@@ -76,6 +77,7 @@ export { libraryAPI };
 export { sharingAPI };
 export { hrAPI };
 export { accountingAPI };
+export { financeAPI };
 export { inventoryAPI };
 export { noticesAPI };
 export { aiAPI };
@@ -153,6 +155,7 @@ const api = {
   sharing: sharingAPI,
   hr: hrAPI,
   accounting: accountingAPI,
+  finance: financeAPI,
   inventory: inventoryAPI,
   notices: noticesAPI,
   ai: aiAPI,

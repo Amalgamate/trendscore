@@ -5,9 +5,17 @@
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import {
   Menu, X,
-  GraduationCap,
+  Activity,
+  BarChart3,
   BookOpen,
+  Building2,
   ChevronDown,
+  CreditCard,
+  FileText,
+  HelpCircle,
+  Home,
+  Mail,
+  Receipt,
   Rocket
 } from 'lucide-react';
 import { useNavigation } from '../hooks/useNavigation';
@@ -118,6 +126,46 @@ const prefetch = (path) => {
   PREFETCH_MAP[path]().catch(() => {});
 };
 
+const ACCOUNTANT_NAV_GROUPS = [
+  {
+    label: 'Finance',
+    items: [
+      { label: 'Dashboard', path: 'finance-dashboard', icon: Home },
+      { label: 'Fee Management', path: 'fees-collection', icon: Receipt },
+      { label: 'Invoicing', path: 'fees-invoices', icon: FileText },
+      { label: 'Payments', path: 'fees-record-payment', icon: CreditCard },
+      { label: 'Collections', path: 'fees-reports', icon: BarChart3 },
+      { label: 'Banking', path: 'accounting-reconciliation', icon: Building2 },
+      { label: 'Expenses', path: 'accounting-expenses', icon: Receipt },
+      { label: 'Chart of Accounts', path: 'accounting-accounts', icon: BookOpen },
+      { label: 'Budgets', path: 'accounting-dashboard', icon: Activity },
+      { label: 'Reports', path: 'accounting-reports', icon: BarChart3 },
+      { label: 'Audit Trail', path: 'settings-system-logs', icon: Activity },
+    ],
+  },
+  {
+    label: 'Communication',
+    items: [
+      { label: 'Notices & Announcements', path: 'comm-notices', icon: Mail },
+      { label: 'Messages', path: 'comm-messages', icon: Mail },
+      { label: 'Message History', path: 'comm-history', icon: FileText },
+    ],
+  },
+  {
+    label: 'Documents',
+    items: [
+      { label: 'Document Center', path: 'docs-center', icon: FileText },
+    ],
+  },
+  {
+    label: 'Administration',
+    items: [
+      { label: 'Users & Roles', path: 'settings-users', icon: BookOpen },
+      { label: 'System Logs', path: 'settings-system-logs', icon: FileText },
+    ],
+  },
+];
+
 // ─── Sidebar (root) ───────────────────────────────────────────────────────────
 const Sidebar = React.memo(({
   sidebarOpen,
@@ -159,6 +207,100 @@ const Sidebar = React.memo(({
   };
 
   const sidebarW = sidebarOpen ? SIDEBAR_EXPANDED_W : SIDEBAR_COLLAPSED_W;
+
+  if (role === 'ACCOUNTANT') {
+    const financeBg = '#080083';
+    const financeDark = '#05005f';
+    return (
+      <aside
+        style={{ width: sidebarW, backgroundColor: financeBg }}
+        className="relative flex h-full flex-shrink-0 flex-col overflow-hidden border-r border-white/10 text-white transition-[width] duration-300 ease-in-out z-30"
+      >
+        <div
+          style={{ height: HEADER_H, backgroundColor: financeDark }}
+          className="flex flex-shrink-0 items-center gap-3 border-b border-white/10 px-5"
+        >
+          {brandingSettings?.logoUrl ? (
+            <img
+              src={brandingSettings.logoUrl}
+              alt="School Logo"
+              className="h-11 w-11 flex-shrink-0 object-contain"
+            />
+          ) : (
+            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border border-amber-300 bg-white text-xs font-extrabold text-[#080083]">
+              {(brandingSettings?.schoolName || 'LC').substring(0, 2).toUpperCase()}
+            </div>
+          )}
+          {sidebarOpen && (
+            <span className="min-w-0 truncate text-[13px] font-extrabold uppercase tracking-wide text-white">
+              {brandingSettings?.schoolName || 'Lions Complex Academy'}
+            </span>
+          )}
+        </div>
+
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 custom-scrollbar">
+          {ACCOUNTANT_NAV_GROUPS.map((group) => (
+            <div key={group.label} className="mb-4 last:mb-0">
+              {sidebarOpen && (
+                <div className="px-2 pb-2 pt-1 text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/55">
+                  {group.label}
+                </div>
+              )}
+              <div className="space-y-1">
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = currentPage === item.path || (item.path === 'finance-dashboard' && currentPage === 'dashboard');
+                  return (
+                    <button
+                      key={`${group.label}-${item.label}`}
+                      type="button"
+                      title={!sidebarOpen ? item.label : undefined}
+                      onClick={() => onNavigate(item.path)}
+                      onMouseEnter={() => prefetch(item.path)}
+                      className={`
+                        relative flex h-11 w-full items-center gap-3 rounded-[10px] px-3 text-left transition-all duration-200
+                        ${isActive
+                          ? 'bg-white/15 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.14)]'
+                          : 'text-white/70 hover:bg-white/10 hover:text-white'}
+                      `}
+                    >
+                      <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center">
+                        <Icon size={17} strokeWidth={1.9} />
+                      </span>
+                      {sidebarOpen && (
+                        <span className="min-w-0 truncate text-[13px] font-bold">
+                          {item.label}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        <footer style={{ backgroundColor: financeDark }} className="flex-shrink-0 border-t border-white/10 p-3">
+          <button
+            type="button"
+            onClick={() => onNavigate('help')}
+            className="mb-2 flex h-11 w-full items-center gap-3 rounded-[10px] border border-white/10 px-3 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            <HelpCircle size={17} />
+            {sidebarOpen && <span className="text-[12px] font-extrabold">Help & Support</span>}
+          </button>
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="flex h-10 w-full items-center gap-3 rounded-[10px] px-3 text-white/55 transition-colors hover:bg-white/10 hover:text-white"
+            title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          >
+            {sidebarOpen ? <X size={17} /> : <Menu size={17} />}
+            {sidebarOpen && <span className="text-xs font-bold">Collapse</span>}
+          </button>
+        </footer>
+      </aside>
+    );
+  }
 
   return (
     <aside

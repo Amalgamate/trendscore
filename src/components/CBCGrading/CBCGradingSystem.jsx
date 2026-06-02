@@ -208,6 +208,14 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
   }, [getAllowedPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (user?.role === 'ACCOUNTANT' && window.location.pathname.includes('/app/accountant/dashboard')) {
+      setCurrentPage('finance-dashboard');
+      return;
+    }
+    if (user?.role === 'ACCOUNTANT' && currentPage === 'dashboard') {
+      setCurrentPage('finance-dashboard');
+      return;
+    }
     if (!hasPageAccess(user, currentPage)) {
       setCurrentPage('dashboard');
     }
@@ -580,14 +588,14 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
         onOpenGitDialog={() => setGitDialogOpen(true)}
       />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-        {!(user?.role === 'PARENT' && currentPage === 'dashboard') && (
+        {!(user?.role === 'PARENT' && currentPage === 'dashboard') && !(user?.role === 'ACCOUNTANT' && currentPage === 'finance-dashboard') && (
           <>
             <Header user={user} onLogout={handleLogout} onNavigate={handleNavigate} />
             <HorizontalSubmenu currentPage={currentPage} onNavigate={handleNavigate} />
           </>
         )}
         <main ref={mainContentRef} className="flex-1 overflow-y-auto overflow-x-hidden bg-[#F8FAFC]">
-          <div className="app-layout-content">
+          <div className={user?.role === 'ACCOUNTANT' && currentPage === 'finance-dashboard' ? '' : 'app-layout-content'}>
             <ErrorBoundary>
               <PageRouter
                 currentPage={currentPage}

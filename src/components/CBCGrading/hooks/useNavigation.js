@@ -352,6 +352,31 @@ export const allNavSections = [
 
 const PARENT_PORTAL_KEEP_EMPTY_SECTION_IDS = new Set(['dashboard', 'communications', 'docs-center', 'help']);
 
+const accountantFinanceNavigation = [
+    { id: 'finance-dashboard', label: 'Dashboard', path: 'finance-dashboard', permission: null, icon: Home },
+    { id: 'fees-collection', label: 'Fee Management', path: 'fees-collection', permission: 'FEE_MANAGEMENT', icon: Receipt },
+    { id: 'fees-invoices', label: 'Invoicing', path: 'fees-invoices', permission: 'FEE_MANAGEMENT', icon: FileText },
+    { id: 'fees-record-payment', label: 'Payments', path: 'fees-record-payment', permission: 'RECORD_PAYMENT', icon: CreditCard },
+    { id: 'fees-reports-collections', label: 'Collections', path: 'fees-reports', permission: 'FINANCIAL_REPORTS', icon: PieChart },
+    { id: 'accounting-reconciliation', label: 'Banking', path: 'accounting-reconciliation', permission: 'ACCOUNTING_MANAGEMENT', icon: Building2 },
+    { id: 'accounting-expenses', label: 'Expenses', path: 'accounting-expenses', permission: 'ACCOUNTING_MANAGEMENT', icon: ClipboardList },
+    { id: 'accounting-accounts', label: 'Chart of Accounts', path: 'accounting-accounts', permission: 'ACCOUNTING_MANAGEMENT', icon: BookOpen },
+    { id: 'accounting-budgets', label: 'Budgets', path: 'accounting-dashboard', permission: 'ACCOUNTING_MANAGEMENT', icon: Activity },
+    { id: 'accounting-reports', label: 'Reports', path: 'accounting-reports', permission: 'FINANCIAL_REPORTS', icon: TrendingUp },
+    { id: 'audit-trail', label: 'Audit Trail', path: 'settings-system-logs', permission: null, icon: Wrench },
+];
+
+const accountantConfigurationNavigation = [
+    { id: 'settings-users', label: 'Users & Roles', path: 'settings-users', permission: null, icon: Users2 },
+    { id: 'settings-system-logs', label: 'System Logs', path: 'settings-system-logs', permission: null, icon: Activity },
+];
+
+const accountantCommunicationNavigation = [
+    { id: 'comm-notices', label: 'Notices & Announcements', path: 'comm-notices', permission: null, icon: Mail },
+    { id: 'comm-messages', label: 'Messages', path: 'comm-messages', permission: 'VIEW_INBOX', icon: Mail },
+    { id: 'comm-history', label: 'Message History', path: 'comm-history', permission: null, icon: ClipboardList },
+];
+
 /** Remove Schemes of Work and full Timetable from nav; drop sections with no visible items. */
 function transformNavForParentRole(sections) {
   const stripItems = (items, sectionId = null) => {
@@ -401,6 +426,58 @@ export const useNavigation = () => {
     const { can, role, isRole } = usePermissions();
     const { user, institutionType } = useAuth();
     const labels = useInstitutionLabels();
+    const accountantNav = useMemo(() => {
+        const financeItems = accountantFinanceNavigation.filter(item => !item.permission || can(item.permission));
+        const communicationItems = accountantCommunicationNavigation.filter(item => !item.permission || can(item.permission));
+        const configItems = accountantConfigurationNavigation;
+        return {
+            navSections: [],
+            dashboardSection: {
+                id: 'finance-dashboard',
+                label: 'Dashboard',
+                icon: Home,
+                items: [],
+                permission: null
+            },
+            communicationSection: {
+                id: 'communications',
+                label: 'Communication',
+                icon: Mail,
+                items: communicationItems
+            },
+            schoolSections: [],
+            lmsSection: null,
+            studentLmsSection: null,
+            backOfficeSections: [
+                {
+                    id: 'finance',
+                    label: 'Finance',
+                    icon: CreditCard,
+                    items: financeItems.filter(item => item.id !== 'finance-dashboard')
+                }
+            ],
+            docsCenterSection: {
+                id: 'docs-center',
+                label: 'Document Center',
+                icon: FileText,
+                items: []
+            },
+            systemAdminSections: [
+                {
+                    id: 'administration',
+                    label: 'Administration',
+                    icon: Users2,
+                    items: configItems
+                },
+                {
+                    id: 'help',
+                    label: 'Help & Support',
+                    icon: HelpCircle,
+                    items: []
+                }
+            ],
+        };
+    }, [can]);
 
     // ── Institution type branching ───────────────────────────────────────────
     // Each type gets its own filtered nav — CBC users NEVER see secondary/tertiary
@@ -664,6 +741,7 @@ export const useNavigation = () => {
     }, [can, role]);
 
     return useMemo(() => {
+        if (role === 'ACCOUNTANT') return accountantNav;
         if (institutionType === 'SECONDARY' && secondaryNav) return secondaryNav;
         if (institutionType === 'TERTIARY' && tertiaryNav) return tertiaryNav;
 
@@ -680,6 +758,8 @@ export const useNavigation = () => {
         };
     }, [
         institutionType,
+        role,
+        accountantNav,
         secondaryNav,
         tertiaryNav,
         navSections,
