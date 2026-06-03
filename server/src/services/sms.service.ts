@@ -372,11 +372,11 @@ export class SmsService {
             const baseUrl = config.smsBaseUrl || 'https://api.mobilesasa.com';
 
             const response = await axios.post(
-                `${baseUrl}/v1/send/message`,
+                `${baseUrl}/v1/send/bulk`,
                 {
                     senderID: senderId,
                     message: message,
-                    phone: phone
+                    phones: phone.replace(/^\+/, '')
                 },
                 {
                     headers: {
