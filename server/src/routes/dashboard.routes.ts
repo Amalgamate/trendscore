@@ -38,11 +38,11 @@ router.get(
 /**
  * @route   GET /api/dashboard/admin
  * @desc    Get admin dashboard metrics
- * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM
+ * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM, ACCOUNTANT
  */
 router.get(
   '/admin',
-  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM']),
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'ACCOUNTANT']),
   rateLimit({ windowMs: 60_000, maxRequests: 60 }),
   asyncHandler(dashboardController.getAdminMetrics.bind(dashboardController))
 );
