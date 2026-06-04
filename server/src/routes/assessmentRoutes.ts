@@ -182,7 +182,7 @@ router.delete(
 router.post(
   '/tests',
   authenticate,
-  requireRole(['ADMIN', 'SUPER_ADMIN']),
+  requireRole(['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER']),
   rateLimit({ windowMs: 60_000, maxRequests: 20 }),
   validate(createSummativeTestSchema),
   auditLog('CREATE_SUMMATIVE_TEST'),
@@ -193,7 +193,7 @@ router.post(
 router.post(
   '/tests/bulk',
   authenticate,
-  requireRole(['ADMIN', 'SUPER_ADMIN']),
+  requireRole(['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER']),
   rateLimit({ windowMs: 60_000, maxRequests: 50 }),
   auditLog('GENERATE_TESTS_BULK'),
   assessmentController.generateTestsBulk
@@ -225,7 +225,7 @@ router.put(
 router.delete(
   '/tests/bulk',
   authenticate,
-  requireRole(['ADMIN', 'SUPER_ADMIN']),
+  requireRole(['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER']),
   rateLimit({ windowMs: 60_000, maxRequests: 5 }),
   auditLog('DELETE_TESTS_BULK'),
   assessmentController.deleteSummativeTestsBulk
@@ -234,7 +234,7 @@ router.delete(
 router.delete(
   '/tests/:id',
   authenticate,
-  requireRole(['ADMIN', 'SUPER_ADMIN']),
+  requireRole(['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER']),
   ResourceAccessControl.canAccessAssessment(),
   rateLimit({ windowMs: 60_000, maxRequests: 10 }),
   auditLog('DELETE_SUMMATIVE_TEST'),
