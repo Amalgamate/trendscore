@@ -860,91 +860,6 @@ const SecondaryAdminDashboard = ({ learners = [], pagination, teachers = [], use
   );
 
   /* ── AI Smart Insights ────────────────────────────────────────────────── */
-  const renderAIInsights = () => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-2 bg-white rounded-2xl p-8 border border-violet-100 shadow-sm relative overflow-hidden group">
-          <div className="relative z-10 h-full flex flex-col">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2.5 bg-violet-100 text-violet-700 rounded-xl"><Brain size={22} /></div>
-              <h2 className="text-xl font-bold text-gray-900">Senior School Smart Insights</h2>
-            </div>
-            <p className="text-gray-500 text-sm max-w-md leading-relaxed mb-6">
-              Longitudinal analysis of student performance, attendance patterns, and financial data — predicting outcomes and surfacing students who need additional support.
-            </p>
-            <div className="flex flex-wrap gap-4 mt-auto">
-              {[{ label: 'System Accuracy', value: '94.2%' }, { label: 'Insights Generated', value: '1,240' }].map((stat, i) => (
-                <div key={i} className="bg-violet-50 border border-violet-100 rounded-xl p-4 flex-1 min-w-[130px]">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-violet-400">{stat.label}</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">{stat.value}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-          <Zap className="absolute -bottom-10 -right-10 w-60 h-60 text-violet-700/[0.04] transform group-hover:scale-110 transition-transform duration-500" />
-        </div>
-
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Risk Monitoring</h3>
-              <ShieldAlert className="text-rose-500" size={18} />
-            </div>
-            <div className="text-center py-4">
-              <p className="text-4xl font-bold text-gray-900">{stats.atRiskStudents}</p>
-              <p className="text-xs font-medium text-gray-500 mt-1">Students flagged High-Risk</p>
-            </div>
-          </div>
-          <button onClick={() => onNavigate('learners-list')} className="w-full py-3 bg-violet-50 hover:bg-violet-100 text-violet-900 rounded-xl text-xs font-bold uppercase tracking-widest transition">
-            Review At-Risk Students
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <h3 className="text-[11px] font-bold text-gray-900 uppercase tracking-widest mb-4">Academic Risk Distribution</h3>
-          <div className="space-y-4">
-            {[
-              { label: 'Critically Behind',  value: 12,  color: 'bg-rose-500' },
-              { label: 'Needs Support',       value: 45,  color: 'bg-amber-500' },
-              { label: 'Stable',              value: 120, color: 'bg-emerald-500' },
-              { label: 'Accelerated',         value: 34,  color: 'bg-violet-600' },
-            ].map((item, idx) => (
-              <div key={idx}>
-                <div className="flex justify-between items-center mb-1.5">
-                  <span className="text-xs font-medium text-gray-600">{item.label}</span>
-                  <span className="text-xs font-bold text-gray-900">{item.value} Students</span>
-                </div>
-                <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
-                  <div className={`${item.color} h-full rounded-full`} style={{ width: `${(item.value / 211) * 100}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-          <h3 className="text-[11px] font-bold text-gray-900 uppercase tracking-widest mb-4">Top AI Recommendations</h3>
-          <div className="space-y-3">
-            {[
-              { title: 'Form 4 Science Review',  desc: 'Cluster average down 8% this week. Suggest remedial session.', icon: AlertCircle, color: 'text-rose-500',   bg: 'bg-rose-50' },
-              { title: 'Automate Fee Reminders', desc: '72% of unpaid balances are 10-day overdue invoices.',          icon: Wallet,       color: 'text-amber-600',  bg: 'bg-amber-50' },
-              { title: 'STEM Pathway Unlock',    desc: '15% of Form 3 qualify for the accelerated STEM path.',         icon: Brain,        color: 'text-violet-700', bg: 'bg-violet-50' },
-            ].map((item, idx) => (
-              <div key={idx} className="flex gap-3 p-3 hover:bg-violet-50 rounded-xl transition cursor-pointer border border-transparent hover:border-violet-100">
-                <div className={`p-2 rounded-lg shadow-sm ${item.bg} ${item.color}`}><item.icon size={16} /></div>
-                <div>
-                  <h4 className="text-xs font-bold text-gray-900">{item.title}</h4>
-                  <p className="text-[10px] text-gray-500 leading-tight mt-0.5">{item.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 
   /* ── Un-Assessed slide-over ───────────────────────────────────────────── */
   const UnAssessedSheet = () => {
@@ -1084,7 +999,6 @@ const SecondaryAdminDashboard = ({ learners = [], pagination, teachers = [], use
           { id: 'performance', label: 'Performance', icon: Award      },
           { id: 'operations',  label: 'Operations',  icon: Clock      },
           { id: 'calendar',    label: 'Calendar',    icon: Calendar   },
-          { id: 'ai-insights', label: 'AI Insights', icon: Brain      },
           { id: 'hr-overview', label: 'HR',          icon: Briefcase  },
         ].map(t => (
           <TabBtn key={t.id} label={t.label} icon={t.icon} active={activeTab === t.id} onClick={() => setActiveTab(t.id)} />
@@ -1099,8 +1013,7 @@ const SecondaryAdminDashboard = ({ learners = [], pagination, teachers = [], use
         {activeTab === 'performance' && renderPerformance()}
         {activeTab === 'operations'  && renderOperations()}
         {activeTab === 'calendar'    && renderSchoolCalendar()}
-        {activeTab === 'ai-insights' && renderAIInsights()}
-        {activeTab === 'hr-overview' && renderHROverview()}
+                {activeTab === 'hr-overview' && renderHROverview()}
       </div>
     </div>
   );

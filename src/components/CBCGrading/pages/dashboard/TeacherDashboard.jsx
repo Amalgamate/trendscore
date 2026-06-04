@@ -25,7 +25,6 @@ import {
 } from 'lucide-react';
 
 // Intelligence Engine Widgets
-import AIInsights from '../../widgets/AIInsights';
 import AttendanceAnomalies from '../../widgets/AttendanceAnomalies';
 import AcademicInsights from '../../widgets/AcademicInsights';
 
@@ -401,8 +400,7 @@ const TeacherDashboard = ({ user, onNavigate }) => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* AI Insights */}
           <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
-            <AIInsights contextType="teacher" contextId={user?.id} />
-          </Suspense>
+                      </Suspense>
 
           {/* Attendance Anomalies */}
           <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>

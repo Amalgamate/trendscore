@@ -32,7 +32,6 @@ import {
 } from 'lucide-react';
 
 // Intelligence Engine Widgets
-import AIInsights from '../../widgets/AIInsights';
 import RiskAlerts from '../../widgets/RiskAlerts';
 import FeeCollectionForecast from '../../widgets/FeeCollectionForecast';
 import AcademicInsights from '../../widgets/AcademicInsights';
@@ -614,7 +613,7 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
           {/* AI Insights */}
           <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
-            <AIInsights contextType="school" contextId="default" />
+            
           </Suspense>
 
           {/* Risk Alerts */}

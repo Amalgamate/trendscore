@@ -28,7 +28,6 @@ import {
 } from 'lucide-react';
 
 // Intelligence Engine Widgets
-import AIInsights from '../../widgets/AIInsights';
 import AcademicInsights from '../../widgets/AcademicInsights';
 import RiskAlerts from '../../widgets/RiskAlerts';
 
@@ -471,8 +470,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* AI Insights */}
         <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
-          <AIInsights contextType="parent" contextId={user?.id} />
-        </Suspense>
+                  </Suspense>
 
         {/* Academic Insights */}
         <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
