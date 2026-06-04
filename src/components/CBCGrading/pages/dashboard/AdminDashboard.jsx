@@ -36,6 +36,7 @@ import AIInsights from '../../widgets/AIInsights';
 import RiskAlerts from '../../widgets/RiskAlerts';
 import FeeCollectionForecast from '../../widgets/FeeCollectionForecast';
 import AcademicInsights from '../../widgets/AcademicInsights';
+import BillingInsightsCard from '../../dashboard/BillingInsightsCard';
 
 const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavigate }) => {
   const [refreshing, setRefreshing] = useState(false);
@@ -435,55 +436,8 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
           </div>
 
           <div className="grid grid-cols-2 gap-4 flex-1">
-            {/* Money Card */}
-            <div className="relative overflow-hidden p-5 rounded-2xl bg-gradient-to-br from-emerald-50/40 to-emerald-50/20 border border-emerald-100/80 shadow-sm flex flex-col justify-between min-h-[160px]">
-              {/* Watermark */}
-              <BarChart3 size={72} className="absolute -right-2 -top-2 text-emerald-500/5 pointer-events-none transform -rotate-12" />
-              
-              <div className="flex items-center gap-2 z-10">
-                <div className="w-7 h-7 rounded-full flex items-center justify-center bg-emerald-100/80 text-emerald-600">
-                  <DollarSign size={14} className="stroke-[2.5]" />
-                </div>
-                <span className="font-bold text-xs text-emerald-800 tracking-wide uppercase">Money</span>
-              </div>
-
-              <div className="flex justify-between items-end mt-4 z-10">
-                <div className="space-y-0.5">
-                  <div className="text-2xl font-black text-gray-955 tracking-tight leading-none">
-                    {formatKesAmount(stats.feeCollected)}
-                  </div>
-                  <div className="text-[11px] text-gray-400 font-semibold tracking-wide uppercase">
-                    Collected
-                  </div>
-                  <div className="text-xs font-bold text-emerald-600 mt-2 flex items-center gap-1 pt-1">
-                    <span>{formatPercent(collectionRate)}</span>
-                    <span className="text-gray-500 font-semibold text-[10px] uppercase tracking-wider">Target</span>
-                  </div>
-                </div>
-
-                <div className="w-20 h-10 flex-shrink-0">
-                  <svg className="w-full h-full overflow-visible" viewBox="0 0 100 40">
-                    <defs>
-                      <linearGradient id="money-sparkline-grad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#16A34A" stopOpacity="0.25" />
-                        <stop offset="100%" stopColor="#16A34A" stopOpacity="0.0" />
-                      </linearGradient>
-                    </defs>
-                    <path
-                      d="M0,35 C10,33 20,32 30,25 C40,18 50,22 60,15 C70,8 80,10 100,2"
-                      fill="none"
-                      stroke="#16A34A"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M0,35 C10,33 20,32 30,25 C40,18 50,22 60,15 C70,8 80,10 100,2 L100,40 L0,40 Z"
-                      fill="url(#money-sparkline-grad)"
-                    />
-                  </svg>
-                </div>
-              </div>
-            </div>
+            {/* Billing Insights Card — spans both columns */}
+            <BillingInsightsCard onNavigate={onNavigate} />
 
             {/* Learners Card */}
             <div className="relative overflow-hidden p-5 rounded-2xl bg-gradient-to-br from-blue-50/40 to-blue-50/20 border border-blue-100/80 shadow-sm flex flex-col justify-between min-h-[160px]">
