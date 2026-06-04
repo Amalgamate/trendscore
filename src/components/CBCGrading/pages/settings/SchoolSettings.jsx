@@ -444,7 +444,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6 md:col-span-2">
                   {/* Primary Color */}
                   <div>
                     <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-2">Primary Color</label>

@@ -8,7 +8,7 @@ import {
   TrendingUp, Settings, BookOpen, Users2, Truck,
   CreditCard, PieChart, Package, HelpCircle, FileText, Receipt,
   ClipboardList, BarChart3, Building2, PlayCircle,
-  Award, Fingerprint, BookMarked, Activity
+  Award, Fingerprint, BookMarked, Activity, Wrench
 } from 'lucide-react';
 
 export const tertiaryNavSections = [
@@ -230,19 +230,20 @@ export const tertiaryNavSections = [
       { id: 'settings-communication', label: 'Communication Settings', path: 'settings-communication', permission: 'SCHOOL_SETTINGS'   },
       { id: 'settings-users',         label: 'User Management',        path: 'settings-users',         permission: 'EDIT_USER'         },
       { id: 'settings-system-logs',   label: 'System Logs',            path: 'settings-system-logs',   permission: 'SYSTEM_SETTINGS', icon: Activity },
+      { id: 'system-maintenance',     label: 'Backup, Restore & Reset', path: 'system-maintenance',    permission: 'SYSTEM_SETTINGS', icon: Wrench },
     ],
   },
-  {
-    id: 'help',
-    label: 'Help & Support',
-    icon: HelpCircle,
-    permission: null,
-    items: [],
-  },
+  // {
+  //   id: 'help',
+  //   label: 'Help & Support',
+  //   icon: HelpCircle,
+  //   permission: null,
+  //   items: [],
+  // },
 ];
 
 // ── Tertiary category groupings ───────────────────────────────────────────────
 export const TERTIARY_SCHOOL_SECTIONS     = ['students', 'lecturers', 'tertiary-programs', 'tertiary-assessment', 'attendance'];
-export const TERTIARY_RESULTS_SECTIONS    = ['tertiary-results', 'lms', 'student-affairs'];
-export const TERTIARY_BACKOFFICE_SECTIONS = ['finance', 'hr', 'inventory', 'biometric'];
-export const TERTIARY_SYSTEM_SECTIONS     = ['settings', 'help'];
+export const TERTIARY_RESULTS_SECTIONS    = ['tertiary-results', 'student-affairs'];
+export const TERTIARY_BACKOFFICE_SECTIONS = ['finance', 'hr', 'inventory'];
+export const TERTIARY_SYSTEM_SECTIONS     = ['settings'];

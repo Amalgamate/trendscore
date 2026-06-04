@@ -114,6 +114,32 @@ describe('Students module end-to-end', () => {
     expect(response.body.data).toHaveProperty('lastName', learnerPayload.lastName.toUpperCase());
   });
 
+  it('rejects create requests that reuse an existing admission number', async () => {
+    expect(createdAdmissionNumber).toBeTruthy();
+
+    const beforeCount = await prisma.learner.count({
+      where: { admissionNumber: createdAdmissionNumber! },
+    });
+
+    const response = await request(app)
+      .post('/api/learners')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        ...learnerPayload,
+        firstName: 'Duplicate',
+        lastName: 'Attempt',
+        admissionNumber: createdAdmissionNumber,
+      })
+      .expect(409);
+
+    expect(JSON.stringify(response.body || {})).toMatch(/already exists/i);
+
+    const afterCount = await prisma.learner.count({
+      where: { admissionNumber: createdAdmissionNumber! },
+    });
+    expect(afterCount).toBe(beforeCount);
+  });
+
   it('uploads learner photo explicitly via photo endpoint', async () => {
     expect(createdLearnerId).toBeTruthy();
     const photoData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z2ioAAAAASUVORK5CYII=';

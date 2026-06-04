@@ -80,6 +80,14 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
     pageParams,
   } = useUIStore();
 
+  const isTabletOrLower = useMediaQuery('(max-width: 1023px)');
+
+  useEffect(() => {
+    if (isTabletOrLower) {
+      setSidebarOpen(false);
+    }
+  }, [isTabletOrLower, setSidebarOpen]);
+
   // ── Bootstrap data (pre-loaded during splash) ────────────────────────────
   const {
     learners:  bootstrapLearners,

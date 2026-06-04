@@ -14,11 +14,15 @@ import { useMediaQuery } from '../hooks/useMediaQuery';
 import { MOBILE_MEDIA_QUERY } from '../../../constants/breakpoints';
 import { sanitizeLearnerPayload } from '../contracts/learnerPayload.contract';
 
-const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null }) => {
+const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null, learnerId = null }) => {
   const { showSuccess, showError } = useNotifications();
   const { user } = useAuth();
   const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
-  const isEdit = !!learner;
+  const [resolvedLearner, setResolvedLearner] = useState(learner);
+  const activeLearner = resolvedLearner || learner;
+  const isEdit = !!(activeLearner || learnerId);
+  const [isLoadingLearner, setIsLoadingLearner] = useState(false);
+  const [learnerLoadFailed, setLearnerLoadFailed] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [availableStreams, setAvailableStreams] = useState([]);
   const [availableGrades, setAvailableGrades] = useState([]);
@@ -88,6 +92,47 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null }) => {
 
   const [formData, setFormData] = useState(initialFormData);
 
+  useEffect(() => {
+    let isMounted = true;
+    if (learner) {
+      setResolvedLearner(learner);
+      setLearnerLoadFailed(false);
+      return () => {
+        isMounted = false;
+      };
+    }
+    if (!learnerId) {
+      setResolvedLearner(null);
+      setLearnerLoadFailed(false);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const loadLearner = async () => {
+      setIsLoadingLearner(true);
+      setLearnerLoadFailed(false);
+      try {
+        const response = await learnerAPI.getById(learnerId);
+        const fetchedLearner = response?.data || null;
+        if (isMounted) setResolvedLearner(fetchedLearner);
+      } catch (error) {
+        console.error('Failed to load learner for edit:', error);
+        if (isMounted) {
+          setLearnerLoadFailed(true);
+          showError('Could not load this learner for editing. Please return to the learner list and try again.');
+        }
+      } finally {
+        if (isMounted) setIsLoadingLearner(false);
+      }
+    };
+
+    loadLearner();
+    return () => {
+      isMounted = false;
+    };
+  }, [learner, learnerId, showError]);
+
   const normalizeField = (value) => (value ?? '').toString().trim();
   const toDateOnly = (value) => {
     if (!value) return '';
@@ -97,12 +142,12 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null }) => {
   };
 
   const hasSensitiveFieldChanges = React.useMemo(() => {
-    if (!isEdit || !learner) return false;
-    const upiChanged = normalizeField(formData.upiNumber) !== normalizeField(learner.upiNumber);
-    const gradeChanged = normalizeField(formData.grade) !== normalizeField(learner.grade);
-    const dobChanged = toDateOnly(formData.dateOfBirth) !== toDateOnly(learner.dateOfBirth);
+    if (!isEdit || !activeLearner) return false;
+    const upiChanged = normalizeField(formData.upiNumber) !== normalizeField(activeLearner.upiNumber);
+    const gradeChanged = normalizeField(formData.grade) !== normalizeField(activeLearner.grade);
+    const dobChanged = toDateOnly(formData.dateOfBirth) !== toDateOnly(activeLearner.dateOfBirth);
     return upiChanged || gradeChanged || dobChanged;
-  }, [formData.dateOfBirth, formData.grade, formData.upiNumber, isEdit, learner]);
+  }, [activeLearner, formData.dateOfBirth, formData.grade, formData.upiNumber, isEdit]);
 
   const buildSubmissionPayload = React.useCallback((data) => {
     const primaryContact = computePrimaryContact(data);
@@ -122,30 +167,30 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null }) => {
 
   // Initialize form with learner data if editing
   useEffect(() => {
-    if (learner) {
+    if (activeLearner) {
       // Prevent React warnings by replacing null values from the backend with empty strings
       const sanitizedLearner = Object.fromEntries(
-        Object.entries(learner).map(([key, value]) => [key, value === null ? '' : value])
+        Object.entries(activeLearner).map(([key, value]) => [key, value === null ? '' : value])
       );
 
       setFormData({
         ...initialFormData,
         ...sanitizedLearner,
-        id: learner.id,          // always carry the real DB id for edit detection
-        dateOfBirth: toInputDate(learner.dateOfBirth),
-        dateOfAdmission: toInputDate(learner.admissionDate) || initialFormData.dateOfAdmission,
+        id: activeLearner.id,          // always carry the real DB id for edit detection
+        dateOfBirth: toInputDate(activeLearner.dateOfBirth),
+        dateOfAdmission: toInputDate(activeLearner.admissionDate) || initialFormData.dateOfAdmission,
       });
       setEditBaseline(buildSubmissionPayload({
         ...initialFormData,
         ...sanitizedLearner,
-        id: learner.id,
-        dateOfBirth: toInputDate(learner.dateOfBirth),
-        dateOfAdmission: toInputDate(learner.admissionDate) || initialFormData.dateOfAdmission,
+        id: activeLearner.id,
+        dateOfBirth: toInputDate(activeLearner.dateOfBirth),
+        dateOfAdmission: toInputDate(activeLearner.admissionDate) || initialFormData.dateOfAdmission,
       }));
       setHasShownEditNotice(false);
       // Set photo preview if exists
-      if (learner.photoUrl) {
-        setPhotoPreview(learner.photoUrl);
+      if (activeLearner.photoUrl) {
+        setPhotoPreview(activeLearner.photoUrl);
       }
       setChangeReason('');
     } else {
@@ -163,7 +208,7 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null }) => {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [buildSubmissionPayload, initialFormData, learner]);
+  }, [activeLearner, buildSubmissionPayload, initialFormData]);
 
   useEffect(() => {
     if (!isEdit || !hasUnsavedEdits || hasShownEditNotice) return;
@@ -450,6 +495,11 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null }) => {
     e.preventDefault();
     console.log('📝 Form submission started...');
 
+    if (isEdit && !activeLearner?.id) {
+      showError('This edit session is still loading the learner record. Please wait and try again.');
+      return;
+    }
+
     if (!formData.firstName || !formData.lastName || !formData.gender || !formData.dateOfBirth) {
       showError('Please fill in all required fields'); setCurrentStep(1); return;
     }
@@ -490,7 +540,7 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null }) => {
     if (onSave) {
       setIsSaving(true);
       try {
-        const targetLearnerId = learner?.id || formData?.id || null;
+        const targetLearnerId = activeLearner?.id || learnerId || formData?.id || null;
         const result = await onSave(sanitizedPayload, { targetLearnerId });
         console.log('📥 Save result:', result);
 
@@ -537,6 +587,40 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null }) => {
     { number: 2, title: 'Guardian Info', icon: UsersIcon },
     { number: 3, title: 'Review', icon: CheckCircle }
   ];
+
+  if (isEdit && isLoadingLearner && !activeLearner) {
+    return (
+      <div className="flex min-h-[320px] items-center justify-center">
+        <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-5 py-4 text-sm font-medium text-gray-600 shadow-sm">
+          <Loader size={18} className="animate-spin text-brand-purple" />
+          Loading student record...
+        </div>
+      </div>
+    );
+  }
+
+  if (isEdit && learnerLoadFailed && !activeLearner) {
+    return (
+      <div className="flex min-h-[320px] items-center justify-center px-4">
+        <div className="max-w-md rounded-xl border border-red-100 bg-white px-6 py-5 text-center shadow-sm">
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-red-50 text-red-600">
+            <X size={20} />
+          </div>
+          <h2 className="text-base font-semibold text-gray-900">Could not load learner</h2>
+          <p className="mt-2 text-sm text-gray-600">
+            Return to the learner list and open the record again.
+          </p>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="mt-4 inline-flex items-center justify-center rounded-lg bg-brand-purple px-4 py-2 text-sm font-medium text-white hover:bg-brand-purple-dark"
+          >
+            Back to List
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 px-4 sm:px-6 lg:px-8">

@@ -191,7 +191,8 @@ export class LearnerController {
       generateInvoice, isScholarshipStudent, scholarshipType, scholarshipAmount,
     } = req.body;
 
-    if (!admissionNumber) {
+    const admissionNumberWasProvided = Boolean(String(admissionNumber || '').trim());
+    if (!admissionNumberWasProvided) {
       try {
         admissionNumber = await generateAdmissionNumber(stream || 'A', new Date().getFullYear());
       } catch (error: any) {
@@ -200,14 +201,18 @@ export class LearnerController {
         }
         throw new ApiError(500, 'Could not generate admission number: ' + error.message);
       }
+    } else {
+      admissionNumber = String(admissionNumber).trim();
     }
     if (!firstName || !lastName || !dateOfBirth || !gender || !grade) {
       throw new ApiError(400, 'Missing required fields');
     }
     const existing = await prisma.learner.findUnique({ where: { admissionNumber } });
     if (existing) {
-      // Harden create path: if client sent a stale preview, auto-reserve a fresh number.
-      admissionNumber = await generateAdmissionNumber(stream || 'A', new Date().getFullYear());
+      throw new ApiError(
+        409,
+        `A learner with admission number ${admissionNumber} already exists. Open the existing learner and use Edit instead.`
+      );
     }
 
     try {
@@ -294,6 +299,12 @@ export class LearnerController {
             include: { parent: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } },
           });
         } else if (createErr?.code === 'P2002') {
+          if (admissionNumberWasProvided) {
+            throw new ApiError(
+              409,
+              `A learner with admission number ${admissionNumber} already exists. Open the existing learner and use Edit instead.`
+            );
+          }
           // Last-line protection for race conditions: regenerate and retry once.
           const retryAdmissionNumber = await generateAdmissionNumber(stream || 'A', new Date().getFullYear());
           try {
@@ -362,6 +373,7 @@ export class LearnerController {
       });
     } catch (createError: any) {
       logger.error('[createLearner] Full error:', createError);
+      if (createError instanceof ApiError) throw createError;
       throw new ApiError(500, `Creation failed: ${createError.message || JSON.stringify(createError)}`);
     }
   }

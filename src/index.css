@@ -49,7 +49,7 @@
   --text-primary: #000000;
   --text-secondary: #4b5563;
   --border-color: #e5e7eb;
-  --app-max-width: 1536px;
+  --app-max-width: 100%;
   --app-gutter-x: 1.5rem;
   --app-gutter-y: 1.5rem;
 }
@@ -569,38 +569,101 @@ code {
   box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1);
 }
 
-/* Custom Scrollbar - Tiny Dot that appears on Hover */
-.custom-scrollbar {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+/* Custom Scrollbar - Slight scroll bar, blends in, dot style, no track/rail */
+.custom-scrollbar,
+.no-scrollbar,
+.scrollbar-hide,
+.scrollbar-none,
+.hide-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--brand-primary) 30%, transparent) transparent;
+  -ms-overflow-style: auto;
 }
 
-.custom-scrollbar::-webkit-scrollbar {
-  width: 0;
-  height: 0;
+.custom-scrollbar:hover,
+.no-scrollbar:hover,
+.scrollbar-hide:hover,
+.scrollbar-none:hover,
+.hide-scrollbar:hover {
+  scrollbar-color: var(--brand-primary) transparent;
 }
 
-.custom-scrollbar:hover::-webkit-scrollbar {
+.custom-scrollbar::-webkit-scrollbar,
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-hide::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar,
+.hide-scrollbar::-webkit-scrollbar {
   width: 6px;
   height: 6px;
+  transition: all 0.25s ease-in-out;
 }
 
-.custom-scrollbar::-webkit-scrollbar-track {
+.custom-scrollbar:hover::-webkit-scrollbar,
+.no-scrollbar:hover::-webkit-scrollbar,
+.scrollbar-hide:hover::-webkit-scrollbar,
+.scrollbar-none:hover::-webkit-scrollbar,
+.hide-scrollbar:hover::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track,
+.no-scrollbar::-webkit-scrollbar-track,
+.scrollbar-hide::-webkit-scrollbar-track,
+.scrollbar-none::-webkit-scrollbar-track,
+.hide-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(139, 92, 246, 0);
-  border-radius: 3px;
-  transition: background 0.3s ease;
+.custom-scrollbar::-webkit-scrollbar-thumb,
+.no-scrollbar::-webkit-scrollbar-thumb,
+.scrollbar-hide::-webkit-scrollbar-thumb,
+.scrollbar-none::-webkit-scrollbar-thumb,
+.hide-scrollbar::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--brand-primary) 30%, transparent) 2.5px, transparent 3px);
+  background-repeat: no-repeat;
+  background-position: center;
+  border-radius: 9999px;
+  transition: all 0.25s ease-in-out;
 }
 
-.custom-scrollbar:hover::-webkit-scrollbar-thumb {
-  background: rgba(139, 92, 246, 0.4);
+/* Hover state: grows bigger (larger dot radius) and becomes 100% visible */
+.custom-scrollbar:hover::-webkit-scrollbar-thumb,
+.no-scrollbar:hover::-webkit-scrollbar-thumb,
+.scrollbar-hide:hover::-webkit-scrollbar-thumb,
+.scrollbar-none:hover::-webkit-scrollbar-thumb,
+.hide-scrollbar:hover::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  background-image: radial-gradient(circle, var(--brand-primary) 3.5px, transparent 4px);
+  background-repeat: no-repeat;
+  background-position: center;
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(139, 92, 246, 0.7);
+/* Completely hide default scrollbar buttons (arrows) */
+.custom-scrollbar::-webkit-scrollbar-button,
+.no-scrollbar::-webkit-scrollbar-button,
+.scrollbar-hide::-webkit-scrollbar-button,
+.scrollbar-none::-webkit-scrollbar-button,
+.hide-scrollbar::-webkit-scrollbar-button {
+  display: none !important;
+}
+
+/* Helper to completely hide scrollbars (e.g. collapsed sidebars) */
+.hide-scrollbar-completely {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.hide-scrollbar-completely::-webkit-scrollbar,
+.hide-scrollbar-completely::-webkit-scrollbar-track,
+.hide-scrollbar-completely::-webkit-scrollbar-thumb,
+.hide-scrollbar-completely::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+  background-image: none !important;
 }
 
 /* Safe Area Insets for Mobile */

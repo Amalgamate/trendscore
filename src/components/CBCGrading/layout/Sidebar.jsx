@@ -239,7 +239,7 @@ const Sidebar = React.memo(({
           )}
         </div>
 
-        <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 custom-scrollbar">
+        <nav className={`flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 ${sidebarOpen ? 'custom-scrollbar' : 'hide-scrollbar-completely'}`}>
           {ACCOUNTANT_NAV_GROUPS.map((group) => (
             <div key={group.label} className="mb-4 last:mb-0">
               {sidebarOpen && (
@@ -282,14 +282,14 @@ const Sidebar = React.memo(({
         </nav>
 
         <footer style={{ backgroundColor: financeDark }} className="flex-shrink-0 border-t border-white/10 p-3">
-          <button
+          {/* <button
             type="button"
             onClick={() => onNavigate('help')}
             className="mb-2 flex h-11 w-full items-center gap-3 rounded-[10px] border border-white/10 px-3 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
           >
             <HelpCircle size={17} />
             {sidebarOpen && <span className="text-[12px] font-extrabold">Help & Support</span>}
-          </button>
+          </button> */}
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="flex h-10 w-full items-center gap-3 rounded-[10px] px-3 text-white/55 transition-colors hover:bg-white/10 hover:text-white"
@@ -333,7 +333,7 @@ const Sidebar = React.memo(({
       </div>
 
       {/* ── Nav scroll area ──────────────────────────────────────────────── */}
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2 space-y-0.5 custom-scrollbar">
+      <nav className={`flex-1 overflow-y-auto overflow-x-hidden py-3 px-2 space-y-0.5 ${sidebarOpen ? 'custom-scrollbar' : 'hide-scrollbar-completely'}`}>
         {groupedNav.map((group) => (
           <div key={group.id}>
             {sidebarOpen && group.items.length > 0 && (
@@ -367,32 +367,7 @@ const Sidebar = React.memo(({
         style={{ backgroundColor: theme.dark }}
         className="flex-shrink-0 border-t border-white/10 px-2 py-2 space-y-0.5"
       >
-        {sidebarOpen && (
-          <p className="text-[9px] text-gray-400 font-medium uppercase tracking-wider mt-1 px-3">
-            {role === 'TEACHER'      ? labels.teacher :
-             role === 'PARENT'       ? 'Parent' :
-             role === 'ADMIN'        ? 'Administrator' :
-             role === 'HEAD_TEACHER' ? (labels.headLabel || 'Principal') :
-             role === 'SUPER_ADMIN'  ? 'Administrator' :
-             (user?.role || 'Guest')}
-          </p>
-        )}
 
-        {onOpenGitDialog && ['SUPER_ADMIN', 'ADMIN'].includes(role) && (
-          <button
-            onClick={onOpenGitDialog}
-            title={sidebarOpen ? undefined : 'Publish Platform Update'}
-            className="w-full flex items-center gap-3 px-3 rounded-lg transition-all duration-200 text-indigo-300 hover:text-white hover:bg-indigo-500/20 border border-indigo-500/20 hover:border-indigo-400/40"
-            style={{ height: 40 }}
-          >
-            <span className="flex-shrink-0 flex items-center justify-center" style={{ width: 20 }}>
-              <Rocket size={16} className="text-indigo-400" />
-            </span>
-            {sidebarOpen && (
-              <span className="text-[11px] font-bold uppercase tracking-wider truncate">Publish Update</span>
-            )}
-          </button>
-        )}
 
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}

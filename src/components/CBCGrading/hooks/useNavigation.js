@@ -24,7 +24,7 @@ import {
     Shirt, ClipboardList, Video, PlayCircle, Gift, Wrench, Activity, Brain, MoreHorizontal
 } from 'lucide-react';
 
-const focusModules = ['dashboard', 'communications', 'planner', 'learners', 'teachers', 'parents', 'assessment', 'learning-hub', 'lms', 'attendance', 'docs-center', 'facilities', 'settings', 'hr', 'finance', 'inventory', 'library', 'transport', 'biometric'];
+const focusModules = ['dashboard', 'communications', 'planner', 'learners', 'teachers', 'assessment', 'learning-hub', 'attendance', 'docs-center', 'settings', 'hr', 'finance', 'inventory', 'transport'];
 
 export const allNavSections = [
     {
@@ -70,7 +70,8 @@ export const allNavSections = [
             { id: 'learners-admissions', label: 'Admissions',         path: 'learners-admissions', permission: 'CREATE_LEARNER'    },
             { id: 'learners-promotion',  label: 'Promotion',          path: 'learners-promotion',  permission: 'PROMOTE_LEARNER', app: 'planner' },
             { id: 'learners-uniform',    label: 'Uniform Allocation', path: 'learners-uniform',    permission: 'VIEW_ALL_LEARNERS', icon: Shirt, app: 'inventory' },
-            { id: 'learners-id-print',  label: 'ID Card Printing',   path: 'learners-id-print',   permission: 'VIEW_ALL_LEARNERS', icon: CreditCard },
+            { id: 'learners-id-print',   label: 'ID Card Printing',   path: 'learners-id-print',   permission: 'VIEW_ALL_LEARNERS', icon: CreditCard },
+            { id: 'parents-list',        label: 'Parents List',       path: 'parents-list',        permission: 'VIEW_ALL_USERS' },
         ]
     },
     {
@@ -82,15 +83,16 @@ export const allNavSections = [
             { id: 'teachers-list', label: 'Tutors List', path: 'teachers-list', permission: 'MANAGE_TEACHERS' }
         ]
     },
-    {
-        id: 'parents',
-        label: 'Guardians',
-        icon: UserCheck,
-        permission: 'VIEW_ALL_USERS',
-        items: [
-            { id: 'parents-list', label: 'Parents List', path: 'parents-list', permission: 'VIEW_ALL_USERS' }
-        ]
-    },
+    // Parents is no longer a standalone menu — Parents List is nested under Learners
+    // {
+    //     id: 'parents',
+    //     label: 'Guardians',
+    //     icon: UserCheck,
+    //     permission: 'VIEW_ALL_USERS',
+    //     items: [
+    //         { id: 'parents-list', label: 'Parents List', path: 'parents-list', permission: 'VIEW_ALL_USERS' }
+    //     ]
+    // },
     {
         id: 'assessment',
         label: 'Assessment',
@@ -316,13 +318,13 @@ export const allNavSections = [
             { id: 'biometric-api',        label: 'API & Bridge Info',      path: 'biometric-dashboard?tab=config',     permission: 'CONFIGURE_BIOMETRIC_API' }
         ]
     },
-    {
-        id: 'help',
-        label: 'Help & Support',
-        icon: HelpCircle,
-        permission: null,
-        items: []
-    },
+    // {
+    //     id: 'help',
+    //     label: 'Help & Support',
+    //     icon: HelpCircle,
+    //     permission: null,
+    //     items: []
+    // },
     {
         id: 'facilities',
         label: 'The Campus',
@@ -471,12 +473,12 @@ export const useNavigation = () => {
                     icon: Users2,
                     items: configItems
                 },
-                {
-                    id: 'help',
-                    label: 'Help & Support',
-                    icon: HelpCircle,
-                    items: []
-                }
+                // {
+                //     id: 'help',
+                //     label: 'Help & Support',
+                //     icon: HelpCircle,
+                //     items: []
+                // }
             ],
         };
     }, [can]);
@@ -551,7 +553,7 @@ export const useNavigation = () => {
             schoolSections: role === 'PARENT'
                 ? parentSchoolSectionsFromNav(nav)
                 : nav.filter(s => SECONDARY_SCHOOL_SECTIONS.includes(s.id)),
-            lmsSection:          find('lms'),
+            lmsSection:          null, // Learning Management hidden until ready
             studentLmsSection:   null,
             backOfficeSections:  nav.filter(s => SECONDARY_BACKOFFICE_SECTIONS.includes(s.id)),
             docsCenterSection:   find('docs-center'),
@@ -596,7 +598,7 @@ export const useNavigation = () => {
             schoolSections: role === 'PARENT'
                 ? parentSchoolSectionsFromNav(nav)
                 : nav.filter(s => TERTIARY_SCHOOL_SECTIONS.includes(s.id)),
-            lmsSection:          find('lms'),
+            lmsSection:          null, // Learning Management hidden until ready
             studentLmsSection:   null,
             backOfficeSections:  nav.filter(s => TERTIARY_BACKOFFICE_SECTIONS.includes(s.id)),
             docsCenterSection:   find('docs-center'),
@@ -651,8 +653,7 @@ export const useNavigation = () => {
             let label = section.label;
             if (section.id === 'learners') label = labels.students;
             if (section.id === 'teachers') label = labels.teachers;
-            if (section.id === 'parents')  label = labels.parents || 'Guardians';
-      if (section.id === 'assessment') label = labels.subjects || 'Learner Analytics';
+            if (section.id === 'assessment') label = labels.subjects || 'Learner Analytics';
 
             return {
                 ...section,
@@ -691,7 +692,7 @@ export const useNavigation = () => {
             return navSections.filter(s => ['learners', 'assessment', 'attendance'].includes(s.id));
         }
         return navSections.filter(s => 
-            ['learners', 'teachers', 'parents', 'assessment', 'planner', 'timetable', 'learning-hub', 'attendance', 'facilities'].includes(s.id)
+            ['learners', 'teachers', 'assessment', 'planner', 'timetable', 'learning-hub', 'attendance', 'facilities'].includes(s.id)
         );
     }, [navSections, role]);
 
@@ -729,7 +730,7 @@ export const useNavigation = () => {
         const isItemVisible = (item) => !item.permission || can(item.permission);
 
         const built = allNavSections
-            .filter(s => ['settings', 'help'].includes(s.id))
+            .filter(s => ['settings'].includes(s.id))
             .filter(section => !section.permission || can(section.permission))
             .map(section => ({
                 ...section,

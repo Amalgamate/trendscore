@@ -202,6 +202,10 @@ const PageRouter = ({
   } = handlers;
 
   const normalizedPage = currentPage?.split('?')[0] || 'dashboard';
+  const admissionLearnerId = pageParams?.learnerId || pageParams?.learner?.id || editingLearner?.id;
+  const admissionLearner = editingLearner
+    || pageParams?.learner
+    || (admissionLearnerId ? learners?.find((learner) => learner.id === admissionLearnerId) : null);
 
   if (!hasPageAccess(user, normalizedPage)) {
     return (
@@ -263,8 +267,9 @@ const PageRouter = ({
                   setCurrentPage('learners-list');
                   setEditingLearner(null);
                 }}
-                onDelete={editingLearner ? () => handleDeleteLearner(editingLearner.id) : null}
-                learner={editingLearner}
+                onDelete={admissionLearner ? () => handleDeleteLearner(admissionLearner.id) : null}
+                learner={admissionLearner}
+                learnerId={admissionLearnerId}
               />
             );
           case 'learners-transfers-in': return <TransfersInPage />;

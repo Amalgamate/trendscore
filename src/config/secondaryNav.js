@@ -7,7 +7,7 @@ import {
   Home, Mail, Calendar, Users, GraduationCap, UserCheck,
   TrendingUp, Settings, BookOpen, Users2, Truck, Fingerprint,
   CreditCard, PieChart, Package, HelpCircle, Receipt, FileText,
-  ClipboardList, BarChart3, Award, BookMarked, PlayCircle, Activity
+  ClipboardList, BarChart3, Award, BookMarked, PlayCircle, Activity, Wrench
 } from 'lucide-react';
 
 export const secondaryNavSections = [
@@ -40,6 +40,7 @@ export const secondaryNavSections = [
       { id: 'students-list',       label: 'Students List',   path: 'learners-list',       permission: 'VIEW_ALL_LEARNERS' },
       { id: 'students-admissions', label: 'Admissions',      path: 'learners-admissions', permission: 'CREATE_LEARNER'    },
       { id: 'students-id-print',   label: 'ID Card Printing',path: 'learners-id-print',   permission: 'VIEW_ALL_LEARNERS', icon: CreditCard },
+      { id: 'parents-list',        label: 'Parents List',    path: 'parents-list',        permission: 'VIEW_ALL_USERS' },
     ],
   },
   {
@@ -51,15 +52,16 @@ export const secondaryNavSections = [
       { id: 'teachers-list', label: 'Teachers List', path: 'teachers-list', permission: 'MANAGE_TEACHERS' },
     ],
   },
-  {
-    id: 'parents',
-    label: 'Parents',
-    icon: UserCheck,
-    permission: 'VIEW_ALL_USERS',
-    items: [
-      { id: 'parents-list', label: 'Parents List', path: 'parents-list', permission: 'VIEW_ALL_USERS' },
-    ],
-  },
+  // Parents is no longer a standalone menu — Parents List is nested under Students
+  // {
+  //   id: 'parents',
+  //   label: 'Parents',
+  //   icon: UserCheck,
+  //   permission: 'VIEW_ALL_USERS',
+  //   items: [
+  //     { id: 'parents-list', label: 'Parents List', path: 'parents-list', permission: 'VIEW_ALL_USERS' },
+  //   ],
+  // },
 
   // ── Academics ─────────────────────────────────────────────────────────────
   {
@@ -234,19 +236,20 @@ export const secondaryNavSections = [
       { id: 'settings-communication', label: 'Communication Settings', path: 'settings-communication', permission: 'SCHOOL_SETTINGS'   },
       { id: 'settings-users',         label: 'User Management',        path: 'settings-users',         permission: 'EDIT_USER'         },
       { id: 'settings-system-logs',   label: 'System Logs',            path: 'settings-system-logs',   permission: 'SYSTEM_SETTINGS', icon: Activity },
+      { id: 'system-maintenance',     label: 'Backup, Restore & Reset', path: 'system-maintenance',    permission: 'SYSTEM_SETTINGS', icon: Wrench },
     ],
   },
-  {
-    id: 'help',
-    label: 'Help & Support',
-    icon: HelpCircle,
-    permission: null,
-    items: [],
-  },
+  // {
+  //   id: 'help',
+  //   label: 'Help & Support',
+  //   icon: HelpCircle,
+  //   permission: null,
+  //   items: [],
+  // },
 ];
 
 // ── Secondary-specific category groupings ─────────────────────────────────────
-export const SECONDARY_SCHOOL_SECTIONS   = ['students', 'teachers', 'parents', 'secondary-academics', 'secondary-assessment', 'attendance'];
-export const SECONDARY_RESULTS_SECTIONS  = ['secondary-results', 'lms'];
-export const SECONDARY_BACKOFFICE_SECTIONS = ['finance', 'hr', 'transport', 'inventory', 'biometric'];
-export const SECONDARY_SYSTEM_SECTIONS   = ['settings', 'help'];
+export const SECONDARY_SCHOOL_SECTIONS   = ['students', 'teachers', 'secondary-academics', 'secondary-assessment', 'attendance'];
+export const SECONDARY_RESULTS_SECTIONS  = ['secondary-results'];
+export const SECONDARY_BACKOFFICE_SECTIONS = ['finance', 'hr', 'transport', 'inventory'];
+export const SECONDARY_SYSTEM_SECTIONS   = ['settings'];
