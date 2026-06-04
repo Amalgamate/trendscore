@@ -6,6 +6,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { dashboardAPI } from '../../../../services/api';
 import { useAuth } from '../../../../hooks/useAuth';
+import { AppCard, KpiCard } from '@/design-system/components';
+import { TOKENS } from '@/design-system/tokens';
 import { ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar } from 'recharts';
 import {
   AlertTriangle,
@@ -135,46 +137,7 @@ const formatKes = (amount = 0) => {
   return `KES ${Math.round(value).toLocaleString()}`;
 };
 
-const StatTile = ({ label, value, note, icon: Icon, tone = 'blue', onClick }) => {
-  const tones = {
-    blue: 'border-blue-100 bg-blue-50 text-blue-700',
-    green: 'border-emerald-100 bg-emerald-50 text-emerald-700',
-    amber: 'border-amber-100 bg-amber-50 text-amber-700',
-    red: 'border-rose-100 bg-rose-50 text-rose-700',
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-slate-300 hover:shadow-md"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</p>
-          <p className="mt-3 truncate text-2xl font-extrabold text-slate-950">{value}</p>
-          <p className="mt-1 truncate text-xs font-medium text-slate-500">{note}</p>
-        </div>
-        <span className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border ${tones[tone] || tones.blue}`}>
-          <Icon size={18} />
-        </span>
-      </div>
-    </button>
-  );
-};
-
-const Panel = ({ title, subtitle, children, action }) => (
-  <section className="min-w-0 rounded-lg border border-slate-200 bg-white shadow-sm">
-    <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
-      <div className="min-w-0">
-        <h2 className="text-sm font-extrabold text-slate-950">{title}</h2>
-        {subtitle && <p className="mt-1 text-xs text-slate-500">{subtitle}</p>}
-      </div>
-      {action}
-    </div>
-    <div className="p-5">{children}</div>
-  </section>
-);
+// StatTile and Panel replaced by design-system KpiCard and AppCard
 
 const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
   const [refreshing, setRefreshing] = useState(false);
@@ -281,12 +244,12 @@ const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
   const rate = Math.max(0, Math.min(100, stats.collectionRate));
 
   return (
-    <div className="min-h-full bg-slate-50">
+    <div className="min-h-full bg-white">
       {/* Mini app-bar — replaces the suppressed global Header for ACCOUNTANT role */}
       <FinanceMiniBar user={user} brandingSettings={brandingSettings} onNavigate={onNavigate} />
       <div className="p-4 md:p-5">
       <div className="mx-auto max-w-[1500px] space-y-4">
-        <section className="overflow-hidden rounded-lg bg-[#080083] text-white shadow-sm">
+        <section className="overflow-hidden rounded-lg text-white shadow-sm" style={{ backgroundColor: TOKENS.colors.brand.primary }}>
           <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_420px] lg:p-6">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -323,17 +286,17 @@ const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
         </section>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatTile label="Total Expected" value={formatKes(stats.totalExpected)} note="This term" icon={Receipt} tone="blue" onClick={() => onNavigate('fees-structure')} />
-          <StatTile label="Total Collected" value={formatKes(stats.totalCollected)} note="Payments received" icon={CreditCard} tone="green" onClick={() => onNavigate('fees-collection')} />
-          <StatTile label="Outstanding" value={formatKes(stats.outstanding)} note="From active invoices" icon={Calendar} tone="amber" onClick={() => onNavigate('fees-collection')} />
-          <StatTile label="Overdue" value={formatKes(stats.overdue)} note="Past due invoices" icon={AlertTriangle} tone="red" onClick={() => onNavigate('fees-collection')} />
+          <KpiCard label="Total Expected" value={formatKes(stats.totalExpected)} subvalue="This term" icon={<Receipt size={18} />} variant="primary" onClick={() => onNavigate('fees-structure')} />
+          <KpiCard label="Total Collected" value={formatKes(stats.totalCollected)} subvalue="Payments received" icon={<CreditCard size={18} />} variant="success" onClick={() => onNavigate('fees-collection')} />
+          <KpiCard label="Outstanding" value={formatKes(stats.outstanding)} subvalue="Active invoices" icon={<Calendar size={18} />} variant="warning" onClick={() => onNavigate('fees-collection')} />
+          <KpiCard label="Overdue" value={formatKes(stats.overdue)} subvalue="Past due invoices" icon={<AlertTriangle size={18} />} variant="error" onClick={() => onNavigate('fees-collection')} />
         </div>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <Panel
+          <AppCard
             title="Collection Forecast"
             subtitle="Projected weekly collection against baseline"
-            action={(
+            headerAction={
               <button
                 type="button"
                 onClick={() => loadMetrics('term')}
@@ -342,7 +305,7 @@ const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
                 <RefreshCw size={14} />
                 Refresh
               </button>
-            )}
+            }
           >
             <div className="h-[260px] min-w-0">
               <ResponsiveContainer width="100%" height="100%">
@@ -351,14 +314,14 @@ const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
                   <XAxis dataKey="week" tick={{ fontSize: 12, fill: '#64748b' }} />
                   <YAxis tick={{ fontSize: 12, fill: '#64748b' }} />
                   <Tooltip formatter={(value) => formatKes(value)} />
-                  <Bar dataKey="projected" fill="#080083" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="projected" fill={TOKENS.colors.brand.primary} radius={[6, 6, 0, 0]} />
                   <Bar dataKey="baseline" fill="#94a3b8" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          </Panel>
+          </AppCard>
 
-          <Panel title="Collection Rate" subtitle="Expected income collected">
+          <AppCard title="Collection Rate" subtitle="Expected income collected">
             <div className="flex items-center justify-center">
               <div className="relative h-44 w-44">
                 <svg className="-rotate-90" width="176" height="176" viewBox="0 0 176 176">
@@ -368,14 +331,14 @@ const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
                     cy="88"
                     r="72"
                     fill="none"
-                    stroke="#080083"
+                    stroke={TOKENS.colors.brand.primary}
                     strokeWidth="14"
                     strokeDasharray={`${(rate / 100) * 2 * Math.PI * 72} ${2 * Math.PI * 72}`}
                     strokeLinecap="round"
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-4xl font-extrabold text-[#080083]">{rate}%</span>
+                  <span className="text-4xl font-extrabold" style={{ color: TOKENS.colors.brand.primary }}>{rate}%</span>
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Collected</span>
                 </div>
               </div>
@@ -390,11 +353,11 @@ const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
                 <p className="mt-1 truncate text-sm font-extrabold text-slate-950">{formatKes(stats.pendingReconciliation)}</p>
               </div>
             </div>
-          </Panel>
+          </AppCard>
         </div>
 
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <Panel title="Bank Reconciliation" subtitle="Account balances and reconciliation status">
+          <AppCard title="Bank Reconciliation" subtitle="Account balances and reconciliation status">
             <div className="space-y-3">
               {bankAccounts.map((account) => (
                 <button
@@ -404,7 +367,7 @@ const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
                   className="flex w-full min-w-0 items-center justify-between gap-4 rounded-md border border-slate-100 p-3 text-left transition hover:bg-slate-50"
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-blue-50 text-[#080083]">
+                    <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-blue-50" style={{ color: TOKENS.colors.brand.primary }}>
                       <Landmark size={17} />
                     </span>
                     <div className="min-w-0">
@@ -419,9 +382,9 @@ const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
                 </button>
               ))}
             </div>
-          </Panel>
+          </AppCard>
 
-          <Panel title="Recent Transactions" subtitle="Latest financial activities">
+          <AppCard title="Recent Transactions" subtitle="Latest financial activities">
             <div className="space-y-2">
               {recentTransactions.map((transaction) => {
                 const isInflow = transaction.type === 'payment_received';
@@ -445,20 +408,20 @@ const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
                 );
               })}
             </div>
-          </Panel>
+          </AppCard>
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <button type="button" onClick={() => onNavigate('fees-collection')} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 text-left shadow-sm hover:bg-slate-50">
-            <BarChart3 className="text-[#080083]" size={20} />
+            <BarChart3 size={20} style={{ color: TOKENS.colors.brand.primary }} />
             <span className="text-sm font-extrabold text-slate-950">Open Fee Collection</span>
           </button>
           <button type="button" onClick={() => onNavigate('accounting-expenses')} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 text-left shadow-sm hover:bg-slate-50">
-            <PieChart className="text-[#080083]" size={20} />
+            <PieChart size={20} style={{ color: TOKENS.colors.brand.primary }} />
             <span className="text-sm font-extrabold text-slate-950">Review Expenses</span>
           </button>
           <button type="button" onClick={() => onNavigate('accounting-reports')} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 text-left shadow-sm hover:bg-slate-50">
-            <TrendingUp className="text-[#080083]" size={20} />
+            <TrendingUp size={20} style={{ color: TOKENS.colors.brand.primary }} />
             <span className="text-sm font-extrabold text-slate-950">Financial Reports</span>
           </button>
         </div>
