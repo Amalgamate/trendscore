@@ -209,7 +209,7 @@ const Sidebar = React.memo(({
 
   const sidebarW = sidebarOpen ? SIDEBAR_EXPANDED_W : SIDEBAR_COLLAPSED_W;
 
-  if (role === 'ACCOUNTANT') {
+  if (role === 'ACCOUNTANT' && !navData?.isSidebarRestricted) {
     const financeBg = '#080083';
     const financeDark = '#05005f';
     return (

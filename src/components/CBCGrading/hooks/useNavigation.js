@@ -26,6 +26,43 @@ import {
 
 const focusModules = ['dashboard', 'communications', 'planner', 'learners', 'teachers', 'assessment', 'learning-hub', 'attendance', 'docs-center', 'settings', 'hr', 'finance', 'inventory', 'transport'];
 
+const KAMBI_GARBA_HOSTS = new Set(['kambigarba-cs.trendscore.co.ke']);
+const KAMBI_GARBA_ALLOWED_SECTION_IDS = new Set(['learners', 'teachers', 'assessment', 'planner', 'communications']);
+const KAMBI_GARBA_SECTION_LABELS = {
+    learners: 'Students',
+    teachers: 'Tutors',
+    assessment: 'Assessments',
+    planner: 'Planner',
+    communications: 'Communications'
+};
+
+const isKambiGarbaHost = () => (
+    typeof window !== 'undefined' &&
+    KAMBI_GARBA_HOSTS.has(window.location.hostname.toLowerCase())
+);
+
+const restrictNavSections = (nav, allowedIds, labelsById = {}) => {
+    const withRestrictedLabel = (section) => (
+        section ? { ...section, label: labelsById[section.id] || section.label } : section
+    );
+    const isAllowed = (section) => section && allowedIds.has(section.id);
+    const filterSections = (sections = []) => sections.filter(isAllowed).map(withRestrictedLabel);
+
+    return {
+        ...nav,
+        isSidebarRestricted: true,
+        navSections: filterSections(nav.navSections),
+        dashboardSection: isAllowed(nav.dashboardSection) ? withRestrictedLabel(nav.dashboardSection) : null,
+        communicationSection: isAllowed(nav.communicationSection) ? withRestrictedLabel(nav.communicationSection) : null,
+        schoolSections: filterSections(nav.schoolSections),
+        lmsSection: isAllowed(nav.lmsSection) ? withRestrictedLabel(nav.lmsSection) : null,
+        studentLmsSection: isAllowed(nav.studentLmsSection) ? withRestrictedLabel(nav.studentLmsSection) : null,
+        backOfficeSections: filterSections(nav.backOfficeSections),
+        docsCenterSection: isAllowed(nav.docsCenterSection) ? withRestrictedLabel(nav.docsCenterSection) : null,
+        systemAdminSections: filterSections(nav.systemAdminSections)
+    };
+};
+
 export const allNavSections = [
     {
         id: 'dashboard',
@@ -430,6 +467,7 @@ export const useNavigation = () => {
     const { can, role, isRole } = usePermissions();
     const { user, institutionType } = useAuth();
     const labels = useInstitutionLabels();
+    const restrictForKambiGarba = isKambiGarbaHost();
     const accountantNav = useMemo(() => {
         const financeItems = accountantFinanceNavigation.filter(item => !item.permission || can(item.permission));
         const communicationItems = accountantCommunicationNavigation.filter(item => !item.permission || can(item.permission));
@@ -744,24 +782,34 @@ export const useNavigation = () => {
     }, [can, role]);
 
     return useMemo(() => {
-        if (role === 'ACCOUNTANT') return accountantNav;
-        if (institutionType === 'SECONDARY' && secondaryNav) return secondaryNav;
-        if (institutionType === 'TERTIARY' && tertiaryNav) return tertiaryNav;
+        let builtNav;
+        if (role === 'ACCOUNTANT') {
+            builtNav = accountantNav;
+        } else if (institutionType === 'SECONDARY' && secondaryNav) {
+            builtNav = secondaryNav;
+        } else if (institutionType === 'TERTIARY' && tertiaryNav) {
+            builtNav = tertiaryNav;
+        } else {
+            builtNav = {
+                navSections,
+                dashboardSection,
+                communicationSection,
+                schoolSections,
+                lmsSection,
+                studentLmsSection,
+                backOfficeSections,
+                docsCenterSection,
+                systemAdminSections
+            };
+        }
 
-        return {
-            navSections,
-            dashboardSection,
-            communicationSection,
-            schoolSections,
-            lmsSection,
-            studentLmsSection,
-            backOfficeSections,
-            docsCenterSection,
-            systemAdminSections
-        };
+        return restrictForKambiGarba
+            ? restrictNavSections(builtNav, KAMBI_GARBA_ALLOWED_SECTION_IDS, KAMBI_GARBA_SECTION_LABELS)
+            : builtNav;
     }, [
         institutionType,
         role,
+        restrictForKambiGarba,
         accountantNav,
         secondaryNav,
         tertiaryNav,
