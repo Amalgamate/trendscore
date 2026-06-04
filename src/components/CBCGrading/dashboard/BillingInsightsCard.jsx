@@ -97,7 +97,6 @@ const DonutChart = ({ data, total, animated }) => {
     return (
       <svg viewBox="0 0 160 160" className="w-full h-full">
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="#f1f5f9" strokeWidth={strokeW} />
-        <text x={cx} y={cy - 6} textAnchor="middle" fill="#94a3b8" fontSize="11" fontWeight="600">No data</text>
       </svg>
     );
   }
