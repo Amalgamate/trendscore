@@ -4,6 +4,16 @@ import { getLearningAreasByGrade } from '../constants/learningAreas';
 import { useSchoolData } from '../contexts/SchoolDataContext';
 import { normalizeTestType } from '../components/CBCGrading/utils/testType';
 
+/** Returns the persisted institutionType without triggering a re-render cycle */
+const getStoredInstitutionType = () => {
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    return user?.institutionType || 'PRIMARY_CBC';
+  } catch {
+    return 'PRIMARY_CBC';
+  }
+};
+
 const TEST_TYPES = [
   { value: 'OPENER', label: 'Opener' },
   { value: 'MID_TERM', label: 'Midterm' },
@@ -104,6 +114,12 @@ export const useSummativeTestForm = ({ initialTestType = null } = {}) => {
   }, []);
 
   const loadSchoolOfferings = useCallback(async () => {
+    // Senior pathways offerings are only available for SECONDARY institutions.
+    // Calling this endpoint for PRIMARY_CBC results in a 403 INSTITUTION_FORBIDDEN.
+    if (getStoredInstitutionType() !== 'SECONDARY') {
+      setSchoolOfferings([]);
+      return;
+    }
     try {
       const response = await seniorPathwayAPI.getSchoolOfferings();
       const offeringsData = response?.data || response;
