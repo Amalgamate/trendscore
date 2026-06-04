@@ -25,7 +25,7 @@ import api, { configAPI, assessmentAPI, learnerAPI } from '../../../../services/
 import { useSchoolData } from '../../../../contexts/SchoolDataContext';
 import VirtualizedTable from '../../shared/VirtualizedTable';
 import { getAcademicYearOptions, getCurrentAcademicYear } from '../../utils/academicYear';
-import { resolveTestType, formatTestTypeLabel } from '../../utils/testType';
+import { CANONICAL_TEST_TYPE_OPTIONS, CANONICAL_TEST_TYPE_VALUES, resolveTestType, formatTestTypeLabel } from '../../utils/testType';
 import { learningAreas } from '../../data/learningAreas';
 import { gradeStructure } from '../../data/gradeStructure';
 import ExcelJS from 'exceljs';
@@ -71,15 +71,14 @@ const LEARNING_AREA_ABBREVIATIONS = {
   'INDIGENOUS LANGUAGE': 'INDI',
   'LANGUAGE ACTIVITIES': 'LANG'
 };
-const CORE_EXAM_TYPES = ['OPENER', 'MID_TERM', 'END_TERM', 'WEEKLY', 'MOCK', 'MONTHLY'];
-const EXAM_TYPE_DROPDOWN_LABELS: Record<string, string> = {
-  OPENER: 'OPENER',
-  MID_TERM: 'MID TERM',
-  END_TERM: 'END TERM',
-  WEEKLY: 'WEEKLY',
-  MOCK: 'MOCK',
-  MONTHLY: 'MONTHLY',
-};
+const CORE_EXAM_TYPES = CANONICAL_TEST_TYPE_VALUES;
+const EXAM_TYPE_DROPDOWN_LABELS: Record<string, string> = CANONICAL_TEST_TYPE_OPTIONS.reduce(
+  (labels: Record<string, string>, option: { value: string; label: string }) => {
+    labels[option.value] = option.label.toUpperCase();
+    return labels;
+  },
+  {}
+);
 const GENERIC_TEST_TYPES = new Set(['ASSESSMENT', 'RANDOM']);
 
 const resolveCycleType = (test: any): string => {

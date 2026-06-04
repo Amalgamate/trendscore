@@ -22,8 +22,6 @@ const SECONDARY_GRADE_GROUPS = [
     { id: 'senior_secondary', name: 'Senior School', grades: ['GRADE10', 'GRADE11', 'GRADE12'] },
 ];
 
-const TEST_TYPES = CANONICAL_TEST_TYPE_OPTIONS.filter((t) => t.value !== 'CAT');
-
 const TERMS = [
     { value: 'TERM_1', label: 'Term 1' },
     { value: 'TERM_2', label: 'Term 2' },
@@ -226,7 +224,7 @@ const BulkCreateTest = ({ onBack, onSuccess }) => {
                                 onChange={(e) => setFormData({ ...formData, testType: e.target.value })}
                                 className="w-full h-11 px-3 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-purple outline-none appearance-none text-sm font-medium text-slate-700"
                             >
-                                {TEST_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                {CANONICAL_TEST_TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                             </select>
                         </div>
                         <div className="space-y-1.5">

@@ -521,7 +521,6 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
               {CANONICAL_TEST_TYPE_OPTIONS.map(type => (
                 <option key={type.value} value={type.value}>{type.label}</option>
               ))}
-              <option value="ASSESSMENT">Custom Assessment</option>
             </select>
             {/* Clear */}
             {(searchQuery || activeFilterCount > 0) && (

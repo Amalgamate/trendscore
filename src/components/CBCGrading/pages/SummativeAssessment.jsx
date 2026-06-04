@@ -50,11 +50,6 @@ const matchesAcademicYear = (testYear, selectedYear) => {
   if (!selectedYear) return true;
   return String(testYear || '').trim() === String(selectedYear).trim();
 };
-const ASSESSMENT_TEST_TYPE_OPTIONS = [
-  ...CANONICAL_TEST_TYPE_OPTIONS,
-  { value: 'ASSESSMENT', label: 'Assessment' },
-];
-
 // ─── Custom Test Picker ────────────────────────────────────────────────────────
 // Replaces the native <select> so we can render a green tick next to tests that
 // already have saved results. Keeps identical height/style to the other selects.
@@ -1554,7 +1549,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
               title="Select Exam Name"
             >
               <option value="">— Exam Name —</option>
-              {ASSESSMENT_TEST_TYPE_OPTIONS.map((option) => (
+              {CANONICAL_TEST_TYPE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>

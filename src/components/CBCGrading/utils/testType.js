@@ -8,6 +8,7 @@ const TEST_TYPE_PRIORITY = {
   MOCK: 7,
   ASSESSMENT: 8,
   RANDOM: 9,
+  OTHER: 10,
 };
 
 const TEST_TYPE_LABELS = {
@@ -20,6 +21,7 @@ const TEST_TYPE_LABELS = {
   MOCK: 'Mock',
   ASSESSMENT: 'Assessment',
   RANDOM: 'Random',
+  OTHER: 'Other',
 };
 
 export const normalizeTestType = (rawType) => {
@@ -57,7 +59,7 @@ export const normalizeTestType = (rawType) => {
   if (normalized.includes('WEEK')) return 'WEEKLY';
   if (normalized.includes('CAT')) return 'CAT';
   if (normalized.includes('MOCK')) return 'MOCK';
-  if (normalized === 'OTHER') return 'MOCK';
+  if (normalized === 'OTHER') return 'OTHER';
   if (normalized.includes('RANDOM')) return 'RANDOM';
   if (normalized.includes('ASSESS')) return 'ASSESSMENT';
 
@@ -76,6 +78,7 @@ export const inferTestTypeFromTitle = (title) => {
   if (/\bMONTH(LY)?\b/.test(source)) return 'MONTHLY';
   if (/\bWEEK(LY)?\b/.test(source)) return 'WEEKLY';
   if (/\bRANDOM\b/.test(source)) return 'RANDOM';
+  if (/\bOTHER\b/.test(source)) return 'OTHER';
   if (/\bASSESS(MENT)?\b/.test(source)) return 'ASSESSMENT';
 
   return null;
@@ -109,9 +112,13 @@ export const CANONICAL_TEST_TYPE_OPTIONS = [
   { value: 'OPENER', label: 'Opener Exam' },
   { value: 'MID_TERM', label: 'Midterm Assessment' },
   { value: 'END_TERM', label: 'End of Term Exam' },
+  { value: 'CAT', label: 'CAT' },
+  { value: 'ASSESSMENT', label: 'Assessment' },
+  { value: 'OTHER', label: 'Other' },
   { value: 'MONTHLY', label: 'Monthly Assessment' },
   { value: 'WEEKLY', label: 'Weekly Test' },
-  { value: 'CAT', label: 'CAT' },
   { value: 'MOCK', label: 'Mock Exam' },
   { value: 'RANDOM', label: 'Random Assessment' },
 ];
+
+export const CANONICAL_TEST_TYPE_VALUES = CANONICAL_TEST_TYPE_OPTIONS.map((option) => option.value);
