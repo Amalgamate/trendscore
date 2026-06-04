@@ -2675,6 +2675,10 @@ enum SummativeTestType {
   CAT
   ASSESSMENT
   OTHER
+  MONTHLY
+  WEEKLY
+  MOCK
+  RANDOM
 }
 
 enum TestStatus {

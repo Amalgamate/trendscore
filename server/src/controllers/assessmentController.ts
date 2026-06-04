@@ -41,11 +41,11 @@ const SUMMATIVE_TEST_TYPE_ALIASES: Record<string, SummativeTestType> = {
   END_OF_TERM: 'END_TERM',
   CAT: 'CAT',
   ASSESSMENT: 'ASSESSMENT',
-  MONTHLY: 'ASSESSMENT',
-  WEEKLY: 'ASSESSMENT',
-  RANDOM: 'OTHER',
-  MOCK: 'OTHER',
-  MOCK_EXAM: 'OTHER',
+  MONTHLY: 'MONTHLY',
+  WEEKLY: 'WEEKLY',
+  RANDOM: 'RANDOM',
+  MOCK: 'MOCK',
+  MOCK_EXAM: 'MOCK',
   OTHER: 'OTHER',
 };
 
@@ -58,8 +58,11 @@ function normalizeSummativeTestType(rawType: unknown): SummativeTestType {
     .replace(/^_+|_+$/g, '');
 
   if (SUMMATIVE_TEST_TYPE_ALIASES[normalized]) return SUMMATIVE_TEST_TYPE_ALIASES[normalized];
-  if (normalized.includes('MOCK')) return 'OTHER';
-  if (normalized.includes('MONTH') || normalized.includes('WEEK') || normalized.includes('ASSESS')) return 'ASSESSMENT';
+  if (normalized.includes('MOCK')) return 'MOCK';
+  if (normalized.includes('MONTH')) return 'MONTHLY';
+  if (normalized.includes('WEEK')) return 'WEEKLY';
+  if (normalized.includes('RANDOM')) return 'RANDOM';
+  if (normalized.includes('ASSESS')) return 'ASSESSMENT';
   if (normalized.includes('MID_TERM') || normalized === 'MID') return 'MID_TERM';
   if (normalized.includes('END_TERM')) return 'END_TERM';
   if (normalized.includes('OPEN')) return 'OPENER';

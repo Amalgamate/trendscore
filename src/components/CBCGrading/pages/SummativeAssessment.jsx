@@ -578,7 +578,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     if (availableStreams.length > 0 && !stagedStream) return 'Select stream first';
     if (!stagedTerm) return 'Select term first';
     if (!stagedAcademicYear) return 'Select academic year first';
-    if (!stagedTestType) return 'Select exam type first';
+    if (!stagedTestType) return 'Select exam name first';
     if (!stagedLearningArea) return 'Select learning area first';
     if (!stagedTestId) return 'Select test first';
     return '';
@@ -1542,7 +1542,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
               ))}
             </select>
 
-            {/* Exam Type */}
+            {/* Exam Name */}
             <select
               value={stagedTestType}
               onChange={(e) => {
@@ -1551,9 +1551,9 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
               }}
               disabled={!stagedGrade || !stagedTerm || !stagedAcademicYear}
               className="h-9 px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-purple appearance-none cursor-pointer hover:border-slate-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-50 w-36"
-              title="Select Exam Type"
+              title="Select Exam Name"
             >
-              <option value="">— Exam Type —</option>
+              <option value="">— Exam Name —</option>
               {ASSESSMENT_TEST_TYPE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -1573,7 +1573,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
               title="Select Learning Area"
             >
               <option value="">
-                {!stagedGrade ? '← Select Grade first' : !stagedTerm ? '← Select Term first' : !stagedAcademicYear ? '← Select Year first' : !stagedTestType ? '← Select Exam Type first' : '— Subject / Area —'}
+                {!stagedGrade ? '← Select Grade first' : !stagedTerm ? '← Select Term first' : !stagedAcademicYear ? '← Select Year first' : !stagedTestType ? '← Select Exam Name first' : '— Subject / Area —'}
               </option>
               {stagedFilteredLearningAreasByWorkload.map(area => (
                 <option key={area} value={area}>{area}</option>
