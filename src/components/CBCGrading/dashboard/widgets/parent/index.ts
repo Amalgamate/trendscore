@@ -1,55 +1,8 @@
-import React from 'react';
+export { default as GreetingHeaderWidget } from './GreetingHeaderWidget';
+export { default as QuickActionsWidget } from './QuickActionsWidget';
+export { default as ChildrenCardsWidget } from './ChildrenCardsWidget';
+export { default as ImportantNoticesWidget } from './ImportantNoticesWidget';
+export { default as AttendanceSummaryWidget } from './AttendanceSummaryWidget';
+export { default as LatestResultsWidget } from './LatestResultsWidget';
+export { default as PhotosBannerWidget } from './PhotosBannerWidget';
 
-interface WidgetProps { user?: any; config?: any; onNavigate?: (path: string) => void; }
-
-const GreetingHeaderWidget: React.FC<WidgetProps> = () => (
-  <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-    <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>GreetingHeader Widget</p>
-  </div>
-);
-
-const QuickActionsWidget: React.FC<WidgetProps> = () => (
-  <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-    <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>QuickActions Widget</p>
-  </div>
-);
-
-const ChildrenCardsWidget: React.FC<WidgetProps> = () => (
-  <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-    <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>ChildrenCards Widget</p>
-  </div>
-);
-
-const ImportantNoticesWidget: React.FC<WidgetProps> = () => (
-  <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-    <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>ImportantNotices Widget</p>
-  </div>
-);
-
-const AttendanceSummaryWidget: React.FC<WidgetProps> = () => (
-  <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-    <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>AttendanceSummary Widget</p>
-  </div>
-);
-
-const LatestResultsWidget: React.FC<WidgetProps> = () => (
-  <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-    <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>LatestResults Widget</p>
-  </div>
-);
-
-const PhotosBannerWidget: React.FC<WidgetProps> = () => (
-  <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-    <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>PhotosBanner Widget</p>
-  </div>
-);
-
-export {
-  GreetingHeaderWidget,
-  QuickActionsWidget,
-  ChildrenCardsWidget,
-  ImportantNoticesWidget,
-  AttendanceSummaryWidget,
-  LatestResultsWidget,
-  PhotosBannerWidget,
-};

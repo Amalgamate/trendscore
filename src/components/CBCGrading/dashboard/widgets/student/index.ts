@@ -1,29 +1,5 @@
-import React from 'react';
+export { default as WelcomeBannerWidget } from './WelcomeBannerWidget';
+export { default as StudentStatsWidget } from './StudentStatsWidget';
+export { default as MyCoursesWidget } from './MyCoursesWidget';
+export { default as DueSoonWidget } from './DueSoonWidget';
 
-interface WidgetProps { user?: any; config?: any; onNavigate?: (path: string) => void; }
-
-const WelcomeBannerWidget: React.FC<WidgetProps> = () => (
-  <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-    <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>WelcomeBanner Widget</p>
-  </div>
-);
-
-const StudentStatsWidget: React.FC<WidgetProps> = () => (
-  <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-    <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>StudentStats Widget</p>
-  </div>
-);
-
-const MyCoursesWidget: React.FC<WidgetProps> = () => (
-  <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-    <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>MyCourses Widget</p>
-  </div>
-);
-
-const DueSoonWidget: React.FC<WidgetProps> = () => (
-  <div style={{ padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-    <p style={{ color: '#6b7280', fontSize: '0.875rem' }}>DueSoon Widget</p>
-  </div>
-);
-
-export { WelcomeBannerWidget, StudentStatsWidget, MyCoursesWidget, DueSoonWidget };

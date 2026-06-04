@@ -3,11 +3,13 @@
  * Daily teaching workflow - focused on classes, attendance, assessments, and learner management
  */
 
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useEffect, useState } from 'react';
 import { dashboardAPI } from '../../../../services/api';
 import { useRolePreview } from '../../../../contexts/RolePreviewContext';
 import {
   AppCard,
+  KpiCard,
+  SectionHeader,
   EmptyState
 } from '@/design-system/components';
 
@@ -21,9 +23,44 @@ import {
   Calendar,
   FileText,
   ChevronRight,
-  AlertCircle
+  AlertCircle,
+  ClipboardList,
+  GraduationCap
 } from 'lucide-react';
 
+// ─── Shared status-badge util ────────────────────────────────────────────────
+// Maps a class schedule status to its Tailwind colour classes and display label.
+// Kept here (co-located with TeacherDashboard) rather than in the global
+// StatusBadge because these are teacher-schedule-specific values; if another
+// dashboard ever needs them, extract to shared/classStatusUtils.js at that point.
+export const CLASS_STATUS_CONFIG = {
+  'in-progress': {
+    cardClass: 'bg-blue-50 border-blue-200',
+    badgeClass: 'text-blue-700 bg-blue-100',
+    label: 'Now',
+  },
+  upcoming: {
+    cardClass: 'bg-amber-50 border-amber-200',
+    badgeClass: 'text-amber-700 bg-amber-100',
+    label: 'Next',
+  },
+  scheduled: {
+    cardClass: 'bg-gray-50 border-gray-200',
+    badgeClass: 'text-gray-600 bg-gray-100',
+    label: 'Later',
+  },
+};
+
+const ClassStatusBadge = ({ status }) => {
+  const config = CLASS_STATUS_CONFIG[status];
+  if (!config) return null;
+  return (
+    <span className={`text-xs font-semibold px-2 py-1 rounded ${config.badgeClass}`}>
+      {config.label}
+    </span>
+  );
+};
+// ─────────────────────────────────────────────────────────────────────────────
 
 const TeacherDashboard = ({ user, onNavigate }) => {
   const rolePreview = useRolePreview();
@@ -98,31 +135,15 @@ const TeacherDashboard = ({ user, onNavigate }) => {
     { name: 'Peter Ochieng', grade: 'Grade 5A', issue: 'Requires academic support', severity: 'medium' },
   ];
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'in-progress': return 'bg-blue-50 border-blue-200';
-      case 'upcoming': return 'bg-amber-50 border-amber-200';
-      case 'scheduled': return 'bg-gray-50 border-gray-200';
-      default: return 'bg-white border-gray-200';
-    }
-  };
+  // Derived KPI values
+  const totalLearners = todaysClasses.reduce((sum, c) => sum + c.learners, 0);
+  const totalPapers   = assessmentsToMark.reduce((sum, a) => sum + a.count, 0);
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'in-progress': return <span className="text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-1 rounded">Now</span>;
-      case 'upcoming': return <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-1 rounded">Next</span>;
-      case 'scheduled': return <span className="text-xs font-semibold text-gray-600 bg-gray-100 px-2 py-1 rounded">Later</span>;
-      default: return null;
-    }
-  };
+  const getSeverityColor = (severity) =>
+    severity === 'high' ? 'border-l-rose-500 bg-rose-50' : 'border-l-amber-500 bg-amber-50';
 
-  const getSeverityColor = (severity) => {
-    return severity === 'high' ? 'border-l-rose-500 bg-rose-50' : 'border-l-amber-500 bg-amber-50';
-  };
-
-  const getSeverityTextColor = (severity) => {
-    return severity === 'high' ? 'text-rose-900' : 'text-amber-900';
-  };
+  const getSeverityTextColor = (severity) =>
+    severity === 'high' ? 'text-rose-900' : 'text-amber-900';
 
   if (loading) {
     return <div className="animate-pulse space-y-6"><div className="h-96 bg-gray-200 rounded-xl" /></div>;
@@ -144,14 +165,53 @@ const TeacherDashboard = ({ user, onNavigate }) => {
 
   return (
     <div className="space-y-6">
-      {/* Welcome Header */}
-      <div className="border-b border-gray-200 pb-4">
-        <h1 className="text-2xl font-bold text-gray-900">Welcome, {user?.name?.split(' ')[0] || 'Teacher'}</h1>
-        <p className="text-sm text-gray-600 mt-1">Your daily teaching dashboard</p>
+
+      {/* ── Welcome Header ─────────────────────────────────────────────── */}
+      <SectionHeader
+        variant="bordered"
+        level="h1"
+        title={`Welcome, ${user?.name?.split(' ')[0] || 'Teacher'}`}
+        description="Your daily teaching dashboard"
+      />
+
+      {/* ── KPI Row ────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <KpiCard
+          variant="primary"
+          label="Today's Classes"
+          value={todaysClasses.length}
+          subvalue="scheduled"
+          icon={<Calendar size={20} />}
+          onClick={() => onNavigate('planner-timetable')}
+        />
+        <KpiCard
+          variant="warning"
+          label="Attendance Due"
+          value={attendanceDue.length}
+          subvalue="pending"
+          icon={<Clock size={20} />}
+          onClick={() => onNavigate('attendance-daily')}
+        />
+        <KpiCard
+          variant="neutral"
+          label="Papers to Mark"
+          value={totalPapers}
+          subvalue="total"
+          icon={<ClipboardList size={20} />}
+          onClick={() => onNavigate('assess-summative-assessment')}
+        />
+        <KpiCard
+          variant="success"
+          label="My Learners"
+          value={totalLearners}
+          subvalue="across classes"
+          icon={<GraduationCap size={20} />}
+          onClick={() => onNavigate('learners-list')}
+        />
       </div>
 
-      {/* Today's Classes */}
-      <AppCard 
+      {/* ── Today's Classes ────────────────────────────────────────────── */}
+      <AppCard
         title="Today's Classes"
         subtitle={`${todaysClasses.length} classes scheduled`}
       >
@@ -160,13 +220,13 @@ const TeacherDashboard = ({ user, onNavigate }) => {
             <button
               key={cls.id}
               onClick={() => onNavigate('planner-timetable')}
-              className={`w-full p-4 rounded-lg border transition-all text-left hover:shadow-md ${getStatusColor(cls.status)}`}
+              className={`w-full p-4 rounded-lg border transition-all text-left hover:shadow-md ${CLASS_STATUS_CONFIG[cls.status]?.cardClass ?? 'bg-white border-gray-200'}`}
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <h4 className="font-semibold text-gray-900">{cls.grade}</h4>
-                    {getStatusBadge(cls.status)}
+                    <ClassStatusBadge status={cls.status} />
                   </div>
                   <p className="text-sm text-gray-600">{cls.subject}</p>
                   <p className="text-xs text-gray-500 mt-1">{cls.time} • {cls.duration} min • {cls.learners} learners</p>
@@ -184,9 +244,9 @@ const TeacherDashboard = ({ user, onNavigate }) => {
         </button>
       </AppCard>
 
-      {/* Attendance Due & Assessments to Mark - Side by Side */}
+      {/* ── Attendance Due & Assessments to Mark ───────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AppCard 
+        <AppCard
           title="Attendance Due"
           subtitle={`${attendanceDue.length} classes pending`}
         >
@@ -220,9 +280,9 @@ const TeacherDashboard = ({ user, onNavigate }) => {
           </button>
         </AppCard>
 
-        <AppCard 
+        <AppCard
           title="Assessments to Mark"
-          subtitle={`${assessmentsToMark.reduce((sum, a) => sum + a.count, 0)} total papers`}
+          subtitle={`${totalPapers} total papers`}
         >
           <div className="space-y-2">
             {assessmentsToMark.map((item) => (
@@ -251,8 +311,8 @@ const TeacherDashboard = ({ user, onNavigate }) => {
         </AppCard>
       </div>
 
-      {/* Upcoming Lessons */}
-      <AppCard 
+      {/* ── Upcoming Lessons ───────────────────────────────────────────── */}
+      <AppCard
         title="Upcoming Lessons"
         subtitle="Next 3 scheduled lessons"
       >
@@ -289,9 +349,9 @@ const TeacherDashboard = ({ user, onNavigate }) => {
         </button>
       </AppCard>
 
-      {/* Messages & Learners Needing Attention - Side by Side */}
+      {/* ── Messages & Learners Needing Attention ──────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AppCard 
+        <AppCard
           title="Messages"
           subtitle={`${messages.length} messages`}
         >
@@ -323,7 +383,7 @@ const TeacherDashboard = ({ user, onNavigate }) => {
           </button>
         </AppCard>
 
-        <AppCard 
+        <AppCard
           title="Learners Requiring Attention"
           subtitle={`${learnersNeedingAttention.length} students`}
         >
@@ -358,7 +418,7 @@ const TeacherDashboard = ({ user, onNavigate }) => {
         </AppCard>
       </div>
 
-      {/* Quick Actions */}
+      {/* ── Quick Actions ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <button
           onClick={() => onNavigate('attendance-daily')}
