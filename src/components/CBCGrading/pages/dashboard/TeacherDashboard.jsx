@@ -24,9 +24,6 @@ import {
   AlertCircle
 } from 'lucide-react';
 
-// Intelligence Engine Widgets
-import AttendanceAnomalies from '../../widgets/AttendanceAnomalies';
-import AcademicInsights from '../../widgets/AcademicInsights';
 
 const TeacherDashboard = ({ user, onNavigate }) => {
   const rolePreview = useRolePreview();
@@ -391,29 +388,6 @@ const TeacherDashboard = ({ user, onNavigate }) => {
           <Users size={24} className="mx-auto text-emerald-600 mb-2" />
           <p className="text-xs font-semibold text-gray-900">Learners</p>
         </button>
-      </div>
-
-      {/* Intelligence Engine Section */}
-      <div className="mt-8 pt-6 border-t border-gray-200">
-        <h2 className="text-lg font-bold text-gray-900 mb-6">Classroom Intelligence</h2>
-        
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* AI Insights */}
-          <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
-                      </Suspense>
-
-          {/* Attendance Anomalies */}
-          <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
-            <AttendanceAnomalies contextType="teacher" contextId={user?.id} />
-          </Suspense>
-
-          {/* Academic Insights */}
-          <div className="lg:col-span-2">
-            <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
-              <AcademicInsights contextType="teacher" contextId={user?.id} />
-            </Suspense>
-          </div>
-        </div>
       </div>
     </div>
   );

@@ -26,10 +26,6 @@ import {
   BarChart3
 } from 'lucide-react';
 
-// Intelligence Engine Widgets
-import RiskAlerts from '../../widgets/RiskAlerts';
-import AttendanceAnomalies from '../../widgets/AttendanceAnomalies';
-import AcademicInsights from '../../widgets/AcademicInsights';
 
 const HeadTeacherDashboard = ({ learners = [], teachers = [], user, onNavigate }) => {
   const [refreshing, setRefreshing] = useState(false);
@@ -340,30 +336,6 @@ const HeadTeacherDashboard = ({ learners = [], teachers = [], user, onNavigate }
         </AppCard>
       )}
 
-      {/* AI Academic Insights Placeholder */}
-      <AppCard 
-        variant="elevated"
-        title="AI Academic Insights Placeholder"
-        subtitle="Predictive analytics and recommendations coming soon"
-      >
-        <div className="text-center py-12">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-brand-purple/10 rounded-full mb-4">
-            <Brain size={32} className="text-brand-purple" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Zawadi AI Academic Engine</h3>
-          <p className="text-sm text-gray-500 max-w-md mx-auto">
-            Student performance predictions and personalized intervention recommendations will appear here once configured. 
-            Currently analyzing assessment patterns and attendance correlations.
-          </p>
-          <button
-            onClick={() => onNavigate('settings-academic')}
-            className="mt-6 px-6 py-2 bg-brand-purple text-white rounded-lg font-semibold text-sm hover:bg-brand-purple/90 transition"
-          >
-            Configure AI Features
-          </button>
-        </div>
-      </AppCard>
-
       {/* Quick Navigation */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <button
@@ -394,33 +366,6 @@ const HeadTeacherDashboard = ({ learners = [], teachers = [], user, onNavigate }
           <BookOpen size={24} className="mx-auto text-amber-600 mb-2" />
           <p className="text-xs font-semibold text-gray-900">Curriculum</p>
         </button>
-      </div>
-
-      {/* Intelligence Engine Section */}
-      <div className="mt-8 pt-6 border-t border-gray-200">
-        <h2 className="text-lg font-bold text-gray-900 mb-6">School Intelligence</h2>
-        
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Risk Alerts */}
-          <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
-            <RiskAlerts contextType="school" contextId="default" />
-          </Suspense>
-
-          {/* Academic Insights */}
-          <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
-            <AcademicInsights contextType="school" contextId="default" />
-          </Suspense>
-
-          {/* Attendance Anomalies */}
-          <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
-            <AttendanceAnomalies contextType="school" contextId="default" />
-          </Suspense>
-
-          {/* AI Insights */}
-          <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
-            
-          </Suspense>
-        </div>
       </div>
     </div>
   );

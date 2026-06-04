@@ -59,181 +59,56 @@ export interface DashboardConfig {
 /**
  * Dashboard Configurations for all roles
  */
+
+const executiveWidgets: WidgetConfig[] = [
+  {
+    id: WIDGET_IDS.EXECUTIVE_SNAPSHOT,
+    gridColSpan: 12,
+    order: 1,
+  },
+  {
+    id: WIDGET_IDS.FEE_INTELLIGENCE,
+    gridColSpan: 6,
+    order: 2,
+    responsive: { mobile: 12, tablet: 12, desktop: 6 },
+  },
+  {
+    id: WIDGET_IDS.FINANCIAL_PERFORMANCE,
+    gridColSpan: 6,
+    order: 3,
+    responsive: { mobile: 12, tablet: 12, desktop: 6 },
+  },
+  {
+    id: WIDGET_IDS.EXECUTIVE_INSIGHTS,
+    gridColSpan: 4,
+    order: 4,
+    responsive: { mobile: 12, tablet: 12, desktop: 4 },
+  },
+  {
+    id: WIDGET_IDS.COMPLIANCE_RISK,
+    gridColSpan: 4,
+    order: 5,
+    responsive: { mobile: 12, tablet: 12, desktop: 4 },
+  },
+  {
+    id: WIDGET_IDS.COMMUNICATION_OVERVIEW,
+    gridColSpan: 4,
+    order: 6,
+    responsive: { mobile: 12, tablet: 12, desktop: 4 },
+  },
+];
+
 export const DASHBOARD_CONFIGS: Record<RoleType, DashboardConfig> = {
-  // OWNER / SUPER_ADMIN - Same as AdminDashboard
+  // OWNER
   OWNER: {
     role: 'OWNER',
-    name: 'Owner Dashboard',
-    description: 'Complete system overview and control',
+    name: 'Executive Command Center',
+    description: 'Complete institutional overview and executive intelligence',
     tabs: [
       {
-        id: 'overview',
-        label: 'Overview',
-        widgets: [
-          {
-            id: WIDGET_IDS.METRIC_BANNER,
-            gridColSpan: 12,
-            order: 1,
-          },
-          {
-            id: WIDGET_IDS.OVERVIEW_METRICS,
-            gridColSpan: 12,
-            order: 2,
-          },
-          {
-            id: WIDGET_IDS.ATTENDANCE_CHART,
-            gridColSpan: 4,
-            order: 3,
-            responsive: { mobile: 12, tablet: 6, desktop: 4 },
-          },
-          {
-            id: WIDGET_IDS.ASSESSMENT_CHART,
-            gridColSpan: 4,
-            order: 4,
-            responsive: { mobile: 12, tablet: 6, desktop: 4 },
-          },
-          {
-            id: WIDGET_IDS.FINANCE_CHART,
-            gridColSpan: 4,
-            order: 5,
-            responsive: { mobile: 12, tablet: 12, desktop: 4 },
-          },
-          {
-            id: WIDGET_IDS.RECENT_ACTIVITY,
-            gridColSpan: 9,
-            order: 6,
-            responsive: { mobile: 12, tablet: 12, desktop: 9 },
-          },
-          {
-            id: WIDGET_IDS.OPERATIONS_HUB,
-            gridColSpan: 3,
-            order: 7,
-            responsive: { mobile: 12, tablet: 12, desktop: 3 },
-          },
-          {
-            id: WIDGET_IDS.SYSTEM_ALERTS,
-            gridColSpan: 12,
-            order: 8,
-          },
-          {
-            id: WIDGET_IDS.SHORTCUT_BUTTONS,
-            gridColSpan: 12,
-            order: 9,
-          },
-        ],
-      },
-      {
-        id: 'financials',
-        label: 'Financials',
-        widgets: [
-          {
-            id: WIDGET_IDS.FINANCE_METRICS,
-            gridColSpan: 12,
-            order: 1,
-          },
-          {
-            id: WIDGET_IDS.REVENUE_BREAKDOWN,
-            gridColSpan: 12,
-            order: 2,
-          },
-        ],
-      },
-      {
-        id: 'ai-insights',
-        label: 'AI Insights',
-        widgets: [
-          // Placeholder for AI insights widget
-          // To be added in future
-        ],
-      },
-    ],
-    layout: {
-      type: 'grid',
-      columns: 12,
-      gap: '1.5rem',
-      responsive: true,
-    },
-    refreshInterval: 30000, // 30 seconds
-    enablePrint: true,
-  },
-
-  // SUPER_ADMIN - Same as OWNER
-  SUPER_ADMIN: {
-    role: 'SUPER_ADMIN',
-    name: 'Super Admin Dashboard',
-    description: 'Complete system overview and control',
-    tabs: [
-      {
-        id: 'overview',
-        label: 'Overview',
-        widgets: [
-          {
-            id: WIDGET_IDS.METRIC_BANNER,
-            gridColSpan: 12,
-            order: 1,
-          },
-          {
-            id: WIDGET_IDS.OVERVIEW_METRICS,
-            gridColSpan: 12,
-            order: 2,
-          },
-          {
-            id: WIDGET_IDS.ATTENDANCE_CHART,
-            gridColSpan: 4,
-            order: 3,
-            responsive: { mobile: 12, tablet: 6, desktop: 4 },
-          },
-          {
-            id: WIDGET_IDS.ASSESSMENT_CHART,
-            gridColSpan: 4,
-            order: 4,
-            responsive: { mobile: 12, tablet: 6, desktop: 4 },
-          },
-          {
-            id: WIDGET_IDS.FINANCE_CHART,
-            gridColSpan: 4,
-            order: 5,
-            responsive: { mobile: 12, tablet: 12, desktop: 4 },
-          },
-          {
-            id: WIDGET_IDS.RECENT_ACTIVITY,
-            gridColSpan: 9,
-            order: 6,
-            responsive: { mobile: 12, tablet: 12, desktop: 9 },
-          },
-          {
-            id: WIDGET_IDS.OPERATIONS_HUB,
-            gridColSpan: 3,
-            order: 7,
-            responsive: { mobile: 12, tablet: 12, desktop: 3 },
-          },
-          {
-            id: WIDGET_IDS.SYSTEM_ALERTS,
-            gridColSpan: 12,
-            order: 8,
-          },
-          {
-            id: WIDGET_IDS.SHORTCUT_BUTTONS,
-            gridColSpan: 12,
-            order: 9,
-          },
-        ],
-      },
-      {
-        id: 'financials',
-        label: 'Financials',
-        widgets: [
-          {
-            id: WIDGET_IDS.FINANCE_METRICS,
-            gridColSpan: 12,
-            order: 1,
-          },
-          {
-            id: WIDGET_IDS.REVENUE_BREAKDOWN,
-            gridColSpan: 12,
-            order: 2,
-          },
-        ],
+        id: 'executive',
+        label: 'Executive Summary',
+        widgets: executiveWidgets,
       },
     ],
     layout: {
@@ -246,83 +121,38 @@ export const DASHBOARD_CONFIGS: Record<RoleType, DashboardConfig> = {
     enablePrint: true,
   },
 
-  // ADMIN - Same as OWNER
-  ADMIN: {
-    role: 'ADMIN',
-    name: 'Admin Dashboard',
-    description: 'School administration overview',
+  // SUPER_ADMIN
+  SUPER_ADMIN: {
+    role: 'SUPER_ADMIN',
+    name: 'Super Admin Command Center',
+    description: 'Complete institutional overview and executive intelligence',
     tabs: [
       {
-        id: 'overview',
-        label: 'Overview',
-        widgets: [
-          {
-            id: WIDGET_IDS.METRIC_BANNER,
-            gridColSpan: 12,
-            order: 1,
-          },
-          {
-            id: WIDGET_IDS.OVERVIEW_METRICS,
-            gridColSpan: 12,
-            order: 2,
-          },
-          {
-            id: WIDGET_IDS.ATTENDANCE_CHART,
-            gridColSpan: 4,
-            order: 3,
-            responsive: { mobile: 12, tablet: 6, desktop: 4 },
-          },
-          {
-            id: WIDGET_IDS.ASSESSMENT_CHART,
-            gridColSpan: 4,
-            order: 4,
-            responsive: { mobile: 12, tablet: 6, desktop: 4 },
-          },
-          {
-            id: WIDGET_IDS.FINANCE_CHART,
-            gridColSpan: 4,
-            order: 5,
-            responsive: { mobile: 12, tablet: 12, desktop: 4 },
-          },
-          {
-            id: WIDGET_IDS.RECENT_ACTIVITY,
-            gridColSpan: 9,
-            order: 6,
-            responsive: { mobile: 12, tablet: 12, desktop: 9 },
-          },
-          {
-            id: WIDGET_IDS.OPERATIONS_HUB,
-            gridColSpan: 3,
-            order: 7,
-            responsive: { mobile: 12, tablet: 12, desktop: 3 },
-          },
-          {
-            id: WIDGET_IDS.SYSTEM_ALERTS,
-            gridColSpan: 12,
-            order: 8,
-          },
-          {
-            id: WIDGET_IDS.SHORTCUT_BUTTONS,
-            gridColSpan: 12,
-            order: 9,
-          },
-        ],
+        id: 'executive',
+        label: 'Executive Summary',
+        widgets: executiveWidgets,
       },
+    ],
+    layout: {
+      type: 'grid',
+      columns: 12,
+      gap: '1.5rem',
+      responsive: true,
+    },
+    refreshInterval: 30000,
+    enablePrint: true,
+  },
+
+  // ADMIN
+  ADMIN: {
+    role: 'ADMIN',
+    name: 'Admin Command Center',
+    description: 'School administration overview and executive intelligence',
+    tabs: [
       {
-        id: 'financials',
-        label: 'Financials',
-        widgets: [
-          {
-            id: WIDGET_IDS.FINANCE_METRICS,
-            gridColSpan: 12,
-            order: 1,
-          },
-          {
-            id: WIDGET_IDS.REVENUE_BREAKDOWN,
-            gridColSpan: 12,
-            order: 2,
-          },
-        ],
+        id: 'executive',
+        label: 'Executive Summary',
+        widgets: executiveWidgets,
       },
     ],
     layout: {

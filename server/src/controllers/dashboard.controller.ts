@@ -229,6 +229,11 @@ export class DashboardController {
             const activeAcademicYear = activeTermConfig?.academicYear ?? new Date().getFullYear();
             const activeTerm         = activeTermConfig?.term ?? 'TERM_1';
 
+            const now = new Date();
+            const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+            const startOfTerm = activeTermConfig?.startDate ? new Date(activeTermConfig.startDate) : new Date(now.getFullYear(), 0, 1);
+
             const dateFilter     = this.getDateFilter(filter as string);
             const prevDateFilter = this.getPreviousDateFilter(filter as string);
 
@@ -297,7 +302,7 @@ export class DashboardController {
                 prisma.feeInvoice.groupBy({
                     by: ['feeStructureId'],
                     where: { archived: false },
-                    _sum: { totalAmount: true, paidAmount: true, balance: true },
+                    _sum: { totalAmount: true, paidAmount: true, balance: true, transportBilled: true, transportPaid: true, transportBalance: true },
                 }),
                 prisma.summativeResult.groupBy({
                     by: ['testId'],
@@ -312,21 +317,54 @@ export class DashboardController {
                 }),
                 // [21]
                 prisma.class.count({ where: { archived: false, active: true, institutionType: isSecondaryContext ? ('SECONDARY' as any) : ('PRIMARY_CBC' as any) } }),
+                // [22] staff currently on approved leave today
+                prisma.leaveRequest.count({
+                    where: {
+                        status: 'APPROVED',
+                        startDate: { lte: new Date() },
+                        endDate:   { gte: new Date() },
+                    },
+                }),
+                // [23] expenses today
+                prisma.expense.aggregate({
+                    where: { date: { gte: startOfToday } },
+                    _sum: { amount: true }
+                }),
+                // [24] expenses this month
+                prisma.expense.aggregate({
+                    where: { date: { gte: startOfMonth } },
+                    _sum: { amount: true }
+                }),
+                // [25] expenses this term
+                prisma.expense.aggregate({
+                    where: { date: { gte: startOfTerm } },
+                    _sum: { amount: true }
+                }),
+                // [26] expenses by category
+                prisma.expense.groupBy({
+                    by: ['category'],
+                    where: { date: { gte: startOfTerm } },
+                    _sum: { amount: true }
+                }),
+                // [27] recent expenses
+                prisma.expense.findMany({
+                    where: { date: { gte: startOfTerm } },
+                    orderBy: { date: 'desc' },
+                    take: 5,
+                    include: { account: true }
+                }),
             ]);
-
-            const latestTest         = resultStage1[16];
-            const feeAgg             = resultStage1[17];
-            const feeByGrade         = resultStage1[18];
-            const summativeByGrade   = resultStage1[19];
-            const subjectRatings     = resultStage1[20];
-            const assessedClassCount = resultStage1[21];
 
             const [
                 studentCount, teacherCount, classCount, prevStudentCount, prevTeacherCount,
                 activeStudents, activeTeachers, attendanceSummary, studentsByGradeData,
                 staffByRole, latestAdmissions, latestFormative, latestSummative,
-                upcomingEventsData, pendingDraftCount, genderDistribution
-            ] = resultStage1;
+                upcomingEventsData, pendingDraftCount, genderDistribution,
+                latestTest, feeAgg, feeByGrade, summativeByGrade,
+                subjectRatings, assessedClassCount, staffOnLeaveCount,
+                expensesToday, expensesThisMonth, expensesThisTerm, expensesByCategory,
+                recentExpenses
+            ] = resultStage1 as any[];
 
             // ── Stage 2: Assessment-series detail ─────────────────────────────
             let totalMissedExams    = 0;
@@ -385,22 +423,56 @@ export class DashboardController {
 
             // ── Stage 3: Lookup tables ────────────────────────────────────────
             const latestAssessments = [
-                ...latestFormative.map(f => ({ ...f, type: 'FORMATIVE' })),
-                ...latestSummative.map(s => ({
+                ...latestFormative.map((f: any) => ({ ...f, type: 'FORMATIVE' })),
+                ...latestSummative.map((s: any) => ({
                     title: s.test.title, learningArea: s.test.learningArea,
                     learner: s.learner, createdAt: s.createdAt, type: 'SUMMATIVE'
                 }))
             ].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5);
 
-            const [feeStructures, testGrades] = await Promise.all([
+            const [feeStructures, testGrades, monthlyPayments] = await Promise.all([
                 prisma.feeStructure.findMany({
-                    where: { id: { in: feeByGrade.map(r => r.feeStructureId) } },
-                    select: { id: true, name: true, grade: true },
+                    where: { id: { in: feeByGrade.map((r: any) => r.feeStructureId) } },
+                    select: {
+                        id: true,
+                        name: true,
+                        grade: true,
+                        feeItems: {
+                            select: {
+                                amount: true,
+                                feeType: {
+                                    select: {
+                                        code: true,
+                                        name: true,
+                                        category: true
+                                    }
+                                }
+                            }
+                        }
+                    },
                 }),
                 prisma.summativeTest.findMany({
-                    where: { id: { in: summativeByGrade.map(r => r.testId) } },
+                    where: { id: { in: summativeByGrade.map((r: any) => r.testId) } },
                     select: { id: true, grade: true },
                 }),
+                // Monthly payment totals for last 6 months (powers the trend chart)
+                (async () => {
+                    const sixMonthsAgo = new Date();
+                    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+                    sixMonthsAgo.setDate(1);
+                    sixMonthsAgo.setHours(0, 0, 0, 0);
+                    return prisma.$queryRaw<Array<{ month: string; revenue: number }>>(
+                        Prisma.sql`
+                            SELECT
+                                TO_CHAR(p."createdAt", 'Mon YY') AS month,
+                                SUM(p.amount)::float            AS revenue
+                            FROM fee_payments p
+                            WHERE p."createdAt" >= ${sixMonthsAgo}
+                            GROUP BY DATE_TRUNC('month', p."createdAt"), TO_CHAR(p."createdAt", 'Mon YY')
+                            ORDER BY DATE_TRUNC('month', p."createdAt")
+                        `
+                    );
+                })(),
             ]);
 
             const scopedFeeStructures = feeStructures.filter((fs) => {
@@ -409,10 +481,10 @@ export class DashboardController {
                 return isSecondaryContext ? isSecondaryGrade : !isSecondaryGrade;
             });
             const allowedFeeStructureIds = new Set(scopedFeeStructures.map((fs) => fs.id));
-            const scopedFeeByGrade = feeByGrade.filter((row) => allowedFeeStructureIds.has(row.feeStructureId));
+            const scopedFeeByGrade = feeByGrade.filter((row: any) => allowedFeeStructureIds.has(row.feeStructureId));
             const feeStructureMap = new Map(scopedFeeStructures.map(fs => [fs.id, fs]));
             const streamBreakdown = scopedFeeByGrade
-                .map(row => {
+                .map((row: any) => {
                     const fs = feeStructureMap.get(row.feeStructureId);
                     if (!fs) return null;
                     return {
@@ -424,12 +496,65 @@ export class DashboardController {
                 })
                 .filter(Boolean)
                 .sort((a: any, b: any) => b.bal - a.bal);
-            const scopedFeeCollected = scopedFeeByGrade.reduce((sum, row) => sum + Number(row._sum.paidAmount || 0), 0);
-            const scopedFeePending = scopedFeeByGrade.reduce((sum, row) => sum + Number(row._sum.balance || 0), 0);
+            const scopedFeeCollected = scopedFeeByGrade.reduce((sum: number, row: any) => sum + Number(row._sum.paidAmount || 0), 0);
+            const scopedFeePending = scopedFeeByGrade.reduce((sum: number, row: any) => sum + Number(row._sum.balance || 0), 0);
+
+            // Calculate category-wise revenue breakdown
+            let totalTuitionPaid = 0;
+            let totalTransportPaid = 0;
+            let totalUniformPaid = 0;
+            let totalOthersPaid = 0;
+
+            scopedFeeByGrade.forEach((row: any) => {
+                const fs = feeStructureMap.get(row.feeStructureId);
+                if (!fs) return;
+
+                const totalBilled = Number(row._sum.totalAmount || 0);
+                const totalPaid = Number(row._sum.paidAmount || 0);
+                const transportBilled = Number(row._sum.transportBilled || 0);
+                const transportPaid = Number(row._sum.transportPaid || 0);
+
+                const nonTransportBilled = Math.max(0, totalBilled - transportBilled);
+                const nonTransportPaid = Math.max(0, totalPaid - transportPaid);
+
+                const feeItems = (fs as any).feeItems || [];
+                const tuitionItem = feeItems.find((item: any) => item.feeType.code === 'TUITION');
+                const tuitionBilled = tuitionItem ? Number(tuitionItem.amount) : 0;
+
+                const uniformItem = feeItems.find((item: any) => item.feeType.code === 'UNIFORM');
+                const uniformBilled = uniformItem ? Number(uniformItem.amount) : 0;
+
+                const othersBilled = feeItems.reduce((acc: number, item: any) => {
+                    if (item.feeType.code !== 'TUITION' && item.feeType.code !== 'UNIFORM' && item.feeType.code !== 'TRANSPORT') {
+                        return acc + Number(item.amount);
+                    }
+                    return acc;
+                }, 0);
+
+                const structureNonTransportBilled = tuitionBilled + uniformBilled + othersBilled;
+
+                if (structureNonTransportBilled > 0) {
+                    const ratio = nonTransportPaid / structureNonTransportBilled;
+                    totalTuitionPaid += tuitionBilled * ratio;
+                    totalUniformPaid += uniformBilled * ratio;
+                    totalOthersPaid += othersBilled * ratio;
+                } else {
+                    totalTuitionPaid += nonTransportPaid;
+                }
+
+                totalTransportPaid += transportPaid;
+            });
+
+            const revenueSources = [
+                { source: 'Fee', amount: Math.round(totalTuitionPaid) },
+                { source: 'Transport', amount: Math.round(totalTransportPaid) },
+                { source: 'Uniforms', amount: Math.round(totalUniformPaid) },
+                { source: 'Others', amount: Math.round(totalOthersPaid) },
+            ];
 
             const gradeMap = new Map(testGrades.map(t => [t.id, t.grade]));
             const classPerfMap: Record<string, { total: number; count: number }> = {};
-            summativeByGrade.forEach(r => {
+            summativeByGrade.forEach((r: any) => {
                 const grade = gradeMap.get(r.testId) || 'UNKNOWN';
                 if (!classPerfMap[grade]) classPerfMap[grade] = { total: 0, count: 0 };
                 classPerfMap[grade].total += (r._avg.percentage || 0) * r._count;
@@ -446,7 +571,7 @@ export class DashboardController {
                 .slice(0, 5);
 
             const subjPerfMap: Record<string, { ee: number; me: number; be: number; total: number }> = {};
-            subjectRatings.forEach(r => {
+            subjectRatings.forEach((r: any) => {
                 if (!subjPerfMap[r.learningArea]) subjPerfMap[r.learningArea] = { ee: 0, me: 0, be: 0, total: 0 };
                 subjPerfMap[r.learningArea].total += r._count;
                 if      (r.overallRating === 'EE')                         subjPerfMap[r.learningArea].ee += r._count;
@@ -461,7 +586,7 @@ export class DashboardController {
             })).slice(0, 4);
 
             const attendanceMap: Record<string, number> = { PRESENT: 0, ABSENT: 0, LATE: 0 };
-            attendanceSummary.forEach(item => { attendanceMap[item.status] = item._count; });
+            attendanceSummary.forEach((item: any) => { attendanceMap[item.status] = item._count; });
             const avgAttendance = studentCount > 0 ? (attendanceMap.PRESENT / studentCount) * 100 : 0;
 
             const payload = {
@@ -475,6 +600,7 @@ export class DashboardController {
                     avgAttendance: parseFloat(avgAttendance.toFixed(1)),
                     feeCollected: scopedFeeCollected,
                     feePending:   scopedFeePending,
+                    staffOnLeave: staffOnLeaveCount,
                     studentTrend: this.calculateTrend(studentCount,  prevStudentCount),
                     teacherTrend: this.calculateTrend(teacherCount,  prevTeacherCount),
                     males:   genderDistribution.find((g: any) => g.gender === 'MALE')  ?._count || 0,
@@ -484,18 +610,43 @@ export class DashboardController {
                 },
                 unAssessedBreakdown,
                 distributions: {
-                    studentsByGrade: studentsByGradeData.map(item => ({
+                    studentsByGrade: studentsByGradeData.map((item: any) => ({
                         label: item.grade.replace('_', ' '), value: item._count, color: this.getGradeColor(item.grade),
                     })),
-                    staff: staffByRole.map(item => ({
+                    staff: staffByRole.map((item: any) => ({
                         label: item.role.replace('_', ' '), value: item._count, color: this.getRoleColor(item.role),
                     })),
                     subjectProficiency,
                 },
-                financials: { streamBreakdown },
+                financials: {
+                    streamBreakdown,
+                    trendData: monthlyPayments.map(r => ({
+                        month:   String(r.month || ''),
+                        revenue: Number(r.revenue || 0),
+                    })),
+                    revenueSources,
+                    totalExpenses: Number(expensesThisTerm._sum.amount || 0),
+                    expensesSummary: {
+                        today: Number(expensesToday._sum.amount || 0),
+                        thisMonth: Number(expensesThisMonth._sum.amount || 0),
+                        thisTerm: Number(expensesThisTerm._sum.amount || 0),
+                        byCategory: expensesByCategory.map((item: any) => ({
+                            category: item.category,
+                            amount: Number(item._sum.amount || 0)
+                        })),
+                        recent: recentExpenses.map((item: any) => ({
+                            id: item.id,
+                            date: item.date,
+                            amount: Number(item.amount),
+                            description: item.description,
+                            category: item.category,
+                            account: item.account?.name || 'Main Bank Account'
+                        }))
+                    }
+                },
                 recentActivity: { admissions: latestAdmissions, assessments: latestAssessments },
                 topPerformingClasses,
-                upcomingEvents: upcomingEventsData.map(evt => ({
+                upcomingEvents: upcomingEventsData.map((evt: any) => ({
                     title: evt.title, date: evt.startDate, category: evt.type,
                     responsible: evt.creator?.role?.replace('_', ' ') || 'Staff',
                 })),

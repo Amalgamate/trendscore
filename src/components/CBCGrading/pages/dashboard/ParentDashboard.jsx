@@ -27,7 +27,6 @@ import {
   Users
 } from 'lucide-react';
 
-// Intelligence Engine Widgets
 import AcademicInsights from '../../widgets/AcademicInsights';
 import RiskAlerts from '../../widgets/RiskAlerts';
 

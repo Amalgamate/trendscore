@@ -31,10 +31,6 @@ import {
   Cog
 } from 'lucide-react';
 
-// Intelligence Engine Widgets
-import RiskAlerts from '../../widgets/RiskAlerts';
-import FeeCollectionForecast from '../../widgets/FeeCollectionForecast';
-import AcademicInsights from '../../widgets/AcademicInsights';
 import BillingInsightsCard from '../../dashboard/BillingInsightsCard';
 
 const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavigate }) => {
@@ -601,37 +597,6 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
           </div>
         </AppCard>
       )}
-
-      {/* Intelligence Engine Section */}
-      <div className="mt-8 pt-6 border-t border-gray-200">
-        <SectionHeader 
-          title="Intelligence Engine" 
-          level="h2"
-          subtitle="AI-powered insights and analytics"
-        />
-        
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-          {/* AI Insights */}
-          <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
-            
-          </Suspense>
-
-          {/* Risk Alerts */}
-          <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
-            <RiskAlerts contextType="school" contextId="default" />
-          </Suspense>
-
-          {/* Fee Collection Forecast */}
-          <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
-            <FeeCollectionForecast contextType="school" contextId="default" />
-          </Suspense>
-
-          {/* Academic Insights */}
-          <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
-            <AcademicInsights contextType="school" contextId="default" />
-          </Suspense>
-        </div>
-      </div>
     </div>
   );
 };
