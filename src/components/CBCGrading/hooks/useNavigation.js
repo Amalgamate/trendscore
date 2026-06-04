@@ -26,9 +26,12 @@ import {
 
 const focusModules = ['dashboard', 'communications', 'planner', 'learners', 'teachers', 'assessment', 'learning-hub', 'attendance', 'docs-center', 'settings', 'hr', 'finance', 'inventory', 'transport'];
 
-const KAMBI_GARBA_HOSTS = new Set(['kambigarba-cs.trendscore.co.ke']);
-const KAMBI_GARBA_ALLOWED_SECTION_IDS = new Set(['learners', 'teachers', 'assessment', 'planner', 'communications']);
-const KAMBI_GARBA_SECTION_LABELS = {
+const RESTRICTED_SIDEBAR_HOSTS = new Set([
+    'kambigarba-cs.trendscore.co.ke',
+    'merti-cs.trendscore.co.ke'
+]);
+const RESTRICTED_SIDEBAR_SECTION_IDS = new Set(['learners', 'teachers', 'assessment', 'planner', 'communications']);
+const RESTRICTED_SIDEBAR_SECTION_LABELS = {
     learners: 'Students',
     teachers: 'Tutors',
     assessment: 'Assessments',
@@ -36,9 +39,9 @@ const KAMBI_GARBA_SECTION_LABELS = {
     communications: 'Communications'
 };
 
-const isKambiGarbaHost = () => (
+const isRestrictedSidebarHost = () => (
     typeof window !== 'undefined' &&
-    KAMBI_GARBA_HOSTS.has(window.location.hostname.toLowerCase())
+    RESTRICTED_SIDEBAR_HOSTS.has(window.location.hostname.toLowerCase())
 );
 
 const restrictNavSections = (nav, allowedIds, labelsById = {}) => {
@@ -467,7 +470,7 @@ export const useNavigation = () => {
     const { can, role, isRole } = usePermissions();
     const { user, institutionType } = useAuth();
     const labels = useInstitutionLabels();
-    const restrictForKambiGarba = isKambiGarbaHost();
+    const restrictSidebarForSchool = isRestrictedSidebarHost();
     const accountantNav = useMemo(() => {
         const financeItems = accountantFinanceNavigation.filter(item => !item.permission || can(item.permission));
         const communicationItems = accountantCommunicationNavigation.filter(item => !item.permission || can(item.permission));
@@ -803,13 +806,13 @@ export const useNavigation = () => {
             };
         }
 
-        return restrictForKambiGarba
-            ? restrictNavSections(builtNav, KAMBI_GARBA_ALLOWED_SECTION_IDS, KAMBI_GARBA_SECTION_LABELS)
+        return restrictSidebarForSchool
+            ? restrictNavSections(builtNav, RESTRICTED_SIDEBAR_SECTION_IDS, RESTRICTED_SIDEBAR_SECTION_LABELS)
             : builtNav;
     }, [
         institutionType,
         role,
-        restrictForKambiGarba,
+        restrictSidebarForSchool,
         accountantNav,
         secondaryNav,
         tertiaryNav,
