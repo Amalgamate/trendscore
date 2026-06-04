@@ -551,29 +551,6 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
         </AppCard>
       </div>
 
-      {/* AI Insights Placeholder */}
-      <AppCard 
-        variant="elevated"
-        title="AI Insights Placeholder"
-        subtitle="Smart analytics and recommendations coming soon"
-      >
-        <div className="text-center py-12">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-brand-purple/10 rounded-full mb-4">
-            <Brain size={32} className="text-brand-purple" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Zawadi AI Engine</h3>
-          <p className="text-sm text-gray-500 max-w-md mx-auto">
-            Predictive analytics and personalized recommendations will appear here once configured. 
-            Currently analyzing student performance patterns.
-          </p>
-          <button
-            onClick={() => onNavigate('settings-academic')}
-            className="mt-6 px-6 py-2 bg-brand-purple text-white rounded-lg font-semibold text-sm hover:bg-brand-purple/90 transition"
-          >
-            Configure AI Features
-          </button>
-        </div>
-      </AppCard>
 
       {/* Top Classes */}
       {topClasses.length > 0 && (
