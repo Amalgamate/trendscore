@@ -162,10 +162,10 @@ router.post(
 );
 
 // Birthday Birthdays Today
-// Allowed: Admin, Super Admin, Head Teacher, Teacher
+// Allowed: Admin, Super Admin, Head Teacher, Teacher, Accountant
 router.get(
     '/birthdays/today',
-    requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER']),
+    requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER', 'ACCOUNTANT']),
     rateLimit({ windowMs: 60_000, maxRequests: 100 }),
     getBirthdaysToday
 );

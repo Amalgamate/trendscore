@@ -36,11 +36,11 @@ router.get(
 /**
  * @route   GET /api/config/term/active
  * @desc    Get active term configuration
- * @access  ADMIN, SUPER_ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM, TEACHER
+ * @access  ADMIN, SUPER_ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM, TEACHER, ACCOUNTANT
  */
 router.get(
   '/term/active',
-  requireRole(['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER']),
+  requireRole(['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT']),
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   configController.getActiveTermConfig
 );
