@@ -30,13 +30,14 @@ const RESTRICTED_SIDEBAR_HOSTS = new Set([
     'kambigarba-cs.trendscore.co.ke',
     'merti-cs.trendscore.co.ke'
 ]);
-const RESTRICTED_SIDEBAR_SECTION_IDS = new Set(['learners', 'teachers', 'assessment', 'planner', 'communications']);
+const RESTRICTED_SIDEBAR_SECTION_IDS = new Set(['learners', 'teachers', 'assessment', 'planner', 'communications', 'settings']);
 const RESTRICTED_SIDEBAR_SECTION_LABELS = {
     learners: 'Students',
     teachers: 'Tutors',
     assessment: 'Assessments',
     planner: 'Planner',
-    communications: 'Communications'
+    communications: 'Communications',
+    settings: 'Settings'
 };
 
 const isRestrictedSidebarHost = () => (
