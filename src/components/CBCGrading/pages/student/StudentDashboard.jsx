@@ -9,22 +9,17 @@ import {
   AppCard,
   EmptyState
 } from '@/design-system/components';
+import DashboardSummary, { DashboardGreetingBanner } from '../dashboard/DashboardSummary';
+import { DashboardSection, DashboardSectionControls, useDashboardSections } from '../dashboard/DashboardSections';
 
 import {
   AlertTriangle,
   BookOpen,
   CheckCircle2,
-  Trophy,
-  ClipboardList,
   BarChart3,
-  Calendar,
   Zap,
   TrendingUp,
-  FileText,
-  MessageSquare,
-  ChevronRight,
-  AlertCircle,
-  Star
+  AlertCircle
 } from 'lucide-react';
 
 const StudentDashboard = ({ user, onNavigate }) => {
@@ -33,6 +28,13 @@ const StudentDashboard = ({ user, onNavigate }) => {
   const [apiError, setApiError] = useState(null);
 
   const userId = user?.id || user?.userId;
+  const sectionControls = useDashboardSections('student', [
+    { id: 'executive-summary', label: 'Executive Summary', description: 'Progress, courses, scores, submissions' },
+    { id: 'courses-deadlines', label: 'Courses & Deadlines', description: 'Courses and upcoming work' },
+    { id: 'assignments-performance', label: 'Assignments & Performance', description: 'Submission and quiz performance' },
+    { id: 'attendance-achievements', label: 'Attendance & Achievements', description: 'Attendance and earned badges' },
+    { id: 'learning-insights', label: 'Learning Insights', description: 'Personalized recommendations' },
+  ]);
 
   const loadMetrics = async () => {
     try {
@@ -144,56 +146,50 @@ const StudentDashboard = ({ user, onNavigate }) => {
 
   return (
     <div className="space-y-6">
-      {/* Welcome Header */}
-      <div className="border-b border-gray-200 pb-4">
-        <h1 className="text-2xl font-bold text-gray-900">Welcome, {user?.name?.split(' ')[0] || 'Student'}</h1>
-        <p className="text-sm text-gray-600 mt-1">Your learning dashboard for {activeCourses.length} active courses</p>
-      </div>
+      <DashboardGreetingBanner user={user} fallbackName="Student" />
 
-      {/* Learning Progress Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="p-4 rounded-lg border border-gray-200 bg-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-gray-600 uppercase">Overall Progress</p>
-              <p className="text-3xl font-bold text-brand-purple mt-1">{overallProgress}%</p>
-            </div>
-            <TrendingUp size={24} className="text-brand-purple opacity-50" />
-          </div>
-        </div>
-
-        <div className="p-4 rounded-lg border border-gray-200 bg-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-gray-600 uppercase">Courses</p>
-              <p className="text-3xl font-bold text-blue-600 mt-1">{activeCourses.length}</p>
-            </div>
-            <BookOpen size={24} className="text-blue-600 opacity-50" />
-          </div>
-        </div>
-
-        <div className="p-4 rounded-lg border border-gray-200 bg-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-gray-600 uppercase">Avg Quiz Score</p>
-              <p className={`text-3xl font-bold mt-1 ${getScoreColor(avgQuizScore).split(' ')[0]}`}>{avgQuizScore}%</p>
-            </div>
-            <BarChart3 size={24} className="text-emerald-600 opacity-50" />
-          </div>
-        </div>
-
-        <div className="p-4 rounded-lg border border-gray-200 bg-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-gray-600 uppercase">Submitted</p>
-              <p className="text-3xl font-bold text-emerald-600 mt-1">{submittedCount}/{assignments.length}</p>
-            </div>
-            <CheckCircle2 size={24} className="text-emerald-600 opacity-50" />
-          </div>
-        </div>
-      </div>
+      <DashboardSection id="executive-summary" controls={sectionControls}>
+      <DashboardSummary
+        title="Executive Summary"
+        description="Your learning progress and workload at a glance."
+        items={[
+          {
+            label: 'Overall Progress',
+            value: `${overallProgress}%`,
+            subvalue: 'course completion',
+            icon: <TrendingUp size={26} />,
+            tone: 'indigo',
+            onClick: () => onNavigate('student-progress'),
+          },
+          {
+            label: 'Courses',
+            value: activeCourses.length,
+            subvalue: 'active courses',
+            icon: <BookOpen size={26} />,
+            tone: 'purple',
+            onClick: () => onNavigate('student-courses'),
+          },
+          {
+            label: 'Quiz Score',
+            value: `${avgQuizScore}%`,
+            subvalue: 'average score',
+            icon: <BarChart3 size={26} />,
+            tone: avgQuizScore >= 80 ? 'emerald' : 'amber',
+          },
+          {
+            label: 'Submitted',
+            value: `${submittedCount}/${assignments.length}`,
+            subvalue: 'assignments complete',
+            icon: <CheckCircle2 size={26} />,
+            tone: 'teal',
+            onClick: () => onNavigate('student-assignments'),
+          },
+        ]}
+      />
+      </DashboardSection>
 
       {/* My Courses & Upcoming Deadlines - Side by Side */}
+      <DashboardSection id="courses-deadlines" controls={sectionControls}>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <AppCard 
           title="My Courses"
@@ -263,8 +259,10 @@ const StudentDashboard = ({ user, onNavigate }) => {
           </button>
         </AppCard>
       </div>
+      </DashboardSection>
 
       {/* Assignments & Quiz Performance - Side by Side */}
+      <DashboardSection id="assignments-performance" controls={sectionControls}>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <AppCard 
           title="Assignments"
@@ -337,8 +335,10 @@ const StudentDashboard = ({ user, onNavigate }) => {
           </button>
         </AppCard>
       </div>
+      </DashboardSection>
 
       {/* Attendance & Achievements - Side by Side */}
+      <DashboardSection id="attendance-achievements" controls={sectionControls}>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <AppCard 
           title="Attendance"
@@ -394,8 +394,10 @@ const StudentDashboard = ({ user, onNavigate }) => {
           </button>
         </AppCard>
       </div>
+      </DashboardSection>
 
       {/* Learning Insights Placeholder */}
+      <DashboardSection id="learning-insights" controls={sectionControls}>
       <AppCard 
         title="Learning Insights"
         subtitle="AI-powered recommendations"
@@ -406,6 +408,9 @@ const StudentDashboard = ({ user, onNavigate }) => {
           <p className="text-xs text-gray-500 mt-2">We're analyzing your learning patterns to provide tailored recommendations and improvement suggestions</p>
         </div>
       </AppCard>
+      </DashboardSection>
+
+      <DashboardSectionControls {...sectionControls} />
     </div>
   );
 };

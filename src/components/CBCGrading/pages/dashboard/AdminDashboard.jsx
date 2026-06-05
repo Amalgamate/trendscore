@@ -3,17 +3,16 @@
  * High-level school health metrics and KPIs
  */
 
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useEffect, useState } from 'react';
 import { dashboardAPI } from '../../../../services/api';
 import { ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Area, AreaChart } from 'recharts';
-import { hasPageAccess } from '../../utils/appAccess';
 import {
   AppCard,
-  KpiCard,
   SectionHeader,
-  DashboardHero,
   EmptyState
 } from '@/design-system/components';
+import DashboardSummary, { DashboardGreetingBanner } from './DashboardSummary';
+import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
 
 import {
   TrendingUp,
@@ -22,12 +21,9 @@ import {
   DollarSign,
   Calendar,
   Activity,
-  Brain,
   ChevronDown,
   CheckCircle2,
   GraduationCap,
-  BookOpen,
-  BarChart3,
   Cog
 } from 'lucide-react';
 
@@ -39,10 +35,16 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
   const [apiError, setApiError] = useState(null);
 
   const userId = user?.id || user?.userId;
+  const sectionControls = useDashboardSections('admin', [
+    { id: 'executive-summary', label: 'Executive Summary', description: 'Students, staff, collection, health' },
+    { id: 'health-finance', label: 'Health & Finance', description: 'School health and finance snapshot' },
+    { id: 'attention-required', label: 'Attention Required', description: 'Items requiring intervention' },
+    { id: 'pulse-revenue', label: 'Pulse & Revenue', description: 'Operational pulse and revenue trend' },
+    { id: 'top-classes', label: 'Top Performing Classes', description: 'Academic rankings' },
+    { id: 'recent-activity', label: 'Recent Activity', description: 'Latest actions and updates' },
+  ]);
   const hasInstantData = learners.length > 0 || teachers.length > 0 || (pagination?.total || 0) > 0;
   
-  const userName = user?.name || user?.firstName || user?.email?.split('@')[0] || 'Admin';
-  const firstName = userName.split(' ')[0];
   const formatKesAmount = (amount = 0) => {
     const value = Number(amount) || 0;
     if (value >= 1000000) return `KES ${(value / 1000000).toFixed(1)}M`;
@@ -51,13 +53,6 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
   };
   const formatPercent = (value = 0) => `${Math.max(0, Math.min(100, Number(value) || 0))}%`;
   
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
-  };
-
   const loadMetrics = async (filter = 'term') => {
     try {
       setRefreshing(true);
@@ -110,7 +105,6 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
   const teacherActiveRate = stats.totalTeachers > 0
     ? Math.round((stats.activeTeachers / stats.totalTeachers) * 100)
     : 0;
-  const inactiveTeachers = Math.max(0, (Number(stats.totalTeachers) || 0) - (Number(stats.activeTeachers) || 0));
   const operationsRate = teacherActiveRate;
 
   // Revenue trend data
@@ -190,47 +184,57 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
         </div>
       )}
 
-      {/* Dynamic Welcome Banner */}
-      <div className="bg-brand-purple text-white rounded-2xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-3xl font-black text-white mt-1 leading-tight tracking-tight">
-            {getGreeting()}, <span>{firstName}</span>
-          </h1>
-          <p className="text-sm text-white/70 mt-1 font-medium max-w-xl">
-            Welcome back to the Trends command center. Here is your institutional summary overview for today.
-          </p>
-        </div>
-        
-        {/* Real-time Summary Cards/Badges */}
-        <div className="flex flex-wrap gap-3 items-center">
-          {/* Health Badge */}
-          <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-2xl px-4 py-3 shadow-sm min-w-[110px] flex flex-col items-center text-center transition-all hover:shadow-md">
-            <span className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Health</span>
-            <span className="text-xl font-black mt-1 text-white">{formatPercent(healthScore)}</span>
-          </div>
-          
-          {/* Active Students Badge */}
-          <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-2xl px-4 py-3 shadow-sm min-w-[110px] flex flex-col items-center text-center transition-all hover:shadow-md">
-            <span className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Students</span>
-            <span className="text-xl font-black text-white mt-1">{stats.totalStudents.toLocaleString()}</span>
-          </div>
-          
-          {/* Collection Rate Badge */}
-          <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-2xl px-4 py-3 shadow-sm min-w-[110px] flex flex-col items-center text-center transition-all hover:shadow-md">
-            <span className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Collection</span>
-            <span className="text-xl font-black text-white mt-1">{formatPercent(collectionRate)}</span>
-          </div>
-        </div>
-      </div>
+      <DashboardGreetingBanner user={user} />
 
-      {/* School Health & Executive Summary Sections */}
+      <DashboardSection id="executive-summary" controls={sectionControls}>
+      <DashboardSummary
+        title="Executive Summary"
+        description="The institution-wide position that needs the admin's first glance."
+        items={[
+          {
+            label: 'Students',
+            value: stats.totalStudents.toLocaleString(),
+            subvalue: `${stats.activeStudents.toLocaleString()} active`,
+            icon: <Users size={26} />,
+            tone: 'indigo',
+            onClick: () => onNavigate('learners-list'),
+          },
+          {
+            label: 'Staff',
+            value: stats.totalTeachers,
+            subvalue: `${stats.activeTeachers} active`,
+            icon: <GraduationCap size={26} />,
+            tone: 'purple',
+            onClick: () => onNavigate('teachers-list'),
+          },
+          {
+            label: 'Collection Rate',
+            value: formatPercent(collectionRate),
+            subvalue: `${formatKesAmount(stats.feePending)} pending`,
+            icon: <DollarSign size={26} />,
+            tone: collectionRate >= 80 ? 'emerald' : 'amber',
+            onClick: () => onNavigate('fees-collection'),
+          },
+          {
+            label: 'School Health',
+            value: formatPercent(healthScore),
+            subvalue: healthScore >= 80 ? 'Good' : healthScore >= 60 ? 'Stable' : 'Needs attention',
+            icon: <Activity size={26} />,
+            tone: healthScore >= 80 ? 'teal' : healthScore >= 60 ? 'orange' : 'rose',
+          },
+        ]}
+      />
+      </DashboardSection>
+
+      {/* School Health & Finance Sections */}
+      <DashboardSection id="health-finance" controls={sectionControls}>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* RIGHT COLUMN — EXECUTIVE SUMMARY */}
+        {/* RIGHT COLUMN — FINANCE SNAPSHOT */}
         <div className="space-y-4 flex flex-col justify-between">
           <div className="flex justify-between items-center">
             <SectionHeader 
               variant="default"
-              title="Executive Summary"
+              title="Finance Snapshot"
               level="h3"
             />
             <button 
@@ -437,8 +441,10 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
           </div>
         </AppCard>
       </div>
+      </DashboardSection>
 
       {/* Attention Required */}
+      <DashboardSection id="attention-required" controls={sectionControls}>
       {attentionItems.length > 0 && (
         <AppCard 
           variant="flat"
@@ -480,8 +486,10 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
           </div>
         </AppCard>
       )}
+      </DashboardSection>
 
       {/* School Pulse & Revenue Trend */}
+      <DashboardSection id="pulse-revenue" controls={sectionControls}>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <AppCard 
           title="School Pulse"
@@ -545,9 +553,11 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
           </div>
         </AppCard>
       </div>
+      </DashboardSection>
 
 
       {/* Top Classes */}
+      <DashboardSection id="top-classes" controls={sectionControls}>
       {topClasses.length > 0 && (
         <AppCard title="Top Performing Classes" subtitle="Academic performance rankings">
           <div className="overflow-x-auto">
@@ -578,8 +588,10 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
           </div>
         </AppCard>
       )}
+      </DashboardSection>
 
       {/* Recent Activity */}
+      <DashboardSection id="recent-activity" controls={sectionControls}>
       {recentActivities.length > 0 && (
         <AppCard title="Recent Activity" subtitle="Latest actions and updates">
           <div className="space-y-1">
@@ -597,6 +609,9 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
           </div>
         </AppCard>
       )}
+      </DashboardSection>
+
+      <DashboardSectionControls {...sectionControls} />
     </div>
   );
 };

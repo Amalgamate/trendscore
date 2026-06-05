@@ -10,13 +10,14 @@ import {
   AppCard,
   EmptyState
 } from '@/design-system/components';
+import DashboardSummary, { DashboardGreetingBanner } from './DashboardSummary';
+import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
 
 import {
   AlertTriangle,
   User,
   CheckCircle2,
   TrendingUp,
-  FileText,
   BookOpen,
   Bell,
   MessageSquare,
@@ -28,7 +29,6 @@ import {
 } from 'lucide-react';
 
 import AcademicInsights from '../../widgets/AcademicInsights';
-import RiskAlerts from '../../widgets/RiskAlerts';
 
 const ParentDashboard = ({ user, onNavigate }) => {
   const rolePreview = useRolePreview();
@@ -37,6 +37,14 @@ const ParentDashboard = ({ user, onNavigate }) => {
   const [apiError, setApiError] = useState(null);
 
   const userId = user?.id || user?.userId;
+  const sectionControls = useDashboardSections('parent', [
+    { id: 'executive-summary', label: 'Executive Summary', description: 'Children, attendance, fees, messages' },
+    { id: 'my-children', label: 'My Children', description: 'Linked learner cards' },
+    { id: 'attendance-fees', label: 'Attendance & Fees', description: 'Attendance overview and balances' },
+    { id: 'results-homework', label: 'Results & Homework', description: 'Latest grades and assignments' },
+    { id: 'notices-messages', label: 'Notices & Messages', description: 'School communication' },
+    { id: 'academic-insights', label: 'Academic Insights', description: 'Academic trend panel' },
+  ]);
 
   const loadMetrics = async () => {
     try {
@@ -66,50 +74,70 @@ const ParentDashboard = ({ user, onNavigate }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, rolePreview?.isPreviewingRole]);
 
-  // Mock data - child-centric
-  const myChildren = [
-    { id: 1, name: 'Sarah Kipchoge', grade: 'Grade 5A', school: 'Primary School', avatar: 'SK', attendance: 92 },
-    { id: 2, name: 'James Kipchoge', grade: 'Grade 3B', school: 'Primary School', avatar: 'JK', attendance: 88 },
-    { id: 3, name: 'Maria Kipchoge', grade: 'Grade 1A', school: 'Primary School', avatar: 'MK', attendance: 95 },
-  ];
+  const formatDate = (value) => {
+    if (!value) return 'No date';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleDateString();
+  };
 
-  const attendanceByChild = [
-    { id: 1, childName: 'Sarah Kipchoge', grade: 'Grade 5A', attendance: 92, daysPresent: 184, daysMissed: 16 },
-    { id: 2, childName: 'James Kipchoge', grade: 'Grade 3B', attendance: 88, daysPresent: 176, daysMissed: 24 },
-    { id: 3, childName: 'Maria Kipchoge', grade: 'Grade 1A', attendance: 95, daysPresent: 190, daysMissed: 10 },
-  ];
+  const children = metrics?.children || [];
 
-  const feeBalances = [
-    { id: 1, childName: 'Sarah Kipchoge', grade: 'Grade 5A', totalFees: 45000, paid: 45000, outstanding: 0, status: 'paid' },
-    { id: 2, childName: 'James Kipchoge', grade: 'Grade 3B', totalFees: 40000, paid: 25000, outstanding: 15000, status: 'pending' },
-    { id: 3, childName: 'Maria Kipchoge', grade: 'Grade 1A', totalFees: 35000, paid: 20000, outstanding: 15000, status: 'overdue' },
-  ];
+  const myChildren = children.map((child) => ({
+    id: child.id,
+    name: child.name,
+    grade: child.grade,
+    school: child.className || child.admissionNumber || 'Enrolled',
+    attendance: Number(child.attendanceRate || 0),
+  }));
 
-  const latestResults = [
-    { id: 1, childName: 'Sarah Kipchoge', subject: 'Mathematics', grade: 'A', date: '2026-05-28' },
-    { id: 2, childName: 'Sarah Kipchoge', subject: 'English', grade: 'A', date: '2026-05-28' },
-    { id: 3, childName: 'James Kipchoge', subject: 'Science', grade: 'B', date: '2026-05-25' },
-    { id: 4, childName: 'Maria Kipchoge', subject: 'Art & Craft', grade: 'A', date: '2026-05-24' },
-  ];
+  const attendanceByChild = children.map((child) => ({
+    id: child.id,
+    childName: child.name,
+    grade: child.grade,
+    attendance: Number(child.attendanceRate || 0),
+    daysPresent: Number(child.attendanceSummary?.presentDays || 0),
+    daysMissed: Number(child.attendanceSummary?.absentDays || 0),
+  }));
 
-  const homework = [
-    { id: 1, childName: 'Sarah Kipchoge', subject: 'Mathematics', title: 'Chapter 5 Exercise', dueDate: '2026-06-03', submitted: false },
-    { id: 2, childName: 'James Kipchoge', subject: 'English', title: 'Essay - My Holiday', dueDate: '2026-06-04', submitted: true },
-    { id: 3, childName: 'Maria Kipchoge', subject: 'Reading', title: 'Read Chapter 3', dueDate: '2026-06-03', submitted: false },
-  ];
+  const feeBalances = children.map((child) => {
+    const totalFees = (child.invoices || []).reduce((sum, invoice) => sum + Number(invoice.amount || 0), 0);
+    const outstanding = Number(child.feeBalance || 0);
+    return {
+      id: child.id,
+      childName: child.name,
+      grade: child.grade,
+      totalFees,
+      paid: Math.max(0, totalFees - outstanding),
+      outstanding,
+      status: outstanding <= 0 ? 'paid' : 'pending',
+    };
+  });
 
-  const schoolNotices = [
-    { id: 1, title: 'Sports Day - June 15', date: '2 days ago', type: 'event' },
-    { id: 2, title: 'End of Term Holidays - June 20', date: '5 days ago', type: 'holiday' },
-    { id: 3, title: 'Parent Teacher Meeting - June 10', date: '1 week ago', type: 'meeting' },
-    { id: 4, title: 'School Fees Payment Reminder', date: '1 week ago', type: 'fees' },
-  ];
+  const latestResults = children.flatMap((child) =>
+    (child.subjects || []).map((subject, idx) => ({
+      id: `${child.id}-${idx}-${subject.title || subject.name}`,
+      childName: child.name,
+      subject: subject.name || subject.title || 'Assessment',
+      grade: subject.grade || (subject.score != null ? `${Math.round(subject.score)}%` : 'No grade'),
+      date: subject.date ? formatDate(subject.date) : 'Latest result',
+    }))
+  ).slice(0, 6);
 
-  const messages = [
-    { id: 1, from: 'Sarah\'s Teacher', subject: 'Great progress in Mathematics', time: '1 day ago', type: 'positive' },
-    { id: 2, from: 'James\'s Teacher', subject: 'Assignment submission reminder', time: '2 days ago', type: 'reminder' },
-    { id: 3, from: 'School Admin', subject: 'Important: Updated school fees structure', time: '3 days ago', type: 'admin' },
-  ];
+  const homework = (metrics?.homework || []).map((item) => ({
+    ...item,
+    dueDate: item.dueDate ? formatDate(item.dueDate) : 'No due date',
+    submitted: !!item.submitted,
+  }));
+
+  const schoolNotices = (metrics?.notices || []).map((notice) => ({
+    id: notice.id,
+    title: notice.title,
+    date: notice.timeLabel || 'Published',
+    type: notice.category || 'notice',
+  }));
+
+  const messages = metrics?.messages || [];
 
   const getAttendanceColor = (attendance) => {
     if (attendance >= 90) return 'text-emerald-600 bg-emerald-50 border-emerald-200';
@@ -172,92 +200,103 @@ const ParentDashboard = ({ user, onNavigate }) => {
     );
   }
 
-  const totalOutstanding = feeBalances.reduce((sum, fb) => sum + fb.outstanding, 0);
-  const avgAttendance = Math.round(attendanceByChild.reduce((sum, a) => sum + a.attendance, 0) / attendanceByChild.length);
+  const totalOutstanding = metrics?.stats?.totalBalance ?? feeBalances.reduce((sum, fb) => sum + fb.outstanding, 0);
+  const avgAttendance = metrics?.stats?.avgAttendance ?? (
+    attendanceByChild.length > 0
+      ? Math.round(attendanceByChild.reduce((sum, a) => sum + a.attendance, 0) / attendanceByChild.length)
+      : 0
+  );
 
   return (
     <div className="space-y-6">
-      {/* Welcome Header */}
-      <div className="border-b border-gray-200 pb-4">
-        <h1 className="text-2xl font-bold text-gray-900">Welcome, {user?.name?.split(' ')[0] || 'Parent'}</h1>
-        <p className="text-sm text-gray-600 mt-1">Overview of your {myChildren.length} children's progress</p>
-      </div>
+      <DashboardGreetingBanner user={user} fallbackName="Parent" />
 
-      {/* Parent Overview - Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="p-4 rounded-lg border border-gray-200 bg-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-gray-600 uppercase">Children</p>
-              <p className="text-3xl font-bold text-gray-900 mt-1">{myChildren.length}</p>
-            </div>
-            <Users size={24} className="text-blue-600 opacity-50" />
-          </div>
-        </div>
-
-        <div className="p-4 rounded-lg border border-gray-200 bg-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-gray-600 uppercase">Avg Attendance</p>
-              <p className="text-3xl font-bold text-emerald-600 mt-1">{avgAttendance}%</p>
-            </div>
-            <CheckCircle2 size={24} className="text-emerald-600 opacity-50" />
-          </div>
-        </div>
-
-        <div className={`p-4 rounded-lg border ${totalOutstanding > 0 ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200'}`}>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-gray-600 uppercase">Outstanding Fees</p>
-              <p className={`text-3xl font-bold mt-1 ${totalOutstanding > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                KES {totalOutstanding.toLocaleString()}
-              </p>
-            </div>
-            <CreditCard size={24} className={totalOutstanding > 0 ? 'text-rose-600 opacity-50' : 'text-emerald-600 opacity-50'} />
-          </div>
-        </div>
-      </div>
+      <DashboardSection id="executive-summary" controls={sectionControls}>
+      <DashboardSummary
+        title="Executive Summary"
+        description="The family view of attendance, fees, and school communication."
+        items={[
+          {
+            label: 'Children',
+            value: myChildren.length,
+            subvalue: 'enrolled',
+            icon: <Users size={26} />,
+            tone: 'indigo',
+            onClick: () => onNavigate('learners-list'),
+          },
+          {
+            label: 'Attendance',
+            value: `${avgAttendance}%`,
+            subvalue: 'average attendance',
+            icon: <CheckCircle2 size={26} />,
+            tone: 'emerald',
+          },
+          {
+            label: 'Outstanding Fees',
+            value: `KES ${totalOutstanding.toLocaleString()}`,
+            subvalue: totalOutstanding > 0 ? 'balance due' : 'cleared',
+            icon: <CreditCard size={26} />,
+            tone: totalOutstanding > 0 ? 'rose' : 'teal',
+            onClick: () => onNavigate('fees-collection'),
+          },
+          {
+            label: 'Messages',
+            value: messages.length,
+            subvalue: 'school updates',
+            icon: <MessageSquare size={26} />,
+            tone: 'purple',
+          },
+        ]}
+      />
+      </DashboardSection>
 
       {/* My Children */}
+      <DashboardSection id="my-children" controls={sectionControls}>
       <AppCard 
         title="My Children"
         subtitle={`${myChildren.length} children enrolled`}
       >
         <div className="space-y-2">
-          {myChildren.map((child) => (
-            <button
-              key={child.id}
-              onClick={() => onNavigate('learners-list')}
-              className="w-full p-4 rounded-lg border border-slate-200 hover:bg-gray-50 transition text-left"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 flex-1">
-                  <div className="w-10 h-10 rounded-full bg-brand-purple/10 flex items-center justify-center">
-                    <User size={18} className="text-brand-purple" />
+          {myChildren.length > 0 ? (
+            myChildren.map((child) => (
+              <button
+                key={child.id}
+                onClick={() => onNavigate('learners-list')}
+                className="w-full p-4 rounded-lg border border-slate-200 hover:bg-gray-50 transition text-left"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 flex-1">
+                    <div className="w-10 h-10 rounded-full bg-brand-purple/10 flex items-center justify-center">
+                      <User size={18} className="text-brand-purple" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-900">{child.name}</h4>
+                      <p className="text-xs text-gray-500">{child.grade} • {child.school}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-semibold text-gray-900">{child.name}</h4>
-                    <p className="text-xs text-gray-500">{child.grade} • {child.school}</p>
+                  <div className="text-right">
+                    <p className="text-xs font-semibold text-gray-500">Attendance</p>
+                    <p className="text-sm font-bold text-emerald-600">{child.attendance}%</p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs font-semibold text-gray-500">Attendance</p>
-                  <p className="text-sm font-bold text-emerald-600">{child.attendance}%</p>
-                </div>
-              </div>
-            </button>
-          ))}
+              </button>
+            ))
+          ) : (
+            <EmptyState icon={<User size={40} />} title="No linked children" description="Children linked to this parent account will appear here." />
+          )}
         </div>
       </AppCard>
+      </DashboardSection>
 
       {/* Attendance & Fee Balances - Side by Side */}
+      <DashboardSection id="attendance-fees" controls={sectionControls}>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <AppCard 
           title="Attendance Overview"
           subtitle={`Average: ${avgAttendance}%`}
         >
           <div className="space-y-2">
-            {attendanceByChild.map((item) => (
+            {attendanceByChild.length > 0 ? attendanceByChild.map((item) => (
               <button
                 key={item.id}
                 onClick={() => onNavigate('attendance-analytics')}
@@ -274,7 +313,9 @@ const ParentDashboard = ({ user, onNavigate }) => {
                   </div>
                 </div>
               </button>
-            ))}
+            )) : (
+              <EmptyState icon={<CheckCircle2 size={40} />} title="No attendance records" description="Attendance appears after it is marked." />
+            )}
           </div>
           <button
             onClick={() => onNavigate('attendance-analytics')}
@@ -289,7 +330,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
           subtitle={`Outstanding: KES ${totalOutstanding.toLocaleString()}`}
         >
           <div className="space-y-2">
-            {feeBalances.map((item) => (
+            {feeBalances.length > 0 ? feeBalances.map((item) => (
               <button
                 key={item.id}
                 onClick={() => onNavigate('fees-management')}
@@ -313,7 +354,9 @@ const ParentDashboard = ({ user, onNavigate }) => {
                   </div>
                 </div>
               </button>
-            ))}
+            )) : (
+              <EmptyState icon={<CreditCard size={40} />} title="No fee invoices" description="Fee balances will appear after invoices are created." />
+            )}
           </div>
           <button
             onClick={() => onNavigate('fees-management')}
@@ -323,8 +366,10 @@ const ParentDashboard = ({ user, onNavigate }) => {
           </button>
         </AppCard>
       </div>
+      </DashboardSection>
 
       {/* Latest Results & Homework - Side by Side */}
+      <DashboardSection id="results-homework" controls={sectionControls}>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <AppCard 
           title="Latest Results"
@@ -367,26 +412,28 @@ const ParentDashboard = ({ user, onNavigate }) => {
           subtitle={`${homework.filter(h => !h.submitted).length} pending submissions`}
         >
           <div className="space-y-2">
-            {homework.map((hw) => (
-              <button
-                key={hw.id}
-                onClick={() => onNavigate('homework-tracker')}
-                className={`w-full p-4 rounded-lg border transition-all text-left ${hw.submitted ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs opacity-75">{hw.childName}</p>
-                    <h4 className="font-semibold mt-1">{hw.title}</h4>
-                    <p className="text-xs opacity-75 mt-1">{hw.subject} • Due {hw.dueDate}</p>
+            {homework.length > 0 ? homework.map((hw) => (
+                <button
+                  key={hw.id}
+                  onClick={() => onNavigate('homework-tracker')}
+                  className={`w-full p-4 rounded-lg border transition-all text-left ${hw.submitted ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-xs opacity-75">{hw.childName}</p>
+                      <h4 className="font-semibold mt-1">{hw.title}</h4>
+                      <p className="text-xs opacity-75 mt-1">{hw.subject} • Due {hw.dueDate}</p>
+                    </div>
+                    {hw.submitted ? (
+                      <CheckCircle2 size={20} className="text-emerald-600 flex-shrink-0" />
+                    ) : (
+                      <AlertCircle size={20} className="text-amber-600 flex-shrink-0" />
+                    )}
                   </div>
-                  {hw.submitted ? (
-                    <CheckCircle2 size={20} className="text-emerald-600 flex-shrink-0" />
-                  ) : (
-                    <AlertCircle size={20} className="text-amber-600 flex-shrink-0" />
-                  )}
-                </div>
-              </button>
-            ))}
+                </button>
+              )) : (
+                <EmptyState icon={<BookOpen size={40} />} title="No homework feed connected" description="There is no parent homework data source yet." />
+              )}
           </div>
           <button
             onClick={() => onNavigate('homework-tracker')}
@@ -396,15 +443,17 @@ const ParentDashboard = ({ user, onNavigate }) => {
           </button>
         </AppCard>
       </div>
+      </DashboardSection>
 
       {/* School Notices & Messages - Side by Side */}
+      <DashboardSection id="notices-messages" controls={sectionControls}>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <AppCard 
           title="School Notices"
           subtitle="Latest announcements"
         >
           <div className="space-y-2">
-            {schoolNotices.map((notice) => (
+            {schoolNotices.length > 0 ? schoolNotices.map((notice) => (
               <button
                 key={notice.id}
                 onClick={() => onNavigate('notices-board')}
@@ -421,7 +470,9 @@ const ParentDashboard = ({ user, onNavigate }) => {
                   <ChevronRight size={18} className="text-gray-400 flex-shrink-0" />
                 </div>
               </button>
-            ))}
+            )) : (
+              <EmptyState icon={<Bell size={40} />} title="No notices" description="Published parent notices will appear here." />
+            )}
           </div>
           <button
             onClick={() => onNavigate('notices-board')}
@@ -436,7 +487,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
           subtitle={`${messages.length} messages`}
         >
           <div className="space-y-2">
-            {messages.map((msg) => (
+            {messages.length > 0 ? messages.map((msg) => (
               <button
                 key={msg.id}
                 onClick={() => onNavigate('comm-notices')}
@@ -454,7 +505,9 @@ const ParentDashboard = ({ user, onNavigate }) => {
                   <ChevronRight size={18} className="text-gray-400 flex-shrink-0" />
                 </div>
               </button>
-            ))}
+            )) : (
+              <EmptyState icon={<MessageSquare size={40} />} title="No message feed connected" description="There is no parent dashboard messages data source yet." />
+            )}
           </div>
           <button
             onClick={() => onNavigate('comm-notices')}
@@ -464,8 +517,10 @@ const ParentDashboard = ({ user, onNavigate }) => {
           </button>
         </AppCard>
       </div>
+      </DashboardSection>
 
       {/* AI Learner Insights Placeholder */}
+      <DashboardSection id="academic-insights" controls={sectionControls}>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* AI Insights */}
         <Suspense fallback={<div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />}>
@@ -476,6 +531,9 @@ const ParentDashboard = ({ user, onNavigate }) => {
           <AcademicInsights contextType="parent" contextId={user?.id} />
         </Suspense>
       </div>
+      </DashboardSection>
+
+      <DashboardSectionControls {...sectionControls} />
     </div>
   );
 };

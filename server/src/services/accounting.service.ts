@@ -630,15 +630,65 @@ export class AccountingService {
             .filter(acc => acc.type === AccountType.LIABILITY_PAYABLE)
             .reduce((sum, acc) => sum + Number(acc.balance || 0), 0);
 
-        const feesCollectedResult = await prisma.feePayment.aggregate({ _sum: { amount: true } });
-        const feesCollected = Number(feesCollectedResult._sum.amount || 0);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
-        const recentEntries = await prisma.journalEntry.findMany({
-            where: { status: 'POSTED' },
-            take: 5,
-            orderBy: { date: 'desc' },
-            include: { journal: true, items: { include: { account: true } } }
+        const [
+            feesCollectedResult,
+            overdueInvoicesResult,
+            unreconciledLinesResult,
+            recentEntries,
+            bankStatements,
+        ] = await Promise.all([
+            prisma.feePayment.aggregate({ _sum: { amount: true } }),
+            prisma.feeInvoice.aggregate({
+                where: {
+                    archived: false,
+                    balance: { gt: 0 },
+                    dueDate: { lt: today }
+                },
+                _sum: { balance: true }
+            }),
+            prisma.bankStatementLine.aggregate({
+                where: { status: 'UNRECONCILED' },
+                _sum: { amount: true },
+                _count: true
+            }),
+            prisma.journalEntry.findMany({
+                where: { status: 'POSTED' },
+                take: 5,
+                orderBy: { date: 'desc' },
+                include: { journal: true, items: { include: { account: true } } }
+            }),
+            prisma.bankStatement.findMany({
+                orderBy: { updatedAt: 'desc' },
+                include: { account: true },
+            }),
+        ]);
+
+        const feesCollected = Number(feesCollectedResult._sum.amount || 0);
+        const overdueBalance = Number(overdueInvoicesResult._sum.balance || 0);
+        const pendingReconciliation = Math.abs(Number(unreconciledLinesResult._sum.amount || 0));
+        const latestStatementByAccount = new Map<string, typeof bankStatements[number]>();
+        bankStatements.forEach((statement) => {
+            if (!latestStatementByAccount.has(statement.accountId)) {
+                latestStatementByAccount.set(statement.accountId, statement);
+            }
         });
+        const bankAccounts = accounts
+            .filter(acc => acc.type === AccountType.ASSET_CASH)
+            .map((account: any) => {
+                const latestStatement = latestStatementByAccount.get(account.id);
+                return {
+                    id: account.id,
+                    name: account.name,
+                    bankName: account.name,
+                    accountNumber: account.code,
+                    balance: Number(account.balance || 0),
+                    lastReconciled: latestStatement?.updatedAt || null,
+                    statementStatus: latestStatement?.status || 'NO_STATEMENT',
+                };
+            });
 
         return {
             cashActual: cashOnHand,
@@ -647,6 +697,10 @@ export class AccountingService {
             accountsPayable,
             feesCollected,
             netProfit: report.profitLoss.netProfit,
+            overdueBalance,
+            pendingReconciliation,
+            pendingReconciliationCount: unreconciledLinesResult._count,
+            bankAccounts,
             recentEntries: recentEntries.map(e => {
                 const totalDebit = e.items.reduce((sum, item) => sum + Number(item.debit || 0), 0);
                 const totalCredit = e.items.reduce((sum, item) => sum + Number(item.credit || 0), 0);

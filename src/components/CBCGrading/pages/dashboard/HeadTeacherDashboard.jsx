@@ -3,15 +3,15 @@
  * Academic oversight - focused on academics, attendance, and teacher management
  */
 
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line, BarChart, Bar } from 'recharts';
 import { dashboardAPI } from '../../../../services/api';
 import {
   AppCard,
-  KpiCard,
-  SectionHeader,
   EmptyState
 } from '@/design-system/components';
+import DashboardSummary, { DashboardGreetingBanner } from './DashboardSummary';
+import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
 
 import {
   TrendingUp,
@@ -20,7 +20,6 @@ import {
   Users,
   Calendar,
   BookOpen,
-  Brain,
   CheckCircle,
   Clock,
   BarChart3
@@ -33,6 +32,13 @@ const HeadTeacherDashboard = ({ learners = [], teachers = [], user, onNavigate }
   const [apiError, setApiError] = useState(null);
 
   const userId = user?.id || user?.userId;
+  const sectionControls = useDashboardSections('head-teacher', [
+    { id: 'executive-summary', label: 'Executive Summary', description: 'Students, staff, assessment, and risk' },
+    { id: 'health-attendance', label: 'Health & Attendance', description: 'Academic health and teacher attendance' },
+    { id: 'assessment-trends', label: 'Assessment & Trends', description: 'Completion and attendance trend charts' },
+    { id: 'classes-attention', label: 'Classes Requiring Attention', description: 'Classes needing intervention' },
+    { id: 'quick-navigation', label: 'Quick Navigation', description: 'Common academic actions' },
+  ]);
 
   const loadMetrics = async (filter = 'term') => {
     try {
@@ -66,48 +72,43 @@ const HeadTeacherDashboard = ({ learners = [], teachers = [], user, onNavigate }
     totalMissedExams: metrics?.stats?.totalMissedExams || 0,
     assessmentRate: metrics?.stats?.totalStudents > 0 
       ? Math.round(((metrics.stats.totalStudents - metrics.stats.totalMissedExams) / metrics.stats.totalStudents) * 100)
-      : 92,
-    attendanceRate: metrics?.stats?.presentToday && (metrics.stats.presentToday + metrics.stats.absentToday)
+      : 0,
+    attendanceRate: metrics?.stats && (metrics.stats.presentToday + metrics.stats.absentToday) > 0
       ? Math.round((metrics.stats.presentToday / (metrics.stats.presentToday + metrics.stats.absentToday)) * 100)
-      : 88,
-    teacherAttendanceRate: 95,
+      : 0,
+    teacherAttendanceRate: metrics?.stats?.totalTeachers > 0
+      ? Math.round((metrics.stats.activeTeachers / metrics.stats.totalTeachers) * 100)
+      : 0,
     atRiskStudents: metrics?.stats?.atRiskStudents || 0,
   };
 
-  // Attendance trend data (weekly)
-  const attendanceTrendData = [
-    { week: 'W1', students: 85, teachers: 98, target: 90 },
-    { week: 'W2', students: 87, teachers: 96, target: 90 },
-    { week: 'W3', students: stats.attendanceRate, teachers: stats.teacherAttendanceRate, target: 90 },
-    { week: 'W4', students: 86, teachers: 97, target: 90 },
-    { week: 'W5', students: 88, teachers: 98, target: 90 },
-  ];
+  const attendanceTrendData = metrics?.attendanceTrend || [];
 
-  // Assessment completion data
-  const assessmentData = [
-    { grade: 'Grade 1', completed: 95, pending: 5 },
-    { grade: 'Grade 2', completed: 92, pending: 8 },
-    { grade: 'Grade 3', completed: 89, pending: 11 },
-    { grade: 'Grade 4', completed: 94, pending: 6 },
-    { grade: 'Grade 5', completed: 88, pending: 12 },
-    { grade: 'Grade 6', completed: 91, pending: 9 },
-  ];
+  const assessmentData = (metrics?.unAssessedBreakdown || []).map((item) => {
+    const total = Number(item.total || 0);
+    const assessed = Number(item.assessed || 0);
+    const unAssessed = Number(item.unAssessed || 0);
+    return {
+      grade: item.grade,
+      completed: total > 0 ? Math.round((assessed / total) * 100) : 0,
+      pending: total > 0 ? Math.round((unAssessed / total) * 100) : 0,
+    };
+  });
 
-  // Classes requiring attention
-  const classesNeedingAttention = [
-    { grade: 'Grade 3', issue: 'Low assessment completion (89%)', severity: 'medium', students: 28 },
-    { grade: 'Grade 5', issue: 'High absence rate (18% absent)', severity: 'high', students: 32 },
-    { grade: 'Grade 2', issue: 'Teacher coverage gaps', severity: 'medium', students: 26 },
-  ];
+  const classesNeedingAttention = (metrics?.unAssessedBreakdown || [])
+    .filter((item) => Number(item.unAssessed || 0) > 0)
+    .map((item) => ({
+      grade: item.grade,
+      issue: `${item.unAssessed} learners pending assessment completion`,
+      severity: Number(item.unAssessed || 0) > 10 ? 'high' : 'medium',
+      students: item.total,
+    }));
 
-  // Teacher attendance by department
-  const teacherAttendanceByDept = [
-    { dept: 'Mathematics', rate: 98, absent: 0 },
-    { dept: 'English', rate: 96, absent: 1 },
-    { dept: 'Science', rate: 95, absent: 1 },
-    { dept: 'Social Studies', rate: 97, absent: 0 },
-    { dept: 'PE/Sports', rate: 93, absent: 1 },
-  ];
+  const teacherAttendanceByDept = metrics?.teacherAttendanceByDept || [];
+  const classCoverage = stats.totalLearners > 0
+    ? Math.min(100, Math.round((stats.totalAssessedClasses * 100) / stats.totalLearners))
+    : 0;
+  const academicHealthScore = Math.round((stats.assessmentRate + stats.attendanceRate + classCoverage) / 3);
 
   if (apiError && !metrics) {
     return (
@@ -137,158 +138,165 @@ const HeadTeacherDashboard = ({ learners = [], teachers = [], user, onNavigate }
         </div>
       )}
 
-      {/* Minimal header - no large colored banner */}
-      <div className="border-b border-gray-200 pb-4">
-        <h1 className="text-2xl font-bold text-gray-900">Head Teacher Dashboard</h1>
-        <p className="text-sm text-gray-600 mt-1">Academic oversight and performance monitoring</p>
-      </div>
+      <DashboardGreetingBanner user={user} />
 
-      {/* Key Academic Metrics */}
-      <div className="space-y-4">
-        <SectionHeader 
-          variant="default"
-          title="Academic Metrics"
-          level="h3"
-        />
-        
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <KpiCard 
-            variant="primary"
-            label="Students"
-            value={stats.totalLearners}
-            subvalue="Total enrolled"
-            icon={<GraduationCap size={20} />}
-            onClick={() => onNavigate('learners-list')}
-          />
-          
-          <KpiCard 
-            variant="success"
-            label="Teachers"
-            value={stats.totalTeachers}
-            subvalue="Active staff"
-            icon={<Users size={20} />}
-            onClick={() => onNavigate('teachers-list')}
-          />
-          
-          <KpiCard 
-            variant="neutral"
-            label="Assessment Rate"
-            value={`${stats.assessmentRate}%`}
-            subvalue="Completion"
-            icon={<CheckCircle size={20} />}
-            onClick={() => onNavigate('assess-summative-assessment')}
-          />
-          
-          <KpiCard 
-            variant="warning"
-            label="At-Risk"
-            value={stats.atRiskStudents}
-            subvalue="Requiring support"
-            icon={<AlertTriangle size={20} />}
-            onClick={() => onNavigate('learners-list')}
-          />
-        </div>
-      </div>
+      <DashboardSection id="executive-summary" controls={sectionControls}>
+      <DashboardSummary
+        title="Executive Summary"
+        description="The four numbers that need the head teacher's first glance."
+        items={[
+          {
+            label: 'Students',
+            value: stats.totalLearners,
+            subvalue: 'Total enrolled',
+            icon: <GraduationCap size={26} />,
+            tone: 'indigo',
+            onClick: () => onNavigate('learners-list'),
+          },
+          {
+            label: 'Staff',
+            value: stats.totalTeachers,
+            subvalue: 'Active teaching staff',
+            icon: <Users size={26} />,
+            tone: 'purple',
+            onClick: () => onNavigate('teachers-list'),
+          },
+          {
+            label: 'Assessment Rate',
+            value: `${stats.assessmentRate}%`,
+            subvalue: 'Completion',
+            icon: <CheckCircle size={26} />,
+            tone: 'emerald',
+            onClick: () => onNavigate('assess-summative-assessment'),
+          },
+          {
+            label: 'At-Risk',
+            value: stats.atRiskStudents,
+            subvalue: 'Requiring support',
+            icon: <AlertTriangle size={26} />,
+            tone: 'orange',
+            onClick: () => onNavigate('learners-list'),
+          },
+        ]}
+      />
+      </DashboardSection>
 
-      {/* Academic Health Score */}
-      <AppCard 
-        title="Academic Health Score"
-        subtitle="Overall assessment of academic performance"
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-gray-600">Overall Health</p>
-            <p className="mt-3 text-5xl font-bold text-brand-purple">
-              {Math.round((stats.assessmentRate + stats.attendanceRate + stats.totalAssessedClasses * 100 / stats.totalLearners) / 3)}
-            </p>
-            <p className="mt-2 text-xs text-gray-500">out of 100 - Based on assessment, attendance, and class performance</p>
-          </div>
-          <div className="flex flex-col gap-4">
-            <div className="text-center p-4 rounded-lg bg-blue-50 border border-blue-100">
-              <p className="text-xs text-blue-600 font-semibold uppercase">Assessment</p>
-              <p className="text-2xl font-bold text-blue-700 mt-1">{stats.assessmentRate}%</p>
+      <DashboardSection id="health-attendance" controls={sectionControls}>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        {/* Academic Health Score */}
+        <AppCard
+          title="Academic Health Score"
+          subtitle="Overall assessment of academic performance"
+        >
+          <div className="flex flex-col gap-6">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-gray-600">Overall Health</p>
+              <p className="mt-3 text-5xl font-bold text-brand-purple">
+                {academicHealthScore}
+              </p>
+              <p className="mt-2 text-xs text-gray-500">out of 100 - Based on assessment, attendance, and class performance</p>
             </div>
-            <div className="text-center p-4 rounded-lg bg-emerald-50 border border-emerald-100">
-              <p className="text-xs text-emerald-600 font-semibold uppercase">Attendance</p>
-              <p className="text-2xl font-bold text-emerald-700 mt-1">{stats.attendanceRate}%</p>
-            </div>
-            <div className="text-center p-4 rounded-lg bg-amber-50 border border-amber-100">
-              <p className="text-xs text-amber-600 font-semibold uppercase">Classes Assessed</p>
-              <p className="text-2xl font-bold text-amber-700 mt-1">{stats.totalAssessedClasses}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="text-center p-4 rounded-lg bg-blue-50 border border-blue-100">
+                <p className="text-xs text-blue-600 font-semibold uppercase">Assessment</p>
+                <p className="text-2xl font-bold text-blue-700 mt-1">{stats.assessmentRate}%</p>
+              </div>
+              <div className="text-center p-4 rounded-lg bg-emerald-50 border border-emerald-100">
+                <p className="text-xs text-emerald-600 font-semibold uppercase">Attendance</p>
+                <p className="text-2xl font-bold text-emerald-700 mt-1">{stats.attendanceRate}%</p>
+              </div>
+              <div className="text-center p-4 rounded-lg bg-amber-50 border border-amber-100">
+                <p className="text-xs text-amber-600 font-semibold uppercase">Classes Assessed</p>
+                <p className="text-2xl font-bold text-amber-700 mt-1">{stats.totalAssessedClasses}</p>
+              </div>
             </div>
           </div>
-        </div>
-      </AppCard>
+        </AppCard>
+
+        {/* Teacher Attendance */}
+        <AppCard
+          title="Teacher Attendance"
+          subtitle="Subject-wise attendance rates"
+        >
+          <div className="space-y-3">
+            {teacherAttendanceByDept.length > 0 ? teacherAttendanceByDept.map((dept) => (
+              <div key={dept.dept} className="p-3 rounded-lg border border-slate-100 hover:bg-gray-50 transition">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-sm text-gray-900">{dept.dept}</h4>
+                    <p className="text-xs text-gray-500 mt-1">{dept.absent > 0 ? `${dept.absent} absent` : 'All present'}</p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="w-20 h-8 bg-gray-100 rounded-full relative overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full"
+                        style={{ width: `${dept.rate}%` }}
+                      />
+                    </div>
+                    <p className="text-lg font-bold text-gray-900 min-w-12 text-right">{dept.rate}%</p>
+                  </div>
+                </div>
+              </div>
+            )) : (
+              <EmptyState icon={<Clock size={40} />} title="No teacher attendance yet" description="Teacher clock-in records will appear here after staff attendance is marked." />
+            )}
+          </div>
+        </AppCard>
+      </div>
+      </DashboardSection>
 
       {/* Assessment Completion & Attendance Trends */}
+      <DashboardSection id="assessment-trends" controls={sectionControls}>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <AppCard 
           title="Assessment Completion"
           subtitle="By grade level"
         >
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={assessmentData} margin={{ top: 10, right: 20, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                <XAxis dataKey="grade" tick={{ fontSize: 11, fill: '#64748b' }} />
-                <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
-                <Tooltip formatter={(value) => `${value}%`} />
-                <Bar dataKey="completed" fill="#10b981" radius={[8, 8, 0, 0]} />
-                <Bar dataKey="pending" fill="#fbbf24" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {assessmentData.length > 0 ? (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={assessmentData} margin={{ top: 10, right: 20, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="grade" tick={{ fontSize: 11, fill: '#64748b' }} />
+                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
+                  <Tooltip formatter={(value) => `${value}%`} />
+                  <Bar dataKey="completed" fill="#10b981" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="pending" fill="#fbbf24" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <EmptyState icon={<CheckCircle size={40} />} title="No assessment series data" description="Grade completion appears after a summative test series has results." />
+          )}
         </AppCard>
 
         <AppCard 
           title="Attendance Trends"
           subtitle="Student vs teacher weekly comparison"
         >
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={attendanceTrendData} margin={{ top: 10, right: 20, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#64748b' }} />
-                <YAxis tick={{ fontSize: 11, fill: '#64748b' }} domain={[80, 100]} />
-                <Tooltip formatter={(value) => `${value}%`} />
-                <Line type="monotone" dataKey="students" stroke="#8b5cf6" strokeWidth={2} />
-                <Line type="monotone" dataKey="teachers" stroke="#10b981" strokeWidth={2} />
-                <Line type="monotone" dataKey="target" stroke="#cbd5e1" strokeDasharray="5 5" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          {attendanceTrendData.length > 0 ? (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={attendanceTrendData} margin={{ top: 10, right: 20, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#64748b' }} />
+                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} domain={[80, 100]} />
+                  <Tooltip formatter={(value) => `${value}%`} />
+                  <Line type="monotone" dataKey="students" stroke="#8b5cf6" strokeWidth={2} />
+                  <Line type="monotone" dataKey="teachers" stroke="#10b981" strokeWidth={2} />
+                  <Line type="monotone" dataKey="target" stroke="#cbd5e1" strokeDasharray="5 5" strokeWidth={2} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <EmptyState icon={<TrendingUp size={40} />} title="No attendance trend feed" description="The dashboard API currently returns today's attendance only, not weekly trend points." />
+          )}
         </AppCard>
       </div>
-
-      {/* Teacher Attendance */}
-      <AppCard 
-        title="Teacher Attendance"
-        subtitle="Department-wise attendance rates"
-      >
-        <div className="space-y-3">
-          {teacherAttendanceByDept.map((dept) => (
-            <div key={dept.dept} className="p-3 rounded-lg border border-slate-100 hover:bg-gray-50 transition">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-semibold text-sm text-gray-900">{dept.dept}</h4>
-                  <p className="text-xs text-gray-500 mt-1">{dept.absent > 0 ? `${dept.absent} absent` : 'All present'}</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="w-20 h-8 bg-gray-100 rounded-full relative overflow-hidden">
-                    <div 
-                      className="h-full bg-emerald-500 rounded-full" 
-                      style={{ width: `${dept.rate}%` }}
-                    />
-                  </div>
-                  <p className="text-lg font-bold text-gray-900 min-w-12 text-right">{dept.rate}%</p>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </AppCard>
+      </DashboardSection>
 
       {/* Classes Requiring Attention */}
+      <DashboardSection id="classes-attention" controls={sectionControls}>
       {classesNeedingAttention.length > 0 && (
         <AppCard 
           variant="flat"
@@ -335,8 +343,10 @@ const HeadTeacherDashboard = ({ learners = [], teachers = [], user, onNavigate }
           </div>
         </AppCard>
       )}
+      </DashboardSection>
 
       {/* Quick Navigation */}
+      <DashboardSection id="quick-navigation" controls={sectionControls}>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <button
           onClick={() => onNavigate('assess-summative-assessment')}
@@ -367,6 +377,9 @@ const HeadTeacherDashboard = ({ learners = [], teachers = [], user, onNavigate }
           <p className="text-xs font-semibold text-gray-900">Curriculum</p>
         </button>
       </div>
+      </DashboardSection>
+
+      <DashboardSectionControls {...sectionControls} />
     </div>
   );
 };

@@ -4,17 +4,18 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { dashboardAPI } from '../../../../services/api';
+import { accountingAPI, dashboardAPI } from '../../../../services/api';
 import { useAuth } from '../../../../hooks/useAuth';
-import { AppCard, KpiCard } from '@/design-system/components';
+import { AppCard } from '@/design-system/components';
 import { TOKENS } from '@/design-system/tokens';
+import DashboardSummary, { DashboardGreetingBanner } from './DashboardSummary';
+import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
 import { ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar } from 'recharts';
 import {
   AlertTriangle,
   ArrowDownCircle,
   ArrowUpCircle,
   BarChart3,
-  Calendar,
   CreditCard,
   Landmark,
   LogOut,
@@ -145,16 +146,28 @@ const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
   const [apiError, setApiError] = useState(null);
 
   const userId = user?.id || user?.userId;
+  const sectionControls = useDashboardSections('accountant', [
+    { id: 'executive-summary', label: 'Executive Summary', description: 'Expected, collected, rate, overdue' },
+    { id: 'collection-analytics', label: 'Collection Analytics', description: 'Trend chart and collection rate' },
+    { id: 'bank-transactions', label: 'Bank & Transactions', description: 'Balances and recent entries' },
+    { id: 'finance-shortcuts', label: 'Finance Shortcuts', description: 'Common finance actions' },
+  ]);
 
   const loadMetrics = async (filter = 'term') => {
     try {
       setRefreshing(true);
       setApiError(null);
-      const response = await dashboardAPI.getAccountantMetrics(filter);
-      if (response.success) {
-        setMetrics(response.data);
+      const [accountingResponse, adminResponse] = await Promise.all([
+        accountingAPI.getDashboardStats(),
+        dashboardAPI.getAdminMetrics(filter),
+      ]);
+      if (accountingResponse.success) {
+        setMetrics({
+          accounting: accountingResponse.data || {},
+          admin: adminResponse.success ? (adminResponse.data || {}) : {},
+        });
       } else {
-        setApiError(response.message || 'Failed to load dashboard data');
+        setApiError(accountingResponse.message || 'Failed to load dashboard data');
       }
     } catch (error) {
       console.error('Failed to load dashboard metrics:', error);
@@ -169,38 +182,49 @@ const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
+  const adminMetrics = metrics?.admin || {};
+  const accountingMetrics = metrics?.accounting || {};
+  const expectedFromStreams = (adminMetrics?.financials?.streamBreakdown || [])
+    .reduce((sum, stream) => sum + Number(stream.target || 0), 0);
+  const totalCollected = Number(adminMetrics?.stats?.feeCollected ?? accountingMetrics.feesCollected ?? 0);
+  const outstanding = Number(adminMetrics?.stats?.feePending ?? accountingMetrics.accountsReceivable ?? 0);
+  const totalExpected = expectedFromStreams || totalCollected + outstanding;
+
   const stats = {
-    totalExpected: metrics?.stats?.expectedIncome || 2500000,
-    totalCollected: metrics?.stats?.feeCollected || 18500,
-    outstanding: metrics?.stats?.feePending || 1561000,
-    overdue: metrics?.stats?.overdueBalance || 125000,
-    collectionRate: metrics?.stats?.feeCollected && metrics?.stats?.expectedIncome
-      ? Math.round((metrics.stats.feeCollected / metrics.stats.expectedIncome) * 100)
-      : 74,
-    bankBalance: metrics?.stats?.bankBalance || 850000,
-    pendingReconciliation: metrics?.stats?.pendingReconciliation || 42000,
+    totalExpected,
+    totalCollected,
+    outstanding,
+    overdue: Number(accountingMetrics.overdueBalance || 0),
+    collectionRate: totalExpected > 0
+      ? Math.round((totalCollected / totalExpected) * 100)
+      : 0,
+    bankBalance: Number(accountingMetrics.cashOnHand ?? accountingMetrics.cashActual ?? 0),
+    pendingReconciliation: Number(accountingMetrics.pendingReconciliation || 0),
   };
 
-  const forecastData = [
-    { week: 'W1', projected: 150000, baseline: 140000 },
-    { week: 'W2', projected: 165000, baseline: 155000 },
-    { week: 'W3', projected: 180000, baseline: 170000 },
-    { week: 'W4', projected: 195000, baseline: 185000 },
-    { week: 'W5', projected: 210000, baseline: 200000 },
-  ];
+  const forecastData = (adminMetrics?.financials?.trendData || []).map((item) => ({
+    period: item.month,
+    revenue: Number(item.revenue || 0),
+  }));
 
-  const recentTransactions = [
-    { id: 1, type: 'payment_received', title: 'Fee payment received', reference: 'Grade 3A', amount: 45000, createdAt: new Date(Date.now() - 15 * 60000), icon: ArrowDownCircle },
-    { id: 2, type: 'payment_received', title: 'Sponsorship received', reference: 'Bursary Fund', amount: 150000, createdAt: new Date(Date.now() - 45 * 60000), icon: ArrowDownCircle },
-    { id: 3, type: 'invoice_created', title: 'Invoice generated', reference: 'Late payment notice', amount: 35000, createdAt: new Date(Date.now() - 2 * 60 * 60000), icon: ArrowUpCircle },
-    { id: 4, type: 'payment_received', title: 'Installment paid', reference: 'Grade 5B', amount: 28000, createdAt: new Date(Date.now() - 3 * 60 * 60000), icon: ArrowDownCircle },
-  ];
+  const recentTransactions = (accountingMetrics.recentEntries || []).map((entry) => ({
+    id: entry.id,
+    type: entry.type,
+    title: entry.description,
+    reference: entry.status || 'Posted',
+    amount: Number(entry.amount || 0),
+    createdAt: new Date(entry.date),
+    icon: entry.type === 'EXPENSE' ? ArrowUpCircle : ArrowDownCircle,
+  }));
 
-  const bankAccounts = [
-    { id: 1, name: 'Main Operations', bankName: 'Equity Bank', accountNumber: '1234567890', balance: 450000, lastReconciled: '2026-06-01' },
-    { id: 2, name: 'Fee Account', bankName: 'Co-operative Bank', accountNumber: '0987654321', balance: 280000, lastReconciled: '2026-05-31' },
-    { id: 3, name: 'Payroll Account', bankName: 'KCB', accountNumber: '5555123456', balance: 120000, lastReconciled: '2026-06-01' },
-  ];
+  const bankAccounts = accountingMetrics.bankAccounts || [];
+  const ledgerBalances = bankAccounts.length > 0
+    ? bankAccounts
+    : [
+        { id: 'cash', name: 'Cash on Hand', description: 'Cash and bank ledger balance', balance: accountingMetrics.cashOnHand || 0 },
+        { id: 'receivable', name: 'Accounts Receivable', description: 'Outstanding receivables', balance: accountingMetrics.accountsReceivable || 0 },
+        { id: 'payable', name: 'Accounts Payable', description: 'Outstanding payables', balance: accountingMetrics.accountsPayable || 0 },
+      ];
 
   const timeAgo = (date) => {
     if (!date) return '';
@@ -249,53 +273,60 @@ const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
       <FinanceMiniBar user={user} brandingSettings={brandingSettings} onNavigate={onNavigate} />
       <div className="p-4 md:p-5">
       <div className="mx-auto max-w-[1500px] space-y-4">
-        <section className="overflow-hidden rounded-lg text-white shadow-sm" style={{ backgroundColor: TOKENS.colors.brand.primary }}>
-          <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_420px] lg:p-6">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-white/12 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-white/75">
-                  Finance
-                </span>
-                {refreshing && (
-                  <span className="rounded-full bg-white/12 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-white/75">
-                    Syncing
-                  </span>
-                )}
-              </div>
-              <h1 className="mt-4 text-2xl font-extrabold tracking-normal text-white md:text-3xl">Finance Dashboard</h1>
-              <p className="mt-2 max-w-2xl text-sm font-medium text-white/70">
-                Collection health, outstanding balances, reconciliation status, and recent finance movement.
-              </p>
-            </div>
-
-            <div className="grid min-w-0 grid-cols-3 gap-3">
-              <div className="rounded-lg bg-white/10 p-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-white/55">Collected</p>
-                <p className="mt-2 truncate text-lg font-extrabold text-white">{formatKes(stats.totalCollected)}</p>
-              </div>
-              <div className="rounded-lg bg-white/10 p-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-white/55">Rate</p>
-                <p className="mt-2 text-lg font-extrabold text-white">{rate}%</p>
-              </div>
-              <div className="rounded-lg bg-white/10 p-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-white/55">Outstanding</p>
-                <p className="mt-2 truncate text-lg font-extrabold text-white">{formatKes(stats.outstanding)}</p>
-              </div>
-            </div>
+        {refreshing && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2">
+            <p className="text-[11px] font-semibold text-blue-700 uppercase tracking-widest">Syncing finance data...</p>
           </div>
-        </section>
+        )}
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <KpiCard label="Total Expected" value={formatKes(stats.totalExpected)} subvalue="This term" icon={<Receipt size={18} />} variant="primary" onClick={() => onNavigate('fees-structure')} />
-          <KpiCard label="Total Collected" value={formatKes(stats.totalCollected)} subvalue="Payments received" icon={<CreditCard size={18} />} variant="success" onClick={() => onNavigate('fees-collection')} />
-          <KpiCard label="Outstanding" value={formatKes(stats.outstanding)} subvalue="Active invoices" icon={<Calendar size={18} />} variant="warning" onClick={() => onNavigate('fees-collection')} />
-          <KpiCard label="Overdue" value={formatKes(stats.overdue)} subvalue="Past due invoices" icon={<AlertTriangle size={18} />} variant="error" onClick={() => onNavigate('fees-collection')} />
-        </div>
+        <DashboardGreetingBanner user={user} fallbackName="Accountant" />
 
+        <DashboardSection id="executive-summary" controls={sectionControls}>
+        <DashboardSummary
+          title="Executive Summary"
+          description="The finance position that needs attention first."
+          items={[
+            {
+              label: 'Total Expected',
+              value: formatKes(stats.totalExpected),
+              subvalue: 'This term',
+              icon: <Receipt size={26} />,
+              tone: 'indigo',
+              onClick: () => onNavigate('fees-structure'),
+            },
+            {
+              label: 'Collected',
+              value: formatKes(stats.totalCollected),
+              subvalue: 'Payments received',
+              icon: <CreditCard size={26} />,
+              tone: 'emerald',
+              onClick: () => onNavigate('fees-collection'),
+            },
+            {
+              label: 'Collection Rate',
+              value: `${rate}%`,
+              subvalue: rate >= 80 ? 'On track' : 'Below target',
+              icon: <TrendingUp size={26} />,
+              tone: rate >= 80 ? 'teal' : 'amber',
+              onClick: () => onNavigate('fees-collection'),
+            },
+            {
+              label: 'Overdue',
+              value: formatKes(stats.overdue),
+              subvalue: 'Past due invoices',
+              icon: <AlertTriangle size={26} />,
+              tone: 'orange',
+              onClick: () => onNavigate('fees-collection'),
+            },
+          ]}
+        />
+        </DashboardSection>
+
+        <DashboardSection id="collection-analytics" controls={sectionControls}>
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           <AppCard
-            title="Collection Forecast"
-            subtitle="Projected weekly collection against baseline"
+            title="Collection Trend"
+            subtitle="Monthly collection from posted fee payments"
             headerAction={
               <button
                 type="button"
@@ -308,16 +339,21 @@ const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
             }
           >
             <div className="h-[260px] min-w-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={forecastData} margin={{ top: 10, right: 10, left: -18, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                  <XAxis dataKey="week" tick={{ fontSize: 12, fill: '#64748b' }} />
-                  <YAxis tick={{ fontSize: 12, fill: '#64748b' }} />
-                  <Tooltip formatter={(value) => formatKes(value)} />
-                  <Bar dataKey="projected" fill={TOKENS.colors.brand.primary} radius={[6, 6, 0, 0]} />
-                  <Bar dataKey="baseline" fill="#94a3b8" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              {forecastData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={forecastData} margin={{ top: 10, right: 10, left: -18, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                    <XAxis dataKey="period" tick={{ fontSize: 12, fill: '#64748b' }} />
+                    <YAxis tick={{ fontSize: 12, fill: '#64748b' }} />
+                    <Tooltip formatter={(value) => formatKes(value)} />
+                    <Bar dataKey="revenue" fill={TOKENS.colors.brand.primary} radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center rounded-md border border-dashed border-slate-200 text-center text-sm font-semibold text-slate-500">
+                  No collection trend data yet.
+                </div>
+              )}
             </div>
           </AppCard>
 
@@ -355,11 +391,13 @@ const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
             </div>
           </AppCard>
         </div>
+        </DashboardSection>
 
+        <DashboardSection id="bank-transactions" controls={sectionControls}>
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <AppCard title="Bank Reconciliation" subtitle="Account balances and reconciliation status">
+          <AppCard title={bankAccounts.length > 0 ? 'Bank Accounts' : 'Ledger Balances'} subtitle="Live accounting balances">
             <div className="space-y-3">
-              {bankAccounts.map((account) => (
+              {ledgerBalances.map((account) => (
                 <button
                   key={account.id}
                   type="button"
@@ -372,12 +410,16 @@ const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
                     </span>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-extrabold text-slate-950">{account.name}</p>
-                      <p className="truncate text-xs text-slate-500">{account.bankName} - {account.accountNumber}</p>
+                      <p className="truncate text-xs text-slate-500">
+                        {account.description || [account.bankName, account.accountNumber].filter(Boolean).join(' - ') || account.statementStatus}
+                      </p>
                     </div>
                   </div>
                   <div className="flex-shrink-0 text-right">
                     <p className="text-sm font-extrabold text-slate-950">{formatKes(account.balance)}</p>
-                    <p className="text-[11px] font-bold text-emerald-600">{account.lastReconciled}</p>
+                    <p className="text-[11px] font-bold text-slate-500">
+                      {account.lastReconciled ? new Date(account.lastReconciled).toLocaleDateString() : 'No statement'}
+                    </p>
                   </div>
                 </button>
               ))}
@@ -386,8 +428,8 @@ const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
 
           <AppCard title="Recent Transactions" subtitle="Latest financial activities">
             <div className="space-y-2">
-              {recentTransactions.map((transaction) => {
-                const isInflow = transaction.type === 'payment_received';
+              {recentTransactions.length > 0 ? recentTransactions.map((transaction) => {
+                const isInflow = transaction.type !== 'EXPENSE';
                 const Icon = transaction.icon;
                 return (
                   <div key={transaction.id} className="flex min-w-0 items-center gap-3 rounded-md p-3 transition hover:bg-slate-50">
@@ -406,11 +448,17 @@ const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
                     </div>
                   </div>
                 );
-              })}
+              }) : (
+                <div className="rounded-md border border-dashed border-slate-200 p-4 text-center text-sm font-semibold text-slate-500">
+                  No posted accounting entries yet.
+                </div>
+              )}
             </div>
           </AppCard>
         </div>
+        </DashboardSection>
 
+        <DashboardSection id="finance-shortcuts" controls={sectionControls}>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <button type="button" onClick={() => onNavigate('fees-collection')} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 text-left shadow-sm hover:bg-slate-50">
             <BarChart3 size={20} style={{ color: TOKENS.colors.brand.primary }} />
@@ -425,6 +473,9 @@ const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
             <span className="text-sm font-extrabold text-slate-950">Financial Reports</span>
           </button>
         </div>
+        </DashboardSection>
+
+        <DashboardSectionControls {...sectionControls} />
       </div>
       </div>
     </div>

@@ -8,6 +8,8 @@ import {
   Users, GraduationCap, BookOpen, Activity, Calendar, ShieldCheck, Zap, Target
 } from 'lucide-react';
 import CompactMetricBanner from './dashboard/CompactMetricBanner';
+import { DashboardGreetingBanner } from './dashboard/DashboardSummary';
+import { DashboardSection, DashboardSectionControls, useDashboardSections } from './dashboard/DashboardSections';
 import DashboardResponsiveWrapper from '../DashboardResponsiveWrapper';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, BarChart, Bar, Legend } from 'recharts';
 import { useState, useEffect } from 'react';
@@ -31,10 +33,17 @@ const financeData = [
   { name: 'Grade 4', collected: 55, pending: 45 },
 ];
 
-const Dashboard = ({ learners, teachers, onNavigate }) => {
+const Dashboard = ({ learners, teachers, user, onNavigate }) => {
   const activeLearners = learners?.filter(l => l.status === 'Active' || l.status === 'ACTIVE').length || 0;
   const activeTeachers = teachers?.filter(t => t.status === 'Active' || t.status === 'ACTIVE').length || 0;
   const [showEmptyHint, setShowEmptyHint] = useState(false);
+  const sectionControls = useDashboardSections('receptionist', [
+    { id: 'onboarding-hint', label: 'Onboarding Hint', description: 'Empty-state setup prompt' },
+    { id: 'executive-summary', label: 'Executive Summary', description: 'Enrollment and front desk metrics' },
+    { id: 'charts', label: 'Charts', description: 'Demographics, academics, and fees' },
+    { id: 'service-console', label: 'Service Console', description: 'Front desk service tiles' },
+    { id: 'activity-sidebar', label: 'Activity Sidebar', description: 'Events and operational notices' },
+  ]);
 
   useEffect(() => {
     const dismissed = sessionStorage.getItem('onboarding_dismissed');
@@ -60,6 +69,9 @@ const Dashboard = ({ learners, teachers, onNavigate }) => {
       }}
     >
       <div className="space-y-6">
+        <DashboardGreetingBanner user={user} />
+
+        <DashboardSection id="onboarding-hint" controls={sectionControls}>
         {showEmptyHint && (
           <div className="rounded-lg border border-brand-purple/20 bg-brand-purple/5 px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
@@ -88,7 +100,9 @@ const Dashboard = ({ learners, teachers, onNavigate }) => {
             </div>
           </div>
         )}
+        </DashboardSection>
         {/* Compact Metrics Banner */}
+        <DashboardSection id="executive-summary" controls={sectionControls}>
         <CompactMetricBanner
           metrics={[
             {
@@ -128,8 +142,10 @@ const Dashboard = ({ learners, teachers, onNavigate }) => {
           gradientVia="via-purple-500"
           gradientTo="to-pink-500"
         />
+        </DashboardSection>
 
         {/* Charts Section */}
+        <DashboardSection id="charts" controls={sectionControls}>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Demographics Pie */}
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 hover:shadow-md transition-shadow">
@@ -201,7 +217,9 @@ const Dashboard = ({ learners, teachers, onNavigate }) => {
             </div>
           </div>
         </div>
+        </DashboardSection>
 
+        <DashboardSection id="service-console" controls={sectionControls}>
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           {/* Main Service Console */}
           <div className="xl:col-span-2 space-y-6">
@@ -257,6 +275,7 @@ const Dashboard = ({ learners, teachers, onNavigate }) => {
           </div>
 
           {/* Sidebar: Activity Log */}
+          <DashboardSection id="activity-sidebar" controls={sectionControls}>
           <div className="space-y-6">
             <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
@@ -267,7 +286,10 @@ const Dashboard = ({ learners, teachers, onNavigate }) => {
               </div>
             </div>
           </div>
+          </DashboardSection>
         </div>
+        </DashboardSection>
+        <DashboardSectionControls {...sectionControls} />
       </div>
     </DashboardResponsiveWrapper>
   );

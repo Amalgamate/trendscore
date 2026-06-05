@@ -22,12 +22,14 @@ import {
   AreaChart, Area,
 } from 'recharts';
 import { hasPageAccess } from '../../utils/appAccess';
+import DashboardSummary, { DashboardGreetingBanner } from './DashboardSummary';
+import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
 import {
   Users, GraduationCap, BookOpen, UserCheck, Calendar, Award,
   AlertCircle, CheckCircle, ArrowUp, ArrowDown, Download,
   Wallet, Settings, Activity, ChevronRight, TrendingUp,
   FileText, Clock, Briefcase, X, Filter, UserPlus, Receipt,
-  ClipboardCheck, Package, Brain, Zap, ShieldAlert,
+  ClipboardCheck, Package,
 } from 'lucide-react';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -58,55 +60,31 @@ const P = {
 };
 
 /* ─── Metric Banner ──────────────────────────────────────────────────────── */
-const MetricBanner = ({ metrics }) => (
-  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 w-full">
-    {metrics.map((m, i) => {
-      const Icon = m.icon;
-      const bg   = [P.card1, P.card2, P.card3, P.card4][i] ?? P.card1;
-      return (
-        <div
-          key={i}
-          onClick={() => m.onClick?.()}
-          style={{ background: bg }}
-          className={`group relative overflow-hidden flex items-center p-4 rounded-xl
-            shadow-[0_8px_24px_rgba(0,0,0,0.22)] border border-white/10
-            transition-all duration-300
-            ${m.onClick ? 'cursor-pointer hover:-translate-y-1 hover:shadow-[0_14px_28px_rgba(0,0,0,0.32)]' : ''}`}
-        >
-          {/* Glow blob */}
-          <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/5 rounded-full blur-2xl group-hover:bg-white/10 transition-opacity" />
-
-          {/* Icon */}
-          <div className="flex-shrink-0 p-3 mr-4 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center">
-            <Icon size={20} className="text-white/90 group-hover:scale-110 transition-transform duration-300" />
-          </div>
-
-          {/* Text */}
-          <div className="flex flex-col flex-1 min-w-0 z-10">
-            <p className="text-[10px] font-bold uppercase tracking-widest leading-none mb-2 truncate text-white/65">
-              {m.title}
-            </p>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-2xl font-semibold leading-none text-white">{m.value}</span>
-              {m.trendValue && (
-                <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-semibold
-                  ${m.trend === 'up'
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                    : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}`}>
-                  {m.trend === 'up' ? <ArrowUp size={10} strokeWidth={3} /> : <ArrowDown size={10} strokeWidth={3} />}
-                  {m.trendValue}
-                </span>
-              )}
-            </div>
-            {m.subtitle && (
-              <div className="text-[10px] font-semibold truncate text-white/55">{m.subtitle}</div>
-            )}
-          </div>
-        </div>
-      );
-    })}
-  </div>
-);
+const MetricBanner = ({ metrics }) => {
+  const tones = ['indigo', 'teal', 'rose', 'orange'];
+  return (
+    <DashboardSummary
+      title="Executive Summary"
+      description="Senior school operating position at a glance."
+      items={metrics.map((metric, index) => {
+        const Icon = metric.icon;
+        return {
+          label: metric.title,
+          value: metric.value,
+          subvalue: metric.trendValue ? (
+            <span className="inline-flex items-center gap-1">
+              {metric.trend === 'up' ? <ArrowUp size={13} strokeWidth={3} /> : <ArrowDown size={13} strokeWidth={3} />}
+              {metric.trendValue}
+            </span>
+          ) : metric.subtitle,
+          icon: <Icon size={26} />,
+          tone: tones[index] || 'indigo',
+          onClick: metric.onClick,
+        };
+      })}
+    />
+  );
+};
 
 /* ─── Tab Button ─────────────────────────────────────────────────────────── */
 const TabBtn = ({ active, label, icon: Icon, onClick }) => (
@@ -185,8 +163,12 @@ const SecondaryAdminDashboard = ({ learners = [], pagination, teachers = [], use
   const [showUnAssessedSheet, setShowUnAssessedSheet] = useState(false);
   const [insights, setInsights]               = useState(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
-  const [insightsError, setInsightsError]     = useState(null);
   const userId = user?.id || user?.userId;
+  const sectionControls = useDashboardSections('secondary-admin', [
+    { id: 'quick-actions', label: 'Quick Actions', description: 'Senior school shortcuts' },
+    { id: 'tab-navigation', label: 'Tab Navigation', description: 'Overview, finance, performance, operations' },
+    { id: 'tab-content', label: 'Active Tab Content', description: 'Current dashboard tab panels' },
+  ]);
 
   /* ── Quick actions ─────────────────────────────────────────────────────── */
   const visibleShortcuts = [
@@ -225,12 +207,11 @@ const SecondaryAdminDashboard = ({ learners = [], pagination, teachers = [], use
   const loadInsights = async () => {
     try {
       setInsightsLoading(true);
-      setInsightsError(null);
       const res = await dashboardAPI.getInsights(false);
       if (res.success) setInsights(res.data);
-      else setInsightsError(res.message || 'Failed to load insights');
-    } catch (err) {
-      setInsightsError(err.message || 'Server error.');
+      else setInsights(null);
+    } catch {
+      setInsights(null);
     } finally {
       setInsightsLoading(false);
     }
@@ -973,7 +954,10 @@ const SecondaryAdminDashboard = ({ learners = [], pagination, teachers = [], use
         </div>
       )}
 
+      <DashboardGreetingBanner user={user} />
+
       {/* ── 1. Quick-action icon row ───────────────────────────────────────── */}
+      <DashboardSection id="quick-actions" controls={sectionControls}>
       <div className="grid grid-cols-3 md:grid-cols-6 gap-2 lg:gap-4 mb-2">
         {visibleShortcuts.map((sc, idx) => (
           <button
@@ -990,8 +974,10 @@ const SecondaryAdminDashboard = ({ learners = [], pagination, teachers = [], use
           </button>
         ))}
       </div>
+      </DashboardSection>
 
       {/* ── 2. Tab strip ───────────────────────────────────────────────────── */}
+      <DashboardSection id="tab-navigation" controls={sectionControls}>
       <div className="flex items-center overflow-x-auto border-b border-gray-200 bg-white px-2 rounded-lg shadow-sm border border-gray-200">
         {[
           { id: 'overview',    label: 'Overview',    icon: Activity   },
@@ -1004,8 +990,10 @@ const SecondaryAdminDashboard = ({ learners = [], pagination, teachers = [], use
           <TabBtn key={t.id} label={t.label} icon={t.icon} active={activeTab === t.id} onClick={() => setActiveTab(t.id)} />
         ))}
       </div>
+      </DashboardSection>
 
       {/* ── 3–5. Tab content ───────────────────────────────────────────────── */}
+      <DashboardSection id="tab-content" controls={sectionControls}>
       <div className="animate-in slide-in-from-bottom-2 duration-300">
         {showUnAssessedSheet && <UnAssessedSheet />}
         {activeTab === 'overview'    && renderOverview()}
@@ -1015,6 +1003,9 @@ const SecondaryAdminDashboard = ({ learners = [], pagination, teachers = [], use
         {activeTab === 'calendar'    && renderSchoolCalendar()}
                 {activeTab === 'hr-overview' && renderHROverview()}
       </div>
+      </DashboardSection>
+
+      <DashboardSectionControls {...sectionControls} />
     </div>
   );
 };

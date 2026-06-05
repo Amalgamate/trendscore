@@ -19,6 +19,277 @@ const PARENT_CACHE_TTL  = 120; // 2 min
 
 export class DashboardController {
 
+    private async getDashboardMessages(userId: string, take = 5) {
+        const [receipts, notifications] = await Promise.all([
+            prisma.messageReceipt.findMany({
+                where: { recipientId: userId },
+                include: { message: true },
+                orderBy: { createdAt: 'desc' },
+                take,
+            }),
+            prisma.userNotification.findMany({
+                where: { userId },
+                orderBy: { createdAt: 'desc' },
+                take,
+            }),
+        ]);
+
+        const inboxMessages = receipts.map((receipt) => ({
+            id: receipt.id,
+            from: receipt.message.senderType.replace(/_/g, ' '),
+            subject: receipt.message.subject || 'Message',
+            bodyPreview: receipt.message.body.slice(0, 140),
+            time: this.formatRelativeDate(receipt.message.sentAt || receipt.message.createdAt),
+            type: receipt.message.messageType,
+            priority: receipt.readAt ? 'read' : 'unread',
+            actionPage: 'comm-notices',
+        }));
+
+        const notificationMessages = notifications.map((notification) => ({
+            id: notification.id,
+            from: 'System',
+            subject: notification.title,
+            bodyPreview: notification.message.slice(0, 140),
+            time: this.formatRelativeDate(notification.createdAt),
+            type: notification.type,
+            priority: notification.isRead ? 'read' : 'unread',
+            actionPage: notification.link || 'comm-notices',
+        }));
+
+        return [...inboxMessages, ...notificationMessages]
+            .sort((a, b) => (a.priority === 'unread' ? -1 : 1) - (b.priority === 'unread' ? -1 : 1))
+            .slice(0, take);
+    }
+
+    private async getParentHomeworkItems(children: Array<{ id: string; name: string }>, take = 8) {
+        if (children.length === 0) return [];
+
+        const childNameMap = new Map(children.map(child => [child.id, child.name]));
+        const enrollments = await prisma.lMSEnrollment.findMany({
+            where: {
+                learnerId: { in: children.map(child => child.id) },
+                status: 'ACTIVE' as any,
+                archived: false,
+            },
+            select: { id: true, learnerId: true, courseId: true },
+        });
+
+        if (enrollments.length === 0) return [];
+
+        const enrollmentByCourse = new Map<string, typeof enrollments>();
+        enrollments.forEach((enrollment) => {
+            if (!enrollmentByCourse.has(enrollment.courseId)) enrollmentByCourse.set(enrollment.courseId, []);
+            enrollmentByCourse.get(enrollment.courseId)!.push(enrollment);
+        });
+
+        const assignments = await prisma.lMSContent.findMany({
+            where: {
+                courseId: { in: [...enrollmentByCourse.keys()] },
+                type: 'ASSIGNMENT' as any,
+                archived: false,
+            },
+            include: {
+                course: { select: { id: true, title: true, subject: true } },
+                progress: {
+                    where: { enrollmentId: { in: enrollments.map(enrollment => enrollment.id) } },
+                    select: { enrollmentId: true, completed: true, lastAccessedAt: true },
+                },
+            },
+            orderBy: [{ createdAt: 'desc' }, { order: 'asc' }],
+            take,
+        });
+
+        const progressByEnrollment = new Map<string, { completed: boolean; lastAccessedAt: Date }>();
+        assignments.forEach((assignment) => {
+            assignment.progress.forEach((progress) => {
+                progressByEnrollment.set(`${assignment.id}:${progress.enrollmentId}`, {
+                    completed: progress.completed,
+                    lastAccessedAt: progress.lastAccessedAt,
+                });
+            });
+        });
+
+        return assignments.flatMap((assignment) => {
+            const courseEnrollments = enrollmentByCourse.get(assignment.courseId) || [];
+            return courseEnrollments.map((enrollment) => {
+                const progress = progressByEnrollment.get(`${assignment.id}:${enrollment.id}`);
+                return {
+                    id: `${assignment.id}:${enrollment.learnerId}`,
+                    assignmentId: assignment.id,
+                    learnerId: enrollment.learnerId,
+                    childName: childNameMap.get(enrollment.learnerId) || 'Learner',
+                    subject: assignment.course.subject,
+                    title: assignment.title,
+                    dueDate: null,
+                    submitted: !!progress?.completed,
+                    status: progress?.completed ? 'submitted' : 'pending',
+                };
+            });
+        }).slice(0, take);
+    }
+
+    private async getTeacherLearnerRiskItems(classIds: string[], take = 6) {
+        if (classIds.length === 0) return [];
+
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        thirtyDaysAgo.setHours(0, 0, 0, 0);
+
+        const enrollments = await prisma.classEnrollment.findMany({
+            where: { classId: { in: classIds }, active: true, archived: false },
+            include: {
+                class: { select: { name: true, grade: true, stream: true } },
+                learner: {
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        grade: true,
+                        stream: true,
+                        attendances: {
+                            where: { date: { gte: thirtyDaysAgo }, archived: false },
+                            select: { status: true },
+                        },
+                        summativeResults: {
+                            where: { archived: false },
+                            orderBy: { createdAt: 'desc' },
+                            take: 5,
+                            select: { percentage: true },
+                        },
+                        formativeAssessments: {
+                            where: { archived: false, status: 'DRAFT' as any },
+                            select: { id: true },
+                        },
+                    },
+                },
+            },
+            take: 200,
+        });
+
+        const risks = enrollments.flatMap((enrollment) => {
+            const learner = enrollment.learner;
+            const attendanceTotal = learner.attendances.length;
+            const attendanceRate = attendanceTotal > 0
+                ? Math.round((learner.attendances.filter(a => a.status === 'PRESENT').length / attendanceTotal) * 100)
+                : null;
+            const avgScore = learner.summativeResults.length > 0
+                ? Math.round(learner.summativeResults.reduce((sum, result) => sum + Number(result.percentage || 0), 0) / learner.summativeResults.length)
+                : null;
+            const className = enrollment.class?.name || [learner.grade, learner.stream].filter(Boolean).join(' ');
+            const name = [learner.firstName, learner.lastName].filter(Boolean).join(' ');
+            const items: any[] = [];
+
+            if (attendanceRate !== null && attendanceRate < 80) {
+                items.push({
+                    id: `${learner.id}:attendance`,
+                    learnerId: learner.id,
+                    name,
+                    grade: className,
+                    issue: `Low attendance (${attendanceRate}%)`,
+                    severity: attendanceRate < 65 ? 'high' : 'medium',
+                    actionPage: 'attendance-analytics',
+                });
+            }
+
+            if (avgScore !== null && avgScore < 50) {
+                items.push({
+                    id: `${learner.id}:performance`,
+                    learnerId: learner.id,
+                    name,
+                    grade: className,
+                    issue: `Academic support needed (${avgScore}%)`,
+                    severity: avgScore < 40 ? 'high' : 'medium',
+                    actionPage: 'learners-list',
+                });
+            }
+
+            if (learner.formativeAssessments.length > 0) {
+                items.push({
+                    id: `${learner.id}:drafts`,
+                    learnerId: learner.id,
+                    name,
+                    grade: className,
+                    issue: `${learner.formativeAssessments.length} draft assessment${learner.formativeAssessments.length === 1 ? '' : 's'}`,
+                    severity: 'medium',
+                    actionPage: 'assess-summative-assessment',
+                });
+            }
+
+            return items;
+        });
+
+        return risks
+            .sort((a, b) => (a.severity === 'high' ? -1 : 1) - (b.severity === 'high' ? -1 : 1))
+            .slice(0, take);
+    }
+
+    private async getAttendanceTrend(studentStart: Date, activeTeacherIds: string[]) {
+        const [studentRecords, staffRecords] = await Promise.all([
+            prisma.attendance.findMany({
+                where: { date: { gte: studentStart }, archived: false },
+                select: { date: true, status: true },
+            }),
+            prisma.staffAttendanceLog.findMany({
+                where: { date: { gte: studentStart } },
+                select: { date: true, userId: true },
+            }),
+        ]);
+
+        const weekStarts = Array.from({ length: 5 }, (_, index) => {
+            const date = new Date();
+            date.setDate(date.getDate() - (4 - index) * 7);
+            date.setHours(0, 0, 0, 0);
+            const day = date.getDay();
+            date.setDate(date.getDate() - day);
+            return date;
+        });
+
+        return weekStarts.map((start, index) => {
+            const end = new Date(start);
+            end.setDate(end.getDate() + 7);
+            const studentWeek = studentRecords.filter(record => record.date >= start && record.date < end);
+            const staffWeek = staffRecords.filter(record => record.date >= start && record.date < end);
+            const staffPresent = new Set(staffWeek.map(record => `${record.userId}:${record.date.toISOString().slice(0, 10)}`)).size;
+            const teacherOpportunities = Math.max(1, activeTeacherIds.length * 5);
+
+            return {
+                week: `W${index + 1}`,
+                students: studentWeek.length > 0
+                    ? Math.round((studentWeek.filter(record => record.status === 'PRESENT').length / studentWeek.length) * 100)
+                    : 0,
+                teachers: activeTeacherIds.length > 0 ? Math.round((staffPresent / teacherOpportunities) * 100) : 0,
+                target: 90,
+            };
+        });
+    }
+
+    private async getTeacherAttendanceGroups(activeTeachers: Array<{ id: string; subject: string | null; role: string }>, today: Date) {
+        if (activeTeachers.length === 0) return [];
+
+        const logs = await prisma.staffAttendanceLog.findMany({
+            where: { date: today, userId: { in: activeTeachers.map(teacher => teacher.id) } },
+            select: { userId: true },
+        });
+        const presentIds = new Set(logs.map(log => log.userId));
+        const groupMap = new Map<string, { dept: string; total: number; present: number }>();
+
+        activeTeachers.forEach((teacher) => {
+            const dept = teacher.subject || teacher.role.replace(/_/g, ' ') || 'Teaching Staff';
+            if (!groupMap.has(dept)) groupMap.set(dept, { dept, total: 0, present: 0 });
+            const group = groupMap.get(dept)!;
+            group.total += 1;
+            if (presentIds.has(teacher.id)) group.present += 1;
+        });
+
+        return [...groupMap.values()].map(group => ({
+            dept: group.dept,
+            rate: group.total > 0 ? Math.round((group.present / group.total) * 100) : 0,
+            absent: Math.max(0, group.total - group.present),
+            present: group.present,
+            total: group.total,
+        }));
+    }
+
     /**
      * Returns the resolved institution type for this request.
      * Reads req.resolvedInstitutionType set by institutionContextResolver —
@@ -588,6 +859,17 @@ export class DashboardController {
             const attendanceMap: Record<string, number> = { PRESENT: 0, ABSENT: 0, LATE: 0 };
             attendanceSummary.forEach((item: any) => { attendanceMap[item.status] = item._count; });
             const avgAttendance = studentCount > 0 ? (attendanceMap.PRESENT / studentCount) * 100 : 0;
+            const attendanceTrendStart = new Date();
+            attendanceTrendStart.setDate(attendanceTrendStart.getDate() - 35);
+            attendanceTrendStart.setHours(0, 0, 0, 0);
+            const activeTeacherList = await prisma.user.findMany({
+                where: { role: 'TEACHER', status: 'ACTIVE', archived: false },
+                select: { id: true, subject: true, role: true },
+            });
+            const [attendanceTrend, teacherAttendanceByDept] = await Promise.all([
+                this.getAttendanceTrend(attendanceTrendStart, activeTeacherList.map(teacher => teacher.id)),
+                this.getTeacherAttendanceGroups(activeTeacherList, startOfToday),
+            ]);
 
             const payload = {
                 stats: {
@@ -644,6 +926,8 @@ export class DashboardController {
                         }))
                     }
                 },
+                attendanceTrend,
+                teacherAttendanceByDept,
                 recentActivity: { admissions: latestAdmissions, assessments: latestAssessments },
                 topPerformingClasses,
                 upcomingEvents: upcomingEventsData.map((evt: any) => ({
@@ -675,12 +959,43 @@ export class DashboardController {
             const cached = await redisCacheService.get<any>(cacheKey);
             if (cached) return res.json({ success: true, data: cached, _cached: true });
 
-            const [myClasses, pendingAssessments, recentActivityRaw] = await Promise.all([
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const [myClasses, pendingAssessmentCount, pendingAssessmentItems, recentActivityRaw] = await Promise.all([
                 prisma.class.findMany({
                     where: { teacherId: userId, archived: false, institutionType },
-                    include: { _count: { select: { enrollments: { where: { active: true } } } } },
+                    include: {
+                        schedules: {
+                            where: { active: true, archived: false },
+                            select: {
+                                id: true,
+                                subject: true,
+                                day: true,
+                                startTime: true,
+                                endTime: true,
+                                room: true,
+                                notes: true,
+                            },
+                        },
+                        _count: { select: { enrollments: { where: { active: true } } } },
+                    },
                 }),
-                prisma.formativeAssessment.count({ where: { teacherId: userId, status: 'DRAFT' } }),
+                prisma.formativeAssessment.count({ where: { teacherId: userId, status: 'DRAFT', archived: false } }),
+                prisma.formativeAssessment.findMany({
+                    where: { teacherId: userId, status: 'DRAFT', archived: false },
+                    orderBy: [{ date: 'asc' }, { createdAt: 'desc' }],
+                    take: 10,
+                    select: {
+                        id: true,
+                        title: true,
+                        learningArea: true,
+                        type: true,
+                        date: true,
+                        createdAt: true,
+                        learner: { select: { firstName: true, lastName: true, grade: true, stream: true } },
+                    },
+                }),
                 prisma.formativeAssessment.findMany({
                     where: { teacherId: userId },
                     orderBy: { createdAt: 'desc' }, take: 10,
@@ -709,20 +1024,102 @@ export class DashboardController {
             }));
 
             const totalMyStudents = myClassesWithOccupancy.reduce((sum, cls) => sum + cls._count.enrollments, 0);
+            const classIds = myClassesWithOccupancy.map(cls => cls.id);
+            const attendanceByClass = classIds.length > 0
+                ? await prisma.attendance.groupBy({
+                    by: ['classId'],
+                    where: { classId: { in: classIds }, date: today, archived: false },
+                    _count: true,
+                })
+                : [];
+            const [messages, learnersNeedingAttention] = await Promise.all([
+                this.getDashboardMessages(userId),
+                this.getTeacherLearnerRiskItems(classIds),
+            ]);
+            const attendanceCountMap = new Map(attendanceByClass.map(row => [row.classId, row._count]));
+
+            const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+            const todayName = dayNames[new Date().getDay()];
+            const formatClassName = (cls: any) => cls.name || [cls.grade, cls.stream].filter(Boolean).join(' ') || 'Class';
+            const durationMinutes = (start?: string | null, end?: string | null) => {
+                if (!start || !end) return null;
+                const [sh, sm] = start.split(':').map(Number);
+                const [eh, em] = end.split(':').map(Number);
+                if ([sh, sm, eh, em].some(Number.isNaN)) return null;
+                return Math.max(0, (eh * 60 + em) - (sh * 60 + sm));
+            };
+
+            const todaysSchedule = myClassesWithOccupancy.flatMap((cls) => {
+                const schedules = (cls.schedules || []).filter((schedule: any) =>
+                    String(schedule.day || '').trim().toUpperCase() === todayName
+                );
+                return schedules.map((schedule: any) => ({
+                    id: schedule.id,
+                    classId: cls.id,
+                    grade: formatClassName(cls),
+                    subject: schedule.subject || 'Class session',
+                    time: schedule.startTime || '',
+                    endTime: schedule.endTime || '',
+                    duration: durationMinutes(schedule.startTime, schedule.endTime),
+                    room: schedule.room || cls.room || 'N/A',
+                    status: 'scheduled',
+                    learners: cls._count.enrollments,
+                    notes: schedule.notes || '',
+                }));
+            }).sort((a, b) => String(a.time).localeCompare(String(b.time)));
+
+            const classSummary = myClassesWithOccupancy.map(cls => ({
+                id: cls.id,
+                grade: formatClassName(cls),
+                subject: 'Assigned class',
+                time: '',
+                room: cls.room || 'N/A',
+                status: 'scheduled',
+                learners: cls._count.enrollments,
+            }));
+
+            const attendanceDue = myClassesWithOccupancy
+                .map(cls => {
+                    const learners = cls._count.enrollments;
+                    const marked = attendanceCountMap.get(cls.id) || 0;
+                    return {
+                        id: cls.id,
+                        grade: formatClassName(cls),
+                        subject: 'Daily attendance',
+                        time: '',
+                        submitted: learners > 0 && marked >= learners,
+                        learners,
+                        marked,
+                    };
+                })
+                .filter(item => !item.submitted);
+
+            const assessmentItems = pendingAssessmentItems.map((item: any) => ({
+                id: item.id,
+                grade: item.learner?.stream ? `${item.learner.grade?.replace(/_/g, ' ')} ${item.learner.stream}` : item.learner?.grade?.replace(/_/g, ' ') || 'Learner',
+                title: item.title || item.learningArea || 'Draft assessment',
+                count: 1,
+                dueDate: item.date || item.createdAt,
+                subject: item.learningArea,
+                learnerName: [item.learner?.firstName, item.learner?.lastName].filter(Boolean).join(' '),
+                type: item.type,
+            }));
+
             const payload = {
                 stats: {
                     myStudents: totalMyStudents, myClasses: myClassesWithOccupancy.length,
-                    pendingTasks: pendingAssessments, messages: 0,
+                    pendingTasks: pendingAssessmentCount, messages: messages.length,
                     analytics: {
-                        attendance: 94,
-                        graded: pendingAssessments === 0 ? 100 : Math.round(((totalMyStudents - pendingAssessments) / totalMyStudents) * 100),
-                        completion: 75, engagement: 90,
+                        attendance: totalMyStudents > 0 ? Math.round(((totalMyStudents - attendanceDue.reduce((sum, item) => sum + Math.max(0, item.learners - item.marked), 0)) / totalMyStudents) * 100) : 0,
+                        graded: pendingAssessmentCount === 0 ? 100 : Math.max(0, Math.round(((totalMyStudents - pendingAssessmentCount) / (totalMyStudents || 1)) * 100)),
+                        completion: 0, engagement: 0,
                     },
                 },
-                schedule: myClassesWithOccupancy.map(cls => ({
-                    id: cls.id, grade: cls.name, subject: 'Standard CBC',
-                    time: '8:00 AM', room: cls.room || 'N/A', status: 'upcoming',
-                })),
+                schedule: todaysSchedule.length > 0 ? todaysSchedule : classSummary,
+                attendanceDue,
+                assessmentsToMark: assessmentItems,
+                messages,
+                learnersNeedingAttention,
                 recentActivity: recentActivityRaw.map(act => ({
                     id: act.id, text: `${act.title} created for ${act.learningArea}`, time: act.createdAt, type: 'assessment',
                 })),
@@ -867,8 +1264,15 @@ export class DashboardController {
                 };
             });
 
+            const [homework, messages] = await Promise.all([
+                this.getParentHomeworkItems(processedChildren.map(child => ({ id: child.id, name: child.name }))),
+                this.getDashboardMessages(userId),
+            ]);
+
             const payload = {
                 children: processedChildren,
+                homework,
+                messages,
                 notices: notices.map((notice) => ({
                     id: notice.id,
                     title: notice.title,

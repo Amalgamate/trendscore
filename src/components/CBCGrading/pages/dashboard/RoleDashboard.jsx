@@ -10,6 +10,8 @@ import { getSelectedInstitutionType } from '../../../../services/schoolContext';
 import AdminDashboard from './AdminDashboard';
 import SecondaryAdminDashboard from './SecondaryAdminDashboard';
 import HeadTeacherDashboard from './HeadTeacherDashboard';
+import CurriculumHeadDashboard from './CurriculumHeadDashboard';
+import SuperAdminDashboard from './SuperAdminDashboard';
 import TeacherDashboard from './TeacherDashboard';
 import ParentDashboard from './ParentDashboard';
 import AccountantDashboard from './AccountantDashboard';
@@ -19,8 +21,6 @@ import StudentDashboard from '../student/StudentDashboard';
 import ComingSoon from '../../shared/ComingSoon';
 import useMediaQuery from '../../hooks/useMediaQuery';
 import { MOBILE_MEDIA_QUERY } from '../../../../constants/breakpoints';
-import DashboardRenderer from '../../dashboard/DashboardRenderer';
-import { getDashboardConfig } from '../../dashboard/configs/RoleDashboardConfig';
 
 const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brandingSettings }) => {
   const { role } = usePermissions();
@@ -51,12 +51,14 @@ const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brand
     // Non-admin roles fall through to their own dashboards below (same as primary).
     switch (role) {
       case 'OWNER':
-      case 'SUPER_ADMIN':
       case 'ADMIN':
-        return <DashboardRenderer config={getDashboardConfig(role)} role={role} user={user} onNavigate={onNavigate} />;
+        return <AdminDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
+      case 'SUPER_ADMIN':
+        return <SuperAdminDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
       case 'HEAD_TEACHER':
-      case 'HEAD_OF_CURRICULUM':
         return <HeadTeacherDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
+      case 'HEAD_OF_CURRICULUM':
+        return <CurriculumHeadDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
       case 'TEACHER':
         return <TeacherDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
       case 'PARENT':
@@ -80,13 +82,15 @@ const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brand
   // Render dashboard based on user role
   switch (role) {
     case 'OWNER':
-    case 'SUPER_ADMIN':
     case 'ADMIN':
-      return <DashboardRenderer config={getDashboardConfig(role)} role={role} user={user} onNavigate={onNavigate} />;
+      return <AdminDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
+    case 'SUPER_ADMIN':
+      return <SuperAdminDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
 
     case 'HEAD_TEACHER':
-    case 'HEAD_OF_CURRICULUM':
       return <HeadTeacherDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
+    case 'HEAD_OF_CURRICULUM':
+      return <CurriculumHeadDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
 
     case 'TEACHER':
       return <TeacherDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
