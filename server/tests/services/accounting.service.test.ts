@@ -25,10 +25,17 @@ const mockPrisma = {
     feePayment: {
         aggregate: jest.fn()
     },
+    feeInvoice: {
+        aggregate: jest.fn()
+    },
+    bankStatement: {
+        findMany: jest.fn(),
+    },
     bankStatementLine: {
         findMany: jest.fn(),
         findFirst: jest.fn(),
         findUnique: jest.fn(),
+        aggregate: jest.fn(),
         update: jest.fn(),
     },
     $transaction: jest.fn((arg: any) => {
@@ -159,6 +166,9 @@ describe('AccountingService', () => {
                 }
             ]);
             (prisma.feePayment.aggregate as any).mockResolvedValue({ _sum: { amount: 15000 } });
+            (prisma.feeInvoice.aggregate as any).mockResolvedValue({ _sum: { balance: 5000 } });
+            (prisma.bankStatementLine.aggregate as any).mockResolvedValue({ _sum: { amount: 0 }, _count: 0 });
+            (prisma.bankStatement.findMany as any).mockResolvedValue([]);
 
             const result = await service.getDashboardStats();
 
