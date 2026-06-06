@@ -31,6 +31,7 @@ import { clearAllSchoolData } from '../../utils/schoolDataCleanup';
 import { refreshBus } from '../../utils/refreshBus';
 import axiosInstance from '../../services/api/axiosConfig';
 import { hasPageAccess } from './utils/appAccess';
+import { resolveLearnerSaveIntent } from './utils/learnerSaveIntent';
 
 const extractApiErrorMessage = (err, fallback = 'Request failed') => {
   const data = err?.response?.data;
@@ -185,6 +186,10 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
   const handleNavigate = useCallback((page, params = {}) => {
     const allowedPage = getAllowedPage(page);
     if (params.learner) setEditingLearner(params.learner);
+    if (allowedPage === 'learners-admissions' && !params.learner && !params.learnerId) {
+      localStorage.removeItem('admission-form-draft');
+      setEditingLearner(null);
+    }
     if (params.teacher) setEditingTeacher(params.teacher);
     setCurrentPage(allowedPage, allowedPage === page ? params : {});
     try {
@@ -489,6 +494,7 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
       setEditingLearner(null);
       setCurrentPage('learners-admissions');
     },
+    ...learnerActionData,
     handleEditLearner: (learner) => { setEditingLearner(learner); setCurrentPage('learners-admissions'); },
     handleMarkAsExited: learnerActionData.handleMarkAsExited,
     handleViewLearner: (learner) => handleNavigate('learner-profile', { learner }),
@@ -514,14 +520,20 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
     },
     handleBulkDeleteLearners: bulkDeleteLearners,
     handleSaveLearner: async (data, options = {}) => {
-      const targetLearnerId = options?.targetLearnerId || editingLearner?.id || data?.id || null;
-      const { __targetLearnerId, ...payload } = data || {};
+      const { targetLearnerId, payload, missingEditId } = resolveLearnerSaveIntent(data, options, editingLearner);
+      if (missingEditId) {
+        const error = 'Cannot update student because the learner ID is missing. Please return to the student list and open Edit again.';
+        notify.showError(error);
+        return { success: false, error };
+      }
       const result = targetLearnerId
         ? await updateLearner(targetLearnerId, payload)
         : await createLearner(payload);
       if (result.success) {
         notify.showSuccess(`Learner ${targetLearnerId ? 'updated' : 'added'} successfully!`);
-        if (!targetLearnerId) {
+        if (targetLearnerId) {
+          setEditingLearner(result.data || { ...editingLearner, ...payload, id: targetLearnerId });
+        } else {
           // For new admissions, return to list after successful create.
           setCurrentPage('learners-list');
           setEditingLearner(null);
@@ -536,7 +548,6 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
     handleSaveTeacher,
     handleDeleteTeacher,
     handleSaveParent,
-    ...learnerActionData,
     ...notify,
   };
 

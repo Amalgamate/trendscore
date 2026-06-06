@@ -541,7 +541,7 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null, learnerId 
       setIsSaving(true);
       try {
         const targetLearnerId = activeLearner?.id || learnerId || formData?.id || null;
-        const result = await onSave(sanitizedPayload, { targetLearnerId });
+        const result = await onSave(sanitizedPayload, { targetLearnerId, isEdit });
         console.log('📥 Save result:', result);
 
         if (result?.success) {
