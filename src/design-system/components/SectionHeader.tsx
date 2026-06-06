@@ -73,7 +73,7 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
               fontWeight: headingStyle.fontWeight,
               lineHeight: headingStyle.lineHeight,
               color: TOKENS.colors.text.primary,
-              letterSpacing: headingStyle.letterSpacing,
+              letterSpacing: 'letterSpacing' in headingStyle ? headingStyle.letterSpacing : 'normal',
             },
           },
           title

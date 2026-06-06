@@ -98,6 +98,11 @@ export const SPACING = {
     gap: '0.5rem',        // Space between icon and text
   },
 
+  badge: {
+    x: '0.75rem',
+    y: '0.25rem',
+  },
+
   icon: {
     sm: '1rem',           // Small icons (16px)
     md: '1.5rem',         // Medium icons (24px)

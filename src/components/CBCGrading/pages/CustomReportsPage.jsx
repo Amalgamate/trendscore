@@ -208,9 +208,9 @@ const CustomReportsPage = ({ onNavigate, user, brandingSettings }) => {
 
   const handleExportExcel = async () => {
     const workbook = new ExcelJS.Workbook();
-    const ws = workbook.addWorksheet('Custom Reports');
+    const ws = workbook.addWorksheet('Top Bottom Performers');
     ws.addRow([schoolName]);
-    ws.addRow([`CUSTOM REPORTS - ${String(term || '').replace('_', ' ')} ${academicYear}`]);
+    ws.addRow([`TOP / BOTTOM PERFORMERS - ${String(term || '').replace('_', ' ')} ${academicYear}`]);
     ws.addRow([`Grade: ${String(grade || '').replace('_', ' ')}${stream ? ` | Stream: ${stream}` : ''}`]);
     ws.addRow([`Generated: ${new Date().toLocaleString()}`]);
     ws.addRow([]);
@@ -230,7 +230,7 @@ const CustomReportsPage = ({ onNavigate, user, brandingSettings }) => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `custom_reports_${String(term || '').toLowerCase()}_${academicYear}.xlsx`;
+    link.download = `top_bottom_performers_${String(term || '').toLowerCase()}_${academicYear}.xlsx`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -267,7 +267,7 @@ const CustomReportsPage = ({ onNavigate, user, brandingSettings }) => {
               </button>
             </div>
           </div>
-          <h1 className="text-lg font-semibold text-slate-900">Custom Reports</h1>
+          <h1 className="text-lg font-semibold text-slate-900">Top / Bottom Performers</h1>
           <p className="text-xs text-slate-500 mt-1">Build ranking reports for top or bottom learners across multiple categories.</p>
         </div>
 

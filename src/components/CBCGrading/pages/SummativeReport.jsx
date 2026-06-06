@@ -995,6 +995,12 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
 };
 
 
+const SUMMATIVE_REPORT_TYPES = [
+  { value: 'GRADE_REPORT', label: 'Grade Sheet' },
+  { value: 'STREAM_REPORT', label: 'Stream Sheet' },
+  { value: 'LEARNER_REPORT', label: 'Learner Sheet' },
+];
+
 const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pageParams = {}, onNavigate }) => {
   const { showSuccess, showError, showInfo, showToast, toastMessage, toastType, hideNotification } = useNotifications();
 
@@ -1144,7 +1150,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       return;
     }
     if (stagedType === 'DETAILED_REPORTS') {
-      showInfo('Select Custom Reports to open the detailed reports page.');
+      showInfo('Open Top / Bottom Performers under Academic Intelligence for ranking reports.');
       return;
     }
     setSelectedType(stagedType);
@@ -1205,14 +1211,6 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
 
   // General Notification Modal state
   const [notificationModal, setNotificationModal] = useState({ show: false, title: '', message: '', type: 'info' });
-
-  const reportTypes = [
-    { value: 'GRADE_REPORT', label: 'Grade Sheet' },
-    { value: 'STREAM_REPORT', label: 'Stream Sheet' },
-    { value: 'LEARNER_REPORT', label: 'Learner Sheet' },
-    { value: 'SUBJECT_ANALYSIS', label: 'Subject Analysis' },
-    { value: 'CUSTOM_REPORT', label: 'Custom Reports' },
-  ];
 
   // Local state for grade, stream, term selections (instead of relying on setup hook)
   const [selectedGrade, setSelectedGrade] = useState('');
@@ -1276,6 +1274,9 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     if (pageParams?.academicYear && !Number.isNaN(Number(pageParams.academicYear))) {
       setStagedAcademicYear(Number(pageParams.academicYear));
       setup.setSelectedAcademicYear(Number(pageParams.academicYear));
+    }
+    if (pageParams?.reportType && SUMMATIVE_REPORT_TYPES.some((type) => type.value === pageParams.reportType)) {
+      setStagedType(pageParams.reportType);
     }
   }, [pageParams, setup]);
 
@@ -3007,7 +3008,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
         <div className="border-b border-slate-100 px-6 py-3 flex justify-center items-center bg-slate-50">
           <div className="text-xs text-slate-500 flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
             <span className="font-semibold text-brand-teal uppercase tracking-wider">
-              {reportTypes.find(t => t.value === stagedType)?.label || 'Summative Report'}
+              {SUMMATIVE_REPORT_TYPES.find(t => t.value === stagedType)?.label || 'Summative Report'}
             </span>
             <span className="text-slate-300">•</span>
             <span className="font-medium">
@@ -3045,7 +3046,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
             }}
             className="h-9 px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-brand-teal focus:border-brand-teal outline-none flex-1 md:flex-none min-w-[140px]"
           >
-            {reportTypes.map(t => (
+            {SUMMATIVE_REPORT_TYPES.map(t => (
               <option key={t.value} value={t.value}>
                 {t.label}
               </option>

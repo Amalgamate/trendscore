@@ -96,13 +96,13 @@ export const secondaryNavSections = [
   // ── Results ───────────────────────────────────────────────────────────────
   {
     id: 'secondary-results',
-    label: 'Results & Reports',
+    label: 'Academic Intelligence',
     icon: BarChart3,
     permission: 'VIEW_ALL_REPORTS',
     items: [
       { id: 'sec-mean-grades',      label: 'Mean Grades',       path: 'sec-mean-grades',      permission: 'VIEW_ALL_REPORTS' },
       { id: 'sec-rankings',         label: 'Class Rankings',    path: 'sec-rankings',          permission: 'VIEW_ALL_REPORTS' },
-      { id: 'sec-subject-analysis', label: 'Subject Analysis',  path: 'sec-subject-analysis', permission: 'VIEW_ALL_REPORTS' },
+      { id: 'sec-subject-analysis', label: 'Subject Intelligence', path: 'sec-subject-analysis', permission: 'VIEW_ALL_REPORTS' },
       { id: 'sec-report-cards',     label: 'Report Cards',      path: 'sec-report-cards',     permission: 'DOWNLOAD_REPORTS' },
       { id: 'sec-kcse-prediction',  label: 'Performance Forecast', path: 'sec-kcse-prediction',  permission: 'VIEW_ALL_REPORTS' },
     ],

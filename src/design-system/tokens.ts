@@ -6,15 +6,15 @@
  * convenience methods for common design tasks.
  */
 
-export * from './colors';
-export * from './spacing';
-export * from './radius';
-export * from './typography';
-
 import { COLORS } from './colors';
 import { SPACING } from './spacing';
 import { RADIUS } from './radius';
 import { TYPOGRAPHY } from './typography';
+
+export * from './colors';
+export * from './spacing';
+export * from './radius';
+export * from './typography';
 
 /**
  * Centralized design tokens object
@@ -253,8 +253,10 @@ export const designSystemUtils = {
    */
   isValidColor: (color: string): boolean => {
     return Object.values(COLORS).some(
-      (colorObj) =>
-        typeof colorObj === 'string' ? colorObj === color : Object.values(colorObj).includes(color)
+      (colorObj) => {
+        const values = typeof colorObj === 'string' ? [colorObj] : Object.values(colorObj);
+        return (values as string[]).includes(color);
+      }
     );
   },
 
@@ -263,8 +265,10 @@ export const designSystemUtils = {
    */
   isValidSpacing: (spacing: string): boolean => {
     return Object.values(SPACING).some(
-      (spacingVal) =>
-        typeof spacingVal === 'string' ? spacingVal === spacing : Object.values(spacingVal).includes(spacing)
+      (spacingVal) => {
+        const values = typeof spacingVal === 'string' ? [spacingVal] : Object.values(spacingVal);
+        return (values as string[]).includes(spacing);
+      }
     );
   },
 

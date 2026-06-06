@@ -19,22 +19,23 @@ import {
 import {
     Home, Mail, Calendar, Users, GraduationCap, UserCheck,
     TrendingUp, Zap, CheckSquare, Settings, BookOpen,
-    Users2, Truck, Fingerprint, CreditCard, PieChart,
+    Users2, Truck, Fingerprint, CreditCard, PieChart, BarChart3,
     Package, Building2, HelpCircle, Receipt, FileText,
     Shirt, ClipboardList, Video, PlayCircle, Gift, Wrench, Activity, Brain, MoreHorizontal
 } from 'lucide-react';
 
-const focusModules = ['dashboard', 'communications', 'planner', 'learners', 'teachers', 'assessment', 'learning-hub', 'attendance', 'docs-center', 'settings', 'hr', 'finance', 'inventory', 'transport'];
+const focusModules = ['dashboard', 'communications', 'planner', 'learners', 'teachers', 'assessment', 'academic-intelligence', 'learning-hub', 'attendance', 'docs-center', 'settings', 'hr', 'finance', 'inventory', 'transport'];
 
 const RESTRICTED_SIDEBAR_HOSTS = new Set([
     'kambigarba-cs.trendscore.co.ke',
     'merti-cs.trendscore.co.ke'
 ]);
-const RESTRICTED_SIDEBAR_SECTION_IDS = new Set(['learners', 'teachers', 'assessment', 'planner', 'communications', 'settings']);
+const RESTRICTED_SIDEBAR_SECTION_IDS = new Set(['learners', 'teachers', 'assessment', 'academic-intelligence', 'planner', 'communications', 'settings']);
 const RESTRICTED_SIDEBAR_SECTION_LABELS = {
     learners: 'Students',
     teachers: 'Tutors',
     assessment: 'Assessments',
+    'academic-intelligence': 'Academic Intelligence',
     planner: 'Planner',
     communications: 'Communications',
     settings: 'Settings'
@@ -147,9 +148,12 @@ export const allNavSections = [
                 type: 'group',
                 icon: Zap,
                 items: [
-                    { id: 'assess-summative-assessment', label: 'Assessments',     path: 'assess-summative-assessment', permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'assess-mobile-dashboard',      label: 'Assessment Overview', path: 'assess-mobile-dashboard',      permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'assess-summative-assessment', label: 'Summative Assessments', path: 'assess-summative-assessment', permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'assess-summary-report',       label: 'Assessment Matrix', path: 'assess-summary-report',      permission: 'ACCESS_ASSESSMENT_MODULE' },
-                    { id: 'assess-summative-report',     label: 'Detailed Reports', path: 'assess-summative-report',     permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'assess-grade-sheet',          label: 'Grade Sheet',       path: 'assess-summative-report',     params: { reportType: 'GRADE_REPORT' },   permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'assess-stream-sheet',         label: 'Stream Sheet',      path: 'assess-summative-report',     params: { reportType: 'STREAM_REPORT' },  permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'assess-learner-sheet',        label: 'Learner Sheet',     path: 'assess-summative-report',     params: { reportType: 'LEARNER_REPORT' }, permission: 'ACCESS_ASSESSMENT_MODULE' },
                 ]
             },
             {
@@ -158,8 +162,8 @@ export const allNavSections = [
                 type: 'group',
                 icon: CheckSquare,
                 items: [
-                    { id: 'assess-formative',        label: 'Assessments', path: 'assess-formative',        permission: 'ACCESS_ASSESSMENT_MODULE' },
-                    { id: 'assess-formative-report', label: 'Reports',     path: 'assess-formative-report', permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'assess-formative',        label: 'Formative Assessments', path: 'assess-formative',        permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'assess-formative-report', label: 'Formative Reports',     path: 'assess-formative-report', permission: 'ACCESS_ASSESSMENT_MODULE' },
                 ]
             },
             {
@@ -171,7 +175,8 @@ export const allNavSections = [
                     { id: 'assess-core-competencies', label: 'Core Competencies', path: 'assess-core-competencies', permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'assess-values',            label: 'National Values',   path: 'assess-values',            permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'assess-cocurricular',      label: 'Co-Curricular',     path: 'assess-cocurricular',      permission: 'ACCESS_ASSESSMENT_MODULE' },
-                    { id: 'assess-termly-report',     label: 'Termly Report',     path: 'assess-termly-report',     permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'assess-termly-report',     label: 'Report Cards',      path: 'assess-termly-report',     permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'assess-print-center',      label: 'Print Center',      path: 'assess-print-center',      permission: 'ACCESS_ASSESSMENT_MODULE' },
                 ]
             },
             {
@@ -181,9 +186,30 @@ export const allNavSections = [
                 icon: Settings,
                 items: [
                     { id: 'assess-learning-areas',    label: 'Learning Areas', path: 'assess-learning-areas',   permission: 'MANAGE_LEARNING_AREAS'    },
-                    { id: 'assess-summative-tests',   label: 'Tests',          path: 'assess-summative-tests',  permission: 'ACCESS_ASSESSMENT_MODULE' }
+                    { id: 'assess-summative-tests',   label: 'Tests',          path: 'assess-summative-tests',  permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'assess-performance-scale', label: 'Performance Scale', path: 'assess-performance-scale', permission: 'MANAGE_LEARNING_AREAS' }
                 ]
             }
+        ]
+    },
+    {
+        id: 'academic-intelligence',
+        label: 'Academic Intelligence',
+        icon: BarChart3,
+        app: 'exams',
+        permission: 'VIEW_ALL_REPORTS',
+        hideHorizontalSubmenu: true,
+        items: [
+            { id: 'academic-executive-dashboard',  label: 'Executive Dashboard',  path: 'academic-intelligence',          permission: 'VIEW_ALL_REPORTS' },
+            { id: 'academic-section-analysis',     label: 'Section Analysis',     path: 'academic-section-analysis',      permission: 'VIEW_ALL_REPORTS' },
+            { id: 'academic-subject-intelligence', label: 'Subject Intelligence', path: 'academic-subject-intelligence',  permission: 'VIEW_ALL_REPORTS' },
+            { id: 'academic-gender-analysis',      label: 'Gender Analysis',      path: 'academic-gender-analysis',       permission: 'VIEW_ALL_REPORTS' },
+            { id: 'academic-stream-analysis',      label: 'Stream Analysis',      path: 'academic-stream-analysis',       permission: 'VIEW_ALL_REPORTS' },
+            { id: 'academic-competency-analysis',  label: 'Competency Analysis',  path: 'academic-competency-analysis',   permission: 'VIEW_ALL_REPORTS' },
+            { id: 'academic-learner-risk',         label: 'Learner Risk',         path: 'academic-learner-risk',          permission: 'VIEW_ALL_REPORTS' },
+            { id: 'academic-growth-trends',        label: 'Growth Trends',        path: 'academic-growth-trends',         permission: 'VIEW_ALL_REPORTS' },
+            { id: 'academic-ai-insights',          label: 'AI Insights',          path: 'academic-ai-insights',           permission: 'VIEW_ALL_REPORTS' },
+            { id: 'academic-top-bottom-performers', label: 'Top / Bottom Performers', path: 'academic-top-bottom-performers', permission: 'VIEW_ALL_REPORTS' },
         ]
     },
     {
@@ -731,10 +757,10 @@ export const useNavigation = () => {
             return parentSchoolSectionsFromNav(navSections);
         }
         if (role === 'ACCOUNTANT') {
-            return navSections.filter(s => ['learners', 'assessment', 'attendance'].includes(s.id));
+            return navSections.filter(s => ['learners', 'assessment', 'academic-intelligence', 'attendance'].includes(s.id));
         }
         return navSections.filter(s => 
-            ['learners', 'teachers', 'assessment', 'planner', 'timetable', 'learning-hub', 'attendance', 'facilities'].includes(s.id)
+            ['learners', 'teachers', 'assessment', 'academic-intelligence', 'planner', 'timetable', 'learning-hub', 'attendance', 'facilities'].includes(s.id)
         );
     }, [navSections, role]);
 

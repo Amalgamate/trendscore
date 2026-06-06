@@ -1,4 +1,4 @@
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, useMemo, useState } from 'react';
 import ErrorBoundary from '../shared/ErrorBoundary';
 import EmptyState from '../shared/EmptyState';
 import ComingSoon from '../shared/ComingSoon';
@@ -77,6 +77,18 @@ const SubjectManagement = lazy(() => import('../pages/secondary/SubjectManagemen
 const FormGroups = lazy(() => import('../pages/secondary/FormGroups'));
 const ReportsHub = lazy(() => import('../pages/secondary/ReportsHub'));
 const ResultsWorkbench = lazy(() => import('../pages/secondary/ResultsWorkbench'));
+const AcademicIntelligenceShell = lazy(() => import('../pages/academic-intelligence/AcademicIntelligenceShell'));
+const ExecutiveDashboard = lazy(() => import('../pages/academic-intelligence/ExecutiveDashboard'));
+const SectionAnalysis = lazy(() => import('../pages/academic-intelligence/SectionAnalysis'));
+const SubjectIntelligence = lazy(() => import('../pages/academic-intelligence/SubjectIntelligence'));
+const GenderAnalysis = lazy(() => import('../pages/academic-intelligence/GenderAnalysis'));
+const CompetencyAnalysis = lazy(() => import('../pages/academic-intelligence/CompetencyAnalysis'));
+const LearnerRiskCenter = lazy(() => import('../pages/academic-intelligence/LearnerRiskCenter'));
+const GrowthTrends = lazy(() => import('../pages/academic-intelligence/GrowthTrends'));
+const AIInsights = lazy(() => import('../pages/academic-intelligence/AIInsights'));
+const AcademicIntelligenceComingSoon = lazy(() => import('../pages/academic-intelligence/AcademicIntelligenceShell').then((module) => ({
+  default: module.AcademicIntelligenceComingSoon,
+})));
 
 // HR Module
 const HRManager = lazy(() => import('../pages/hr/HRManager'));
@@ -126,6 +138,69 @@ const MyCourses = lazy(() => import('../pages/student/MyCourses'));
 const CourseViewer = lazy(() => import('../pages/student/CourseViewer'));
 const MyAssignments = lazy(() => import('../pages/student/MyAssignments'));
 const MyProgress = lazy(() => import('../pages/student/MyProgress'));
+
+const ACADEMIC_INTELLIGENCE_PAGE_COPY = {
+  'academic-intelligence': {
+    title: 'Executive Dashboard',
+    eyebrow: 'Academic Intelligence',
+    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Executive Dashboard'],
+    description: 'A consolidated academic intelligence view is planned for performance, completion, intervention and trend signals.',
+  },
+  'academic-section-analysis': {
+    title: 'Section Analysis',
+    eyebrow: 'Academic Intelligence',
+    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Section Analysis'],
+    description: 'Compare academic performance by school section once section-level analytics are connected.',
+  },
+  'academic-gender-analysis': {
+    title: 'Gender Analysis',
+    eyebrow: 'Academic Intelligence',
+    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Gender Analysis'],
+    description: 'Review gender-based academic patterns and equity indicators.',
+  },
+  'academic-stream-analysis': {
+    title: 'Stream Analysis',
+    eyebrow: 'Academic Intelligence',
+    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Stream Analysis'],
+    description: 'Compare streams and detect class-level performance movement.',
+  },
+  'academic-competency-analysis': {
+    title: 'Competency Analysis',
+    eyebrow: 'Academic Intelligence',
+    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Competency Analysis'],
+    description: 'Analyze competency development across CBC learning areas.',
+  },
+  'academic-learner-risk': {
+    title: 'Learner Risk',
+    eyebrow: 'Academic Intelligence',
+    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Learner Risk'],
+    description: 'Identify learners needing academic intervention from assessment trends.',
+  },
+  'academic-growth-trends': {
+    title: 'Growth Trends',
+    eyebrow: 'Academic Intelligence',
+    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Growth Trends'],
+    description: 'Track learner, class and subject growth across terms.',
+  },
+  'academic-ai-insights': {
+    title: 'AI Insights',
+    eyebrow: 'Academic Intelligence',
+    breadcrumbs: ['Assessment', 'Academic Intelligence', 'AI Insights'],
+    description: 'Surface explainable insights after the academic intelligence engine is connected.',
+  },
+  'academic-subject-intelligence': {
+    title: 'Subject Intelligence',
+    eyebrow: 'Academic Intelligence',
+    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Subject Intelligence'],
+    description: 'Analyze subject-level performance using the existing subject analysis workbench.',
+  },
+  'academic-top-bottom-performers': {
+    title: 'Top / Bottom Performers',
+    eyebrow: 'Academic Intelligence',
+    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Top / Bottom Performers'],
+    description: 'Rank top and bottom learners by grade, stream, term and academic category.',
+  },
+};
 
 const LoadingOverlay = () => (
   <div className="flex-1 flex flex-col gap-4 p-6 animate-pulse">
@@ -197,7 +272,6 @@ const PageRouter = ({
     handleViewParent,
     handleDeleteParent,
     handleArchiveParent,
-    handleSaveParent,
     showSuccess
   } = handlers;
 
@@ -206,6 +280,94 @@ const PageRouter = ({
   const admissionLearner = editingLearner
     || pageParams?.learner
     || (admissionLearnerId ? learners?.find((learner) => learner.id === admissionLearnerId) : null);
+  const [executiveFilters, setExecutiveFilters] = useState({
+    term: 'current',
+    grade: 'all',
+    stream: 'all',
+    learningArea: 'all',
+  });
+
+  const updateExecutiveFilter = (key, value) => {
+    setExecutiveFilters((current) => ({ ...current, [key]: value }));
+  };
+
+  const executiveFilterControls = useMemo(() => {
+    const learnerList = Array.isArray(learners) ? learners : [];
+    const gradeOptions = [...new Set(learnerList.map((learner) => learner.grade).filter(Boolean))]
+      .sort()
+      .map((grade) => ({ value: grade, label: grade }));
+    const streamOptions = [...new Set(learnerList.map((learner) => learner.stream || learner.className).filter(Boolean))]
+      .sort()
+      .map((stream) => ({ value: stream, label: stream }));
+
+    return [
+      {
+        key: 'term',
+        label: 'Term',
+        value: executiveFilters.term,
+        options: [
+          { value: 'current', label: 'Current term' },
+          { value: 'all', label: 'All terms' },
+        ],
+        onChange: (value) => updateExecutiveFilter('term', value),
+      },
+      {
+        key: 'grade',
+        label: 'Grade',
+        value: executiveFilters.grade,
+        options: [{ value: 'all', label: 'All grades' }, ...gradeOptions],
+        onChange: (value) => updateExecutiveFilter('grade', value),
+      },
+      {
+        key: 'stream',
+        label: 'Stream',
+        value: executiveFilters.stream,
+        options: [{ value: 'all', label: 'All streams' }, ...streamOptions],
+        onChange: (value) => updateExecutiveFilter('stream', value),
+      },
+      {
+        key: 'learningArea',
+        label: 'Learning Area',
+        value: executiveFilters.learningArea,
+        options: [
+          { value: 'all', label: 'All learning areas' },
+        ],
+        onChange: (value) => updateExecutiveFilter('learningArea', value),
+      },
+    ];
+  }, [executiveFilters, learners]);
+
+  const renderAcademicIntelligencePage = (activePage, content, fallbackCopy = {}) => {
+    const copy = ACADEMIC_INTELLIGENCE_PAGE_COPY[activePage] || fallbackCopy;
+    return (
+      <AcademicIntelligenceShell
+        activePage={activePage}
+        title={copy.title}
+        eyebrow={copy.eyebrow}
+        description={copy.description}
+        breadcrumbs={copy.breadcrumbs}
+        filters={copy.filters}
+        onNavigate={handleNavigate}
+      >
+        {content}
+      </AcademicIntelligenceShell>
+    );
+  };
+
+  const renderAcademicIntelligencePlaceholder = (activePage) => {
+    const copy = ACADEMIC_INTELLIGENCE_PAGE_COPY[activePage] || {
+      title: 'Academic Intelligence',
+      description: 'This Academic Intelligence workspace is planned.',
+    };
+    return renderAcademicIntelligencePage(
+      activePage,
+      <AcademicIntelligenceComingSoon
+        title={copy.title}
+        description={copy.description}
+      />,
+      copy
+    );
+  };
 
   if (!hasPageAccess(user, normalizedPage)) {
     return (
@@ -343,15 +505,78 @@ const PageRouter = ({
           case 'assess-summative-tests': return <ErrorBoundary><SummativeTestsRouter onNavigate={handleNavigate} defaultTestType={pageParams.defaultTestType} /></ErrorBoundary>;
           case 'assess-summative-assessment': return <ErrorBoundary><SummativeAssessmentRouter learners={learners} initialTestId={pageParams.initialTestId} defaultTestType={pageParams.defaultTestType} brandingSettings={brandingSettings} /></ErrorBoundary>;
           case 'assess-summative-report': return <ErrorBoundary><SummativeReport learners={learners} onFetchLearners={fetchLearners} brandingSettings={brandingSettings} user={user} pageParams={pageParams} onNavigate={handleNavigate} /></ErrorBoundary>;
-          case 'assess-custom-reports': return <ErrorBoundary><CustomReportsPage onNavigate={handleNavigate} user={user} brandingSettings={brandingSettings} /></ErrorBoundary>;
           case 'assess-summary-report': return <ErrorBoundary><SummaryReportPage pageParams={pageParams} /></ErrorBoundary>;
-          case 'assess-subject-analysis': return <ResultsWorkbench variant="subject" pageParams={pageParams} onNavigate={handleNavigate} />;
           case 'assess-termly-report': return <ErrorBoundary><TermlyReport learners={learners} brandingSettings={brandingSettings} user={user} pageParams={pageParams} /></ErrorBoundary>;
           case 'assess-values': return <ValuesAssessment learners={learners} />;
           case 'assess-cocurricular': return <CoCurricularActivities learners={learners} />;
           case 'assess-core-competencies': return <CoreCompetenciesAssessment learners={learners} />;
           case 'assess-learning-areas': return <LearningAreasManagement />;
           case 'assess-performance-scale': return <PerformanceScale />;
+          case 'assess-print-center':
+            return <ComingSoon badge="Assessment" title="Print Center - Coming soon" description="Centralized printing for sheets, report cards and assessment packs will be connected here." />;
+
+          // Academic Intelligence Module
+          case 'academic-intelligence':
+            return renderAcademicIntelligencePage(
+              'academic-intelligence',
+              <ExecutiveDashboard learners={learners} filters={executiveFilters} />,
+              {
+                ...ACADEMIC_INTELLIGENCE_PAGE_COPY['academic-intelligence'],
+                filters: executiveFilterControls,
+              }
+            );
+          case 'academic-section-analysis':
+            return renderAcademicIntelligencePage(
+              'academic-section-analysis',
+              <SectionAnalysis learners={learners} />,
+              ACADEMIC_INTELLIGENCE_PAGE_COPY['academic-section-analysis']
+            );
+          case 'academic-gender-analysis':
+            return renderAcademicIntelligencePage(
+              'academic-gender-analysis',
+              <GenderAnalysis learners={learners} />,
+              ACADEMIC_INTELLIGENCE_PAGE_COPY['academic-gender-analysis']
+            );
+          case 'academic-competency-analysis':
+            return renderAcademicIntelligencePage(
+              'academic-competency-analysis',
+              <CompetencyAnalysis learners={learners} />,
+              ACADEMIC_INTELLIGENCE_PAGE_COPY['academic-competency-analysis']
+            );
+          case 'academic-learner-risk':
+            return renderAcademicIntelligencePage(
+              'academic-learner-risk',
+              <LearnerRiskCenter learners={learners} />,
+              ACADEMIC_INTELLIGENCE_PAGE_COPY['academic-learner-risk']
+            );
+          case 'academic-growth-trends':
+            return renderAcademicIntelligencePage(
+              'academic-growth-trends',
+              <GrowthTrends learners={learners} />,
+              ACADEMIC_INTELLIGENCE_PAGE_COPY['academic-growth-trends']
+            );
+          case 'academic-ai-insights':
+            return renderAcademicIntelligencePage(
+              'academic-ai-insights',
+              <AIInsights />,
+              ACADEMIC_INTELLIGENCE_PAGE_COPY['academic-ai-insights']
+            );
+          case 'academic-stream-analysis':
+            return renderAcademicIntelligencePlaceholder(normalizedPage);
+          case 'academic-subject-intelligence':
+          case 'assess-subject-analysis':
+            return renderAcademicIntelligencePage(
+              'academic-subject-intelligence',
+              <SubjectIntelligence learners={learners} />,
+              ACADEMIC_INTELLIGENCE_PAGE_COPY['academic-subject-intelligence']
+            );
+          case 'academic-top-bottom-performers':
+          case 'assess-custom-reports':
+            return renderAcademicIntelligencePage(
+              'academic-top-bottom-performers',
+              <ErrorBoundary><CustomReportsPage onNavigate={handleNavigate} user={user} brandingSettings={brandingSettings} /></ErrorBoundary>,
+              ACADEMIC_INTELLIGENCE_PAGE_COPY['academic-top-bottom-performers']
+            );
 
           // Classes Module
           case 'classes': return <ClassList />;

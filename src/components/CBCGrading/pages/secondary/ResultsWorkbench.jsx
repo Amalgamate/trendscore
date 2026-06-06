@@ -13,7 +13,7 @@ const contentByVariant = {
     icon: Users,
   },
   subject: {
-    title: 'Subject Analysis Workbench',
+    title: 'Subject Intelligence Workbench',
     description: 'Inspect learning area performance trends and compare outcomes using matrix and detailed reports.',
     icon: Grid,
   },

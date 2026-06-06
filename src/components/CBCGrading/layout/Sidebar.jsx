@@ -94,6 +94,7 @@ const getCollapsedIconColor = (id, isActive) => {
     case 'teachers':        return 'text-emerald-500 drop-shadow-[0_0_6px_rgba(16,185,129,0.7)] group-hover:text-emerald-400 group-hover:drop-shadow-[0_0_10px_rgba(16,185,129,0.9)]';
     case 'parents':         return 'text-fuchsia-500 drop-shadow-[0_0_6px_rgba(217,70,239,0.7)] group-hover:text-fuchsia-400 group-hover:drop-shadow-[0_0_10px_rgba(217,70,239,0.9)]';
     case 'assessment':      return 'text-amber-500  drop-shadow-[0_0_6px_rgba(245,158,11,0.7)]  group-hover:text-amber-400  group-hover:drop-shadow-[0_0_10px_rgba(245,158,11,0.9)]';
+    case 'academic-intelligence': return 'text-indigo-400 drop-shadow-[0_0_6px_rgba(129,140,248,0.7)] group-hover:text-indigo-300 group-hover:drop-shadow-[0_0_10px_rgba(129,140,248,0.9)]';
     case 'communications':  return 'text-cyan-500   drop-shadow-[0_0_6px_rgba(6,182,212,0.7)]   group-hover:text-cyan-400   group-hover:drop-shadow-[0_0_10px_rgba(6,182,212,0.9)]';
     case 'planner':         return 'text-orange-500 drop-shadow-[0_0_6px_rgba(249,115,22,0.7)]  group-hover:text-orange-400 group-hover:drop-shadow-[0_0_10px_rgba(249,115,22,0.9)]';
     case 'learning-hub':    return 'text-indigo-500 drop-shadow-[0_0_6px_rgba(99,102,241,0.7)]  group-hover:text-indigo-400 group-hover:drop-shadow-[0_0_10px_rgba(99,102,241,0.9)]';

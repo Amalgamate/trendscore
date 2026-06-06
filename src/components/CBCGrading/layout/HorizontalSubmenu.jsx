@@ -59,7 +59,7 @@ const NavItem = ({ item, currentPage, onNavigate, idx }) => {
   return (
     <button
       type="button"
-      onClick={() => !item.comingSoon && onNavigate(item.path)}
+      onClick={() => !item.comingSoon && onNavigate(item.path, item.params)}
       disabled={!!item.comingSoon}
       className={`text-xs font-medium px-2.5 py-1.5 rounded-md transition-all ${
         isActive
@@ -131,7 +131,7 @@ const GroupDropdown = ({ group, currentPage, onNavigate, color }) => {
           <button
             key={item.id || item.path || i}
             type="button"
-            onClick={() => { if (!item.comingSoon) { onNavigate(item.path); setOpen(false); } }}
+            onClick={() => { if (!item.comingSoon) { onNavigate(item.path, item.params); setOpen(false); } }}
             disabled={!!item.comingSoon}
             className={`w-full text-left px-5 py-2.5 text-sm font-semibold transition-colors flex items-center gap-3 ${
               isActive
@@ -204,6 +204,7 @@ const HorizontalSubmenu = ({ currentPage, onNavigate }) => {
   );
 
   if (!activeSection) return null;
+  if (activeSection.hideHorizontalSubmenu) return null;
   if (hasGroups && !(activeSection.items || []).length) return null;
   if (!hasGroups && !flatItems.length) return null;
 
