@@ -14,6 +14,65 @@ import { useMediaQuery } from '../hooks/useMediaQuery';
 import { MOBILE_MEDIA_QUERY } from '../../../constants/breakpoints';
 import { sanitizeLearnerPayload } from '../contracts/learnerPayload.contract';
 
+// Helper: Compute primary contact based on parent hierarchy.
+const computePrimaryContact = (data) => {
+  if (data.primaryContactType === 'FATHER' && data.fatherName && data.fatherPhone) {
+    return {
+      primaryContactType: 'FATHER',
+      primaryContactName: data.fatherName,
+      primaryContactPhone: data.fatherPhone,
+      primaryContactEmail: data.fatherEmail || ''
+    };
+  }
+  if (data.primaryContactType === 'MOTHER' && data.motherName && data.motherPhone) {
+    return {
+      primaryContactType: 'MOTHER',
+      primaryContactName: data.motherName,
+      primaryContactPhone: data.motherPhone,
+      primaryContactEmail: data.motherEmail || ''
+    };
+  }
+  if (data.primaryContactType === 'GUARDIAN' && data.guardianName && data.guardianPhone) {
+    return {
+      primaryContactType: 'GUARDIAN',
+      primaryContactName: data.guardianName,
+      primaryContactPhone: data.guardianPhone,
+      primaryContactEmail: data.guardianEmail || ''
+    };
+  }
+
+  if (!data.fatherDeceased && data.fatherName && data.fatherPhone) {
+    return {
+      primaryContactType: 'FATHER',
+      primaryContactName: data.fatherName,
+      primaryContactPhone: data.fatherPhone,
+      primaryContactEmail: data.fatherEmail || ''
+    };
+  }
+  if (!data.motherDeceased && data.motherName && data.motherPhone) {
+    return {
+      primaryContactType: 'MOTHER',
+      primaryContactName: data.motherName,
+      primaryContactPhone: data.motherPhone,
+      primaryContactEmail: data.motherEmail || ''
+    };
+  }
+  if (data.guardianName && data.guardianPhone) {
+    return {
+      primaryContactType: 'GUARDIAN',
+      primaryContactName: data.guardianName,
+      primaryContactPhone: data.guardianPhone,
+      primaryContactEmail: data.guardianEmail || ''
+    };
+  }
+  return {
+    primaryContactType: null,
+    primaryContactName: '',
+    primaryContactPhone: '',
+    primaryContactEmail: ''
+  };
+};
+
 const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null, learnerId = null }) => {
   const { showSuccess, showError } = useNotifications();
   const { user } = useAuth();
@@ -432,63 +491,6 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null, learnerId 
       setStepErrors({}); // Clear errors when moving to previous step
       setCurrentStep(currentStep - 1);
     }
-  };
-
-  // Helper: Compute primary contact based on parent hierarchy
-  const computePrimaryContact = (data) => {
-    if (data.primaryContactType === 'FATHER' && data.fatherName && data.fatherPhone) {
-      return {
-        primaryContactType: 'FATHER',
-        primaryContactName: data.fatherName,
-        primaryContactPhone: data.fatherPhone,
-        primaryContactEmail: data.fatherEmail || ''
-      };
-    }
-    if (data.primaryContactType === 'MOTHER' && data.motherName && data.motherPhone) {
-      return {
-        primaryContactType: 'MOTHER',
-        primaryContactName: data.motherName,
-        primaryContactPhone: data.motherPhone,
-        primaryContactEmail: data.motherEmail || ''
-      };
-    }
-    if (data.primaryContactType === 'GUARDIAN' && data.guardianName && data.guardianPhone) {
-      return {
-        primaryContactType: 'GUARDIAN',
-        primaryContactName: data.guardianName,
-        primaryContactPhone: data.guardianPhone,
-        primaryContactEmail: data.guardianEmail || ''
-      };
-    }
-
-    if (!data.fatherDeceased && data.fatherName && data.fatherPhone) {
-      return {
-        primaryContactType: 'FATHER',
-        primaryContactName: data.fatherName,
-        primaryContactPhone: data.fatherPhone,
-        primaryContactEmail: data.fatherEmail || ''
-      };
-    } else if (!data.motherDeceased && data.motherName && data.motherPhone) {
-      return {
-        primaryContactType: 'MOTHER',
-        primaryContactName: data.motherName,
-        primaryContactPhone: data.motherPhone,
-        primaryContactEmail: data.motherEmail || ''
-      };
-    } else if (data.guardianName && data.guardianPhone) {
-      return {
-        primaryContactType: 'GUARDIAN',
-        primaryContactName: data.guardianName,
-        primaryContactPhone: data.guardianPhone,
-        primaryContactEmail: data.guardianEmail || ''
-      };
-    }
-    return {
-      primaryContactType: null,
-      primaryContactName: '',
-      primaryContactPhone: '',
-      primaryContactEmail: ''
-    };
   };
 
   const handleSubmit = async (e) => {
