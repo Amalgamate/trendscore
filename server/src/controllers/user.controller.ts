@@ -95,7 +95,8 @@ export class UserController {
         lastLogin: true,
         staffId: true,
         subject: true,
-        gender: true
+        gender: true,
+        lockedUntil: true
       },
       orderBy: { createdAt: 'desc' }
     });

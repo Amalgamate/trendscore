@@ -2,7 +2,7 @@
  * Sidebar Component — Industry-Grade Rewrite
  */
 
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import {
   Menu, X,
   Activity,
@@ -73,6 +73,17 @@ const findDefaultPath = (items = []) => {
     }
   }
   return null;
+};
+
+const sectionContainsPage = (section, currentPage) => {
+  if (!section || !currentPage) return false;
+  if (section.id === currentPage || section.path === currentPage) return true;
+  const checkItems = (items = []) => items.some((item) => (
+    item.type === 'group'
+      ? checkItems(item.items)
+      : item.path === currentPage || item.id === currentPage
+  ));
+  return checkItems(section.items);
 };
 
 const getCollapsedIconColor = (id, isActive) => {
@@ -185,6 +196,8 @@ const Sidebar = React.memo(({
   const { role } = usePermissions();
 
   const theme = useMemo(() => getSidebarTheme(brandingSettings), [brandingSettings]);
+  const navScrollRef = useRef(null);
+  const sectionRefs = useRef({});
 
   const navData = useNavigation();
 
@@ -198,6 +211,37 @@ const Sidebar = React.memo(({
     if (path) onNavigate(path);
     else if (!sidebarOpen) setSidebarOpen(true);
   }, [onNavigate, setSidebarOpen, sidebarOpen]);
+
+  const activeSectionId = useMemo(() => {
+    for (const group of groupedNav) {
+      const activeSection = group.items.find((section) => sectionContainsPage(section, currentPage));
+      if (activeSection) return activeSection.id;
+    }
+    return null;
+  }, [currentPage, groupedNav]);
+
+  useEffect(() => {
+    if (!sidebarOpen || !activeSectionId) return;
+    const timer = window.setTimeout(() => {
+      const sectionNode = sectionRefs.current[activeSectionId];
+      const scrollNode = navScrollRef.current;
+      if (!sectionNode || !scrollNode) return;
+
+      const sectionTop = sectionNode.offsetTop;
+      const sectionBottom = sectionTop + sectionNode.offsetHeight;
+      const visibleTop = scrollNode.scrollTop;
+      const visibleBottom = visibleTop + scrollNode.clientHeight;
+
+      if (sectionTop < visibleTop || sectionBottom > visibleBottom) {
+        scrollNode.scrollTo({
+          top: Math.max(sectionTop - 24, 0),
+          behavior: 'smooth',
+        });
+      }
+    }, 320);
+
+    return () => window.clearTimeout(timer);
+  }, [activeSectionId, sidebarOpen]);
 
   const sharedNavProps = {
     handleSectionClick,
@@ -333,7 +377,7 @@ const Sidebar = React.memo(({
       </div>
 
       {/* ── Nav scroll area ──────────────────────────────────────────────── */}
-      <nav className={`flex-1 overflow-y-auto overflow-x-hidden py-3 px-2 space-y-0.5 ${sidebarOpen ? 'custom-scrollbar' : 'hide-scrollbar-completely'}`}>
+      <nav ref={navScrollRef} className={`flex-1 overflow-y-auto overflow-x-hidden py-3 px-2 space-y-0.5 ${sidebarOpen ? 'custom-scrollbar' : 'hide-scrollbar-completely'}`}>
         {groupedNav.map((group) => (
           <div key={group.id}>
             {sidebarOpen && group.items.length > 0 && (
@@ -344,15 +388,22 @@ const Sidebar = React.memo(({
             )}
             <div className="space-y-0.5">
               {group.items.map((section) => (
-                <NavSection
+                <div
                   key={section.id}
-                  section={section}
-                  handleSectionClick={handleSectionClick}
-                  sidebarOpen={sidebarOpen}
-                  currentPage={currentPage}
-                  onNavigate={onNavigate}
-                  accentColor={theme.accent}
-                />
+                  ref={(node) => {
+                    if (node) sectionRefs.current[section.id] = node;
+                    else delete sectionRefs.current[section.id];
+                  }}
+                >
+                  <NavSection
+                    section={section}
+                    handleSectionClick={handleSectionClick}
+                    sidebarOpen={sidebarOpen}
+                    currentPage={currentPage}
+                    onNavigate={onNavigate}
+                    accentColor={theme.accent}
+                  />
+                </div>
               ))}
             </div>
             {sidebarOpen && group.id !== groupedNav[groupedNav.length - 1].id && (

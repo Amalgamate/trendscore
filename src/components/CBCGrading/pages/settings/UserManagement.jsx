@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   UserPlus, Edit, Trash2, X, Save, Shield, Users, Search,
   Eye, EyeOff, Mail, Archive, ArchiveRestore,
-  Lock, Check, AlertCircle, Clock, Activity, BookOpen, MessageCircle, Key, RefreshCw
+  Lock, Check, AlertCircle, Clock, Activity, BookOpen, MessageCircle, Key, RefreshCw,
+  UserX, SlidersHorizontal, ExternalLink, Download, Upload, FileText
 } from 'lucide-react';
 import { userAPI, learnerAPI } from '../../../../services/api';
 import { getStoredUser } from '../../../../services/schoolContext';
@@ -204,6 +205,8 @@ const UserManagement = () => {
   });
   const [verificationSaving, setVerificationSaving] = useState(false);
   const [verificationUserId, setVerificationUserId] = useState(null);
+  const [roleFilter, setRoleFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ALL');
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -262,7 +265,8 @@ const UserManagement = () => {
         verificationRequired: user.verificationRequired !== false,
         staffId: user.staffId || '',
         archived: user.archived || false,
-        lastLogin: user.lastLogin
+        lastLogin: user.lastLogin,
+        lockedUntil: user.lockedUntil || null
       }));
 
       setUsers(mappedUsers);
@@ -585,7 +589,17 @@ const UserManagement = () => {
 
     if (!matchesTab) return false;
 
-    // 2. Search search
+    // 2. Role filter
+    if (roleFilter !== 'ALL' && user.role !== roleFilter) return false;
+
+    // 3. Status filter
+    if (statusFilter !== 'ALL') {
+      if (statusFilter === 'ACTIVE' && user.status !== 'ACTIVE') return false;
+      if (statusFilter === 'INACTIVE' && user.status !== 'INACTIVE' && user.status !== 'SUSPENDED') return false;
+      if (statusFilter === 'ARCHIVED' && !user.archived) return false;
+    }
+
+    // 4. Search
     const matchesSearch = searchTerm === '' ||
       user.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -601,400 +615,651 @@ const UserManagement = () => {
     count: users.filter(u => u.role === role.value && !u.archived).length
   }));
 
+  // ── KPI Calculations ──
+  const kpiData = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toDateString();
+    const nonArchived = users.filter(u => !u.archived);
+
+    return {
+      totalUsers: nonArchived.length,
+      activeToday: nonArchived.filter(u => u.lastLogin && new Date(u.lastLogin).toDateString() === todayStr).length,
+      neverLoggedIn: nonArchived.filter(u => !u.lastLogin).length,
+      pendingVerification: nonArchived.filter(u => u.verificationRequired && !u.emailVerified).length,
+      disabledAccounts: nonArchived.filter(u => u.status === 'INACTIVE' || u.status === 'SUSPENDED').length,
+      lockedAccounts: nonArchived.filter(u => u.lockedUntil && new Date(u.lockedUntil) > now).length
+    };
+  }, [users]);
+
+  // ── KPI Card Config ──
+  const kpiCards = [
+    { label: 'Total Users', value: kpiData.totalUsers, icon: Users, bgClass: 'bg-indigo-50', iconClass: 'text-indigo-600', valueClass: 'text-indigo-700', helper: 'All registered accounts' },
+    { label: 'Active Today', value: kpiData.activeToday, icon: Activity, bgClass: 'bg-emerald-50', iconClass: 'text-emerald-600', valueClass: 'text-emerald-700', helper: 'Logged in today' },
+    { label: 'Never Logged In', value: kpiData.neverLoggedIn, icon: Mail, bgClass: 'bg-amber-50', iconClass: 'text-amber-600', valueClass: 'text-amber-700', helper: 'Accounts never accessed' },
+    { label: 'Pending Verification', value: kpiData.pendingVerification, icon: Shield, bgClass: 'bg-cyan-50', iconClass: 'text-cyan-600', valueClass: 'text-cyan-700', helper: 'Awaiting email verification' },
+    { label: 'Disabled Accounts', value: kpiData.disabledAccounts, icon: UserX, bgClass: 'bg-gray-100', iconClass: 'text-gray-500', valueClass: 'text-gray-700', helper: 'Inactive or suspended' },
+    { label: 'Locked Accounts', value: kpiData.lockedAccounts, icon: Lock, bgClass: 'bg-rose-50', iconClass: 'text-rose-600', valueClass: 'text-rose-700', helper: 'Temporarily locked out' }
+  ];
+
+  // ── Activity Log Helpers ──
+  const getActionColor = (action) => {
+    if (action.includes('CREATED')) return 'text-emerald-600';
+    if (action.includes('UPDATED')) return 'text-blue-600';
+    if (action.includes('DELETED')) return 'text-red-600';
+    if (action.includes('ARCHIVED')) return 'text-orange-600';
+    if (action.includes('RESTORED')) return 'text-purple-600';
+    if (action.includes('VERIFICATION')) return 'text-cyan-600';
+    if (action.includes('SYNC')) return 'text-emerald-600';
+    return 'text-gray-600';
+  };
+
+  const getActionIcon = (action) => {
+    if (action.includes('CREATED')) return <UserPlus size={14} className="text-emerald-600" />;
+    if (action.includes('UPDATED')) return <Edit size={14} className="text-blue-600" />;
+    if (action.includes('DELETED')) return <Trash2 size={14} className="text-red-600" />;
+    if (action.includes('ARCHIVED')) return <Archive size={14} className="text-orange-600" />;
+    if (action.includes('RESTORED')) return <ArchiveRestore size={14} className="text-purple-600" />;
+    if (action.includes('VERIFICATION')) return <Shield size={14} className="text-cyan-600" />;
+    if (action.includes('SYNC')) return <RefreshCw size={14} className="text-emerald-600" />;
+    return <Activity size={14} className="text-gray-600" />;
+  };
+
+  const getActionLabel = (action) => {
+    return action.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
+  };
+
+  // Get unique roles currently in the tab for the role dropdown
+  const rolesInCurrentTab = useMemo(() => {
+    const roles = new Set();
+    users.forEach(user => {
+      let inTab = false;
+      if (activeTab === 'parents') inTab = user.role === 'PARENT' && !user.archived;
+      else if (activeTab === 'students') inTab = user.role === 'STUDENT' && !user.archived;
+      else if (activeTab === 'staff') inTab = ['TEACHER', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].includes(user.role) && !user.archived;
+      else if (activeTab === 'subordinate') inTab = ['ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN', 'NURSE', 'SECURITY', 'DRIVER', 'COOK', 'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT'].includes(user.role) && !user.archived;
+      else if (activeTab === 'admins') inTab = ['SUPER_ADMIN', 'ADMIN'].includes(user.role) && !user.archived;
+      else if (activeTab === 'archive') inTab = user.archived === true;
+      if (inTab) roles.add(user.role);
+    });
+    return Array.from(roles);
+  }, [users, activeTab]);
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-gray-50/80">
       {/* Notification Toast */}
       {notification && (
-        <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 ${notification.type === 'success' ? 'bg-green-500' : 'bg-red-500'
-          } text-white animate-fade-in`}>
-          {notification.type === 'success' ? <Check size={20} /> : <AlertCircle size={20} />}
-          <span className="font-semibold">{notification.message}</span>
+        <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-xl shadow-lg flex items-center gap-3 backdrop-blur-sm ${notification.type === 'success'
+          ? 'bg-emerald-500/95 text-white'
+          : 'bg-red-500/95 text-white'
+          } animate-fade-in`}
+          style={{ animation: 'slideDown 0.3s ease-out' }}
+        >
+          {notification.type === 'success' ? <Check size={18} /> : <AlertCircle size={18} />}
+          <span className="font-medium text-sm">{notification.message}</span>
         </div>
       )}
 
-      <div className="space-y-4">
+      <div className="p-6 space-y-5">
 
-        {/* Unified Header & Search */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        {/* ═══════════════════════════════════════════════════════════
+            PAGE HEADER
+        ═══════════════════════════════════════════════════════════ */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-medium text-gray-900">User Management</h1>
-            <p className="text-sm text-gray-500">Manage school staff, parents, and administrative access</p>
+            <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">User Management</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Manage school staff, parents, and administrative access</p>
           </div>
-          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto md:justify-end">
-            <div className="flex bg-gray-100 p-1 rounded-xl w-full lg:w-auto overflow-x-auto">
-              <button
-                onClick={() => setViewMode('list')}
-                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2 rounded-lg transition-all text-sm font-medium whitespace-nowrap ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                  }`}
-              >
-                <Users size={18} />
-                User List
-              </button>
-              <button
-                onClick={() => setViewMode('config')}
-                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2 rounded-lg transition-all text-sm font-medium whitespace-nowrap ${viewMode === 'config' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                  }`}
-              >
-                <Shield size={18} />
-                System Roles
-              </button>
-              <button
-                onClick={() => setViewMode('logs')}
-                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2 rounded-lg transition-all text-sm font-medium whitespace-nowrap ${viewMode === 'logs' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                  }`}
-              >
-                <Activity size={18} />
-                Activity Logs
-              </button>
-            </div>
-
-            <div className="w-px h-8 bg-gray-200 hidden sm:block mx-1"></div>
-
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => {
                 setEditingUser(null);
                 resetForm();
                 setShowModal(true);
               }}
-              className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition shadow-md font-medium whitespace-nowrap"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-sm shadow-blue-600/20 font-medium text-sm"
             >
-              <UserPlus size={20} />
+              <UserPlus size={16} />
               Add New User
             </button>
             {canSyncStudentUsers && (
               <button
                 onClick={handleSyncStudentUsers}
                 disabled={syncingStudentUsers}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg transition shadow-md font-medium whitespace-nowrap ${
+                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all shadow-sm font-medium text-sm ${
                   syncingStudentUsers
-                    ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
-                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                    : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-600/20'
                 }`}
               >
-                <RefreshCw size={18} className={syncingStudentUsers ? 'animate-spin' : ''} />
-                {syncingStudentUsers ? 'Syncing Students...' : 'Sync Student Accounts'}
+                <RefreshCw size={16} className={syncingStudentUsers ? 'animate-spin' : ''} />
+                {syncingStudentUsers ? 'Syncing...' : 'Sync Students'}
               </button>
             )}
+            <button className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all shadow-sm font-medium text-sm">
+              <Upload size={16} />
+              Bulk Import
+            </button>
+            <button className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all shadow-sm font-medium text-sm">
+              <Download size={16} />
+              Export
+            </button>
           </div>
         </div>
 
-        {/* View Selection: List View */}
-        {viewMode === 'list' && (
-          <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-            {/* Primary Navigation Tabs */}
-            <div className="flex items-center gap-1 bg-white p-1 rounded-xl shadow-sm border border-gray-200 overflow-x-auto no-scrollbar">
-              {[
-                { id: 'staff', label: 'Academic Staff', icon: BookOpen, color: 'blue' },
-                { id: 'subordinate', label: 'Subordinate Staff', icon: Users, color: 'teal' },
-                { id: 'students', label: 'Students', icon: Users, color: 'orange' },
-                { id: 'parents', label: 'Parents', icon: Users, color: 'green' },
-                { id: 'admins', label: 'Administrators', icon: Shield, color: 'purple' },
-                { id: 'archive', label: 'Archived', icon: Archive, color: 'gray' }
-              ].map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-6 py-2.5 rounded-lg transition-all text-sm font-medium whitespace-nowrap ${activeTab === tab.id
-                    ? `bg-${tab.color}-600 text-white shadow-md`
-                    : 'text-gray-500 hover:bg-gray-50'
-                    }`}
-                >
-                  <tab.icon size={18} />
-                  {tab.label}
-                  <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full ${activeTab === tab.id ? 'bg-white/20' : 'bg-gray-100 text-gray-500'
-                    }`}>
-                    {tab.id === 'archive' ? users.filter(u => u.archived).length :
-                      tab.id === 'students' ? (learnerStats.total > 0 ? learnerStats.total : getStudentUsers().length) :
-                        tab.id === 'subordinate' ? getSubordinateStaffUsers().length :
-                        tab.id === 'parents' ? getParentUsers().length :
-                          tab.id === 'staff' ? getTutorUsers().length :
-                            getAdminUsers().length}
-                  </span>
-                </button>
-              ))}
-            </div>
+        {/* ═══════════════════════════════════════════════════════════
+            NAVIGATION TABS
+        ═══════════════════════════════════════════════════════════ */}
+        <div className="flex items-center gap-1 border-b border-gray-200">
+          {[
+            { id: 'list', label: 'User List', icon: Users },
+            { id: 'config', label: 'System Roles', icon: Shield },
+            { id: 'logs', label: 'Activity Logs', icon: Activity }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setViewMode(tab.id)}
+              className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all relative ${
+                viewMode === tab.id
+                  ? 'text-blue-600'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <tab.icon size={16} />
+              {tab.label}
+              {viewMode === tab.id && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full" />
+              )}
+            </button>
+          ))}
+        </div>
 
-            {/* Quick Search & Filter Strip */}
-            <div className="flex flex-col sm:flex-row gap-3 items-center">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input
-                  type="text"
-                  placeholder={`Search in ${activeTab}...`}
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition shadow-sm"
-                />
+        {/* ═══════════════════════════════════════════════════════════
+            KPI CARDS
+        ═══════════════════════════════════════════════════════════ */}
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+          {kpiCards.map((kpi, i) => (
+            <div
+              key={i}
+              className={`${kpi.bgClass} rounded-xl p-4 border border-white/60 hover:shadow-md transition-all duration-200 cursor-default group`}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className={`w-9 h-9 rounded-lg ${kpi.bgClass} flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                  <kpi.icon size={18} className={kpi.iconClass} />
+                </div>
               </div>
-              {selectedUsers.length > 0 && (
-                <div className="flex items-center gap-2 p-1.5 bg-purple-50 rounded-xl border border-purple-100 shadow-sm animate-in zoom-in-95">
-                  <span className="text-xs font-medium text-purple-700 px-2 line-clamp-1">{selectedUsers.length} Selected</span>
+              <div className={`text-2xl font-bold ${kpi.valueClass} tracking-tight`}>{kpi.value}</div>
+              <div className="text-xs font-medium text-gray-600 mt-0.5">{kpi.label}</div>
+              <div className="text-[10px] text-gray-400 mt-1">{kpi.helper}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════════
+            VERIFICATION ALERT BANNER
+        ═══════════════════════════════════════════════════════════ */}
+        {canManageVerification && (
+          <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-xl border ${
+            verificationSettings.requiresUserVerification
+              ? 'bg-emerald-50/70 border-emerald-200/70'
+              : 'bg-amber-50/70 border-amber-200/70'
+          }`}>
+            <div className="flex items-center gap-3">
+              <Shield size={18} className={verificationSettings.requiresUserVerification ? 'text-emerald-600' : 'text-amber-600'} />
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                  verificationSettings.requiresUserVerification
+                    ? 'bg-emerald-200/80 text-emerald-800'
+                    : 'bg-amber-200/80 text-amber-800'
+                }`}>
+                  {verificationSettings.requiresUserVerification ? 'Enabled' : 'Disabled'}
+                </span>
+                <span className="text-sm text-gray-700">
+                  {verificationSettings.requiresUserVerification
+                    ? 'Verification is required for all school users. Unverified accounts will be restricted.'
+                    : 'Verification is bypassed for the whole school. Individual user settings remain saved.'}
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={handleSchoolVerificationToggle}
+              disabled={verificationSaving}
+              className={`shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+                verificationSaving
+                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  : verificationSettings.requiresUserVerification
+                    ? 'bg-amber-600 text-white hover:bg-amber-700'
+                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
+              }`}
+            >
+              <Shield size={14} />
+              {verificationSaving
+                ? 'Saving...'
+                : verificationSettings.requiresUserVerification
+                  ? 'Disable Verification'
+                  : 'Enable Verification'}
+            </button>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════
+            USER LIST VIEW — TWO-COLUMN LAYOUT
+        ═══════════════════════════════════════════════════════════ */}
+        {viewMode === 'list' && (
+          <div className="flex flex-col xl:flex-row gap-5">
+
+            {/* ── LEFT: User Management Workspace ── */}
+            <div className="flex-1 min-w-0 space-y-4">
+
+              {/* Category Tabs */}
+              <div className="flex items-center gap-1 bg-white p-1 rounded-xl shadow-sm border border-gray-100 overflow-x-auto no-scrollbar">
+                {[
+                  { id: 'staff', label: 'Academic Staff', icon: BookOpen, color: 'blue' },
+                  { id: 'subordinate', label: 'Subordinate Staff', icon: Users, color: 'teal' },
+                  { id: 'students', label: 'Students', icon: Users, color: 'orange' },
+                  { id: 'parents', label: 'Parents', icon: Users, color: 'green' },
+                  { id: 'admins', label: 'Administrators', icon: Shield, color: 'purple' },
+                  { id: 'archive', label: 'Archived', icon: Archive, color: 'gray' }
+                ].map(tab => (
                   <button
-                    onClick={() => setShowBulkActions(!showBulkActions)}
-                    className="px-4 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-xs font-medium transition"
+                    key={tab.id}
+                    onClick={() => { setActiveTab(tab.id); setRoleFilter('ALL'); setStatusFilter('ALL'); }}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm font-medium whitespace-nowrap ${activeTab === tab.id
+                      ? `bg-${tab.color}-600 text-white shadow-sm`
+                      : 'text-gray-500 hover:bg-gray-50'
+                      }`}
                   >
-                    Bulk Actions
+                    <tab.icon size={16} />
+                    {tab.label}
+                    <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full ${activeTab === tab.id ? 'bg-white/20' : 'bg-gray-100 text-gray-500'
+                      }`}>
+                      {tab.id === 'archive' ? users.filter(u => u.archived).length :
+                        tab.id === 'students' ? (learnerStats.total > 0 ? learnerStats.total : getStudentUsers().length) :
+                          tab.id === 'subordinate' ? getSubordinateStaffUsers().length :
+                          tab.id === 'parents' ? getParentUsers().length :
+                            tab.id === 'staff' ? getTutorUsers().length :
+                              getAdminUsers().length}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Toolbar */}
+              <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                  <input
+                    type="text"
+                    placeholder={`Search in ${activeTab}...`}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition shadow-sm text-sm"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={roleFilter}
+                    onChange={(e) => setRoleFilter(e.target.value)}
+                    className="px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-blue-500/30 shadow-sm"
+                  >
+                    <option value="ALL">All Roles</option>
+                    {rolesInCurrentTab.map(r => (
+                      <option key={r} value={r}>{getRoleLabel(r)}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-blue-500/30 shadow-sm"
+                  >
+                    <option value="ALL">All Status</option>
+                    <option value="ACTIVE">Active</option>
+                    <option value="INACTIVE">Inactive</option>
+                    <option value="ARCHIVED">Archived</option>
+                  </select>
+                </div>
+                {selectedUsers.length > 0 && (
+                  <div className="flex items-center gap-2 p-1.5 bg-purple-50 rounded-xl border border-purple-100 shadow-sm">
+                    <span className="text-xs font-medium text-purple-700 px-2">{selectedUsers.length} Selected</span>
+                    <button
+                      onClick={() => setShowBulkActions(!showBulkActions)}
+                      className="px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-xs font-medium transition"
+                    >
+                      Bulk Actions
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Bulk Actions Expanded */}
+              {showBulkActions && selectedUsers.length > 0 && (
+                <div className="p-4 bg-purple-50 rounded-xl border border-purple-200 flex flex-wrap items-center gap-3">
+                  <span className="text-sm font-medium text-purple-900">Change Role:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ROLES_CONFIG.slice(0, 7).map(role => (
+                      <button
+                        key={role.value}
+                        onClick={() => handleBulkRoleChange(role.value)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-white border border-purple-100 text-purple-700 hover:bg-purple-600 hover:text-white shadow-sm"
+                      >
+                        {role.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setSelectedUsers([])}
+                    className="ml-auto p-1.5 text-gray-400 hover:text-red-500 transition"
+                  >
+                    <X size={18} />
                   </button>
                 </div>
               )}
+
+              {/* Users Table */}
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+                {loading ? (
+                  <div className="p-12 text-center">
+                    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto"></div>
+                    <p className="mt-4 text-gray-500 text-sm">Loading users...</p>
+                  </div>
+                ) : activeTab === 'students' && filteredUsers.length === 0 ? (
+                  <div className="p-12 text-center bg-orange-50/20">
+                    <BookOpen size={48} className="mx-auto text-orange-200 mb-4" />
+                    <p className="text-gray-800 font-medium text-lg">Managing {learnerStats.total || 'All'} Students</p>
+                    <p className="text-gray-500 text-sm mt-2 max-w-sm mx-auto">
+                      Uploaded students appear here once they are assigned portal login accounts. To manage your full student database, use the Admissions page.
+                    </p>
+                    <div className="mt-8 flex justify-center gap-4">
+                      <button
+                        onClick={() => window.location.href = '/learners/list'}
+                        className="px-6 py-2.5 bg-orange-600 text-white rounded-xl shadow-lg shadow-orange-600/20 font-medium hover:bg-orange-700 transition-all flex items-center gap-2"
+                      >
+                        <Users size={18} />
+                        Go to Full Student List
+                      </button>
+                    </div>
+                  </div>
+                ) : filteredUsers.length === 0 ? (
+                  <div className="p-12 text-center">
+                    <Users size={48} className="mx-auto text-gray-300 mb-4" />
+                    <p className="text-gray-600 font-semibold">No users found</p>
+                    <p className="text-gray-500 text-sm mt-2">Try adjusting your filters</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Desktop Table */}
+                    <div className="hidden md:block overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="border-b border-gray-100 text-[10px] uppercase tracking-wider">
+                          <tr className="bg-gray-50/50">
+                            <th className="px-4 py-3 text-left w-10">
+                              <input
+                                type="checkbox"
+                                checked={selectedUsers.length === filteredUsers.length && filteredUsers.length > 0}
+                                onChange={toggleSelectAll}
+                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                            </th>
+                            <th className="px-4 py-3 text-left font-semibold text-gray-500">User</th>
+                            <th className="px-4 py-3 text-left font-semibold text-gray-500">Role</th>
+                            <th className="px-4 py-3 text-left font-semibold text-gray-500">Status</th>
+                            <th className="px-4 py-3 text-left font-semibold text-gray-500">Last Active</th>
+                            <th className="px-4 py-3 text-right font-semibold text-gray-500">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {filteredUsers.map(user => (
+                            <tr key={user.id} className={`group hover:bg-blue-50/30 transition-colors ${user.archived ? 'bg-gray-50/50' : ''}`}>
+                              <td className="px-4 py-3.5">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedUsers.includes(user.id)}
+                                  onChange={() => toggleUserSelection(user.id)}
+                                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                              </td>
+                              <td className="px-4 py-3.5">
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-medium text-xs shadow-sm ${user.archived ? 'bg-gray-400' : 'bg-gradient-to-br from-blue-500 to-indigo-600'
+                                    }`}>
+                                    {user.firstName[0]}{user.lastName[0]}
+                                  </div>
+                                  <div>
+                                    <div className="font-medium text-gray-900 text-sm flex items-center gap-1.5">
+                                      {user.firstName} {user.lastName}
+                                      {user.staffId && <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-400 rounded font-mono font-normal">{user.staffId}</span>}
+                                    </div>
+                                    <div className="text-xs text-gray-400 mt-0.5">{user.email}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3.5">
+                                <span className={`inline-flex px-2.5 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-wider border ${user.role === 'SUPER_ADMIN' ? 'bg-red-50 text-red-700 border-red-100' :
+                                  user.role === 'ADMIN' ? 'bg-purple-50 text-purple-700 border-purple-100' :
+                                    user.role === 'PARENT' ? 'bg-green-50 text-green-700 border-green-100' :
+                                      user.role === 'STUDENT' ? 'bg-orange-50 text-orange-700 border-orange-100' :
+                                        'bg-blue-50 text-blue-700 border-blue-100'
+                                  }`}>
+                                  {getRoleLabel(user.role)}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3.5">
+                                <div className="flex flex-col gap-1 items-start">
+                                  <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium ${user.archived ? 'bg-gray-100 text-gray-400' :
+                                    user.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' :
+                                      'bg-amber-100 text-amber-700'
+                                    }`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${user.archived ? 'bg-gray-300' :
+                                      user.status === 'ACTIVE' ? 'bg-emerald-500' :
+                                        'bg-amber-500'
+                                      }`}></span>
+                                    {user.archived ? 'Archived' : user.status}
+                                  </span>
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                    !verificationSettings.requiresUserVerification
+                                      ? 'bg-gray-50 text-gray-400'
+                                      : user.verificationRequired
+                                        ? user.emailVerified
+                                          ? 'bg-emerald-50 text-emerald-600'
+                                          : 'bg-red-50 text-red-600'
+                                        : 'bg-amber-50 text-amber-600'
+                                  }`}>
+                                    <Shield size={10} />
+                                    {!verificationSettings.requiresUserVerification
+                                      ? 'Bypass'
+                                      : user.verificationRequired
+                                        ? user.emailVerified ? 'Verified' : 'Unverified'
+                                        : 'Bypassed'}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3.5">
+                                <div className="flex items-center gap-1 text-xs text-gray-400">
+                                  <Clock size={12} />
+                                  {formatDate(user.lastLogin)}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3.5">
+                                <div className="flex justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button onClick={() => handleEdit(user)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg transition" title="Edit"><Edit size={15} /></button>
+                                  {user.phone && (
+                                    <button
+                                      onClick={() => window.open(`https://wa.me/${user.phone.replace(/\D/g, '')}`, '_blank')}
+                                      className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-lg transition"
+                                      title="WhatsApp"
+                                    >
+                                      <MessageCircle size={15} />
+                                    </button>
+                                  )}
+                                  {canManageVerification && !user.archived && (
+                                    <button
+                                      onClick={() => handleUserVerificationToggle(user)}
+                                      disabled={verificationUserId === user.id}
+                                      className={`p-1.5 rounded-lg transition ${
+                                        user.verificationRequired
+                                          ? 'text-amber-600 hover:bg-amber-100'
+                                          : 'text-emerald-600 hover:bg-emerald-100'
+                                      } ${verificationUserId === user.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                      title={user.verificationRequired ? 'Bypass verification' : 'Require verification'}
+                                    >
+                                      <Shield size={15} />
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => user.archived ? handleUnarchive(user.id) : handleArchive(user.id)}
+                                    className={`p-1.5 rounded-lg transition ${user.archived ? 'text-emerald-600 hover:bg-emerald-100' : 'text-orange-600 hover:bg-orange-100'}`}
+                                    title={user.archived ? "Restore" : "Archive"}
+                                  >
+                                    {user.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setResetTargetUser(user);
+                                      setShowResetModal(true);
+                                    }}
+                                    className="p-1.5 text-purple-600 hover:bg-purple-100 rounded-lg transition"
+                                    title="Reset Password"
+                                  >
+                                    <Key size={15} />
+                                  </button>
+                                  <button onClick={() => handleDelete(user.id)} className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition" title="Delete">
+                                    <Trash2 size={15} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Mobile User Cards */}
+                    <div className="md:hidden divide-y divide-gray-100">
+                      {filteredUsers.map(user => (
+                        <div key={user.id} className="p-4 hover:bg-blue-50/20 transition-colors">
+                          <div className="flex items-start gap-3">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-medium text-sm shadow-sm flex-shrink-0 ${user.archived ? 'bg-gray-400' : 'bg-gradient-to-br from-blue-500 to-indigo-600'}`}>
+                              {user.firstName[0]}{user.lastName[0]}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between">
+                                <div className="font-medium text-gray-900 text-sm truncate">{user.firstName} {user.lastName}</div>
+                                <span className={`shrink-0 ml-2 inline-flex px-2 py-0.5 rounded-lg text-[10px] font-semibold uppercase ${user.role === 'SUPER_ADMIN' ? 'bg-red-50 text-red-700' :
+                                  user.role === 'ADMIN' ? 'bg-purple-50 text-purple-700' :
+                                    'bg-blue-50 text-blue-700'
+                                  }`}>
+                                  {getRoleLabel(user.role)}
+                                </span>
+                              </div>
+                              <div className="text-xs text-gray-400 mt-0.5 truncate">{user.email}</div>
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${user.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${user.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+                                  {user.archived ? 'Archived' : user.status}
+                                </span>
+                                <span className="text-[10px] text-gray-400 flex items-center gap-1"><Clock size={10} />{formatDate(user.lastLogin)}</span>
+                              </div>
+                              <div className="flex items-center gap-1 mt-2">
+                                <button onClick={() => handleEdit(user)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition"><Edit size={14} /></button>
+                                <button onClick={() => user.archived ? handleUnarchive(user.id) : handleArchive(user.id)} className="p-1.5 text-orange-600 hover:bg-orange-100 rounded transition">
+                                  {user.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+                                </button>
+                                <button onClick={() => { setResetTargetUser(user); setShowResetModal(true); }} className="p-1.5 text-purple-600 hover:bg-purple-100 rounded transition"><Key size={14} /></button>
+                                <button onClick={() => handleDelete(user.id)} className="p-1.5 text-red-600 hover:bg-red-100 rounded transition"><Trash2 size={14} /></button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* Result Count */}
+                {!loading && filteredUsers.length > 0 && (
+                  <div className="px-4 py-3 border-t border-gray-50 bg-gray-50/50">
+                    <span className="text-xs text-gray-400">Showing {filteredUsers.length} of {users.filter(u => !u.archived).length} users</span>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {canManageVerification && (
-              <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <div className="flex items-start gap-3">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                    verificationSettings.requiresUserVerification
-                      ? 'bg-emerald-50 text-emerald-600'
-                      : 'bg-amber-50 text-amber-600'
-                  }`}>
-                    <Shield size={20} />
-                  </div>
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-semibold text-gray-900">School Verification Requirement</h3>
-                      <span className={`px-2 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide ${
-                        verificationSettings.requiresUserVerification
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        {verificationSettings.requiresUserVerification ? 'Enabled' : 'Disabled'}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-500 mt-1">
-                      {verificationSettings.requiresUserVerification
-                        ? 'Unverified users are blocked unless their individual account is bypassed.'
-                        : 'Verification is bypassed for the whole school. Individual user settings remain saved.'}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={handleSchoolVerificationToggle}
-                  disabled={verificationSaving}
-                  className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition ${
-                    verificationSaving
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : verificationSettings.requiresUserVerification
-                        ? 'bg-amber-600 text-white hover:bg-amber-700'
-                        : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                  }`}
-                >
-                  <Shield size={16} />
-                  {verificationSaving
-                    ? 'Saving...'
-                    : verificationSettings.requiresUserVerification
-                      ? 'Disable for School'
-                      : 'Require for School'}
-                </button>
-              </div>
-            )}
+            {/* ── RIGHT: Activity & Quick Links Panel ── */}
+            <div className="w-full xl:w-80 shrink-0 space-y-4">
 
-            {/* Bulk Actions Menu Expanded */}
-            {showBulkActions && selectedUsers.length > 0 && (
-              <div className="p-4 bg-purple-50 rounded-xl border border-purple-200 shadow-inner flex flex-wrap items-center gap-3">
-                <span className="text-sm font-medium text-purple-900">Change Role:</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {ROLES_CONFIG.slice(0, 7).map(role => (
+              {/* Recent Activity Card */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                    <Activity size={14} className="text-blue-600" />
+                    Recent Activity
+                  </h3>
+                  <button
+                    onClick={() => setViewMode('logs')}
+                    className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
+                  >
+                    View All <ExternalLink size={10} />
+                  </button>
+                </div>
+                <div className="divide-y divide-gray-50 max-h-80 overflow-y-auto">
+                  {activityLogs.length === 0 ? (
+                    <div className="p-6 text-center">
+                      <Clock size={28} className="mx-auto text-gray-200 mb-2" />
+                      <p className="text-xs text-gray-400">No activity recorded yet</p>
+                    </div>
+                  ) : (
+                    activityLogs.slice(0, 8).map(log => (
+                      <div key={log.id} className="px-4 py-3 hover:bg-gray-50/50 transition-colors">
+                        <div className="flex items-start gap-2.5">
+                          <div className="mt-0.5 shrink-0">{getActionIcon(log.action)}</div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-xs font-semibold ${getActionColor(log.action)}`}>{getActionLabel(log.action)}</p>
+                            <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">{log.details}</p>
+                            <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-400">
+                              <span>{log.time}</span>
+                              <span>·</span>
+                              <span>{log.user}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Quick Links Card */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-100">
+                  <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                    <SlidersHorizontal size={14} className="text-purple-600" />
+                    Quick Links
+                  </h3>
+                </div>
+                <div className="p-2">
+                  {[
+                    { label: 'Bulk User Import', icon: Upload, action: () => {}, color: 'text-blue-600 bg-blue-50 hover:bg-blue-100' },
+                    { label: 'Export Users', icon: Download, action: () => {}, color: 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100' },
+                    { label: 'Download User Template', icon: FileText, action: () => {}, color: 'text-amber-600 bg-amber-50 hover:bg-amber-100' },
+                    { label: 'View Permission Matrix', icon: Shield, action: () => setViewMode('config'), color: 'text-purple-600 bg-purple-50 hover:bg-purple-100' }
+                  ].map((link, i) => (
                     <button
-                      key={role.value}
-                      onClick={() => handleBulkRoleChange(role.value)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-white border border-purple-100 text-purple-700 hover:bg-purple-600 hover:text-white shadow-sm`}
+                      key={i}
+                      onClick={link.action}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${link.color}`}
                     >
-                      {role.label}
+                      <link.icon size={16} />
+                      {link.label}
                     </button>
                   ))}
                 </div>
-                <button
-                  onClick={() => setSelectedUsers([])}
-                  className="ml-auto p-1.5 text-gray-400 hover:text-red-500 transition"
-                >
-                  <X size={20} />
-                </button>
               </div>
-            )}
-
-            {/* Users Table */}
-            <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
-              {loading ? (
-                <div className="p-12 text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-                  <p className="mt-4 text-gray-600">Loading users...</p>
-                </div>
-              ) : activeTab === 'students' && filteredUsers.length === 0 ? (
-                <div className="p-12 text-center bg-orange-50/20">
-                  <BookOpen size={48} className="mx-auto text-orange-200 mb-4" />
-                  <p className="text-gray-800 font-medium text-lg">Managing {learnerStats.total || 'All'} Students</p>
-                  <p className="text-gray-500 text-sm mt-2 max-w-sm mx-auto">
-                    Uploaded students appear here once they are assigned portal login accounts. To manage your full student database, use the Admissions page.
-                  </p>
-                  <div className="mt-8 flex justify-center gap-4">
-                    <button 
-                      onClick={() => window.location.href = '/learners/list'}
-                      className="px-6 py-2.5 bg-orange-600 text-white rounded-xl shadow-lg shadow-orange-600/20 font-medium hover:bg-orange-700 transition-all flex items-center gap-2"
-                    >
-                      <Users size={18} />
-                      Go to Full Student List
-                    </button>
-                  </div>
-                </div>
-              ) : filteredUsers.length === 0 ? (
-                <div className="p-12 text-center">
-                  <Users size={48} className="mx-auto text-gray-300 mb-4" />
-                  <p className="text-gray-600 font-semibold">No users found</p>
-                  <p className="text-gray-500 text-sm mt-2">Try adjusting your filters</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="border-b border-[color:var(--table-border)] text-[10px] uppercase tracking-wider">
-                      <tr>
-                        <th className="px-4 py-4 text-left w-10">
-                          <input
-                            type="checkbox"
-                            checked={selectedUsers.length === filteredUsers.length && filteredUsers.length > 0}
-                            onChange={toggleSelectAll}
-                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                        </th>
-                        <th className="px-4 py-4 text-left font-semibold text-[color:var(--table-header-fg)]">User Identity</th>
-                        <th className="px-4 py-4 text-left font-semibold text-[color:var(--table-header-fg)]">Role & Access</th>
-                        <th className="px-4 py-4 text-left font-semibold text-[color:var(--table-header-fg)]">Status</th>
-                        <th className="px-4 py-4 text-right font-semibold text-[color:var(--table-header-fg)]">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {filteredUsers.map(user => (
-                        <tr key={user.id} className={`group hover:bg-blue-50/30 transition-colors ${user.archived ? 'bg-gray-50/50' : ''}`}>
-                          <td className="px-4 py-4">
-                            <input
-                              type="checkbox"
-                              checked={selectedUsers.includes(user.id)}
-                              onChange={() => toggleUserSelection(user.id)}
-                              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-10 h-10 rounded-xl transition-transform group-hover:scale-110 flex items-center justify-center text-white font-medium text-sm shadow-sm ${user.archived ? 'bg-gray-500' : 'bg-blue-600'
-                                }`}>
-                                {user.firstName[0]}{user.lastName[0]}
-                              </div>
-                              <div>
-                                <div className="font-medium text-gray-900 group-hover:text-blue-700 transition-colors flex items-center gap-2">
-                                  {user.firstName} {user.lastName}
-                                  {user.staffId && <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded font-mono font-normal">{user.staffId}</span>}
-                                </div>
-                                <div className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
-                                  <Mail size={12} className="opacity-70" /> {user.email}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="flex flex-col gap-1">
-                              <span className={`w-fit px-2.5 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-widest border shadow-sm ${user.role === 'SUPER_ADMIN' ? 'bg-red-50 text-red-700 border-red-100' :
-                                user.role === 'ADMIN' ? 'bg-purple-50 text-purple-700 border-purple-100' :
-                                  user.role === 'PARENT' ? 'bg-green-50 text-green-700 border-green-100' :
-                                    user.role === 'STUDENT' ? 'bg-orange-50 text-orange-700 border-orange-100' :
-                                      'bg-blue-50 text-blue-700 border-blue-100'
-                                }`}>
-                                {getRoleLabel(user.role)}
-                              </span>
-                              <div className="flex items-center gap-1 text-[10px] text-gray-400 font-medium">
-                                <Clock size={10} /> Active {formatDate(user.lastLogin)}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="flex flex-col gap-1.5 items-start">
-                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium ${user.archived ? 'bg-gray-100 text-gray-400' :
-                                user.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' :
-                                  'bg-amber-100 text-amber-700'
-                                }`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${user.archived ? 'bg-gray-300' :
-                                  user.status === 'ACTIVE' ? 'bg-emerald-500 animate-pulse' :
-                                    'bg-amber-500'
-                                  }`}></span>
-                                {user.archived ? 'Archived' : user.status}
-                              </span>
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                                !verificationSettings.requiresUserVerification
-                                  ? 'bg-gray-100 text-gray-500'
-                                  : user.verificationRequired
-                                    ? user.emailVerified
-                                      ? 'bg-emerald-50 text-emerald-700'
-                                      : 'bg-red-50 text-red-700'
-                                    : 'bg-amber-50 text-amber-700'
-                              }`}>
-                                <Shield size={11} />
-                                {!verificationSettings.requiresUserVerification
-                                  ? 'School bypass'
-                                  : user.verificationRequired
-                                    ? user.emailVerified ? 'Verified' : 'Needs verification'
-                                    : 'Bypassed'}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => handleEdit(user)} className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition" title="Edit Profile">
-                                <Edit size={16} />
-                              </button>
-                              {user.phone && (
-                                <button
-                                  onClick={() => window.open(`https://wa.me/${user.phone.replace(/\D/g, '')}`, '_blank')}
-                                  className="p-2 text-emerald-600 hover:bg-emerald-100 rounded-lg transition"
-                                  title="WhatsApp"
-                                >
-                                  <MessageCircle size={16} />
-                                </button>
-                              )}
-                              {canManageVerification && !user.archived && (
-                                <button
-                                  onClick={() => handleUserVerificationToggle(user)}
-                                  disabled={verificationUserId === user.id}
-                                  className={`p-2 rounded-lg transition ${
-                                    user.verificationRequired
-                                      ? 'text-amber-600 hover:bg-amber-100'
-                                      : 'text-emerald-600 hover:bg-emerald-100'
-                                  } ${verificationUserId === user.id ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                  title={user.verificationRequired ? 'Bypass verification for this user' : 'Require verification for this user'}
-                                >
-                                  <Shield size={16} />
-                                </button>
-                              )}
-                              <button
-                                onClick={() => user.archived ? handleUnarchive(user.id) : handleArchive(user.id)}
-                                className={`p-2 rounded-lg transition ${user.archived ? 'text-emerald-600 hover:bg-emerald-100' : 'text-orange-600 hover:bg-orange-100'}`}
-                                title={user.archived ? "Restore" : "Archive"}
-                              >
-                                {user.archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setResetTargetUser(user);
-                                  setShowResetModal(true);
-                                }}
-                                className="p-2 text-purple-600 hover:bg-purple-100 rounded-lg transition"
-                                title="Reset Password"
-                              >
-                                <Key size={16} />
-                              </button>
-                              <button onClick={() => handleDelete(user.id)} className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition" title="Delete Permanent">
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
             </div>
           </div>
         )}
 
-        {/* ROLES & PERMISSIONS VIEW */}
+        {/* ═══════════════════════════════════════════════════════════
+            ROLES & PERMISSIONS VIEW
+        ═══════════════════════════════════════════════════════════ */}
         {viewMode === 'config' && (
           <div className="space-y-6">
             {/* Role Overview Cards */}
@@ -1126,25 +1391,27 @@ const UserManagement = () => {
           </div>
         )}
 
-        {/* ACTIVITY LOG VIEW */}
+        {/* ═══════════════════════════════════════════════════════════
+            ACTIVITY LOG VIEW
+        ═══════════════════════════════════════════════════════════ */}
         {viewMode === 'logs' && (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            <div className="bg-green-600 px-6 py-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4">
               <h2 className="text-xl font-medium text-white flex items-center gap-2">
                 <Activity size={24} />
                 Activity Log
               </h2>
-              <p className="text-green-100 text-sm mt-1">Track all user management actions with detailed timestamps</p>
+              <p className="text-blue-100 text-sm mt-1">Track all user management actions with detailed timestamps</p>
             </div>
 
             {/* Activity Filter */}
             {activityLogs.length > 0 && (
-              <div className="px-6 py-4 border-b bg-gray-50 flex gap-4 items-center flex-wrap">
+              <div className="px-6 py-4 border-b bg-gray-50/50 flex gap-4 items-center flex-wrap">
                 <label className="font-semibold text-sm text-gray-700">Filter by Admin:</label>
                 <select
                   value={activityFilterUser}
                   onChange={(e) => setActivityFilterUser(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 text-sm"
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
                 >
                   <option value="all">Everyone</option>
                   {[...new Set(activityLogs.map(log => log.user))].map(user => (
@@ -1161,34 +1428,21 @@ const UserManagement = () => {
                 <p className="text-gray-500 text-sm mt-2">User management actions will appear here</p>
               </div>
             ) : (
-              <div className="divide-y">
+              <div className="divide-y divide-gray-50">
                 {activityLogs
                   .filter(log => activityFilterUser === 'all' || log.user === activityFilterUser)
                   .map(log => {
-                    const getActionColor = (action) => {
-                      if (action.includes('CREATED')) return 'bg-green-50 border-l-4 border-green-500';
-                      if (action.includes('UPDATED')) return 'bg-blue-50 border-l-4 border-blue-500';
-                      if (action.includes('DELETED')) return 'bg-red-50 border-l-4 border-red-500';
-                      if (action.includes('ARCHIVED')) return 'bg-orange-50 border-l-4 border-orange-500';
-                      if (action.includes('RESTORED')) return 'bg-purple-50 border-l-4 border-purple-500';
-                      return 'bg-gray-50 border-l-4 border-gray-500';
-                    };
-
-                    const getActionIcon = (action) => {
-                      if (action.includes('CREATED')) return <UserPlus size={16} className="text-green-600" />;
-                      if (action.includes('UPDATED')) return <Edit size={16} className="text-blue-600" />;
-                      if (action.includes('DELETED')) return <Trash2 size={16} className="text-red-600" />;
-                      if (action.includes('ARCHIVED')) return <Archive size={16} className="text-orange-600" />;
-                      if (action.includes('RESTORED')) return <ArchiveRestore size={16} className="text-purple-600" />;
-                      return <Activity size={16} className="text-gray-600" />;
-                    };
-
-                    const getActionLabel = (action) => {
-                      return action.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
+                    const getLogBg = (action) => {
+                      if (action.includes('CREATED')) return 'border-l-4 border-emerald-500 bg-emerald-50/30';
+                      if (action.includes('UPDATED')) return 'border-l-4 border-blue-500 bg-blue-50/30';
+                      if (action.includes('DELETED')) return 'border-l-4 border-red-500 bg-red-50/30';
+                      if (action.includes('ARCHIVED')) return 'border-l-4 border-orange-500 bg-orange-50/30';
+                      if (action.includes('RESTORED')) return 'border-l-4 border-purple-500 bg-purple-50/30';
+                      return 'border-l-4 border-gray-300 bg-gray-50/30';
                     };
 
                     return (
-                      <div key={log.id} className={`p-4 ${getActionColor(log.action)} hover:bg-opacity-75 transition`}>
+                      <div key={log.id} className={`p-4 ${getLogBg(log.action)} hover:bg-opacity-75 transition`}>
                         <div className="flex items-start gap-4">
                           <div className="flex-shrink-0 mt-1">
                             {getActionIcon(log.action)}
@@ -1229,16 +1483,18 @@ const UserManagement = () => {
           </div>
         )}
 
-        {/* Add/Edit User Modal */}
+        {/* ═══════════════════════════════════════════════════════════
+            ADD/EDIT USER MODAL
+        ═══════════════════════════════════════════════════════════ */}
         {showModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="bg-blue-600 px-6 py-4 rounded-t-xl flex justify-between items-center sticky top-0">
-                <h3 className="text-xl font-medium text-white">
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 rounded-t-2xl flex justify-between items-center sticky top-0 z-10">
+                <h3 className="text-lg font-semibold text-white">
                   {editingUser ? 'Edit User' : 'Add New User'}
                 </h3>
-                <button onClick={() => setShowModal(false)} className="text-white hover:bg-blue-800 rounded-lg p-1">
-                  <X size={24} />
+                <button onClick={() => setShowModal(false)} className="text-white/80 hover:text-white hover:bg-white/10 rounded-lg p-1.5 transition">
+                  <X size={20} />
                 </button>
               </div>
 
@@ -1397,15 +1653,15 @@ const UserManagement = () => {
                 <div className="flex gap-3 pt-4 border-t">
                   <button
                     onClick={() => setShowModal(false)}
-                    className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-semibold"
+                    className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-semibold transition"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleSave}
-                    className="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-semibold flex items-center justify-center gap-2"
+                    className="flex-1 bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 font-semibold flex items-center justify-center gap-2 transition shadow-sm shadow-blue-600/20"
                   >
-                    <Save size={20} />
+                    <Save size={18} />
                     {editingUser ? 'Update User' : 'Create User'}
                   </button>
                 </div>
