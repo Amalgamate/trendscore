@@ -588,6 +588,13 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
     );
   }
 
+  const useFlushDashboardTabs =
+    currentPage === 'dashboard' &&
+    ['OWNER', 'ADMIN', 'SUPER_ADMIN'].includes(String(user?.role || '').toUpperCase());
+  const contentClassName = user?.role === 'ACCOUNTANT' && currentPage === 'finance-dashboard'
+    ? 'min-h-full'
+    : `app-layout-content${useFlushDashboardTabs ? ' app-layout-content--flush-top' : ''}`;
+
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden font-inter border-t-2 border-[var(--brand-teal)]">
       <CommandPalette onNavigate={handleNavigate} />
@@ -608,7 +615,7 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
           </>
         )}
         <main ref={mainContentRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#F8FAFC]">
-          <div className={user?.role === 'ACCOUNTANT' && currentPage === 'finance-dashboard' ? 'min-h-full' : 'app-layout-content'}>
+          <div className={contentClassName}>
             <ErrorBoundary>
               <PageRouter
                 currentPage={currentPage}

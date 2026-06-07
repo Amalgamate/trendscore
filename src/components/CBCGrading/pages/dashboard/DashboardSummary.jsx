@@ -48,11 +48,11 @@ export const DashboardGreetingBanner = ({
   fallbackName = 'SYSTEM',
   description = 'Welcome back to the Trends command center. Here is your institutional summary overview for today.',
 }) => (
-  <section className="bg-[#ef3f1f] px-8 py-9 text-white shadow-sm">
-    <h1 className="text-3xl font-black leading-tight tracking-tight text-white md:text-4xl">
+  <section className="border-b border-slate-200 bg-transparent px-1 py-3">
+    <h1 className="text-xl font-black leading-tight tracking-tight text-slate-950 md:text-2xl">
       {getGreeting()}, <span>{getDisplayName(user, fallbackName)}</span>
     </h1>
-    <p className="mt-3 max-w-3xl text-base font-extrabold leading-relaxed text-white/85 md:text-lg">
+    <p className="mt-1 max-w-3xl text-xs font-semibold leading-relaxed text-slate-500 md:text-sm">
       {description}
     </p>
   </section>
@@ -107,9 +107,9 @@ export const DashboardSummaryCard = ({
   return <div className={className}>{content}</div>;
 };
 
-const DashboardSummary = ({ title = 'Executive Summary', description, items = [] }) => (
+const DashboardSummary = ({ title = 'Executive Summary', description, items = [], showHeader = true }) => (
   <section className="space-y-6">
-    <DashboardSectionTitle title={title} description={description} />
+    {showHeader && <DashboardSectionTitle title={title} description={description} />}
     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
       {items.map((item) => (
         <DashboardSummaryCard key={item.label} {...item} />

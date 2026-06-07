@@ -6,8 +6,9 @@
 import React, { useEffect, useState } from 'react';
 import { dashboardAPI } from '../../../../services/api';
 import { AppCard, EmptyState } from '@/design-system/components';
-import DashboardSummary, { DashboardGreetingBanner } from './DashboardSummary';
+import DashboardSummary from './DashboardSummary';
 import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
+import AdminOverviewTabs from './AdminOverviewTabs';
 import {
   Activity,
   AlertTriangle,
@@ -27,6 +28,7 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
   const [refreshing, setRefreshing] = useState(false);
   const [metrics, setMetrics] = useState(null);
   const [apiError, setApiError] = useState(null);
+  const [activeOverviewTab, setActiveOverviewTab] = useState('general');
 
   const userId = user?.id || user?.userId;
   const sectionControls = useDashboardSections('super-admin', [
@@ -73,6 +75,7 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
     if (value >= 1000) return `KES ${Math.round(value / 1000)}K`;
     return `KES ${value.toLocaleString()}`;
   };
+  const formatPercent = (value = 0) => `${Math.max(0, Math.min(100, Number(value) || 0))}%`;
 
   const collectionRate = (stats.feeCollected + stats.feePending) > 0
     ? Math.round((stats.feeCollected / (stats.feeCollected + stats.feePending)) * 100)
@@ -145,12 +148,23 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
         </div>
       )}
 
-      <DashboardGreetingBanner user={user} />
+      <AdminOverviewTabs
+        activeTab={activeOverviewTab}
+        onTabChange={setActiveOverviewTab}
+        onNavigate={onNavigate}
+        stats={stats}
+        metrics={metrics}
+        formatKesAmount={formatKesAmount}
+        formatPercent={formatPercent}
+      />
 
+      {activeOverviewTab === 'general' && (
+      <>
       <DashboardSection id="executive-summary" controls={sectionControls}>
         <DashboardSummary
           title="Executive Summary"
           description="Administrative control points that need first visibility."
+          showHeader={false}
           items={[
             { label: 'Users', value: stats.activeStudents + stats.activeTeachers, subvalue: 'active learners and staff', icon: <Users size={26} />, tone: 'indigo', onClick: () => onNavigate('settings-users') },
             { label: 'Staff', value: `${stats.activeTeachers}/${stats.totalTeachers}`, subvalue: 'active staff', icon: <ShieldCheck size={26} />, tone: 'purple', onClick: () => onNavigate('hr-staff-profiles') },
@@ -200,6 +214,8 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
       </DashboardSection>
 
       <DashboardSectionControls {...sectionControls} />
+      </>
+      )}
     </div>
   );
 };

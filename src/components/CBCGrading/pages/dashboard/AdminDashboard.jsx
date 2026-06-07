@@ -11,8 +11,9 @@ import {
   SectionHeader,
   EmptyState
 } from '@/design-system/components';
-import DashboardSummary, { DashboardGreetingBanner } from './DashboardSummary';
+import DashboardSummary from './DashboardSummary';
 import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
+import AdminOverviewTabs from './AdminOverviewTabs';
 
 import {
   TrendingUp,
@@ -33,11 +34,11 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
   const [refreshing, setRefreshing] = useState(false);
   const [metrics, setMetrics] = useState(null);
   const [apiError, setApiError] = useState(null);
+  const [activeOverviewTab, setActiveOverviewTab] = useState('general');
 
   const userId = user?.id || user?.userId;
   const sectionControls = useDashboardSections('admin', [
     { id: 'executive-summary', label: 'Executive Summary', description: 'Students, staff, collection, health' },
-    { id: 'health-finance', label: 'Health & Finance', description: 'School health and finance snapshot' },
     { id: 'attention-required', label: 'Attention Required', description: 'Items requiring intervention' },
     { id: 'pulse-revenue', label: 'Pulse & Revenue', description: 'Operational pulse and revenue trend' },
     { id: 'top-classes', label: 'Top Performing Classes', description: 'Academic rankings' },
@@ -184,12 +185,23 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
         </div>
       )}
 
-      <DashboardGreetingBanner user={user} />
+      <AdminOverviewTabs
+        activeTab={activeOverviewTab}
+        onTabChange={setActiveOverviewTab}
+        onNavigate={onNavigate}
+        stats={stats}
+        metrics={metrics}
+        formatKesAmount={formatKesAmount}
+        formatPercent={formatPercent}
+      />
 
+      {activeOverviewTab === 'general' && (
+      <>
       <DashboardSection id="executive-summary" controls={sectionControls}>
       <DashboardSummary
         title="Executive Summary"
         description="The institution-wide position that needs the admin's first glance."
+        showHeader={false}
         items={[
           {
             label: 'Students',
@@ -200,7 +212,7 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
             onClick: () => onNavigate('learners-list'),
           },
           {
-            label: 'Staff',
+            label: 'Tutors',
             value: stats.totalTeachers,
             subvalue: `${stats.activeTeachers} active`,
             icon: <GraduationCap size={26} />,
@@ -208,25 +220,27 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
             onClick: () => onNavigate('teachers-list'),
           },
           {
-            label: 'Collection Rate',
-            value: formatPercent(collectionRate),
-            subvalue: `${formatKesAmount(stats.feePending)} pending`,
-            icon: <DollarSign size={26} />,
-            tone: collectionRate >= 80 ? 'emerald' : 'amber',
-            onClick: () => onNavigate('fees-collection'),
+            label: 'Subordinate Staff',
+            value: 0,
+            subvalue: 'Support roles',
+            icon: <Users size={26} />,
+            tone: 'amber',
+            onClick: () => onNavigate('settings-users'),
           },
           {
-            label: 'School Health',
-            value: formatPercent(healthScore),
-            subvalue: healthScore >= 80 ? 'Good' : healthScore >= 60 ? 'Stable' : 'Needs attention',
-            icon: <Activity size={26} />,
-            tone: healthScore >= 80 ? 'teal' : healthScore >= 60 ? 'orange' : 'rose',
+            label: 'Suppliers',
+            value: 0,
+            subvalue: 'Registered vendors',
+            icon: <DollarSign size={26} />,
+            tone: 'rose',
+            onClick: () => onNavigate('accounting-vendors'),
           },
         ]}
       />
       </DashboardSection>
 
       {/* School Health & Finance Sections */}
+      {false && (
       <DashboardSection id="health-finance" controls={sectionControls}>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* RIGHT COLUMN — FINANCE SNAPSHOT */}
@@ -443,6 +457,8 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
       </div>
       </DashboardSection>
 
+      )}
+
       {/* Attention Required */}
       <DashboardSection id="attention-required" controls={sectionControls}>
       {attentionItems.length > 0 && (
@@ -612,6 +628,8 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
       </DashboardSection>
 
       <DashboardSectionControls {...sectionControls} />
+      </>
+      )}
     </div>
   );
 };

@@ -147,6 +147,10 @@
     padding: var(--app-gutter-y) var(--app-gutter-x);
   }
 
+  .app-layout-content--flush-top {
+    padding-top: 0;
+  }
+
   .surface-panel {
     @apply bg-white border border-gray-200/80 rounded-lg shadow-sm;
   }
