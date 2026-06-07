@@ -2,8 +2,8 @@
  * TreadSCORE Border Radius System
  * Standardized border radius values for consistent rounded corners
  *
- * Current design philosophy: Flat panels with minimal rounding
- * Rounding increases hierarchy: buttons > inputs > cards > sections
+ * Current design philosophy: sharp-edged panels by default.
+ * Rounding is reserved for intentional circles/pills such as avatars and badges.
  */
 
 export const RADIUS = {
@@ -31,8 +31,8 @@ export const RADIUS = {
   },
 
   card: {
-    default: '6px',     // Standard cards
-    elevated: '8px',    // Elevated/modal cards
+    default: '0px',     // Standard cards
+    elevated: '0px',    // Elevated/modal cards
     flat: '0px',        // Flat panel cards
   },
 
@@ -73,7 +73,7 @@ export const RADIUS = {
   },
 
   chart: {
-    default: '8px',     // Chart container
+    default: '0px',     // Chart container
     bar: '2px',         // Bar chart bars
   },
 } as const;

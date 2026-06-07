@@ -10,6 +10,7 @@ import { AppCard } from '@/design-system/components';
 import { TOKENS } from '@/design-system/tokens';
 import DashboardSummary, { DashboardGreetingBanner } from './DashboardSummary';
 import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
+import AdminOverviewTabs from './AdminOverviewTabs';
 import { ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar } from 'recharts';
 import {
   AlertTriangle,

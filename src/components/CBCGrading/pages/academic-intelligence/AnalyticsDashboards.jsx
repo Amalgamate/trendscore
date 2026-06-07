@@ -155,7 +155,7 @@ const Insight = ({ icon: Icon, title, helper, tone }) => (
   </div>
 );
 
-const ExecutiveDashboard = ({ learners = [], academicFilters = {}, analytics }) => {
+const AnalyticsDashboards = ({ learners = [], academicFilters = {}, analytics }) => {
   const dashboard = useMemo(() => {
     const learnerList = analytics?.learners?.length
       ? analytics.learners.map((learner) => learner.raw || learner)
@@ -309,4 +309,4 @@ const ExecutiveDashboard = ({ learners = [], academicFilters = {}, analytics }) 
   );
 };
 
-export default ExecutiveDashboard;
+export default AnalyticsDashboards;

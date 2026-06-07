@@ -8,6 +8,7 @@ import { useRolePreview } from '../../../contexts/RolePreviewContext';
 // ── Dashboard — EAGERLY imported: it's the first page every user sees after login.
 // Never lazy-load the default landing page — it forces a Suspense stall on every cold open.
 import RoleDashboard from '../pages/dashboard/RoleDashboard';
+import DashboardPageLayout from '../pages/dashboard/DashboardPageLayout';
 // Student dashboard also eager — it's the default page for STUDENT role
 import StudentDashboardView from '../pages/student/StudentDashboard';
 import FeeCollectionPage from '../pages/FeeCollectionPage';
@@ -78,7 +79,7 @@ const FormGroups = lazy(() => import('../pages/secondary/FormGroups'));
 const ReportsHub = lazy(() => import('../pages/secondary/ReportsHub'));
 const ResultsWorkbench = lazy(() => import('../pages/secondary/ResultsWorkbench'));
 const AcademicIntelligenceShell = lazy(() => import('../pages/academic-intelligence/AcademicIntelligenceShell'));
-const ExecutiveDashboard = lazy(() => import('../pages/academic-intelligence/ExecutiveDashboard'));
+const AnalyticsDashboards = lazy(() => import('../pages/academic-intelligence/AnalyticsDashboards'));
 const SectionAnalysis = lazy(() => import('../pages/academic-intelligence/SectionAnalysis'));
 const SubjectIntelligence = lazy(() => import('../pages/academic-intelligence/SubjectIntelligence'));
 const GenderAnalysis = lazy(() => import('../pages/academic-intelligence/GenderAnalysis'));
@@ -337,13 +338,13 @@ const PageRouter = ({
           case 'planner-timetable':
           case 'planner-agenda':
           case 'planner-schemes':
-            return <PlannerLayout currentPage={currentPage === 'events-calendar' ? 'planner-calendar' : currentPage} onNavigate={handleNavigate} />;
+            return <DashboardPageLayout activeTab="calendar" onNavigate={handleNavigate}><PlannerLayout currentPage={currentPage === 'events-calendar' ? 'planner-calendar' : currentPage} onNavigate={handleNavigate} /></DashboardPageLayout>;
           case 'planner-duty-roster':
             return <DutyRosterPage />;
           case 'events-calendar':
             return user?.role === 'PARENT'
               ? <ParentEventsPage />
-              : <PlannerLayout currentPage="planner-calendar" onNavigate={handleNavigate} />;
+              : <DashboardPageLayout activeTab="calendar" onNavigate={handleNavigate}><PlannerLayout currentPage="planner-calendar" onNavigate={handleNavigate} /></DashboardPageLayout>;
 
           // Learners Module
           case 'learners-list':
@@ -438,7 +439,7 @@ const PageRouter = ({
           case 'timetable': return <TimetablePage />;
           case 'coding-playground': return <CodingPlayground />;
           case 'attendance-daily': return <DailyAttendance learners={learners} />;
-          case 'attendance-reports': return <AttendanceReports learners={learners} />;
+          case 'attendance-reports': return <DashboardPageLayout activeTab="operations" onNavigate={handleNavigate}><AttendanceReports learners={learners} /></DashboardPageLayout>;
 
           // Assessment Module
           case 'assess-mobile-dashboard':
@@ -462,7 +463,7 @@ const PageRouter = ({
           case 'academic-intelligence':
             return renderAcademicIntelligencePage(
               'academic-intelligence',
-              <ExecutiveDashboard learners={learners} />,
+              <AnalyticsDashboards learners={learners} />,
               ACADEMIC_INTELLIGENCE_PAGE_COPY['academic-intelligence']
             );
           case 'academic-section-analysis':
@@ -498,7 +499,7 @@ const PageRouter = ({
           case 'academic-ai-insights':
             return renderAcademicIntelligencePage(
               'academic-ai-insights',
-              <AIInsights />,
+              <DashboardPageLayout activeTab="insights" onNavigate={handleNavigate}><AIInsights /></DashboardPageLayout>,
               ACADEMIC_INTELLIGENCE_PAGE_COPY['academic-ai-insights']
             );
           case 'academic-stream-analysis':
@@ -591,7 +592,7 @@ const PageRouter = ({
               ? <MessagesPage />
               : <MessageHistoryPage />;
 
-          case 'inventory-items': return <InventoryItems />;
+          case 'inventory-items': return <DashboardPageLayout activeTab="inventory" onNavigate={handleNavigate}><InventoryItems /></DashboardPageLayout>;
           case 'inventory-categories': return <InventoryCategories />;
           case 'inventory-stores': return <InventoryStores />;
           case 'inventory-movements': return <StockMovements />;
@@ -616,7 +617,7 @@ const PageRouter = ({
 
           case 'help': return <SupportHub />;
 
-          case 'hr-portal': return <HRManager onNavigate={handleNavigate} />;
+          case 'hr-portal': return <DashboardPageLayout activeTab="hr" onNavigate={handleNavigate}><HRManager onNavigate={handleNavigate} /></DashboardPageLayout>;
           case 'hr-staff-profiles': return <StaffDirectory />;
           case 'hr-leave': return <LeaveManager />;
           case 'hr-payroll': return <PayrollManager />;

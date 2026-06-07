@@ -96,6 +96,7 @@ export const DashboardSectionControls = ({
   toggleVisible,
   togglePinned,
   resetSections,
+  variant = 'floating',
 }) => {
   const [open, setOpen] = useState(false);
 
@@ -104,6 +105,80 @@ export const DashboardSectionControls = ({
     const timer = window.setTimeout(() => setOpen(false), 4500);
     return () => window.clearTimeout(timer);
   }, [open, sectionState]);
+
+  if (variant === 'menu') {
+    return (
+      <div className="relative flex-shrink-0">
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          className={`box-border flex h-[46px] w-[56px] items-center justify-center border-b-2 border-r border-slate-200 px-0 text-xs font-black transition ${
+            open
+              ? 'border-b-indigo-700 bg-indigo-50 text-indigo-900'
+              : 'border-b-transparent bg-white text-slate-950 hover:bg-slate-50'
+          }`}
+          aria-expanded={open}
+          aria-label="Dashboard sections"
+          title="Dashboard sections"
+        >
+          <SlidersHorizontal size={16} />
+        </button>
+
+        {open && (
+          <aside className="absolute right-0 top-full z-50 mt-1 w-72 border border-slate-200 bg-white p-4 shadow-xl">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <SlidersHorizontal size={16} className="text-brand-purple" />
+                <h2 className="text-sm font-extrabold text-slate-950">{title}</h2>
+              </div>
+              <button
+                type="button"
+                onClick={resetSections}
+                className="p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                title="Reset sections"
+              >
+                <RotateCcw size={14} />
+              </button>
+            </div>
+
+            <div className="mt-3 max-h-[calc(100vh-190px)] space-y-2 overflow-y-auto pr-1">
+              {sections.map((section) => {
+                const state = sectionState[section.id] || { visible: true, pinned: false };
+                return (
+                  <div key={section.id} className="border border-slate-100 bg-slate-50 p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-extrabold text-slate-800">{section.label}</p>
+                        {section.description && <p className="truncate text-[10px] font-medium text-slate-500">{section.description}</p>}
+                      </div>
+                      <div className="flex flex-shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => togglePinned(section.id)}
+                          className={`p-1.5 transition ${state.pinned ? 'bg-amber-100 text-amber-700' : 'text-slate-400 hover:bg-white hover:text-slate-700'}`}
+                          title={state.pinned ? 'Unpin section' : 'Pin section'}
+                        >
+                          {state.pinned ? <Pin size={13} /> : <PinOff size={13} />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleVisible(section.id)}
+                          className={`p-1.5 transition ${state.visible ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}
+                          title={state.visible ? 'Hide section' : 'Show section'}
+                        >
+                          {state.visible ? <Eye size={13} /> : <EyeOff size={13} />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </aside>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="fixed right-0 top-32 z-40 hidden xl:block">

@@ -23,7 +23,7 @@ const WidgetLoadingPlaceholder: React.FC<{ widgetId: string }> = ({ widgetId }) 
     style={{
       padding: '1.5rem',
       backgroundColor: '#f8fafc',
-      borderRadius: '6px',
+      borderRadius: 0,
       border: '1px solid #e2e8f0',
       minHeight: '200px',
       display: 'flex',
@@ -71,7 +71,7 @@ class WidgetErrorBoundary extends React.Component<WidgetErrorBoundaryProps, Widg
           style={{
             padding: '1.5rem',
             backgroundColor: '#fef2f2',
-            borderRadius: '6px',
+            borderRadius: 0,
             border: '1px solid #fecaca',
             color: '#dc2626',
             fontSize: '0.875rem',
@@ -254,7 +254,7 @@ export const DashboardRenderer: React.FC<DashboardRendererProps> = ({
           style={{
             padding: '1.5rem',
             backgroundColor: '#eff6ff',
-            borderRadius: '6px',
+            borderRadius: 0,
             border: '1px solid #bfdbfe',
             color: '#1e40af',
             marginBottom: '1.5rem',

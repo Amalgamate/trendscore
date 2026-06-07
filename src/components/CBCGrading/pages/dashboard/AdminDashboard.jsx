@@ -25,7 +25,11 @@ import {
   ChevronDown,
   CheckCircle2,
   GraduationCap,
-  Cog
+  Cog,
+  BarChart3,
+  Clock,
+  Briefcase,
+  Package
 } from 'lucide-react';
 
 import BillingInsightsCard from '../../dashboard/BillingInsightsCard';
@@ -40,9 +44,8 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
   const sectionControls = useDashboardSections('admin', [
     { id: 'executive-summary', label: 'Executive Summary', description: 'Students, staff, collection, health' },
     { id: 'attention-required', label: 'Attention Required', description: 'Items requiring intervention' },
-    { id: 'pulse-revenue', label: 'Pulse & Revenue', description: 'Operational pulse and revenue trend' },
+    { id: 'pulse-revenue', label: 'Activity & Revenue', description: 'Recent activity and revenue trend' },
     { id: 'top-classes', label: 'Top Performing Classes', description: 'Academic rankings' },
-    { id: 'recent-activity', label: 'Recent Activity', description: 'Latest actions and updates' },
   ]);
   const hasInstantData = learners.length > 0 || teachers.length > 0 || (pagination?.total || 0) > 0;
   
@@ -176,15 +179,7 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
   }
 
   return (
-    <div className="space-y-6">
-      {refreshing && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2">
-          <p className="text-[11px] font-semibold text-blue-700 uppercase tracking-widest">
-            Syncing dashboard metrics...
-          </p>
-        </div>
-      )}
-
+    <>
       <AdminOverviewTabs
         activeTab={activeOverviewTab}
         onTabChange={setActiveOverviewTab}
@@ -193,444 +188,317 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
         metrics={metrics}
         formatKesAmount={formatKesAmount}
         formatPercent={formatPercent}
+        sectionControls={sectionControls}
       />
 
-      {activeOverviewTab === 'general' && (
-      <>
-      <DashboardSection id="executive-summary" controls={sectionControls}>
-      <DashboardSummary
-        title="Executive Summary"
-        description="The institution-wide position that needs the admin's first glance."
-        showHeader={false}
-        items={[
-          {
-            label: 'Students',
-            value: stats.totalStudents.toLocaleString(),
-            subvalue: `${stats.activeStudents.toLocaleString()} active`,
-            icon: <Users size={26} />,
-            tone: 'indigo',
-            onClick: () => onNavigate('learners-list'),
-          },
-          {
-            label: 'Tutors',
-            value: stats.totalTeachers,
-            subvalue: `${stats.activeTeachers} active`,
-            icon: <GraduationCap size={26} />,
-            tone: 'purple',
-            onClick: () => onNavigate('teachers-list'),
-          },
-          {
-            label: 'Subordinate Staff',
-            value: 0,
-            subvalue: 'Support roles',
-            icon: <Users size={26} />,
-            tone: 'amber',
-            onClick: () => onNavigate('settings-users'),
-          },
-          {
-            label: 'Suppliers',
-            value: 0,
-            subvalue: 'Registered vendors',
-            icon: <DollarSign size={26} />,
-            tone: 'rose',
-            onClick: () => onNavigate('accounting-vendors'),
-          },
-        ]}
-      />
-      </DashboardSection>
+      <div className="px-[var(--app-gutter-x)] pt-6 space-y-6">
+        {/* General Overview */}
+        {activeOverviewTab === 'general' && (
+          <DashboardSummary
+            title="Executive Summary"
+            description="The institution-wide position that needs the admin's first glance."
+            showHeader={false}
+            items={[
+              {
+                label: 'Students',
+                value: stats.totalStudents.toLocaleString(),
+                subvalue: `${stats.activeStudents.toLocaleString()} active`,
+                icon: <Users size={26} />,
+                tone: 'indigo',
+                onClick: () => onNavigate('learners-list'),
+              },
+              {
+                label: 'Tutors',
+                value: stats.totalTeachers,
+                subvalue: `${stats.activeTeachers} active`,
+                icon: <GraduationCap size={26} />,
+                tone: 'purple',
+                onClick: () => onNavigate('teachers-list'),
+              },
+              {
+                label: 'Subordinate Staff',
+                value: 0,
+                subvalue: 'Support roles',
+                icon: <Users size={26} />,
+                tone: 'amber',
+                onClick: () => onNavigate('settings-users'),
+              },
+              {
+                label: 'Suppliers',
+                value: 0,
+                subvalue: 'Registered vendors',
+                icon: <DollarSign size={26} />,
+                tone: 'rose',
+                onClick: () => onNavigate('accounting-vendors'),
+              },
+            ]}
+          />
+        )}
 
-      {/* School Health & Finance Sections */}
-      {false && (
-      <DashboardSection id="health-finance" controls={sectionControls}>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* RIGHT COLUMN — FINANCE SNAPSHOT */}
-        <div className="space-y-4 flex flex-col justify-between">
-          <div className="flex justify-between items-center">
-            <SectionHeader 
-              variant="default"
-              title="Finance Snapshot"
-              level="h3"
-            />
-            <button 
-              onClick={() => onNavigate('insights')}
-              className="text-xs font-bold text-brand-purple hover:underline flex items-center gap-1 transition-all"
-            >
-              View full report <span className="text-sm">→</span>
-            </button>
+        {/* Financials */}
+        {activeOverviewTab === 'financials' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <AppCard className="!bg-green-700 !border-green-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Fee Collected</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{formatKesAmount(stats.feeCollected)}</p>
+                </div>
+                <DollarSign size={32} className="text-white/20" />
+              </div>
+            </AppCard>
+
+            <AppCard className="!bg-rose-600 !border-rose-600">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Outstanding</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{formatKesAmount(stats.feePending)}</p>
+                </div>
+                <AlertTriangle size={32} className="text-white/20" />
+              </div>
+            </AppCard>
+
+            <AppCard className="!bg-teal-700 !border-teal-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Collection Rate</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{formatPercent(collectionRate)}</p>
+                </div>
+                <Activity size={32} className="text-white/20" />
+              </div>
+            </AppCard>
           </div>
+        )}
 
-          <div className="flex flex-col gap-4 flex-1">
-            {/* Billing Insights Card — spans both columns */}
-            <BillingInsightsCard onNavigate={onNavigate} />
+        {/* Academic Performance */}
+        {activeOverviewTab === 'academic' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <AppCard className="!bg-blue-950 !border-blue-950">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Assessment Progress</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{formatPercent(assessmentRate)}</p>
+                  <p className="mt-1 text-xs text-white/70">{stats.totalMissedExams} unassessed</p>
+                </div>
+                <GraduationCap size={32} className="text-white/20" />
+              </div>
+            </AppCard>
 
-        </div>
+            <AppCard className="!bg-teal-700 !border-teal-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Top Performing</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{topClasses[0]?.name || 'N/A'}</p>
+                  <p className="mt-1 text-xs text-white/70">Score: {topClasses[0]?.score.toFixed(1) || '0'}</p>
+                </div>
+                <TrendingUp size={32} className="text-white/20" />
+              </div>
+            </AppCard>
+
+            <AppCard className="!bg-rose-600 !border-rose-600">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Assessed Classes</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{stats.totalAssessedClasses || 0}</p>
+                  <p className="mt-1 text-xs text-white/70">With recorded data</p>
+                </div>
+                <BarChart3 size={32} className="text-white/20" />
+              </div>
+            </AppCard>
+          </div>
+        )}
+
+        {/* School Operations */}
+        {activeOverviewTab === 'operations' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <AppCard className="!bg-teal-700 !border-teal-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Attendance Rate</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{formatPercent(attendanceRate)}</p>
+                  <p className="mt-1 text-xs text-white/70">{stats.presentToday} present today</p>
+                </div>
+                <Users size={32} className="text-white/20" />
+              </div>
+            </AppCard>
+
+            <AppCard className="!bg-rose-600 !border-rose-600">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Absent Today</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{stats.absentToday || 0}</p>
+                  <p className="mt-1 text-xs text-white/70">Needing follow-up</p>
+                </div>
+                <AlertTriangle size={32} className="text-white/20" />
+              </div>
+            </AppCard>
+
+            <AppCard className="!bg-green-700 !border-green-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Staff Coverage</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{formatPercent(operationsRate)}</p>
+                  <p className="mt-1 text-xs text-white/70">{stats.activeTeachers}/{stats.totalTeachers} active</p>
+                </div>
+                <CheckCircle2 size={32} className="text-white/20" />
+              </div>
+            </AppCard>
+          </div>
+        )}
+
+        {/* School Calendar */}
+        {activeOverviewTab === 'calendar' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <AppCard className="!bg-blue-950 !border-blue-950">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Calendar</p>
+                  <p className="mt-2 text-2xl font-bold text-white">Planner</p>
+                  <p className="mt-1 text-xs text-white/70">School events & dates</p>
+                </div>
+                <Calendar size={32} className="text-white/20" />
+              </div>
+            </AppCard>
+
+            <AppCard className="!bg-teal-700 !border-teal-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Timetable</p>
+                  <p className="mt-2 text-2xl font-bold text-white">Active</p>
+                  <p className="mt-1 text-xs text-white/70">Class & staff schedules</p>
+                </div>
+                <Clock size={32} className="text-white/20" />
+              </div>
+            </AppCard>
+
+            <AppCard className="!bg-green-700 !border-green-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Agenda</p>
+                  <p className="mt-2 text-2xl font-bold text-white">Ready</p>
+                  <p className="mt-1 text-xs text-white/70">Daily planning</p>
+                </div>
+                <Activity size={32} className="text-white/20" />
+              </div>
+            </AppCard>
+          </div>
+        )}
+
+        {/* AI Smart Insights */}
+        {activeOverviewTab === 'insights' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <AppCard className="!bg-rose-600 !border-rose-600">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">At-Risk Learners</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{stats.atRiskStudents || 0}</p>
+                  <p className="mt-1 text-xs text-white/70">Requiring support</p>
+                </div>
+                <AlertTriangle size={32} className="text-white/20" />
+              </div>
+            </AppCard>
+
+            <AppCard className="!bg-rose-600 !border-rose-600">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Attention Areas</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{attentionItems.length}</p>
+                  <p className="mt-1 text-xs text-white/70">Active warnings</p>
+                </div>
+                <Cog size={32} className="text-white/20" />
+              </div>
+            </AppCard>
+
+            <AppCard className="!bg-teal-700 !border-teal-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Recent Activity</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{recentActivities.length || 0}</p>
+                  <p className="mt-1 text-xs text-white/70">Latest updates</p>
+                </div>
+                <Activity size={32} className="text-white/20" />
+              </div>
+            </AppCard>
+          </div>
+        )}
+
+        {/* HR Overview */}
+        {activeOverviewTab === 'hr' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <AppCard className="!bg-blue-950 !border-blue-950">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Total Staff</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{stats.totalTeachers || 0}</p>
+                  <p className="mt-1 text-xs text-white/70">Staff records</p>
+                </div>
+                <Users size={32} className="text-white/20" />
+              </div>
+            </AppCard>
+
+            <AppCard className="!bg-green-700 !border-green-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Active Staff</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{stats.activeTeachers || 0}</p>
+                  <p className="mt-1 text-xs text-white/70">Currently active</p>
+                </div>
+                <CheckCircle2 size={32} className="text-white/20" />
+              </div>
+            </AppCard>
+
+            <AppCard className="!bg-teal-700 !border-teal-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Staff Coverage</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{formatPercent(teacherActiveRate)}</p>
+                  <p className="mt-1 text-xs text-white/70">Active coverage rate</p>
+                </div>
+                <TrendingUp size={32} className="text-white/20" />
+              </div>
+            </AppCard>
+          </div>
+        )}
+
+        {/* Inventory */}
+        {activeOverviewTab === 'inventory' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <AppCard className="!bg-rose-600 !border-rose-600">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Stock Items</p>
+                  <p className="mt-2 text-2xl font-bold text-white">Catalog</p>
+                  <p className="mt-1 text-xs text-white/70">Manage school supplies</p>
+                </div>
+                <Package size={32} className="text-white/20" />
+              </div>
+            </AppCard>
+
+            <AppCard className="!bg-green-700 !border-green-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Stock Movements</p>
+                  <p className="mt-2 text-2xl font-bold text-white">Tracked</p>
+                  <p className="mt-1 text-xs text-white/70">Movement history</p>
+                </div>
+                <TrendingUp size={32} className="text-white/20" />
+              </div>
+            </AppCard>
+
+            <AppCard className="!bg-blue-950 !border-blue-950">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Assets</p>
+                  <p className="mt-2 text-2xl font-bold text-white">Register</p>
+                  <p className="mt-1 text-xs text-white/70">Assigned assets</p>
+                </div>
+                <Briefcase size={32} className="text-white/20" />
+              </div>
+            </AppCard>
+          </div>
+        )}
       </div>
-
-        {/* LEFT COLUMN — SCHOOL HEALTH */}
-        <AppCard 
-          variant="elevated"
-          title="School Health"
-          className="flex flex-col justify-between"
-          headerAction={
-            <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-100 transition shadow-sm">
-              <Calendar size={13} className="text-gray-500" />
-              <span>This Week</span>
-              <ChevronDown size={12} className="text-gray-400" />
-            </div>
-          }
-        >
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-6 items-center">
-              {/* LEFT SIDE — Large Circular Progress */}
-              <div className="sm:col-span-5 flex flex-col items-center justify-center border-r border-gray-100 sm:pr-4">
-                <div className="relative flex items-center justify-center w-40 h-40">
-                  <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                    {/* Background Circle */}
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="40"
-                      stroke="#f1f5f9"
-                      strokeWidth="7"
-                      fill="transparent"
-                    />
-                    {/* Foreground Circle */}
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="40"
-                      stroke="#16A34A"
-                      strokeWidth="7"
-                      fill="transparent"
-                      strokeDasharray={2 * Math.PI * 40}
-                      strokeDashoffset={(2 * Math.PI * 40) - (healthScore / 100) * (2 * Math.PI * 40)}
-                      strokeLinecap="round"
-                      className="transition-all duration-1000 ease-out"
-                    />
-                  </svg>
-                  {/* Inner Text */}
-                  <div className="absolute flex flex-col items-center justify-center text-center">
-                    <span className="text-3xl font-extrabold text-gray-900 leading-none">{formatPercent(healthScore)}</span>
-                    <span className="text-[10px] font-bold text-emerald-600 tracking-wider mt-1.5 uppercase">
-                      {healthScore >= 80 ? 'GOOD' : healthScore >= 60 ? 'STABLE' : 'PENDING'}
-                    </span>
-                    <span className="text-[8px] text-gray-400 mt-1 font-medium">live metrics</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* RIGHT SIDE — Four Health Dimensions */}
-              <div className="sm:col-span-7 space-y-3.5">
-                {/* Finance Health */}
-                <div>
-                  <div className="flex items-center justify-between text-xs font-semibold text-gray-700 mb-1">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full flex items-center justify-center bg-emerald-50 text-emerald-600">
-                        <DollarSign size={13} />
-                      </div>
-                      <span className="text-gray-700 font-semibold text-[13px]">Finance</span>
-                    </div>
-                    <span className="text-gray-950 font-bold text-[13px]">{formatPercent(collectionRate)}</span>
-                  </div>
-                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-emerald-600 rounded-full transition-all duration-500" 
-                      style={{ width: `${collectionRate}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* Attendance Health */}
-                <div>
-                  <div className="flex items-center justify-between text-xs font-semibold text-gray-700 mb-1">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full flex items-center justify-center bg-blue-50 text-blue-600">
-                        <Users size={13} />
-                      </div>
-                      <span className="text-gray-700 font-semibold text-[13px]">Attendance</span>
-                    </div>
-                    <span className="text-gray-950 font-bold text-[13px]">{formatPercent(attendanceRate)}</span>
-                  </div>
-                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-blue-600 rounded-full transition-all duration-500" 
-                      style={{ width: `${attendanceRate}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* Academic Health */}
-                <div>
-                  <div className="flex items-center justify-between text-xs font-semibold text-gray-700 mb-1">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full flex items-center justify-center bg-purple-50 text-purple-600">
-                        <GraduationCap size={13} />
-                      </div>
-                      <span className="text-gray-700 font-semibold text-[13px]">Academics</span>
-                    </div>
-                    <span className="text-gray-950 font-bold text-[13px]">{formatPercent(assessmentRate)}</span>
-                  </div>
-                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-purple-600 rounded-full transition-all duration-500" 
-                      style={{ width: `${assessmentRate}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* Operations Health */}
-                <div>
-                  <div className="flex items-center justify-between text-xs font-semibold text-gray-700 mb-1">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full flex items-center justify-center bg-orange-50 text-orange-600">
-                        <Cog size={13} />
-                      </div>
-                      <span className="text-gray-700 font-semibold text-[13px]">Operations</span>
-                    </div>
-                    <span className="text-gray-950 font-bold text-[13px]">{formatPercent(operationsRate)}</span>
-                  </div>
-                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-orange-600 rounded-full transition-all duration-500" 
-                      style={{ width: `${operationsRate}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div className="border-t border-gray-100 my-4"></div>
-
-            {/* Status Strip */}
-            <div className="grid grid-cols-4 gap-2 text-center pt-2">
-              {/* Money */}
-              <div className="flex flex-col items-center">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center bg-emerald-50 text-emerald-600 mb-1 shadow-sm border border-emerald-100/50">
-                  <DollarSign size={15} />
-                </div>
-                <span className="text-xs font-semibold text-gray-900 mt-1">Money</span>
-                <span className="text-[10px] font-bold text-emerald-600 mt-0.5">Healthy</span>
-                <div className="w-5 h-5 rounded-full bg-emerald-50 flex items-center justify-center mt-2.5 text-emerald-600 border border-emerald-200">
-                  <CheckCircle2 size={12} className="fill-emerald-100 text-emerald-600" />
-                </div>
-              </div>
-
-              {/* Learners */}
-              <div className="flex flex-col items-center">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center bg-blue-50 text-blue-600 mb-1 shadow-sm border border-blue-100/50">
-                  <Users size={15} />
-                </div>
-                <span className="text-xs font-semibold text-gray-900 mt-1">Learners</span>
-                <span className="text-[10px] font-bold text-emerald-600 mt-0.5">Healthy</span>
-                <div className="w-5 h-5 rounded-full bg-emerald-50 flex items-center justify-center mt-2.5 text-emerald-600 border border-emerald-200">
-                  <CheckCircle2 size={12} className="fill-emerald-100 text-emerald-600" />
-                </div>
-              </div>
-
-              {/* Teachers */}
-              <div className="flex flex-col items-center">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center bg-purple-50 text-purple-600 mb-1 shadow-sm border border-purple-100/50">
-                  <Users size={15} />
-                </div>
-                <span className="text-xs font-semibold text-gray-900 mt-1">Teachers</span>
-                <span className="text-[10px] font-bold text-emerald-600 mt-0.5">Healthy</span>
-                <div className="w-5 h-5 rounded-full bg-emerald-50 flex items-center justify-center mt-2.5 text-emerald-600 border border-emerald-200">
-                  <CheckCircle2 size={12} className="fill-emerald-100 text-emerald-600" />
-                </div>
-              </div>
-
-              {/* Academics */}
-              <div className="flex flex-col items-center">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center bg-orange-50 text-orange-600 mb-1 shadow-sm border border-orange-100/50">
-                  <GraduationCap size={15} />
-                </div>
-                <span className="text-xs font-semibold text-gray-900 mt-1">Academics</span>
-                <span className="text-[10px] font-bold text-orange-600 mt-0.5">Attention</span>
-                <div className="w-5 h-5 rounded-full bg-orange-50 flex items-center justify-center mt-2.5 text-orange-600 border border-orange-200">
-                  <AlertTriangle size={11} className="text-orange-600 fill-orange-100" />
-                </div>
-              </div>
-            </div>
-          </div>
-        </AppCard>
-      </div>
-      </DashboardSection>
-
-      )}
-
-      {/* Attention Required */}
-      <DashboardSection id="attention-required" controls={sectionControls}>
-      {attentionItems.length > 0 && (
-        <AppCard 
-          variant="flat"
-          title="Attention Required"
-          subtitle="Items needing immediate action"
-        >
-          <div className="space-y-3">
-            {attentionItems.map((item, idx) => (
-              <button
-                key={idx}
-                onClick={item.action}
-                className={`w-full text-left p-4 rounded-lg border-l-4 transition-all hover:shadow-md ${
-                  item.severity === 'high' 
-                    ? 'border-l-rose-500 bg-rose-50 hover:bg-rose-100' 
-                    : 'border-l-amber-500 bg-amber-50 hover:bg-amber-100'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className={`font-semibold text-sm ${
-                      item.severity === 'high' ? 'text-rose-900' : 'text-amber-900'
-                    }`}>
-                      {item.title}
-                    </h4>
-                    <p className={`text-xs mt-1 ${
-                      item.severity === 'high' ? 'text-rose-700' : 'text-amber-700'
-                    }`}>
-                      {item.description}
-                    </p>
-                  </div>
-                  <div className={`text-lg font-bold ${
-                    item.severity === 'high' ? 'text-rose-500' : 'text-amber-500'
-                  }`}>
-                    →
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </AppCard>
-      )}
-      </DashboardSection>
-
-      {/* School Pulse & Revenue Trend */}
-      <DashboardSection id="pulse-revenue" controls={sectionControls}>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AppCard 
-          title="School Pulse"
-          subtitle="Real-time activity metrics"
-        >
-          <div className="space-y-4">
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-semibold text-blue-900">Students Present</span>
-                <span className="text-2xl font-bold text-blue-600">{stats.presentToday}</span>
-              </div>
-              <p className="text-xs text-blue-700 mt-1">of {stats.totalStudents} enrolled</p>
-            </div>
-
-            <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-100">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-semibold text-emerald-900">Classes Assessed</span>
-                <span className="text-2xl font-bold text-emerald-600">{stats.totalAssessedClasses}</span>
-              </div>
-              <p className="text-xs text-emerald-700 mt-1">Active assessment cycle</p>
-            </div>
-
-            <div className="p-4 bg-brand-purple/5 rounded-lg border border-brand-purple/20">
-              <div className="flex justify-between items-center">
-                <span className="text-sm font-semibold text-brand-purple">Fee Collections</span>
-                <span className="text-2xl font-bold text-brand-purple">{collectionRate}%</span>
-              </div>
-              <p className="text-xs text-brand-purple/70 mt-1">KES {Math.round(stats.feePending / 1000)}k outstanding</p>
-            </div>
-          </div>
-        </AppCard>
-
-        <AppCard 
-          title="Revenue Trend"
-          subtitle="Monthly fee collection pattern"
-        >
-          <div className="h-64">
-            {revenueTrendData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={revenueTrendData} margin={{ top: 10, right: 20, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#64748b' }} />
-                  <YAxis tick={{ fontSize: 12, fill: '#64748b' }} />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                    formatter={(value) => `KES ${Math.round(value / 1000)}k`}
-                  />
-                  <Area 
-                    type="monotone" 
-                    dataKey="revenue" 
-                    stroke="#8b5cf6" 
-                    fill="#8b5cf6" 
-                    fillOpacity={0.1}
-                    strokeWidth={2}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <EmptyState icon={<TrendingUp size={48} />} title="No data" description="Revenue trend data pending" />
-            )}
-          </div>
-        </AppCard>
-      </div>
-      </DashboardSection>
-
-
-      {/* Top Classes */}
-      <DashboardSection id="top-classes" controls={sectionControls}>
-      {topClasses.length > 0 && (
-        <AppCard title="Top Performing Classes" subtitle="Academic performance rankings">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left py-3 px-4 font-semibold text-gray-600 uppercase text-xs">Rank</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-600 uppercase text-xs">Class</th>
-                  <th className="text-right py-3 px-4 font-semibold text-gray-600 uppercase text-xs">Score</th>
-                  <th className="text-left py-3 px-4 font-semibold text-gray-600 uppercase text-xs">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topClasses.map((cls) => (
-                  <tr key={cls.rank} className="border-b border-gray-50 hover:bg-gray-50 transition">
-                    <td className="py-3 px-4 font-bold text-gray-900">#{cls.rank}</td>
-                    <td className="py-3 px-4 text-gray-900">{cls.name}</td>
-                    <td className="py-3 px-4 text-right font-semibold text-gray-900">{cls.score.toFixed(1)}</td>
-                    <td className="py-3 px-4">
-                      <span className="inline-block px-3 py-1 bg-brand-teal/10 text-brand-teal rounded-full text-xs font-semibold">
-                        {cls.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </AppCard>
-      )}
-      </DashboardSection>
-
-      {/* Recent Activity */}
-      <DashboardSection id="recent-activity" controls={sectionControls}>
-      {recentActivities.length > 0 && (
-        <AppCard title="Recent Activity" subtitle="Latest actions and updates">
-          <div className="space-y-1">
-            {recentActivities.map((activity, idx) => (
-              <div key={idx} className="p-4 hover:bg-gray-50 rounded-lg transition flex items-start gap-4">
-                <div className="p-2 rounded-lg bg-gray-100">
-                  <activity.icon size={16} className="text-gray-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate">{activity.description}</p>
-                  <p className="text-xs text-gray-500 mt-1">{activity.timestamp}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </AppCard>
-      )}
-      </DashboardSection>
-
-      <DashboardSectionControls {...sectionControls} />
-      </>
-      )}
-    </div>
+    </>
   );
 };
 

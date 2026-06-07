@@ -12,6 +12,7 @@ import {
 } from '@/design-system/components';
 import DashboardSummary, { DashboardGreetingBanner } from './DashboardSummary';
 import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
+import AdminOverviewTabs from './AdminOverviewTabs';
 
 import {
   Clock,

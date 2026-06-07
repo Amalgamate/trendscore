@@ -9,6 +9,7 @@ import { dashboardAPI } from '../../../../services/api';
 import { AppCard, EmptyState } from '@/design-system/components';
 import DashboardSummary, { DashboardGreetingBanner } from './DashboardSummary';
 import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
+import AdminOverviewTabs from './AdminOverviewTabs';
 import {
   AlertTriangle,
   BarChart3,

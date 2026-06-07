@@ -141,10 +141,12 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
   }
 
   return (
-    <div className="space-y-6">
+    <>
       {refreshing && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2">
-          <p className="text-[11px] font-semibold text-blue-700 uppercase tracking-widest">Syncing system metrics...</p>
+        <div className="space-y-6">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2">
+            <p className="text-[11px] font-semibold text-blue-700 uppercase tracking-widest">Syncing system metrics...</p>
+          </div>
         </div>
       )}
 
@@ -156,9 +158,11 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
         metrics={metrics}
         formatKesAmount={formatKesAmount}
         formatPercent={formatPercent}
+        sectionControls={sectionControls}
       />
 
-      {activeOverviewTab === 'general' && (
+      <div className="space-y-6">
+        {activeOverviewTab === 'general' && (
       <>
       <DashboardSection id="executive-summary" controls={sectionControls}>
         <DashboardSummary
@@ -216,7 +220,8 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
       <DashboardSectionControls {...sectionControls} />
       </>
       )}
-    </div>
+      </div>
+    </>
   );
 };
 

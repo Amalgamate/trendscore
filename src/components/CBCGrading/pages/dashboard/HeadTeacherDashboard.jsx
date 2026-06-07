@@ -12,6 +12,7 @@ import {
 } from '@/design-system/components';
 import DashboardSummary, { DashboardGreetingBanner } from './DashboardSummary';
 import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
+import AdminOverviewTabs from './AdminOverviewTabs';
 
 import {
   TrendingUp,
@@ -30,6 +31,7 @@ const HeadTeacherDashboard = ({ learners = [], teachers = [], user, onNavigate }
   const [refreshing, setRefreshing] = useState(false);
   const [metrics, setMetrics] = useState(null);
   const [apiError, setApiError] = useState(null);
+  const [activeOverviewTab, setActiveOverviewTab] = useState('general');
 
   const userId = user?.id || user?.userId;
   const sectionControls = useDashboardSections('head-teacher', [
@@ -129,16 +131,27 @@ const HeadTeacherDashboard = ({ learners = [], teachers = [], user, onNavigate }
   }
 
   return (
-    <div className="space-y-6">
+    <>
       {refreshing && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2">
-          <p className="text-[11px] font-semibold text-blue-700 uppercase tracking-widest">
-            Syncing academic data...
-          </p>
+        <div className="space-y-6">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2">
+            <p className="text-[11px] font-semibold text-blue-700 uppercase tracking-widest">
+              Syncing academic data...
+            </p>
+          </div>
         </div>
       )}
 
-      <DashboardGreetingBanner user={user} />
+      <AdminOverviewTabs
+        activeTab={activeOverviewTab}
+        onTabChange={setActiveOverviewTab}
+        onNavigate={onNavigate}
+      />
+
+      <div className="space-y-6">
+        {activeOverviewTab === 'general' && (
+        <>
+        <DashboardGreetingBanner user={user} />
 
       <DashboardSection id="executive-summary" controls={sectionControls}>
       <DashboardSummary
@@ -380,7 +393,10 @@ const HeadTeacherDashboard = ({ learners = [], teachers = [], user, onNavigate }
       </DashboardSection>
 
       <DashboardSectionControls {...sectionControls} />
-    </div>
+      </>
+      )}
+      </div>
+    </>
   );
 };
 

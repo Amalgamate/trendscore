@@ -50,6 +50,7 @@
   --text-secondary: #4b5563;
   --border-color: #e5e7eb;
   --app-max-width: 100%;
+  --app-header-height: 5rem;
   --app-gutter-x: 1.5rem;
   --app-gutter-y: 1.5rem;
 }
@@ -114,9 +115,11 @@
   .shadow-lg,
   .shadow-xl,
   .shadow-2xl,
-  .shadow-inner {
+  .shadow-inner,
+  [class*="shadow-["] {
     --tw-shadow: 0 0 #0000;
     --tw-shadow-colored: 0 0 #0000;
+    box-shadow: none;
   }
 
   .rounded,
@@ -125,7 +128,36 @@
   .rounded-lg,
   .rounded-xl,
   .rounded-2xl,
-  .rounded-3xl {
+  .rounded-3xl,
+  .rounded-l,
+  .rounded-r,
+  .rounded-t,
+  .rounded-b,
+  .rounded-l-sm,
+  .rounded-r-sm,
+  .rounded-t-sm,
+  .rounded-b-sm,
+  .rounded-l-md,
+  .rounded-r-md,
+  .rounded-t-md,
+  .rounded-b-md,
+  .rounded-l-lg,
+  .rounded-r-lg,
+  .rounded-t-lg,
+  .rounded-b-lg,
+  .rounded-l-xl,
+  .rounded-r-xl,
+  .rounded-t-xl,
+  .rounded-b-xl,
+  .rounded-l-2xl,
+  .rounded-r-2xl,
+  .rounded-t-2xl,
+  .rounded-b-2xl,
+  .rounded-l-3xl,
+  .rounded-r-3xl,
+  .rounded-t-3xl,
+  .rounded-b-3xl,
+  [class*="rounded-["] {
     border-radius: 0;
   }
 }
@@ -563,16 +595,6 @@ code {
   }
 }
 
-/* Odoo-style card hover effect */
-.hover-card {
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-}
-
-.hover-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1);
-}
-
 /* Custom Scrollbar - Slight scroll bar, blends in, dot style, no track/rail */
 .custom-scrollbar,
 .no-scrollbar,
@@ -708,6 +730,4 @@ code {
 .finance-dashboard-scope .text-slate-600 { color: #475569 !important; }
 .finance-dashboard-scope .text-slate-500 { color: #64748b !important; }
 .finance-dashboard-scope .text-slate-400 { color: #94a3b8 !important; }
-.finance-dashboard-scope .rounded-lg { border-radius: 12px !important; }
-.finance-dashboard-scope .rounded-md { border-radius: 8px !important; }
 .finance-dashboard-scope .rounded-full { border-radius: 9999px !important; }

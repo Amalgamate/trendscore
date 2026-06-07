@@ -1670,6 +1670,48 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     }
   };
 
+  const formatBroadsheetNumber = (value, decimals = 1) => {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) return '-';
+    const rounded = Number(numericValue.toFixed(decimals));
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(decimals);
+  };
+
+  const getBroadsheetSummaryRows = (data = reportData) => {
+    if (!data?.rows?.length || !data?.subjects?.length) return [];
+
+    const rows = data.rows;
+    const subjects = data.subjects;
+    const summaries = data.subjectSummaries || {};
+    const totalScore = rows.reduce((sum, row) => sum + (Number(row.totalScore) || 0), 0);
+    const meanTotal = totalScore / rows.length;
+    const meanAveragePct = rows.reduce((sum, row) => sum + (Number(row.averagePct) || 0), 0) / rows.length;
+
+    return [
+      {
+        key: 'total',
+        label: 'TOTAL',
+        subjectValues: subjects.map((subject) => formatBroadsheetNumber(summaries[subject]?.total || 0, 1)),
+        total: formatBroadsheetNumber(totalScore, 1),
+        average: '-',
+      },
+      {
+        key: 'mean',
+        label: 'MEAN',
+        subjectValues: subjects.map((subject) => formatBroadsheetNumber(summaries[subject]?.mean || 0, 1)),
+        total: formatBroadsheetNumber(meanTotal, 1),
+        average: `${formatBroadsheetNumber(meanAveragePct, 1)}%`,
+      },
+      {
+        key: 'average',
+        label: 'AVG %',
+        subjectValues: subjects.map((subject) => `${formatBroadsheetNumber(summaries[subject]?.averagePct || 0, 1)}%`),
+        total: '-',
+        average: `${formatBroadsheetNumber(meanAveragePct, 1)}%`,
+      },
+    ];
+  };
+
   const handleExportBroadsheetExcel = async () => {
     if (!reportData?.rows?.length || !reportData?.subjects?.length) {
       showError('No broadsheet data to export');
@@ -1731,6 +1773,18 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
         ]);
       });
 
+      const summaryRows = getBroadsheetSummaryRows(reportData);
+      summaryRows.forEach((summaryRow) => {
+        worksheet.addRow([
+          '',
+          summaryRow.label,
+          ...summaryRow.subjectValues,
+          summaryRow.total,
+          summaryRow.average,
+          ''
+        ]);
+      });
+
       worksheet.columns = headers.map((h, idx) => ({
         header: h,
         key: `c${idx}`,
@@ -1751,6 +1805,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
 
       worksheet.eachRow((r, rowNumber) => {
         if (rowNumber <= tableHeaderRow) return;
+        const isSummaryRow = rowNumber > tableHeaderRow + reportData.rows.length;
         r.eachCell((cell, colNumber) => {
           cell.border = {
             top: { style: 'thin', color: { argb: 'FFBFC7D4' } },
@@ -1760,6 +1815,10 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           };
           if (colNumber !== 2) {
             cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          }
+          if (isSummaryRow) {
+            cell.font = { bold: true, color: { argb: 'FF111827' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
           }
         });
       });
@@ -2855,6 +2914,27 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           };
         });
 
+        const subjects = Array.from(new Set(targetTests.map(t => t.learningArea))).sort();
+        const subjectMaxScores = subjects.reduce((acc, subject) => {
+          acc[subject] = targetTests
+            .filter((test) => test.learningArea === subject)
+            .reduce((sum, test) => sum + (Number(test?.totalMarks) || 100), 0);
+          return acc;
+        }, {});
+        const subjectSummaries = subjects.reduce((acc, subject) => {
+          const subjectMax = subjectMaxScores[subject] || 0;
+          const values = broadsheetData.map((row) => Number(row.subjectScores?.[subject]) || 0);
+          const total = values.reduce((sum, value) => sum + value, 0);
+          const mean = values.length > 0 ? total / values.length : 0;
+          const averagePct = subjectMax > 0 ? (mean / subjectMax) * 100 : 0;
+          acc[subject] = {
+            total: parseFloat(total.toFixed(1)),
+            mean: parseFloat(mean.toFixed(1)),
+            averagePct: parseFloat(averagePct.toFixed(1)),
+          };
+          return acc;
+        }, {});
+
         // 5. Ranking
         broadsheetData.sort((a, b) => b.averagePct - a.averagePct);
         const rankedData = broadsheetData.map((d, index) => ({ ...d, position: index + 1 }));
@@ -2863,7 +2943,8 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           type: selectedType,
           title: selectedType === 'GRADE_REPORT' ? `Grade Report - ${selectedGrade}` : `Stream Report - ${selectedGrade} ${selectedStream}`,
           rows: rankedData,
-          subjects: Array.from(new Set(targetTests.map(t => t.learningArea))).sort(),
+          subjects,
+          subjectSummaries,
           generatedAt: new Date(),
           meta: {
             grade: selectedGrade,
@@ -3746,6 +3827,20 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                           </td>
                         </tr>
                       ))}
+                      {getBroadsheetSummaryRows(reportData).map((summaryRow) => (
+                        <tr key={`print-summary-${summaryRow.key}`} style={{ backgroundColor: '#eff6ff', fontWeight: 'bold' }}>
+                          <td style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center' }}></td>
+                          <td style={{ padding: '4px', border: '1px solid #94a3b8', fontWeight: 'bold' }}>{summaryRow.label}</td>
+                          {summaryRow.subjectValues.map((value, subjectIdx) => (
+                            <td key={`print-summary-${summaryRow.key}-${reportData.subjects[subjectIdx]}`} style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center', fontWeight: 'bold' }}>
+                              {value}
+                            </td>
+                          ))}
+                          <td style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center', fontWeight: 'bold' }}>{summaryRow.total}</td>
+                          <td style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center', fontWeight: 'bold' }}>{summaryRow.average}</td>
+                          <td style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center' }}></td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
 
@@ -3808,6 +3903,25 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                       </tr>
                     )}
                   />
+                  <table className="no-print w-full border-collapse border border-gray-200" style={{ fontSize: '11px' }}>
+                    <tbody>
+                      {getBroadsheetSummaryRows(reportData).map((summaryRow) => (
+                        <tr key={`screen-summary-${summaryRow.key}`} style={{ backgroundColor: '#eff6ff', fontWeight: 'bold' }}>
+                          <td style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center', width: '30px' }}></td>
+                          <td style={{ padding: '4px', border: '1px solid #94a3b8', minWidth: '150px' }}>{summaryRow.label}</td>
+                          {summaryRow.subjectValues.map((value, subjectIdx) => (
+                            <td key={`screen-summary-${summaryRow.key}-${reportData.subjects[subjectIdx]}`} style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center' }}>
+                              {value}
+                            </td>
+                          ))}
+                          <td style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center' }}>{summaryRow.total}</td>
+                          <td style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center' }}>{summaryRow.average}</td>
+                          <td style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center' }}></td>
+                          <td className="no-print" style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center', width: '40px' }}></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
 
                 {/* BULK ACTIONS & CONTROLS */}
