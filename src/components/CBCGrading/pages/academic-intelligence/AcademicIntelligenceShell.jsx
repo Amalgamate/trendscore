@@ -81,8 +81,8 @@ const DEFAULT_CLASS_OPTIONS = [
 
 export const DEFAULT_ACADEMIC_INTELLIGENCE_FILTERS = [
   { key: 'year', label: 'Year', options: YEAR_OPTIONS },
+  { key: 'section', label: 'Section', options: SECTION_OPTIONS },
   { key: 'term', label: 'Term', options: TERM_OPTIONS },
-  { key: 'grade', label: 'Grade', options: GRADE_OPTIONS },
   { key: 'testType', label: 'Test Type', options: EXAM_TYPE_OPTIONS },
 ];
 
@@ -114,7 +114,6 @@ const getFiltersForPage = (activePage, filters, classOptions) => {
       { key: 'year', label: 'Year', options: YEAR_OPTIONS },
       { key: 'section', label: 'Section', options: SECTION_OPTIONS },
       { key: 'term', label: 'Term', options: TERM_OPTIONS },
-      { key: 'grade', label: 'Grade', options: GRADE_OPTIONS },
       { key: 'testType', label: 'Test Type', options: EXAM_TYPE_OPTIONS },
     ];
   }

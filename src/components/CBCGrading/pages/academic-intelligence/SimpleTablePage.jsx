@@ -17,12 +17,31 @@ export const getLearnerGrade = (learner) => learner?.grade || learner?.classGrad
 
 const normalizeFilterValue = (value) => String(value || '').toLowerCase().replace(/_/g, '-').replace(/\s+/g, '-');
 
+const getGradeNumber = (grade) => {
+  const value = String(grade || '').trim().toLowerCase();
+  if (value.includes('playgroup')) return 0;
+  if (value.includes('pp1')) return -2;
+  if (value.includes('pp2')) return -1;
+  const match = value.match(/\d+/);
+  return match ? Number(match[0]) : null;
+};
+
+export const getLearnerSection = (learner) => {
+  const gradeNumber = getGradeNumber(getLearnerGrade(learner));
+  if (gradeNumber === 0 || gradeNumber === -2 || gradeNumber === -1) return 'pre-primary';
+  if (gradeNumber >= 1 && gradeNumber <= 3) return 'lower';
+  if (gradeNumber >= 4 && gradeNumber <= 6) return 'upper';
+  if (gradeNumber >= 7 && gradeNumber <= 9) return 'junior-sec';
+  return 'unspecified';
+};
+
 export const filterLearnersByAcademicFilters = (learners, filters = {}) => {
   const learnerList = Array.isArray(learners) ? learners : [];
   return learnerList.filter((learner) => {
+    const matchesSection = !filters.section || filters.section === 'all' || getLearnerSection(learner) === filters.section;
     const matchesGrade = !filters.grade || filters.grade === 'all' || normalizeFilterValue(getLearnerGrade(learner)) === filters.grade;
     const matchesClass = !filters.classScope || filters.classScope === 'all' || normalizeFilterValue(getLearnerClass(learner)) === filters.classScope;
-    return matchesGrade && matchesClass;
+    return matchesSection && matchesGrade && matchesClass;
   });
 };
 
