@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useMemo, useState } from 'react';
+import React, { lazy, Suspense } from 'react';
 import ErrorBoundary from '../shared/ErrorBoundary';
 import EmptyState from '../shared/EmptyState';
 import ComingSoon from '../shared/ComingSoon';
@@ -141,9 +141,9 @@ const MyProgress = lazy(() => import('../pages/student/MyProgress'));
 
 const ACADEMIC_INTELLIGENCE_PAGE_COPY = {
   'academic-intelligence': {
-    title: 'Executive Dashboard',
+    title: 'Analytics Dashboards',
     eyebrow: 'Academic Intelligence',
-    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Executive Dashboard'],
+    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Analytics Dashboards'],
     description: 'A consolidated academic intelligence view is planned for performance, completion, intervention and trend signals.',
   },
   'academic-section-analysis': {
@@ -189,9 +189,9 @@ const ACADEMIC_INTELLIGENCE_PAGE_COPY = {
     description: 'Surface explainable insights after the academic intelligence engine is connected.',
   },
   'academic-subject-intelligence': {
-    title: 'Subject Intelligence',
+    title: 'Subject Analysis',
     eyebrow: 'Academic Intelligence',
-    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Subject Intelligence'],
+    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Subject Analysis'],
     description: 'Analyze subject-level performance using the existing subject analysis workbench.',
   },
   'academic-top-bottom-performers': {
@@ -280,63 +280,6 @@ const PageRouter = ({
   const admissionLearner = editingLearner
     || pageParams?.learner
     || (admissionLearnerId ? learners?.find((learner) => learner.id === admissionLearnerId) : null);
-  const [executiveFilters, setExecutiveFilters] = useState({
-    term: 'current',
-    grade: 'all',
-    stream: 'all',
-    learningArea: 'all',
-  });
-
-  const updateExecutiveFilter = (key, value) => {
-    setExecutiveFilters((current) => ({ ...current, [key]: value }));
-  };
-
-  const executiveFilterControls = useMemo(() => {
-    const learnerList = Array.isArray(learners) ? learners : [];
-    const gradeOptions = [...new Set(learnerList.map((learner) => learner.grade).filter(Boolean))]
-      .sort()
-      .map((grade) => ({ value: grade, label: grade }));
-    const streamOptions = [...new Set(learnerList.map((learner) => learner.stream || learner.className).filter(Boolean))]
-      .sort()
-      .map((stream) => ({ value: stream, label: stream }));
-
-    return [
-      {
-        key: 'term',
-        label: 'Term',
-        value: executiveFilters.term,
-        options: [
-          { value: 'current', label: 'Current term' },
-          { value: 'all', label: 'All terms' },
-        ],
-        onChange: (value) => updateExecutiveFilter('term', value),
-      },
-      {
-        key: 'grade',
-        label: 'Grade',
-        value: executiveFilters.grade,
-        options: [{ value: 'all', label: 'All grades' }, ...gradeOptions],
-        onChange: (value) => updateExecutiveFilter('grade', value),
-      },
-      {
-        key: 'stream',
-        label: 'Stream',
-        value: executiveFilters.stream,
-        options: [{ value: 'all', label: 'All streams' }, ...streamOptions],
-        onChange: (value) => updateExecutiveFilter('stream', value),
-      },
-      {
-        key: 'learningArea',
-        label: 'Learning Area',
-        value: executiveFilters.learningArea,
-        options: [
-          { value: 'all', label: 'All learning areas' },
-        ],
-        onChange: (value) => updateExecutiveFilter('learningArea', value),
-      },
-    ];
-  }, [executiveFilters, learners]);
-
   const renderAcademicIntelligencePage = (activePage, content, fallbackCopy = {}) => {
     const copy = ACADEMIC_INTELLIGENCE_PAGE_COPY[activePage] || fallbackCopy;
     return (
@@ -519,11 +462,8 @@ const PageRouter = ({
           case 'academic-intelligence':
             return renderAcademicIntelligencePage(
               'academic-intelligence',
-              <ExecutiveDashboard learners={learners} filters={executiveFilters} />,
-              {
-                ...ACADEMIC_INTELLIGENCE_PAGE_COPY['academic-intelligence'],
-                filters: executiveFilterControls,
-              }
+              <ExecutiveDashboard learners={learners} />,
+              ACADEMIC_INTELLIGENCE_PAGE_COPY['academic-intelligence']
             );
           case 'academic-section-analysis':
             return renderAcademicIntelligencePage(

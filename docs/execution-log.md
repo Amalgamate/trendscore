@@ -1201,3 +1201,93 @@ All planned phases complete.
 Notes:
 The remaining browser-dependent regression checks were skipped per user instruction. Production build still reports existing Browserslist staleness and large chunk warnings, but the build succeeds.
 
+---
+
+Date:
+2026-06-06 18:35
+
+Phase:
+Academic Intelligence UI Refinement
+
+Chunk:
+Minimal & Smart Layout Pass
+
+Completed:
+Replaced the Academic Intelligence horizontal pill navigation with a fixed secondary sidebar on desktop and a compact dropdown on mobile. Added scoped primary sidebar auto-collapse while Academic Intelligence routes are active, with restore behavior when leaving the module. Tightened the Executive Dashboard density and removed stale skeleton/chunk wording.
+
+Files:
+- src/components/CBCGrading/CBCGradingSystem.jsx
+- src/components/CBCGrading/pages/academic-intelligence/AcademicIntelligenceShell.jsx
+- src/components/CBCGrading/pages/academic-intelligence/ExecutiveDashboard.jsx
+- docs/execution-log.md
+
+Tests:
+Passed. Static scan confirmed no Academic Intelligence horizontal pill scrollbar remains, secondary sidebar/mobile dropdown are present, and sidebar auto-collapse route scope exists. Targeted ESLint passed. `npx tsc --noEmit` passed. `npm run build` passed.
+
+Next:
+Stop after Academic Intelligence UI redesign per request.
+
+Notes:
+No backend logic was changed and no non-Academic-Intelligence modules were intentionally redesigned. The only remaining `overflow-x-auto` match in Academic Intelligence is the Learner Risk data table, not module navigation. Production build still reports existing Browserslist staleness and large chunk warnings.
+
+---
+
+Date:
+2026-06-06 19:05
+
+Phase:
+Academic Intelligence UI Refinement
+
+Chunk:
+Data-First Chrome Reduction
+
+Completed:
+Removed Academic Intelligence hero-style header copy, breadcrumbs, filter helper text, dashboard intro banner, panel descriptions and placeholder explanation blocks. Compact filters now sit directly beside the page title, dashboard pages begin with KPI widgets, analytics pages keep filters first and then move into KPIs, charts and tables. AI Insights and fallback Academic Intelligence routes now render compact status/table surfaces instead of large placeholder content.
+
+Files:
+- src/components/CBCGrading/pages/academic-intelligence/AcademicIntelligenceShell.jsx
+- src/components/CBCGrading/pages/academic-intelligence/ExecutiveDashboard.jsx
+- src/components/CBCGrading/pages/academic-intelligence/SectionAnalysis.jsx
+- src/components/CBCGrading/pages/academic-intelligence/SubjectIntelligence.jsx
+- src/components/CBCGrading/pages/academic-intelligence/GenderAnalysis.jsx
+- src/components/CBCGrading/pages/academic-intelligence/CompetencyAnalysis.jsx
+- src/components/CBCGrading/pages/academic-intelligence/LearnerRiskCenter.jsx
+- src/components/CBCGrading/pages/academic-intelligence/GrowthTrends.jsx
+- src/components/CBCGrading/pages/academic-intelligence/AIInsights.jsx
+- docs/execution-log.md
+
+Tests:
+Passed. Targeted ESLint passed. Static scan found no remaining rendered Academic Intelligence placeholder, intro, hero, breadcrumb or description-prop text. `npx tsc --noEmit` passed. `npm run build` passed.
+
+Notes:
+No backend logic or non-Academic-Intelligence modules were intentionally changed. Existing report/export behaviors were left in place. Production build still reports existing Browserslist staleness, plugin timing and large chunk warnings.
+
+---
+
+Date:
+2026-06-06 19:35
+
+Phase:
+Academic Intelligence UI Refinement
+
+Chunk:
+TrendSCORE Dashboard Color System Pass
+
+Completed:
+Converted Academic Intelligence KPI cards from flat white report cards to soft colored dashboard cards with large metrics, helper insight text, icons, hover motion and subtle shadows. Executive Dashboard now uses the requested six KPI set: Overall Mean, Learners Assessed, Completion Rate, At Risk Learners, Most Improved Subject and Insight Signals. Analytics KPI rows now use the same colorful dashboard language while keeping the data-first layout and compact filters.
+
+Files:
+- src/components/CBCGrading/pages/academic-intelligence/ExecutiveDashboard.jsx
+- src/components/CBCGrading/pages/academic-intelligence/SectionAnalysis.jsx
+- src/components/CBCGrading/pages/academic-intelligence/SubjectIntelligence.jsx
+- src/components/CBCGrading/pages/academic-intelligence/GenderAnalysis.jsx
+- src/components/CBCGrading/pages/academic-intelligence/CompetencyAnalysis.jsx
+- src/components/CBCGrading/pages/academic-intelligence/LearnerRiskCenter.jsx
+- src/components/CBCGrading/pages/academic-intelligence/GrowthTrends.jsx
+- docs/execution-log.md
+
+Tests:
+Pending validation.
+
+Notes:
+Top / Bottom Performers remains routed through the existing custom report component to preserve current export behavior. No backend logic or non-Academic-Intelligence modules were intentionally changed.

@@ -175,8 +175,6 @@ export const allNavSections = [
                     { id: 'assess-core-competencies', label: 'Core Competencies', path: 'assess-core-competencies', permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'assess-values',            label: 'National Values',   path: 'assess-values',            permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'assess-cocurricular',      label: 'Co-Curricular',     path: 'assess-cocurricular',      permission: 'ACCESS_ASSESSMENT_MODULE' },
-                    { id: 'assess-termly-report',     label: 'Report Cards',      path: 'assess-termly-report',     permission: 'ACCESS_ASSESSMENT_MODULE' },
-                    { id: 'assess-print-center',      label: 'Print Center',      path: 'assess-print-center',      permission: 'ACCESS_ASSESSMENT_MODULE' },
                 ]
             },
             {
@@ -198,18 +196,43 @@ export const allNavSections = [
         icon: BarChart3,
         app: 'exams',
         permission: 'VIEW_ALL_REPORTS',
-        hideHorizontalSubmenu: true,
         items: [
-            { id: 'academic-executive-dashboard',  label: 'Executive Dashboard',  path: 'academic-intelligence',          permission: 'VIEW_ALL_REPORTS' },
-            { id: 'academic-section-analysis',     label: 'Section Analysis',     path: 'academic-section-analysis',      permission: 'VIEW_ALL_REPORTS' },
-            { id: 'academic-subject-intelligence', label: 'Subject Intelligence', path: 'academic-subject-intelligence',  permission: 'VIEW_ALL_REPORTS' },
-            { id: 'academic-gender-analysis',      label: 'Gender Analysis',      path: 'academic-gender-analysis',       permission: 'VIEW_ALL_REPORTS' },
-            { id: 'academic-stream-analysis',      label: 'Stream Analysis',      path: 'academic-stream-analysis',       permission: 'VIEW_ALL_REPORTS' },
-            { id: 'academic-competency-analysis',  label: 'Competency Analysis',  path: 'academic-competency-analysis',   permission: 'VIEW_ALL_REPORTS' },
-            { id: 'academic-learner-risk',         label: 'Learner Risk',         path: 'academic-learner-risk',          permission: 'VIEW_ALL_REPORTS' },
-            { id: 'academic-growth-trends',        label: 'Growth Trends',        path: 'academic-growth-trends',         permission: 'VIEW_ALL_REPORTS' },
-            { id: 'academic-ai-insights',          label: 'AI Insights',          path: 'academic-ai-insights',           permission: 'VIEW_ALL_REPORTS' },
-            { id: 'academic-top-bottom-performers', label: 'Top / Bottom Performers', path: 'academic-top-bottom-performers', permission: 'VIEW_ALL_REPORTS' },
+            { id: 'academic-executive-dashboard',  label: 'Analytics Dashboards', path: 'academic-intelligence',          permission: 'VIEW_ALL_REPORTS' },
+            {
+                id: 'group-academic-analysis',
+                label: 'Performance Analysis',
+                type: 'group',
+                icon: BarChart3,
+                items: [
+                    { id: 'academic-section-analysis',     label: 'Section Analysis',     path: 'academic-section-analysis',      permission: 'VIEW_ALL_REPORTS' },
+                    { id: 'academic-subject-intelligence', label: 'Subject Analysis', path: 'academic-subject-intelligence',  permission: 'VIEW_ALL_REPORTS' },
+                    { id: 'academic-gender-analysis',      label: 'Gender Analysis',      path: 'academic-gender-analysis',       permission: 'VIEW_ALL_REPORTS' },
+                    { id: 'academic-stream-analysis',      label: 'Stream Analysis',      path: 'academic-stream-analysis',       permission: 'VIEW_ALL_REPORTS' },
+                    { id: 'academic-competency-analysis',  label: 'Competency Analysis',  path: 'academic-competency-analysis',   permission: 'VIEW_ALL_REPORTS' },
+                ]
+            },
+            {
+                id: 'group-academic-insights',
+                label: 'Learner Insights',
+                type: 'group',
+                icon: Brain,
+                items: [
+                    { id: 'academic-learner-risk',         label: 'Learner Risk',         path: 'academic-learner-risk',          permission: 'VIEW_ALL_REPORTS' },
+                    { id: 'academic-growth-trends',        label: 'Growth Trends',        path: 'academic-growth-trends',         permission: 'VIEW_ALL_REPORTS' },
+                    { id: 'academic-ai-insights',          label: 'AI Insights',          path: 'academic-ai-insights',           permission: 'VIEW_ALL_REPORTS' },
+                    { id: 'academic-top-bottom-performers', label: 'Top / Bottom Performers', path: 'academic-top-bottom-performers', permission: 'VIEW_ALL_REPORTS' },
+                ]
+            },
+            {
+                id: 'group-academic-reports',
+                label: 'Reports & Printing',
+                type: 'group',
+                icon: FileText,
+                items: [
+                    { id: 'academic-report-cards',         label: 'Report Cards',         path: 'assess-termly-report',           permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'academic-print-center',         label: 'Print Center',         path: 'assess-print-center',            permission: 'ACCESS_ASSESSMENT_MODULE' },
+                ]
+            },
         ]
     },
     {

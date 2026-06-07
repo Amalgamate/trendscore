@@ -1,287 +1,285 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, Filter, Grid, LineChart, Search, Target, Trophy, User, Users } from 'lucide-react';
-import { assessmentAPI } from '../../../../services/api';
+import React, { useMemo } from 'react';
+import { getLearnerName, groupLearners } from './SimpleTablePage';
+import { average, formatScore, getScoreTone } from './useAcademicAnalytics';
 
-const toArray = (value) => {
-  if (Array.isArray(value)) return value;
-  if (Array.isArray(value?.data)) return value.data;
-  if (Array.isArray(value?.items)) return value.items;
-  if (Array.isArray(value?.results)) return value.results;
-  if (Array.isArray(value?.tests)) return value.tests;
-  return [];
+const getUniqueLearnerCount = (results) => new Set(results.map((result) => result.learnerId).filter(Boolean)).size;
+
+const getScoreStats = (results) => {
+  const scores = results.map((result) => result.percentage).filter(Number.isFinite).sort((a, b) => b - a);
+  return {
+    learners: getUniqueLearnerCount(results),
+    records: results.length,
+    average: average(scores),
+    highest: scores[0] ?? null,
+    lowest: scores[scores.length - 1] ?? null,
+  };
 };
 
-const getTestId = (test) => test?.id || test?._id || test?.testId;
-const getResultTestId = (result) => result?.testId || result?.test?.id || result?.assessmentTestId;
-const getResultLearnerId = (result) => result?.learnerId || result?.learner?.id || result?.studentId;
-const getSubjectName = (test) => test?.learningArea || test?.learningAreaName || test?.subject || test?.subjectName || test?.name || 'Unspecified subject';
-const getStrandName = (test, result) => result?.strand || result?.strandName || test?.strand || test?.strandName || test?.topic || 'Unspecified strand';
-const getTestDate = (test) => test?.assessmentDate || test?.date || test?.testDate || test?.createdAt;
+const getGenderAverage = (results, gender) => average(
+  results.filter((result) => result.gender === gender).map((result) => result.percentage)
+);
 
-const getScorePercent = (result, test) => {
-  const explicitPercent = Number(result?.percentage ?? result?.percent ?? result?.scorePercent);
-  if (Number.isFinite(explicitPercent)) return explicitPercent;
-  const score = Number(result?.score ?? result?.marks ?? result?.mark ?? result?.obtainedMarks);
-  const total = Number(result?.totalMarks ?? result?.maxMarks ?? test?.totalMarks ?? test?.maxMarks);
-  if (Number.isFinite(score) && Number.isFinite(total) && total > 0) return (score / total) * 100;
-  return null;
+const getGapText = (boysAverage, girlsAverage) => {
+  if (!Number.isFinite(boysAverage) || !Number.isFinite(girlsAverage)) return '-';
+  if (Math.round(boysAverage) === Math.round(girlsAverage)) return 'Level';
+  return `${boysAverage > girlsAverage ? 'Boys' : 'Girls'} +${formatScore(Math.abs(boysAverage - girlsAverage))}`;
 };
 
-const aggregateRows = (records, getLabel) => {
-  const grouped = new Map();
-  records.forEach((record) => {
-    const label = getLabel(record) || 'Unspecified';
-    if (!grouped.has(label)) grouped.set(label, { label, total: 0, count: 0 });
-    const bucket = grouped.get(label);
-    bucket.total += record.percent;
-    bucket.count += 1;
+const getSubjectMeritRows = (results) => {
+  const byLearner = new Map();
+  results.forEach((result) => {
+    if (!byLearner.has(result.learnerId)) {
+      byLearner.set(result.learnerId, {
+        id: result.learnerId,
+        name: result.learnerName || getLearnerName(result.raw?.learner),
+        admissionNumber: result.admissionNumber || '-',
+        grade: result.grade || '-',
+        className: result.className || 'Unspecified',
+        scores: [],
+        tests: new Set(),
+      });
+    }
+    const learner = byLearner.get(result.learnerId);
+    learner.scores.push(result.percentage);
+    if (result.testTitle) learner.tests.add(result.testTitle);
   });
-  return [...grouped.values()]
-    .map((bucket) => ({ ...bucket, average: bucket.count ? Math.round(bucket.total / bucket.count) : null }))
-    .sort((a, b) => (b.average || 0) - (a.average || 0));
+
+  return [...byLearner.values()]
+    .map((learner) => ({
+      ...learner,
+      average: average(learner.scores),
+      records: learner.scores.length,
+      tests: [...learner.tests].join(', ') || '-',
+    }))
+    .filter((learner) => Number.isFinite(learner.average))
+    .sort((a, b) => b.average - a.average || a.name.localeCompare(b.name))
+    .map((learner, index) => ({
+      ...learner,
+      position: index + 1,
+    }));
 };
 
-const EmptyState = ({ title, description }) => (
-  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
-    <p className="text-sm font-extrabold text-slate-500">{title}</p>
-    <p className="mt-1 text-xs font-semibold text-slate-400">{description}</p>
+const SectionHeader = ({ title, description, meta }) => (
+  <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+    <div>
+      <h2 className="text-base font-black text-slate-950">{title}</h2>
+      <p className="mt-1 text-xs font-semibold text-slate-500">{description}</p>
+    </div>
+    {meta && (
+      <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">{meta}</span>
+    )}
   </div>
 );
 
-const Card = ({ icon: Icon, label, value, helper }) => (
-  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-    <div className="flex items-start justify-between gap-3">
+const SubjectSummaryTable = ({ rows }) => (
+  <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <SectionHeader
+      title="Subject Performance"
+      description="Subject-level performance for the selected grade, class, term and test type."
+      meta={`${rows.length} subjects`}
+    />
+    <div className="overflow-x-auto">
+      <table className="min-w-full border-separate border-spacing-0 text-sm">
+        <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+          <tr>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-left">Subject</th>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center">Learners</th>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center">Records</th>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center">Average</th>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center">Highest</th>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center">Lowest</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.subject} className="hover:bg-slate-50">
+              <td className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 font-semibold text-slate-800">{row.subject}</td>
+              <td className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center font-black text-slate-900">{row.learners}</td>
+              <td className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center font-semibold text-slate-700">{row.records}</td>
+              <td className={`whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center font-black ${getScoreTone(row.average)}`}>{formatScore(row.average)}</td>
+              <td className={`whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center font-bold ${getScoreTone(row.highest)}`}>{formatScore(row.highest)}</td>
+              <td className={`whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center font-bold ${getScoreTone(row.lowest)}`}>{formatScore(row.lowest)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+);
+
+const ClassSubjectPerformanceTable = ({ rows }) => (
+  <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <SectionHeader
+      title="Class Subject Performance"
+      description="Performance per subject within each selected class, including boys and girls averages."
+      meta={`${rows.length} class rows`}
+    />
+    <div className="overflow-x-auto">
+      <table className="min-w-full border-separate border-spacing-0 text-sm">
+        <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+          <tr>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-left">Subject</th>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center">Grade</th>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center">Class</th>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center">Learners</th>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center">Class Avg</th>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center">Boys Avg</th>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center">Girls Avg</th>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center">Gap</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={`${row.subject}-${row.grade}-${row.className}`} className="hover:bg-slate-50">
+              <td className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 font-semibold text-slate-800">{row.subject}</td>
+              <td className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center font-semibold text-slate-700">{row.grade}</td>
+              <td className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center font-semibold text-slate-700">{row.className}</td>
+              <td className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center font-black text-slate-900">{row.learners}</td>
+              <td className={`whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center font-black ${getScoreTone(row.average)}`}>{formatScore(row.average)}</td>
+              <td className={`whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center font-bold ${getScoreTone(row.boysAverage)}`}>{formatScore(row.boysAverage)}</td>
+              <td className={`whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center font-bold ${getScoreTone(row.girlsAverage)}`}>{formatScore(row.girlsAverage)}</td>
+              <td className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center font-bold text-slate-700">{row.gap}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+);
+
+const SubjectMeritTable = ({ table }) => (
+  <section className="border-t border-slate-200 pt-6 first:border-t-0 first:pt-0">
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
       <div>
-        <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-slate-400">{label}</p>
-        <p className="mt-2 text-2xl font-black text-slate-950">{value}</p>
+        <h2 className="text-lg font-bold text-slate-950">{table.subject}</h2>
+        <p className="text-xs font-semibold text-slate-500">{table.grade} • {table.className}</p>
       </div>
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
-        <Icon size={19} />
-      </div>
+      <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">{table.rows.length} learners</span>
     </div>
-    <p className="mt-2 text-xs font-semibold text-slate-500">{helper}</p>
-  </div>
+    <div className="overflow-x-auto">
+      <table className="min-w-full border-separate border-spacing-0 text-sm">
+        <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+          <tr>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center">Pos</th>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-left">Learner</th>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center">Adm No.</th>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center">Grade</th>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center">Class</th>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center">Score</th>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center">Records</th>
+            <th className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-left">Tests</th>
+          </tr>
+        </thead>
+        <tbody>
+          {table.rows.map((row) => (
+            <tr key={row.id} className="hover:bg-slate-50">
+              <td className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center font-black text-slate-900">{row.position}</td>
+              <td className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 font-semibold text-slate-800">{row.name}</td>
+              <td className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center font-semibold text-slate-700">{row.admissionNumber}</td>
+              <td className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center font-semibold text-slate-700">{row.grade}</td>
+              <td className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center font-semibold text-slate-700">{row.className}</td>
+              <td className={`whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center font-black ${getScoreTone(row.average)}`}>
+                {formatScore(row.average)}
+              </td>
+              <td className="whitespace-nowrap border-b border-r border-slate-100 px-4 py-3 text-center font-semibold text-slate-700">{row.records}</td>
+              <td className="min-w-[220px] border-b border-r border-slate-100 px-4 py-3 text-xs font-semibold text-slate-600">{row.tests}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
 );
 
-const Panel = ({ icon: Icon, title, description, children }) => (
-  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-    <div className="mb-5 flex items-start gap-3">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
-        <Icon size={20} />
+const SubjectIntelligence = ({ academicFilters, analytics }) => {
+  const report = useMemo(() => {
+    const selectedSubject = academicFilters?.subject || 'all';
+    const results = (analytics?.results || [])
+      .filter((result) => Number.isFinite(result.percentage))
+      .filter((result) => selectedSubject === 'all' || result.subjectKey === selectedSubject);
+
+    const subjectRows = groupLearners(results, (result) => result.subject || 'Unspecified Subject')
+      .map((subjectGroup) => ({
+        subject: subjectGroup.label,
+        ...getScoreStats(subjectGroup.records),
+      }))
+      .sort((a, b) => b.average - a.average || a.subject.localeCompare(b.subject));
+
+    const classRows = groupLearners(results, (result) => result.subject || 'Unspecified Subject')
+      .flatMap((subjectGroup) => (
+        groupLearners(subjectGroup.records, (result) => result.grade || '-')
+          .flatMap((gradeGroup) => (
+            groupLearners(gradeGroup.records, (result) => result.className || 'Unspecified')
+              .map((classGroup) => {
+                const stats = getScoreStats(classGroup.records);
+                const boysAverage = getGenderAverage(classGroup.records, 'Boys');
+                const girlsAverage = getGenderAverage(classGroup.records, 'Girls');
+
+                return {
+                  subject: subjectGroup.label,
+                  grade: gradeGroup.label,
+                  className: classGroup.label,
+                  ...stats,
+                  boysAverage,
+                  girlsAverage,
+                  gap: getGapText(boysAverage, girlsAverage),
+                };
+              })
+          ))
+      ))
+      .sort((a, b) => (
+        a.subject.localeCompare(b.subject)
+        || a.grade.localeCompare(b.grade, undefined, { numeric: true })
+        || a.className.localeCompare(b.className, undefined, { numeric: true })
+      ));
+
+    const meritTables = groupLearners(results, (result) => result.subject || 'Unspecified Subject')
+      .flatMap((subjectGroup) => (
+        groupLearners(subjectGroup.records, (result) => result.grade || '-')
+          .flatMap((gradeGroup) => (
+            groupLearners(gradeGroup.records, (result) => result.className || 'Unspecified')
+              .map((classGroup) => ({
+                subject: subjectGroup.label,
+                grade: gradeGroup.label,
+                className: classGroup.label,
+                rows: getSubjectMeritRows(classGroup.records),
+              }))
+          ))
+      ))
+      .filter((table) => table.rows.length)
+      .sort((a, b) => (
+        a.subject.localeCompare(b.subject)
+        || a.grade.localeCompare(b.grade, undefined, { numeric: true })
+        || a.className.localeCompare(b.className, undefined, { numeric: true })
+      ));
+
+    return { subjectRows, classRows, meritTables };
+  }, [academicFilters, analytics]);
+
+  if (!report.meritTables.length) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm font-bold text-slate-500 shadow-sm">
+        No learner subject performance records available for the selected filters.
       </div>
-      <div>
-        <h3 className="text-base font-extrabold text-slate-950">{title}</h3>
-        <p className="mt-1 text-sm font-medium text-slate-500">{description}</p>
-      </div>
-    </div>
-    {children}
-  </div>
-);
-
-const BarList = ({ rows, emptyTitle, emptyDescription }) => {
-  if (!rows.length) return <EmptyState title={emptyTitle} description={emptyDescription} />;
-  const max = Math.max(...rows.map((row) => row.average || 0), 100);
-  return (
-    <div className="space-y-3">
-      {rows.map((row) => (
-        <div key={row.label}>
-          <div className="mb-1 flex items-center justify-between gap-3 text-xs font-bold text-slate-500">
-            <span className="truncate">{row.label}</span>
-            <span>{row.average === null ? 'No score' : `${row.average}%`}</span>
-          </div>
-          <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-            <div className="h-full rounded-full bg-indigo-500" style={{ width: `${row.average ? Math.max(6, (row.average / max) * 100) : 0}%` }} />
-          </div>
-          <p className="mt-1 text-[10px] font-semibold text-slate-400">{row.count} result records</p>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-const SubjectIntelligence = ({ learners = [] }) => {
-  const [filters, setFilters] = useState({ subject: 'all', grade: 'all', stream: 'all' });
-  const [state, setState] = useState({ loading: true, tests: [], results: [], error: null });
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      setState((current) => ({ ...current, loading: true, error: null }));
-      try {
-        const tests = toArray(await assessmentAPI.getTests());
-        const resultGroups = await Promise.all(tests.slice(0, 35).map(async (test) => {
-          const testId = getTestId(test);
-          if (!testId) return [];
-          try {
-            return toArray(await assessmentAPI.getTestResults(testId));
-          } catch {
-            return [];
-          }
-        }));
-        if (!cancelled) setState({ loading: false, tests, results: resultGroups.flat(), error: null });
-      } catch (error) {
-        if (!cancelled) setState({ loading: false, tests: [], results: [], error: error?.message || 'Assessment data is unavailable.' });
-      }
-    };
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const options = useMemo(() => {
-    const subjects = [...new Set(state.tests.map(getSubjectName).filter(Boolean))].sort();
-    const grades = [...new Set(learners.map((learner) => learner.grade).filter(Boolean))].sort();
-    const streams = [...new Set(learners.map((learner) => learner.stream || learner.className).filter(Boolean))].sort();
-    return { subjects, grades, streams };
-  }, [learners, state.tests]);
-
-  const analytics = useMemo(() => {
-    const learnerMap = new Map(learners.map((learner) => [learner.id, learner]));
-    const testMap = new Map(state.tests.map((test) => [getTestId(test), test]));
-    const records = state.results.map((result) => {
-      const test = testMap.get(getResultTestId(result));
-      const learner = learnerMap.get(getResultLearnerId(result));
-      const percent = getScorePercent(result, test);
-      if (!test || !learner || percent === null) return null;
-      const rawDate = getTestDate(test);
-      const date = rawDate ? new Date(rawDate) : null;
-      return {
-        learner,
-        test,
-        percent,
-        subject: getSubjectName(test),
-        strand: getStrandName(test, result),
-        grade: learner.grade || test.grade || 'Unspecified grade',
-        stream: learner.stream || learner.className || test.stream || 'Unspecified stream',
-        gender: learner.gender || learner.sex || 'Unspecified gender',
-        period: date && !Number.isNaN(date.getTime()) ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}` : null,
-      };
-    }).filter(Boolean).filter((record) => (
-      (filters.subject === 'all' || record.subject === filters.subject)
-      && (filters.grade === 'all' || record.grade === filters.grade)
-      && (filters.stream === 'all' || record.stream === filters.stream)
-    ));
-
-    const subjectMean = records.length ? Math.round(records.reduce((sum, item) => sum + item.percent, 0) / records.length) : null;
-    const learnerCount = new Set(records.map((record) => record.learner.id)).size;
-    const gradeRows = aggregateRows(records, (record) => record.grade);
-    const streamRows = aggregateRows(records, (record) => record.stream);
-    const genderRows = aggregateRows(records, (record) => record.gender);
-    const strandRows = aggregateRows(records, (record) => record.strand);
-    const trendRows = aggregateRows(records.filter((record) => record.period), (record) => record.period).sort((a, b) => a.label.localeCompare(b.label)).slice(-6);
-    const boys = genderRows.find((row) => /^male|boy/i.test(row.label));
-    const girls = genderRows.find((row) => /^female|girl/i.test(row.label));
-    const gap = boys?.average !== undefined && girls?.average !== undefined ? Math.abs(boys.average - girls.average) : null;
-    const weakestAreas = strandRows.slice().sort((a, b) => (a.average || 0) - (b.average || 0)).slice(0, 4);
-    const recommendations = weakestAreas.length
-      ? weakestAreas.map((area) => `Review ${area.label}: current average is ${area.average}%.`)
-      : ['No strand-level recommendations available until strand result data is present.'];
-
-    return {
-      records,
-      subjectMean,
-      learnerCount,
-      gradeRows,
-      streamRows,
-      genderRows,
-      strandRows,
-      trendRows,
-      boysMean: boys?.average ?? null,
-      girlsMean: girls?.average ?? null,
-      gap,
-      atRisk: records.filter((record) => record.percent < 40).length,
-      weakestAreas,
-      recommendations,
-    };
-  }, [filters, learners, state.results, state.tests]);
-
-  const selectedSubjectLabel = filters.subject === 'all' ? 'All subjects' : filters.subject;
-  const kpis = [
-    { label: 'Subject Mean', value: analytics.subjectMean === null ? 'No score' : `${analytics.subjectMean}%`, helper: selectedSubjectLabel, icon: BarChart3 },
-    { label: 'Learners Assessed', value: analytics.learnerCount, helper: 'Unique learners with result records.', icon: Users },
-    { label: 'Result Records', value: analytics.records.length, helper: 'Loaded assessment result records.', icon: Target },
-    { label: 'Gender Gap', value: analytics.gap === null ? 'No data' : `${analytics.gap}%`, helper: 'Difference between boys and girls mean.', icon: User },
-    { label: 'Boys Mean', value: analytics.boysMean === null ? 'No score' : `${analytics.boysMean}%`, helper: 'Uses learner gender records.', icon: User },
-    { label: 'Girls Mean', value: analytics.girlsMean === null ? 'No score' : `${analytics.girlsMean}%`, helper: 'Uses learner gender records.', icon: Users },
-    { label: 'At Risk', value: analytics.atRisk, helper: 'Result records below 40%.', icon: AlertTriangle },
-    { label: 'Weakest Area', value: analytics.weakestAreas[0]?.label || 'No data', helper: 'Lowest strand average.', icon: Trophy },
-  ];
+    );
+  }
 
   return (
-    <div className="space-y-4 bg-slate-50 p-4 md:p-6">
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-4 flex items-start gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
-            <Filter size={19} />
-          </div>
-          <div>
-            <h2 className="text-lg font-extrabold text-slate-950">Subject filters</h2>
-            <p className="text-sm font-medium text-slate-500">Filter deep subject analytics by subject, grade and stream.</p>
-          </div>
-        </div>
-        <div className="grid gap-3 md:grid-cols-3">
-          <select value={filters.subject} onChange={(event) => setFilters((current) => ({ ...current, subject: event.target.value }))} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700">
-            <option value="all">All subjects</option>
-            {options.subjects.map((subject) => <option key={subject} value={subject}>{subject}</option>)}
-          </select>
-          <select value={filters.grade} onChange={(event) => setFilters((current) => ({ ...current, grade: event.target.value }))} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700">
-            <option value="all">All grades</option>
-            {options.grades.map((grade) => <option key={grade} value={grade}>{grade}</option>)}
-          </select>
-          <select value={filters.stream} onChange={(event) => setFilters((current) => ({ ...current, stream: event.target.value }))} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700">
-            <option value="all">All streams</option>
-            {options.streams.map((stream) => <option key={stream} value={stream}>{stream}</option>)}
-          </select>
-        </div>
-        {state.error && <p className="mt-3 text-sm font-bold text-rose-600">{state.error}</p>}
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {kpis.map((kpi) => <Card key={kpi.label} {...kpi} />)}
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Panel icon={User} title="Gender Gap Section" description="Boys and girls mean for the selected subject context.">
-          {state.loading ? <EmptyState title="Loading gender data" description="Assessment records are being loaded." /> : <BarList rows={analytics.genderRows} emptyTitle="No gender data available" emptyDescription="Gender comparison needs learner gender and subject result records." />}
-        </Panel>
-        <Panel icon={BarChart3} title="Grade Comparison" description="Grade-level subject performance.">
-          {state.loading ? <EmptyState title="Loading grade data" description="Assessment records are being loaded." /> : <BarList rows={analytics.gradeRows} emptyTitle="No grade data available" emptyDescription="Grade comparison needs subject result records." />}
-        </Panel>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Panel icon={Grid} title="Stream Comparison" description="Stream-level subject performance.">
-          {state.loading ? <EmptyState title="Loading stream data" description="Assessment records are being loaded." /> : <BarList rows={analytics.streamRows} emptyTitle="No stream data available" emptyDescription="Stream comparison needs stream and result records." />}
-        </Panel>
-        <Panel icon={LineChart} title="Trend Over Time" description="Monthly subject averages from dated tests.">
-          {state.loading ? <EmptyState title="Loading trend data" description="Assessment records are being loaded." /> : <BarList rows={analytics.trendRows} emptyTitle="No trend data available" emptyDescription="Trend needs dated subject result records." />}
-        </Panel>
-      </div>
-
-      <Panel icon={Target} title="Strand Performance" description="Strand and topic performance for the selected subject context.">
-        {state.loading ? <EmptyState title="Loading strand data" description="Assessment records are being loaded." /> : <BarList rows={analytics.strandRows} emptyTitle="No strand data available" emptyDescription="Strand performance needs strand or topic fields on tests/results." />}
-      </Panel>
-
-      <Panel icon={Search} title="Weakest Areas & Recommendations" description="Lowest-performing strands and deterministic support prompts.">
-        {analytics.weakestAreas.length ? (
-          <div className="grid gap-3 md:grid-cols-2">
-            {analytics.weakestAreas.map((area) => (
-              <div key={area.label} className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">
-                <p className="text-sm font-extrabold">{area.label}</p>
-                <p className="mt-1 text-xs font-semibold">{area.average}% average from {area.count} records.</p>
-              </div>
-            ))}
-          </div>
-        ) : <EmptyState title="No weak areas available" description="Weak areas need strand result records." />}
-        <div className="mt-4 space-y-2">
-          {analytics.recommendations.map((recommendation) => (
-            <div key={recommendation} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-600">
-              {recommendation}
-            </div>
+    <div className="space-y-4">
+      <SubjectSummaryTable rows={report.subjectRows} />
+      <ClassSubjectPerformanceTable rows={report.classRows} />
+      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <SectionHeader
+          title="Learner Merit List"
+          description="Learners ranked by selected subject performance for each grade and class."
+          meta={`${report.meritTables.length} tables`}
+        />
+        <div className="space-y-8">
+          {report.meritTables.map((table) => (
+            <SubjectMeritTable key={`${table.subject}-${table.grade}-${table.className}`} table={table} />
           ))}
         </div>
-      </Panel>
+      </section>
     </div>
   );
 };

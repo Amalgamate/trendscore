@@ -20,12 +20,6 @@ import { useUIStore } from '../../store/useUIStore';
 import { useBootstrapStore } from '../../store/useBootstrapStore';
 import { MOBILE_MEDIA_QUERY } from '../../constants/breakpoints';
 
-// Individual hooks kept for mutation operations (create/update/delete)
-// They no longer do the initial fetch — the bootstrap store owns the list.
-import { useLearners } from './hooks/useLearners';
-import { useTeachers } from './hooks/useTeachers';
-import { useParents } from './hooks/useParents';
-
 // Utils
 import { clearAllSchoolData } from '../../utils/schoolDataCleanup';
 import { refreshBus } from '../../utils/refreshBus';
