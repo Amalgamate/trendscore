@@ -18,6 +18,14 @@ const prisma = new PrismaClient();
 const YEAR = 2025;
 const TERM = Term.TERM_1;
 
+const GRADE_LABELS: Record<string, string> = {
+  PLAYGROUP: 'Play Group', PLAY_GROUP: 'Play Group',
+  PP1: 'PP 1', PP2: 'PP 2',
+  GRADE_1: 'Grade 1', GRADE_2: 'Grade 2', GRADE_3: 'Grade 3',
+  GRADE_4: 'Grade 4', GRADE_5: 'Grade 5', GRADE_6: 'Grade 6',
+  GRADE_7: 'Grade 7', GRADE_8: 'Grade 8', GRADE_9: 'Grade 9',
+};
+
 async function ensureParent() {
   const email = 'mary.wanjiku.parent@local.test';
   const existing = await prisma.user.findUnique({ where: { email } });
@@ -250,12 +258,12 @@ async function ensureInvoices(learnerId: string, issuedBy: string, amount: numbe
       }
     },
     update: {
-      name: `Parent Dashboard ${String(grade).replace('_', ' ')}`,
+      name: GRADE_LABELS[String(grade).toUpperCase().replace(/\s+/g,'_')] ?? String(grade).replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()),
       active: true,
       archived: false
     },
     create: {
-      name: `Parent Dashboard ${String(grade).replace('_', ' ')}`,
+      name: GRADE_LABELS[String(grade).toUpperCase().replace(/\s+/g,'_')] ?? String(grade).replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()),
       description: 'Demo fee structure for parent dashboard preview',
       grade,
       term: TERM,

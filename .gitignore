@@ -41,6 +41,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Platform console log files
+platform-console/*.log
+platform-console/*.err
+
 # Runtime data / PIDs
 pids/
 *.pid

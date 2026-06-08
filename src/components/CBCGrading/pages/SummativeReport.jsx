@@ -700,31 +700,37 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
 
               </tr>
             ))}
-            {tableRows.length > 0 && (
-              <tr style={{ backgroundColor: '#f8fafc' }}>
-                <td style={{ padding: '6px 10px', fontWeight: 900, fontSize: '14px', color: '#0f172a', border: '1.5px solid #e2e8f0' }}>
-                  TOTAL
-                </td>
-                {testColumns.map(col => (
-                  <td key={`total-${col}`} style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 900, fontSize: '15px', color: '#0f172a', border: '1.5px solid #e2e8f0' }}>
-                    {totalsByTestColumn[col].max > 0
-                      ? `${totalsByTestColumn[col].score}/${totalsByTestColumn[col].max}`
-                      : totalsByTestColumn[col].score}
+            {(() => {
+              const overallTotalScore = tableRows.reduce((acc, r) => acc + r.totalScore, 0);
+              const overallTotalMarks = tableRows.reduce((acc, r) => acc + r.totalMarks, 0);
+              const overallAvgPct = overallTotalMarks > 0 ? Math.round((overallTotalScore / overallTotalMarks) * 100) : 0;
+              const overallGradeResult = overallTotalMarks > 0 ? getGrade(overallAvgPct) : null;
+              return tableRows.length > 0 && (
+                <tr style={{ backgroundColor: '#f8fafc' }}>
+                  <td style={{ padding: '6px 10px', fontWeight: pdfTypeWeight.bold, fontSize: '13px', color: '#0f172a', border: '1.5px solid #e2e8f0' }}>
+                    TOTAL
                   </td>
-                ))}
-                {testColumns.length > 1 && (
-                  <td style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 900, fontSize: '15px', color: '#64748b', border: '1.5px solid #e2e8f0' }}>
-                    —
+                  {testColumns.map(col => (
+                    <td key={`total-${col}`} style={{ padding: '6px 6px', textAlign: 'center', fontWeight: pdfTypeWeight.bold, fontSize: '13px', color: '#0f172a', border: '1.5px solid #e2e8f0' }}>
+                      {totalsByTestColumn[col].max > 0
+                        ? `${totalsByTestColumn[col].score}/${totalsByTestColumn[col].max}`
+                        : totalsByTestColumn[col].score}
+                    </td>
+                  ))}
+                  {testColumns.length > 1 && (
+                    <td style={{ padding: '6px 6px', textAlign: 'center', fontWeight: pdfTypeWeight.bold, fontSize: '13px', color: '#0f172a', border: '1.5px solid #e2e8f0' }}>
+                      {overallAvgPct}%
+                    </td>
+                  )}
+                  <td style={{ padding: '6px 6px', textAlign: 'left', fontWeight: pdfTypeWeight.bold, fontSize: '13px', color: overallGradeResult?.color || '#64748b', border: '1.5px solid #e2e8f0', borderLeft: '1.5px solid #e2e8f0' }}>
+                    {overallGradeResult?.grade || '—'}
                   </td>
-                )}
-                <td style={{ padding: '6px 6px', textAlign: 'left', fontWeight: 900, fontSize: '15px', color: gradeFromMeanPointsColor, border: '1.5px solid #e2e8f0', borderLeft: '1.5px solid #e2e8f0' }}>
-                  {gradeFromMeanPoints}
-                </td>
-                <td style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 900, fontSize: '15px', color: '#64748b', border: '1.5px solid #e2e8f0', borderLeft: '1.5px solid #e2e8f0', borderRight: '1.5px solid #e2e8f0' }}>
-                  {pointRows.length > 0 ? totalPoints : '—'}
-                </td>
-              </tr>
-            )}
+                  <td style={{ padding: '6px 6px', textAlign: 'center', fontWeight: pdfTypeWeight.bold, fontSize: '13px', color: '#0f172a', border: '1.5px solid #e2e8f0', borderLeft: '1.5px solid #e2e8f0', borderRight: '1.5px solid #e2e8f0' }}>
+                    {pointRows.length > 0 ? totalPoints : '—'}
+                  </td>
+                </tr>
+              );
+            })()}
           </tbody>
         </table>
 
@@ -1096,6 +1102,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
   const [isSingleDownloading, setIsSingleDownloading] = useState(false);
   const [singleCommentData, setSingleCommentData] = useState(null);
   const [commentMap, setCommentMap] = useState({});
+  const cellBorder = { border: '1px solid #d1d5db' };
 
   const reportRef = useRef(null);
   const testGroupRef = useRef(null);
@@ -1687,6 +1694,16 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     const meanTotal = totalScore / rows.length;
     const meanAveragePct = rows.reduce((sum, row) => sum + (Number(row.averagePct) || 0), 0) / rows.length;
 
+    const getGradeForPct = (pct) => {
+      const value = parseFloat(pct);
+      if (isNaN(value) || value <= 0) return { grade: '—', points: '—' };
+      const result = getCBCGrade(value);
+      return { grade: result.grade, points: result.points };
+    };
+
+    const totalSubjectGrade = subjects.map((subject) => getGradeForPct(summaries[subject]?.averagePct));
+    const overallGrade = getGradeForPct(meanAveragePct);
+
     return [
       {
         key: 'total',
@@ -1696,11 +1713,11 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
         average: '-',
       },
       {
-        key: 'mean',
-        label: 'MEAN',
-        subjectValues: subjects.map((subject) => formatBroadsheetNumber(summaries[subject]?.mean || 0, 1)),
-        total: formatBroadsheetNumber(meanTotal, 1),
-        average: `${formatBroadsheetNumber(meanAveragePct, 1)}%`,
+        key: 'grade',
+        label: 'GRADE',
+        subjectValues: subjects.map((subject) => getGradeForPct(summaries[subject]?.averagePct).grade),
+        total: '-',
+        average: overallGrade.grade,
       },
       {
         key: 'average',
@@ -1708,6 +1725,13 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
         subjectValues: subjects.map((subject) => `${formatBroadsheetNumber(summaries[subject]?.averagePct || 0, 1)}%`),
         total: '-',
         average: `${formatBroadsheetNumber(meanAveragePct, 1)}%`,
+      },
+      {
+        key: 'points',
+        label: 'PTS',
+        subjectValues: subjects.map((subject) => String(getGradeForPct(summaries[subject]?.averagePct).points)),
+        total: '-',
+        average: String(overallGrade.points),
       },
     ];
   };
@@ -1735,30 +1759,55 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       const totalColumns = headers.length;
       const lastColLetter = worksheet.getColumn(totalColumns).letter;
       const schoolName = (user?.school?.name || brandingSettings?.schoolName || 'TRENDS CORE SCHOOL').toUpperCase();
+      const brandColor = brandingSettings?.brandColor || 'FF1E3A8A';
       const reportTitle = (reportData?.title || 'GRADE REPORT').toUpperCase();
       const streamLabel = reportData?.meta?.stream && reportData.meta.stream !== 'all' ? reportData.meta.stream : 'ALL';
       const headerMeta = `CLASS: ${(reportData?.meta?.grade || '').replace(/_/g, ' ')} ${streamLabel} | TERM: ${(reportData?.meta?.term || '').replace(/_/g, ' ')} | GENERATED: ${new Date().toLocaleDateString()}`;
 
-      worksheet.mergeCells(`A1:${lastColLetter}1`);
-      worksheet.getCell('A1').value = schoolName;
-      worksheet.getCell('A1').font = { bold: true, size: 18, color: { argb: 'FF1E3A8A' } };
-      worksheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+      // Logo + School Header
+      const logoUrl = brandingSettings?.logoUrl || user?.school?.logoUrl || user?.school?.logo || user?.schoolLogo || user?.logoUrl;
+      if (logoUrl) {
+        try {
+          const logoImg = new Image();
+          logoImg.src = logoUrl;
+          worksheet.mergeCells(`A1:${lastColLetter}1`);
+          worksheet.getCell('A1').alignment = { horizontal: 'left', vertical: 'middle' };
+
+          // Insert logo image at cell A1
+          const logoId = workbook.addImage({
+            base64: logoUrl.split(',')[1] || logoUrl,
+            extension: 'png',
+          });
+          worksheet.addImage(logoId, {
+            tl: { col: 0, row: 0 },
+            ext: { width: 80, height: 80 },
+            editAs: 'oneCell',
+          });
+        } catch (e) {
+          console.warn('Could not embed logo in Excel export', e);
+        }
+      }
 
       worksheet.mergeCells(`A2:${lastColLetter}2`);
-      worksheet.getCell('A2').value = reportTitle;
-      worksheet.getCell('A2').font = { bold: true, size: 13, color: { argb: 'FF111827' } };
+      worksheet.getCell('A2').value = schoolName;
+      worksheet.getCell('A2').font = { bold: true, size: 18, color: { argb: brandColor } };
       worksheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
 
       worksheet.mergeCells(`A3:${lastColLetter}3`);
-      worksheet.getCell('A3').value = headerMeta;
-      worksheet.getCell('A3').font = { bold: true, size: 10, color: { argb: 'FF475569' } };
+      worksheet.getCell('A3').value = reportTitle;
+      worksheet.getCell('A3').font = { bold: true, size: 13, color: { argb: 'FF111827' } };
       worksheet.getCell('A3').alignment = { horizontal: 'center', vertical: 'middle' };
 
       worksheet.mergeCells(`A4:${lastColLetter}4`);
-      worksheet.getCell('A4').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
-      worksheet.getRow(4).height = 6;
+      worksheet.getCell('A4').value = headerMeta;
+      worksheet.getCell('A4').font = { bold: true, size: 10, color: { argb: 'FF475569' } };
+      worksheet.getCell('A4').alignment = { horizontal: 'center', vertical: 'middle' };
 
-      const tableHeaderRow = 5;
+      worksheet.mergeCells(`A5:${lastColLetter}5`);
+      worksheet.getCell('A5').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+      worksheet.getRow(5).height = 4;
+
+      const tableHeaderRow = 6;
       worksheet.getRow(tableHeaderRow).values = headers;
 
       reportData.rows.forEach((row) => {
@@ -3791,133 +3840,54 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                 </div>
 
 
-                {/* Broadsheet Table */}
+                {/* Broadsheet Table — unified for print + screen */}
                 <div className="overflow-x-auto">
-                  <table className="print-only w-full border-collapse" style={{ fontSize: '11px' }}>
+                  <table className="w-full border-collapse" style={{ fontSize: '11px' }}>
                     <thead>
                       <tr style={{ backgroundColor: '#1e3a8a', color: 'white' }}>
-                        <th style={{ padding: '6px', border: '1px solid #ccc', textAlign: 'center', width: '30px' }}>#</th>
-                        <th style={{ padding: '6px', border: '1px solid #ccc', textAlign: 'left', minWidth: '150px' }}>LEARNER NAME</th>
+                        <th style={{ ...cellBorder, padding: '6px', textAlign: 'center', width: '30px' }}>#</th>
+                        <th style={{ ...cellBorder, padding: '6px', textAlign: 'left', minWidth: '150px' }}>LEARNER NAME</th>
                         {reportData.subjects.map(subj => (
-                          <th key={`print-${subj}`} style={{ padding: '6px', border: '1px solid #ccc', textAlign: 'center', writingMode: 'vertical-rl', transform: 'rotate(180deg)', minHeight: '80px' }}>
+                          <th key={subj} style={{ ...cellBorder, padding: '6px', textAlign: 'center', writingMode: 'vertical-rl', transform: 'rotate(180deg)', minHeight: '80px' }}>
                             {getAbbreviatedName(subj)}
                           </th>
                         ))}
-                        <th style={{ padding: '6px', border: '1px solid #ccc', textAlign: 'center' }}>TOTAL</th>
-                        <th style={{ padding: '6px', border: '1px solid #ccc', textAlign: 'center' }}>AVG %</th>
-                        <th style={{ padding: '6px', border: '1px solid #ccc', textAlign: 'center' }}>GRD</th>
+                        <th style={{ ...cellBorder, padding: '6px', textAlign: 'center' }}>TOTAL</th>
+                        <th style={{ ...cellBorder, padding: '6px', textAlign: 'center' }}>AVG %</th>
+                        <th style={{ ...cellBorder, padding: '6px', textAlign: 'center' }}>GRD</th>
                       </tr>
                     </thead>
                     <tbody>
                       {reportData.rows.map((row, idx) => (
-                        <tr key={`print-row-${row.learner.id}-${idx}`} style={{ backgroundColor: idx % 2 === 0 ? 'white' : '#f8fafc' }}>
-                          <td style={{ padding: '4px', border: '1px solid #e2e8f0', textAlign: 'center' }}>{row.position}</td>
-                          <td style={{ padding: '4px', border: '1px solid #e2e8f0', fontWeight: 'bold' }}>
+                        <tr key={row.learner.id} style={{ backgroundColor: idx % 2 === 0 ? 'white' : '#f8fafc' }}>
+                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center' }}>{row.position}</td>
+                          <td style={{ ...cellBorder, padding: '4px', fontWeight: 'bold' }}>
                             {row.learner.firstName} {row.learner.lastName}
                           </td>
                           {reportData.subjects.map(subj => (
-                            <td key={`print-score-${row.learner.id}-${subj}`} style={{ padding: '4px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                            <td key={`${row.learner.id}-${subj}`} style={{ ...cellBorder, padding: '4px', textAlign: 'center' }}>
                               {row.subjectScores[subj] || '-'}
                             </td>
                           ))}
-                          <td style={{ padding: '4px', border: '1px solid #e2e8f0', textAlign: 'center', fontWeight: 'bold' }}>{Math.round(row.totalScore)}</td>
-                          <td style={{ padding: '4px', border: '1px solid #e2e8f0', textAlign: 'center', fontWeight: 'bold' }}>{row.averagePct}%</td>
-                          <td style={{ padding: '4px', border: '1px solid #e2e8f0', textAlign: 'center', fontWeight: 'bold', color: row.grade?.includes('EE') ? 'green' : row.grade?.includes('ME') ? 'blue' : 'orange' }}>
+                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold' }}>{Math.round(row.totalScore)}</td>
+                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold' }}>{row.averagePct}%</td>
+                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold', color: row.grade?.includes('EE') ? 'green' : row.grade?.includes('ME') ? 'blue' : 'orange' }}>
                             {row.grade}
                           </td>
                         </tr>
                       ))}
                       {getBroadsheetSummaryRows(reportData).map((summaryRow) => (
-                        <tr key={`print-summary-${summaryRow.key}`} style={{ backgroundColor: '#eff6ff', fontWeight: 'bold' }}>
-                          <td style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center' }}></td>
-                          <td style={{ padding: '4px', border: '1px solid #94a3b8', fontWeight: 'bold' }}>{summaryRow.label}</td>
+                        <tr key={`summary-${summaryRow.key}`} style={{ backgroundColor: '#eff6ff', fontWeight: 'bold' }}>
+                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center' }}></td>
+                          <td style={{ ...cellBorder, padding: '4px', fontWeight: 'bold' }}>{summaryRow.label}</td>
                           {summaryRow.subjectValues.map((value, subjectIdx) => (
-                            <td key={`print-summary-${summaryRow.key}-${reportData.subjects[subjectIdx]}`} style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center', fontWeight: 'bold' }}>
+                            <td key={`summary-${summaryRow.key}-${reportData.subjects[subjectIdx]}`} style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold' }}>
                               {value}
                             </td>
                           ))}
-                          <td style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center', fontWeight: 'bold' }}>{summaryRow.total}</td>
-                          <td style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center', fontWeight: 'bold' }}>{summaryRow.average}</td>
-                          <td style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center' }}></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-
-                  <VirtualizedTable
-                    data={reportData.rows}
-                    rowHeight={28} // Compact broadsheet row height
-                    visibleHeight={500}
-                    className="no-print border border-gray-200"
-                    header={
-                      <tr style={{ backgroundColor: '#1e3a8a', color: 'white' }}>
-                        <th style={{ padding: '6px', border: '1px solid #ccc', textAlign: 'center', width: '30px' }}>#</th>
-                        <th style={{ padding: '6px', border: '1px solid #ccc', textAlign: 'left', minWidth: '150px' }}>LEARNER NAME</th>
-                        {reportData.subjects.map(subj => (
-                          <th key={subj} style={{ padding: '6px', border: '1px solid #ccc', textAlign: 'center', writingMode: 'vertical-rl', transform: 'rotate(180deg)', minHeight: '80px' }}>
-                            {getAbbreviatedName(subj)}
-                          </th>
-                        ))}
-                        <th style={{ padding: '6px', border: '1px solid #ccc', textAlign: 'center' }}>TOTAL</th>
-                        <th style={{ padding: '6px', border: '1px solid #ccc', textAlign: 'center' }}>AVG %</th>
-                        <th style={{ padding: '6px', border: '1px solid #ccc', textAlign: 'center' }}>GRD</th>
-                        <th className="no-print" style={{ padding: '6px', border: '1px solid #ccc', textAlign: 'center', width: '40px' }}>ACT</th>
-                      </tr>
-                    }
-                    renderRow={(row, idx) => (
-                      <tr key={row.learner.id} style={{ backgroundColor: idx % 2 === 0 ? 'white' : '#f8fafc' }}>
-                        <td style={{ padding: '4px', border: '1px solid #e2e8f0', textAlign: 'center' }}>{row.position}</td>
-                        <td style={{ padding: '4px', border: '1px solid #e2e8f0', fontWeight: 'bold' }}>
-                          {row.learner.firstName} {row.learner.lastName}
-                        </td>
-                        {reportData.subjects.map(subj => (
-                          <td key={subj} style={{ padding: '4px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
-                            {row.subjectScores[subj] || '-'}
-                          </td>
-                        ))}
-                        <td style={{ padding: '4px', border: '1px solid #e2e8f0', textAlign: 'center', fontWeight: 'bold' }}>{Math.round(row.totalScore)}</td>
-                        <td style={{ padding: '4px', border: '1px solid #e2e8f0', textAlign: 'center', fontWeight: 'bold' }}>{row.averagePct}%</td>
-                        <td style={{ padding: '4px', border: '1px solid #e2e8f0', textAlign: 'center', fontWeight: 'bold', color: row.grade?.includes('EE') ? 'green' : row.grade?.includes('ME') ? 'blue' : 'orange' }}>
-                          {row.grade}
-                        </td>
-                        <td className="no-print" style={{ padding: '4px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
-                          <button
-                            title="Share via WhatsApp"
-                            onClick={() => {
-                              const learner = row.learner;
-                              const parentPhone = getLearnerPhone(learner);
-                              if (!parentPhone) {
-                                showError('No parent phone number');
-                                return;
-                              }
-                              const msg = `*${brandingSettings?.schoolName || 'SCHOOL'} REPORT*\nName: ${learner.firstName}\nMean: ${row.averagePct}%\nGrade: ${row.grade}`;
-                              let cleanPhone = parentPhone.replace(/\D/g, '');
-                              if (cleanPhone.startsWith('0')) cleanPhone = '254' + cleanPhone.substring(1);
-                              window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
-                            }}
-                            className="p-1 bg-green-100 text-green-600 rounded hover:bg-green-200"
-                          >
-                            <MessageCircle size={14} />
-                          </button>
-                        </td>
-                      </tr>
-                    )}
-                  />
-                  <table className="no-print w-full border-collapse border border-gray-200" style={{ fontSize: '11px' }}>
-                    <tbody>
-                      {getBroadsheetSummaryRows(reportData).map((summaryRow) => (
-                        <tr key={`screen-summary-${summaryRow.key}`} style={{ backgroundColor: '#eff6ff', fontWeight: 'bold' }}>
-                          <td style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center', width: '30px' }}></td>
-                          <td style={{ padding: '4px', border: '1px solid #94a3b8', minWidth: '150px' }}>{summaryRow.label}</td>
-                          {summaryRow.subjectValues.map((value, subjectIdx) => (
-                            <td key={`screen-summary-${summaryRow.key}-${reportData.subjects[subjectIdx]}`} style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center' }}>
-                              {value}
-                            </td>
-                          ))}
-                          <td style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center' }}>{summaryRow.total}</td>
-                          <td style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center' }}>{summaryRow.average}</td>
-                          <td style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center' }}></td>
-                          <td className="no-print" style={{ padding: '4px', border: '1px solid #94a3b8', textAlign: 'center', width: '40px' }}></td>
+                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold' }}>{summaryRow.total}</td>
+                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold' }}>{summaryRow.average}</td>
+                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center' }}></td>
                         </tr>
                       ))}
                     </tbody>

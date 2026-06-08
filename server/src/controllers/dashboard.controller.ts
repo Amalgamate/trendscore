@@ -732,13 +732,19 @@ export class DashboardController {
                     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
                     sixMonthsAgo.setDate(1);
                     sixMonthsAgo.setHours(0, 0, 0, 0);
-                    return prisma.$queryRaw<Array<{ month: string; revenue: number }>>(
+                    return prisma.$queryRaw<Array<{ month: string; revenue: number; outstanding: number; expected: number }>>(
                         Prisma.sql`
                             SELECT
-                                TO_CHAR(p."createdAt", 'Mon YY') AS month,
-                                SUM(p.amount)::float            AS revenue
+                                TO_CHAR(p."createdAt", 'Mon YY')   AS month,
+                                SUM(p.amount)::float               AS revenue,
+                                COALESCE(SUM(
+                                    CASE WHEN i."balance" > 0 THEN i."balance" ELSE 0 END
+                                ), 0)::float                       AS outstanding,
+                                COALESCE(SUM(i."totalAmount"), 0)::float AS expected
                             FROM fee_payments p
+                            JOIN fee_invoices i ON i.id = p."invoiceId"
                             WHERE p."createdAt" >= ${sixMonthsAgo}
+                              AND p.archived = false
                             GROUP BY DATE_TRUNC('month', p."createdAt"), TO_CHAR(p."createdAt", 'Mon YY')
                             ORDER BY DATE_TRUNC('month', p."createdAt")
                         `
@@ -903,8 +909,12 @@ export class DashboardController {
                 financials: {
                     streamBreakdown,
                     trendData: monthlyPayments.map(r => ({
-                        month:   String(r.month || ''),
-                        revenue: Number(r.revenue || 0),
+                        month:       String(r.month || ''),
+                        collected:   Number(r.revenue      || 0),
+                        outstanding: Number(r.outstanding  || 0),
+                        expected:    Number(r.expected     || 0),
+                        // keep legacy `revenue` alias so existing widgets don't break
+                        revenue:     Number(r.revenue      || 0),
                     })),
                     revenueSources,
                     totalExpenses: Number(expensesThisTerm._sum.amount || 0),
