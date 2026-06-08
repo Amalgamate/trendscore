@@ -6,6 +6,7 @@ import { sendOTP, verifyOTP } from '../controllers/otp.controller';
 import { authRateLimit, progressiveRateLimit } from '../middleware/enhanced-rateLimit.middleware';
 import { validate } from '../middleware/validation.middleware';
 import { loginSchema, registerSchema, emailSchema } from '../utils/validation.util';
+import { requireRole } from '../middleware/permissions.middleware';
 
 const router = Router();
 const authController = new AuthController();
@@ -80,6 +81,30 @@ router.get('/me', authenticate, asyncHandler(authController.me.bind(authControll
 router.post('/logout',
   authenticate,
   asyncHandler(authController.logout.bind(authController))
+);
+
+/**
+ * @route  POST /api/auth/logout-all
+ * @desc   Invalidate all active user sessions (force-logout everyone)
+ * @access SUPER_ADMIN, ADMIN
+ */
+router.post('/logout-all',
+  authenticate,
+  requireRole(['SUPER_ADMIN', 'ADMIN']),
+  authRateLimit(5, 60_000),
+  asyncHandler(authController.logoutAll.bind(authController))
+);
+
+/**
+ * @route  POST /api/auth/flush-cache
+ * @desc   Clear the application Redis cache
+ * @access SUPER_ADMIN, ADMIN
+ */
+router.post('/flush-cache',
+  authenticate,
+  requireRole(['SUPER_ADMIN', 'ADMIN']),
+  authRateLimit(5, 60_000),
+  asyncHandler(authController.flushCache.bind(authController))
 );
 
 export default router;

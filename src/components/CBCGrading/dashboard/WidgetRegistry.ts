@@ -86,6 +86,14 @@ export const WIDGET_IDS = {
   FEE_COLLECTION_FORECAST: 'fee_collection_forecast',
   ATTENDANCE_ANOMALIES: 'attendance_anomalies',
   ACADEMIC_INSIGHTS: 'academic_insights',
+
+  // Owner Advisor
+  OWNER_ADVISOR: 'owner_advisor',
+
+  // Finance Intelligence
+  FEE_COLLECTION_DONUT: 'fee_collection_donut',
+  FEE_COLLECTION_TREND: 'fee_collection_trend',
+  FINANCE_INTELLIGENCE: 'finance_intelligence',
 } as const;
 
 /**
@@ -502,6 +510,42 @@ export class WidgetRegistry {
         name: 'Academic Insights',
         description: 'Academic performance trends and analysis',
         component: lazy(() => import('./widgets/AcademicInsights')),
+        lazyLoad: true,
+        responsive: true,
+      },
+
+      // Personal Advisor
+      {
+        id: WIDGET_IDS.OWNER_ADVISOR,
+        name: 'Personal Advisor',
+        description: 'Recommended actions for school owners and admins',
+        component: lazy(() => import('./widgets/admin/OwnerAdvisorSection')),
+        lazyLoad: true,
+        responsive: true,
+      },
+
+      // Finance Intelligence
+      {
+        id: WIDGET_IDS.FEE_COLLECTION_DONUT,
+        name: 'Fee Collection Donut',
+        description: 'Collected / outstanding / waived donut chart',
+        component: lazy(() => import('./widgets/admin/FeeCollectionDonut')),
+        lazyLoad: true,
+        responsive: true,
+      },
+      {
+        id: WIDGET_IDS.FEE_COLLECTION_TREND,
+        name: 'Fee Collection Trend',
+        description: 'Fee collection performance over time — line chart',
+        component: lazy(() => import('./widgets/admin/FeeCollectionTrend')),
+        lazyLoad: true,
+        responsive: true,
+      },
+      {
+        id: WIDGET_IDS.FINANCE_INTELLIGENCE,
+        name: 'Finance Intelligence',
+        description: 'Revenue performance and collection trends section',
+        component: lazy(() => import('./widgets/admin/FinanceIntelligenceSection')),
         lazyLoad: true,
         responsive: true,
       },

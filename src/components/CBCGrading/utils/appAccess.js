@@ -176,6 +176,7 @@ const INSTITUTION_AGNOSTIC_PAGES = new Set([
   'settings-school',
   'settings-users',
   'settings-system-logs',
+  'settings-system-control',
   'settings-communication',
   'settings-payment',
   'system-maintenance',

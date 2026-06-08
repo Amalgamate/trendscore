@@ -437,6 +437,7 @@ export const allNavSections = [
             { id: 'settings-payment',        label: 'Payment Settings',        path: 'settings-payment',        permission: 'SCHOOL_SETTINGS'   },
             { id: 'settings-users',          label: 'User Management',         path: 'settings-users',          permission: 'EDIT_USER'         },
             { id: 'settings-system-logs',    label: 'System Logs',             path: 'settings-system-logs',    permission: 'SYSTEM_SETTINGS', icon: Activity },
+            { id: 'settings-system-control', label: 'System Control',          path: 'settings-system-control', permission: 'SYSTEM_SETTINGS', icon: Wrench   },
             { id: 'system-maintenance',      label: 'Backup, Restore & Reset', path: 'system-maintenance',      permission: 'SYSTEM_SETTINGS', icon: Wrench }
         ]
     }

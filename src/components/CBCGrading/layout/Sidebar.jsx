@@ -19,6 +19,7 @@ import {
   MoreHorizontal,
   Receipt,
   Rocket,
+  ShieldAlert,
   Wrench
 } from 'lucide-react';
 import { useNavigation, groupNavigationByCategory } from '../hooks/useNavigation';
@@ -177,8 +178,9 @@ const ACCOUNTANT_NAV_GROUPS = [
   {
     label: 'Administration',
     items: [
-      { label: 'Users & Roles', path: 'settings-users', icon: BookOpen },
-      { label: 'System Logs', path: 'settings-system-logs', icon: FileText },
+      { label: 'Users & Roles',   path: 'settings-users',          icon: BookOpen  },
+      { label: 'System Logs',     path: 'settings-system-logs',    icon: FileText  },
+      { label: 'System Control',  path: 'settings-system-control', icon: ShieldAlert },
     ],
   },
 ];

@@ -1,4 +1,4 @@
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, useState, useEffect } from 'react';
 import ErrorBoundary from '../shared/ErrorBoundary';
 import EmptyState from '../shared/EmptyState';
 import ComingSoon from '../shared/ComingSoon';
@@ -55,6 +55,7 @@ const CommunicationSettings = lazy(() => import('../pages/settings/Communication
 const PaymentSettings = lazy(() => import('../pages/settings/PaymentSettings'));
 const IDCardTemplatesDesigner = lazy(() => import('../pages/settings/IDCardTemplatesDesigner'));
 const SystemLogsPage = lazy(() => import('../pages/settings/SystemLogsPage'));
+const SystemControlPage = lazy(() => import('../pages/settings/SystemControlPage'));
 const InvoiceDetailPage = lazy(() => import('../pages/InvoiceDetailPage'));
 const RecordPaymentPage = lazy(() => import('../pages/RecordPaymentPage'));
 const FeeTypesPage = lazy(() => import('../pages/FeeTypesPage'));
@@ -139,6 +140,10 @@ const MyCourses = lazy(() => import('../pages/student/MyCourses'));
 const CourseViewer = lazy(() => import('../pages/student/CourseViewer'));
 const MyAssignments = lazy(() => import('../pages/student/MyAssignments'));
 const MyProgress = lazy(() => import('../pages/student/MyProgress'));
+
+// Mobile Components
+const MobileUserManagement = lazy(() => import('../dashboard/mobile/MobileUserManagement'));
+const MobileGeneralSettings = lazy(() => import('../dashboard/mobile/MobileGeneralSettings'));
 
 const ACADEMIC_INTELLIGENCE_PAGE_COPY = {
   'academic-intelligence': {
@@ -245,6 +250,16 @@ const PageRouter = ({
 }) => {
   const rolePreview = useRolePreview();
   const effectiveRole = rolePreview?.effectiveRole || user?.role;
+  
+  // Mobile detection for responsive routes
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    setIsMobile(mediaQuery.matches);
+    const handleMediaChange = (e) => setIsMobile(e.matches);
+    mediaQuery.addEventListener('change', handleMediaChange);
+    return () => mediaQuery.removeEventListener('change', handleMediaChange);
+  }, []);
   
   const {
     handleNavigate,
@@ -626,13 +641,25 @@ const PageRouter = ({
 
           case 'settings-school': return <SchoolSettings brandingSettings={brandingSettings} setBrandingSettings={handlers.setBrandingSettings} />;
           case 'settings-academic': return <AcademicSettings />;
-          case 'settings-users': return <UserManagement />;
+          case 'settings-users': 
+            return isMobile ? (
+              <MobileUserManagement onNavigate={handleNavigate} />
+            ) : (
+              <UserManagement />
+            );
+          case 'settings': 
+            return isMobile ? (
+              <MobileGeneralSettings user={user} onLogout={handlers.onLogout} brandingSettings={brandingSettings} />
+            ) : (
+              <SchoolSettings brandingSettings={brandingSettings} setBrandingSettings={handlers.setBrandingSettings} />
+            );
           case 'settings-branding':
             return <SchoolSettings brandingSettings={brandingSettings} setBrandingSettings={handlers.setBrandingSettings} />;
           case 'settings-backup': return <SystemMaintenancePage />;
           case 'settings-communication': return <ErrorBoundary><CommunicationSettings /></ErrorBoundary>;
           case 'settings-payment': return <PaymentSettings />;
           case 'settings-system-logs': return <ErrorBoundary><SystemLogsPage /></ErrorBoundary>;
+          case 'settings-system-control': return <ErrorBoundary><SystemControlPage /></ErrorBoundary>;
           case 'settings-id-templates': return <ErrorBoundary><IDCardTemplatesDesigner /></ErrorBoundary>;
 
           case 'system-maintenance': return <SystemMaintenancePage />;

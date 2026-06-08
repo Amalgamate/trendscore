@@ -1,532 +1,278 @@
 /**
  * Owner/Admin Mobile Dashboard
- * Compact mobile view for executives with key metrics and actions
+ * Compact mobile view for executives with combined greeting/clock-in banner,
+ * entity stat cards with attendance counts, and geofenced clock-in.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { Users, GraduationCap, UserCheck, MapPin, Clock, CheckCircle, Loader2, AlertTriangle } from 'lucide-react';
 import { dashboardAPI } from '../../../../services/api';
-import { 
-  DollarSign, 
-  Users, 
-  TrendingUp, 
-  AlertTriangle, 
-  BarChart3, 
-  Settings,
-  Calendar,
-  ChevronDown,
-  CheckCircle2,
-  GraduationCap,
-  BookOpen,
-  Cog 
-} from 'lucide-react';
+import axiosInstance from '../../../../services/api/axiosConfig';
+import { GreetingToast } from '../../pages/dashboard/DashboardSummary';
+import {
+  clockInTeacher,
+  clockOutTeacher,
+  syncCurrentUserClockInStatus,
+} from '../../../../utils/teacherClockIn';
 import MobileBottomNav from './MobileBottomNav';
 
-const OwnerMobileDashboard = ({ user, onNavigate, currentPath }) => {
-  const [metrics, setMetrics] = useState(null);
-  const [loading, setLoading] = useState(true);
+// ─── Haversine distance in metres ─────────────────────────────────────────────
+function haversineMetres(lat1, lon1, lat2, lon2) {
+  const R = 6_371_000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
+const GEOFENCE_RADIUS_M = 5;
+
+// ─── Tone helpers ─────────────────────────────────────────────────────────────
+const CARD_TONES = {
+  navy: { bg: 'bg-[#0f2355]', iconBg: 'bg-white/10', label: 'text-white/70', value: 'text-white', sub: 'text-white/60', chip: 'bg-white/10 text-white/80' },
+  teal: { bg: 'bg-[#0d7369]', iconBg: 'bg-white/10', label: 'text-white/70', value: 'text-white', sub: 'text-white/60', chip: 'bg-white/10 text-white/80' },
+  red:  { bg: 'bg-[#b91c1c]', iconBg: 'bg-white/10', label: 'text-white/70', value: 'text-white', sub: 'text-white/60', chip: 'bg-white/10 text-white/80' },
+};
+
+// ─── Stat Card ────────────────────────────────────────────────────────────────
+const StatCard = ({ tone = 'navy', icon: Icon, label, value, subvalue, chips = [], loading }) => {
+  const t = CARD_TONES[tone] || CARD_TONES.navy;
+  return (
+    <div className={`${t.bg} rounded-2xl p-4 flex flex-col gap-3 shadow-sm`}>
+      <div className="flex items-start justify-between">
+        <div className={`${t.iconBg} rounded-xl p-2`}>
+          <Icon size={22} className="text-white" />
+        </div>
+        <span className={`text-[10px] font-semibold uppercase tracking-widest ${t.label}`}>{label}</span>
+      </div>
+      {loading ? (
+        <div className="h-8 w-16 bg-white/10 rounded animate-pulse" />
+      ) : (
+        <div>
+          <p className={`text-3xl font-black leading-none ${t.value}`}>{value}</p>
+          {subvalue && <p className={`text-xs mt-0.5 font-medium ${t.sub}`}>{subvalue}</p>}
+        </div>
+      )}
+      {chips.length > 0 && (
+        <div className="flex gap-2 flex-wrap mt-auto">
+          {chips.map((chip, i) => (
+            <span key={i} className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${t.chip}`}>
+              {chip.value} {chip.label}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── useClockIn hook ──────────────────────────────────────────────────────────
+function useClockIn(user) {
+  const [geoStatus, setGeoStatus] = useState('idle');
+  const [distance, setDistance] = useState(null);
+  const [clockStatus, setClockStatus] = useState(null);
+  const [clocking, setClocking] = useState(false);
+  const watchIdRef = useRef(null);
+  const schoolLoadedRef = useRef(false);
+  const [schoolCoords, setSchoolCoords] = useState(null);
+
+  // Load school pin
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const response = await dashboardAPI.getAdminMetrics?.('term') || { success: true, data: {} };
-        if (response.success) {
-          setMetrics(response.data);
-        }
-      } catch (error) {
-        console.error('Failed to load metrics:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
+    if (schoolLoadedRef.current) return;
+    schoolLoadedRef.current = true;
+    axiosInstance.get('/schools')
+      .then((res) => {
+        const school = res.data?.data || res.data;
+        const lat = parseFloat(school?.latitude);
+        const lng = parseFloat(school?.longitude);
+        if (!isNaN(lat) && !isNaN(lng)) setSchoolCoords({ lat, lng });
+        else setGeoStatus('unsupported');
+      })
+      .catch(() => setGeoStatus('error'));
   }, []);
 
-  const stats = metrics?.stats || {};
-  const formatKesAmount = (amount = 0) => {
-    const value = Number(amount) || 0;
-    if (value >= 1000000) return `KES ${(value / 1000000).toFixed(1)}M`;
-    if (value >= 1000) return `KES ${Math.round(value / 1000)}K`;
-    return `KES ${value.toLocaleString()}`;
-  };
-  const formatPercent = (value = 0) => `${Math.max(0, Math.min(100, Number(value) || 0))}%`;
+  // Sync clock status
+  useEffect(() => {
+    if (!user) return;
+    syncCurrentUserClockInStatus(user).then(setClockStatus);
+    const handler = () => syncCurrentUserClockInStatus(user).then(setClockStatus);
+    window.addEventListener('teacherClockInChanged', handler);
+    return () => window.removeEventListener('teacherClockInChanged', handler);
+  }, [user]);
 
-  const userName = user?.name || user?.firstName || user?.email?.split('@')[0] || 'Admin';
-  const firstName = userName.split(' ')[0];
-  
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
-  };
+  // Watch position
+  useEffect(() => {
+    if (!schoolCoords || geoStatus === 'unsupported') return;
+    if (!navigator.geolocation) { setGeoStatus('unsupported'); return; }
+    setGeoStatus('checking');
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const d = haversineMetres(pos.coords.latitude, pos.coords.longitude, schoolCoords.lat, schoolCoords.lng);
+        setDistance(Math.round(d));
+        setGeoStatus(d <= GEOFENCE_RADIUS_M ? 'in-range' : 'out-of-range');
+      },
+      () => setGeoStatus('error'),
+      { enableHighAccuracy: true, maximumAge: 5_000, timeout: 15_000 },
+    );
+    return () => { if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current); };
+  }, [schoolCoords]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Calculate School Health Score (0-100) exactly like desktop
-  const attendanceRate = stats.totalStudents > 0 
-    ? Math.round((stats.presentToday / (stats.presentToday + stats.absentToday || stats.totalStudents)) * 100) 
-    : 0;
-  const collectionRate = (stats.feeCollected + stats.feePending) > 0
-    ? Math.round((stats.feeCollected / (stats.feeCollected + stats.feePending)) * 100)
-    : 0;
-  const assessmentRate = stats.totalStudents > 0
-    ? Math.round(((stats.totalStudents - stats.totalMissedExams) / stats.totalStudents) * 100)
-    : 0;
-  const healthScore = Math.round((attendanceRate + collectionRate + assessmentRate) / 3);
-  const teacherActiveRate = stats.totalTeachers > 0
-    ? Math.round((stats.activeTeachers / stats.totalTeachers) * 100)
-    : 0;
-  const inactiveTeachers = Math.max(0, (Number(stats.totalTeachers) || 0) - (Number(stats.activeTeachers) || 0));
-  const operationsRate = teacherActiveRate;
+  const handleClockAction = useCallback(async () => {
+    if (clocking || geoStatus !== 'in-range') return;
+    setClocking(true);
+    try {
+      if (clockStatus?.clockedIn) clockOutTeacher(user, { source: 'mobile' });
+      else clockInTeacher(user, { source: 'mobile' });
+    } finally {
+      setClocking(false);
+    }
+  }, [clocking, geoStatus, clockStatus, user]);
+
+  return { geoStatus, distance, clockStatus, clocking, handleClockAction };
+}
+
+// ─── ClockInButton — compact inline button for the banner ─────────────────────
+const ClockInButton = ({ user }) => {
+  const { geoStatus, distance, clockStatus, clocking, handleClockAction } = useClockIn(user);
+  const canAct = geoStatus === 'in-range';
+  const isClockedIn = clockStatus?.clockedIn;
+
+  const statusText = (() => {
+    if (geoStatus === 'unsupported') return '⚠ No school pin set';
+    if (geoStatus === 'error')       return '⚠ Location error';
+    if (geoStatus === 'checking')    return 'Locating…';
+    if (geoStatus === 'in-range')    return `✓ At school`;
+    if (geoStatus === 'out-of-range') return distance != null ? `${distance}m away` : 'Outside zone';
+    return '';
+  })();
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        onClick={handleClockAction}
+        disabled={!canAct || clocking}
+        className={`h-8 px-3 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+          !canAct || clocking
+            ? 'bg-white/20 text-white/50 cursor-not-allowed'
+            : isClockedIn
+            ? 'bg-white text-rose-600 hover:bg-white/90'
+            : 'bg-white text-orange-600 hover:bg-white/90'
+        }`}
+      >
+        {clocking
+          ? <Loader2 size={12} className="animate-spin" />
+          : <Clock size={12} />}
+        {isClockedIn ? 'Clock Out' : 'Clock In'}
+      </button>
+      <span className="text-[10px] text-white/60 font-medium">{statusText}</span>
+    </div>
+  );
+};
+
+// ─── Main Dashboard ────────────────────────────────────────────────────────────
+const OwnerMobileDashboard = ({ user, onNavigate, currentPath, brandingSettings }) => {
+  const [metrics, setMetrics] = useState(null);
+  const [loadingMetrics, setLoadingMetrics] = useState(true);
+
+  useEffect(() => {
+    dashboardAPI.getAdminMetrics('today')
+      .then((res) => { if (res?.success) setMetrics(res.data); })
+      .catch(() => {})
+      .finally(() => setLoadingMetrics(false));
+  }, []);
+
+  const s = metrics?.stats ?? {};
+
+  const fmtAttendance = (rate) =>
+    rate != null ? `${Math.round(rate)}% present today` : 'Attendance pending';
+
+  const studentAttendanceRate = s.studentAttendanceRate ?? s.attendanceRate ?? null;
+  const teacherAttendanceRate = s.teacherAttendanceRate ?? null;
+  const staffAttendanceRate   = s.staffAttendanceRate   ?? null;
 
   return (
     <div className="pb-24 bg-gray-50 min-h-screen">
-      {/* Header with Welcome Greeting */}
-      <div className="px-4 py-5 bg-brand-purple text-white shadow-sm">
-        <h1 className="text-xl font-black text-white tracking-tight">
-          {getGreeting()}, <span>{firstName}</span>
-        </h1>
-        <p className="text-xs text-white/70 mt-0.5 font-bold uppercase tracking-wider">
-          School Overview
-        </p>
+
+      {/* ── Top bar: logo only ── */}
+      {brandingSettings?.logoUrl && (
+        <div className="px-4 pt-3 pb-1 flex justify-end">
+          <img
+            src={brandingSettings.logoUrl}
+            alt="School Logo"
+            className="w-10 h-10 object-contain drop-shadow-sm"
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
+        </div>
+      )}
+
+      {/* ── Combined greeting + clock-in banner ── */}
+      <GreetingToast
+        user={user}
+        fallbackName="Admin"
+        description="School Overview · Admin Portal"
+        clockInSlot={<ClockInButton user={user} />}
+      />
+
+      {/* ── Stat Cards ── */}
+      <div className="px-4 pt-4 grid grid-cols-1 gap-3">
+        <StatCard
+          tone="navy" icon={Users} label="Students"
+          value={(s.totalStudents ?? s.activeStudents ?? 0).toLocaleString()}
+          subvalue={fmtAttendance(studentAttendanceRate)}
+          loading={loadingMetrics}
+          chips={[
+            { value: s.activeStudents ?? s.totalStudents ?? 0, label: 'active' },
+            ...(s.males   != null ? [{ value: s.males,   label: 'M' }] : []),
+            ...(s.females != null ? [{ value: s.females, label: 'F' }] : []),
+          ]}
+        />
+        <StatCard
+          tone="teal" icon={GraduationCap} label="Tutors"
+          value={(s.totalTeachers ?? s.activeTeachers ?? 0).toLocaleString()}
+          subvalue={fmtAttendance(teacherAttendanceRate)}
+          loading={loadingMetrics}
+          chips={[
+            { value: s.activeTeachers ?? s.totalTeachers ?? 0, label: 'active' },
+            ...(s.staffOnLeave != null ? [{ value: s.staffOnLeave, label: 'on leave' }] : []),
+          ]}
+        />
+        <StatCard
+          tone="red" icon={UserCheck} label="Subordinate Staff"
+          value={(s.totalSubordinateStaff ?? s.subordinateStaff ?? 0).toLocaleString()}
+          subvalue={fmtAttendance(staffAttendanceRate)}
+          loading={loadingMetrics}
+          chips={[
+            { value: s.activeSubordinateStaff ?? s.totalSubordinateStaff ?? s.subordinateStaff ?? 0, label: 'support roles' },
+          ]}
+        />
       </div>
 
-      {/* Main Content Area */}
-      <div className="px-4 py-4 space-y-6">
-        
-        {/* SECTION 1: School Health Card */}
-        <div className="p-5 rounded-2xl bg-white shadow-sm border border-gray-100 space-y-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h3 className="font-bold text-base text-gray-900 leading-none">School Health</h3>
-              <p className="text-[10px] text-gray-400 font-medium mt-1">Overall institutional wellness</p>
-            </div>
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer">
-              <Calendar size={11} className="text-gray-500" />
-              <span>This Week</span>
-              <ChevronDown size={10} className="text-gray-400" />
-            </div>
-          </div>
-
-          {/* Circle + Rows Grid */}
-          <div className="grid grid-cols-1 gap-6 items-center">
-            {/* Large Circular Progress (Centered for mobile) */}
-            <div className="flex flex-col items-center justify-center py-2">
-              <div className="relative flex items-center justify-center w-36 h-36">
-                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                  {/* Background Circle */}
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="40"
-                    stroke="#f1f5f9"
-                    strokeWidth="8"
-                    fill="transparent"
-                  />
-                  {/* Foreground Circle */}
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="40"
-                    stroke="#16A34A"
-                    strokeWidth="8"
-                    fill="transparent"
-                    strokeDasharray={2 * Math.PI * 40}
-                    strokeDashoffset={(2 * Math.PI * 40) - (healthScore / 100) * (2 * Math.PI * 40)}
-                    strokeLinecap="round"
-                    className="transition-all duration-1000 ease-out"
-                  />
-                </svg>
-                {/* Inner Text */}
-                <div className="absolute flex flex-col items-center justify-center text-center">
-                  <span className="text-3xl font-extrabold text-gray-900 leading-none">{formatPercent(healthScore)}</span>
-                  <span className="text-[10px] font-bold text-emerald-600 tracking-wider mt-1 uppercase">
-                    {healthScore >= 80 ? 'GOOD' : healthScore >= 60 ? 'STABLE' : 'PENDING'}
-                  </span>
-                  <span className="text-[8px] text-gray-400 mt-1 font-medium">live metrics</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Health Dimensions Progress Rows */}
-            <div className="space-y-3.5">
-              {/* Finance Health */}
-              <div>
-                <div className="flex items-center justify-between text-xs font-semibold text-gray-700 mb-1.5">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center bg-emerald-50 text-emerald-600">
-                      <DollarSign size={13} />
-                    </div>
-                    <span className="text-gray-700 font-semibold text-xs">Finance</span>
-                  </div>
-                  <span className="text-gray-950 font-bold text-xs">{formatPercent(collectionRate)}</span>
-                </div>
-                <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-emerald-600 rounded-full transition-all duration-500" 
-                    style={{ width: `${collectionRate}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Attendance Health */}
-              <div>
-                <div className="flex items-center justify-between text-xs font-semibold text-gray-700 mb-1.5">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center bg-blue-50 text-blue-600">
-                      <Users size={13} />
-                    </div>
-                    <span className="text-gray-700 font-semibold text-xs">Attendance</span>
-                  </div>
-                  <span className="text-gray-950 font-bold text-xs">{formatPercent(attendanceRate)}</span>
-                </div>
-                <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-blue-600 rounded-full transition-all duration-500" 
-                    style={{ width: `${attendanceRate}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Academic Health */}
-              <div>
-                <div className="flex items-center justify-between text-xs font-semibold text-gray-700 mb-1.5">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center bg-purple-50 text-purple-600">
-                      <GraduationCap size={13} />
-                    </div>
-                    <span className="text-gray-700 font-semibold text-xs">Academics</span>
-                  </div>
-                  <span className="text-gray-950 font-bold text-xs">{formatPercent(assessmentRate)}</span>
-                </div>
-                <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-purple-600 rounded-full transition-all duration-500" 
-                    style={{ width: `${assessmentRate}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Operations Health */}
-              <div>
-                <div className="flex items-center justify-between text-xs font-semibold text-gray-700 mb-1.5">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center bg-orange-50 text-orange-600">
-                      <Cog size={13} />
-                    </div>
-                    <span className="text-gray-700 font-semibold text-xs">Operations</span>
-                  </div>
-                  <span className="text-gray-950 font-bold text-xs">{formatPercent(operationsRate)}</span>
-                </div>
-                <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-orange-600 rounded-full transition-all duration-500" 
-                    style={{ width: `${operationsRate}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div className="border-t border-gray-100"></div>
-
-          {/* Status Strip */}
-          <div className="grid grid-cols-4 gap-1 text-center pt-1">
-            {/* Money */}
-            <div className="flex flex-col items-center">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center bg-emerald-50 text-emerald-600 mb-1 border border-emerald-100/50">
-                <DollarSign size={13} />
-              </div>
-              <span className="text-[10px] font-bold text-gray-900">Money</span>
-              <span className="text-[8px] font-bold text-emerald-600">Healthy</span>
-              <div className="w-4 h-4 rounded-full bg-emerald-50 flex items-center justify-center mt-2 text-emerald-600 border border-emerald-200">
-                <CheckCircle2 size={10} className="fill-emerald-100 text-emerald-600" />
-              </div>
-            </div>
-
-            {/* Learners */}
-            <div className="flex flex-col items-center">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center bg-blue-50 text-blue-600 mb-1 border border-blue-100/50">
-                <Users size={13} />
-              </div>
-              <span className="text-[10px] font-bold text-gray-900">Learners</span>
-              <span className="text-[8px] font-bold text-emerald-600">Healthy</span>
-              <div className="w-4 h-4 rounded-full bg-emerald-50 flex items-center justify-center mt-2 text-emerald-600 border border-emerald-200">
-                <CheckCircle2 size={10} className="fill-emerald-100 text-emerald-600" />
-              </div>
-            </div>
-
-            {/* Teachers */}
-            <div className="flex flex-col items-center">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center bg-purple-50 text-purple-600 mb-1 border border-purple-100/50">
-                <Users size={13} />
-              </div>
-              <span className="text-[10px] font-bold text-gray-900">Teachers</span>
-              <span className="text-[8px] font-bold text-emerald-600">Healthy</span>
-              <div className="w-4 h-4 rounded-full bg-emerald-50 flex items-center justify-center mt-2 text-emerald-600 border border-emerald-200">
-                <CheckCircle2 size={10} className="fill-emerald-100 text-emerald-600" />
-              </div>
-            </div>
-
-            {/* Academics */}
-            <div className="flex flex-col items-center">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center bg-orange-50 text-orange-600 mb-1 border border-orange-100/50">
-                <GraduationCap size={13} />
-              </div>
-              <span className="text-[10px] font-bold text-gray-900">Academics</span>
-              <span className="text-[8px] font-bold text-orange-600">Attention</span>
-              <div className="w-4 h-4 rounded-full bg-orange-50 flex items-center justify-center mt-2 text-orange-600 border border-orange-200">
-                <AlertTriangle size={9} className="text-orange-600 fill-orange-100" />
-              </div>
-            </div>
-          </div>
+      {/* ── Quick Actions ── */}
+      <div className="px-4 pt-5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Quick Actions</p>
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={() => onNavigate('attendance-daily')}
+            className="p-3 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-semibold active:scale-95 transition">
+            Daily Attendance
+          </button>
+          <button onClick={() => onNavigate('learners-list')}
+            className="p-3 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold active:scale-95 transition">
+            Learners
+          </button>
+          <button onClick={() => onNavigate('settings-users')}
+            className="p-3 rounded-xl border border-violet-200 bg-violet-50 text-violet-700 text-xs font-semibold active:scale-95 transition">
+            Users
+          </button>
+          <button onClick={() => onNavigate('finance-fees')}
+            className="p-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 text-xs font-semibold active:scale-95 transition">
+            Fees
+          </button>
         </div>
-
-        {/* SECTION 2: Executive Summary */}
-        <div className="space-y-3">
-          <div className="flex justify-between items-center px-1">
-            <h3 className="font-bold text-base text-gray-900 leading-none">Executive Summary</h3>
-            <button 
-              onClick={() => onNavigate('assess-summary-report')}
-              className="text-[11px] font-bold text-brand-purple hover:underline"
-            >
-              View full report →
-            </button>
-          </div>
-
-          {/* 2x2 Grid of Colored Executive Cards */}
-          <div className="grid grid-cols-2 gap-3">
-            {/* Money Card */}
-            <div className="relative overflow-hidden p-4 rounded-xl bg-gradient-to-br from-emerald-50/40 to-emerald-50/20 border border-emerald-100/80 shadow-xs flex flex-col justify-between min-h-[140px]">
-              <BarChart3 size={56} className="absolute -right-2 -top-2 text-emerald-500/5 pointer-events-none transform -rotate-12" />
-              
-              <div className="flex items-center gap-1.5 z-10">
-                <div className="w-6 h-6 rounded-full flex items-center justify-center bg-emerald-100/80 text-emerald-600">
-                  <DollarSign size={12} className="stroke-[2.5]" />
-                </div>
-                <span className="font-bold text-[10px] text-emerald-800 tracking-wide uppercase">Money</span>
-              </div>
-
-              <div className="flex justify-between items-end mt-3 z-10">
-                <div className="space-y-0.5">
-                  <div className="text-lg font-black text-gray-955 tracking-tight leading-none">
-                    {formatKesAmount(stats.feeCollected)}
-                  </div>
-                  <div className="text-[9px] text-gray-400 font-bold uppercase">
-                    Collected
-                  </div>
-                  <div className="text-[10px] font-bold text-emerald-600 mt-2 flex items-center gap-0.5">
-                    <span>{formatPercent(collectionRate)}</span>
-                    <span className="text-gray-500 font-semibold text-[8px] uppercase tracking-wider">Target</span>
-                  </div>
-                </div>
-
-                <div className="w-14 h-7 flex-shrink-0">
-                  <svg className="w-full h-full overflow-visible" viewBox="0 0 100 40">
-                    <defs>
-                      <linearGradient id="money-sparkline-grad-mobile" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#16A34A" stopOpacity="0.25" />
-                        <stop offset="100%" stopColor="#16A34A" stopOpacity="0.0" />
-                      </linearGradient>
-                    </defs>
-                    <path
-                      d="M0,35 C10,33 20,32 30,25 C40,18 50,22 60,15 C70,8 80,10 100,2"
-                      fill="none"
-                      stroke="#16A34A"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M0,35 C10,33 20,32 30,25 C40,18 50,22 60,15 C70,8 80,10 100,2 L100,40 L0,40 Z"
-                      fill="url(#money-sparkline-grad-mobile)"
-                    />
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            {/* Learners Card */}
-            <div className="relative overflow-hidden p-4 rounded-xl bg-gradient-to-br from-blue-50/40 to-blue-50/20 border border-blue-100/80 shadow-xs flex flex-col justify-between min-h-[140px]">
-              <Users size={56} className="absolute -right-2 -top-2 text-blue-500/5 pointer-events-none transform -rotate-12" />
-
-              <div className="flex items-center gap-1.5 z-10">
-                <div className="w-6 h-6 rounded-full flex items-center justify-center bg-blue-100/80 text-blue-600">
-                  <Users size={12} className="stroke-[2.5]" />
-                </div>
-                <span className="font-bold text-[10px] text-blue-800 tracking-wide uppercase">Learners</span>
-              </div>
-
-              <div className="flex justify-between items-end mt-3 z-10">
-                <div className="space-y-0.5">
-                  <div className="text-lg font-black text-gray-955 tracking-tight leading-none">
-                    {formatPercent(attendanceRate)}
-                  </div>
-                  <div className="text-[9px] text-gray-400 font-bold uppercase">
-                    Present today
-                  </div>
-                  <div className="text-[10px] font-bold text-blue-600 mt-2 flex items-center gap-0.5">
-                    <span>{stats.absentToday || 0}</span>
-                    <span className="text-gray-500 font-semibold text-[8px] uppercase tracking-wider">Absent</span>
-                  </div>
-                </div>
-
-                <div className="w-14 h-7 flex-shrink-0">
-                  <svg className="w-full h-full overflow-visible" viewBox="0 0 100 40">
-                    <defs>
-                      <linearGradient id="learners-sparkline-grad-mobile" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.25" />
-                        <stop offset="100%" stopColor="#3B82F6" stopOpacity="0.0" />
-                      </linearGradient>
-                    </defs>
-                    <path
-                      d="M0,28 C10,32 20,18 30,22 C45,28 55,12 65,18 C75,24 85,8 100,12"
-                      fill="none"
-                      stroke="#3B82F6"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M0,28 C10,32 20,18 30,22 C45,28 55,12 65,18 C75,24 85,8 100,12 L100,40 L0,40 Z"
-                      fill="url(#learners-sparkline-grad-mobile)"
-                    />
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            {/* Teachers Card */}
-            <div className="relative overflow-hidden p-4 rounded-xl bg-gradient-to-br from-purple-50/40 to-purple-50/20 border border-purple-100/80 shadow-xs flex flex-col justify-between min-h-[140px]">
-              <Users size={56} className="absolute -right-2 -top-2 text-purple-500/5 pointer-events-none transform -rotate-12" />
-
-              <div className="flex items-center gap-1.5 z-10">
-                <div className="w-6 h-6 rounded-full flex items-center justify-center bg-purple-100/80 text-purple-600">
-                  <Users size={12} className="stroke-[2.5]" />
-                </div>
-                <span className="font-bold text-[10px] text-purple-800 tracking-wide uppercase">Teachers</span>
-              </div>
-
-              <div className="flex justify-between items-end mt-3 z-10">
-                <div className="space-y-0.5">
-                  <div className="text-lg font-black text-gray-955 tracking-tight leading-none">
-                    {formatPercent(teacherActiveRate)}
-                  </div>
-                  <div className="text-[9px] text-gray-400 font-bold uppercase">
-                    Active staff
-                  </div>
-                  <div className="text-[10px] font-bold text-purple-600 mt-2 flex items-center gap-0.5">
-                    <span>{inactiveTeachers}</span>
-                    <span className="text-gray-500 font-semibold text-[8px] uppercase tracking-wider">Inactive</span>
-                  </div>
-                </div>
-
-                <div className="w-14 h-7 flex-shrink-0">
-                  <svg className="w-full h-full overflow-visible" viewBox="0 0 100 40">
-                    <defs>
-                      <linearGradient id="teachers-sparkline-grad-mobile" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#8B5CF6" stopOpacity="0.25" />
-                        <stop offset="100%" stopColor="#8B5CF6" stopOpacity="0.0" />
-                      </linearGradient>
-                    </defs>
-                    <path
-                      d="M0,30 C10,32 20,20 30,24 C45,30 55,14 65,20 C75,26 85,10 100,14"
-                      fill="none"
-                      stroke="#8B5CF6"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M0,30 C10,32 20,20 30,24 C45,30 55,14 65,20 C75,26 85,10 100,14 L100,40 L0,40 Z"
-                      fill="url(#teachers-sparkline-grad-mobile)"
-                    />
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            {/* Academics Card */}
-            <div className="relative overflow-hidden p-4 rounded-xl bg-gradient-to-br from-orange-50/40 to-orange-50/20 border border-orange-100/80 shadow-xs flex flex-col justify-between min-h-[140px]">
-              <BookOpen size={56} className="absolute -right-2 -top-2 text-orange-500/5 pointer-events-none transform -rotate-12" />
-
-              <div className="flex items-center gap-1.5 z-10">
-                <div className="w-6 h-6 rounded-full flex items-center justify-center bg-orange-100/80 text-orange-600">
-                  <GraduationCap size={12} className="stroke-[2.5]" />
-                </div>
-                <span className="font-bold text-[10px] text-orange-800 tracking-wide uppercase">Academics</span>
-              </div>
-
-              <div className="flex justify-between items-end mt-3 z-10">
-                <div className="space-y-0.5">
-                  <div className="text-lg font-black text-gray-955 tracking-tight leading-none">
-                    {formatPercent(assessmentRate)}
-                  </div>
-                  <div className="text-[9px] text-gray-400 font-bold uppercase">
-                    Assessments complete
-                  </div>
-                  <div className="text-[10px] font-bold text-orange-600 mt-2 flex items-center gap-0.5">
-                    <span>{stats.totalMissedExams || 0}</span>
-                    <span className="text-gray-500 font-semibold text-[8px] uppercase tracking-wider">Pending</span>
-                  </div>
-                </div>
-
-                <div className="w-14 h-7 flex-shrink-0">
-                  <svg className="w-full h-full overflow-visible" viewBox="0 0 100 40">
-                    <defs>
-                      <linearGradient id="academics-sparkline-grad-mobile" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#F97316" stopOpacity="0.25" />
-                        <stop offset="100%" stopColor="#F97316" stopOpacity="0.0" />
-                      </linearGradient>
-                    </defs>
-                    <path
-                      d="M0,32 C10,34 20,22 30,26 C45,32 55,16 65,22 C75,28 85,12 100,16"
-                      fill="none"
-                      stroke="#F97316"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M0,32 C10,34 20,22 30,26 C45,32 55,16 65,22 C75,28 85,12 100,16 L100,40 L0,40 Z"
-                      fill="url(#academics-sparkline-grad-mobile)"
-                    />
-                  </svg>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* SECTION 3: Quick Actions */}
-        <div className="space-y-2">
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1">Quick Actions</p>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => onNavigate('attendance-daily')}
-              className="p-3 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 transition shadow-xs"
-            >
-              Mark Attendance
-            </button>
-            <button
-              onClick={() => onNavigate('finance-management')}
-              className="p-3 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 transition shadow-xs"
-            >
-              View Finance
-            </button>
-            <button
-              onClick={() => onNavigate('learners-list')}
-              className="p-3 rounded-xl border border-violet-200 bg-violet-50 text-violet-700 text-xs font-semibold hover:bg-violet-100 transition shadow-xs"
-            >
-              View Learners
-            </button>
-            <button
-              onClick={() => onNavigate('assess-summary-report')}
-              className="p-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 text-xs font-semibold hover:bg-amber-100 transition shadow-xs"
-            >
-              View Reports
-            </button>
-          </div>
-        </div>
-
       </div>
 
-      {/* Mobile Bottom Navigation */}
       <MobileBottomNav role={user?.role} currentPath={currentPath} onNavigate={onNavigate} />
     </div>
   );
