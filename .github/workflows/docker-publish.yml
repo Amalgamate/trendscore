@@ -88,8 +88,8 @@ jobs:
           push: true
           tags: ${{ steps.backend_meta.outputs.tags }}
           labels: ${{ steps.backend_meta.outputs.labels }}
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,mode=max,scope=backend
+          cache-from: type=gha,scope=backend-v2
+          cache-to: type=gha,mode=max,scope=backend-v2
 
       - name: Stage deploy assets for console image
         run: |

@@ -121,7 +121,7 @@ export const chatbotController = {
   async chat(req: AuthRequest, res: Response) {
     const userId = req.user?.userId;
     const role = req.user?.role ?? 'TEACHER';
-    const firstName = req.user?.firstName ?? 'there';
+    const firstName = (req.user as any)?.firstName ?? 'there';
 
     if (!userId) throw new ApiError(401, 'Unauthorized');
 
