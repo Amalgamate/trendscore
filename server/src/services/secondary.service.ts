@@ -49,7 +49,9 @@ export const secondaryService = {
         },
       });
 
-      if (results.length === 0) {
+      const performanceResults = results.filter((result) => result.percentage !== null && result.percentage !== undefined && !result.assessmentStatusCode);
+
+      if (performanceResults.length === 0) {
         return null;
       }
 
@@ -61,17 +63,17 @@ export const secondaryService = {
       let totalPercentage = 0;
       let totalPoints = 0;
 
-      for (const result of results) {
-        totalPercentage += result.percentage;
+      for (const result of performanceResults) {
+        totalPercentage += result.percentage!;
 
         // Find points for this specific result's percentage
         const range = ranges.find(
-          (r) => result.percentage >= r.minPercentage && result.percentage <= r.maxPercentage
+          (r) => result.percentage! >= r.minPercentage && result.percentage! <= r.maxPercentage
         );
         totalPoints += range?.points || 0;
       }
 
-      const meanScore = totalPercentage / results.length;
+      const meanScore = totalPercentage / performanceResults.length;
 
       // 4. Determine mean grade letter
       const meanGradeRange = ranges.find(

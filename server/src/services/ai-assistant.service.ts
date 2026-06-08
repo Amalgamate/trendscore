@@ -270,7 +270,7 @@ export class AIAssistantService {
 
     for (const r of results) {
       const cluster = resolveCluster(r.test.learningArea);
-      if (!cluster) continue;
+      if (!cluster || r.percentage === null || r.percentage === undefined) continue;
       clusterScores[cluster].push(r.percentage);
       if (cluster === 'STEM')   stemSubjects.push(r.test.learningArea);
       if (cluster === 'SOCIAL') socialSubjects.push(r.test.learningArea);

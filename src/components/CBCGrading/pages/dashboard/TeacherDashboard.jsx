@@ -183,7 +183,7 @@ const TeacherDashboard = ({ user, onNavigate }) => {
             value: todaysClasses.length,
             subvalue: 'scheduled',
             icon: <Calendar size={26} />,
-            tone: 'indigo',
+            tone: 'navy',
             onClick: () => onNavigate('planner-timetable'),
           },
           {
@@ -191,7 +191,7 @@ const TeacherDashboard = ({ user, onNavigate }) => {
             value: attendanceDue.length,
             subvalue: 'pending',
             icon: <Clock size={26} />,
-            tone: 'amber',
+            tone: 'teal',
             onClick: () => onNavigate('attendance-daily'),
           },
           {
@@ -199,7 +199,7 @@ const TeacherDashboard = ({ user, onNavigate }) => {
             value: totalPapers,
             subvalue: 'total',
             icon: <ClipboardList size={26} />,
-            tone: 'purple',
+            tone: 'red',
             onClick: () => onNavigate('assess-summative-assessment'),
           },
           {
@@ -207,7 +207,7 @@ const TeacherDashboard = ({ user, onNavigate }) => {
             value: totalLearners,
             subvalue: 'across classes',
             icon: <GraduationCap size={26} />,
-            tone: 'emerald',
+            tone: 'green',
             onClick: () => onNavigate('learners-list'),
           },
         ]}

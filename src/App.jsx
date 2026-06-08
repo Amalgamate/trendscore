@@ -10,12 +10,36 @@ import { Toaster } from 'react-hot-toast';
 import { SchoolDataProvider } from './contexts/SchoolDataContext';
 import { FeeActionsProvider } from './contexts/FeeActionsContext';
 import { UserNotificationProvider } from './contexts/UserNotificationContext';
+import { ChatProvider } from './contexts/ChatContext';
 import { RolePreviewProvider } from './contexts/RolePreviewContext';
 import axiosInstance from './services/api/axiosConfig';
 import { useBootstrapStore } from './store/useBootstrapStore';
 
 import useSubjectStore from './store/useSubjectStore';
 import ErrorBoundary from './components/common/ErrorBoundary';
+
+// ── SW update banner ─────────────────────────────────────────────────────────
+function SWUpdateBanner() {
+  const [show, setShow] = React.useState(false);
+  React.useEffect(() => {
+    const handler = () => setShow(true);
+    window.addEventListener('sw:update-available', handler);
+    return () => window.removeEventListener('sw:update-available', handler);
+  }, []);
+  if (!show) return null;
+  return (
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-3 bg-gray-900 text-white text-xs font-semibold px-4 py-2.5 rounded-full shadow-lg animate-in slide-in-from-bottom-4 duration-300">
+      <span>A new version is available.</span>
+      <button
+        onClick={() => window.location.reload()}
+        className="px-3 py-1 bg-white text-gray-900 rounded-full hover:bg-gray-100 transition-colors"
+      >
+        Refresh
+      </button>
+      <button onClick={() => setShow(false)} className="opacity-60 hover:opacity-100">✕</button>
+    </div>
+  );
+}
 
 const APP_DISPLAY_NAME = 'Trends CORE V1.0';
 const LEGACY_BRAND_NAMES = new Set([
@@ -280,14 +304,16 @@ function AppContent() {
                   <SchoolDataProvider>
                     <FeeActionsProvider>
                       <UserNotificationProvider>
-                        <RolePreviewProvider user={user}>
-                          <CBCGradingSystem
-                            user={user}
-                            onLogout={handleLogout}
-                            brandingSettings={brandingSettings}
-                            setBrandingSettings={setBrandingSettings}
-                          />
-                        </RolePreviewProvider>
+                        <ChatProvider>
+                          <RolePreviewProvider user={user}>
+                            <CBCGradingSystem
+                              user={user}
+                              onLogout={handleLogout}
+                              brandingSettings={brandingSettings}
+                              setBrandingSettings={setBrandingSettings}
+                            />
+                          </RolePreviewProvider>
+                        </ChatProvider>
                       </UserNotificationProvider>
                     </FeeActionsProvider>
                   </SchoolDataProvider>
@@ -334,6 +360,7 @@ export default function App() {
     <ErrorBoundary>
       <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AppContent />
+        <SWUpdateBanner />
         <Toaster position="top-right" reverseOrder={false} />
       </HashRouter>
     </ErrorBoundary>

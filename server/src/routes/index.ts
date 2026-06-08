@@ -41,6 +41,7 @@ import libraryAutomationRoutes from './libraryAutomation.routes';
 import transportRoutes from './transport.routes';
 import lmsRoutes from './lms.routes';
 import aiRoutes from './ai.routes';
+import chatRoutes from './chat.routes';
 import onboardingRoutes from './onboarding.routes';
 import backupRoutes from './backup.routes';
 import schemeOfWorkRoutes from './schemeOfWork.routes';
@@ -73,7 +74,6 @@ router.use('/library', libraryRoutes);
 router.use('/library', libraryAutomationRoutes);
 router.use('/schools', schoolRoutes);
 router.use('/biometric', biometricRoutes);
-router.use('/ai', aiRoutes);
 router.use('/mpesa', mpesaRoutes);
 router.get('/auth/csrf', issueCsrfToken);
 
@@ -84,6 +84,8 @@ router.use(authenticate);
 
 router.use('/admin', adminRoutes);
 router.use('/support', supportRoutes);
+router.use('/ai', aiRoutes);
+router.use('/chat', chatRoutes);
 router.use('/users', userRoutes);
 router.use('/learners', requireApp('student-registry'), learnerRoutes);
 router.use('/classes', requireApp('timetable'), classRoutes);

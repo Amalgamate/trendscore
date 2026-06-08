@@ -510,8 +510,9 @@ function calculateFormativeSummary(assessments: any[]) {
 
 function calculateSubjectSummary(results: any[], ranges: any[]) {
   const summary: Record<string, any> = {};
+  const performanceResults = results.filter((r) => !r.assessmentStatusCode && r.percentage !== null && r.percentage !== undefined);
 
-  for (const r of results) {
+  for (const r of performanceResults) {
     const key = r.test.learningAreaId ? `id:${r.test.learningAreaId}` : `name:${r.test.learningArea}`;
     const display = r.test.learningAreaRef?.name || r.test.learningArea;
     if (!summary[key]) {
@@ -612,8 +613,22 @@ function analyzeFormativePerformance(assessments: any[]) {
 }
 
 function analyzeSummativePerformance(results: any[]) {
-  if (results.length === 0) {
-    return { count: 0, averagePercentage: 0, passRate: 0, byLearningArea: {}, gradeDistribution: {} };
+  const performanceResults = results.filter((r) => !r.assessmentStatusCode && r.percentage !== null && r.percentage !== undefined);
+  const statusCounts = results.reduce((acc: Record<string, number>, r: any) => {
+    if (r.assessmentStatusCode) acc[r.assessmentStatusCode] = (acc[r.assessmentStatusCode] || 0) + 1;
+    return acc;
+  }, {});
+
+  if (performanceResults.length === 0) {
+    return {
+      count: 0,
+      averagePercentage: 0,
+      passRate: 0,
+      byLearningArea: {},
+      gradeDistribution: {},
+      statusCounts,
+      exclusionNote: 'Administrative status codes are excluded from learner performance calculations.'
+    };
   }
 
   const byLearningArea: Record<string, any> = {};
@@ -622,12 +637,13 @@ function analyzeSummativePerformance(results: any[]) {
   let totalPercentage = 0;
   let passCount = 0;
 
-  for (const r of results) {
+  for (const r of performanceResults) {
     totalPercentage += r.percentage ?? 0;
     if (r.status === 'PASS') passCount++;
 
-    if (r.grade) {
-      gradeDistribution[r.grade] = (gradeDistribution[r.grade] || 0) + 1;
+    const gradeCode = r.gradeCode || r.cbcGrade || r.grade;
+    if (gradeCode) {
+      gradeDistribution[gradeCode] = (gradeDistribution[gradeCode] || 0) + 1;
     }
 
     const area = (r.test?.learningAreaId ? `id:${r.test.learningAreaId}` : (r.test?.learningArea ?? 'Unknown'));
@@ -649,10 +665,12 @@ function analyzeSummativePerformance(results: any[]) {
   }
 
   return {
-    count: results.length,
-    averagePercentage: Math.round((totalPercentage / results.length) * 100) / 100,
-    passRate: Math.round((passCount / results.length) * 100),
+    count: performanceResults.length,
+    averagePercentage: Math.round((totalPercentage / performanceResults.length) * 100) / 100,
+    passRate: Math.round((passCount / performanceResults.length) * 100),
     byLearningArea,
-    gradeDistribution
+    gradeDistribution,
+    statusCounts,
+    exclusionNote: 'Administrative status codes are excluded from learner performance calculations.'
   };
 }

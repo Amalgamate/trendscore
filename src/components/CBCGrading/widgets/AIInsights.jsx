@@ -42,7 +42,7 @@ const AIInsights = ({ contextType = 'school', contextId = 'default', variant = '
     return (
       <div className="bg-white rounded-lg border border-gray-200 p-4">
         <div className="flex items-center gap-2 mb-3">
-          <div className="w-5 h-5 bg-gradient-to-r from-brand-purple to-brand-teal rounded-full animate-pulse" />
+          <div className="w-5 h-5 bg-brand-purple rounded-full animate-pulse" />
           <p className="text-sm text-gray-600">Analyzing insights…</p>
         </div>
         <div className="space-y-2">
@@ -68,7 +68,7 @@ const AIInsights = ({ contextType = 'school', contextId = 'default', variant = '
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
       {/* Header */}
-      <div className="bg-gradient-to-r from-brand-purple/10 to-brand-teal/10 px-4 py-3 border-b border-gray-200">
+      <div className="bg-brand-purple/8 px-4 py-3 border-b border-gray-200">
         <div className="flex items-center gap-2">
           <Zap className="w-5 h-5 text-brand-purple" />
           <h3 className="font-semibold text-gray-900">AI Insights</h3>

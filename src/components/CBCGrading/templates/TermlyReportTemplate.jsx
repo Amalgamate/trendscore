@@ -1,4 +1,5 @@
 import React from 'react';
+import { ASSESSMENT_STATUS_CODES, CBE_GRADE_LEGEND } from '../../../utils/cbeGrading';
 import PathwayPredictionPage from './PathwayPredictionPage';
 
 /**
@@ -84,6 +85,7 @@ const TermlyReportTemplate = ({ reportData, id = "termly-report-content" }) => {
                             <tr className="text-white" style={{ backgroundColor: brandColor }}>
                                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-widest border-r border-white/20">Learning Area</th>
                                 <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-widest border-r border-white/20 w-32">Points / Marks</th>
+                                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-widest border-r border-white/20 w-28">Level</th>
                                 <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-widest w-32">Grade</th>
                             </tr>
                         </thead>
@@ -92,8 +94,9 @@ const TermlyReportTemplate = ({ reportData, id = "termly-report-content" }) => {
                                 <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                                     <td className="px-4 py-2.5 text-sm font-medium text-gray-700">{subject.subject}</td>
                                     <td className="px-4 py-2.5 text-center text-sm font-medium text-gray-900 border-x border-gray-100">{subject.averagePercentage}%</td>
+                                    <td className="px-4 py-2.5 text-center text-sm font-medium text-gray-900 border-r border-gray-100">{subject.achievementLevel ?? '-'}</td>
                                     <td className="px-4 py-2.5 text-center">
-                                        <span className="font-medium text-lg" style={{ color: brandColor }}>{subject.grade}</span>
+                                        <span className="font-medium text-lg" style={{ color: brandColor }}>{subject.cbcGrade || subject.grade}</span>
                                     </td>
                                 </tr>
                             ))}
@@ -101,6 +104,7 @@ const TermlyReportTemplate = ({ reportData, id = "termly-report-content" }) => {
                                 <tr key={`empty-${i}`} className="h-9">
                                     <td className="border-r border-gray-100"></td>
                                     <td className="border-r border-gray-100"></td>
+                                    <td></td>
                                     <td></td>
                                 </tr>
                             ))}
@@ -124,6 +128,26 @@ const TermlyReportTemplate = ({ reportData, id = "termly-report-content" }) => {
                         </div>
                     </div>
                 )}
+
+                <div className="mb-6 grid grid-cols-1 gap-3 text-[10px] text-gray-600">
+                    <div className="border border-gray-200 rounded bg-white p-3">
+                        <p className="font-semibold uppercase tracking-widest text-gray-500 mb-2">CBE Achievement Legend</p>
+                        <div className="grid grid-cols-4 gap-1">
+                            {CBE_GRADE_LEGEND.map((item) => (
+                                <span key={item.gradeCode}>{item.gradeCode} = Achievement Level {item.achievementLevel}</span>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="border border-gray-200 rounded bg-white p-3">
+                        <p className="font-semibold uppercase tracking-widest text-gray-500 mb-2">Special Codes</p>
+                        <div className="grid grid-cols-3 gap-1">
+                            {ASSESSMENT_STATUS_CODES.map((item) => (
+                                <span key={item.code}>{item.code} = {item.label}</span>
+                            ))}
+                        </div>
+                        <p className="mt-2 italic">{reportData.summative?.summary?.exclusionNote || 'Administrative status codes are excluded from learner performance calculations.'}</p>
+                    </div>
+                </div>
 
                 {/* 4. PERFORMANCE SUMMARY & KEY */}
                 <div className="grid grid-cols-2 gap-6 mb-6">

@@ -3,7 +3,6 @@ import { usePermissions } from '../../../hooks/usePermissions';
 import {
   Home,
   ClipboardCheck,
-  Plus,
   Mail,
   User,
   Search,
@@ -60,7 +59,7 @@ const MobileAppShell = ({ children, user, onNavigate, currentPage, brandingSetti
             <button
               key={item.id}
               onClick={() => onNavigate(item.id)}
-              className={cn("flex-1 flex flex-col items-center gap-1 py-1", idx === 1 ? 'mr-2' : '', idx === 2 ? 'ml-2' : '')}
+              className={cn("flex-1 flex flex-col items-center gap-1 py-1")}
             >
               <div className={cn("w-9 h-7 rounded-[10px] flex items-center justify-center", isActive ? 'bg-[#f0f0ec]' : '')}>
                 <item.icon size={19} className={isActive ? 'text-[#1a1a18]' : 'text-[#bbb]'} />
@@ -71,12 +70,6 @@ const MobileAppShell = ({ children, user, onNavigate, currentPage, brandingSetti
             </button>
           );
         })}
-        <button
-          onClick={() => onNavigate(role === 'TEACHER' ? 'learners-admissions' : 'dashboard')}
-          className="w-14 h-10 -mt-2 rounded-2xl bg-[#1a1a18] text-white flex items-center justify-center"
-        >
-          <Plus size={20} />
-        </button>
       </div>
     </div>
   );

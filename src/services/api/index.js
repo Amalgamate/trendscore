@@ -44,6 +44,7 @@ import { mpesaAPI } from './mpesa.api';
 import { systemLogsAPI } from './systemLogs.api';
 import { pathwayAPI } from './pathway.api';
 import { seniorPathwayAPI } from './seniorPathway.api';
+import { chatAPI } from './chat.api';
 
 export { API_BASE_URL, clearApiCache };
 
@@ -169,6 +170,7 @@ const api = {
   systemLogs: systemLogsAPI,
   pathways: pathwayAPI,
   seniorPathways: seniorPathwayAPI,
+  chat: chatAPI,
   gitNotifications: {
     preview: async (data) => fetchWithAuth('/git-notifications/preview', { method: 'POST', body: JSON.stringify(data) }),
     publish: async (data) => fetchWithAuth('/git-notifications/publish', { method: 'POST', body: JSON.stringify(data) }),

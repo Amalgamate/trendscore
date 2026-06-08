@@ -107,6 +107,11 @@ model User {
   createdTermConfigs        TermConfig[]
   assessedValues            ValuesAssessment[]       @relation("AssessorValues")
   pushSubscriptions         PushSubscription[]       @relation("UserPushSubscriptions")
+  // ── In-App Messaging ────────────────────────────────────────────────────────
+  conversationParticipants  ConversationParticipant[]
+  sentChatMessages          ChatMessage[]            @relation("ChatMessageSender")
+  chatMessageReactions      ChatMessageReaction[]    @relation("ChatReactionUser")
+  createdConversations      Conversation[]
   // ── Apps Module ─────────────────────────────────────────────────────────────
   appConfigsUpdated         SchoolAppConfig[]        @relation("AppConfigUpdater")
   appAuditLogs              AppAuditLog[]            @relation("AppAuditor")
@@ -719,6 +724,11 @@ model FormativeAssessment {
   subStrand        String?
   overallRating    RubricRating
   detailedRating   DetailedRubricRating?
+  gradeCode        String?
+  achievementLevel Int?
+  competencyBand   String?
+  gradeDescription String?
+  assessmentStatusCode String?
   points           Int?
   percentage       Float?
   exceedingCount   Int                     @default(0)
@@ -874,15 +884,16 @@ model SummativeResult {
   id               String                   @id @default(uuid())
   testId           String
   learnerId        String
-  marksObtained    Int
-  percentage       Float
-  grade            String
-  status           TestStatus
+  marksObtained    Int?
+  percentage       Float?
+  grade            String?
+  status           TestStatus?
   moderationStatus ModerationStatus         @default(DRAFT)
   position         Int?
   outOf            Int?
   remarks          String?
   teacherComment   String?
+  moderationComment String?
   recordedBy       String
   createdAt        DateTime                 @default(now())
   updatedAt        DateTime                 @updatedAt
@@ -890,6 +901,13 @@ model SummativeResult {
   archivedAt       DateTime?
   archivedBy       String?
   cbcGrade         String?
+  rawScore         Float?
+  rubricRating     String?
+  gradeCode        String?
+  achievementLevel Int?
+  competencyBand   String?
+  gradeDescription String?
+  assessmentStatusCode String?
   levelId          String?                  @map("level_id")
   resultHistory    SummativeResultHistory[]
   learner          Learner                  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
@@ -3391,4 +3409,101 @@ enum ComplianceStatus {
   SYNCED
   FAILED
   EXEMPT
+}
+
+
+// ============================================================================
+// IN-APP MESSAGING  (Live Chat + Record Chatter)
+// ============================================================================
+
+enum ConversationType {
+  DIRECT        // 1:1 between two users
+  GROUP         // Named group (e.g. "Grade 7 Teachers")
+  RECORD_THREAD // Chatter thread attached to a school record
+}
+
+model Conversation {
+  id           String               @id @default(uuid())
+  type         ConversationType     @default(DIRECT)
+  name         String?              // Only for GROUP; null for DIRECT/RECORD_THREAD
+  avatarUrl    String?
+  // For RECORD_THREAD — polymorphic reference
+  recordType   String?              // e.g. "FeeInvoice", "Learner", "SummativeTest"
+  recordId     String?              // FK value of the linked record
+  createdById  String
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  lastMessageAt DateTime?           // Denormalised for fast inbox sort
+
+  createdBy    User                 @relation(fields: [createdById], references: [id])
+  participants ConversationParticipant[]
+  messages     ChatMessage[]
+
+  @@index([type])
+  @@index([recordType, recordId])
+  @@index([lastMessageAt])
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id              String       @id @default(uuid())
+  conversationId  String
+  userId          String
+  joinedAt        DateTime     @default(now())
+  lastReadAt      DateTime?    // Tracks per-user read cursor
+  mutedUntil      DateTime?    // Optional mute
+  leftAt          DateTime?    // Soft-remove for groups
+
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@index([conversationId])
+  @@map("conversation_participants")
+}
+
+enum ChatAttachmentType {
+  IMAGE
+  FILE
+  AUDIO
+}
+
+model ChatMessage {
+  id             String               @id @default(uuid())
+  conversationId String
+  senderId       String
+  body           String
+  attachmentUrl  String?
+  attachmentType ChatAttachmentType?
+  attachmentName String?
+  replyToId      String?              // Thread reply
+  editedAt       DateTime?
+  deletedAt      DateTime?            // Soft-delete
+  createdAt      DateTime             @default(now())
+
+  conversation   Conversation         @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User                 @relation("ChatMessageSender", fields: [senderId], references: [id])
+  replyTo        ChatMessage?         @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies        ChatMessage[]        @relation("MessageReplies")
+  reactions      ChatMessageReaction[]
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+  @@map("chat_messages")
+}
+
+model ChatMessageReaction {
+  id        String      @id @default(uuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime    @default(now())
+
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User        @relation("ChatReactionUser", fields: [userId], references: [id])
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@map("chat_message_reactions")
 }

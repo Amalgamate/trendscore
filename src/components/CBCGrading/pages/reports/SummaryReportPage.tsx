@@ -26,6 +26,7 @@ import { useSchoolData } from '../../../../contexts/SchoolDataContext';
 import VirtualizedTable from '../../shared/VirtualizedTable';
 import { getAcademicYearOptions, getCurrentAcademicYear } from '../../utils/academicYear';
 import { CANONICAL_TEST_TYPE_OPTIONS, CANONICAL_TEST_TYPE_VALUES, resolveTestType, formatTestTypeLabel } from '../../utils/testType';
+import { getAssessmentStatus } from '../../../../utils/cbeGrading';
 import { learningAreas } from '../../data/learningAreas';
 import { gradeStructure } from '../../data/gradeStructure';
 import ExcelJS from 'exceljs';
@@ -386,6 +387,7 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
       // Calculate performance for sorting
       const performanceMap = {};
       rawResults.forEach(r => {
+        if (r.assessmentStatusCode || r.percentage === null || r.percentage === undefined) return;
         const sub = r.test?.learningArea;
         if (!sub) return;
         if (!performanceMap[sub]) performanceMap[sub] = { sum: 0, count: 0 };
@@ -414,11 +416,23 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
         subjects.forEach(sub => {
           const res = studentResults.find(r => r.test?.learningArea === sub);
             if (res) {
+              const status = getAssessmentStatus(res.assessmentStatusCode);
+              if (status) {
+                subjectScores[sub] = {
+                  statusCode: status.code,
+                  statusLabel: status.label,
+                  marks: null,
+                  max: res.test?.totalMarks || 100,
+                  grade: status.code,
+                  percentage: null
+                };
+                return;
+              }
               const derivedBand = getCBCGrade(Number(res.percentage || 0)).grade;
               subjectScores[sub] = {
                 marks: res.marksObtained,
                 max: res.test?.totalMarks || 100,
-                grade: res.cbcGrade || derivedBand,
+                grade: res.gradeCode || res.cbcGrade || derivedBand,
                 percentage: res.percentage
               };
             totalScore += res.marksObtained;
@@ -449,7 +463,11 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
       });
 
       gridRows.sort((a, b) => parseFloat(b.averagePct) - parseFloat(a.averagePct));
-      const rankedRows = gridRows.map((row, idx) => ({ ...row, rank: idx + 1 }));
+      const rankedRows = gridRows.map((row, idx) => ({
+        ...row,
+        rank: row.subjectsAssessed > 0 ? idx + 1 : 'N/A',
+        rankNote: row.subjectsAssessed > 0 ? null : 'Insufficient Assessment Data'
+      }));
 
       setMatrixData({
         rows: rankedRows,
@@ -510,7 +528,7 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
     if (!matrixData || filteredRows.length === 0) return {};
     const means = {};
     matrixData.subjects.forEach(sub => {
-      const scored = filteredRows.filter(r => r.subjectScores[sub] !== null);
+      const scored = filteredRows.filter(r => r.subjectScores[sub] !== null && !r.subjectScores[sub]?.statusCode);
       if (scored.length === 0) {
         means[sub] = null;
         return;
@@ -600,6 +618,14 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
             return (
               <td key={sub} className="border-r border-slate-100 px-2 py-3 text-center bg-rose-50/30">
                 <span className="text-[10px] font-medium text-rose-400 opacity-40">ABS</span>
+              </td>
+            );
+          }
+          if (score.statusCode) {
+            return (
+              <td key={sub} className="border-r border-slate-100 px-2 py-3 text-center bg-amber-50/50" title={score.statusLabel}>
+                <div className="text-sm font-semibold text-amber-700">{score.statusCode}</div>
+                <div className="text-[9px] text-amber-500 leading-none">Status</div>
               </td>
             );
           }

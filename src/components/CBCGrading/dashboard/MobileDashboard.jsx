@@ -30,11 +30,13 @@ const LoadingFallback = () => (
  * @param {Object} props.user - User object with id, role, name
  * @param {Function} props.onNavigate - Navigation callback
  * @param {string} props.currentPath - Current page path
+ * @param {Object} props.brandingSettings - Branding settings including logoUrl
  */
 const MobileDashboard = ({ 
   user, 
   onNavigate, 
-  currentPath = 'dashboard' 
+  currentPath = 'dashboard',
+  brandingSettings
 }) => {
   const role = user?.role;
 
@@ -49,6 +51,7 @@ const MobileDashboard = ({
             user={user} 
             onNavigate={onNavigate} 
             currentPath={currentPath}
+            brandingSettings={brandingSettings}
           />
         );
 
@@ -58,6 +61,7 @@ const MobileDashboard = ({
             user={user} 
             onNavigate={onNavigate} 
             currentPath={currentPath}
+            brandingSettings={brandingSettings}
           />
         );
 
@@ -68,6 +72,7 @@ const MobileDashboard = ({
             user={user} 
             onNavigate={onNavigate} 
             currentPath={currentPath}
+            brandingSettings={brandingSettings}
           />
         );
 
@@ -77,6 +82,7 @@ const MobileDashboard = ({
             user={user} 
             onNavigate={onNavigate} 
             currentPath={currentPath}
+            brandingSettings={brandingSettings}
           />
         );
 
@@ -86,6 +92,7 @@ const MobileDashboard = ({
             user={user} 
             onNavigate={onNavigate} 
             currentPath={currentPath}
+            brandingSettings={brandingSettings}
           />
         );
 
@@ -96,6 +103,7 @@ const MobileDashboard = ({
             user={user} 
             onNavigate={onNavigate} 
             currentPath={currentPath}
+            brandingSettings={brandingSettings}
           />
         );
     }

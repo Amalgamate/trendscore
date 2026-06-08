@@ -27,7 +27,7 @@ const UserAvatar = ({ name, imageUrl, size = 'md', className }) => {
     <div 
       className={cn(
         "relative shrink-0 overflow-hidden rounded-full flex items-center justify-center font-bold tracking-tighter",
-        !hasImage && "bg-gradient-to-br from-brand-purple to-purple-700 text-white shadow-inner border border-white/20",
+        !hasImage && "bg-brand-purple text-white border border-white/10",
         sizeClasses[size] || sizeClasses.md,
         className
       )}

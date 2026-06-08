@@ -76,6 +76,25 @@ export const initializeSocket = (httpServer: any) => {
             socket.leave(ticketId);
         });
 
+        // Join a chat conversation room
+        socket.on('chat:join', (conversationId: string) => {
+            socket.join(`conv:${conversationId}`);
+        });
+
+        socket.on('chat:leave', (conversationId: string) => {
+            socket.leave(`conv:${conversationId}`);
+        });
+
+        // Ephemeral typing indicator — no DB write, just relay to the room
+        socket.on('chat:typing', (data: { conversationId: string; isTyping: boolean }) => {
+            if (!data?.conversationId) return;
+            socket.to(`conv:${data.conversationId}`).emit('chat:typing', {
+                conversationId: data.conversationId,
+                userId: socket.user?.id,
+                isTyping: !!data.isTyping,
+            });
+        });
+
         socket.on('disconnect', () => {
             // console.log('User disconnected from socket');
         });

@@ -69,17 +69,15 @@ const MetricBanner = ({ metrics }) => {
       items={metrics.map((metric, index) => {
         const Icon = metric.icon;
         return {
-          label: metric.title,
-          value: metric.value,
-          subvalue: metric.trendValue ? (
-            <span className="inline-flex items-center gap-1">
-              {metric.trend === 'up' ? <ArrowUp size={13} strokeWidth={3} /> : <ArrowDown size={13} strokeWidth={3} />}
-              {metric.trendValue}
-            </span>
-          ) : metric.subtitle,
-          icon: <Icon size={26} />,
-          tone: tones[index] || 'indigo',
-          onClick: metric.onClick,
+          label:    metric.title,
+          value:    metric.value,
+          subvalue: metric.subvalue ?? metric.subtitle,
+          chips:    metric.chips,
+          trend:    metric.trend,
+          trendValue: metric.trendValue,
+          icon:     <Icon size={26} />,
+          tone:     tones[index] || 'navy',
+          onClick:  metric.onClick,
         };
       })}
     />
@@ -300,30 +298,42 @@ const SecondaryAdminDashboard = ({ learners = [], pagination, teachers = [], use
     const bannerMetrics = [
       {
         title: 'Total Students', value: stats.totalStudents,
-        subtitle: (
-          <span className="flex items-center gap-1.5 whitespace-nowrap">
-            <span>{stats.activeStudents} active</span>
-            <span className="text-amber-200 font-bold text-[10px] border-l border-violet-400/40 pl-1.5 opacity-90">
-              {stats.males}M / {stats.females}F
-            </span>
-          </span>
-        ),
+        subvalue: `${stats.activeStudents} active`,
+        chips: [
+          { value: stats.males,   label: 'Male',   dot: '#38bdf8' },
+          { value: stats.females, label: 'Female', dot: '#f9a8d4' },
+        ],
         icon: Users, trend: stats.studentTrend?.startsWith('+') ? 'up' : 'down',
         trendValue: stats.studentTrend, onClick: () => onNavigate('learners-list'),
       },
       {
         title: 'Current Exam Series', value: stats.currentTestSeries,
-        subtitle: 'Active Assessment Period', icon: GraduationCap,
+        subvalue: 'Assessment Period',
+        chips: [
+          { value: stats.totalMissedExams, label: 'Unassessed', dot: '#fca5a5' },
+          { value: stats.totalAssessedClasses, label: 'Classes Done', dot: '#86efac' },
+        ],
+        icon: GraduationCap,
         onClick: () => onNavigate('assess-summary-report'),
       },
       {
         title: 'Total Un-Assessed', value: stats.totalMissedExams,
-        subtitle: stats.currentTestSeries, icon: AlertCircle,
+        subvalue: stats.currentTestSeries,
+        chips: [
+          { value: stats.totalStudents, label: 'Total',    dot: '#c4b5fd' },
+          { value: Math.max(0, stats.totalStudents - stats.totalMissedExams), label: 'Assessed', dot: '#86efac' },
+        ],
+        icon: AlertCircle,
         onClick: () => setShowUnAssessedSheet(true),
       },
       {
         title: 'Assessed Classes', value: stats.totalAssessedClasses,
-        subtitle: 'Classes with assessments', icon: UserCheck,
+        subvalue: 'With recorded data',
+        chips: [
+          { value: stats.totalClasses,         label: 'Total Classes', dot: '#c4b5fd' },
+          { value: stats.totalAssessedClasses,  label: 'Assessed',     dot: '#86efac' },
+        ],
+        icon: UserCheck,
         onClick: () => onNavigate('assess-summative-assessment'),
       },
     ];

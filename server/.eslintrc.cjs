@@ -25,7 +25,7 @@ module.exports = {
   rules: {
     // Backend repo: keep lint practical; type-aware strictness can be added later.
     '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-    '@typescript-eslint/no-explicit-any': 'off',
+    '@typescript-eslint/no-explicit-any': 'warn',
     '@typescript-eslint/no-namespace': 'off',
     '@typescript-eslint/no-var-requires': 'off',
     'prefer-const': 'warn',

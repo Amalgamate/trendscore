@@ -10,7 +10,7 @@ import csvParser from 'csv-parser';
 import { Parser } from 'json2csv';
 import { Readable } from 'stream';
 import { z } from 'zod';
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcrypt';
 
 const router = Router();
 

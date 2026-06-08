@@ -47,6 +47,7 @@ export class PerformanceService {
         const termGroups = new Map<string, number[]>();
 
         summativeResults.forEach(r => {
+            if (r.percentage === null || r.percentage === undefined || r.assessmentStatusCode) return;
             const key = `${r.test.academicYear} ${r.test.term}`;
             if (!termGroups.has(key)) termGroups.set(key, []);
             termGroups.get(key)!.push(r.percentage);
@@ -107,7 +108,9 @@ export class PerformanceService {
             'A': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0
         };
 
-        results.forEach(r => {
+        const performanceResults = results.filter((r) => r.percentage !== null && r.percentage !== undefined);
+
+        performanceResults.forEach(r => {
             const g = r.grade as keyof typeof distribution;
             if (distribution[g] !== undefined) {
                 distribution[g]++;
@@ -115,10 +118,10 @@ export class PerformanceService {
         });
 
         return {
-            total: results.length,
+            total: performanceResults.length,
             distribution,
-            average: results.length > 0
-                ? Math.round(results.reduce((a, b) => a + b.percentage, 0) / results.length)
+            average: performanceResults.length > 0
+                ? Math.round(performanceResults.reduce((a, b) => a + b.percentage!, 0) / performanceResults.length)
                 : 0
         };
     }

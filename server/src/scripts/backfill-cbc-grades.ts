@@ -44,6 +44,9 @@ async function backfillCbcGrades() {
     for (const result of results) {
       try {
         const percentage = result.percentage;
+        if (percentage === null || percentage === undefined) {
+          continue;
+        }
         const cbcGrade = gradingService.calculateRatingSync(percentage, cbcSystem.ranges);
 
         await prisma.summativeResult.update({

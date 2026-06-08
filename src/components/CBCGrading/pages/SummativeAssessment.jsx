@@ -15,6 +15,7 @@ import { generatePDFWithLetterhead } from '../../../utils/simplePdfGenerator';
 import BulkMarkImportModal from '../shared/BulkMarkImportModal';
 import PDFPreviewModal from '../shared/PDFPreviewModal';
 import { getGradeColor } from '../../../utils/grading/colors';
+import { ASSESSMENT_STATUS_CODES, getAssessmentStatus, hasPerformanceScore } from '../../../utils/cbeGrading';
 import { useAssessmentSetup } from '../hooks/useAssessmentSetup';
 import { useLearningAreas } from '../hooks/useLearningAreas';
 import { useTeacherWorkload } from '../hooks/useTeacherWorkload';
@@ -677,8 +678,8 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
   const assessmentProgress = useMemo(() => {
     const totalLearners = fetchedLearners.length;
     const assessedCount = Object.keys(marks).filter(learnerId => {
-      const mark = marks[learnerId]?.mark;
-      return mark !== null && mark !== undefined && mark !== '';
+      const entry = marks[learnerId];
+      return hasPerformanceScore(entry) || Boolean(entry?.assessmentStatusCode);
     }).length;
 
     const percentage = totalLearners > 0 ? Math.round((assessedCount / totalLearners) * 100) : 0;
@@ -809,7 +810,8 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
           results.forEach(r => {
             if (r.learnerId) {
               existingMarks[r.learnerId] = {
-                mark: r.marksObtained,
+                mark: r.assessmentStatusCode ? '' : r.marksObtained,
+                assessmentStatusCode: r.assessmentStatusCode || '',
                 comment: r.teacherComment || ''
               };
             }
@@ -925,12 +927,12 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
       try {
         const resultsToSave = Object.entries(marks)
           .filter(([, markData]) => {
-            const m = markData?.mark;
-            return m !== null && m !== undefined && m !== '';
+            return hasPerformanceScore(markData) || Boolean(markData?.assessmentStatusCode);
           })
           .map(([learnerId, markData]) => ({
             learnerId,
-            marksObtained: markData.mark,
+            marksObtained: markData.assessmentStatusCode ? undefined : markData.mark,
+            assessmentStatusCode: markData.assessmentStatusCode || undefined,
             remarks: '-',
             teacherComment: markData.comment || ''
           }));
@@ -1044,10 +1046,23 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
         ...prev,
         [learnerId]: {
           ...(prev[learnerId] || {}),
-          mark: Math.min(Math.max(0, numValue), selectedTest?.totalMarks || 100)
+          mark: Math.min(Math.max(0, numValue), selectedTest?.totalMarks || 100),
+          assessmentStatusCode: ''
         }
       }));
     }
+  };
+
+  const handleStatusCodeChange = (learnerId, value) => {
+    const status = getAssessmentStatus(value);
+    setMarks(prev => ({
+      ...prev,
+      [learnerId]: {
+        ...(prev[learnerId] || {}),
+        mark: status ? '' : (prev[learnerId]?.mark ?? ''),
+        assessmentStatusCode: status?.code || ''
+      }
+    }));
   };
 
   const handleCommentChange = (learnerId, value) => {
@@ -1159,6 +1174,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
       'Admission Number': l.admissionNumber,
       'Student Name': `${l.firstName} ${l.lastName}`,
       'Mark': marks[l.id]?.mark || '',
+      'Status Code': marks[l.id]?.assessmentStatusCode || '',
       'Teacher Comment': marks[l.id]?.comment || ''
     }));
 
@@ -1230,12 +1246,20 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
         toast('Existing results detected. Saving will overwrite them.', { icon: 'ℹ️' });
       }
 
-      // Prepare bulk payload — skip learners with no mark entered
+      const missingRequiredComment = Object.entries(currentMarksToSave).find(([, markData]) => {
+        const status = getAssessmentStatus(markData?.assessmentStatusCode);
+        return status?.requiresComment && !String(markData?.comment || '').trim();
+      });
+
+      if (missingRequiredComment) {
+        toast.dismiss(saveToastId);
+        toast.error(`${missingRequiredComment[1].assessmentStatusCode} requires a teacher comment.`);
+        return;
+      }
+
+      // Prepare bulk payload — skip learners with neither score nor status entered
       const resultsToSave = Object.entries(currentMarksToSave)
-        .filter(([, markData]) => {
-          const m = markData?.mark;
-          return m !== null && m !== undefined && m !== '';
-        })
+        .filter(([, markData]) => hasPerformanceScore(markData) || Boolean(markData?.assessmentStatusCode))
         .map(([learnerId, markData]) => {
           const mark = markData.mark;
           const existingResult = existingResults.find(r => r.learnerId === learnerId);
@@ -1252,7 +1276,8 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
 
           return {
             learnerId,
-            marksObtained: mark,
+            marksObtained: markData.assessmentStatusCode ? undefined : mark,
+            assessmentStatusCode: markData.assessmentStatusCode || undefined,
             remarks,
             teacherComment
           };
@@ -1260,7 +1285,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
 
       if (resultsToSave.length === 0) {
         toast.dismiss(saveToastId);
-        toast.error('No marks to save — enter at least one score first.');
+        toast.error('No results to save — enter at least one score or status first.');
         return;
       }
 
@@ -1277,7 +1302,8 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
       updatedResults.forEach(r => {
         if (r.learnerId) {
           updatedMarks[r.learnerId] = {
-            mark: r.marksObtained,
+            mark: r.assessmentStatusCode ? '' : r.marksObtained,
+            assessmentStatusCode: r.assessmentStatusCode || '',
             comment: r.teacherComment || ''
           };
         }
@@ -1794,11 +1820,14 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
                     <th className="px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-center w-32 border-r border-brand-purple/20">Adm No</th>
                     <th className="px-3 py-2 text-[9px] font-semibold uppercase tracking-wide border-r border-brand-purple/20 w-1/3">Student Name</th>
                     <th className="px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-center w-20 border-r border-brand-purple/20">Score</th>
+                    <th className="px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-center w-28 border-r border-brand-purple/20">Status</th>
+                    <th className="px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-center w-44 border-r border-brand-purple/20">Comment</th>
                     <th className="px-3 py-2 text-[9px] font-semibold uppercase tracking-wide">Competence</th>
                   </tr>
                 }
                 renderRow={(learner, index) => {
                   const score = marks[learner.id];
+                  const selectedStatus = getAssessmentStatus(score?.assessmentStatusCode);
                   return (
                     <tr key={learner.id} className={`${index % 2 === 1 ? 'bg-[#f8fafc]' : 'bg-white'} hover:bg-[#f1f5f9] transition`}>
                       <td className="px-3 py-1.5 text-xs text-center font-semibold text-gray-700 border-r border-gray-200">{index + 1}</td>
@@ -1813,12 +1842,41 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
                           max={selectedTest?.totalMarks}
                           value={marks[learner.id]?.mark ?? ''}
                           onChange={(e) => handleMarkChange(learner.id, e.target.value)}
-                          className="w-full px-2 py-1 border border-gray-300 bg-white rounded focus:ring-2 focus:ring-brand-purple outline-none transition text-center font-semibold text-xs"
+                          disabled={Boolean(selectedStatus)}
+                          className="w-full px-2 py-1 border border-gray-300 bg-white rounded focus:ring-2 focus:ring-brand-purple outline-none transition text-center font-semibold text-xs disabled:bg-slate-100 disabled:text-slate-400"
                           placeholder="-"
                         />
                       </td>
+                      <td className="px-3 py-1.5 text-center border-r border-gray-200">
+                        <select
+                          value={score?.assessmentStatusCode || ''}
+                          onChange={(e) => handleStatusCodeChange(learner.id, e.target.value)}
+                          className="w-full px-1.5 py-1 border border-gray-300 bg-white rounded focus:ring-2 focus:ring-brand-purple outline-none transition text-[10px] font-semibold"
+                          title={selectedStatus?.label || 'Assessment status'}
+                        >
+                          <option value="">-</option>
+                          {ASSESSMENT_STATUS_CODES.map((status) => (
+                            <option key={status.code} value={status.code}>
+                              {status.code} - {status.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-3 py-1.5 border-r border-gray-200">
+                        <input
+                          type="text"
+                          value={score?.comment || ''}
+                          onChange={(e) => handleCommentChange(learner.id, e.target.value)}
+                          className={`w-full px-2 py-1 border rounded focus:ring-2 focus:ring-brand-purple outline-none transition text-xs ${
+                            selectedStatus?.requiresComment && !score?.comment
+                              ? 'border-amber-400 bg-amber-50'
+                              : 'border-gray-300 bg-white'
+                          }`}
+                          placeholder={selectedStatus?.requiresComment ? 'Required' : 'Optional'}
+                        />
+                      </td>
                       <td className="px-3 py-1.5 text-[10px] text-[#475569] italic leading-snug">
-                        {getDescriptionForGrade(marks[learner.id]?.mark, selectedTest?.totalMarks, learner.firstName)}
+                        {selectedStatus?.label || getDescriptionForGrade(marks[learner.id]?.mark, selectedTest?.totalMarks, learner.firstName)}
                       </td>
                     </tr>
                   );

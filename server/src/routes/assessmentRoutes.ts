@@ -116,9 +116,12 @@ const createSummativeTestSchema = z.object({
 const recordSummativeResultSchema = z.object({
   testId: z.string().min(1),
   learnerId: z.string().min(1),
-  marksObtained: z.coerce.number().min(0),
+  marksObtained: z.coerce.number().min(0).optional(),
+  rawScore: z.coerce.number().min(0).optional(),
+  assessmentStatusCode: z.enum(['X', 'Y', 'Z', 'EX', 'TR', 'WD']).optional(),
   remarks: z.string().max(500).optional(),
   teacherComment: z.string().max(1000).optional(),
+  moderationComment: z.string().max(1000).optional(),
 });
 
 // ============================================

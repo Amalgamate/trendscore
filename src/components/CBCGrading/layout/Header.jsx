@@ -13,8 +13,10 @@ import { Badge } from "../../ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "../../ui/popover";
 import { cn } from "../../../utils/cn";
 import { useUserNotifications } from '../../../contexts/UserNotificationContext';
+import { useChat } from '../../../contexts/ChatContext';
 import { refreshBus } from '../../../utils/refreshBus';
 import AccountSwitcherMenu from '../../common/AccountSwitcherMenu';
+import ChatPanel from '../../chat/ChatPanel';
 import '../../../styles/notifications.css';
 
 const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate }) => {
@@ -39,6 +41,9 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
     markAsRead,
     markAllAsRead: markAllSystemAsRead
   } = useUserNotifications();
+
+  // Chat context for the messaging button
+  const { unreadTotal: chatUnreadCount, isChatOpen, setIsChatOpen } = useChat();
 
   const notificationRef = useRef(null);
   const dropdownRef = useRef(null);
@@ -464,6 +469,7 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
   };
 
   return (
+    <>
     <header className="h-20 bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm sticky top-0 z-50">
       <div className="app-layout-row h-full flex items-center justify-between">
       <div className="flex items-center gap-4 group cursor-pointer" onClick={() => onNavigate?.('dashboard')}>
@@ -481,7 +487,7 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
         <div className="hidden sm:block">
           <div className="flex items-center gap-2">
             <h1 className="text-base lg:text-lg font-semibold text-gray-900 leading-none tracking-tight uppercase">
-              {title || brandingSettings?.schoolName || 'Trends CORE V1.0'}
+              {brandingSettings?.schoolName || 'Trends CORE V1.0'}
             </h1>
             {canSwitchInstitutionLocal ? (
               <label
@@ -544,7 +550,7 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
             </span>
           </div>
           <p className="text-[9px] text-gray-400 font-medium uppercase tracking-[0.2em] mt-1">
-            {title ? (brandingSettings?.schoolName || 'Trends CORE V1.0') : 'School Management System'}
+            School Portal
           </p>
         </div>
       </div>
@@ -764,6 +770,44 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
       )}
       </div>
     </header>
+
+    {/* ── Chat FAB — bottom-right floating button ────────────────────────── */}
+    <div className="fixed bottom-6 right-6 z-[60] flex flex-col items-end gap-3">
+      {/* Chat panel — slides up from the FAB */}
+      {isChatOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setIsChatOpen(false)}
+          />
+          <div className="relative z-50 w-[380px] h-[560px] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-200">
+            <ChatPanel onClose={() => setIsChatOpen(false)} />
+          </div>
+        </>
+      )}
+
+      {/* FAB button */}
+      <button
+        onClick={() => setIsChatOpen((v) => !v)}
+        className={cn(
+          "relative h-14 w-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-brand-purple focus:ring-offset-2",
+          isChatOpen
+            ? "bg-gray-700 hover:bg-gray-800 rotate-0"
+            : "bg-brand-purple hover:bg-brand-purple/90"
+        )}
+        title="Messages"
+        aria-label="Open messages"
+      >
+        <MessageSquare size={22} className="text-white" />
+        {!isChatOpen && chatUnreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 h-5 min-w-[20px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white animate-in zoom-in-50 duration-300">
+            {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
+          </span>
+        )}
+      </button>
+    </div>
+    </>
   );
 });
 

@@ -8,6 +8,11 @@ import { aiAssistantService } from '../services/ai-assistant.service';
 import { detailedToGeneralRating } from '../utils/rubric.util';
 import { redisCacheService } from '../services/redis-cache.service';
 import { ApiError } from '../utils/error.util';
+import {
+  assertValidAssessmentEntry,
+  getAssessmentStatusDetails,
+  getCbeGradeDetails,
+} from '../utils/cbe-grading.util';
 
 import logger from '../utils/logger';
 // ── Cache TTLs ────────────────────────────────────────────────────────────────
@@ -1342,14 +1347,14 @@ export const deleteSummativeTestsBulk = async (req: AuthRequest, res: Response) 
  */
 export const recordSummativeResult = async (req: AuthRequest, res: Response) => {
   try {
-    const { testId, learnerId, marksObtained, remarks, teacherComment } = req.body;
+    const { testId, learnerId, marksObtained, rawScore, assessmentStatusCode, remarks, teacherComment, moderationComment } = req.body;
     const recordedBy = req.user?.userId;
 
     if (!recordedBy) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
-    if (!testId || !learnerId || marksObtained === undefined) {
+    if (!testId || !learnerId) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
@@ -1389,12 +1394,16 @@ export const recordSummativeResult = async (req: AuthRequest, res: Response) => 
       }
     }
 
-    const marks = Number(marksObtained);
-    if (isNaN(marks) || marks < 0 || marks > test.totalMarks) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid marks. Must be between 0 and ${test.totalMarks}`
-      });
+    const entry = assertValidAssessmentEntry({
+      marksObtained,
+      rawScore,
+      assessmentStatusCode,
+      teacherComment,
+      totalMarks: test.totalMarks,
+    });
+
+    if (!entry.ok) {
+      return res.status(400).json({ success: false, message: entry.reason });
     }
 
     let gradingSystem;
@@ -1410,51 +1419,75 @@ export const recordSummativeResult = async (req: AuthRequest, res: Response) => 
     }
     const ranges = gradingSystem?.ranges;
 
-    const percentage = (marks / test.totalMarks) * 100;
-    const grade = ranges ? gradingService.calculateGradeSync(percentage, ranges) : 'E';
-    
-    // Calculate CBC Rating (EE1-BE2)
     const cbcSystem = await gradingService.getGradingSystem('CBC');
-    const cbcGrade = cbcSystem.ranges ? gradingService.calculateRatingSync(percentage, cbcSystem.ranges) : 'BE2';
-    
-    const status = percentage >= test.passMarks ? 'PASS' : 'FAIL';
+    const cbcRanges = cbcSystem?.ranges || [];
 
-    let finalRemarks = remarks;
-    if (!finalRemarks && ranges) {
-      const matchedRange = ranges.find((r: any) => percentage >= r.minPercentage && percentage <= r.maxPercentage);
-      if (matchedRange) finalRemarks = matchedRange.description || matchedRange.label;
-    }
+    const performance = entry.kind === 'score'
+      ? (() => {
+          const percentage = (entry.score / test.totalMarks) * 100;
+          const gradeCode = cbcRanges.length > 0 ? gradingService.calculateRatingSync(percentage, cbcRanges) : 'BE2';
+          const details = getCbeGradeDetails(gradeCode)!;
+          const matchedRange = cbcRanges.find((r: any) => percentage >= r.minPercentage && percentage <= r.maxPercentage)
+            || ranges?.find((r: any) => percentage >= r.minPercentage && percentage <= r.maxPercentage);
+          return {
+            marks: entry.score,
+            percentage,
+            gradeCode,
+            details,
+            status: percentage >= test.passMarks ? 'PASS' as const : 'FAIL' as const,
+            remarks: remarks || matchedRange?.description || matchedRange?.label || details.gradeDescription,
+          };
+        })()
+      : null;
+
+    const adminStatus = entry.kind === 'status' ? getAssessmentStatusDetails(entry.statusCode) : null;
 
     const existingResult = await prisma.summativeResult.findUnique({
       where: { testId_learnerId: { testId, learnerId } }
     });
 
     const actionType = existingResult ? 'UPDATE' : 'CREATE';
-    const oldValues = existingResult ? { marksObtained: existingResult.marksObtained } : {};
+    const oldValues = existingResult ? { marksObtained: existingResult.marksObtained, assessmentStatusCode: existingResult.assessmentStatusCode } : {};
 
     const result = await prisma.summativeResult.upsert({
       where: { testId_learnerId: { testId, learnerId } },
       update: {
-        marksObtained: marks,
-        percentage,
-        grade,
-        cbcGrade,
-        status,
+        marksObtained: performance ? Math.round(performance.marks) : null,
+        rawScore: performance?.marks ?? null,
+        percentage: performance?.percentage ?? null,
+        grade: performance?.gradeCode ?? null,
+        cbcGrade: performance?.gradeCode ?? null,
+        rubricRating: performance?.gradeCode ?? null,
+        gradeCode: performance?.gradeCode ?? null,
+        achievementLevel: performance?.details.achievementLevel ?? null,
+        competencyBand: performance?.details.competencyBand ?? null,
+        gradeDescription: performance?.details.gradeDescription ?? null,
+        assessmentStatusCode: adminStatus?.code ?? null,
+        status: performance?.status ?? null,
         recordedBy,
-        remarks: finalRemarks,
-        teacherComment
+        remarks: performance?.remarks ?? adminStatus?.label ?? remarks ?? null,
+        teacherComment,
+        moderationComment
       },
       create: {
         testId,
         learnerId,
-        marksObtained: marks,
-        percentage,
-        grade,
-        cbcGrade,
-        status,
+        marksObtained: performance ? Math.round(performance.marks) : null,
+        rawScore: performance?.marks ?? null,
+        percentage: performance?.percentage ?? null,
+        grade: performance?.gradeCode ?? null,
+        cbcGrade: performance?.gradeCode ?? null,
+        rubricRating: performance?.gradeCode ?? null,
+        gradeCode: performance?.gradeCode ?? null,
+        achievementLevel: performance?.details.achievementLevel ?? null,
+        competencyBand: performance?.details.competencyBand ?? null,
+        gradeDescription: performance?.details.gradeDescription ?? null,
+        assessmentStatusCode: adminStatus?.code ?? null,
+        status: performance?.status ?? null,
         recordedBy,
-        remarks: finalRemarks,
-        teacherComment
+        remarks: performance?.remarks ?? adminStatus?.label ?? remarks ?? null,
+        teacherComment,
+        moderationComment
       }
     });
 
@@ -1463,8 +1496,8 @@ export const recordSummativeResult = async (req: AuthRequest, res: Response) => 
         resultId: result.id,
         action: actionType,
         field: 'marksObtained',
-        oldValue: oldValues.marksObtained ? String(oldValues.marksObtained) : null,
-        newValue: String(marks),
+        oldValue: oldValues.assessmentStatusCode || (oldValues.marksObtained != null ? String(oldValues.marksObtained) : null),
+        newValue: adminStatus?.code || (performance ? String(performance.marks) : null),
         changedBy: recordedBy,
         reason: `Summative result ${actionType.toLowerCase()} via API`
       }
@@ -2093,7 +2126,7 @@ export const recordSummativeResultsBulk = async (req: AuthRequest, res: Response
     // ── 2. Pre-fetch ALL existing results in ONE query ────────────────────────
     const existingResults = await prisma.summativeResult.findMany({
       where: { testId },
-      select: { id: true, learnerId: true, marksObtained: true, recordedBy: true }
+      select: { id: true, learnerId: true, marksObtained: true, assessmentStatusCode: true, recordedBy: true }
     });
     const existingMap = new Map<string, any>(existingResults.map((r: any) => [r.learnerId, r]));
 
@@ -2143,33 +2176,38 @@ export const recordSummativeResultsBulk = async (req: AuthRequest, res: Response
         continue;
       }
 
-      if (item.marksObtained === undefined || item.marksObtained === null || item.marksObtained === '') {
-        skipped.push({ learnerId: item.learnerId ?? 'unknown', reason: 'Marks not provided' });
+      const entry = assertValidAssessmentEntry({
+        marksObtained: item.marksObtained,
+        rawScore: item.rawScore,
+        assessmentStatusCode: item.assessmentStatusCode,
+        teacherComment: item.teacherComment,
+        totalMarks: test.totalMarks,
+      });
+
+      if (!entry.ok) {
+        skipped.push({ learnerId: item.learnerId ?? 'unknown', reason: entry.reason });
         continue;
       }
 
-      const marks = Number(item.marksObtained);
+      const performance = entry.kind === 'score'
+        ? (() => {
+            const percentage = (entry.score / test.totalMarks) * 100;
+            const gradeCode = cbcRanges.length > 0 ? gradingService.calculateRatingSync(percentage, cbcRanges) : 'BE2';
+            const details = getCbeGradeDetails(gradeCode)!;
+            const matchedRange = cbcRanges.find((r: any) => percentage >= r.minPercentage && percentage <= r.maxPercentage)
+              || ranges?.find((r: any) => percentage >= r.minPercentage && percentage <= r.maxPercentage);
+            return {
+              marks: entry.score,
+              percentage,
+              gradeCode,
+              details,
+              status: percentage >= test.passMarks ? 'PASS' as const : 'FAIL' as const,
+              remarks: item.remarks || matchedRange?.description || matchedRange?.label || details.gradeDescription,
+            };
+          })()
+        : null;
 
-      if (isNaN(marks)) {
-        skipped.push({ learnerId: item.learnerId ?? 'unknown', reason: 'Marks are not a valid number' });
-        continue;
-      }
-
-      if (marks < 0 || marks > test.totalMarks) {
-        skipped.push({ learnerId: item.learnerId ?? 'unknown', reason: `Marks ${marks} out of valid range 0–${test.totalMarks}` });
-        continue;
-      }
-
-      const percentage = (marks / test.totalMarks) * 100;
-      const grade = ranges ? gradingService.calculateGradeSync(percentage, ranges) : 'E';
-      const cbcGrade = cbcRanges.length > 0 ? gradingService.calculateRatingSync(percentage, cbcRanges) : 'BE2';
-      const status = percentage >= test.passMarks ? 'PASS' : 'FAIL';
-
-      let remarks = item.remarks;
-      if (!remarks && ranges) {
-        const matchedRange = ranges.find((r: any) => percentage >= r.minPercentage && percentage <= r.maxPercentage);
-        if (matchedRange) remarks = matchedRange.label;
-      }
+      const adminStatus = entry.kind === 'status' ? getAssessmentStatusDetails(entry.statusCode) : null;
 
       const existing = existingMap.get(item.learnerId);
       const canUpdate = !existing || existing.recordedBy === recordedBy;
@@ -2183,16 +2221,43 @@ export const recordSummativeResultsBulk = async (req: AuthRequest, res: Response
         prisma.summativeResult.upsert({
           where: { testId_learnerId: { testId, learnerId: item.learnerId } },
           update: { 
-            marksObtained: marks, 
-            percentage, 
-            grade, 
-            cbcGrade,
-            status, 
-            remarks, 
+            marksObtained: performance ? Math.round(performance.marks) : null,
+            rawScore: performance?.marks ?? null,
+            percentage: performance?.percentage ?? null,
+            grade: performance?.gradeCode ?? null,
+            cbcGrade: performance?.gradeCode ?? null,
+            rubricRating: performance?.gradeCode ?? null,
+            gradeCode: performance?.gradeCode ?? null,
+            achievementLevel: performance?.details.achievementLevel ?? null,
+            competencyBand: performance?.details.competencyBand ?? null,
+            gradeDescription: performance?.details.gradeDescription ?? null,
+            assessmentStatusCode: adminStatus?.code ?? null,
+            status: performance?.status ?? null,
+            remarks: performance?.remarks ?? adminStatus?.label ?? item.remarks ?? null,
             teacherComment: item.teacherComment,
+            moderationComment: item.moderationComment,
             recordedBy
           },
-          create: { testId, learnerId: item.learnerId, marksObtained: marks, percentage, grade, cbcGrade, status, recordedBy, remarks, teacherComment: item.teacherComment },
+          create: {
+            testId,
+            learnerId: item.learnerId,
+            marksObtained: performance ? Math.round(performance.marks) : null,
+            rawScore: performance?.marks ?? null,
+            percentage: performance?.percentage ?? null,
+            grade: performance?.gradeCode ?? null,
+            cbcGrade: performance?.gradeCode ?? null,
+            rubricRating: performance?.gradeCode ?? null,
+            gradeCode: performance?.gradeCode ?? null,
+            achievementLevel: performance?.details.achievementLevel ?? null,
+            competencyBand: performance?.details.competencyBand ?? null,
+            gradeDescription: performance?.details.gradeDescription ?? null,
+            assessmentStatusCode: adminStatus?.code ?? null,
+            status: performance?.status ?? null,
+            recordedBy,
+            remarks: performance?.remarks ?? adminStatus?.label ?? item.remarks ?? null,
+            teacherComment: item.teacherComment,
+            moderationComment: item.moderationComment,
+          },
           select: { id: true, learnerId: true }
         })
       );
@@ -2200,8 +2265,8 @@ export const recordSummativeResultsBulk = async (req: AuthRequest, res: Response
       historyRows.push({
         learnerId: item.learnerId,
         action: existing ? 'UPDATE' : 'CREATE',
-        oldValue: existing ? String(existing.marksObtained) : null,
-        newValue: String(marks),
+        oldValue: existing ? (existing.assessmentStatusCode || (existing.marksObtained != null ? String(existing.marksObtained) : null)) : null,
+        newValue: adminStatus?.code || (performance ? String(performance.marks) : null),
       });
     }
 
@@ -2273,16 +2338,22 @@ function _rerankTestResultsAsync(testId: string) {
     try {
       await prisma.$executeRaw`
         WITH ranked AS (
-          SELECT id, ROW_NUMBER() OVER (ORDER BY "marksObtained" DESC) AS pos,
+          SELECT id, ROW_NUMBER() OVER (ORDER BY "achievementLevel" DESC, "marksObtained" DESC) AS pos,
                  COUNT(*) OVER () AS total
           FROM summative_results
           WHERE "testId" = ${testId}
+            AND "assessmentStatusCode" IS NULL
+            AND "achievementLevel" IS NOT NULL
         )
         UPDATE summative_results sr
         SET position = r.pos, "outOf" = r.total
         FROM ranked r
         WHERE sr.id = r.id
       `;
+      await prisma.summativeResult.updateMany({
+        where: { testId, OR: [{ assessmentStatusCode: { not: null } }, { achievementLevel: null }] },
+        data: { position: null, outOf: null },
+      });
     } catch (e: any) {
       logger.warn('[Rerank] Background re-rank failed (non-critical):', e.message);
     }

@@ -1,5 +1,5 @@
 import prisma from '../config/database';
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcrypt';
 import { EmailService } from './email-resend.service';
 
 export interface SchoolProvisioningData {

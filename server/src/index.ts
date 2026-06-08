@@ -66,10 +66,33 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
-// Global error handlers to prevent process crashes from unhandled library errors (e.g. Baileys)
+// Known non-fatal error patterns from background libraries (e.g. Baileys WhatsApp)
+const KNOWN_NON_FATAL_PATTERNS = [
+  'Connection Closed',
+  'Connection Lost',
+  'Connection Timed Out',
+  'WebSocket was closed',
+  'write EPIPE',
+  'read ECONNRESET',
+  'WebSocket connection',
+  'Baileys',
+];
+
+function isKnownNonFatalError(error: Error): boolean {
+  return KNOWN_NON_FATAL_PATTERNS.some(
+    (pattern) => error?.message?.includes(pattern) || error?.stack?.includes(pattern)
+  );
+}
+
+// Global error handlers — only suppress known non-fatal library errors.
+// All other uncaught exceptions trigger a graceful exit so they don't go silently missing.
 process.on('uncaughtException', (error) => {
-  logger.error(error, '🚨 Uncaught Exception detected');
-  // We don't exit here to keep the server alive despite background library errors
+  if (isKnownNonFatalError(error)) {
+    logger.warn(error, '⚠️  Non-fatal uncaught exception (background library) — server continuing');
+    return;
+  }
+  logger.error(error, '🚨 Uncaught Exception — shutting down');
+  process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {

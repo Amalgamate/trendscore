@@ -396,8 +396,9 @@ export class CalculationService {
         }
 
         const formativeAverage = this.calculateWeightedTypeAverage(breakdown);
-        const summativeScore = learnerSummative.length > 0
-          ? learnerSummative.reduce((sum, r) => sum + r.percentage, 0) / learnerSummative.length
+        const performanceSummative = learnerSummative.filter((r) => r.percentage !== null && r.percentage !== undefined && !r.assessmentStatusCode);
+        const summativeScore = performanceSummative.length > 0
+          ? performanceSummative.reduce((sum, r) => sum + r.percentage!, 0) / performanceSummative.length
           : 0;
 
         // Final weighted score (in-memory)
@@ -439,8 +440,9 @@ export class CalculationService {
       }
     });
 
-    const summativeAverage = summativeResults.length > 0
-      ? summativeResults.reduce((sum, r) => sum + r.percentage, 0) / summativeResults.length
+    const performanceSummative = summativeResults.filter((r) => r.percentage !== null && r.percentage !== undefined && !r.assessmentStatusCode);
+    const summativeAverage = performanceSummative.length > 0
+      ? performanceSummative.reduce((sum, r) => sum + r.percentage!, 0) / performanceSummative.length
       : 0;
 
     const finalScore = await this.calculateFinalScore({
@@ -456,7 +458,7 @@ export class CalculationService {
       formative: formativeResult,
       summative: {
         averagePercentage: Math.round(summativeAverage * 100) / 100,
-        testCount: summativeResults.length
+        testCount: performanceSummative.length
       },
       final: finalScore
     };

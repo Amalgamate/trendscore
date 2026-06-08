@@ -74,11 +74,14 @@ export interface FormativeAssessmentData {
 
 export interface SummativeResultData {
   id: string;
-  marksObtained: number;
-  percentage: number;
-  grade: string;
+  marksObtained: number | null;
+  percentage: number | null;
+  grade: string | null;
   cbcGrade?: string | null;
-  status: string;
+  gradeCode?: string | null;
+  achievementLevel?: number | null;
+  assessmentStatusCode?: string | null;
+  status: string | null;
   position: number | null;
   outOf: number | null;
   teacherComment: string | null;
@@ -547,11 +550,31 @@ async function calculateFormativeSummaryWithService(
 }
 
 function calculateSummativeSummary(results: any[], summativeRanges?: any[], cbcRanges?: any[]) {
-  if (results.length === 0) return { overallPercentage: 0, bySubject: [], byCategoryAverages: [] };
-  const overallPercentage = Math.round(results.reduce((sum, r) => sum + r.percentage, 0) / results.length);
+  const performanceResults = results.filter((r) => !r.assessmentStatusCode && r.percentage !== null && r.percentage !== undefined);
+  const statusCounts = results.reduce((acc: Record<string, number>, r) => {
+    if (r.assessmentStatusCode) acc[r.assessmentStatusCode] = (acc[r.assessmentStatusCode] || 0) + 1;
+    return acc;
+  }, {});
 
-  const subjectMap = new Map<string, { subject: string; learningAreaId: string | null; meta: any; percentages: number[]; cbcGrades: string[] }>();
-  results.forEach(r => {
+  if (performanceResults.length === 0) {
+    return {
+      overallPercentage: 0,
+      meanAchievementLevel: null,
+      bySubject: [],
+      byCategoryAverages: [],
+      statusCounts,
+      exclusionNote: 'Administrative status codes are excluded from learner performance calculations.',
+    };
+  }
+
+  const overallPercentage = Math.round(performanceResults.reduce((sum, r) => sum + r.percentage, 0) / performanceResults.length);
+  const achievementRows = performanceResults.map((r) => Number(r.achievementLevel)).filter(Number.isFinite);
+  const meanAchievementLevel = achievementRows.length
+    ? Math.round((achievementRows.reduce((sum, value) => sum + value, 0) / achievementRows.length) * 100) / 100
+    : null;
+
+  const subjectMap = new Map<string, { subject: string; learningAreaId: string | null; meta: any; percentages: number[]; cbcGrades: string[]; achievementLevels: number[] }>();
+  performanceResults.forEach(r => {
     const canonicalId = r.test.learningAreaId || null;
     const subject = r.test.learningArea;
     const key = canonicalId ? `id:${canonicalId}` : `name:${subject}`;
@@ -566,11 +589,13 @@ function calculateSummativeSummary(results: any[], summativeRanges?: any[], cbcR
         } : null,
         percentages: [],
         cbcGrades: [],
+        achievementLevels: [],
       });
     }
     const data = subjectMap.get(key)!;
     data.percentages.push(r.percentage);
-    if (r.cbcGrade) data.cbcGrades.push(r.cbcGrade);
+    if (r.gradeCode || r.cbcGrade) data.cbcGrades.push(r.gradeCode || r.cbcGrade);
+    if (Number.isFinite(Number(r.achievementLevel))) data.achievementLevels.push(Number(r.achievementLevel));
   });
 
   const bySubject = Array.from(subjectMap.values()).map((data) => {
@@ -594,7 +619,10 @@ function calculateSummativeSummary(results: any[], summativeRanges?: any[], cbcR
       learningAreaMeta: data.meta,
       averagePercentage: avg,
       grade: summativeRanges ? gradingService.calculateGradeSync(avg, summativeRanges) : 'E',
-      cbcGrade
+      cbcGrade,
+      achievementLevel: data.achievementLevels.length
+        ? Math.round((data.achievementLevels.reduce((sum, value) => sum + value, 0) / data.achievementLevels.length) * 100) / 100
+        : null
     };
   });
 
@@ -623,7 +651,14 @@ function calculateSummativeSummary(results: any[], summativeRanges?: any[], cbcR
       };
     });
 
-  return { overallPercentage, bySubject, byCategoryAverages };
+  return {
+    overallPercentage,
+    meanAchievementLevel,
+    bySubject,
+    byCategoryAverages,
+    statusCounts,
+    exclusionNote: 'Administrative status codes are excluded from learner performance calculations.',
+  };
 }
 
 function calculateAttendanceSummary(records: any[]): AttendanceSummary {

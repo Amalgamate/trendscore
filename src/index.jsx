@@ -28,11 +28,32 @@ const clearDevelopmentServiceWorkers = async () => {
 if (shouldRegisterServiceWorker) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/sw.js')
-      .then(registration => {
+      .register('/sw.js', { scope: '/', updateViaCache: 'none' })
+      .then((registration) => {
         console.log('[SW] Registered:', registration.scope);
+
+        // Check for updates every hour
+        setInterval(() => registration.update(), 60 * 60 * 1000);
+
+        // Notify app when a new SW is waiting
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          newWorker?.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              window.dispatchEvent(new CustomEvent('sw:update-available'));
+              console.log('[SW] Update available — refresh to activate');
+            }
+          });
+        });
+
+        // Handle navigation messages from push notification clicks
+        navigator.serviceWorker.addEventListener('message', (event) => {
+          if (event.data?.type === 'navigate') {
+            window.location.hash = event.data.url.replace(/^\//, '#/');
+          }
+        });
       })
-      .catch(err => {
+      .catch((err) => {
         console.warn('[SW] Registration failed:', err);
       });
   });
