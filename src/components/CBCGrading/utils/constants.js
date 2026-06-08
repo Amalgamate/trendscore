@@ -214,6 +214,7 @@ export const PAGE_TITLES = {
   'settings-branding': 'School Settings & Branding',
   'settings-backup': 'System Maintenance',
   'settings-system-logs': 'System Logs',
+  'settings-system-control': 'System Control',
   'settings-communication': 'Message Settings',
   'settings-payment': 'Payment Settings',
   'settings-profile': 'My Profile'

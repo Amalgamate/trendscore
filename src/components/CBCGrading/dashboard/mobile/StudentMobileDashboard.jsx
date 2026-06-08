@@ -6,6 +6,7 @@
 import React, { useEffect, useState } from 'react';
 import { dashboardAPI } from '../../../../services/api';
 import { BookOpen, FileText, TrendingUp, AlertTriangle, Trophy } from 'lucide-react';
+import { GreetingToast } from '../../pages/dashboard/DashboardSummary';
 import MobileBottomNav from './MobileBottomNav';
 
 /**
@@ -47,10 +48,13 @@ const StudentMobileDashboard = ({ user, onNavigate, currentPath }) => {
 
   return (
     <div className="pb-20">
+      {/* Greeting banner */}
+      <GreetingToast user={user} fallbackName="Student" description="Learning Dashboard · Your Progress" />
+
       {/* Header */}
-      <div className="px-4 py-4 bg-gradient-to-r from-brand-purple to-brand-teal text-white">
+      <div className="px-4 py-4 bg-brand-purple text-white">
         <h1 className="text-xl font-bold">Learning Dashboard</h1>
-        <p className="text-xs text-brand-purple/80 mt-1">Your Progress</p>
+        <p className="text-xs text-white/70 mt-0.5 uppercase tracking-wider font-semibold">Your Progress</p>
       </div>
 
       {/* Student Metrics */}

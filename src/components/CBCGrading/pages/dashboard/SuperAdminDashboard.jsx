@@ -83,10 +83,11 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
 
   const toolGroups = {
     system: [
-      { label: 'System Logs', description: 'Review platform logs and operational events', icon: Activity, path: 'settings-system-logs' },
-      { label: 'Backup & Restore', description: 'Control backup, restore, and reset workflows', icon: DatabaseBackup, path: 'system-maintenance' },
-      { label: 'System Settings', description: 'Manage core platform settings', icon: ServerCog, path: 'settings-school' },
-      { label: 'Branding', description: 'Control school branding and public identity', icon: Building2, path: 'settings-branding' },
+      { label: 'System Logs',    description: 'Review platform logs and operational events',      icon: Activity,      path: 'settings-system-logs'    },
+      { label: 'System Control', description: 'Force logout all users and flush server cache',     icon: ShieldCheck,   path: 'settings-system-control' },
+      { label: 'Backup & Restore', description: 'Control backup, restore, and reset workflows',   icon: DatabaseBackup,path: 'system-maintenance'       },
+      { label: 'System Settings', description: 'Manage core platform settings',                   icon: ServerCog,     path: 'settings-school'          },
+      { label: 'Branding',       description: 'Control school branding and public identity',      icon: Building2,     path: 'settings-branding'        },
     ],
     identity: [
       { label: 'User Management', description: 'Create and manage users across roles', icon: Users, path: 'settings-users' },
@@ -170,10 +171,10 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
           description="Administrative control points that need first visibility."
           showHeader={false}
           items={[
-            { label: 'Users', value: stats.activeStudents + stats.activeTeachers, subvalue: 'active learners and staff', icon: <Users size={26} />, tone: 'indigo', onClick: () => onNavigate('settings-users') },
-            { label: 'Staff', value: `${stats.activeTeachers}/${stats.totalTeachers}`, subvalue: 'active staff', icon: <ShieldCheck size={26} />, tone: 'purple', onClick: () => onNavigate('hr-staff-profiles') },
-            { label: 'Collection Rate', value: `${collectionRate}%`, subvalue: `${formatKesAmount(stats.feePending)} pending`, icon: <Activity size={26} />, tone: collectionRate >= 80 ? 'emerald' : 'amber', onClick: () => onNavigate('accounting-reports') },
-            { label: 'Academic Risk', value: stats.atRiskStudents + stats.totalMissedExams, subvalue: 'risk and pending assessment signals', icon: <AlertTriangle size={26} />, tone: stats.atRiskStudents + stats.totalMissedExams > 0 ? 'orange' : 'teal', onClick: () => onNavigate('assess-summary-report') },
+            { label: 'Users', value: stats.activeStudents + stats.activeTeachers, subvalue: 'active learners and staff', icon: <Users size={26} />, tone: 'navy', onClick: () => onNavigate('settings-users') },
+            { label: 'Staff', value: `${stats.activeTeachers}/${stats.totalTeachers}`, subvalue: 'active staff', icon: <ShieldCheck size={26} />, tone: 'teal', onClick: () => onNavigate('hr-staff-profiles') },
+            { label: 'Collection Rate', value: `${collectionRate}%`, subvalue: `${formatKesAmount(stats.feePending)} pending`, icon: <Activity size={26} />, tone: 'green', onClick: () => onNavigate('accounting-reports') },
+            { label: 'Academic Risk', value: stats.atRiskStudents + stats.totalMissedExams, subvalue: 'risk and pending assessment signals', icon: <AlertTriangle size={26} />, tone: 'red', onClick: () => onNavigate('assess-summary-report') },
           ]}
         />
       </DashboardSection>

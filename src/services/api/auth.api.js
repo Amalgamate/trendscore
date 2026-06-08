@@ -81,4 +81,16 @@ export const authAPI = {
     const response = await axiosInstance.get('/auth/csrf');
     return response.data;
   },
+
+  /** Force-logout all active sessions. ADMIN / SUPER_ADMIN only. */
+  logoutAll: async () => {
+    const response = await axiosInstance.post('/auth/logout-all');
+    return response.data;
+  },
+
+  /** Flush the server-side Redis cache. ADMIN / SUPER_ADMIN only. */
+  flushCache: async () => {
+    const response = await axiosInstance.post('/auth/flush-cache');
+    return response.data;
+  },
 };

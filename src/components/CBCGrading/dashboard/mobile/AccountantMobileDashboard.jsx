@@ -6,6 +6,7 @@
 import React, { useEffect, useState } from 'react';
 import { dashboardAPI } from '../../../../services/api';
 import { Wallet, TrendingUp, AlertTriangle, CreditCard, PieChart } from 'lucide-react';
+import { GreetingToast } from '../../pages/dashboard/DashboardSummary';
 import MobileBottomNav from './MobileBottomNav';
 
 /**
@@ -48,10 +49,13 @@ const AccountantMobileDashboard = ({ user, onNavigate, currentPath }) => {
 
   return (
     <div className="pb-20">
+      {/* Greeting banner */}
+      <GreetingToast user={user} fallbackName="Accountant" description="Finance Dashboard · Collection Overview" />
+
       {/* Header */}
-      <div className="px-4 py-4 bg-gradient-to-r from-brand-purple to-brand-teal text-white">
+      <div className="px-4 py-4 bg-brand-purple text-white">
         <h1 className="text-xl font-bold">Finance Dashboard</h1>
-        <p className="text-xs text-brand-purple/80 mt-1">Collection Overview</p>
+        <p className="text-xs text-white/70 mt-0.5 uppercase tracking-wider font-semibold">Collection Overview</p>
       </div>
 
       {/* Financial Metrics */}

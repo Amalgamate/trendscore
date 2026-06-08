@@ -381,6 +381,37 @@ export class AuthController {
     res.json({ success: true, message: 'Logged out' });
   }
 
+  /**
+   * Force-logout ALL users by flushing every active auth cache key.
+   * Only SUPER_ADMIN and ADMIN may call this.
+   */
+  async logoutAll(req: AuthRequest, res: Response) {
+    try {
+      await redisCacheService.deleteByPrefix('revoked_rt:');
+      await redisCacheService.deleteByPrefix('auth:user:');
+      await redisCacheService.set('global:force_logout', Date.now().toString(), 60 * 60);
+    } catch {
+      // Non-fatal — best-effort Redis flush
+    }
+    logger.info(`[AUTH] Force-logout-all triggered by user ${req.user?.userId}`);
+    res.json({ success: true, message: 'All user sessions have been invalidated.' });
+  }
+
+  /**
+   * Flush the application-level Redis cache.
+   * Clears all cached data (dashboard metrics, school data, etc.).
+   * Only SUPER_ADMIN and ADMIN may call this.
+   */
+  async flushCache(req: AuthRequest, res: Response) {
+    try {
+      await redisCacheService.clear();
+    } catch {
+      // Non-fatal
+    }
+    logger.info(`[CACHE] Cache flush triggered by user ${req.user?.userId}`);
+    res.json({ success: true, message: 'Application cache has been cleared.' });
+  }
+
   async me(req: AuthRequest, res: Response) {
     const user = await prisma.user.findUnique({
       where: { id: req.user!.userId },

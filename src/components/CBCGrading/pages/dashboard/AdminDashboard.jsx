@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { dashboardAPI } from '../../../../services/api';
+import { dashboardAPI, accountingAPI, userAPI } from '../../../../services/api';
 import { ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Area, AreaChart } from 'recharts';
 import {
   AppCard,
@@ -14,6 +14,9 @@ import {
 import DashboardSummary from './DashboardSummary';
 import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
 import AdminOverviewTabs from './AdminOverviewTabs';
+import { useDashboardMetrics, formatKesAmount, formatPercent } from '../../hooks/useDashboardMetrics';
+import OwnerAdvisorSection from '../../dashboard/widgets/admin/OwnerAdvisorSection';
+import FinanceIntelligenceSection from '../../dashboard/widgets/admin/FinanceIntelligenceSection';
 
 import {
   TrendingUp,
@@ -34,28 +37,30 @@ import {
 
 import BillingInsightsCard from '../../dashboard/BillingInsightsCard';
 
+const SUBORDINATE_ROLES = [
+  'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN', 'NURSE',
+  'SECURITY', 'DRIVER', 'COOK', 'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT'
+];
+
 const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavigate }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [metrics, setMetrics] = useState(null);
   const [apiError, setApiError] = useState(null);
   const [activeOverviewTab, setActiveOverviewTab] = useState('general');
+  const [subordinateCount, setSubordinateCount] = useState(0);
+  const [vendorCount, setVendorCount] = useState(0);
+  const [activeVendorCount, setActiveVendorCount] = useState(0);
 
   const userId = user?.id || user?.userId;
   const sectionControls = useDashboardSections('admin', [
-    { id: 'executive-summary', label: 'Executive Summary', description: 'Students, staff, collection, health' },
-    { id: 'attention-required', label: 'Attention Required', description: 'Items requiring intervention' },
-    { id: 'pulse-revenue', label: 'Activity & Revenue', description: 'Recent activity and revenue trend' },
-    { id: 'top-classes', label: 'Top Performing Classes', description: 'Academic rankings' },
+    { id: 'executive-summary',   label: 'Executive Summary',   description: 'Students, staff, collection, health' },
+    { id: 'owner-advisor',       label: 'Personal Advisor',    description: 'Recommended actions from the advisor' },
+    { id: 'finance-intelligence',label: 'Finance Intelligence', description: 'Revenue performance and collection trends' },
+    { id: 'attention-required',  label: 'Attention Required',  description: 'Items requiring intervention' },
+    { id: 'pulse-revenue',       label: 'Activity & Revenue',  description: 'Recent activity and revenue trend' },
+    { id: 'top-classes',         label: 'Top Performing Classes', description: 'Academic rankings' },
   ]);
   const hasInstantData = learners.length > 0 || teachers.length > 0 || (pagination?.total || 0) > 0;
-  
-  const formatKesAmount = (amount = 0) => {
-    const value = Number(amount) || 0;
-    if (value >= 1000000) return `KES ${(value / 1000000).toFixed(1)}M`;
-    if (value >= 1000) return `KES ${Math.round(value / 1000)}K`;
-    return `KES ${value.toLocaleString()}`;
-  };
-  const formatPercent = (value = 0) => `${Math.max(0, Math.min(100, Number(value) || 0))}%`;
   
   const loadMetrics = async (filter = 'term') => {
     try {
@@ -80,6 +85,33 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
+  // Load subordinate staff count and vendor count in parallel
+  useEffect(() => {
+    // Subordinate staff — use userAPI stats if available, otherwise fetch all users
+    userAPI.getStats()
+      .then((res) => {
+        const data = res?.data ?? res;
+        // Sum up all subordinate role counts if the stats endpoint returns per-role breakdown
+        if (data?.byRole) {
+          const count = SUBORDINATE_ROLES.reduce((acc, role) => acc + (data.byRole[role] ?? 0), 0);
+          setSubordinateCount(count);
+        } else if (typeof data?.subordinateStaff === 'number') {
+          setSubordinateCount(data.subordinateStaff);
+        }
+      })
+      .catch(() => {});
+
+    // Vendors / suppliers
+    accountingAPI.getVendors()
+      .then((res) => {
+        const vendors = Array.isArray(res?.data) ? res.data : [];
+        setVendorCount(vendors.length);
+        setActiveVendorCount(vendors.filter(v => v.isActive !== false && v.status !== 'INACTIVE').length);
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Compute stats from metrics and local data
   const stats = {
     totalStudents: metrics?.stats?.totalStudents || pagination?.total || learners.length || 0,
@@ -95,20 +127,15 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
     totalAssessedClasses: metrics?.stats?.totalAssessedClasses || 0,
   };
 
-  // Calculate School Health Score (0-100)
-  const attendanceRate = stats.totalStudents > 0 
-    ? Math.round((stats.presentToday / (stats.presentToday + stats.absentToday || stats.totalStudents)) * 100) 
-    : 0;
-  const collectionRate = (stats.feeCollected + stats.feePending) > 0
-    ? Math.round((stats.feeCollected / (stats.feeCollected + stats.feePending)) * 100)
-    : 0;
-  const assessmentRate = stats.totalStudents > 0
-    ? Math.round(((stats.totalStudents - stats.totalMissedExams) / stats.totalStudents) * 100)
-    : 0;
-  const healthScore = Math.round((attendanceRate + collectionRate + assessmentRate) / 3);
-  const teacherActiveRate = stats.totalTeachers > 0
-    ? Math.round((stats.activeTeachers / stats.totalTeachers) * 100)
-    : 0;
+  // Use shared metrics hook to calculate rates
+  const { 
+    attendanceRate, 
+    collectionRate, 
+    assessmentRate, 
+    teacherActiveRate, 
+    healthScore 
+  } = useDashboardMetrics(stats);
+  
   const operationsRate = teacherActiveRate;
 
   // Revenue trend data
@@ -202,37 +229,76 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
               {
                 label: 'Students',
                 value: stats.totalStudents.toLocaleString(),
-                subvalue: `${stats.activeStudents.toLocaleString()} active`,
+                subvalue: stats.presentToday > 0
+                  ? `${stats.presentToday} present · ${stats.absentToday ?? 0} absent today`
+                  : `${stats.activeStudents.toLocaleString()} active`,
+                chips: [
+                  { value: metrics?.stats?.males   ?? 0, label: 'Male',   dot: '#38bdf8' },
+                  { value: metrics?.stats?.females ?? 0, label: 'Female', dot: '#f9a8d4' },
+                ],
                 icon: <Users size={26} />,
-                tone: 'indigo',
+                tone: 'navy',
                 onClick: () => onNavigate('learners-list'),
               },
               {
                 label: 'Tutors',
                 value: stats.totalTeachers,
                 subvalue: `${stats.activeTeachers} active`,
+                chips: [
+                  { value: stats.activeTeachers,             label: 'Present',  dot: '#86efac' },
+                  { value: metrics?.stats?.staffOnLeave ?? 0, label: 'On Leave', dot: '#fde047' },
+                ],
                 icon: <GraduationCap size={26} />,
-                tone: 'purple',
+                tone: 'teal',
                 onClick: () => onNavigate('teachers-list'),
               },
               {
                 label: 'Subordinate Staff',
-                value: 0,
+                value: subordinateCount,
                 subvalue: 'Support roles',
+                chips: [
+                  { value: metrics?.stats?.subordinateAdmin   ?? 0,               label: 'Admin',   dot: '#86efac' },
+                  { value: metrics?.stats?.subordinateSupport ?? subordinateCount, label: 'Support', dot: '#fca5a5' },
+                ],
                 icon: <Users size={26} />,
-                tone: 'amber',
+                tone: 'red',
                 onClick: () => onNavigate('settings-users'),
               },
               {
                 label: 'Suppliers',
-                value: 0,
+                value: vendorCount,
                 subvalue: 'Registered vendors',
+                chips: [
+                  { value: activeVendorCount,               label: 'Active',   dot: '#86efac' },
+                  { value: vendorCount - activeVendorCount, label: 'Inactive', dot: '#fca5a5' },
+                ],
                 icon: <DollarSign size={26} />,
-                tone: 'rose',
+                tone: 'green',
                 onClick: () => onNavigate('accounting-vendors'),
               },
             ]}
           />
+        )}
+
+        {/* ── Personal Advisor — shown only on General Overview tab ── */}
+        {activeOverviewTab === 'general' && (
+          <DashboardSection id="owner-advisor" controls={sectionControls}>
+            <OwnerAdvisorSection onNavigate={onNavigate} loading={refreshing && !metrics} />
+          </DashboardSection>
+        )}
+
+        {/* ── Finance Intelligence — shown only on General Overview tab ── */}
+        {activeOverviewTab === 'general' && (
+          <DashboardSection id="finance-intelligence" controls={sectionControls}>
+            <FinanceIntelligenceSection
+              collected={metrics?.stats?.feeCollected ?? 0}
+              outstanding={metrics?.stats?.feePending ?? 0}
+              waived={metrics?.stats?.feeWaived ?? 0}
+              trendData={metrics?.financials?.trendData ?? undefined}
+              loading={refreshing && !metrics}
+              onNavigate={onNavigate}
+            />
+          </DashboardSection>
         )}
 
         {/* Financials */}
