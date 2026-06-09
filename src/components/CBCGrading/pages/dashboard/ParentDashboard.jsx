@@ -222,7 +222,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
             subvalue: 'enrolled',
             icon: <Users size={26} />,
             tone: 'indigo',
-            onClick: () => onNavigate('dashboard'),
+            onClick: () => onNavigate('learners-list'),
           },
           {
             label: 'Attendance',
@@ -237,7 +237,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
             subvalue: totalOutstanding > 0 ? 'balance due' : 'cleared',
             icon: <CreditCard size={26} />,
             tone: totalOutstanding > 0 ? 'rose' : 'teal',
-            onClick: () => onNavigate('comm-messages'),
+            onClick: () => onNavigate('fees-statements'),
           },
           {
             label: 'Messages',
@@ -261,7 +261,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
             myChildren.map((child) => (
               <button
                 key={child.id}
-                onClick={() => onNavigate('dashboard')}
+                onClick={() => onNavigate('learner-profile', { learner: children.find(c => c.id === child.id) })}
                 className="w-full p-4 rounded-lg border border-slate-200 hover:bg-gray-50 transition text-left"
               >
                 <div className="flex items-center justify-between">
@@ -318,7 +318,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
             )}
           </div>
           <button
-            onClick={() => onNavigate('events-calendar')}
+            onClick={() => onNavigate('attendance-reports')}
             className="mt-4 w-full px-4 py-2 text-brand-purple text-sm font-semibold hover:bg-brand-purple/5 rounded-lg transition"
           >
             View Attendance Details →
@@ -333,7 +333,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
             {feeBalances.length > 0 ? feeBalances.map((item) => (
               <button
                 key={item.id}
-                onClick={() => onNavigate('comm-messages')}
+                onClick={() => onNavigate('fees-collection', { learnerId: item.id })}
                 className={`w-full p-4 rounded-lg border transition-all text-left ${getFeeStatus(item.status)}`}
               >
                 <div className="flex items-start justify-between">
@@ -359,7 +359,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
             )}
           </div>
           <button
-            onClick={() => onNavigate('comm-messages')}
+            onClick={() => onNavigate('fees-statements')}
             className="mt-4 w-full px-4 py-2 text-brand-purple text-sm font-semibold hover:bg-brand-purple/5 rounded-lg transition"
           >
             Manage Fees →
@@ -380,7 +380,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
               latestResults.map((result) => (
                 <button
                   key={result.id}
-                  onClick={() => onNavigate('dashboard')}
+                  onClick={() => onNavigate('assess-summative-report')}
                   className="w-full p-4 rounded-lg border border-slate-200 hover:bg-gray-50 transition text-left"
                 >
                   <div className="flex items-center justify-between">
@@ -400,7 +400,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
             )}
           </div>
           <button
-            onClick={() => onNavigate('dashboard')}
+            onClick={() => onNavigate('assess-summative-report')}
             className="mt-4 w-full px-4 py-2 text-brand-purple text-sm font-semibold hover:bg-brand-purple/5 rounded-lg transition"
           >
             View All Results →
