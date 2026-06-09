@@ -8,7 +8,7 @@ import { dashboardAPI } from '../../../../services/api';
 import { Users, CheckCircle2, AlertTriangle, CreditCard, MessageSquare, ChevronRight } from 'lucide-react';
 import { GreetingToast } from '../../pages/dashboard/DashboardSummary';
 import MobileBottomNav from './MobileBottomNav';
-import ParentChildProfile from '../pages/parent/ParentChildProfile';
+import ParentChildProfile from '../../pages/parent/ParentChildProfile';
 
 const ParentMobileDashboard = ({ user, onNavigate, currentPath }) => {
   const [metrics, setMetrics]       = useState(null);
