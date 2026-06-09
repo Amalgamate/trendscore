@@ -37,13 +37,21 @@ const ParentMobileDashboard = ({ user, onNavigate, currentPath }) => {
     loadData();
   }, []);
 
-  const stats = metrics?.stats || {};
+  // Use the same data structure as ParentDashboard (desktop)
+  const children     = metrics?.children || [];
+  const stats        = metrics?.stats    || {};
+  const messages     = metrics?.messages || [];
+
+  const childrenCount   = children.length;
+  const avgAttendance   = stats.avgAttendance ?? 0;
+  const totalBalance    = stats.totalBalance  ?? 0;
+  const messageCount    = messages.length;
 
   const parentMetrics = [
-    { label: 'Children', value: stats.childrenCount || 0, icon: Users, color: 'bg-blue-50 text-blue-600' },
-    { label: 'Attendance', value: `${stats.avgAttendance || 0}%`, icon: CheckCircle2, color: 'bg-emerald-50 text-emerald-600' },
-    { label: 'Outstanding Fees', value: `KES ${(stats.outstandingFees || 0).toLocaleString()}`, icon: AlertTriangle, color: 'bg-amber-50 text-amber-600' },
-    { label: 'Messages', value: stats.newMessages || 0, icon: MessageSquare, color: 'bg-violet-50 text-violet-600' },
+    { label: 'Children',          value: childrenCount,                          icon: Users,        color: 'bg-blue-50 text-blue-600'    },
+    { label: 'Attendance',        value: `${avgAttendance}%`,                    icon: CheckCircle2, color: 'bg-emerald-50 text-emerald-600' },
+    { label: 'Outstanding Fees',  value: `KES ${totalBalance.toLocaleString()}`, icon: AlertTriangle,color: 'bg-amber-50 text-amber-600'   },
+    { label: 'Messages',          value: messageCount,                           icon: MessageSquare,color: 'bg-violet-50 text-violet-600'  },
   ];
 
   return (
@@ -72,6 +80,28 @@ const ParentMobileDashboard = ({ user, onNavigate, currentPath }) => {
           );
         })}
       </div>
+
+      {/* Children Cards */}
+      {!loading && children.length > 0 && (
+        <div className="px-3 pb-2 space-y-2">
+          <p className="text-xs font-semibold text-gray-600 uppercase px-2">My Children</p>
+          {children.map((child) => (
+            <div key={child.id} className="bg-white rounded-xl border border-gray-200 p-3 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-brand-purple/10 flex items-center justify-center shrink-0">
+                <Users size={18} className="text-brand-purple" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-gray-900 text-sm truncate">{child.name}</p>
+                <p className="text-xs text-gray-500">{child.grade} • {child.className || child.admissionNumber}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-xs text-gray-500">Attendance</p>
+                <p className="text-sm font-bold text-emerald-600">{child.attendanceRate ?? 0}%</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Quick Actions */}
       <div className="px-3 py-3 space-y-2">
