@@ -222,7 +222,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
             subvalue: 'enrolled',
             icon: <Users size={26} />,
             tone: 'indigo',
-            onClick: () => onNavigate('learners-list'),
+            onClick: () => onNavigate('dashboard'),
           },
           {
             label: 'Attendance',
@@ -237,7 +237,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
             subvalue: totalOutstanding > 0 ? 'balance due' : 'cleared',
             icon: <CreditCard size={26} />,
             tone: totalOutstanding > 0 ? 'rose' : 'teal',
-            onClick: () => onNavigate('fees-collection'),
+            onClick: () => onNavigate('comm-messages'),
           },
           {
             label: 'Messages',
@@ -261,7 +261,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
             myChildren.map((child) => (
               <button
                 key={child.id}
-                onClick={() => onNavigate('learners-list')}
+                onClick={() => onNavigate('dashboard')}
                 className="w-full p-4 rounded-lg border border-slate-200 hover:bg-gray-50 transition text-left"
               >
                 <div className="flex items-center justify-between">
@@ -299,7 +299,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
             {attendanceByChild.length > 0 ? attendanceByChild.map((item) => (
               <button
                 key={item.id}
-                onClick={() => onNavigate('attendance-analytics')}
+                onClick={() => onNavigate('events-calendar')}
                 className={`w-full p-4 rounded-lg border transition-all text-left ${getAttendanceColor(item.attendance)}`}
               >
                 <div className="flex items-start justify-between">
@@ -318,7 +318,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
             )}
           </div>
           <button
-            onClick={() => onNavigate('attendance-analytics')}
+            onClick={() => onNavigate('events-calendar')}
             className="mt-4 w-full px-4 py-2 text-brand-purple text-sm font-semibold hover:bg-brand-purple/5 rounded-lg transition"
           >
             View Attendance Details →
@@ -333,7 +333,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
             {feeBalances.length > 0 ? feeBalances.map((item) => (
               <button
                 key={item.id}
-                onClick={() => onNavigate('fees-management')}
+                onClick={() => onNavigate('comm-messages')}
                 className={`w-full p-4 rounded-lg border transition-all text-left ${getFeeStatus(item.status)}`}
               >
                 <div className="flex items-start justify-between">
@@ -359,7 +359,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
             )}
           </div>
           <button
-            onClick={() => onNavigate('fees-management')}
+            onClick={() => onNavigate('comm-messages')}
             className="mt-4 w-full px-4 py-2 text-brand-purple text-sm font-semibold hover:bg-brand-purple/5 rounded-lg transition"
           >
             Manage Fees →
@@ -380,7 +380,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
               latestResults.map((result) => (
                 <button
                   key={result.id}
-                  onClick={() => onNavigate('results-analytics')}
+                  onClick={() => onNavigate('dashboard')}
                   className="w-full p-4 rounded-lg border border-slate-200 hover:bg-gray-50 transition text-left"
                 >
                   <div className="flex items-center justify-between">
@@ -400,7 +400,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
             )}
           </div>
           <button
-            onClick={() => onNavigate('results-analytics')}
+            onClick={() => onNavigate('dashboard')}
             className="mt-4 w-full px-4 py-2 text-brand-purple text-sm font-semibold hover:bg-brand-purple/5 rounded-lg transition"
           >
             View All Results →
@@ -415,7 +415,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
             {homework.length > 0 ? homework.map((hw) => (
                 <button
                   key={hw.id}
-                  onClick={() => onNavigate('homework-tracker')}
+                  onClick={() => onNavigate('comm-messages')}
                   className={`w-full p-4 rounded-lg border transition-all text-left ${hw.submitted ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}
                 >
                   <div className="flex items-start justify-between">
@@ -436,7 +436,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
               )}
           </div>
           <button
-            onClick={() => onNavigate('homework-tracker')}
+            onClick={() => onNavigate('comm-messages')}
             className="mt-4 w-full px-4 py-2 text-brand-purple text-sm font-semibold hover:bg-brand-purple/5 rounded-lg transition"
           >
             View All Homework →
@@ -456,7 +456,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
             {schoolNotices.length > 0 ? schoolNotices.map((notice) => (
               <button
                 key={notice.id}
-                onClick={() => onNavigate('notices-board')}
+                onClick={() => onNavigate('comm-messages')}
                 className="w-full p-4 rounded-lg border border-slate-200 hover:bg-gray-50 transition text-left"
               >
                 <div className="flex items-start gap-3">
@@ -475,7 +475,7 @@ const ParentDashboard = ({ user, onNavigate }) => {
             )}
           </div>
           <button
-            onClick={() => onNavigate('notices-board')}
+            onClick={() => onNavigate('comm-messages')}
             className="mt-4 w-full px-4 py-2 text-brand-purple text-sm font-semibold hover:bg-brand-purple/5 rounded-lg transition"
           >
             View All Notices →
