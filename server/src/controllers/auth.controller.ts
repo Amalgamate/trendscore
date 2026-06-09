@@ -29,8 +29,8 @@ const isRefreshTokenRevoked = async (token: string): Promise<boolean> => {
   return val !== null;
 };
 
-const MAX_LOGIN_ATTEMPTS = 5;
-const ACCOUNT_LOCK_MINUTES = 1;
+const MAX_LOGIN_ATTEMPTS = 999; // lockout disabled
+const ACCOUNT_LOCK_MINUTES = 0; // lockout disabled
 
 export class AuthController {
   private setTokenCookies(res: Response, accessToken: string, refreshToken: string) {
@@ -157,23 +157,18 @@ export class AuthController {
     if (!user) throw new ApiError(401, 'Invalid credentials');
 
     if (user.lockedUntil && user.lockedUntil > new Date()) {
-      const minutesLeft = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60000);
-      throw new ApiError(403, `Account locked. Try again in ${minutesLeft} minutes`);
+      // Lockout disabled — clear and continue
+      await prisma.user.update({ where: { id: user.id }, data: { loginAttempts: 0, lockedUntil: null } });
     }
 
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
-      const newAttempts = (user.loginAttempts || 0) + 1;
-      const lockAccount = newAttempts >= MAX_LOGIN_ATTEMPTS;
       await redisCacheService.delete(cacheKey);
+      // No lockout — just increment counter for auditing but never lock
       await prisma.user.update({
         where: { id: user.id },
-        data: {
-          loginAttempts: newAttempts,
-          lockedUntil: lockAccount ? new Date(Date.now() + ACCOUNT_LOCK_MINUTES * 60 * 1000) : null,
-        }
+        data: { loginAttempts: (user.loginAttempts || 0) + 1 }
       });
-      if (lockAccount) throw new ApiError(403, `Account locked for ${ACCOUNT_LOCK_MINUTES} minute${ACCOUNT_LOCK_MINUTES === 1 ? '' : 's'}`);
       throw new ApiError(401, 'Invalid credentials');
     }
 
