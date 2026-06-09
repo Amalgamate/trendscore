@@ -111,6 +111,12 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('user');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('authToken'); // Also clear legacy authToken if present
+
+    // Expire HttpOnly cookies (server will honour these on next request,
+    // but clearing them client-side removes them from browser storage immediately)
+    document.cookie = 'accessToken=; Max-Age=0; path=/; SameSite=Lax';
+    document.cookie = 'refreshToken=; Max-Age=0; path=/; SameSite=Lax';
+
     setUser(null);
     setIsAuthenticated(false);
   }, []);

@@ -542,6 +542,7 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
     handleSaveTeacher,
     handleDeleteTeacher,
     handleSaveParent,
+    onLogout: handleLogout,
     ...notify,
   };
 
