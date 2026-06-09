@@ -5,29 +5,21 @@
 
 import React, { useEffect, useState } from 'react';
 import { dashboardAPI } from '../../../../services/api';
-import { Users, CheckCircle2, AlertTriangle, CreditCard, MessageSquare } from 'lucide-react';
+import { Users, CheckCircle2, AlertTriangle, CreditCard, MessageSquare, ChevronRight } from 'lucide-react';
 import { GreetingToast } from '../../pages/dashboard/DashboardSummary';
 import MobileBottomNav from './MobileBottomNav';
+import ParentChildProfile from '../pages/parent/ParentChildProfile';
 
-/**
- * Parent Mobile Dashboard
- * Child-centric mobile view with attendance and fee metrics
- * @param {Object} props - Component props
- * @param {Object} props.user - User object
- * @param {Function} props.onNavigate - Navigation callback
- * @param {string} props.currentPath - Current page path
- */
 const ParentMobileDashboard = ({ user, onNavigate, currentPath }) => {
-  const [metrics, setMetrics] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [metrics, setMetrics]       = useState(null);
+  const [loading, setLoading]       = useState(true);
+  const [selectedChild, setSelectedChild] = useState(null);
 
   useEffect(() => {
     const loadData = async () => {
       try {
         const response = await dashboardAPI.getParentMetrics?.() || { success: true, data: {} };
-        if (response.success) {
-          setMetrics(response.data);
-        }
+        if (response.success) setMetrics(response.data);
       } catch (error) {
         console.error('Failed to load metrics:', error);
       } finally {
@@ -36,6 +28,16 @@ const ParentMobileDashboard = ({ user, onNavigate, currentPath }) => {
     };
     loadData();
   }, []);
+
+  // If a child is selected → show the child profile view
+  if (selectedChild) {
+    return (
+      <ParentChildProfile
+        child={selectedChild}
+        onBack={() => setSelectedChild(null)}
+      />
+    );
+  }
 
   // Use the same data structure as ParentDashboard (desktop)
   const children     = metrics?.children || [];
@@ -81,25 +83,39 @@ const ParentMobileDashboard = ({ user, onNavigate, currentPath }) => {
         })}
       </div>
 
-      {/* Children Cards */}
+      {/* Children Cards — tap to open full child profile */}
       {!loading && children.length > 0 && (
         <div className="px-3 pb-2 space-y-2">
-          <p className="text-xs font-semibold text-gray-600 uppercase px-2">My Children</p>
+          <p className="text-xs font-semibold text-gray-600 uppercase px-2 tracking-wider">My Children</p>
           {children.map((child) => (
-            <div key={child.id} className="bg-white rounded-xl border border-gray-200 p-3 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-brand-purple/10 flex items-center justify-center shrink-0">
-                <Users size={18} className="text-brand-purple" />
+            <button
+              key={child.id}
+              onClick={() => setSelectedChild(child)}
+              className="w-full bg-white rounded-xl border border-gray-200 p-3 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left"
+            >
+              <div className="w-11 h-11 rounded-full bg-brand-purple/10 flex items-center justify-center shrink-0 text-brand-purple font-bold text-base">
+                {child.name?.[0] || '?'}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-gray-900 text-sm truncate">{child.name}</p>
-                <p className="text-xs text-gray-500">{child.grade} • {child.className || child.admissionNumber}</p>
+                <p className="text-xs text-gray-500">{child.grade} · {child.className || child.admissionNumber}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-[10px] text-emerald-600 font-semibold">{child.attendanceRate ?? 0}% attendance</span>
+                  {Number(child.feeBalance) > 0 && (
+                    <span className="text-[10px] text-rose-600 font-semibold">KES {Number(child.feeBalance).toLocaleString()} due</span>
+                  )}
+                </div>
               </div>
-              <div className="text-right shrink-0">
-                <p className="text-xs text-gray-500">Attendance</p>
-                <p className="text-sm font-bold text-emerald-600">{child.attendanceRate ?? 0}%</p>
-              </div>
-            </div>
+              <ChevronRight size={16} className="text-gray-400 shrink-0" />
+            </button>
           ))}
+        </div>
+      )}
+
+      {!loading && children.length === 0 && (
+        <div className="mx-3 bg-white rounded-xl border border-dashed border-gray-200 p-6 text-center text-gray-400">
+          <Users size={28} className="mx-auto mb-2 opacity-30" />
+          <p className="text-xs font-medium">No children linked to this account</p>
         </div>
       )}
 
