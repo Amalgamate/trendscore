@@ -219,7 +219,13 @@ export const ChatProvider = ({ children }) => {
   useEffect(() => {
     if (!isAuthenticated || !user?.id) return;
 
-    const socket = io(window.location.origin, {
+    // In dev Vite runs on a different port than the API server —
+    // always connect the socket directly to the API origin.
+    const apiOrigin = import.meta.env.VITE_API_URL
+      ? new URL(import.meta.env.VITE_API_URL).origin   // e.g. http://localhost:5000
+      : window.location.origin;                        // production: same origin
+
+    const socket = io(apiOrigin, {
       withCredentials: true,
       auth: { token: localStorage.getItem('token') },
     });

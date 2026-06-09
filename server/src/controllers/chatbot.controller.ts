@@ -14,7 +14,7 @@ import prisma from '../config/database';
 
 const messageSchema = z.object({
   message: z.string().min(1).max(2000),
-  context: z.string().optional(), // e.g. 'fees', 'attendance', 'grades'
+  context: z.union([z.string(), z.record(z.any())]).optional(),
 });
 
 // ── Intents ────────────────────────────────────────────────────────────────

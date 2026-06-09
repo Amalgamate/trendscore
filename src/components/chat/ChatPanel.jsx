@@ -768,6 +768,7 @@ function NewConversation({ onBack }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [openingId, setOpeningId] = useState(null); // tracks which user is being opened
 
   useEffect(() => {
     const q = query.trim();
@@ -783,6 +784,21 @@ function NewConversation({ onBack }) {
     }, 300);
     return () => clearTimeout(timer);
   }, [query]);
+
+  const handleSelect = async (userId) => {
+    if (openingId) return; // prevent double-tap
+    setOpeningId(userId);
+    try {
+      const conv = await startDirect(userId);
+      if (conv) {
+        // startDirect already calls openConversation which sets activeConversationId
+        // — navigate to thread view
+        onBack('thread');
+      }
+    } finally {
+      setOpeningId(null);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -815,16 +831,20 @@ function NewConversation({ onBack }) {
         {results.map((u) => (
           <button
             key={u.id}
-            onClick={() => startDirect(u.id)}
-            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left border-b border-gray-50"
+            onClick={() => handleSelect(u.id)}
+            disabled={!!openingId}
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left border-b border-gray-50 disabled:opacity-60"
           >
             <Avatar user={u} size="md" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-gray-900">{u.firstName} {u.lastName}</p>
               <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">{u.role?.replace(/_/g, ' ')}</p>
             </div>
-            <div className="w-7 h-7 rounded-full bg-brand-purple/10 flex items-center justify-center">
-              <MessageSquare size={12} className="text-brand-purple" />
+            <div className="w-7 h-7 rounded-full bg-brand-purple/10 flex items-center justify-center shrink-0">
+              {openingId === u.id
+                ? <Loader2 size={12} className="text-brand-purple animate-spin" />
+                : <MessageSquare size={12} className="text-brand-purple" />
+              }
             </div>
           </button>
         ))}
@@ -1106,8 +1126,8 @@ export default function ChatPanel({ onClose }) {
 
   const activeConv = conversations.find((c) => c.id === activeConversationId);
 
-  const handleBack = () => {
-    setView('inbox');
+  const handleBack = (target = 'inbox') => {
+    setView(target);
     setShowVideoFromHeader(false);
   };
 
@@ -1129,7 +1149,14 @@ export default function ChatPanel({ onClose }) {
     }
 
     // Thread view
-    if (view === 'thread' && activeConversationId) {
+    if (view === 'thread') {
+      if (!activeConversationId) {
+        return (
+          <div className="flex items-center justify-center h-full">
+            <Loader2 size={20} className="animate-spin text-brand-purple/40" />
+          </div>
+        );
+      }
       return (
         <MessageThread
           conversationId={activeConversationId}
@@ -1181,14 +1208,26 @@ export default function ChatPanel({ onClose }) {
       )}
 
       {/* Thread header */}
-      {view === 'thread' && activeConv && (
+      {view === 'thread' && (
         <div className="flex items-center justify-between border-b border-gray-100 bg-white">
-          <ThreadHeader
-            conv={activeConv}
-            currentUserId={user?.id}
-            onBack={handleBack}
-            onVideoCall={() => setShowVideoFromHeader(true)}
-          />
+          {activeConv ? (
+            <ThreadHeader
+              conv={activeConv}
+              currentUserId={user?.id}
+              onBack={handleBack}
+              onVideoCall={() => setShowVideoFromHeader(true)}
+            />
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-2.5 flex-1">
+              <button
+                onClick={handleBack}
+                className="h-7 w-7 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                <ArrowLeft size={15} />
+              </button>
+              <Loader2 size={14} className="animate-spin text-gray-400" />
+            </div>
+          )}
           <button
             onClick={onClose}
             className="h-7 w-7 mr-2 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 flex items-center justify-center transition-colors shrink-0"
