@@ -283,7 +283,7 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
         {/* ── Personal Advisor — shown only on General Overview tab ── */}
         {activeOverviewTab === 'general' && (
           <DashboardSection id="owner-advisor" controls={sectionControls}>
-            <OwnerAdvisorSection onNavigate={onNavigate} loading={refreshing && !metrics} />
+            <OwnerAdvisorSection onNavigate={onNavigate} />
           </DashboardSection>
         )}
 

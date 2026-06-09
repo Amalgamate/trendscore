@@ -20,6 +20,15 @@ const TESTS_CACHE_TTL   = 300;  // 5 min — published tests change rarely
 const RESULTS_CACHE_TTL = 30;   // 30 s  — results are written frequently
 const GRADING_CACHE_TTL = 600;  // 10 min — grading scales are essentially static
 
+async function invalidateSummativeResultCache(testId: string): Promise<void> {
+  await Promise.all([
+    redisCacheService.delete(`results:${testId}`),
+    redisCacheService.delete(`results:PRIMARY_CBC:${testId}`),
+    redisCacheService.delete(`results:SECONDARY:${testId}`),
+    redisCacheService.delete(`results:TERTIARY:${testId}`),
+  ]);
+}
+
 type LearningAreaContext = {
   learningAreaId?: string;
   learningArea?: string;
@@ -1504,7 +1513,7 @@ export const recordSummativeResult = async (req: AuthRequest, res: Response) => 
     });
 
     // Bust result cache for this test
-    await redisCacheService.delete(`results:${testId}`);
+    await invalidateSummativeResultCache(testId);
 
     res.status(existingResult ? 200 : 201).json({
       success: true,
@@ -2306,7 +2315,7 @@ export const recordSummativeResultsBulk = async (req: AuthRequest, res: Response
     _rerankTestResultsAsync(testId);
 
     // ── 7. Bust result cache ──────────────────────────────────────────────────
-    await redisCacheService.delete(`results:${testId}`);
+    await invalidateSummativeResultCache(testId);
 
     const response: any = {
       success: true,

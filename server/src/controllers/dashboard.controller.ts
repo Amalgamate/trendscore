@@ -17,6 +17,53 @@ const ADMIN_CACHE_TTL   = 300; // 5 min
 const TEACHER_CACHE_TTL = 120; // 2 min
 const PARENT_CACHE_TTL  = 120; // 2 min
 
+const JUNIOR_FEE_GRADES = [
+    'PLAYGROUP', 'PP1', 'PP2',
+    'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5',
+    'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9',
+] as const;
+
+const SENIOR_FEE_GRADES = ['GRADE_10', 'GRADE_11', 'GRADE_12'] as const;
+
+const FEE_GRADE_LABELS: Record<string, string> = {
+    PLAYGROUP: 'Playgroup',
+    PP1: 'PP1',
+    PP2: 'PP2',
+    GRADE_1: 'Grade 1',
+    GRADE_2: 'Grade 2',
+    GRADE_3: 'Grade 3',
+    GRADE_4: 'Grade 4',
+    GRADE_5: 'Grade 5',
+    GRADE_6: 'Grade 6',
+    GRADE_7: 'Grade 7',
+    GRADE_8: 'Grade 8',
+    GRADE_9: 'Grade 9',
+    GRADE_10: 'Grade 10',
+    GRADE_11: 'Grade 11',
+    GRADE_12: 'Grade 12',
+};
+
+const FEE_TERMS = ['TERM_1', 'TERM_2', 'TERM_3'] as const;
+const FEE_TERM_LABELS: Record<string, string> = {
+    TERM_1: 'Term 1',
+    TERM_2: 'Term 2',
+    TERM_3: 'Term 3',
+};
+
+const normalizeFeeGrade = (raw: unknown): string | null => {
+    const value = String(raw ?? '').trim().toUpperCase();
+    if (!value) return null;
+
+    if (value.includes('PLAYGROUP') || value.includes('PLAY GROUP')) return 'PLAYGROUP';
+    const pp = value.match(/\bPP\s*([12])\b/);
+    if (pp) return `PP${pp[1]}`;
+
+    const grade = value.match(/\bGRADE[_\s-]*(1[0-2]|[1-9])\b/);
+    if (grade) return `GRADE_${grade[1]}`;
+
+    return null;
+};
+
 export class DashboardController {
 
     private async getDashboardMessages(userId: string, take = 5) {
@@ -432,6 +479,7 @@ export class DashboardController {
                 context: {
                     academicYear: activeAcademicYear,
                     term: activeTerm,
+                    institutionType,
                 },
                 learnerCount,
                 streamCount: learnersByStream.filter((s) => Boolean(s.stream)).length,
@@ -470,6 +518,7 @@ export class DashboardController {
             const institutionType = this.getInstitutionType(req);
             const secondaryGrades = ['GRADE10', 'GRADE11', 'GRADE12', 'GRADE_10', 'GRADE_11', 'GRADE_12', 'FORM_1', 'FORM_2', 'FORM_3'];
             const isSecondaryContext = institutionType === 'SECONDARY';
+            const allowedFeeGrades = new Set<string>(isSecondaryContext ? SENIOR_FEE_GRADES : JUNIOR_FEE_GRADES);
             const summativeTestScope: Prisma.SummativeTestWhereInput = isSecondaryContext
                 ? { grade: { in: secondaryGrades as any } }
                 : { NOT: { grade: { in: secondaryGrades as any } } };
@@ -484,7 +533,7 @@ export class DashboardController {
                     institutionType: { not: 'SECONDARY' as any },
                     NOT: { grade: { in: secondaryGrades as any } },
                 };
-            const cacheKey = `dashboard:admin:v2:${institutionType}:${filter}`;
+            const cacheKey = `dashboard:admin:v4:${institutionType}:${filter}`;
 
             // ── Serve from cache unless caller explicitly bypassed it ──────────
             if (!fresh) {
@@ -567,12 +616,12 @@ export class DashboardController {
                 }),
                 // [17-20] financials + performance aggregates
                 prisma.feeInvoice.aggregate({
-                    where: { archived: false },
+                    where: { archived: false, academicYear: activeAcademicYear },
                     _sum: { paidAmount: true, balance: true },
                 }),
                 prisma.feeInvoice.groupBy({
-                    by: ['feeStructureId'],
-                    where: { archived: false },
+                    by: ['feeStructureId', 'term'],
+                    where: { archived: false, academicYear: activeAcademicYear },
                     _sum: { totalAmount: true, paidAmount: true, balance: true, transportBilled: true, transportPaid: true, transportBalance: true },
                 }),
                 prisma.summativeResult.groupBy({
@@ -701,7 +750,7 @@ export class DashboardController {
                 }))
             ].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5);
 
-            const [feeStructures, testGrades, monthlyPayments] = await Promise.all([
+            const [feeStructures, testGrades, monthlyPayments, currentYearTermConfigs] = await Promise.all([
                 prisma.feeStructure.findMany({
                     where: { id: { in: feeByGrade.map((r: any) => r.feeStructureId) } },
                     select: {
@@ -750,29 +799,98 @@ export class DashboardController {
                         `
                     );
                 })(),
+                prisma.termConfig.findMany({
+                    where: { academicYear: activeAcademicYear },
+                    select: {
+                        term: true,
+                        startDate: true,
+                        endDate: true,
+                        isActive: true,
+                    },
+                }),
             ]);
 
             const scopedFeeStructures = feeStructures.filter((fs) => {
-                const g = String(fs?.grade || '').toUpperCase();
-                const isSecondaryGrade = secondaryGrades.includes(g as any);
-                return isSecondaryContext ? isSecondaryGrade : !isSecondaryGrade;
+                const grade = normalizeFeeGrade(fs?.grade || fs?.name);
+                return grade ? allowedFeeGrades.has(grade) : false;
             });
             const allowedFeeStructureIds = new Set(scopedFeeStructures.map((fs) => fs.id));
             const scopedFeeByGrade = feeByGrade.filter((row: any) => allowedFeeStructureIds.has(row.feeStructureId));
             const feeStructureMap = new Map(scopedFeeStructures.map(fs => [fs.id, fs]));
-            const streamBreakdown = scopedFeeByGrade
-                .map((row: any) => {
-                    const fs = feeStructureMap.get(row.feeStructureId);
-                    if (!fs) return null;
-                    return {
-                        name:      fs.name || fs.grade?.replace('_', ' ') || 'General',
-                        target:    Number(row._sum.totalAmount || 0),
-                        collected: Number(row._sum.paidAmount  || 0),
-                        bal:       Number(row._sum.balance     || 0),
-                    };
-                })
-                .filter(Boolean)
+            const feeBreakdownByGrade = new Map<string, { grade: string; name: string; target: number; collected: number; bal: number }>();
+            scopedFeeByGrade.forEach((row: any) => {
+                const fs = feeStructureMap.get(row.feeStructureId);
+                if (!fs) return;
+
+                const grade = normalizeFeeGrade(fs.grade || fs.name);
+                if (!grade || !allowedFeeGrades.has(grade)) return;
+
+                const current = feeBreakdownByGrade.get(grade) || {
+                    grade,
+                    name: FEE_GRADE_LABELS[grade] || grade.replace('_', ' '),
+                    target: 0,
+                    collected: 0,
+                    bal: 0,
+                };
+
+                current.target += Number(row._sum.totalAmount || 0);
+                current.collected += Number(row._sum.paidAmount || 0);
+                current.bal += Number(row._sum.balance || 0);
+                feeBreakdownByGrade.set(grade, current);
+            });
+            const streamBreakdown = Array.from(feeBreakdownByGrade.values())
                 .sort((a: any, b: any) => b.bal - a.bal);
+            const activeTermIndex = FEE_TERMS.indexOf(activeTerm as any);
+            const termConfigMap = new Map(currentYearTermConfigs.map((cfg: any) => [String(cfg.term), cfg]));
+            const feeTermBreakdown = FEE_TERMS.map((term, index) => {
+                const config = termConfigMap.get(term);
+                const hasStarted = config?.startDate ? new Date(config.startDate) <= now : index <= activeTermIndex;
+                const isFuture = activeTermIndex >= 0 ? index > activeTermIndex : !hasStarted;
+                const rowsForTerm = scopedFeeByGrade.filter((row: any) => String(row.term) === term);
+                const byGrade = new Map<string, { grade: string; name: string; target: number; collected: number; bal: number }>();
+
+                rowsForTerm.forEach((row: any) => {
+                    const fs = feeStructureMap.get(row.feeStructureId);
+                    if (!fs) return;
+
+                    const grade = normalizeFeeGrade(fs.grade || fs.name);
+                    if (!grade || !allowedFeeGrades.has(grade)) return;
+
+                    const current = byGrade.get(grade) || {
+                        grade,
+                        name: FEE_GRADE_LABELS[grade] || grade.replace('_', ' '),
+                        target: 0,
+                        collected: 0,
+                        bal: 0,
+                    };
+
+                    current.target += Number(row._sum.totalAmount || 0);
+                    current.collected += Number(row._sum.paidAmount || 0);
+                    current.bal += Number(row._sum.balance || 0);
+                    byGrade.set(grade, current);
+                });
+
+                const rows = Array.from(byGrade.values())
+                    .sort((a: any, b: any) => b.bal - a.bal);
+                const totals = rows.reduce((sum, row) => ({
+                    target: sum.target + row.target,
+                    collected: sum.collected + row.collected,
+                    bal: sum.bal + row.bal,
+                }), { target: 0, collected: 0, bal: 0 });
+
+                return {
+                    term,
+                    label: FEE_TERM_LABELS[term],
+                    academicYear: activeAcademicYear,
+                    isActive: term === activeTerm,
+                    isFuture,
+                    disabled: isFuture || !hasStarted,
+                    startDate: config?.startDate ?? null,
+                    endDate: config?.endDate ?? null,
+                    rows,
+                    totals,
+                };
+            });
             const scopedFeeCollected = scopedFeeByGrade.reduce((sum: number, row: any) => sum + Number(row._sum.paidAmount || 0), 0);
             const scopedFeePending = scopedFeeByGrade.reduce((sum: number, row: any) => sum + Number(row._sum.balance || 0), 0);
 
@@ -878,6 +996,11 @@ export class DashboardController {
             ]);
 
             const payload = {
+                context: {
+                    academicYear: activeAcademicYear,
+                    term: activeTerm,
+                    institutionType,
+                },
                 stats: {
                     totalStudents: studentCount, activeStudents,
                     totalTeachers: teacherCount, activeTeachers,
@@ -908,6 +1031,7 @@ export class DashboardController {
                 },
                 financials: {
                     streamBreakdown,
+                    termBreakdown: feeTermBreakdown,
                     trendData: monthlyPayments.map(r => ({
                         month:       String(r.month || ''),
                         collected:   Number(r.revenue      || 0),
