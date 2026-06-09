@@ -351,7 +351,7 @@ router.post(
             const cleanPhone = parentPhone.replace(/\D/g, '');
             const email = `parent.${cleanPhone || Math.random().toString(36).substring(7)}@edu-core.test`;
 
-            const bcrypt = await import('bcryptjs');
+            const bcrypt = await import('bcrypt');
             const hashedPassword = await bcrypt.hash('Parent@123', 10);
 
             const newParent = await prisma.user.create({
