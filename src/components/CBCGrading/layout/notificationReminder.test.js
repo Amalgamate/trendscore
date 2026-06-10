@@ -1,9 +1,11 @@
 import {
+  buildReminderSignature,
   getReminderDelay,
   INITIAL_REMINDER_DELAY_MS,
   REPEAT_REMINDER_DELAY_MS,
   MIN_UNREAD_FOR_REMINDER,
-  shouldScheduleReminder
+  shouldScheduleReminder,
+  shouldSuppressReminderForSignature
 } from './notificationReminder';
 
 describe('notification reminder timing', () => {
@@ -67,5 +69,30 @@ describe('notification reminder timing', () => {
         now
       })
     ).toBe(0);
+  });
+
+  it('builds a stable unread signature from local and system notifications', () => {
+    expect(
+      buildReminderSignature({
+        notificationItems: [{ key: 'notice-9' }, { key: 'birthday-2-13' }],
+        systemNotifications: [{ id: 'b' }, { id: 'a' }]
+      })
+    ).toBe('birthday-2-13|notice-9|system-a|system-b');
+  });
+
+  it('suppresses reminders only for the same dismissed unread set', () => {
+    expect(
+      shouldSuppressReminderForSignature({
+        dismissedSignature: 'notice-9|system-a',
+        unreadReminderSignature: 'notice-9|system-a'
+      })
+    ).toBe(true);
+
+    expect(
+      shouldSuppressReminderForSignature({
+        dismissedSignature: 'notice-9|system-a',
+        unreadReminderSignature: 'notice-9|system-a|system-b'
+      })
+    ).toBe(false);
   });
 });

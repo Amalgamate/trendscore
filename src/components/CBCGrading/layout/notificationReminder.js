@@ -20,3 +20,13 @@ export const getReminderDelay = ({
 };
 
 export const shouldScheduleReminder = ({ unreadCount }) => unreadCount >= MIN_UNREAD_FOR_REMINDER;
+
+export const buildReminderSignature = ({ notificationItems = [], systemNotifications = [] }) => [
+  ...notificationItems.map((item) => item.key),
+  ...systemNotifications.map((item) => `system-${item.id}`)
+].sort().join('|');
+
+export const shouldSuppressReminderForSignature = ({
+  dismissedSignature,
+  unreadReminderSignature
+}) => Boolean(dismissedSignature && dismissedSignature === unreadReminderSignature);

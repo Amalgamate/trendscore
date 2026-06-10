@@ -4,7 +4,12 @@ import { usePermissions } from '../../../hooks/usePermissions';
 import { useAuth } from '../../../hooks/useAuth';
 import { useRolePreview } from '../../../contexts/RolePreviewContext';
 import api from '../../../services/api';
-import { getReminderDelay, shouldScheduleReminder } from './notificationReminder';
+import {
+  buildReminderSignature,
+  getReminderDelay,
+  shouldScheduleReminder,
+  shouldSuppressReminderForSignature
+} from './notificationReminder';
 import { clockInTeacher, clockOutTeacher, getCurrentUserClockInStatus, syncCurrentUserClockInStatus } from '../../../utils/teacherClockIn';
 import { setSelectedInstitutionType } from '../../../services/schoolContext';
 import { setInstitutionType } from '../../../services/api/institutionContext';
@@ -94,6 +99,7 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
     : null;
   const reminderStorageKey = `header_last_notification_reminder_${user?.id || user?.email || 'unknown'}`;
   const snoozeStorageKey = `header_notification_reminder_snooze_until_${user?.id || user?.email || 'unknown'}`;
+  const dismissedReminderStorageKey = `header_notification_reminder_dismissed_signature_${user?.id || user?.email || 'unknown'}`;
 
   const portalLabel = (roleValue) => {
     const roleStr = String(roleValue || '').toUpperCase();
@@ -211,6 +217,15 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
   
   // Combined totals for the UI badge
   const totalUnreadCount = notificationItems.length + systemUnreadCount;
+  const unreadReminderSignature = buildReminderSignature({ notificationItems, systemNotifications });
+
+  const dismissCurrentReminderSet = () => {
+    try {
+      localStorage.setItem(dismissedReminderStorageKey, unreadReminderSignature);
+      localStorage.setItem(reminderStorageKey, String(Date.now()));
+    } catch { }
+    setShowUnreadReminder(false);
+  };
 
   const markAllNotificationsAsRead = () => {
     setReadNotificationKeys((prev) => {
@@ -219,7 +234,7 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
       return next;
     });
     markAllSystemAsRead();
-    setShowUnreadReminder(false);
+    dismissCurrentReminderSet();
   };
 
   const snoozeReminder = () => {
@@ -350,6 +365,18 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
     }
 
     const now = Date.now();
+    const dismissedSignature = localStorage.getItem(dismissedReminderStorageKey);
+    if (shouldSuppressReminderForSignature({ dismissedSignature, unreadReminderSignature })) {
+      setShowUnreadReminder(false);
+      return;
+    }
+
+    if (dismissedSignature && dismissedSignature !== unreadReminderSignature) {
+      try {
+        localStorage.removeItem(dismissedReminderStorageKey);
+      } catch { }
+    }
+
     const snoozeUntil = Number(localStorage.getItem(snoozeStorageKey) || 0);
     if (snoozeUntil > now) {
       const snoozeTimer = setTimeout(() => {
@@ -389,7 +416,14 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
     }, delay);
 
     return () => clearTimeout(timer);
-  }, [totalUnreadCount, reminderStorageKey, snoozeStorageKey, reminderCycle]);
+  }, [
+    totalUnreadCount,
+    unreadReminderSignature,
+    reminderStorageKey,
+    snoozeStorageKey,
+    dismissedReminderStorageKey,
+    reminderCycle
+  ]);
 
   // Close notifications when clicking outside
   useEffect(() => {
@@ -755,7 +789,7 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
                 You have <span className="text-brand-purple font-semibold">{totalUnreadCount}</span> unread notification{totalUnreadCount === 1 ? '' : 's'}. Review them when convenient.
               </p>
               <div className="mt-5 flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" onClick={() => setShowUnreadReminder(false)} className="h-8 text-[9px] font-semibold uppercase flex-1 border-gray-200">
+                <Button variant="outline" size="sm" onClick={dismissCurrentReminderSet} className="h-8 text-[9px] font-semibold uppercase flex-1 border-gray-200">
                   Later
                 </Button>
                 <Button variant="outline" size="sm" onClick={snoozeReminder} className="h-8 text-[9px] font-semibold uppercase flex-1 border-gray-200">
