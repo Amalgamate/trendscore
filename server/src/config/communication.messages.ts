@@ -16,7 +16,7 @@ import {
 export const COMMUNICATION_CONFIG = {
   // Email Provider Defaults
   email: {
-    fromEmail: PRODUCT_NO_REPLY_EMAIL,
+    fromEmail: process.env.EMAIL_FROM || PRODUCT_NO_REPLY_EMAIL,
     fromName: process.env.EMAIL_FROM_NAME || PRODUCT_DISPLAY_NAME,
     provider: process.env.EMAIL_PROVIDER || 'resend'
   },

@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Mail, MessageSquare, Send, Save,
   TestTube, CheckCircle, XCircle, Loader,
-  Phone, QrCode, RefreshCw, LogOut, Key
+  Phone, QrCode, RefreshCw, LogOut, Key, Sparkles
 } from 'lucide-react';
 import { useNotifications } from '../../hooks/useNotifications';
 import { communicationAPI, notificationAPI } from '../../../../services/api';
@@ -15,11 +15,38 @@ import { COMMUNICATION_DEFAULTS, TEST_MESSAGES } from '../../../../constants/com
 import { PRODUCT_DISPLAY_NAME } from '../../../../config/productIdentity';
 import { QRCodeSVG } from 'qrcode.react';
 
+const EMAIL_TEMPLATE_OPTIONS = [
+  { key: 'welcome', label: 'Welcome' },
+  { key: 'onboarding', label: 'Onboarding' },
+  { key: 'feeInvoice', label: 'Fee Invoice' },
+  { key: 'feeStatement', label: 'Fee Statement' },
+  { key: 'parentPortal', label: 'Parent Portal' },
+  { key: 'schemeReview', label: 'Scheme Review' },
+  { key: 'feeWaiverRequest', label: 'Waiver Request' },
+  { key: 'feeWaiverApproved', label: 'Waiver Approved' },
+  { key: 'feeWaiverDeclined', label: 'Waiver Declined' },
+  { key: 'generic', label: 'Generic' }
+];
+
+const DEFAULT_EMAIL_TEMPLATES = {
+  welcome: { heading: '', body: '' },
+  onboarding: { heading: '', body: '' },
+  feeInvoice: { heading: 'New Fee Invoice', body: '<p>Dear {parentName},</p><p>A fee invoice for {learnerName} has been generated for {term}.</p><p><strong>Amount due:</strong> KES {amount}<br/><strong>Due date:</strong> {dueDate}</p>' },
+  feeStatement: { heading: 'Fee Statement', body: '<p>Dear {parentName},</p><p>Please find attached the latest fee statement for {learnerName}.</p>' },
+  parentPortal: { heading: 'Parent Portal Login Credentials', body: '<p>{messageText}</p>' },
+  schemeReview: { heading: 'Scheme of Work Update', body: '<p>{messageBody}</p>' },
+  feeWaiverRequest: { heading: 'New Fee Waiver Request', body: '<p>{messageBody}</p>' },
+  feeWaiverApproved: { heading: 'Fee Waiver Approved', body: '<p>{messageBody}</p>' },
+  feeWaiverDeclined: { heading: 'Fee Waiver Declined', body: '<p>{messageBody}</p>' },
+  generic: { heading: '{subject}', body: '<p>{messageText}</p>' }
+};
+
 const CommunicationSettings = () => {
   const { showSuccess, showError } = useNotifications();
   const [activeTab, setActiveTab] = useState('sms'); // Default to SMS as requested
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [aiDrafting, setAiDrafting] = useState(false);
   const [testResult, setTestResult] = useState(null);
 
   // WhatsApp connection states
@@ -80,10 +107,7 @@ const CommunicationSettings = () => {
 
   // Template State
   const [editingTemplate, setEditingTemplate] = useState('welcome');
-  const [templates, setTemplates] = useState({
-    welcome: { heading: '', body: '' },
-    onboarding: { heading: '', body: '' }
-  });
+  const [templates, setTemplates] = useState(DEFAULT_EMAIL_TEMPLATES);
 
   const [emailSettings, setEmailSettings] = useState({
     provider: COMMUNICATION_DEFAULTS.email.provider,
@@ -110,6 +134,7 @@ const CommunicationSettings = () => {
 
   const [testContact, setTestContact] = useState('');
   const [testMessage, setTestMessage] = useState(TEST_MESSAGES.sms);
+  const [testEmailTemplate, setTestEmailTemplate] = useState('welcome');
   const [schoolPhone, setSchoolPhone] = useState(''); // Store school phone for fallback
 
   // Removed deprecated browser-session QR status logic
@@ -296,6 +321,41 @@ const CommunicationSettings = () => {
     }
   };
 
+  const handleDraftEmailTemplate = async () => {
+    try {
+      setAiDrafting(true);
+      const currentOption = EMAIL_TEMPLATE_OPTIONS.find(option => option.key === editingTemplate);
+      const response = await communicationAPI.draftEmailTemplate({
+        templateType: editingTemplate,
+        audience: ['welcome', 'onboarding', 'schemeReview'].includes(editingTemplate)
+          ? 'school administrators and staff'
+          : 'parents and guardians',
+        goal: `Create a clear ${currentOption?.label || editingTemplate} email template for a school management system. Use only placeholders already present in the existing body when placeholders are needed.`,
+        existingHeading: templates[editingTemplate]?.heading || '',
+        existingBody: templates[editingTemplate]?.body || ''
+      });
+
+      const draft = response.data || {};
+      if (!draft.heading || !draft.body) {
+        throw new Error('AI did not return usable template content');
+      }
+
+      setTemplates(prev => ({
+        ...prev,
+        [editingTemplate]: {
+          ...prev[editingTemplate],
+          heading: draft.heading,
+          body: draft.body
+        }
+      }));
+      showSuccess('AI draft added. Review and save the template.');
+    } catch (error) {
+      showError(error.message || 'Failed to generate AI draft');
+    } finally {
+      setAiDrafting(false);
+    }
+  };
+
   const handleTestWhatsApp = async () => {
     if (testContact.length < 9) {
       showError('Enter valid phone (e.g. 07... or 254...)');
@@ -343,7 +403,7 @@ const CommunicationSettings = () => {
                 // Reset test fields based on tab
                 if (tab === 'email') {
                   setTestContact('');
-                  setTestMessage('welcome');
+                  setTestEmailTemplate('welcome');
                   const saved = localStorage.getItem('testContactEmail');
                   if (saved) setTestContact(saved);
                 } else if (tab === 'voip') {
@@ -472,18 +532,29 @@ const CommunicationSettings = () => {
 
           <div className="space-y-6">
             {/* Template Selector */}
-            <div className="flex gap-4">
-              {['welcome', 'onboarding'].map(t => (
-                <button
-                  key={t}
-                  onClick={() => setEditingTemplate(t)}
-                  className={`px-4 py-2 rounded-lg capitalize border ${editingTemplate === t
-                    ? 'bg-purple-50 border-purple-200 text-purple-700 font-semibold'
-                    : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                >
-                  {t} Email
-                </button>
-              ))}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap gap-2">
+                {EMAIL_TEMPLATE_OPTIONS.map(({ key, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => setEditingTemplate(key)}
+                    className={`px-3 py-2 rounded-lg border text-sm ${editingTemplate === key
+                      ? 'bg-purple-50 border-purple-200 text-purple-700 font-semibold'
+                      : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={handleDraftEmailTemplate}
+                disabled={aiDrafting}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-purple-200 bg-white px-4 py-2 text-sm font-semibold text-purple-700 transition hover:bg-purple-50 disabled:opacity-50"
+              >
+                {aiDrafting ? <Loader size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                {aiDrafting ? 'Drafting...' : 'Draft with AI'}
+              </button>
             </div>
 
             {/* Editor Fields */}
@@ -498,7 +569,7 @@ const CommunicationSettings = () => {
                     [editingTemplate]: { ...prev[editingTemplate], heading: e.target.value }
                   }))}
                   className="w-full px-4 py-2 border rounded-lg"
-                  placeholder={editingTemplate === 'welcome' ? 'Welcome to your new School Management System' : "Let's get your school set up"}
+                  placeholder="Template heading"
                 />
               </div>
               <div>
@@ -542,25 +613,26 @@ const CommunicationSettings = () => {
             <div className="p-4 bg-blue-50 text-blue-800 rounded-lg text-sm">
               <p className="font-semibold">Verify your templates:</p>
               <ul className="list-disc list-inside mt-1">
-                <li><strong>Welcome Email:</strong> Standard greeting for new users.</li>
-                <li><strong>Onboarding Email:</strong> Step-by-step guide for new schools.</li>
+                <li><strong>Welcome and onboarding:</strong> Account setup flows.</li>
+                <li><strong>Finance and waiver:</strong> Parent-facing fee communication.</li>
+                <li><strong>Generic and scheme review:</strong> Staff and scheduled communication.</li>
               </ul>
             </div>
 
             <div>
               <label className="block text-sm font-semibold mb-2">Template to Test</label>
-              <div className="flex gap-4">
-                {['welcome', 'onboarding'].map(t => (
-                  <label key={t} className="flex items-center gap-2 cursor-pointer">
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {EMAIL_TEMPLATE_OPTIONS.map(({ key, label }) => (
+                  <label key={key} className="flex items-center gap-2 cursor-pointer rounded-lg border border-gray-200 px-3 py-2">
                     <input
                       type="radio"
                       name="template"
-                      value={t}
-                      checked={testMessage === t} // Reusing testMessage state for template name
-                      onChange={() => setTestMessage(t)}
+                      value={key}
+                      checked={testEmailTemplate === key}
+                      onChange={() => setTestEmailTemplate(key)}
                       className="w-4 h-4 text-blue-600"
                     />
-                    <span className="capitalize">{t} Email</span>
+                    <span>{label}</span>
                   </label>
                 ))}
               </div>
@@ -616,7 +688,9 @@ const CommunicationSettings = () => {
                 try {
                   const res = await communicationAPI.sendTestEmail({
                     email: testContact,
-                    template: testMessage // "welcome" or "onboarding"
+                    template: testEmailTemplate,
+                    subject: `Test ${testEmailTemplate} email`,
+                    message: `This is a test ${testEmailTemplate} email from ${PRODUCT_DISPLAY_NAME}.`
                   });
                   setTestResult({
                     success: true,

@@ -96,8 +96,13 @@ export class MessageService {
         } else if (message.messageType === 'WHATSAPP' && receipt.recipientPhone) {
           result = await whatsappService.sendMessage({ to: receipt.recipientPhone, message: message.body } as any);
         } else if (message.messageType === 'EMAIL' && receipt.recipientEmail) {
-          // Generic email sending is not implemented in this service yet.
-          result = { success: false, error: 'Email delivery is not supported yet' };
+          await EmailService.sendEmail({
+            to: receipt.recipientEmail,
+            subject: message.subject || 'School Notification',
+            html: message.body,
+            text: message.body.replace(/<[^>]*>/g, ' ')
+          });
+          result = { success: true };
         } else {
           result = { success: false, error: 'No valid recipient contact information' };
         }

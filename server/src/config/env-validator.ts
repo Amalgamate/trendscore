@@ -53,17 +53,22 @@ const REQUIREMENTS: EnvRequirement[] = [
     { 
         key: 'RESEND_API_KEY', 
         required: false, 
-        description: 'API Key for Resend email service (Optional if SMTP is used)' 
+        description: 'API key for Resend email delivery' 
     },
     { 
         key: 'EMAIL_FROM', 
         required: false, 
-        description: 'Default sender email address (Optional if SMTP_FROM is used)' 
+        description: 'Default sender email address for Resend delivery' 
+    },
+    {
+        key: 'OPENAI_API_KEY',
+        required: false,
+        description: 'API key for optional AI-assisted email template drafting'
     },
     { 
         key: 'SMTP_HOST', 
         required: false, 
-        description: 'SMTP host (fallback for legacy services)' 
+        description: 'Legacy SMTP host (deprecated; Resend is used for app email delivery)' 
     },
     { 
         key: 'SMTP_USER', 

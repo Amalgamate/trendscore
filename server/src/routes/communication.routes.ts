@@ -6,6 +6,7 @@ import {
     saveCommunicationConfig,
     sendTestSms,
     sendTestEmail,
+    draftEmailTemplate,
     getBirthdaysToday,
     sendBirthdayWishes,
     getInboxMessages,
@@ -81,8 +82,29 @@ const sendTestSmsSchema = z.object({
 
 const sendTestEmailSchema = z.object({
     email: z.string().email(),
-    subject: z.string().min(1).max(200),
-    message: z.string().min(1).max(5000)
+    template: z.enum([
+        'welcome',
+        'onboarding',
+        'feeInvoice',
+        'feeStatement',
+        'parentPortal',
+        'schemeReview',
+        'feeWaiverRequest',
+        'feeWaiverApproved',
+        'feeWaiverDeclined',
+        'generic'
+    ]).optional(),
+    subject: z.string().min(1).max(200).optional(),
+    message: z.string().min(1).max(5000).optional()
+});
+
+const draftEmailTemplateSchema = z.object({
+    templateType: z.string().min(2).max(80).optional(),
+    goal: z.string().max(1000).optional(),
+    audience: z.string().max(200).optional(),
+    tone: z.string().max(200).optional(),
+    existingHeading: z.string().max(300).optional(),
+    existingBody: z.string().max(5000).optional()
 });
 
 const createContactGroupSchema = z.object({
@@ -159,6 +181,16 @@ router.post(
     rateLimit({ windowMs: 60_000, maxRequests: 30 }),
     validate(sendTestEmailSchema),
     sendTestEmail
+);
+
+// Draft Email Template with AI
+// Allowed: Admin, Super Admin
+router.post(
+    '/email/draft',
+    requireRole(['SUPER_ADMIN', 'ADMIN']),
+    rateLimit({ windowMs: 60_000, maxRequests: 10 }),
+    validate(draftEmailTemplateSchema),
+    draftEmailTemplate
 );
 
 // Birthday Birthdays Today
