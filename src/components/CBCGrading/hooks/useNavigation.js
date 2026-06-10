@@ -35,7 +35,7 @@ const RESTRICTED_SIDEBAR_SECTION_LABELS = {
     learners: 'Students',
     teachers: 'Tutors',
     assessment: 'Assessments',
-    'academic-intelligence': 'Academic Intelligence',
+    'academic-intelligence': 'Reports & Growth',
     planner: 'Planner',
     communications: 'Communications',
     settings: 'Settings'
@@ -189,7 +189,7 @@ export const allNavSections = [
     },
     {
         id: 'academic-intelligence',
-        label: 'Academic Intelligence',
+        label: 'Reports & Growth',
         icon: BarChart3,
         app: 'exams',
         permission: 'VIEW_ALL_REPORTS',

@@ -262,7 +262,7 @@ const AnalyticsDashboards = ({ learners = [], academicFilters = {}, analytics })
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm">
         <div>
-          <h2 className="text-sm font-black text-slate-950">Academic Intelligence Overview</h2>
+          <h2 className="text-sm font-black text-slate-950">Reports & Growth Overview</h2>
           <p className="mt-1 text-xs font-semibold text-slate-500">Performance, coverage, achievement bands, and learner risk from scored report data.</p>
         </div>
         <button type="button" onClick={loadDashboard} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 hover:border-violet-300 hover:text-violet-700">

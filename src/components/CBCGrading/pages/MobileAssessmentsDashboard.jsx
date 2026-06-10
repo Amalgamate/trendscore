@@ -8,7 +8,6 @@ import {
   FileText,
   Heart,
   PenLine,
-  RefreshCw,
   Settings,
   ShieldCheck,
   Star,
@@ -25,12 +24,16 @@ const TERM_LABELS = {
   TERM_3: 'Term 3',
 };
 
-const SECTION_OPTIONS = [
-  { value: 'all', label: 'All Sections' },
-  { value: 'pre-primary', label: 'Pre Primary' },
-  { value: 'lower', label: 'Lower Primary' },
-  { value: 'upper', label: 'Upper Primary' },
-  { value: 'junior-sec', label: 'Junior Sec' },
+const EXAM_TYPE_OPTIONS = [
+  { value: 'all', label: 'All Test Types' },
+  { value: 'OPENER', label: 'Opener' },
+  { value: 'CAT', label: 'CAT' },
+  { value: 'MID_TERM', label: 'Mid Term' },
+  { value: 'END_TERM', label: 'End Term' },
+  { value: 'WEEKLY', label: 'Weekly' },
+  { value: 'MONTHLY', label: 'Monthly' },
+  { value: 'MOCK', label: 'Mock' },
+  { value: 'OTHER', label: 'Other' },
 ];
 
 const getTermLabel = (term) => TERM_LABELS[term] || String(term || '').replace(/_/g, ' ') || 'Current Term';
@@ -187,7 +190,7 @@ const MobileAssessmentsDashboard = ({ learners = [], onNavigate }) => {
   const [filters, setFilters] = useState({
     academicYear: getCurrentAcademicYear(),
     term: getCurrentTerm(),
-    section: 'all',
+    testType: 'all',
   });
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -216,12 +219,9 @@ const MobileAssessmentsDashboard = ({ learners = [], onNavigate }) => {
   useEffect(() => {
     loadDashboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.academicYear, filters.term, filters.section]);
+  }, [filters.academicYear, filters.term, filters.testType]);
 
   const summary = dashboard?.summary || {};
-  const gradeRows = dashboard?.gradeRows || [];
-  const subjectRows = dashboard?.subjectRows || [];
-  const pendingLearners = Math.max(0, (summary.activeLearnersWithTests || 0) - (summary.reportReadyLearners || 0));
   const go = (page) => () => onNavigate?.(page);
 
   return (
@@ -236,20 +236,7 @@ const MobileAssessmentsDashboard = ({ learners = [], onNavigate }) => {
             </div>
             <p className="mt-1 text-xs font-medium text-slate-500">Live mark-entry completion, missing results, and report readiness for the selected period.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={loadDashboard} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 hover:border-violet-300 hover:text-violet-700">
-              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-              Refresh
-            </button>
-            <button type="button" onClick={go('assess-summative-assessment')} className="inline-flex h-10 items-center gap-2 rounded-md bg-violet-600 px-4 text-xs font-black text-white shadow-sm hover:bg-violet-700">
-              <PenLine size={16} />
-              Record Marks
-            </button>
-          </div>
-        </section>
-
-        <section className="overflow-x-auto rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm">
-          <div className="flex min-w-max items-center justify-center gap-4">
+          <div className="flex min-w-max flex-wrap items-center gap-3">
             <label className="flex h-11 items-center border border-slate-300 bg-white px-4">
               <select
                 aria-label="Academic year"
@@ -276,20 +263,16 @@ const MobileAssessmentsDashboard = ({ learners = [], onNavigate }) => {
             </label>
             <label className="flex h-11 items-center border border-slate-300 bg-white px-4">
               <select
-                aria-label="Section"
-                className="min-w-[126px] bg-transparent text-sm font-semibold text-slate-950 outline-none"
-                value={filters.section}
-                onChange={(event) => setFilters((current) => ({ ...current, section: event.target.value }))}
+                aria-label="Exam type"
+                className="min-w-[150px] bg-transparent text-sm font-semibold text-slate-950 outline-none"
+                value={filters.testType}
+                onChange={(event) => setFilters((current) => ({ ...current, testType: event.target.value }))}
               >
-                {SECTION_OPTIONS.map((option) => (
+                {EXAM_TYPE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </select>
             </label>
-            <div className="inline-flex h-11 items-center gap-2 rounded-md border border-violet-300 bg-violet-50 px-4 text-sm font-black text-violet-700">
-              <Target size={16} />
-              {getTermLabel(filters.term)}
-            </div>
           </div>
         </section>
 
@@ -307,34 +290,8 @@ const MobileAssessmentsDashboard = ({ learners = [], onNavigate }) => {
           <StatCard icon={FileText} label="Report Ready" value={formatPercent(summary.reportReadyRate)} helper={`${summary.reportReadyLearners ?? 0} learners ready`} color="#f97316" bg="#fff1e7" progress={summary.reportReadyRate || 0} tone="bg-orange-500" />
         </section>
 
-        {loading ? (
+        {loading && (
           <div className="rounded-lg border border-slate-100 bg-white p-6 text-sm font-bold text-slate-500 shadow-sm">Loading live assessment metrics...</div>
-        ) : (
-          <section className="grid gap-4 xl:grid-cols-[1fr_1.25fr_1fr]">
-            <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
-              <SectionHeader title="Report Readiness" helper="Learners with all expected results accounted for." />
-              <ReadinessDonut ready={summary.reportReadyLearners || 0} pending={pendingLearners} rate={summary.reportReadyRate || 0} />
-              <button type="button" onClick={go('assess-summary-report')} className="mt-5 flex w-full items-center justify-between rounded-lg bg-violet-50 px-4 py-3 text-xs font-black text-violet-700">
-                <span>Open reports and printing</span>
-                <ArrowRight size={16} />
-              </button>
-            </div>
-
-            <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
-              <SectionHeader title="Readiness by Grade" helper={`${getTermLabel(filters.term)} - ${filters.academicYear}`} />
-              <GradeReadinessTable rows={gradeRows} />
-            </div>
-
-            <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
-              <SectionHeader title="Mark Entry Backlog" helper={`${summary.pendingEntries || 0} missing entries before reports are clean.`} />
-              <SubjectBacklog rows={subjectRows} />
-              {(summary.statusOnlyEntries || 0) > 0 && (
-                <div className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
-                  {summary.statusOnlyEntries} status-only entries are accounted for but excluded from averages.
-                </div>
-              )}
-            </div>
-          </section>
         )}
 
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">

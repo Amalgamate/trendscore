@@ -1157,7 +1157,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       return;
     }
     if (stagedType === 'DETAILED_REPORTS') {
-      showInfo('Open Top / Bottom Performers under Academic Intelligence for ranking reports.');
+      showInfo('Open Top / Bottom Performers under Reports & Growth for ranking reports.');
       return;
     }
     setSelectedType(stagedType);

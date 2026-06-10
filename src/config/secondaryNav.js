@@ -96,7 +96,7 @@ export const secondaryNavSections = [
   // ── Results ───────────────────────────────────────────────────────────────
   {
     id: 'secondary-results',
-    label: 'Academic Intelligence',
+    label: 'Reports & Growth',
     icon: BarChart3,
     permission: 'VIEW_ALL_REPORTS',
     items: [
