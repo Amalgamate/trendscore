@@ -10,6 +10,27 @@ import { ApiError } from '../utils/error.util';
 import { COMMUNICATION_CONFIG, ERROR_MESSAGES, SMS_MESSAGES } from '../config/communication.messages';
 
 import logger from '../utils/logger';
+
+const sanitizeGeneratedEmailHtml = (html: string) =>
+    html
+        .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '')
+        .replace(/<iframe[\s\S]*?>[\s\S]*?<\/iframe>/gi, '')
+        .replace(/<object[\s\S]*?>[\s\S]*?<\/object>/gi, '')
+        .replace(/<embed[\s\S]*?>/gi, '')
+        .replace(/\son\w+="[^"]*"/gi, '')
+        .replace(/\son\w+='[^']*'/gi, '')
+        .replace(/javascript:/gi, '')
+        .trim();
+
+const extractJsonObject = (value: string) => {
+    const trimmed = value.trim();
+    if (trimmed.startsWith('{')) return JSON.parse(trimmed);
+    const match = trimmed.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('AI response did not include JSON');
+    return JSON.parse(match[0]);
+};
+
 /**
  * Get Communication Configuration
  * GET /api/communication/config
@@ -270,14 +291,122 @@ export const sendTestEmail = async (req: AuthRequest, res: Response) => {
 
     if (template === 'onboarding') {
         await EmailService.sendOnboardingEmail({ to: email, schoolName, adminName, loginUrl });
-    } else {
+    } else if (template === 'welcome') {
         await EmailService.sendWelcomeEmail({ to: email, schoolName, adminName, loginUrl });
+    } else {
+        await EmailService.sendNotificationEmail({
+            to: email,
+            subject: `Test ${template} email`,
+            templateKey: template,
+            variables: {
+                schoolName,
+                adminName,
+                parentName: 'Parent/Guardian',
+                learnerName: 'Sample Learner',
+                invoiceNumber: 'INV-TEST-001',
+                term: 'Term 1 2026',
+                amount: '12,500',
+                dueDate: new Date().toLocaleDateString(),
+                messageText: 'This is a test email generated from Communication Settings.',
+                remarks: 'Reviewed and ready for action.',
+                status: 'approved',
+                loginUrl
+            },
+            html: `
+                <p>This is a test email generated from Communication Settings.</p>
+                <p><strong>School:</strong> ${schoolName}</p>
+                <p><strong>Template:</strong> ${template}</p>
+            `,
+            text: `This is a test email generated from Communication Settings. School: ${schoolName}. Template: ${template}.`
+        });
     }
 
     res.status(200).json({
         success: true,
         message: `Test email (${template}) sent successfully to ${email}`,
         data: { provider: 'resend' }
+    });
+};
+
+/**
+ * Draft Email Template with AI
+ * POST /api/communication/email/draft
+ */
+export const draftEmailTemplate = async (req: AuthRequest, res: Response) => {
+    const {
+        templateType = 'announcement',
+        goal,
+        audience = 'parents and guardians',
+        tone = 'professional, warm, and concise',
+        existingHeading,
+        existingBody
+    } = req.body;
+
+    const apiKey = process.env.OPENAI_API_KEY || process.env.AI_API_KEY;
+    if (!apiKey) {
+        throw new ApiError(400, 'AI drafting is not configured. Set OPENAI_API_KEY on the server.');
+    }
+
+    const school = await prisma.school.findFirst({ select: { name: true } });
+    const schoolName = school?.name || 'Your School';
+    const model = process.env.OPENAI_MODEL || process.env.AI_MODEL || 'gpt-4o-mini';
+    const apiUrl = process.env.OPENAI_API_URL || 'https://api.openai.com/v1/chat/completions';
+
+    const prompt = [
+        `School: ${schoolName}`,
+        `Template type: ${templateType}`,
+        `Audience: ${audience}`,
+        `Tone: ${tone}`,
+        `Goal: ${goal || `Improve the ${templateType} email template for school communication.`}`,
+        existingHeading ? `Existing heading: ${existingHeading}` : '',
+        existingBody ? `Existing body: ${existingBody}` : '',
+        'Return only JSON with keys "heading" and "body".',
+        'The body may use simple email-safe HTML tags only: p, strong, em, ul, ol, li, br.',
+        'Do not include scripts, styles, external images, forms, tracking pixels, or placeholders that require unavailable data.'
+    ].filter(Boolean).join('\n');
+
+    const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model,
+            messages: [
+                {
+                    role: 'system',
+                    content: 'You write safe, parent-friendly school communication emails. Return valid JSON only.'
+                },
+                { role: 'user', content: prompt }
+            ],
+            temperature: 0.4,
+            response_format: { type: 'json_object' }
+        })
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        logger.error('[CommunicationController] AI draft failed:', errorText);
+        throw new ApiError(502, 'AI drafting failed. Check the AI API key, model, and server logs.');
+    }
+
+    const payload: any = await response.json();
+    const content = payload?.choices?.[0]?.message?.content;
+    if (!content) throw new ApiError(502, 'AI drafting returned an empty response.');
+
+    const parsed = extractJsonObject(content);
+    const heading = String(parsed.heading || '').replace(/<[^>]+>/g, '').trim().slice(0, 140);
+    const body = sanitizeGeneratedEmailHtml(String(parsed.body || '')).slice(0, 5000);
+
+    if (!heading || !body) {
+        throw new ApiError(502, 'AI drafting did not return usable template content.');
+    }
+
+    res.status(200).json({
+        success: true,
+        message: 'AI email draft generated successfully',
+        data: { heading, body, model }
     });
 };
 

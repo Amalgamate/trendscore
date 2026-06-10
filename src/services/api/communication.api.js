@@ -10,6 +10,8 @@ export const communicationAPI = {
     fetchWithAuth('/communication/test/sms', { method: 'POST', body: JSON.stringify(data) }),
   sendTestEmail: async (data) =>
     fetchWithAuth('/communication/test/email', { method: 'POST', body: JSON.stringify(data) }),
+  draftEmailTemplate: async (data) =>
+    fetchWithAuth('/communication/email/draft', { method: 'POST', body: JSON.stringify(data) }),
   getBirthdaysToday: async () => fetchWithAuth('/communication/birthdays/today'),
   sendBirthdayWishes: async (data) =>
     fetchWithAuth('/communication/birthdays/send', { method: 'POST', body: JSON.stringify(data) }),
