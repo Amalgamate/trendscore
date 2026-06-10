@@ -79,7 +79,7 @@ const AdminMiniReport = ({
     academic: {
       title: 'Academic performance overview',
       description: 'Assessment completion, learner risk, and class performance signals.',
-      action: { label: 'Open Academic Intelligence', path: 'academic-intelligence' },
+      action: { label: 'Open Reports & Growth', path: 'academic-intelligence' },
       metrics: [
         { label: 'Assessment Progress', value: formatPercent(assessmentRate), note: `${stats.totalMissedExams || 0} unassessed learners` },
         { label: 'Assessed Classes', value: stats.totalAssessedClasses || 0, note: 'Classes with recorded assessments' },

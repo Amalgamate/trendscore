@@ -149,9 +149,9 @@ const getFiltersForPage = (activePage, filters, classOptions) => {
 
 const AcademicIntelligenceShell = ({
   activePage,
-  title = 'Academic Intelligence',
+  title = 'Reports & Growth',
   description = '',
-  eyebrow = 'Academic Intelligence',
+  eyebrow = 'Reports & Growth',
   breadcrumbs = [],
   filters,
   headerActions = null,
@@ -204,7 +204,7 @@ const AcademicIntelligenceShell = ({
       <div className="mx-auto max-w-[1500px] space-y-3 p-2 md:p-3">
           <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm md:hidden">
             <label htmlFor="academic-intelligence-mobile-nav" className="mb-1 block text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-              Academic Intelligence
+              Reports & Growth
             </label>
             <select
               id="academic-intelligence-mobile-nav"

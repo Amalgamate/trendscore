@@ -6,6 +6,7 @@ import { AuthRequest } from '../middleware/permissions.middleware';
 import { redisCacheService } from '../services/redis-cache.service';
 import { configService } from '../services/config.service';
 import { generateInsights } from '../services/insights.service';
+import { reportDashboardService } from '../services/reportDashboard.service';
 import { CanonicalInstitutionType } from '../utils/institutionNormalizer';
 
 import logger from '../utils/logger';
@@ -49,6 +50,15 @@ const FEE_TERM_LABELS: Record<string, string> = {
     TERM_2: 'Term 2',
     TERM_3: 'Term 3',
 };
+
+const parseReportDashboardFilters = (query: AuthRequest['query']) => ({
+    academicYear: query.academicYear ? Number(query.academicYear) : undefined,
+    term: query.term,
+    grade: query.grade,
+    stream: query.stream,
+    section: query.section,
+    testType: query.testType,
+});
 
 const normalizeFeeGrade = (raw: unknown): string | null => {
     const value = String(raw ?? '').trim().toUpperCase();
@@ -1500,6 +1510,28 @@ export class DashboardController {
             logger.error('Insights Error:', error);
             if (error instanceof ApiError) throw error;
             throw new ApiError(500, error.message || 'Failed to generate insights');
+        }
+    }
+
+    async getAssessmentOperations(req: AuthRequest, res: Response) {
+        try {
+            const data = await reportDashboardService.getDashboardData(parseReportDashboardFilters(req.query));
+            res.json({ success: true, data });
+        } catch (error: any) {
+            logger.error('Assessment Operations Dashboard Error:', error);
+            if (error instanceof ApiError) throw error;
+            throw new ApiError(500, error.message || 'Failed to load assessment operations dashboard');
+        }
+    }
+
+    async getAcademicIntelligence(req: AuthRequest, res: Response) {
+        try {
+            const data = await reportDashboardService.getDashboardData(parseReportDashboardFilters(req.query));
+            res.json({ success: true, data });
+        } catch (error: any) {
+            logger.error('Academic Intelligence Dashboard Error:', error);
+            if (error instanceof ApiError) throw error;
+            throw new ApiError(500, error.message || 'Failed to load academic intelligence dashboard');
         }
     }
 }

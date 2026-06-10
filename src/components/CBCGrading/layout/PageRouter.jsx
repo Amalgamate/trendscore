@@ -149,62 +149,62 @@ const MobileGeneralSettings = lazy(() => import('../dashboard/mobile/MobileGener
 const ACADEMIC_INTELLIGENCE_PAGE_COPY = {
   'academic-intelligence': {
     title: 'Analytics Dashboards',
-    eyebrow: 'Academic Intelligence',
-    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Analytics Dashboards'],
+    eyebrow: 'Reports & Growth',
+    breadcrumbs: ['Assessment', 'Reports & Growth', 'Analytics Dashboards'],
     description: 'A consolidated academic intelligence view is planned for performance, completion, intervention and trend signals.',
   },
   'academic-section-analysis': {
     title: 'Section Analysis',
-    eyebrow: 'Academic Intelligence',
-    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Section Analysis'],
+    eyebrow: 'Reports & Growth',
+    breadcrumbs: ['Assessment', 'Reports & Growth', 'Section Analysis'],
     description: 'Compare academic performance by school section once section-level analytics are connected.',
   },
   'academic-gender-analysis': {
     title: 'Gender Analysis',
-    eyebrow: 'Academic Intelligence',
-    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Gender Analysis'],
+    eyebrow: 'Reports & Growth',
+    breadcrumbs: ['Assessment', 'Reports & Growth', 'Gender Analysis'],
     description: 'Review gender-based academic patterns and equity indicators.',
   },
   'academic-stream-analysis': {
     title: 'Stream Analysis',
-    eyebrow: 'Academic Intelligence',
-    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Stream Analysis'],
+    eyebrow: 'Reports & Growth',
+    breadcrumbs: ['Assessment', 'Reports & Growth', 'Stream Analysis'],
     description: 'Compare streams and detect class-level performance movement.',
   },
   'academic-competency-analysis': {
     title: 'Competency Analysis',
-    eyebrow: 'Academic Intelligence',
-    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Competency Analysis'],
+    eyebrow: 'Reports & Growth',
+    breadcrumbs: ['Assessment', 'Reports & Growth', 'Competency Analysis'],
     description: 'Analyze competency development across CBC learning areas.',
   },
   'academic-learner-risk': {
     title: 'Learner Risk',
-    eyebrow: 'Academic Intelligence',
-    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Learner Risk'],
+    eyebrow: 'Reports & Growth',
+    breadcrumbs: ['Assessment', 'Reports & Growth', 'Learner Risk'],
     description: 'Identify learners needing academic intervention from assessment trends.',
   },
   'academic-growth-trends': {
     title: 'Growth Trends',
-    eyebrow: 'Academic Intelligence',
-    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Growth Trends'],
+    eyebrow: 'Reports & Growth',
+    breadcrumbs: ['Assessment', 'Reports & Growth', 'Growth Trends'],
     description: 'Track learner, class and subject growth across terms.',
   },
   'academic-ai-insights': {
     title: 'AI Insights',
-    eyebrow: 'Academic Intelligence',
-    breadcrumbs: ['Assessment', 'Academic Intelligence', 'AI Insights'],
+    eyebrow: 'Reports & Growth',
+    breadcrumbs: ['Assessment', 'Reports & Growth', 'AI Insights'],
     description: 'Surface explainable insights after the academic intelligence engine is connected.',
   },
   'academic-subject-intelligence': {
     title: 'Subject Analysis',
-    eyebrow: 'Academic Intelligence',
-    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Subject Analysis'],
+    eyebrow: 'Reports & Growth',
+    breadcrumbs: ['Assessment', 'Reports & Growth', 'Subject Analysis'],
     description: 'Analyze subject-level performance using the existing subject analysis workbench.',
   },
   'academic-top-bottom-performers': {
     title: 'Top / Bottom Performers',
-    eyebrow: 'Academic Intelligence',
-    breadcrumbs: ['Assessment', 'Academic Intelligence', 'Top / Bottom Performers'],
+    eyebrow: 'Reports & Growth',
+    breadcrumbs: ['Assessment', 'Reports & Growth', 'Top / Bottom Performers'],
     description: 'Rank top and bottom learners by grade, stream, term and academic category.',
   },
 };
@@ -316,8 +316,8 @@ const PageRouter = ({
 
   const renderAcademicIntelligencePlaceholder = (activePage) => {
     const copy = ACADEMIC_INTELLIGENCE_PAGE_COPY[activePage] || {
-      title: 'Academic Intelligence',
-      description: 'This Academic Intelligence workspace is planned.',
+      title: 'Reports & Growth',
+      description: 'This Reports & Growth workspace is planned.',
     };
     return renderAcademicIntelligencePage(
       activePage,

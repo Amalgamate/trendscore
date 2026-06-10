@@ -70,6 +70,13 @@ const saveCommunicationConfigSchema = z.object({
     }).optional(),
     otp: z.object({
         enabled: z.boolean()
+    }).optional(),
+    ai: z.object({
+        enabled: z.boolean().optional(),
+        provider: z.literal('openai').optional(),
+        model: z.string().min(2).max(80).optional(),
+        apiUrl: z.string().url().optional(),
+        apiKey: z.string().min(10).max(300).optional()
     }).optional()
 });
 

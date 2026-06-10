@@ -83,4 +83,28 @@ router.get(
   asyncHandler(dashboardController.getInsights.bind(dashboardController))
 );
 
+/**
+ * @route   GET /api/dashboard/assessment-operations
+ * @desc    Get live assessment readiness and mark-entry metrics
+ * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM
+ */
+router.get(
+  '/assessment-operations',
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM']),
+  rateLimit({ windowMs: 60_000, maxRequests: 60 }),
+  asyncHandler(dashboardController.getAssessmentOperations.bind(dashboardController))
+);
+
+/**
+ * @route   GET /api/dashboard/academic-intelligence
+ * @desc    Get live academic performance and report intelligence metrics
+ * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM
+ */
+router.get(
+  '/academic-intelligence',
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM']),
+  rateLimit({ windowMs: 60_000, maxRequests: 60 }),
+  asyncHandler(dashboardController.getAcademicIntelligence.bind(dashboardController))
+);
+
 export default router;
