@@ -8,15 +8,15 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Starting database seed...');
 
-  console.log('\n🏫 Ensuring Zawadi SMS Template school exists...');
+  console.log('\n🏫 Ensuring TrendScore Template school exists...');
   const templateSchoolData = {
-    name: 'Zawadi SMS Template',
-    registrationNo: 'ZAWADI-TEMPLATE-001',
+    name: 'TrendScore Template',
+    registrationNo: 'TRENDSCORE-TEMPLATE-001',
     address: 'Nairobi, Kenya',
     county: 'Nairobi',
     subCounty: 'Westlands',
     phone: '+254712345678',
-    email: 'template@zawadisms.com',
+    email: 'template@trendscore.co.ke',
     principalName: 'Template Principal',
     principalPhone: '+254712345678',
     active: true,
@@ -27,13 +27,13 @@ async function main() {
 
   // Try find by name first
   let templateSchool = await prisma.school.findFirst({
-    where: { name: 'Zawadi SMS Template' }
+    where: { name: 'TrendScore Template' }
   });
 
   // If not found by name, try find by registration number
   if (!templateSchool) {
     templateSchool = await prisma.school.findFirst({
-      where: { registrationNo: 'ZAWADI-TEMPLATE-001' }
+      where: { registrationNo: 'TRENDSCORE-TEMPLATE-001' }
     });
   }
 

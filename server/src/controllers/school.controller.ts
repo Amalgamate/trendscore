@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AuthRequest } from '../middleware/permissions.middleware';
 import prisma from '../config/database';
+import { PRODUCT_BRAND_EMAIL, PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 import { ApiError } from '../utils/error.util';
 import { generateAdmissionNumber, getCurrentSequenceValue, resetSequence, getNextAdmissionNumberPreview } from '../services/admissionNumber.service';
 import { provisionNewSchool } from '../services/school-provisioning.service';
@@ -91,7 +92,7 @@ export const getPublicBranding = async (req: Request, res: Response) => {
     // Return defaults when no school record exists yet (single-tenant, not yet provisioned)
     const branding = school ? optimizeSchoolPayload(school) : {
       id: null,
-      name: 'Trends CORE V1.0',
+      name: PRODUCT_DISPLAY_NAME,
       logoUrl: '/branding/logo.png',
       faviconUrl: '/branding/favicon.png',
       pwaLogoUrl: '/logo512.png',
@@ -107,7 +108,7 @@ export const getPublicBranding = async (req: Request, res: Response) => {
       motto: 'School Management System',
       address: 'Nairobi, Kenya',
       phone: '+254700000000',
-      email: 'info@zawadijunioracademy.co.ke',
+      email: PRODUCT_BRAND_EMAIL,
       vision: 'To be a leading center of excellence in education.',
       mission: 'To provide quality education through modern technology.',
       latitude: -1.2921,
@@ -175,7 +176,7 @@ export const updateSchool = async (req: AuthRequest, res: Response) => {
     const created = await prisma.school.create({
       data: {
         ...req.body,
-        name: req.body.name || 'Trends CORE V1.0', // Ensure a name exists
+        name: req.body.name || PRODUCT_DISPLAY_NAME, // Ensure a name exists
         motto: req.body.motto || 'School Management System',
         logoUrl: req.body.logoUrl || '/branding/logo.png',
         faviconUrl: req.body.faviconUrl || '/branding/favicon.png',
@@ -209,7 +210,7 @@ export const getPublicManifest = async (_req: Request, res: Response) => {
 
   const pwaIcon = resolveBrandingAssetUrl('pwa-logo', school?.pwaLogoUrl || '/logo512.png', school?.updatedAt) || '/logo512.png';
   const themeColor = school?.primaryColor || school?.brandColor || '#520050';
-  const appName = school?.name || 'Trends CORE V1.0';
+  const appName = school?.name || PRODUCT_DISPLAY_NAME;
 
   res.setHeader('Content-Type', 'application/manifest+json');
   res.setHeader('Cache-Control', 'public, max-age=300');
@@ -244,7 +245,7 @@ export const configureInstitutionTypeLock = async (req: AuthRequest, res: Respon
   if (!school) {
     school = await prisma.school.create({
       data: {
-        name: 'Trends CORE V1.0',
+        name: PRODUCT_DISPLAY_NAME,
         institutionType: requestedType as any,
         institutionTypeLocked: true,
       },

@@ -4,6 +4,7 @@ import { AuthRequest } from '../middleware/permissions.middleware';
 import prisma from '../config/database';
 import { getIO } from '../services/socket.service';
 import { EmailService } from '../services/email-resend.service';
+import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 
 import logger from '../utils/logger';
 export const createTicket = async (req: AuthRequest, res: Response) => {
@@ -44,7 +45,7 @@ export const createTicket = async (req: AuthRequest, res: Response) => {
 
         // Send Email Notification to Support Team
         try {
-            const schoolName = 'Trends CORE V1.0';
+            const schoolName = PRODUCT_DISPLAY_NAME;
             let userName = 'Guest';
 
             if (userId) {

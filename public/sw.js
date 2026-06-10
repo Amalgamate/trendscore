@@ -141,7 +141,7 @@ self.addEventListener('push', (event) => {
       body: data.body || '',
       icon: '/branding/logo.png',
       badge: '/branding/favicon.png',
-      tag: data.tag || 'zawadi-notification',
+      tag: data.tag || 'trendscore-notification',
       data: { url: data.url || '/' },
       requireInteraction: false,
     })

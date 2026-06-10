@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Mail, AlertCircle, RefreshCw, CheckCircle, Smartphone, MessageSquare } from 'lucide-react';
 import { authAPI } from '../../services/api';
 import { toast } from 'react-hot-toast';
+import { PRODUCT_DISPLAY_NAME } from '../../config/productIdentity';
 
 export default function EmailVerificationForm({ email, phone, onVerifySuccess, brandingSettings }) {
   const [verificationMethod, setVerificationMethod] = useState(null);
@@ -252,7 +253,7 @@ export default function EmailVerificationForm({ email, phone, onVerifySuccess, b
                     />
                   )}
                   <span className="text-2xl sm:text-4xl lg:text-5xl font-semibold tracking-tighter text-white whitespace-nowrap uppercase">
-                    {brandingSettings?.schoolName || 'Trends CORE V1.0'}
+                    {brandingSettings?.schoolName || PRODUCT_DISPLAY_NAME}
                   </span>
                 </div>
               </div>
@@ -307,7 +308,7 @@ export default function EmailVerificationForm({ email, phone, onVerifySuccess, b
           {/* Footer Copyright */}
           <div className="relative z-10 text-center">
             <p className="text-white/60 text-sm">
-              © {new Date().getFullYear()} {brandingSettings?.schoolName || 'Trends CORE V1.0'}. All rights reserved.
+              © {new Date().getFullYear()} {brandingSettings?.schoolName || PRODUCT_DISPLAY_NAME}. All rights reserved.
             </p>
           </div>
         </div>

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react';
+import { authAPI } from '../../services/api/auth.api';
+import { PRODUCT_DISPLAY_NAME } from '../../config/productIdentity';
 
 export default function ResetPasswordForm({ onResetSuccess }) {
   const [formData, setFormData] = useState({
@@ -96,12 +98,12 @@ export default function ResetPasswordForm({ onResetSuccess }) {
       <div className="text-center mb-8">
         <div className="inline-flex items-center justify-center p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 shadow-xl mb-4 transform hover:scale-105 transition-transform duration-500">
           <span className="text-3xl font-semibold tracking-tighter flex items-center gap-1">
-            <span className="text-[var(--brand-purple)]">Elim</span>
-            <span className="text-teal-600 font-light">crown</span>
+            <span className="text-[var(--brand-purple)]">Trend</span>
+            <span className="text-teal-600 font-light">Score</span>
           </span>
         </div>
         <h1 className="text-3xl font-medium text-gray-900 mb-2">Reset Password</h1>
-        <p className="text-gray-600">Create a new strong password for your account</p>
+        <p className="text-gray-600">Create a new strong password for your {PRODUCT_DISPLAY_NAME} account</p>
       </div>
 
       <div className="bg-white rounded-2xl shadow-xl p-8">

@@ -48,12 +48,12 @@ async function main() {
 
     // 1. Get School
     let school = await prisma.school.findFirst({
-        where: { name: 'ZAWADI JUNIOR ACADEMY' }
+        where: { name: 'TRENDSCORE DEMO ACADEMY' }
     });
 
     if (!school) {
-        console.log('⚠️ School not found, trying Zawadi SMS Template...');
-        school = await prisma.school.findFirst({ where: { name: 'Zawadi SMS Template' } });
+        console.log('⚠️ School not found, trying TrendScore Template...');
+        school = await prisma.school.findFirst({ where: { name: 'TrendScore Template' } });
     }
 
     if (!school) {

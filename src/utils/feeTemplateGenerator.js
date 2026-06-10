@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { PRODUCT_DISPLAY_NAME, PRODUCT_NAME } from '../config/productIdentity';
 
 /**
  * Generates a professionally formatted Excel template for fee payments import.
@@ -6,8 +7,8 @@ import ExcelJS from 'exceljs';
  */
 export const downloadFeeTemplate = async () => {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Trends CORE V1.0';
-  workbook.lastModifiedBy = 'Trends CORE V1.0';
+  workbook.creator = PRODUCT_DISPLAY_NAME;
+  workbook.lastModifiedBy = PRODUCT_DISPLAY_NAME;
   workbook.created = new Date();
   workbook.modified = new Date();
 
@@ -75,7 +76,7 @@ export const downloadFeeTemplate = async () => {
   const url = window.URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `Zawadi_Fee_Import_Template_${new Date().getFullYear()}.xlsx`;
+  anchor.download = `${PRODUCT_NAME}_Fee_Import_Template_${new Date().getFullYear()}.xlsx`;
   document.body.appendChild(anchor);
   anchor.click();
   window.URL.revokeObjectURL(url);
@@ -88,8 +89,8 @@ export const downloadFeeTemplate = async () => {
  */
 export const downloadBalanceTemplate = async () => {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Trends CORE V1.0';
-  workbook.lastModifiedBy = 'Trends CORE V1.0';
+  workbook.creator = PRODUCT_DISPLAY_NAME;
+  workbook.lastModifiedBy = PRODUCT_DISPLAY_NAME;
   workbook.created = new Date();
   workbook.modified = new Date();
 
@@ -151,7 +152,7 @@ export const downloadBalanceTemplate = async () => {
   const url = window.URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `Zawadi_Initial_Balances_Template_${new Date().getFullYear()}.xlsx`;
+  anchor.download = `${PRODUCT_NAME}_Initial_Balances_Template_${new Date().getFullYear()}.xlsx`;
   document.body.appendChild(anchor);
   anchor.click();
   window.URL.revokeObjectURL(url);
@@ -164,8 +165,8 @@ export const downloadBalanceTemplate = async () => {
  */
 export const downloadWaiverTemplate = async () => {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Trends CORE V1.0';
-  workbook.lastModifiedBy = 'Trends CORE V1.0';
+  workbook.creator = PRODUCT_DISPLAY_NAME;
+  workbook.lastModifiedBy = PRODUCT_DISPLAY_NAME;
   workbook.created = new Date();
   workbook.modified = new Date();
 
@@ -225,7 +226,7 @@ export const downloadWaiverTemplate = async () => {
   const url = window.URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `Zawadi_Fee_Waivers_Template_${new Date().getFullYear()}.xlsx`;
+  anchor.download = `${PRODUCT_NAME}_Fee_Waivers_Template_${new Date().getFullYear()}.xlsx`;
   document.body.appendChild(anchor);
   anchor.click();
   window.URL.revokeObjectURL(url);
@@ -238,8 +239,8 @@ export const downloadWaiverTemplate = async () => {
  */
 export const downloadTransportTemplate = async () => {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Trends CORE V1.0';
-  workbook.lastModifiedBy = 'Trends CORE V1.0';
+  workbook.creator = PRODUCT_DISPLAY_NAME;
+  workbook.lastModifiedBy = PRODUCT_DISPLAY_NAME;
   workbook.created = new Date();
   workbook.modified = new Date();
 
@@ -281,7 +282,7 @@ export const downloadTransportTemplate = async () => {
   const url = window.URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `Zawadi_Transport_Fees_Template_${new Date().getFullYear()}.xlsx`;
+  anchor.download = `${PRODUCT_NAME}_Transport_Fees_Template_${new Date().getFullYear()}.xlsx`;
   document.body.appendChild(anchor);
   anchor.click();
   window.URL.revokeObjectURL(url);

@@ -11,6 +11,7 @@ import { validatePassword, DEFAULT_PASSWORD_POLICY, PARENT_PASSWORD_POLICY } fro
 import { EmailService } from '../services/email-resend.service';
 import { whatsappService } from '../services/whatsapp.service';
 import { redisCacheService } from '../services/redis-cache.service';
+import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 
 import logger from '../utils/logger';
 /**
@@ -107,7 +108,7 @@ export class AuthController {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     EmailService.sendWelcomeEmail({
       to: email,
-      schoolName: 'Trends CORE V1.0',
+      schoolName: PRODUCT_DISPLAY_NAME,
       adminName: `${firstName} ${lastName}`,
       loginUrl: `${frontendUrl}/login`
     }).catch(err => logger.error('Failed to send welcome email:', err));
@@ -270,7 +271,7 @@ export class AuthController {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const result = await whatsappService.sendMessage({
       to: phone,
-      message: `Your Trends CORE V1.0 verification code is: ${otp}`
+      message: `Your ${PRODUCT_DISPLAY_NAME} verification code is: ${otp}`
     });
     if (!result.success) throw new ApiError(500, result.message || 'Failed to send WhatsApp verification');
     res.json({ success: true, message: 'Verification code sent via WhatsApp' });
@@ -332,7 +333,7 @@ export class AuthController {
       await EmailService.sendPasswordReset({
         to: user.email,
         userName: `${user.firstName} ${user.lastName}`,
-        schoolName: 'Trends CORE V1.0',
+        schoolName: PRODUCT_DISPLAY_NAME,
         resetLink: resetUrl
       });
     } catch (error) {

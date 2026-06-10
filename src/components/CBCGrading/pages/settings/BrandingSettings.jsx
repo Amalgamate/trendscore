@@ -6,6 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { Save, RefreshCw, MessageSquare, Layout } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useNotifications } from '../../hooks/useNotifications';
+import { PRODUCT_DISPLAY_NAME } from '../../../../config/productIdentity';
 
 const BrandingSettings = ({ brandingSettings, setBrandingSettings }) => {
   const { } = useNotifications();
@@ -64,7 +65,7 @@ const BrandingSettings = ({ brandingSettings, setBrandingSettings }) => {
 
   const handleReset = () => {
     setLocalSettings({
-      welcomeTitle: `Welcome to ${brandingSettings?.schoolName || 'Trends CORE V1.0'}`,
+      welcomeTitle: `Welcome to ${brandingSettings?.schoolName || PRODUCT_DISPLAY_NAME}`,
       welcomeMessage: 'Empowering education through innovative learning management.',
       onboardingTitle: 'Join Our Community',
       onboardingMessage: 'Start your journey with us today. Create an account to access powerful tools for managing learning and assessment with ease.'

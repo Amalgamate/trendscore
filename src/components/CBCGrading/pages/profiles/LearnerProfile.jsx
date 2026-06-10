@@ -551,7 +551,7 @@ const LearnerProfile = ({ learner: initialLearner, onBack, brandingSettings, onN
                                             "{aiData.feedback || 'Analyzing performance data...'}"
                                         </div>
                                         <p className="mt-3 text-[10px] text-gray-400 uppercase font-semibold tracking-wider flex items-center gap-1">
-                                            <Zap size={10} className="text-amber-500" /> Powered by Zawadi AI Analysis Engine
+                                            <Zap size={10} className="text-amber-500" /> Powered by TrendScore AI Analysis Engine
                                         </p>
                                     </div>
 

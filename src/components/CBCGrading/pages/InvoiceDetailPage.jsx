@@ -25,6 +25,7 @@ import InvoiceA5 from '../shared/InvoiceA5';
 import Toast from '../shared/Toast';
 import api from '../../../services/api';
 import '../../../styles/receipt-print.css';
+import { PRODUCT_DISPLAY_NAME } from '../../../config/productIdentity';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -601,7 +602,7 @@ const InvoiceDetailPage = ({ invoice }) => {
 
       {/* Footer */}
       <p className="text-center text-[10px] text-gray-400 font-medium uppercase tracking-widest pt-4">
-        Official Financial Document — Trends CORE V1.0 Core Unit
+        Official Financial Document — {PRODUCT_DISPLAY_NAME} Core Unit
       </p>
 
       {/* ── Pledge Modal ────────────────────────────────────────────────── */}

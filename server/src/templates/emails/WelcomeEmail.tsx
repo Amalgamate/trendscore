@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Button, Text, Section, Hr } from '@react-email/components';
 import { EmailLayout } from './components/EmailLayout';
+import { PRODUCT_DISPLAY_NAME } from '../../config/productIdentity';
 
 interface WelcomeEmailProps {
     schoolName: string;
@@ -21,7 +22,7 @@ export const WelcomeEmail = ({
 }: WelcomeEmailProps) => {
     return (
         <EmailLayout
-            previewText={`Welcome to Trends CORE V1.0, ${schoolName}!`}
+            previewText={`Welcome to ${PRODUCT_DISPLAY_NAME}, ${schoolName}!`}
             schoolName={schoolName}
             heading={customHeading || "Welcome to your new School Management System"}
         >
@@ -31,13 +32,13 @@ export const WelcomeEmail = ({
                 <Text style={text} dangerouslySetInnerHTML={{ __html: customBody.replace(/\n/g, '<br/>') }} />
             ) : (
                 <Text style={text}>
-                    Congratulations! Your school, <strong>{schoolName}</strong>, has been successfully registered on Trends CORE V1.0.
+                    Congratulations! Your school, <strong>{schoolName}</strong>, has been successfully registered on {PRODUCT_DISPLAY_NAME}.
                     We are thrilled to have you on board.
                 </Text>
             )}
 
             <Text style={text}>
-                Trends CORE V1.0 is designed to simplify your administrative tasks, from CBC assessment tracking to generating complex report cards instantly.
+                {PRODUCT_DISPLAY_NAME} is designed to simplify your administrative tasks, from CBC assessment tracking to generating complex report cards instantly.
             </Text>
 
             <Section style={btnContainer}>

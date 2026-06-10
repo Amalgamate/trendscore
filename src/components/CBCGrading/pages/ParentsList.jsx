@@ -16,6 +16,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import BulkOperationsModal from '../shared/bulk/BulkOperationsModal';
 import { formatPhoneNumber } from '../../../utils/phoneFormatter';
 import { getSelectedInstitutionType } from '../../../services/schoolContext';
+import { PRODUCT_DISPLAY_NAME } from '../../../config/productIdentity';
 
 const ParentsList = ({ parents = [], pagination, onFetchParents, onAddParent, onEditParent, onViewParent, onDeleteParent, onArchiveParent, onRefresh, loading = false }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -222,7 +223,7 @@ const ParentsList = ({ parents = [], pagination, onFetchParents, onAddParent, on
 
     // Default message template
     const message = encodeURIComponent(
-      `Dear ${parent.name},\n\nGreetings from Trends CORE V1.0 Academy.\n\n`
+      `Dear ${parent.name},\n\nGreetings from ${PRODUCT_DISPLAY_NAME} Academy.\n\n`
     );
 
     // Open WhatsApp with pre-filled message

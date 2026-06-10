@@ -1,7 +1,7 @@
 /**
  * Links existing "Demo Learner" row(s) to the demo parent account.
  *
- * Resolves parent by DEMO_PARENT_EMAIL, then parent@demo.zawadi, parent@local.test, parent@demo.com.
+ * Resolves parent by DEMO_PARENT_EMAIL, then parent@demo.trendscore, parent@local.test, parent@demo.com.
  *
  * Run:  cd server && npx ts-node scripts/link-demo-learner-to-demo-parent.ts
  *   or: npm run demo:link-parent
@@ -12,7 +12,7 @@ import prisma from '../src/config/database';
 
 const FALLBACK_PARENT_EMAILS = [
   process.env.DEMO_PARENT_EMAIL,
-  'parent@demo.zawadi',
+  'parent@demo.trendscore',
   'parent@local.test',
   'parent@demo.com'
 ].filter((e): e is string => Boolean(e));

@@ -1,6 +1,7 @@
 import prisma from '../config/database';
 import { getIO } from './socket.service';
 import webpush from 'web-push';
+import { PRODUCT_SUPPORT_EMAIL } from '../config/productIdentity';
 import { PushSubscription } from '@prisma/client';
 
 // ---------------------------------------------------------------------------
@@ -8,7 +9,7 @@ import { PushSubscription } from '@prisma/client';
 // ---------------------------------------------------------------------------
 const VAPID_PUBLIC  = process.env.VAPID_PUBLIC_KEY  || '';
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || '';
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT     || 'mailto:admin@zawadisms.co.ke';
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT     || `mailto:${PRODUCT_SUPPORT_EMAIL}`;
 
 if (VAPID_PUBLIC && VAPID_PRIVATE) {
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
@@ -70,7 +71,7 @@ export class NotificationService {
         title,
         body: message,
         url: link || '/',
-        tag: `zawadi-${notification.id}`,
+        tag: `trendscore-${notification.id}`,
       }).catch((err) =>
         console.warn('[NotificationService] Push delivery error:', err?.message)
       );

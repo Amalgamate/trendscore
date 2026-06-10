@@ -7,6 +7,7 @@ import { School, Save, Upload, X, AlertTriangle, MapPin, Loader2, Image as Image
 import { toast } from 'react-hot-toast';
 import { useNotifications } from '../../hooks/useNotifications';
 import axiosInstance from '../../../../services/api/axiosConfig';
+import { PRODUCT_DISPLAY_NAME } from '../../../../config/productIdentity';
 
 const normalizeHexColor = (value, fallback = '#030b82') => {
   if (typeof value !== 'string') return fallback;
@@ -30,7 +31,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
 
   // State for school settings - Unified Hub
   const [settings, setSettings] = useState({
-    schoolName: brandingSettings?.schoolName || 'Trends CORE V1.0',
+    schoolName: brandingSettings?.schoolName || PRODUCT_DISPLAY_NAME,
     address: brandingSettings?.address || '',
     phone: brandingSettings?.phone || '',
     email: brandingSettings?.email || '',
@@ -66,7 +67,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
   // Track initial state for dirty checking
   const [savedState, setSavedState] = useState({
     settings: {
-      schoolName: brandingSettings?.schoolName || 'Trends CORE V1.0',
+      schoolName: brandingSettings?.schoolName || PRODUCT_DISPLAY_NAME,
       address: brandingSettings?.address || '',
       phone: brandingSettings?.phone || '',
       email: brandingSettings?.email || '',
@@ -123,7 +124,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
 
         if (school) {
           const fetchedSettings = {
-            schoolName: school.name || school.schoolName || 'Trends CORE V1.0',
+            schoolName: school.name || school.schoolName || PRODUCT_DISPLAY_NAME,
             address: school.address || '',
             phone: school.phone || '',
             email: school.email || '',
@@ -429,7 +430,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
                     value={settings.schoolName}
                     onChange={(e) => handleChange('schoolName', e.target.value)}
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition"
-                    placeholder="e.g. Trends CORE V1.0 Academy"
+                    placeholder={`e.g. ${PRODUCT_DISPLAY_NAME} Academy`}
                   />
                 </div>
 
@@ -719,7 +720,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
                     value={settings.welcomeTitle}
                     onChange={(e) => handleChange('welcomeTitle', e.target.value)}
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition"
-                    placeholder="e.g. Welcome to Trends CORE V1.0"
+                    placeholder={`e.g. Welcome to ${PRODUCT_DISPLAY_NAME}`}
                   />
                 </div>
                 <div>

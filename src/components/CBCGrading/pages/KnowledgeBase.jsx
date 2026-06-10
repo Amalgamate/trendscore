@@ -5,13 +5,14 @@ import {
     MessageSquare, Video, Star
 } from 'lucide-react';
 import ProfileLayout from '../shared/ProfileLayout';
+import { PRODUCT_DISPLAY_NAME } from '../../../config/productIdentity';
 
 const KnowledgeBase = () => {
     const categories = [
         {
             title: "Getting Started",
             icon: PlayCircle,
-            description: "New to Trends CORE V1.0? Start here for a quick tour.",
+            description: `New to ${PRODUCT_DISPLAY_NAME}? Start here for a quick tour.`,
             articles: [
                 "Dashboard Overview",
                 "Navigating the System",
@@ -41,7 +42,7 @@ const KnowledgeBase = () => {
         {
             title: "Advanced Features",
             icon: Lightbulb,
-            description: "Master the power-user tools of Trends CORE V1.0.",
+            description: `Master the power-user tools of ${PRODUCT_DISPLAY_NAME}.`,
             articles: [
                 "Custom Assessment Scales",
                 "Bulk Student Promotion",

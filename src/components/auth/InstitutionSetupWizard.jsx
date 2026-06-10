@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { configAPI, schoolAPI } from '../../services/api';
 import { toast } from 'react-hot-toast';
+import { PRODUCT_DISPLAY_NAME } from '../../config/productIdentity';
 
 const INSTITUTION_TYPES = [
   {
@@ -64,7 +65,7 @@ const InstitutionSetupWizard = ({ brandingSettings, onComplete }) => {
   const [saving, setSaving] = useState(false);
 
   const logoUrl = brandingSettings?.logoUrl || '/branding/logo.png';
-  const schoolName = brandingSettings?.schoolName || 'Trends CORE V1.0';
+  const schoolName = brandingSettings?.schoolName || PRODUCT_DISPLAY_NAME;
 
   const handleConfirm = async () => {
     if (!selected) return;

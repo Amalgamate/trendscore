@@ -17,6 +17,7 @@ import { useBootstrapStore } from './store/useBootstrapStore';
 
 import useSubjectStore from './store/useSubjectStore';
 import ErrorBoundary from './components/common/ErrorBoundary';
+import { LEGACY_BRAND_NAMES, PRODUCT_DISPLAY_NAME } from './config/productIdentity';
 
 // ── SW update banner ─────────────────────────────────────────────────────────
 function SWUpdateBanner() {
@@ -41,11 +42,7 @@ function SWUpdateBanner() {
   );
 }
 
-const APP_DISPLAY_NAME = 'Trends CORE V1.0';
-const LEGACY_BRAND_NAMES = new Set([
-  'zawadi sms',
-  'edu core',
-]);
+const APP_DISPLAY_NAME = PRODUCT_DISPLAY_NAME;
 
 const normalizeSchoolName = (name) => {
   const trimmed = String(name || '').trim();

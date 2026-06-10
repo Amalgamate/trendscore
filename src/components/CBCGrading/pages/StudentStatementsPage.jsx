@@ -16,6 +16,7 @@ import { generateStatementPDF } from '../../../utils/simplePdfGenerator';
 import { useSchoolData } from '../../../contexts/SchoolDataContext';
 import { useAuth } from '../../../hooks/useAuth';
 import { getSelectedInstitutionType } from '../../../services/schoolContext';
+import { PRODUCT_DISPLAY_NAME } from '../../../config/productIdentity';
 
 const StudentStatementsPage = () => {
   const [learners, setLearners] = useState([]);
@@ -61,7 +62,7 @@ const StudentStatementsPage = () => {
           const schoolData = schoolRes.data?.data || schoolRes.data?.[0] || schoolRes.data || schoolRes;
           if (schoolData) {
             setSchoolInfo({
-              name: schoolData.name || schoolData.schoolName || 'Trends CORE V1.0 Academy',
+              name: schoolData.name || schoolData.schoolName || `${PRODUCT_DISPLAY_NAME} Academy`,
               motto: schoolData.motto || '',
               address: schoolData.address || '',
               phone: schoolData.phone || '',

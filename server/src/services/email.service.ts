@@ -1,4 +1,9 @@
 import nodemailer from 'nodemailer';
+import {
+  PRODUCT_DISPLAY_NAME,
+  PRODUCT_LOGO_URL,
+  PRODUCT_SUPPORT_EMAIL,
+} from '../config/productIdentity';
 
 export interface WelcomeEmailData {
   to: string;
@@ -48,12 +53,12 @@ export class EmailService {
       <body>
         <div class="container">
           <div class="header">
-            <img src="https://zawadisms.com/logo.png" alt="Trends CORE V1.0 Logo" class="logo">
-            <h1 style="color: ${brandColor};">Welcome to Trends CORE V1.0!</h1>
+            <img src="${PRODUCT_LOGO_URL}" alt="${PRODUCT_DISPLAY_NAME} Logo" class="logo">
+            <h1 style="color: ${brandColor};">Welcome to ${PRODUCT_DISPLAY_NAME}!</h1>
           </div>
           <div class="content">
             <p>Dear <strong>${adminName}</strong>,</p>
-            <p>Congratulations! Your school, <strong>${schoolName}</strong>, has been successfully registered on Trends CORE V1.0.</p>
+            <p>Congratulations! Your school, <strong>${schoolName}</strong>, has been successfully registered on ${PRODUCT_DISPLAY_NAME}.</p>
             <p>We are excited to help you streamline your school management, from CBC assessments to real-time reporting.</p>
             <p>You can now log in to your dashboard with the temporary password below:</p>
             <div style="background: #ffffff; padding: 15px; border: 1px dashed ${brandColor}; border-radius: 6px; text-align: center; margin: 20px 0;">
@@ -67,8 +72,8 @@ export class EmailService {
             <a href="${loginUrl}">${loginUrl}</a></p>
           </div>
           <div class="footer">
-            <p>&copy; ${new Date().getFullYear()} Trends CORE V1.0 Academy. All rights reserved.</p>
-            <p>You received this email because you signed up for a Trends CORE V1.0 account.</p>
+            <p>&copy; ${new Date().getFullYear()} ${PRODUCT_DISPLAY_NAME}. All rights reserved.</p>
+            <p>You received this email because you signed up for a ${PRODUCT_DISPLAY_NAME} account.</p>
           </div>
         </div>
       </body>
@@ -77,9 +82,9 @@ export class EmailService {
 
     try {
       await this.transporter.sendMail({
-        from: `"${schoolName} via Trends CORE V1.0" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+        from: `"${schoolName} via ${PRODUCT_DISPLAY_NAME}" <${process.env.SMTP_FROM || process.env.SMTP_USER || PRODUCT_SUPPORT_EMAIL}>`,
         to,
-        subject: `Welcome to ${schoolName} on Trends CORE V1.0!`,
+        subject: `Welcome to ${schoolName} on ${PRODUCT_DISPLAY_NAME}!`,
         html,
       });
       console.log(`📧 Welcome email sent to ${to}`);
@@ -112,12 +117,12 @@ export class EmailService {
       <body>
         <div class="container">
           <div class="header">
-            <img src="https://zawadisms.com/logo.png" alt="Trends CORE V1.0 Logo" class="logo">
+            <img src="${PRODUCT_LOGO_URL}" alt="${PRODUCT_DISPLAY_NAME} Logo" class="logo">
             <h1 style="color: ${brandColor};">Password Reset Request</h1>
           </div>
           <div class="content">
             <p>Hi <strong>${userName}</strong>,</p>
-            <p>We received a request to reset your password for your Trends CORE V1.0 account at <strong>${schoolName}</strong>.</p>
+            <p>We received a request to reset your password for your ${PRODUCT_DISPLAY_NAME} account at <strong>${schoolName}</strong>.</p>
             <p>Click the button below to reset your password. This link will expire in 1 hour.</p>
             <div style="text-align: center;">
               <a href="${resetLink}" class="button">Reset Password</a>
@@ -135,7 +140,7 @@ export class EmailService {
             </div>
           </div>
           <div class="footer">
-            <p>&copy; ${new Date().getFullYear()} Trends CORE V1.0 Academy. All rights reserved.</p>
+            <p>&copy; ${new Date().getFullYear()} ${PRODUCT_DISPLAY_NAME}. All rights reserved.</p>
             <p>This is an automated security email. Please do not reply.</p>
           </div>
         </div>
@@ -145,7 +150,7 @@ export class EmailService {
 
     try {
       await this.transporter.sendMail({
-        from: `"${schoolName} via Trends CORE V1.0" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+        from: `"${schoolName} via ${PRODUCT_DISPLAY_NAME}" <${process.env.SMTP_FROM || process.env.SMTP_USER || PRODUCT_SUPPORT_EMAIL}>`,
         to,
         subject: `Password Reset Request - ${schoolName}`,
         html,

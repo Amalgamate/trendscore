@@ -3,6 +3,7 @@ import { mpesaService } from '../services/mpesa.service';
 import prisma from '../config/database';
 import messageService from '../services/message.service';
 import { resolveOrganicPayment, applyToSpecificInvoice, normalizePhone, applyAmountToInvoiceFields, resolveInvoiceStatus } from '../services/payment-resolver.service';
+import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 
 import logger from '../utils/logger';
 export const initiatePayment = async (req: Request, res: Response) => {
@@ -216,7 +217,7 @@ export const handleCallback = async (req: Request, res: Response) => {
                     // SMS receipt
                     try {
                         const school = await prisma.school.findFirst();
-                        const msg = `Payment of KES ${amount.toLocaleString()} received. Invoice: ${updatedInvoice?.invoiceNumber}. Receipt: ${receipt}. Thank you, ${school?.name || 'Trends CORE V1.0'}.`;
+                        const msg = `Payment of KES ${amount.toLocaleString()} received. Invoice: ${updatedInvoice?.invoiceNumber}. Receipt: ${receipt}. Thank you, ${school?.name || PRODUCT_DISPLAY_NAME}.`;
                         await messageService.createAndDispatchMessage({
                             senderId: 'system',
                             senderType: 'ADMIN',
@@ -372,7 +373,7 @@ export const resolveUnmatchedPayment = async (req: Request, res: Response) => {
             const school = await prisma.school.findFirst();
             const learner = invoice.learner;
             const name = learner ? `${learner.firstName} ${learner.lastName}` : 'your child';
-            const msg = `Payment of KES ${Number(unmatched.amount).toLocaleString()} received for ${name}. Receipt: ${unmatched.receiptNo}. Balance: KES ${Math.max(0, Number(updated?.balance ?? 0)).toLocaleString()}. Thank you, ${school?.name || 'Trends CORE V1.0'}.`;
+            const msg = `Payment of KES ${Number(unmatched.amount).toLocaleString()} received for ${name}. Receipt: ${unmatched.receiptNo}. Balance: KES ${Math.max(0, Number(updated?.balance ?? 0)).toLocaleString()}. Thank you, ${school?.name || PRODUCT_DISPLAY_NAME}.`;
             await messageService.createAndDispatchMessage({
                 senderId: 'system',
                 senderType: 'ADMIN',

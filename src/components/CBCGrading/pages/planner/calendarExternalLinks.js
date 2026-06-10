@@ -1,3 +1,5 @@
+import { PRODUCT_DISPLAY_NAME } from '../../../../config/productIdentity';
+
 /**
  * Open web flows and files so users can get reminders in Google Calendar, Apple Calendar, Outlook, etc.
  * Full two-way sync requires Google Calendar API + OAuth (separate integration).
@@ -78,7 +80,7 @@ export function buildIcsEventContent({
   location = '',
 }) {
   const stamp = formatIcsUtc(new Date())
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Trends CORE V1.0//School Planner//EN', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT']
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', `PRODID:-//${PRODUCT_DISPLAY_NAME}//School Planner//EN`, 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT']
   lines.push(`UID:${uid}`)
   lines.push(`DTSTAMP:${stamp}`)
   if (allDay) {

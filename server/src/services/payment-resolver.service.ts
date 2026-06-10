@@ -17,6 +17,7 @@
 import prisma from '../config/database';
 import messageService from './message.service';
 import { PaymentStatus } from '@prisma/client';
+import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 
 // ─── Phone normalisation ────────────────────────────────────────────────────
 export function normalizePhone(raw: string): string {
@@ -184,7 +185,7 @@ export async function applyPaymentToInvoice(params: {
         const school = await prisma.school.findFirst();
         const learner = invoice.learner;
         const name = learner ? `${learner.firstName} ${learner.lastName}` : 'your child';
-        const msg = `Payment of KES ${amount.toLocaleString()} received for ${name} — Ref: ${invoice.invoiceNumber}. Receipt: ${receipt}. Balance: KES ${Math.max(0, Number(finalInv?.balance || 0)).toLocaleString()}. Thank you, ${school?.name || 'Trends CORE V1.0'}.`;
+        const msg = `Payment of KES ${amount.toLocaleString()} received for ${name} — Ref: ${invoice.invoiceNumber}. Receipt: ${receipt}. Balance: KES ${Math.max(0, Number(finalInv?.balance || 0)).toLocaleString()}. Thank you, ${school?.name || PRODUCT_DISPLAY_NAME}.`;
 
         await messageService.createAndDispatchMessage({
             senderId: 'system',
@@ -263,7 +264,7 @@ export async function applyToSpecificInvoice(params: {
     // SMS Receipt
     try {
         const school = await prisma.school.findFirst();
-        const msg = `Payment of KES ${amount.toLocaleString()} received for ${invoice.learner.firstName}. Receipt: ${receipt}. Balance: KES ${Math.max(0, Number(finalInv?.balance || 0)).toLocaleString()}. Thank you, ${school?.name || 'Trends CORE V1.0'}.`;
+        const msg = `Payment of KES ${amount.toLocaleString()} received for ${invoice.learner.firstName}. Receipt: ${receipt}. Balance: KES ${Math.max(0, Number(finalInv?.balance || 0)).toLocaleString()}. Thank you, ${school?.name || PRODUCT_DISPLAY_NAME}.`;
         await messageService.createAndDispatchMessage({
             senderId: 'system',
             senderType: 'ADMIN',

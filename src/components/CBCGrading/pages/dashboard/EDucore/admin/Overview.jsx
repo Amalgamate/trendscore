@@ -1,5 +1,5 @@
 /**
- * Trends CORE V1.0 Legacy Overview (Deprecated)
+ * TrendScore Legacy Overview (Deprecated)
  * Stub component (not used in single-school implementation)
  */
 

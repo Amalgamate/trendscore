@@ -137,7 +137,7 @@ async function seedGrade(fileName: string, gradeEnum: Grade, parentMap: Record<s
         let parentId = null;
         if (parentInfo.phone1) {
             const parentUser = await prisma.user.upsert({
-                where: { email: `${parentInfo.phone1}@zawadisms.com` },
+                where: { email: `${parentInfo.phone1}@trendscore.co.ke` },
                 update: {
                     firstName: parentInfo.guardianName?.split(' ')[0] || 'Parent',
                     lastName: parentInfo.guardianName?.split(' ').slice(1).join(' ') || 'User',
@@ -146,7 +146,7 @@ async function seedGrade(fileName: string, gradeEnum: Grade, parentMap: Record<s
                     status: 'ACTIVE'
                 },
                 create: {
-                    email: `${parentInfo.phone1}@zawadisms.com`,
+                    email: `${parentInfo.phone1}@trendscore.co.ke`,
                     password: '$2a$10$7/O6jMvA1m98v0tYI8E/8u9z6n5z6n5z6n5z6n5z6n5z6n5z6n5z', // dummy hash for 'password123'
                     firstName: parentInfo.guardianName?.split(' ')[0] || 'Parent',
                     lastName: parentInfo.guardianName?.split(' ').slice(1).join(' ') || 'User',

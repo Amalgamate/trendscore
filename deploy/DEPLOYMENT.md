@@ -77,7 +77,3 @@ export DEPLOY_CONSOLE_ONLY=true
 export IMAGE_TAG=sha-<commit>
 bash /srv/zawadi/apps/deploy/deploy-release.sh
 ```
-
-## Legacy
-
-`scripts/deploy-server.sh` is deprecated. It previously deployed **all** instances on every run.

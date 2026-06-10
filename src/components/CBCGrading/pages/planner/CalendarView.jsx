@@ -400,7 +400,7 @@ const CalendarView = () => {
       toast.error('Cannot export: invalid event dates');
       return;
     }
-    const uid = `${evt.id || crypto.randomUUID()}@zawadi-sms`;
+    const uid = `${evt.id || crypto.randomUUID()}@trendscore`;
     const ics = buildIcsEventContent({
       uid,
       title: evt.title,
@@ -651,7 +651,7 @@ const CalendarView = () => {
                   className="w-full gap-2"
                   onClick={() => {
                     if (!successMeta) return;
-                    const uid = `${crypto.randomUUID()}@zawadi-sms`;
+                    const uid = `${crypto.randomUUID()}@trendscore`;
                     const ics = buildIcsEventContent({
                       uid,
                       title: successMeta.title,

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import prisma from '../config/database';
 import { MpesaStatus, MpesaTransactionType } from '@prisma/client';
+import { PRODUCT_NAME } from '../config/productIdentity';
 
 class DarajaService {
     private sandboxUrl = 'https://sandbox.safaricom.co.ke';
@@ -69,7 +70,7 @@ class DarajaService {
             PartyB: this.shortCode,
             PhoneNumber: phone,
             CallBackURL: this.callbackUrl,
-            AccountReference: params.studentId || 'ZawadiSMS',
+            AccountReference: params.studentId || PRODUCT_NAME,
             TransactionDesc: 'Fee Payment'
         };
 

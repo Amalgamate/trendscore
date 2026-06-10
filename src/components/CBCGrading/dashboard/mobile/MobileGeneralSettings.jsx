@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronRight, Moon, Bell, Lock, LogOut } from 'lucide-react';
+import { PRODUCT_DISPLAY_NAME } from '../../../../config/productIdentity';
 
 const MobileGeneralSettings = ({ user, onLogout, brandingSettings }) => {
   const [darkMode, setDarkMode] = useState(false);
@@ -101,7 +102,7 @@ const MobileGeneralSettings = ({ user, onLogout, brandingSettings }) => {
       {/* About & Version */}
       <div className="mt-8 text-center">
         <div className="text-xs text-gray-500">
-          <p>Trends CORE v1.0</p>
+          <p>{PRODUCT_DISPLAY_NAME}</p>
           <p className="mt-1">© {new Date().getFullYear()} All Rights Reserved</p>
         </div>
       </div>

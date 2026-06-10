@@ -1,0 +1,13 @@
+export const PRODUCT_NAME = 'TrendScore';
+export const PRODUCT_VERSION = '1.0';
+export const PRODUCT_DISPLAY_NAME = `${PRODUCT_NAME} V${PRODUCT_VERSION}`;
+export const PRODUCT_EMAIL_DOMAIN = process.env.PRODUCT_EMAIL_DOMAIN || 'trendscore.co.ke';
+export const PRODUCT_APP_URL = process.env.APP_URL || process.env.FRONTEND_URL || 'https://app.trendscore.co.ke';
+export const PRODUCT_PARENT_PORTAL_URL = process.env.PARENT_PORTAL_URL || PRODUCT_APP_URL.replace('app.', 'parents.');
+export const PRODUCT_SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'support@trendscore.co.ke';
+export const PRODUCT_NO_REPLY_EMAIL = process.env.EMAIL_FROM || `noreply@${PRODUCT_EMAIL_DOMAIN}`;
+export const PRODUCT_BRAND_EMAIL = process.env.BRAND_EMAIL || `hello@${PRODUCT_EMAIL_DOMAIN}`;
+export const PRODUCT_WEBSITE = process.env.BRAND_WEBSITE || PRODUCT_EMAIL_DOMAIN;
+export const PRODUCT_LOGO_URL = process.env.BRAND_LOGO_URL || `https://${PRODUCT_EMAIL_DOMAIN}/logo.png`;
+export const PRODUCT_STORAGE_PREFIX = 'trendscore';
+export const PRODUCT_TEMP_PASSWORD_PREFIX = 'TrendScore';

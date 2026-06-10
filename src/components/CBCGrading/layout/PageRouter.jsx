@@ -4,6 +4,7 @@ import EmptyState from '../shared/EmptyState';
 import ComingSoon from '../shared/ComingSoon';
 import { hasPageAccess } from '../utils/appAccess';
 import { useRolePreview } from '../../../contexts/RolePreviewContext';
+import { PRODUCT_DISPLAY_NAME } from '../../../config/productIdentity';
 
 // ── Dashboard — EAGERLY imported: it's the first page every user sees after login.
 // Never lazy-load the default landing page — it forces a Suspense stall on every cold open.
@@ -701,7 +702,7 @@ const PageRouter = ({
             return (
               <EmptyState
                 title="Application Portal"
-                description="Use the sidebar to explore Trends CORE V1.0 modules."
+                description={`Use the sidebar to explore ${PRODUCT_DISPLAY_NAME} modules.`}
               />
             );
         }
