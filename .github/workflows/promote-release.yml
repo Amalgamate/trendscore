@@ -1,34 +1,28 @@
 name: Promote Release
 
-# Manually promote a tested Docker image tag to demo, pilot, one school, or all schools.
-# Configure GitHub Environments (deploy-pilot, deploy-production-school, deploy-production-all)
-# with required reviewers for production targets.
+# Manual-only school deployment. Operators type a school slug and the workflow
+# validates it against deploy/instances.manifest.json before touching servers.
 
 on:
   workflow_dispatch:
     inputs:
-      image_tag:
-        description: "Docker image tag (default: latest from main)"
+      school_slug:
+        description: "School slug to deploy, e.g. demo, lions-complex, zawadi-junior"
         required: true
         type: string
-        default: latest
-      deployment_target:
-        description: "Where to deploy"
+      environment:
+        description: "Deployment environment, e.g. demo, pilot, production"
         required: true
-        type: choice
-        default: selected_school
-        options:
-          - demo
-          - pilot
-          - selected_school
-          - all_schools
-      school_id:
-        description: "Instance id from deploy/instances.manifest.json (required for selected_school)"
-        required: false
         type: string
+        default: production
+      branch:
+        description: "Git branch/ref whose sha-<commit> images should be deployed"
+        required: true
+        type: string
+        default: main
 
 concurrency:
-  group: promote-release-${{ inputs.deployment_target }}-${{ inputs.school_id || 'none' }}
+  group: promote-release-${{ inputs.environment }}-${{ inputs.school_slug }}
   cancel-in-progress: false
 
 permissions:
@@ -38,67 +32,75 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     outputs:
-      deploy_target: ${{ steps.map.outputs.deploy_target }}
-      environment: ${{ steps.map.outputs.environment }}
+      deploy_target: ${{ steps.target.outputs.deploy_target }}
+      school_id: ${{ steps.target.outputs.school_id }}
+      school_name: ${{ steps.target.outputs.school_name }}
+      domain: ${{ steps.target.outputs.domain }}
+      compose_project: ${{ steps.target.outputs.compose_project }}
+      environment: ${{ steps.target.outputs.environment }}
+      github_environment: ${{ steps.target.outputs.github_environment }}
+      branch: ${{ steps.target.outputs.branch }}
+      image_tag: ${{ steps.image.outputs.image_tag }}
+      commit_sha: ${{ steps.image.outputs.commit_sha }}
     steps:
-      - name: Checkout
+      - name: Checkout selected branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
 
-      - name: Validate inputs
-        id: map
+      - name: Resolve image tag
+        id: image
         run: |
           set -euo pipefail
-          TAG="${{ inputs.image_tag }}"
-          TARGET="${{ inputs.deployment_target }}"
-          SCHOOL="${{ inputs.school_id }}"
+          COMMIT_SHA="$(git rev-parse HEAD)"
+          echo "commit_sha=${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=sha-${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Resolved branch '${{ inputs.branch }}' to ${COMMIT_SHA}"
 
-          if [[ -z "${TAG}" ]]; then
-            echo "image_tag is required" >&2
-            exit 1
-          fi
-
-          case "${TARGET}" in
-            demo)
-              DEPLOY_TARGET="demo"
-              ENV_NAME="deploy-demo"
-              ;;
-            pilot)
-              DEPLOY_TARGET="pilot"
-              ENV_NAME="deploy-pilot"
-              ;;
-            selected_school)
-              DEPLOY_TARGET="school"
-              ENV_NAME="deploy-production-school"
-              if [[ -z "${SCHOOL}" ]]; then
-                echo "school_id is required when deployment_target=selected_school" >&2
-                exit 1
-              fi
-              if ! jq -e --arg id "${SCHOOL}" '.instances[] | select(.id == $id)' deploy/instances.manifest.json >/dev/null; then
-                echo "school_id not found in deploy/instances.manifest.json: ${SCHOOL}" >&2
-                exit 1
-              fi
-              ;;
-            all_schools)
-              DEPLOY_TARGET="all_schools"
-              ENV_NAME="deploy-production-all"
-              ;;
-            *)
-              echo "Invalid deployment_target: ${TARGET}" >&2
-              exit 1
-              ;;
-          esac
-
-          echo "deploy_target=${DEPLOY_TARGET}" >> "$GITHUB_OUTPUT"
-          echo "environment=${ENV_NAME}" >> "$GITHUB_OUTPUT"
-          echo "Validated promote: tag=${TAG} target=${DEPLOY_TARGET} school=${SCHOOL:-n/a}"
+      - name: Validate deployment target
+        id: target
+        run: |
+          set -euo pipefail
+          node scripts/validate-deployment-target.js "${{ inputs.school_slug }}" \
+            --environment "${{ inputs.environment }}" \
+            --branch "${{ inputs.branch }}" \
+            --manifest deploy/instances.manifest.json
 
   promote:
     runs-on: ubuntu-latest
     needs: validate
-    environment: ${{ needs.validate.outputs.environment }}
+    environment: ${{ needs.validate.outputs.github_environment }}
     steps:
-      - name: Checkout
+      - name: Checkout selected branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.branch }}
+          fetch-depth: 0
+
+      - name: Print matched school details
+        run: |
+          {
+            echo "## Matched school deployment"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| School name | \`${{ needs.validate.outputs.school_name }}\` |"
+            echo "| School slug | \`${{ needs.validate.outputs.school_id }}\` |"
+            echo "| Domain | \`${{ needs.validate.outputs.domain || 'n/a' }}\` |"
+            echo "| Server/container name | \`${{ needs.validate.outputs.compose_project }}\` |"
+            echo "| Environment | \`${{ needs.validate.outputs.environment }}\` |"
+            echo "| Branch | \`${{ needs.validate.outputs.branch }}\` |"
+            echo "| Commit | \`${{ needs.validate.outputs.commit_sha }}\` |"
+            echo "| Image tag | \`${{ needs.validate.outputs.image_tag }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "School name          : ${{ needs.validate.outputs.school_name }}"
+          echo "Domain               : ${{ needs.validate.outputs.domain || 'n/a' }}"
+          echo "Server/container name: ${{ needs.validate.outputs.compose_project }}"
+          echo "Environment          : ${{ needs.validate.outputs.environment }}"
+          echo "Branch               : ${{ needs.validate.outputs.branch }}"
+          echo "Image tag            : ${{ needs.validate.outputs.image_tag }}"
 
       - name: Configure SSH
         env:
@@ -107,73 +109,36 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: bash scripts/ci/configure-deploy-ssh.sh
 
-      - name: Verify selected targets
-        env:
-          DEPLOY_TARGET: ${{ needs.validate.outputs.deploy_target }}
-          SCHOOL_ID: ${{ inputs.school_id }}
-        run: |
-          set -euo pipefail
-          case "${DEPLOY_TARGET}" in
-            demo)
-              jq -r '.instances[] | select(.tier == "demo") | "  - \(.id): \(.label // .id) (\(.kind))"' deploy/instances.manifest.json
-              ;;
-            pilot)
-              COUNT="$(jq '[.instances[] | select(.tier == "pilot")] | length' deploy/instances.manifest.json)"
-              if [[ "${COUNT}" -lt 1 ]]; then
-                echo "No pilot instances in manifest. Add tier=pilot entries to deploy/instances.manifest.json" >&2
-                exit 1
-              fi
-              jq -r '.instances[] | select(.tier == "pilot") | "  - \(.id): \(.label // .id) (project=\(.compose_project))"' deploy/instances.manifest.json
-              ;;
-            school)
-              jq -r --arg id "${SCHOOL_ID}" '.instances[] | select(.id == $id) | "  - \(.id): \(.label // .id) (project=\(.compose_project))"' deploy/instances.manifest.json
-              ;;
-            all_schools)
-              echo "Manifest stacks:"
-              jq -r '.instances[] | select(.kind == "stack") | "  - \(.id) (tier=\(.tier), project=\(.compose_project))"' deploy/instances.manifest.json
-              echo "Plus any running stacks discovered on the server (production tier)."
-              ;;
-          esac
-
       - name: Upload deploy assets
         run: bash scripts/ci/sync-deploy-assets.sh
 
-      - name: Promote release on server
-        id: deploy
+      - name: Deploy matched school only
         env:
-          IMAGE_TAG: ${{ inputs.image_tag }}
-          DEPLOY_TARGET: ${{ needs.validate.outputs.deploy_target }}
-          SCHOOL_ID: ${{ inputs.school_id }}
+          IMAGE_TAG: ${{ needs.validate.outputs.image_tag }}
+          SCHOOL_ID: ${{ needs.validate.outputs.school_id }}
         run: |
           set -euo pipefail
-          EXTRA=""
-          if [[ -n "${SCHOOL_ID}" ]]; then
-            EXTRA="SCHOOL_ID=${SCHOOL_ID}"
-          fi
           ssh production \
-            "DEPLOY_TARGET=${DEPLOY_TARGET} IMAGE_TAG=${IMAGE_TAG} MANIFEST_PATH=/srv/zawadi/apps/deploy/instances.manifest.json ${EXTRA} bash /srv/zawadi/apps/deploy/deploy-release.sh"
+            "DEPLOY_TARGET=school SCHOOL_ID=${SCHOOL_ID} IMAGE_TAG=${IMAGE_TAG} MANIFEST_PATH=/srv/zawadi/apps/deploy/instances.manifest.json bash /srv/zawadi/apps/deploy/deploy-release.sh"
 
       - name: Report success
         if: success()
         run: |
           {
-            echo "## Promote release succeeded"
+            echo "## Deployment succeeded"
             echo ""
-            echo "| Setting | Value |"
-            echo "|---------|-------|"
-            echo "| Image tag | \`${{ inputs.image_tag }}\` |"
-            echo "| Target | \`${{ inputs.deployment_target }}\` |"
-            echo "| School id | \`${{ inputs.school_id || 'n/a' }}\` |"
+            echo "Deployed only \`${{ needs.validate.outputs.school_id }}\` using \`${{ needs.validate.outputs.image_tag }}\`."
             echo ""
-            echo "Steps run per instance: verify → DB backup → pull image → migrate → restart → health check."
+            echo "Per-instance pipeline: verify target → DB backup → pull image → migrate → restart → health check."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report failure
         if: failure()
         run: |
           {
-            echo "## Promote release failed"
+            echo "## Deployment failed"
             echo ""
-            echo "One or more instances did not pass the full deploy pipeline."
-            echo "Check server backups under \`/srv/zawadi/backups\` before retrying."
+            echo "Deployment stopped or failed for \`${{ needs.validate.outputs.school_id }}\`."
+            echo "If validation failed, no server deployment was started."
+            echo "If server deployment started, check backups under \`/srv/zawadi/backups\` before retrying."
           } >> "$GITHUB_STEP_SUMMARY"

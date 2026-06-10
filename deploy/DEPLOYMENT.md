@@ -2,22 +2,30 @@
 
 See **[WORKFLOW.md](./WORKFLOW.md)** for the segmented canary → promote process (school app vs platform console).
 
-## Automatic (push to `main`)
+## Image publishing
 
-1. **Publish Docker Images** builds and pushes `ghcr.io/amalgamate/zawadi-frontend`, `zawadi-backend`, and `zawadi-console` with tags `latest` and `sha-<commit>`.
-2. **Deploy Demo (main only)** runs after a successful publish and deploys **only** the canary (`tier: "demo"` in `deploy/instances.manifest.json`) and rolls the **platform console** to the same tag.
+**Publish Docker Images** builds and pushes `ghcr.io/amalgamate/zawadi-frontend`, `zawadi-backend`, and `zawadi-console` with tags `latest` and `sha-<commit>`.
 
-Production and pilot schools are **not** updated on git push.
+Deployments are manual-only. Pushing to `main` can publish images, but it does not deploy schools automatically.
 
-## Manual promote
+## Manual school deployment
 
 Use the **Promote Release** workflow (`workflow_dispatch`):
 
 | Input | Description |
 |-------|-------------|
-| `image_tag` | Tag to deploy (use the `sha-<commit>` from CI, or a release tag) |
-| `deployment_target` | `demo`, `pilot`, `selected_school`, or `all_schools` |
-| `school_id` | Required for `selected_school` — must match `id` in the manifest |
+| `school_slug` | Typed school slug, alias, compose project, or domain prefix. Examples: `demo`, `lions-complex`, `zawadi-junior` |
+| `environment` | Typed environment such as `demo`, `pilot`, or `production` |
+| `branch` | Branch/ref whose `sha-<commit>` image tag should be deployed |
+
+The workflow runs `scripts/validate-deployment-target.js` before SSH deployment. Validation checks `deploy/instances.manifest.json` and stops immediately if:
+
+- the school slug is unknown,
+- the school is inactive,
+- deployment is disabled for the school,
+- the requested environment does not match the target manifest entry.
+
+The workflow prints the matched school name, domain, server/container name, environment, branch, commit, and image tag before deployment. It then deploys only the matched school ID using `DEPLOY_TARGET=school`.
 
 ### GitHub Environments (approval gates)
 
@@ -25,10 +33,9 @@ Configure these in **Settings → Environments** with required reviewers where n
 
 | Environment | Used for |
 |-------------|----------|
-| `deploy-demo` | Auto demo deploy + optional manual demo promote |
+| `deploy-demo` | Manual demo/canary deployment |
 | `deploy-pilot` | Pilot schools (`tier: "pilot"` in manifest) |
 | `deploy-production-school` | Single school promote |
-| `deploy-production-all` | All school stacks (manifest + discovered) |
 
 ### Per-instance pipeline
 
@@ -51,24 +58,27 @@ Edit `deploy/instances.manifest.json`:
   "id": "merti-cs",
   "label": "Merti Complex School",
   "tier": "production",
+  "active": true,
+  "deployment_allowed": true,
   "kind": "stack",
   "compose_project": "zawadi-merti-cs",
   "env_file": "/srv/zawadi/apps/env/.zawadi-merti-cs.env"
 }
 ```
 
+- `active: false` blocks deployment.
+- `deployment_allowed: false` blocks deployment.
+- `aliases` can be used for operator-friendly typed slugs, for example `lions-complex` for a manifest ID such as `lionscomplex`.
 - **demo** — `kind: "main"` uses `defaults.main_dir` (canary / demoschool).  
-- **pilot** — all entries with `tier: "pilot"`.  
-- **all_schools** — all `kind: "stack"` entries in the manifest, plus any running school stack discovered on the server (excluding `discovery.exclude_compose_projects`).
 
 Set `ALLOW_PUBLIC_REGISTRATION` is unrelated; for deploys set secrets `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`.
 
 ## Server-side manual run
 
 ```bash
-export DEPLOY_TARGET=demo          # demo | pilot | school | all_schools
+export DEPLOY_TARGET=school
 export IMAGE_TAG=sha-<commit>
-export SCHOOL_ID=merti-cs          # when DEPLOY_TARGET=school
+export SCHOOL_ID=merti-cs
 export MANIFEST_PATH=/srv/zawadi/apps/deploy/instances.manifest.json
 bash /srv/zawadi/apps/deploy/deploy-release.sh
 
