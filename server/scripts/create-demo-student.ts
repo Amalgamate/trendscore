@@ -8,7 +8,7 @@ import { Term, FeeCategory } from '@prisma/client';
 process.env.SKIP_FEE_NOTIFICATIONS = 'true';
 
 async function ensureAdminUser() {
-  const email = 'demo-admin@zawadisms.local';
+  const email = 'demo-admin@trendscore.local';
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) return existing;
 
@@ -25,8 +25,8 @@ async function ensureAdminUser() {
   });
 }
 
-/** Matches `scripts/seed-demo-users.mjs` (parent@demo.zawadi / Demo@2025!). Override with env if needed. */
-const DEMO_PARENT_EMAIL = process.env.DEMO_PARENT_EMAIL ?? 'parent@demo.zawadi';
+/** Matches `scripts/seed-demo-users.mjs` (parent@demo.trendscore / Demo@2025!). Override with env if needed. */
+const DEMO_PARENT_EMAIL = process.env.DEMO_PARENT_EMAIL ?? 'parent@demo.trendscore';
 const DEMO_PARENT_PHONE = process.env.DEMO_PARENT_PHONE ?? '+254700000003';
 const DEMO_PARENT_PASSWORD = process.env.DEMO_PARENT_PASSWORD ?? 'Demo@2025!';
 

@@ -4,6 +4,7 @@ import { randomBytes } from 'crypto';
 import { SmsService } from './sms.service';
 import { EmailService } from './email.service';
 import { UserStatus } from '@prisma/client';
+import { PRODUCT_EMAIL_DOMAIN, PRODUCT_PARENT_PORTAL_URL } from '../config/productIdentity';
 
 export interface CreateOrGetParentArgs {
   phone?: string;
@@ -53,12 +54,12 @@ export class ParentService {
     if (finalEmail) {
       const existingEmail = await prisma.user.findUnique({ where: { email: finalEmail } });
       if (existingEmail && phone) {
-        finalEmail = `${phone.replace(/\D/g, '')}-${Date.now()}@zawadisms.com`;
+        finalEmail = `${phone.replace(/\D/g, '')}-${Date.now()}@${PRODUCT_EMAIL_DOMAIN}`;
       }
     } else if (phone) {
-      finalEmail = `${phone.replace(/\D/g, '')}@zawadisms.com`;
+      finalEmail = `${phone.replace(/\D/g, '')}@${PRODUCT_EMAIL_DOMAIN}`;
     } else {
-      finalEmail = `parent-${Date.now()}@zawadisms.com`;
+      finalEmail = `parent-${Date.now()}@${PRODUCT_EMAIL_DOMAIN}`;
     }
 
     // Force secure temporary credentials
@@ -85,7 +86,7 @@ export class ParentService {
 
     // Ship welcome notifications
     if (!skipNotifications) {
-      const portalUrl = process.env.PARENT_PORTAL_URL || process.env.APP_URL || 'https://parents.zawadisms.com';
+      const portalUrl = PRODUCT_PARENT_PORTAL_URL;
       const credentialsMessage = `Hello ${firstName}, your Parent Portal account is ready. Login at ${portalUrl} with email: ${finalEmail} and temporary password: ${parentPassword}. You will be prompted to set a new password on first login.`;
 
       if (phone) {
@@ -96,7 +97,7 @@ export class ParentService {
         }
       }
 
-      if (finalEmail.includes('@') && !finalEmail.endsWith('@zawadisms.com')) {
+      if (finalEmail.includes('@') && !finalEmail.endsWith(`@${PRODUCT_EMAIL_DOMAIN}`)) {
         try {
           await EmailService.sendNotificationEmail({
             to: finalEmail,

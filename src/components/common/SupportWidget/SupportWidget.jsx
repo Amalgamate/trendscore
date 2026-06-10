@@ -4,6 +4,7 @@ import { MessageCircle, X, Send, Plus, ChevronLeft, Loader2, Phone } from 'lucid
 import { supportAPI } from '../../../services/supportApi';
 import { useAuth } from '../../../hooks/useAuth';
 import toast from 'react-hot-toast';
+import { PRODUCT_DISPLAY_NAME } from '../../../config/productIdentity';
 
 
 const SupportWidget = () => {
@@ -146,7 +147,7 @@ const SupportWidget = () => {
                         </button>
                     )}
                     <div>
-                        <h3 className="font-medium text-xl">{isGuest ? 'Trends CORE V1.0 Support' : 'Support Details'}</h3>
+                        <h3 className="font-medium text-xl">{isGuest ? `${PRODUCT_DISPLAY_NAME} Support` : 'Support Details'}</h3>
                         <p className="text-teal-50 text-xs opacity-80">Typically replies in minutes</p>
                     </div>
                 </div>

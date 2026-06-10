@@ -12,6 +12,7 @@ import {
     Link,
     Hr,
 } from '@react-email/components';
+import { PRODUCT_DISPLAY_NAME } from '../../config/productIdentity';
 
 interface TicketCreatedEmailProps {
     schoolName: string;
@@ -72,7 +73,7 @@ export const TicketCreatedEmail = ({
                     <Hr style={hr} />
 
                     <Text style={footer}>
-                        This is an automated notification from the Trends CORE V1.0 Support System.
+                        This is an automated notification from the {PRODUCT_DISPLAY_NAME} Support System.
                     </Text>
                 </Container>
             </Body>

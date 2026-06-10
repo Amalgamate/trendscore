@@ -15,6 +15,7 @@ import { parentService } from '../services/parent.service';
 import { ensureStudentAccountForLearner } from '../services/studentAccount.service';
 import { auditService } from '../services/audit.service';
 import { v2 as cloudinary } from 'cloudinary';
+import { PRODUCT_STORAGE_PREFIX } from '../config/productIdentity';
 
 import logger from '../utils/logger';
 const SKIP_PARENT_PORTAL_NOTIFICATIONS = process.env.SKIP_PARENT_PORTAL_NOTIFICATIONS === 'true' || process.env.NODE_ENV === 'test';
@@ -38,7 +39,7 @@ const applyInstitutionGradeScope = (
 };
 
 /**
- * LearnerController handles learner operations in Trends CORE V1.0.
+ * LearnerController handles learner operations in TrendScore.
  */
 
 export class LearnerController {
@@ -237,7 +238,7 @@ export class LearnerController {
         const cloudName = process.env.CLOUDINARY_URL || process.env.CLOUDINARY_CLOUD_NAME;
         if (cloudName) {
           try {
-            const result = await cloudinary.uploader.upload(photo, { folder: 'zawadi/photos' });
+            const result = await cloudinary.uploader.upload(photo, { folder: `${PRODUCT_STORAGE_PREFIX}/photos` });
             finalPhotoUrl = result.secure_url;
           } catch (uploadErr: any) {
             logger.warn('Cloudinary upload failed, skipping photo:', uploadErr.message);
@@ -494,7 +495,7 @@ export class LearnerController {
           const cloudName = process.env.CLOUDINARY_URL || process.env.CLOUDINARY_CLOUD_NAME;
           if (cloudName) {
             try {
-              const result = await cloudinary.uploader.upload(req.body.photo, { folder: 'zawadi/photos' });
+              const result = await cloudinary.uploader.upload(req.body.photo, { folder: `${PRODUCT_STORAGE_PREFIX}/photos` });
               finalPhotoUrl = result.secure_url;
             } catch (uploadErr: any) {
               logger.warn('Cloudinary upload failed, keeping base64:', uploadErr.message);

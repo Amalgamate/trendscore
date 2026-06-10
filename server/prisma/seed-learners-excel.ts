@@ -41,13 +41,13 @@ async function main() {
 
     // 1. Get the Active School and Branch
     let school = await prisma.school.findFirst({
-        where: { name: 'ZAWADI JUNIOR ACADEMY' }
+        where: { name: 'TRENDSCORE DEMO ACADEMY' }
     });
 
     if (!school) {
-        console.log('⚠️ "ZAWADI JUNIOR ACADEMY" not found, trying "Zawadi SMS Template"...');
+        console.log('⚠️ "TRENDSCORE DEMO ACADEMY" not found, trying "TrendScore Template"...');
         school = await prisma.school.findFirst({
-            where: { name: 'Zawadi SMS Template' }
+            where: { name: 'TrendScore Template' }
         });
     }
 
@@ -59,7 +59,7 @@ async function main() {
     }
 
     if (!school) {
-        console.error('❌ "Zawadi SMS Template" school not found. Please run "npm run seed" first.');
+        console.error('❌ "TrendScore Template" school not found. Please run "npm run seed" first.');
         return;
     }
 

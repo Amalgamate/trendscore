@@ -7,6 +7,7 @@
 
 import { Response } from 'express';
 import bcrypt from 'bcrypt';
+import { PRODUCT_APP_URL, PRODUCT_DISPLAY_NAME, PRODUCT_TEMP_PASSWORD_PREFIX } from '../config/productIdentity';
 import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
 import { AuthRequest } from '../middleware/permissions.middleware';
@@ -562,7 +563,7 @@ export class UserController {
       throw new ApiError(403, 'Permission denied to send credentials for this user');
     }
 
-    const tempPassword = 'Zawadi2026!';
+    const tempPassword = `${PRODUCT_TEMP_PASSWORD_PREFIX}2026!`;
     const hashedPassword = await bcrypt.hash(tempPassword, 12);
     
     // Set passwordResetToken to trigger the "must change password" flag on login
@@ -582,8 +583,8 @@ export class UserController {
     });
 
     const school = await prisma.school.findFirst({ select: { name: true } });
-    const schoolName = school?.name || 'Trends CORE V1.0';
-    const frontendUrl = process.env.FRONTEND_URL || 'https://app.zawadi.com';
+    const schoolName = school?.name || PRODUCT_DISPLAY_NAME;
+    const frontendUrl = process.env.FRONTEND_URL || PRODUCT_APP_URL;
     
     const message = `Welcome to ${schoolName}! Your parent portal account is ready.\n\nLogin URL: ${frontendUrl}\nUsername: ${targetUser.email}\nTemp Password: ${tempPassword}\n\nPlease change your password immediately after logging in.`;
 

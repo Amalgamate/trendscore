@@ -288,7 +288,7 @@ const BackupSettings = () => {
         </p>
         <div className="bg-gray-50 rounded-lg p-4 font-mono text-sm text-gray-700 border border-gray-200">
           <p className="font-semibold text-gray-500 text-xs uppercase mb-2">Cron Expression (runs at 2:00 AM daily)</p>
-          <code>0 2 * * * cd /path/to/server && node scripts/backup-db.js &gt;&gt; logs/backup.log 2&gt;&amp;1</code>
+          <code>0 2 * * * cd /path/to/server && node tools/scripts/backup-db.js &gt;&gt; logs/backup.log 2&gt;&amp;1</code>
         </div>
       </div>
 

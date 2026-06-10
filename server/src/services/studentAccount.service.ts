@@ -1,6 +1,7 @@
 import bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import prisma from '../config/database';
+import { PRODUCT_EMAIL_DOMAIN, PRODUCT_TEMP_PASSWORD_PREFIX } from '../config/productIdentity';
 
 type EnsureStudentAccountInput = {
   admissionNumber: string;
@@ -10,7 +11,7 @@ type EnsureStudentAccountInput = {
   phone?: string | null;
 };
 
-const STUDENT_EMAIL_DOMAIN = 'zawadisms.com';
+const STUDENT_EMAIL_DOMAIN = PRODUCT_EMAIL_DOMAIN;
 
 const normalizeBaseUsername = (admissionNumber: string): string => {
   const normalized = String(admissionNumber || '')
@@ -25,7 +26,7 @@ const buildStudentEmail = (username: string): string => `${username}@${STUDENT_E
 
 const generateTemporaryPassword = (): string => {
   const rand = randomBytes(3).toString('hex').toUpperCase();
-  return `Zawadi@${rand}`;
+  return `${PRODUCT_TEMP_PASSWORD_PREFIX}@${rand}`;
 };
 
 const findExistingStudentByIdentity = async (username: string, email: string) => {
@@ -103,4 +104,3 @@ export const ensureStudentAccountForLearner = async (input: EnsureStudentAccount
 
   return { created: true, userId: createdUser.id };
 };
-

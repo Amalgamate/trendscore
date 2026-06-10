@@ -1,5 +1,5 @@
 /**
- * Trends CORE V1.0 Background Cron Worker
+ * TrendScore Background Cron Worker
  * Dedicated process for handling scheduled tasks and background jobs.
  */
 

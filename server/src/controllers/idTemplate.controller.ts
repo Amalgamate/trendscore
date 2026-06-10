@@ -3,6 +3,7 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
 import { v2 as cloudinary } from 'cloudinary';
+import { PRODUCT_STORAGE_PREFIX } from '../config/productIdentity';
 
 import logger from '../utils/logger';
 export class IdTemplateController {
@@ -89,7 +90,7 @@ export class IdTemplateController {
             if (templateDesign && templateDesign.startsWith('data:image')) {
                 try {
                     const result = await cloudinary.uploader.upload(templateDesign, {
-                        folder: 'zawadi/id_templates'
+                        folder: `${PRODUCT_STORAGE_PREFIX}/id_templates`
                     });
                     finalDesignUrl = result.secure_url;
                 } catch (uploadError) {
@@ -160,7 +161,7 @@ export class IdTemplateController {
             if (templateDesign && templateDesign.startsWith('data:image')) {
                 try {
                     const result = await cloudinary.uploader.upload(templateDesign, {
-                        folder: 'zawadi/id_templates'
+                        folder: `${PRODUCT_STORAGE_PREFIX}/id_templates`
                     });
                     finalDesignUrl = result.secure_url;
                 } catch (uploadError) {

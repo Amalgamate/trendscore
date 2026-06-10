@@ -7,7 +7,12 @@ import * as zlib from 'zlib';
 import { pipeline } from 'stream/promises';
 
 import logger from '../utils/logger';
+import { PRODUCT_STORAGE_PREFIX } from '../config/productIdentity';
 const execFileAsync = promisify(execFile);
+const BACKUP_FILE_PREFIX = `${PRODUCT_STORAGE_PREFIX}_`;
+const LEGACY_BACKUP_FILE_PREFIX = 'zawadi_sms_';
+const BACKUP_FILE_PATTERN = new RegExp(`^(${BACKUP_FILE_PREFIX}|${LEGACY_BACKUP_FILE_PREFIX})[\\w-]+(\\.(sql|gz))+$`);
+const BACKUP_DATE_PATTERN = new RegExp(`(?:${BACKUP_FILE_PREFIX}|${LEGACY_BACKUP_FILE_PREFIX})(\\d{4}-\\d{2}-\\d{2})_(\\d{2}-\\d{2}-\\d{2})`);
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const BACKUP_DIR = path.resolve(process.cwd(), '..', 'backups', 'db');
@@ -94,12 +99,12 @@ function listBackupFiles() {
   ensureBackupDir();
   const files = fs
     .readdirSync(BACKUP_DIR)
-    .filter((f) => f.startsWith('zawadi_sms_') && (f.endsWith('.sql.gz') || f.endsWith('.sql')))
+    .filter((f) => (f.startsWith(BACKUP_FILE_PREFIX) || f.startsWith(LEGACY_BACKUP_FILE_PREFIX)) && (f.endsWith('.sql.gz') || f.endsWith('.sql')))
     .map((f) => {
       const fp = path.join(BACKUP_DIR, f);
       const stat = fs.statSync(fp);
-      // Parse date from filename: zawadi_sms_YYYY-MM-DD_HH-MM-SS.sql.gz
-      const match = f.match(/zawadi_sms_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})/);
+      // Parse date from current or legacy backup filename.
+      const match = f.match(BACKUP_DATE_PATTERN);
       let createdAt = stat.mtime;
       if (match) {
         const [, datePart, timePart] = match;
@@ -137,7 +142,7 @@ function pruneOldBackups() {
   const cutoff = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
   const files = fs
     .readdirSync(BACKUP_DIR)
-    .filter((f) => f.startsWith('zawadi_sms_'));
+    .filter((f) => f.startsWith(BACKUP_FILE_PREFIX) || f.startsWith(LEGACY_BACKUP_FILE_PREFIX));
   for (const f of files) {
     const fp = path.join(BACKUP_DIR, f);
     if (fs.statSync(fp).mtimeMs < cutoff) {
@@ -382,7 +387,7 @@ export class BackupController {
       ensureBackupDir();
 
       const timestamp = getTimestamp();
-      const filename = `zawadi_sms_${timestamp}.sql.gz`;
+      const filename = `${BACKUP_FILE_PREFIX}${timestamp}.sql.gz`;
       const outputPath = path.join(BACKUP_DIR, filename);
 
       const env = buildPgToolEnv(conn, process.env);
@@ -428,7 +433,7 @@ export class BackupController {
       const { filename } = req.params;
 
       // Security: only allow valid backup filenames
-      if (!/^zawadi_sms_[\w-]+(\.(sql|gz))+$/.test(filename)) {
+      if (!BACKUP_FILE_PATTERN.test(filename)) {
         return res.status(400).json({ success: false, error: 'Invalid filename' });
       }
 
@@ -457,7 +462,7 @@ export class BackupController {
     try {
       const { filename } = req.params;
 
-      if (!/^zawadi_sms_[\w-]+(\.(sql|gz))+$/.test(filename)) {
+      if (!BACKUP_FILE_PATTERN.test(filename)) {
         return res.status(400).json({ success: false, error: 'Invalid filename' });
       }
 

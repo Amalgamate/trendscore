@@ -107,7 +107,7 @@ const EnrollmentModal = ({ person, type, onClose }) => {
                   Enrollment Protocol
                 </h3>
                 <p className="text-xs font-medium text-indigo-50 leading-relaxed mb-6">
-                  To complete enrollment, open the **Zawadi Biometric Bridge** on the local scanning workstation. Use the following dynamic token to authenticate the session:
+                  To complete enrollment, open the TrendScore Biometric Bridge on the local scanning workstation. Use the following dynamic token to authenticate the session:
                 </p>
                 
                 <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 flex items-center justify-between border border-white/20">

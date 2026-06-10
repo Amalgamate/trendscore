@@ -10,6 +10,7 @@ import http from 'http';
 import { initializeSocket } from './services/socket.service';
 import { ensureSuperAdmin } from './utils/setup-admin';
 import logger from './utils/logger';
+import { PRODUCT_DISPLAY_NAME } from './config/productIdentity';
 
 const PORT = process.env.PORT || 5000;
 const skipSuperAdminBootstrap = (process.env.SKIP_SUPERADMIN_BOOTSTRAP || 'false').toLowerCase() === 'true';
@@ -45,7 +46,7 @@ async function startServer() {
         env: process.env.NODE_ENV || 'development',
         apiUrl,
         healthUrl
-      }, '🚀 Trends CORE V1.0 server started');
+      }, `🚀 ${PRODUCT_DISPLAY_NAME} server started`);
     });
   } catch (error) {
     logger.error(error, '❌ Failed to start server');

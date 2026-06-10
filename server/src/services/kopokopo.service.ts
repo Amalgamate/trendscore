@@ -2,6 +2,7 @@ import axios from 'axios';
 import prisma from '../config/database';
 import { MpesaStatus, MpesaTransactionType } from '@prisma/client';
 import { decrypt } from '../utils/encryption.util';
+import { PRODUCT_BRAND_EMAIL, PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 
 class KopoKopoService {
     private sandboxUrl = 'https://sandbox.kopokopo.com';
@@ -76,7 +77,7 @@ class KopoKopoService {
                 first_name: params.firstName || 'Learner',
                 last_name: params.lastName || (params.studentId ? `ID-${params.studentId}` : 'Parent'),
                 phone_number: phone,
-                email: 'info@zawadisms.com'
+                email: PRODUCT_BRAND_EMAIL
             },
             amount: {
                 currency: 'KES',
@@ -85,7 +86,7 @@ class KopoKopoService {
             metadata: {
                 student_id: params.studentId,
                 invoice_id: params.invoiceId,
-                system: 'Trends CORE V1.0'
+                system: PRODUCT_DISPLAY_NAME
             },
             _links: {
                 callback_url: process.env.KOPOKOPO_WEBHOOK_URL || 'https://yourdomain.com/api/mpesa/callback'

@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
+import { PRODUCT_NAME } from '../config/productIdentity';
 
 const prisma = new PrismaClient();
 
@@ -7,7 +8,7 @@ async function main() {
     console.log('🚀 Starting system setup...');
 
     // 1. Ensure School exists
-    const schoolName = 'ZAWADI JUNIOR ACADEMY';
+    const schoolName = `${PRODUCT_NAME.toUpperCase()} DEMO ACADEMY`;
     console.log(`🏫 Ensuring school exists: ${schoolName}...`);
     const school = await prisma.school.upsert({
         where: { name: schoolName },

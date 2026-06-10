@@ -137,7 +137,7 @@ export const useBootstrapStore = create(
       }),
     }),
     {
-      name: 'zawadi_bootstrap',
+      name: 'trendscore_bootstrap',
       storage: createJSONStorage(() => sessionStorage),
       partialize: (s) => ({
         learners:  s.learners,

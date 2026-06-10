@@ -81,12 +81,16 @@ debug_zamzam.js
 # Archive folders — old dev scripts, not deployed
 _archive/
 server/_archive/
+server/scripts/archive/
+server/tools/archive/
 
 # Misc local temp/backup
 temp_login.json
 _backup_removed_files/
 backup_removed/
 .history/
+server/tools/tmp_*.ts
+server/tools/test_prediction_*.ts
 
 # Data files (avoid committing local datasets)
 *.csv

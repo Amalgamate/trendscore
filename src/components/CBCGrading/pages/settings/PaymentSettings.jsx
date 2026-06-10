@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { DollarSign, Save, Loader, CreditCard, Shield, Globe, Terminal } from 'lucide-react';
 import { communicationAPI } from '../../../../services/api';
 import { useNotifications } from '../../hooks/useNotifications';
+import { PRODUCT_DISPLAY_NAME } from '../../../../config/productIdentity';
 
 const PaymentSettings = () => {
     const [loading, setLoading] = useState(false);
@@ -320,7 +321,7 @@ const PaymentSettings = () => {
                 {/* Info Footer */}
                 <div className="bg-gray-50 border-t p-6 text-center">
                     <p className="text-xs text-gray-500 font-medium max-w-2xl mx-auto">
-                        Trends CORE V1.0 uses industry-standard 256-bit encryption to protect your sensitive API credentials. 
+                        {PRODUCT_DISPLAY_NAME} uses industry-standard 256-bit encryption to protect your sensitive API credentials.
                         Ensure your callback URL is correctly configured in your provider's portal to receive real-time payment updates.
                     </p>
                 </div>

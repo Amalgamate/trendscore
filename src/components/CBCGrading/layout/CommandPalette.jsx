@@ -172,7 +172,7 @@ const CommandPalette = ({ onNavigate }) => {
             </div>
             <div className="flex items-center gap-2 group cursor-help transition-opacity hover:opacity-100 opacity-60">
                 <LucideIcons.Zap size={13} className="text-brand-teal animate-pulse" />
-                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.15em]">Zawadi QuickJump</span>
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.15em]">TrendScore QuickJump</span>
             </div>
           </div>
         </Command>

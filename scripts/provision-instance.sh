@@ -37,7 +37,7 @@ if ! command -v openssl >/dev/null 2>&1; then
   exit 2
 fi
 
-# Directory/layout defaults align with deploy-server.sh conventions.
+# Directory/layout defaults align with the release deployment layout.
 APPS_DIR="${APPS_DIR:-/srv/zawadi/apps}"
 STACK_COMPOSE_FILE="${STACK_COMPOSE_FILE:-${APPS_DIR}/docker-compose.stack.yml}"
 ODOO_COMPOSE_FILE="${ODOO_COMPOSE_FILE:-${APPS_DIR}/docker-compose.odoo.yml}"

@@ -1,28 +1,28 @@
 #!/usr/bin/env node
 /**
  * ============================================================
- * Zawadi SMS — Automated Database Backup Script
+ * TrendScore — Automated Database Backup Script
  * ============================================================
  *
  * Creates a gzip-compressed PostgreSQL dump and saves it to
  * <project_root>/backups/db/
  *
  * Filename format:
- *   Manual : zawadi_sms_2026-03-24_02-00-00.sql.gz
- *   Auto   : zawadi_sms_auto_2026-03-24_02-00-00.sql.gz
+ *   Manual : trendscore_2026-03-24_02-00-00.sql.gz
+ *   Auto   : trendscore_auto_2026-03-24_02-00-00.sql.gz
  *             ↑ The UI shows "Auto" badge when "_auto_" is in the name
  *
  * ── Quick start ───────────────────────────────────────────────
- *   node scripts/backup-db.js              # manual, compressed
- *   node scripts/backup-db.js --no-gzip   # manual, plain SQL
- *   node scripts/backup-db.js --auto      # mark as automatic run
+ *   node tools/scripts/backup-db.js              # manual, compressed
+ *   node tools/scripts/backup-db.js --no-gzip   # manual, plain SQL
+ *   node tools/scripts/backup-db.js --auto      # mark as automatic run
  *
  * ── Schedule (Linux / macOS cron) ────────────────────────────
  *   Open crontab:
  *     crontab -e
  *
  *   Add this line — runs every day at 02:00 AM:
- *     0 2 * * * cd /FULL/PATH/TO/server && node scripts/backup-db.js --auto >> logs/backup.log 2>&1
+ *     0 2 * * * cd /FULL/PATH/TO/server && node tools/scripts/backup-db.js --auto >> logs/backup.log 2>&1
  *
  *   Make sure the logs directory exists:
  *     mkdir -p /FULL/PATH/TO/server/logs
@@ -32,15 +32,15 @@
  *   2. Trigger: Daily at 02:00 AM
  *   3. Action: Start a Program
  *        Program : node
- *        Arguments: scripts\backup-db.js --auto
- *        Start in : C:\path\to\Zawadi SMS\server
+ *        Arguments: tools\scripts\backup-db.js --auto
+ *        Start in : C:\path\to\TrendScore\server
  *   4. Finish and enable the task.
  *
  * ── pm2 (if you run the server with pm2) ─────────────────────
  *   Add to ecosystem.config.js:
  *     {
- *       name: 'zawadi-backup',
- *       script: 'scripts/backup-db.js',
+ *       name: 'trendscore-backup',
+ *       script: 'tools/scripts/backup-db.js',
  *       args: '--auto',
  *       cron_restart: '0 2 * * *',
  *       watch: false,
@@ -62,6 +62,9 @@
 const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+
+const BACKUP_FILE_PREFIX = 'trendscore_';
+const LEGACY_BACKUP_FILE_PREFIX = 'zawadi_sms_';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 const config = {
@@ -155,7 +158,7 @@ function pruneOldBackups(dir, retentionDays) {
   const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
   const files = fs
     .readdirSync(dir)
-    .filter((f) => f.startsWith('zawadi_sms_') && (f.endsWith('.sql') || f.endsWith('.sql.gz')));
+    .filter((f) => (f.startsWith(BACKUP_FILE_PREFIX) || f.startsWith(LEGACY_BACKUP_FILE_PREFIX)) && (f.endsWith('.sql') || f.endsWith('.sql.gz')));
 
   let pruned = 0;
   for (const file of files) {
@@ -174,7 +177,7 @@ function pruneOldBackups(dir, retentionDays) {
 function printSummary(dir) {
   const all = fs
     .readdirSync(dir)
-    .filter((f) => f.startsWith('zawadi_sms_'))
+    .filter((f) => f.startsWith(BACKUP_FILE_PREFIX) || f.startsWith(LEGACY_BACKUP_FILE_PREFIX))
     .sort()
     .reverse();
 
@@ -188,7 +191,7 @@ function printSummary(dir) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 (function runBackup() {
-  log('======== Zawadi SMS — Database Backup ========');
+  log('======== TrendScore — Database Backup ========');
   log(`Mode: ${config.isAuto ? 'AUTOMATIC (scheduled)' : 'MANUAL'}`);
 
   // 1. Load .env
@@ -233,8 +236,8 @@ function printSummary(dir) {
   const ts = getTimestamp();
   const tag = config.isAuto ? 'auto_' : '';
   const filename = config.useGzip
-    ? `zawadi_sms_${tag}${ts}.sql.gz`
-    : `zawadi_sms_${tag}${ts}.sql`;
+    ? `${BACKUP_FILE_PREFIX}${tag}${ts}.sql.gz`
+    : `${BACKUP_FILE_PREFIX}${tag}${ts}.sql`;
   const outputPath = path.join(config.backupDir, filename);
 
   // 7. Build pg_dump command

@@ -22,6 +22,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import '../../styles/splashscreen.css';
 import { useBootstrapStore } from '../../store/useBootstrapStore';
 import axiosInstance from '../../services/api/axiosConfig';
+import { PRODUCT_DISPLAY_NAME } from '../../config/productIdentity';
 
 const ROLES_WITH_ALL_LEARNERS_ACCESS = new Set([
   'SUPER_ADMIN',
@@ -201,7 +202,7 @@ const SplashScreen = ({ isLoading, user, onReady }) => {
           </div>
         </div>
 
-        <h1 className="splash-title">Trends CORE V1.0</h1>
+        <h1 className="splash-title">{PRODUCT_DISPLAY_NAME}</h1>
         <p className="splash-subtitle">Education Management System</p>
 
         {/* Progress bar */}

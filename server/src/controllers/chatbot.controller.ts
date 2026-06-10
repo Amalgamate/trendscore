@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { ApiError } from '../utils/error.util';
 import prisma from '../config/database';
+import { PRODUCT_NAME } from '../config/productIdentity';
 
 const messageSchema = z.object({
   message: z.string().min(1).max(2000),
@@ -113,7 +114,7 @@ function buildResponse(
 
     case 'general':
     default:
-      return `I'm your school assistant for **${stats?.schoolName ?? 'Trends CORE'}**. I can help with:\n\n• 💰 Fees & payments\n• 📋 Attendance\n• 📊 Grades & CBC assessments\n• 📅 Timetable\n• 👥 HR & staff\n• 🎓 Learner registry\n• 📢 Notices\n\nWhat would you like to know, ${name}?`;
+      return `I'm your school assistant for **${stats?.schoolName ?? PRODUCT_NAME}**. I can help with:\n\n• 💰 Fees & payments\n• 📋 Attendance\n• 📊 Grades & CBC assessments\n• 📅 Timetable\n• 👥 HR & staff\n• 🎓 Learner registry\n• 📢 Notices\n\nWhat would you like to know, ${name}?`;
   }
 }
 
@@ -169,7 +170,7 @@ export const chatbotController = {
     const stats = {
       ...feeStats,
       learnerCount,
-      schoolName: school?.name ?? 'Trends CORE',
+      schoolName: school?.name ?? PRODUCT_NAME,
       attendanceRate: attendanceToday,
     };
 

@@ -1,195 +1,386 @@
-# Zawadi Junior Academy - SMS (v1.0.0-WIP)
+# TrendScore
 
-![Status](https://img.shields.io/badge/Status-Work--In--Progress-orange)
+TrendScore is a CBE-ready School ERP for modern African schools. It helps schools manage academics, CBE assessments, fees, finance, staff, parents, communication, and analytics from one platform.
+
+- Website: https://www.trendscore.co.ke/
+- Repository: https://github.com/Amalgamate/trendscore
+
+![Status](https://img.shields.io/badge/Status-Active%20Build-orange)
 ![Version](https://img.shields.io/badge/Version-1.0.0--Alpha-blue)
-![Curriculum](https://img.shields.io/badge/Focus-CBC--Learning-green)
+![Curriculum](https://img.shields.io/badge/Curriculum-CBE%20Ready-green)
+![Payments](https://img.shields.io/badge/Payments-M--Pesa%20Integrated-brightgreen)
 
-## 🌟 Mission & Vision
-Trends CORE V1.0 is a modern School Management System specifically engineered to meet the dynamic needs of the **Competency Based Curriculum (CBC)**. This project is currently in active development, evolving to provide seamless digital tools for learning assessment, student progression tracking, and administrative excellence.
+## Current Status
 
-> [!IMPORTANT]
-> This is an **active project** and is currently a **Work in Progress**. Features are being rapidly iterated to stay at the forefront of CBC learning requirements.
+TrendScore is in active v1.0 development. The core School ERP is functional and under continuous refinement, with the current focus on product identity cleanup, CBE/KJSEA grading correctness, reporting reliability, deployment hygiene, and preparing the public project for cleaner GitHub review.
 
-## First Time Login (Superadmin)
-To ensure immediate access upon deployment, the system automatically creates/updates a Superadmin account during server startup.
+Current working areas:
 
-- Set `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD` in `server/.env` before first boot.
-- Do not commit real credentials to git. Rotate credentials immediately if they were ever shared publicly.
+- Core School ERP modules are implemented across frontend and backend.
+- CBE assessment, achievement levels, report cards, and administrative status-code handling are actively maintained.
+- M-Pesa payment workflows are integrated through payment service layers.
+- Deployment is managed through GitHub Actions, Docker builds, and a school-instance manifest.
+- Public positioning is now aligned around TrendScore at https://www.trendscore.co.ke/.
+- Digital Campus and Creators Hub are upcoming product tracks and should be treated as roadmap work, not fully shipped modules.
 
-> [!TIP]
-> This setup is handled by the `ensureSuperAdmin` utility in the backend.
+## Product Direction
 
-## �🚀 Key CBC Features (In Development)
-- **Learning Area Management**: Dynamic tracking of CBC learning areas and strands.
-- **Formative & Summative Assessments**: Specialized rubric-based grading systems tailored for CBC.
-- **Learner Portfolios**: Comprehensive digital footprints of student progress and competencies.
-- **Parent-Teacher Connectivity**: Real-time communication for shared learner support.
+TrendScore is organized around four product areas:
 
-## 🌐 System Portals & Roadmap (WIP)
-The Trends CORE V1.0 ecosystem is designed to provide tailored experiences for every stakeholder. The following portals are currently under active development:
+| Area | Status | Purpose |
+| --- | --- | --- |
+| Platform | Active | Multi-school operating layer, setup, deployment, identity, settings, backups, and system governance. |
+| School ERP | Active | The main school management system for academics, finance, people, operations, and reports. |
+| Digital Campus | Upcoming | Online learning, learner workspaces, digital classes, assignments, content, and remote engagement. |
+| Creators Hub | Upcoming | A resource and content ecosystem for educators, content creators, templates, lessons, and assessments. |
 
-### 🏢 Admin Portal (Active WIP)
-The centralized command center for school owners and principals.
-- **Status**: Core modules live (Learner management, Financials, HR).
-- **In Focus**: Advanced analytics and automated reporting.
+## Core School ERP Modules
 
-### 👨‍👩‍👧 Parent Portal (WIP)
-A dedicated interface for parents to track their child's CBC journey.
-- **Key Features**: Fee statement viewing, digital progress reports, and teacher communication.
-- **Status**: Initial phase integration.
+### 1. Institution Setup and Administration
 
-### 🎓 Student Portal (WIP)
-An interactive space for learners to engage with their digital portfolios.
-- **Key Features**: Assignment tracking, digital achievements, and learning resources.
-- **Status**: Planning & Design.
+TrendScore supports initial school setup, school profile configuration, branding, academic years, terms, user roles, permissions, and institution type selection. This allows the platform to adapt to CBC primary, junior school, senior school, and future tertiary workflows.
 
-### 📱 Mobile Applications (Future Horizon)
-We are building cross-platform mobile apps (iOS & Android) to bring Trends CORE V1.0 to your fingertips.
-- **Parent App**: Instant push notifications for attendance and performance.
-- **Teacher App**: Quick classroom management and real-time attendance marking.
-- **Status**: Concept & Architecture phase.
+Key capabilities:
 
-## 🧩 Core Modules Explained
+- School profile and branding settings.
+- Superadmin bootstrap on first deployment.
+- Role-based access control for admins, teachers, accountants, parents, and platform users.
+- Module gating and per-school feature control.
+- System settings, support, logs, backups, and maintenance tools.
 
-### 1. Learner & Admission Management
-Digitalizes the entire student lifecycle, from admission sequences and primary contact management to automated grade progression and stream assignment.
+### 2. Learner, Admissions, and Parent Records
 
-### 2. Academic & CBC Assessment Engine
-The heart of the CBC transition. Provides rubric-based assessment tools (Opening, Mid-Term, End-Term) with automated competency tracking across specific strands and sub-strands.
+The learner module manages the student lifecycle from admission to progression, transfer, archiving, and profile history. It keeps learner details connected to parent records, class placement, transport status, fee accounts, reports, and communication.
 
-### 3. Financial & Fee Management
-A robust accounting module that handles fee structure creation, automated invoicing, and real-time payment reconciliation via Mpesa STK Push.
+Key capabilities:
 
-### 4. HR, Staff & Payroll
-Manages comprehensive staff profiles, recruitment data, performance reviews, and automated payroll generation with tax deduction (NHIF/NSSF) support.
+- Learner admission and profile management.
+- Parent and guardian links.
+- Class, stream, grade, and enrollment tracking.
+- Learner photos and document records.
+- Admission numbers and school-specific learner metadata.
+- Exited or archived learner handling.
 
-### 5. Multi-Channel Communication
-A centralized hub for sending school-wide alerts, student performance reports, and fee reminders via SMS, Email, and WhatsApp.
+### 3. Academics and CBE Assessment
 
-### 6. Inventory, Assets & Library
-Tracks school assets, library books (issue/return), and inventory stock levels with automated requisition workflows.
+The academic engine is built around Kenyan CBE workflows. It supports formative assessment, summative assessment, grading scales, learning areas, strands, sub-strands, test setup, performance bands, and report generation.
 
-### 7. Attendance & Operations
-Smart attendance tracking for both students and staff, featuring biometric integration readiness and automated absence alerts for parents.
+Key capabilities:
 
-### 8. Analytics & Dashboards
-Data-driven insights for administrators, providing real-time visuals on school performance, financial health, and student census.
+- Learning area management.
+- Formative observations and rubric-based scoring.
+- Summative tests and mark entry.
+- CBE achievement codes such as EE, ME, AE, and BE with detailed bands.
+- Administrative assessment status codes such as absent, transferred, withdrawn, or exempt cases.
+- Status-only results excluded from averages, ranking, analytics, and report calculations.
+- Assessment setup, completion, ranking, summaries, and printable report cards.
 
-## ⚡ Automated Setup (The "Seed Buttons")
-To save time during the initial school setup, the system features **"Seed Buttons"** in the Admin Configuration dashboard. These trigger specialized backend endpoints to instantly populate your school with standard data:
+### 4. Reports, Analytics, and Academic Intelligence
 
-- **Seed Streams**: Populates standard CBC streams (e.g., North, South, East, West or A, B, C).
-- **Seed Classes**: Generates default class structures for Grades 1 through 6.
-- **Create Default Aggregations**: Sets up standard CBC weighting (e.g., 30% Formative / 70% Summative).
-- **Bulk Setup**: Automatically initializes grading scales and performance levels across all learning areas.
+TrendScore includes dashboards and reporting workflows for academic performance, learner progress, class summaries, subject performance, pathway insights, and report-card production.
 
----
+Key capabilities:
 
-## � Formative vs. Summative Assessments
-Trends CORE V1.0 handles both assessment types as defined by CBC standards:
+- Termly report cards.
+- Formative and summative reports.
+- Learner profile reporting.
+- CBE achievement legends and status-code explanations.
+- Class and learning-area summaries.
+- Pathway prediction and senior school readiness insights.
+- Academic dashboards for school leaders and teachers.
 
-| Feature | Formative Assessment | Summative Assessment |
-| :--- | :--- | :--- |
-| **Purpose** | **Assessment FOR Learning**: Continuous tracking of strands and sub-strands during the term. | **Assessment OF Learning**: Evaluation of student mastery at specific milestones (e.g., End of Term). |
-| **Frequency** | Ongoing / Daily / Weekly. | Occasional (Mid-term, End-term, Yearly). |
-| **Focus** | Qualitative observations, rubrics (Exceeding, Meeting, etc.), and specific skill mastery. | Quantitative scores, percentages, and performance levels calculated against set marks. |
-| **Reporting** | Feeds into the continuous progress log. | Determines final termly grades and overall position in class. |
-| **Weighting** | Typically accounts for **30%** of the final term grade. | Typically accounts for **70%** of the final term grade. |
+### 5. Fees, Invoicing, and M-Pesa Payments
 
----
+The finance module manages fee structures, invoices, balances, payments, waivers, statements, receipts, and parent-facing fee visibility. It is designed for Kenyan school finance workflows and M-Pesa payment reconciliation.
 
-## �📝 CBC Assessment Workflow
-The software follows a logical flow to ensure data integrity for CBC reporting:
+Key capabilities:
 
-1. **Step 1: Define Grading Scales**: Create your performance levels (e.g., Exceeding, Meeting, Approaching, Below Expectation) in the **Grading System** module.
-2. **Step 2: Initialize Tests**: Design your Summative Tests for the term, defining learning areas and maximum scores.
-3. **Step 3: Record Assessments**:
-   - **Formative**: Record day-to-day strand-based observations.
-   - **Summative**: Mark termly exams and specialized performance tasks.
-4. **Step 4: Finalize & Summarize**: Use the **Setup Completion** tool to trigger final score aggregations.
-5. **Step 5: Generate Report Cards**: Automatically produce comprehensive CBC Progress Reports with teacher comments and competency summaries.
+- Fee structures by term, class, and fee type.
+- Learner invoice generation.
+- Student statements and printable invoices.
+- Payment recording and reconciliation.
+- M-Pesa/Daraja integration support.
+- Unmatched payment handling.
+- Waivers and adjustments.
+- Parent fee statement visibility.
 
----
+### 6. Accounting and Financial Control
 
-## 🏗 Architecture (Monorepo)
-This project is structured as a **Monorepo** to keep the entire ecosystem synchronized:
-- `/` (Root): Shared configuration, Docker orchestration, and workspace-level scripts.
-- `/server`: Node.js/Express API with Prisma ORM (The brain of the system).
-- `/src` & `public`: The React.js frontend application (The user interface).
+TrendScore includes accounting workflows that connect school finance activity to a more structured ledger model. This supports better control over income, expenses, fee payments, payroll posting, journals, and financial reports.
 
-## 🛠 Tech Stack (Deep Dive)
-- **Database Architecture**: PostgreSQL using **Prisma** for type-safe database queries.
-- **Authentication**: JWT (JSON Web Tokens) with automated refreshToken rotation.
-- **Real-time Engine**: **Socket.io** for instant notifications and CBC assessment updates.
-- **Caching Layer**: Dual-strategy caching (Redis for production, in-memory for dev) via `redis-cache.service`.
-- **Media Management**: **Cloudinary** for secure storage of student photos and documents.
-- **Communication Stack**:
-  - **Email**: **Resend** for automated system emails and transactional messaging.
-  - **SMS**: Integrated with **Africa's Talking** for high-reliability mobile alerts.
-  - **WhatsApp**: API-driven outreach for parent engagement and automated reports.
-- **FinTech & Payments**:
-  - **Mpesa Integration**: Secure fee payment processing via Safaricom's **Daraja API** (STK Push & C2B).
-- **Security**: Helmet, CORS, and custom rate-limiting middleware.
+Key capabilities:
 
-## 📋 Prerequisites
-Before you begin the installation, ensure you have the following credentials and environment setups ready:
+- Chart of accounts.
+- Journals and journal entries.
+- Expense categories and expense recording.
+- Financial reports.
+- Bank reconciliation workflows.
+- Automatic ledger posting hooks for fee and payroll activity.
+- Accounting configuration screens.
 
-### 1. Core Requirements
-- **Node.js**: `v18.x` or higher.
-- **npm**: `v9.x` or higher.
-- **Docker**: Optional (for local Redis/Postgres testing).
+### 7. HR, Staff, and Payroll
 
-### 2. External Services (Essential)
-- **PostgreSQL Database**: `DATABASE_URL` and optional `DIRECT_URL`.
-- **Cloudinary Account**: For media storage.
-- **Resend API Key**: For email services.
-- **Africa's Talking**: API Key and Username for SMS services.
-- **Safaricom Daraja API**: Consumer Key, Secret, and Passkey for Mpesa payments.
-- **Redis Instance**: (Upstash or local Docker) for the caching layer.
+The HR module manages teachers, staff records, assignments, attendance, leave, payroll, and staff documents. It is designed to connect staff administration with class teaching duties and school operations.
 
-### 3. Environment Variables
-You will need to create `.env` files in both the root and the `/server` directory based on the `.env.example` templates provided.
+Key capabilities:
 
----
+- Teacher and staff profiles.
+- Staff directory and documents.
+- Subject and class assignment support.
+- Payroll generation and confirmation.
+- Payroll payment status tracking.
+- Leave management.
+- Staff attendance workflows.
 
-## 🚢 Deployment (CI/CD)
+### 8. Communication, Notices, and Support
 
-- **Push to `main`**: builds Docker images, then deploys **demo only** (see `.github/workflows/deploy-demo.yml`).
-- **Production / pilot / individual schools**: run the **Promote Release** workflow manually with an image tag and target (see `.github/workflows/promote-release.yml`).
-- **Instance registry**: `deploy/instances.manifest.json` — add each school stack (`tier`, `compose_project`, `env_file`).
-- **Full guide**: [deploy/DEPLOYMENT.md](deploy/DEPLOYMENT.md)
+TrendScore centralizes school communication across notices, messages, email, SMS, WhatsApp, and notification workflows. Communication settings are configurable so schools can connect the providers they use.
 
-Configure GitHub Environments `deploy-demo`, `deploy-pilot`, `deploy-production-school`, and `deploy-production-all` with required reviewers for production promotes.
+Key capabilities:
 
----
+- Noticeboard and announcements.
+- Parent, teacher, and school messaging.
+- Email provider configuration.
+- SMS provider configuration.
+- WhatsApp service integration.
+- Push notifications.
+- Assessment report distribution.
+- Fee reminders and attendance alerts.
+- Support hub and help content.
 
-## 👨‍💻 Detailed Installation
+### 9. Attendance and Biometric Readiness
 
-### Step 1: Clone and Root Setup
+Attendance workflows cover learner and staff attendance, with readiness for biometric bridge integration where schools use local scanning hardware.
+
+Key capabilities:
+
+- Daily learner attendance.
+- Staff attendance.
+- Attendance reports.
+- Absence tracking.
+- Parent alert workflows.
+- Biometric device and bridge integration paths.
+
+### 10. Timetable, Planner, and Calendar
+
+The planner tools help schools organize academic activities, schedules, and calendar workflows.
+
+Key capabilities:
+
+- Timetable management.
+- Academic calendar views.
+- Planning pages and scheduling helpers.
+- External calendar link support.
+- Operational reminders and activity planning.
+
+### 11. Transport, Hostel, and Movement Tracking
+
+The transport module supports route and driver workflows, learner transport assignment, transport fees, and related operational reporting. Hostel and boarding allocation workflows are also part of the wider operations track.
+
+Key capabilities:
+
+- Transport fee logic.
+- Route and driver management.
+- Learner transport assignments.
+- GPS tracking pages.
+- Transport reports.
+- Hostel allocation workflows.
+
+### 12. Inventory, Assets, Uniforms, and Library
+
+TrendScore includes inventory and asset tools for schools that need to track stock, assets, uniforms, books, and resource circulation.
+
+Key capabilities:
+
+- Inventory categories, stores, items, and stock movements.
+- Stock requisitions, transfers, and adjustments.
+- Asset register and asset assignments.
+- Uniform allocation.
+- Library catalog, circulation, and reports.
+- Resource library foundations.
+
+### 13. Learning Hub and LMS Foundations
+
+The current codebase includes LMS and learning hub foundations. These are the base layer for richer Digital Campus work.
+
+Key capabilities:
+
+- Courses and learning hub pages.
+- Assignment and content placeholders.
+- Learner-facing learning workflows.
+- Resource library integration.
+- Future online-class and digital-content expansion.
+
+### 14. Secondary, Senior School, and Pathways
+
+TrendScore is being extended beyond basic primary workflows into junior and senior school pathways, with support for senior subject selection, pathway analysis, and institution-type-specific modules.
+
+Key capabilities:
+
+- Secondary module routes and pages.
+- Senior school pathway models.
+- Pathway prediction and learner pathway profiles.
+- Senior school report foundations.
+- Institution-aware module behavior.
+
+## Upcoming Product Tracks
+
+### Digital Campus
+
+Digital Campus is the upcoming online learning experience for schools using TrendScore. It is expected to build on the existing LMS, learner portal, learning hub, resource library, assignments, calendar, and communication layers.
+
+Planned direction:
+
+- Digital classrooms and online learning spaces.
+- Learner dashboards and assignment tracking.
+- Teacher content delivery workflows.
+- Course resources and school content libraries.
+- Parent visibility into learning progress.
+- Remote learning and blended learning support.
+
+### Creators Hub
+
+Creators Hub is the upcoming educator and content ecosystem around TrendScore. It is intended to support teachers, schools, and education creators who produce lessons, assessments, templates, guides, and learning resources.
+
+Planned direction:
+
+- Assessment templates and reusable CBE resources.
+- Lesson plans, worksheets, and learning materials.
+- Creator profiles and resource publishing.
+- School-approved content libraries.
+- Future marketplace or distribution workflows for educator-created content.
+
+### Mobile Apps
+
+Mobile apps remain part of the broader roadmap, especially for parent access, teacher attendance, notifications, report access, and fee visibility.
+
+Planned direction:
+
+- Parent app for fee statements, alerts, reports, and messages.
+- Teacher app for attendance, marks entry, and class communication.
+- Push notifications for urgent school updates.
+
+## CBE Assessment Workflow
+
+TrendScore follows a structured CBE workflow:
+
+1. Configure academic year, terms, classes, streams, learning areas, and grading scales.
+2. Create formative and summative assessment structures.
+3. Record learner observations, marks, rubric levels, or valid administrative status codes.
+4. Exclude status-only records from calculations where no academic score should be counted.
+5. Generate summaries, rankings, analytics, and report cards.
+6. Share reports through downloadable files or communication channels.
+
+## Formative vs Summative Assessment
+
+| Area | Formative Assessment | Summative Assessment |
+| --- | --- | --- |
+| Purpose | Assessment for learning during the term. | Assessment of learning at a defined point. |
+| Frequency | Ongoing, daily, weekly, or per strand. | Mid-term, end-term, yearly, or structured tests. |
+| Evidence | Rubrics, observations, skill mastery, comments. | Marks, percentages, grade bands, rankings, summaries. |
+| Reporting | Feeds learner growth and progress records. | Feeds report cards, term summaries, and class analytics. |
+| Weighting | Configurable by school policy. | Configurable by school policy. |
+
+## Architecture
+
+TrendScore is maintained as a monorepo.
+
+| Path | Purpose |
+| --- | --- |
+| `/src` | React frontend for the School ERP user interface. |
+| `/public` | Public assets, app metadata, service worker, and web manifest. |
+| `/server` | Express API, Prisma models, services, controllers, routes, and backend jobs. |
+| `/deploy` | Deployment documentation and instance manifest. |
+| `.github/workflows` | CI, image publishing, demo deployment, and promotion workflows. |
+
+## Tech Stack
+
+- Frontend: React, Vite, Tailwind-style utility classes, Zustand-style state stores, Lucide icons.
+- Backend: Node.js, Express, TypeScript, Prisma ORM.
+- Database: PostgreSQL.
+- Realtime: Socket.io for realtime alerts and app events.
+- Payments: M-Pesa/Daraja integration paths and payment resolver services.
+- Communication: Email, SMS, WhatsApp, and push-notification services.
+- Media and documents: Cloudinary and document service layers.
+- Caching: Redis-ready cache architecture with development fallbacks.
+- Deployment: GitHub Actions, Docker image publishing, and school-instance promotion workflows.
+
+## First Time Login
+
+The backend can create or update the first Superadmin account during startup.
+
+Set these in `server/.env` before first boot:
+
 ```bash
-git clone https://github.com/Amalgamate/zawadijrn.git
-cd zawadijrn
+SUPER_ADMIN_EMAIL=admin@example.com
+SUPER_ADMIN_PASSWORD=change-this-password
+```
+
+Do not commit real credentials. Rotate credentials immediately if they were ever shared publicly.
+
+## Local Development
+
+### 1. Clone
+
+```bash
+git clone https://github.com/Amalgamate/trendscore.git
+cd trendscore
+```
+
+### 2. Install frontend dependencies
+
+```bash
 npm install
 ```
 
-### Step 2: Backend Configuration
+### 3. Configure backend
+
 ```bash
 cd server
 npm install
-# Copy env and fill your secrets
 cp .env.example .env
-# Sync your database schema
 npx prisma generate
 npx prisma migrate deploy
 npm run dev
 ```
 
-### Step 3: Frontend Setup
+### 4. Run frontend
+
 ```bash
-# From the root directory
-npm install
+cd ..
 npm run dev
 ```
 
----
-© 2026 Zawadi Junior Academy. Managed by Amalgamate.
+## Deployment
+
+Deployment is designed around safe promotion rather than pushing every instance at once.
+
+- Pushes to `main` build the application and deploy the demo/canary path.
+- Production, pilot, or individual school deployments use the Promote Release workflow.
+- School instances are tracked in `deploy/instances.manifest.json`.
+- Deployment details live in `deploy/DEPLOYMENT.md` and `deploy/WORKFLOW.md`.
+
+## Verification Commands
+
+Useful checks before opening or merging a PR:
+
+```bash
+npm run build
+cd server
+npx tsc --noEmit
+npx prisma validate
+```
+
+Focused CBE grading tests should be run from `server` when needed:
+
+```bash
+npx jest src/__tests__/cbe-grading.util.spec.ts --runInBand
+```
+
+## Repository Hygiene
+
+This repository now uses `.gitattributes` to normalize line endings and reduce noisy diffs across Windows and Linux environments. Local archive/debug artifacts should stay out of active product commits unless they are intentionally promoted into maintained tooling.
+
+## License and Ownership
+
+Copyright 2026 TrendScore. Managed by Amalgamate.

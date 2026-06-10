@@ -1,7 +1,7 @@
 {
-  "name": "zawadi-sms-backend",
+  "name": "trendscore-backend",
   "version": "1.0.0",
-  "description": "Zawadi JRN Academy - CBC Grading System Backend API",
+  "description": "TrendScore CBC Grading System Backend API",
   "main": "dist/index.js",
   "scripts": {
     "dev": "nodemon",
@@ -35,8 +35,8 @@
     "fix:summative-total-marks": "ts-node src/scripts/fix-summative-total-marks.ts",
     "audit:responses": "node scripts/audit-api-response-format.js",
     "audit:responses:strict": "node scripts/audit-api-response-format.js --fail-on-findings",
-    "backup": "node scripts/backup-db.js",
-    "backup:auto": "node scripts/backup-db.js --auto",
+    "backup": "node tools/scripts/backup-db.js",
+    "backup:auto": "node tools/scripts/backup-db.js --auto",
     "test": "jest --coverage",
     "test:watch": "jest --watch",
     "test:security": "ts-node tests/security-validation.test.ts",
@@ -57,7 +57,7 @@
     "kenya",
     "api"
   ],
-  "author": "Zawadi JRN Academy",
+  "author": "TrendScore",
   "license": "MIT",
   "dependencies": {
     "@prisma/client": "^5.22.0",

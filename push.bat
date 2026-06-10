@@ -75,7 +75,7 @@ if "%IMAGE_TAG%"=="" set IMAGE_TAG=latest
 :: ── 9. Get GitHub repo and token ──────────
 for /f "tokens=*" %%i in ('git remote get-url origin') do set ORIGIN_URL=%%i
 :: Extract owner/repo from URL (handles both https and git@ formats)
-set REPO=Amalgamate/zawadijrn
+set REPO=Amalgamate/trendscore
 
 echo.
 echo ==========================================

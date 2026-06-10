@@ -34,7 +34,7 @@ const MobileAppShell = ({ children, user, onNavigate, currentPage, brandingSetti
           </div>
           <div>
             <div className="text-[13px] font-semibold text-[#1a1a18] leading-tight">
-              {brandingSettings?.schoolName || 'Zawadi Junior'}
+              {brandingSettings?.schoolName || 'TrendScore'}
             </div>
             <div className="text-[10px] uppercase tracking-[0.06em] text-[#aaa]">School Portal</div>
           </div>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { ASSESSMENT_STATUS_CODES, CBE_GRADE_LEGEND } from '../../../utils/cbeGrading';
 import PathwayPredictionPage from './PathwayPredictionPage';
+import { PRODUCT_DISPLAY_NAME } from '../../../config/productIdentity';
 
 /**
  * TermlyReportTemplate - CORPORATE EDITION
@@ -213,7 +214,7 @@ const TermlyReportTemplate = ({ reportData, id = "termly-report-content" }) => {
                             {reportData.schoolSlogan || 'Excellence in Knowledge and Character'}
                         </p>
                         <p className="text-[8px] font-medium opacity-60">
-                            Valid only with official school stamp and signatures. Generated via Trends CORE V1.0 on {new Date().toLocaleDateString()}.
+                            Valid only with official school stamp and signatures. Generated via {PRODUCT_DISPLAY_NAME} on {new Date().toLocaleDateString()}.
                         </p>
                     </div>
                 </div>

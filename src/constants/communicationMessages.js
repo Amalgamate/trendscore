@@ -4,12 +4,20 @@
  * used across the communication module
  */
 
+import {
+  PRODUCT_BRAND_EMAIL,
+  PRODUCT_DISPLAY_NAME,
+  PRODUCT_LOGO_URL,
+  PRODUCT_NO_REPLY_EMAIL,
+  PRODUCT_WEBSITE,
+} from '../config/productIdentity';
+
 export const COMMUNICATION_DEFAULTS = {
   // Email Defaults
   email: {
     provider: 'resend',
-    fromEmail: import.meta.env.VITE_EMAIL_FROM || 'noreply@zawadisms.com',
-    fromName: import.meta.env.VITE_EMAIL_FROM_NAME || 'School Academy',
+    fromEmail: import.meta.env.VITE_EMAIL_FROM || PRODUCT_NO_REPLY_EMAIL,
+    fromName: import.meta.env.VITE_EMAIL_FROM_NAME || PRODUCT_DISPLAY_NAME,
     enabled: false
   },
 
@@ -31,10 +39,10 @@ export const COMMUNICATION_DEFAULTS = {
 };
 
 export const TEST_MESSAGES = {
-  sms: import.meta.env.VITE_TEST_SMS_MESSAGE || 'This is a test message from Trends CORE V1.0.',
+  sms: import.meta.env.VITE_TEST_SMS_MESSAGE || `This is a test message from ${PRODUCT_DISPLAY_NAME}.`,
   email: {
     welcome: {
-      subject: 'Welcome to Trends CORE V1.0',
+      subject: `Welcome to ${PRODUCT_DISPLAY_NAME}`,
       preview: 'Welcome email template'
     },
     onboarding: {
@@ -45,7 +53,7 @@ export const TEST_MESSAGES = {
 };
 
 export const SMS_MESSAGES = {
-  welcome: (schoolName) => `Welcome to Trends CORE V1.0! Your school ${schoolName} is set up. Log in to your dashboard to get started.`,
+  welcome: (schoolName) => `Welcome to ${PRODUCT_DISPLAY_NAME}! Your school ${schoolName} is set up. Log in to your dashboard to get started.`,
 
   assessmentReport: {
     header: (schoolName) => `FROM ${schoolName}`,
@@ -66,7 +74,7 @@ TOTAL MARKS: ${totalMarks || 0} / ${maxPossibleMarks || 0}`)
   },
 
   otp: (otpCode, expiryMinutes = 10) =>
-    `Your Trends CORE V1.0 login OTP is: ${otpCode}. Valid for ${expiryMinutes} minutes. Do not share this code.`,
+    `Your ${PRODUCT_DISPLAY_NAME} login OTP is: ${otpCode}. Valid for ${expiryMinutes} minutes. Do not share this code.`,
 
   birthday: {
     standard: (learnerName, schoolName, gradeName, ageOrdinal, bdayDate) =>
@@ -78,11 +86,11 @@ TOTAL MARKS: ${totalMarks || 0} / ${maxPossibleMarks || 0}`)
 
 export const EMAIL_TEMPLATES = {
   welcome: {
-    subject: 'Welcome to Trends CORE V1.0!',
+    subject: `Welcome to ${PRODUCT_DISPLAY_NAME}!`,
     preheader: 'Your school is set up and ready to go'
   },
   onboarding: {
-    subject: 'Get Started with Trends CORE V1.0',
+    subject: `Get Started with ${PRODUCT_DISPLAY_NAME}`,
     preheader: 'Your onboarding guide is here'
   },
   assessmentReport: {
@@ -139,11 +147,11 @@ export const SUCCESS_MESSAGES = {
 
 // Brand/Organization Info
 export const BRAND = {
-  name: 'Trends CORE V1.0',
-  email: import.meta.env.VITE_BRAND_EMAIL || 'hello@zawadisms.com',
+  name: PRODUCT_DISPLAY_NAME,
+  email: import.meta.env.VITE_BRAND_EMAIL || PRODUCT_BRAND_EMAIL,
   phone: import.meta.env.VITE_BRAND_PHONE || '+254 712 345 678',
-  website: import.meta.env.VITE_BRAND_WEBSITE || 'zawadisms.com',
-  logo: import.meta.env.VITE_BRAND_LOGO || 'https://zawadisms.com/logo.png',
-  displayName: 'School Academy',
+  website: import.meta.env.VITE_BRAND_WEBSITE || PRODUCT_WEBSITE,
+  logo: import.meta.env.VITE_BRAND_LOGO || PRODUCT_LOGO_URL,
+  displayName: PRODUCT_DISPLAY_NAME,
   tagline: 'Advanced School Management System'
 };

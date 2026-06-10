@@ -4,11 +4,20 @@
  * used across the backend services
  */
 
+import {
+  PRODUCT_APP_URL,
+  PRODUCT_BRAND_EMAIL,
+  PRODUCT_DISPLAY_NAME,
+  PRODUCT_LOGO_URL,
+  PRODUCT_NO_REPLY_EMAIL,
+  PRODUCT_WEBSITE,
+} from './productIdentity';
+
 export const COMMUNICATION_CONFIG = {
   // Email Provider Defaults
   email: {
-    fromEmail: process.env.EMAIL_FROM || 'noreply@school-academy.co.ke',
-    fromName: process.env.EMAIL_FROM_NAME || 'School Academy',
+    fromEmail: PRODUCT_NO_REPLY_EMAIL,
+    fromName: process.env.EMAIL_FROM_NAME || PRODUCT_DISPLAY_NAME,
     provider: process.env.EMAIL_PROVIDER || 'resend'
   },
 
@@ -21,14 +30,14 @@ export const COMMUNICATION_CONFIG = {
 
   // Frontend Configuration
   frontend: {
-    url: process.env.FRONTEND_URL || 'https://school-academy.app'
+    url: process.env.FRONTEND_URL || PRODUCT_APP_URL
   }
 };
 
 // SMS Message Templates
 export const SMS_MESSAGES = {
   welcome: (schoolName: string): string =>
-    `Welcome to Trends CORE V1.0! Your school ${schoolName} is set up. Log in to your dashboard to get started.`,
+    `Welcome to ${PRODUCT_DISPLAY_NAME}! Your school ${schoolName} is set up. Log in to your dashboard to get started.`,
 
   assessmentReportHeader: (schoolName: string): string =>
     `FROM ${schoolName}`,
@@ -76,7 +85,7 @@ export const SMS_MESSAGES = {
   },
 
   otp: (otpCode: string, expiryMinutes: number = 10): string =>
-    `Your Trends CORE V1.0 login OTP is: ${otpCode}. Valid for ${expiryMinutes} minutes. Do not share this code.`,
+    `Your ${PRODUCT_DISPLAY_NAME} login OTP is: ${otpCode}. Valid for ${expiryMinutes} minutes. Do not share this code.`,
 
   birthdayStandard: (learnerName: string, schoolName: string, gradeName: string): string =>
     `Happy Birthday ${learnerName}! Best wishes from ${schoolName}. We are proud of your progress in ${gradeName}. Have a wonderful day!`,
@@ -127,23 +136,23 @@ export const SMS_MESSAGES = {
 export const EMAIL_MESSAGES = {
   welcome: {
     welcome: {
-      subject: (schoolName: string): string => `Welcome to ${schoolName} on Trends CORE V1.0!`,
+      subject: (schoolName: string): string => `Welcome to ${schoolName} on ${PRODUCT_DISPLAY_NAME}!`,
       preheader: 'Your school is set up and ready to go',
-      headingText: 'Welcome to Trends CORE V1.0!',
+      headingText: `Welcome to ${PRODUCT_DISPLAY_NAME}!`,
       mainText: (schoolName: string): string =>
-        `Congratulations! Your school, <strong>${schoolName}</strong>, has been successfully registered on Trends CORE V1.0.`
+        `Congratulations! Your school, <strong>${schoolName}</strong>, has been successfully registered on ${PRODUCT_DISPLAY_NAME}.`
     },
 
     onboarding: {
-      subject: 'Get Started with Trends CORE V1.0',
+      subject: `Get Started with ${PRODUCT_DISPLAY_NAME}`,
       preheader: 'Your onboarding guide is here',
       headingText: 'Welcome Aboard!',
       mainText: (schoolName: string): string =>
-        `Here's everything you need to know to get started with Trends CORE V1.0 at ${schoolName}.`
+        `Here's everything you need to know to get started with ${PRODUCT_DISPLAY_NAME} at ${schoolName}.`
     },
 
     footer: (schoolName: string, year: number): string =>
-      `&copy; ${year} ${schoolName} via Trends CORE V1.0. All rights reserved.<br/>You received this email because you signed up for an Trends CORE V1.0 account.`
+      `&copy; ${year} ${schoolName} via ${PRODUCT_DISPLAY_NAME}. All rights reserved.<br/>You received this email because you signed up for a ${PRODUCT_DISPLAY_NAME} account.`
   }
 };
 
@@ -209,12 +218,12 @@ export const SUCCESS_MESSAGES = {
 
 // Brand Information
 export const BRAND = {
-  name: 'Trends CORE V1.0',
-  email: process.env.BRAND_EMAIL || 'hello@school-academy.app',
+  name: PRODUCT_DISPLAY_NAME,
+  email: PRODUCT_BRAND_EMAIL,
   phone: process.env.BRAND_PHONE || '+254700000000',
-  website: process.env.BRAND_WEBSITE || 'school-academy.app',
-  logo: process.env.BRAND_LOGO_URL || 'https://school-academy.app/logo.png',
-  displayName: 'School Academy',
+  website: PRODUCT_WEBSITE,
+  logo: PRODUCT_LOGO_URL,
+  displayName: PRODUCT_DISPLAY_NAME,
   tagline: 'Advanced School Management System'
 };
 

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Button, Text, Section, Heading, Hr, Row, Column } from '@react-email/components';
 import { EmailLayout } from './components/EmailLayout';
+import { PRODUCT_DISPLAY_NAME } from '../../config/productIdentity';
 
 interface OnboardingEmailProps {
     schoolName: string;
@@ -21,7 +22,7 @@ export const OnboardingEmail = ({
 }: OnboardingEmailProps) => {
     return (
         <EmailLayout
-            previewText={`Welcome to Trends CORE V1.0 - Setup ${schoolName}`}
+            previewText={`Welcome to ${PRODUCT_DISPLAY_NAME} - Setup ${schoolName}`}
             schoolName={schoolName}
             heading={customHeading || "Welcome to your new school Operating System"}
         >
@@ -34,7 +35,7 @@ export const OnboardingEmail = ({
             ) : (
                 <>
                     <Text style={text}>
-                        Thank you for choosing <strong>Trends CORE V1.0</strong>. We have set up a secure environment for <strong>{schoolName}</strong>.
+                        Thank you for choosing <strong>{PRODUCT_DISPLAY_NAME}</strong>. We have set up a secure environment for <strong>{schoolName}</strong>.
                         <br />
                         You are now ready to modernize your school operations with the most advanced CBC-native assessment and finance platform.
                     </Text>

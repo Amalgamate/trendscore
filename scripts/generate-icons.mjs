@@ -1,6 +1,6 @@
 /**
  * generate-icons.mjs
- * Generates all required app icons from public/logo-zawadi.png using sharp.
+ * Generates all required app icons from public/branding/logo.png using sharp.
  *
  * Run with:  node scripts/generate-icons.mjs
  *
@@ -51,7 +51,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT      = path.resolve(__dirname, '..');
-const SOURCE    = path.join(ROOT, 'public', 'logo-zawadi.png');
+const SOURCE    = path.join(ROOT, 'public', 'branding', 'logo.png');
 const PUBLIC    = path.join(ROOT, 'public');
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -186,8 +186,8 @@ function updateManifest() {
   console.log('\n📄 Updating manifest.json');
 
   const manifest = {
-    short_name: 'Trends CORE V1.0',
-    name: 'Trends CORE V1.0 - School Management & CBC Grading',
+    short_name: 'TrendScore',
+    name: 'TrendScore V1.0 - School Management & CBC Grading',
     description: 'Complete CBC School Management & Grading System for Kenyan schools',
     icons: [
       { src: 'favicon-16x16.png', sizes: '16x16', type: 'image/png' },
@@ -214,12 +214,12 @@ function updateManifest() {
 
 // ── main ──────────────────────────────────────────────────────────────────────
 async function main() {
-  console.log('🎨 Trends CORE V1.0 — Icon Generator');
+  console.log('🎨 TrendScore — Icon Generator');
   console.log(`   Source: ${SOURCE}`);
 
   if (!fs.existsSync(SOURCE)) {
     console.error(`\n❌ Source not found: ${SOURCE}`);
-    console.error('   Make sure public/logo-zawadi.png exists.');
+    console.error('   Make sure public/branding/logo.png exists.');
     process.exit(1);
   }
 

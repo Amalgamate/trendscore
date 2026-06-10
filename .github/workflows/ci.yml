@@ -1,4 +1,4 @@
-name: Trends CORE V1.0 CI Pipeline
+name: TrendScore CI Pipeline
 on: [push, pull_request]
 
 jobs:

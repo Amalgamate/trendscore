@@ -6,6 +6,7 @@
 import { v2 as cloudinary } from 'cloudinary';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
+import { PRODUCT_STORAGE_PREFIX } from '../config/productIdentity';
 
 // Cloudinary is configured via CLOUDINARY_URL in .env
 // No explicit config() call needed if CLOUDINARY_URL is present
@@ -33,7 +34,7 @@ class DocumentService {
         file: Express.Multer.File,
         options: UploadOptions = {}
     ): Promise<UploadResult> {
-        const { folder = 'zawadi/documents', maxSize, allowedFormats, resourceType = 'auto' } = options;
+        const { folder = `${PRODUCT_STORAGE_PREFIX}/documents`, maxSize, allowedFormats, resourceType = 'auto' } = options;
 
         if (maxSize && file.size > maxSize) {
             throw new Error(`File size exceeds maximum allowed size of ${maxSize} bytes`);

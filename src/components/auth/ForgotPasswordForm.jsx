@@ -5,6 +5,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../ui/card";
 import { cn } from "../../utils/cn";
+import { PRODUCT_DISPLAY_NAME } from '../../config/productIdentity';
 
 export default function ForgotPasswordForm({ onSwitchToLogin, brandingSettings }) {
   const [email, setEmail] = useState('');
@@ -128,7 +129,7 @@ export default function ForgotPasswordForm({ onSwitchToLogin, brandingSettings }
               />
             )}
             <CardTitle className="text-xl font-semibold tracking-tighter text-gray-900 uppercase">
-                {brandingSettings?.schoolName || 'Trends CORE V1.0'}
+                {brandingSettings?.schoolName || PRODUCT_DISPLAY_NAME}
             </CardTitle>
           </div>
           <CardTitle className="text-2xl font-medium text-gray-900 mt-2">Forgot Password?</CardTitle>

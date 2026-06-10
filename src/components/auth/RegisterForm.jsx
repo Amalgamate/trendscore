@@ -3,6 +3,7 @@ import { User, Mail, Lock, Eye, EyeOff, CheckCircle, Loader2, XCircle, Building2
 import { toast } from 'react-hot-toast';
 import { onboardingAPI, authAPI } from '../../services/api';
 import debounce from 'lodash/debounce';
+import { PRODUCT_DISPLAY_NAME } from '../../config/productIdentity';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -367,7 +368,7 @@ export default function RegisterForm({ onSwitchToLogin, onRegisterSuccess, brand
               />
             )}
             <CardTitle className="text-xl md:text-2xl font-semibold tracking-tighter text-gray-900 uppercase">
-                {brandingSettings?.schoolName || 'Trends CORE V1.0'}
+                {brandingSettings?.schoolName || PRODUCT_DISPLAY_NAME}
             </CardTitle>
           </div>
           <CardTitle className="text-2xl font-medium text-gray-900 mt-2">

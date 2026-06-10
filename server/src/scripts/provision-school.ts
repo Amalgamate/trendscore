@@ -1,4 +1,5 @@
 import prisma from '../config/database'
+import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity'
 
 async function purgeAllData() {
   console.log('🧹 Purging all existing data...');
@@ -33,7 +34,7 @@ async function main() {
 
   const school = await prisma.school.create({
     data: {
-      name: 'Trends CORE V1.0 Academy',
+      name: `${PRODUCT_DISPLAY_NAME} Academy`,
       admissionFormatType: 'NO_BRANCH',
       branchSeparator: '-',
       curriculumType: 'CBC_AND_EXAM',

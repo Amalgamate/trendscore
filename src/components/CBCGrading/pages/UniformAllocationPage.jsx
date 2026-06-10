@@ -320,13 +320,13 @@ const UniformAllocationPage = () => {
 
   // Allocations persisted in localStorage keyed by learner id
   const [allocations, setAllocations] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('zawadi_uniform_allocations') || '{}'); }
+    try { return JSON.parse(localStorage.getItem('trendscore_uniform_allocations') || '{}'); }
     catch { return {}; }
   });
 
   const persistAllocations = (updated) => {
     setAllocations(updated);
-    try { localStorage.setItem('zawadi_uniform_allocations', JSON.stringify(updated)); } catch {}
+    try { localStorage.setItem('trendscore_uniform_allocations', JSON.stringify(updated)); } catch {}
   };
 
   const showToast = (message, type = 'success') => {

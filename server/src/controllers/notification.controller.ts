@@ -9,6 +9,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/permissions.middleware';
 import { whatsappService } from '../services/whatsapp.service';
 import prisma from '../config/database';
+import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 import { ApiError } from '../utils/error.util';
 
 import logger from '../utils/logger';
@@ -414,7 +415,7 @@ export class NotificationController {
 
     // Get school name from School model or fallback
     const school = await prisma.school.findFirst();
-    const schoolName = school?.name || 'Zawadi Academy';
+    const schoolName = school?.name || PRODUCT_DISPLAY_NAME;
 
     const result = await whatsappService.sendAssessmentReport({
       learnerId,
@@ -543,7 +544,7 @@ export class NotificationController {
       throw new ApiError(400, 'Phone number is required');
     }
 
-    const testMsg = message || 'This is a test message from Zawadi JRN Academy. WhatsApp integration is working correctly!';
+    const testMsg = message || `This is a test message from ${PRODUCT_DISPLAY_NAME}. WhatsApp integration is working correctly!`;
 
     const result = await whatsappService.sendMessage({
       to: phoneNumber,

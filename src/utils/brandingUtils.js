@@ -2,6 +2,7 @@
  * Branding Utilities
  * Centralized source of truth for school branding and document layout
  */
+import { PRODUCT_BRAND_EMAIL, PRODUCT_DISPLAY_NAME, PRODUCT_NAME } from '../config/productIdentity';
 
 /**
  * Gets the current school branding from the authenticated user context/storage
@@ -14,7 +15,7 @@ export const getSchoolBranding = () => {
             const user = JSON.parse(userString);
             if (user.school) {
                 return {
-    name: user.school.name || 'Trends CORE V1.0',
+                    name: user.school.name || PRODUCT_DISPLAY_NAME,
                     phone: user.school.phone || '',
                     email: user.school.email || '',
                     address: user.school.address || '',
@@ -31,9 +32,9 @@ export const getSchoolBranding = () => {
 
     // Robust Defaults
     return {
-    name: 'Trends CORE V1.0',
+        name: PRODUCT_DISPLAY_NAME,
         phone: '+254712345000',
-        email: 'template@zawadisms.com',
+        email: PRODUCT_BRAND_EMAIL,
         address: 'Isiolo Central, Kenya',
         motto: 'Rise & Shine',
         logo: '/logo.png',
@@ -73,7 +74,7 @@ export const drawOfficialStamp = (doc, x, y, options = {}) => {
 
     doc.setFontSize(7);
     doc.setFont('helvetica', 'normal');
-    doc.text(`ZAWADI ${dept}`, x + 26, y + 20, { align: 'center' });
+    doc.text(`${PRODUCT_NAME.toUpperCase()} ${dept}`, x + 26, y + 20, { align: 'center' });
     doc.text(date, x + 26, y + 23, { align: 'center' });
 };
 
@@ -143,7 +144,7 @@ export const getOfficialStampHTML = (options = {}) => {
         <div style="border: 3px dashed ${color}; width: 180px; padding: 10px; border-radius: 8px; transform: rotate(-5deg); text-align: center; color: ${color}; font-family: 'Courier New', Courier, monospace; background: rgba(255,255,255,0.8);">
             <div style="font-size: 10px; font-weight: bold; border-bottom: 1px solid ${color}; padding-bottom: 2px; margin-bottom: 5px;">OFFICIAL SEAL</div>
             <div style="font-size: 24px; font-weight: 900; margin: 5px 0;">${status}</div>
-            <div style="font-size: 10px; font-weight: bold;">ZAWADI ${dept}</div>
+            <div style="font-size: 10px; font-weight: bold;">${PRODUCT_NAME.toUpperCase()} ${dept}</div>
             <div style="font-size: 12px; font-weight: bold; margin-top: 2px;">${date}</div>
         </div>
     `;

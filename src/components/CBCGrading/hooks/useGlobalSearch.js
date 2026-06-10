@@ -3,7 +3,7 @@ import { useNavigation, getFlattenedNav } from './useNavigation';
 import { learnerAPI } from '../../../services/api/learner.api';
 import { userAPI } from '../../../services/api/user.api';
 
-const RECENT_SEARCHES_KEY = 'zawadi_recent_searches';
+const RECENT_SEARCHES_KEY = 'trendscore_recent_searches';
 const MAX_RECENT_SEARCHES = 8;
 
 /**

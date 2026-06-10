@@ -21,6 +21,7 @@
 import { Response } from 'express';
 import { PaymentStatus } from '@prisma/client';
 import prisma from '../config/database';
+import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 import { ApiError } from '../utils/error.util';
 import { AuthRequest } from '../middleware/permissions.middleware';
 import { SmsService } from '../services/sms.service';
@@ -787,7 +788,7 @@ export class FeeController {
           }
 
           const school = await prisma.school.findFirst({ select: { name: true } });
-          const schoolName = school?.name || 'Zawadi Junior Academy';
+          const schoolName = school?.name || PRODUCT_DISPLAY_NAME;
 
           await Promise.allSettled([
             SmsService.sendSms(contactPhone, smsMessage),
@@ -833,7 +834,7 @@ export class FeeController {
         grade: learner.grade
       },
       school: {
-        name: school?.name || 'Zawadi Junior Academy',
+        name: school?.name || PRODUCT_DISPLAY_NAME,
         logoUrl: school?.logoUrl || null,
         phone: school?.phone || null,
         email: school?.email || null,

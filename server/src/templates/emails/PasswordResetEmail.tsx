@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Button, Text, Section, Heading, Hr } from '@react-email/components';
 import { EmailLayout } from './components/EmailLayout';
+import { PRODUCT_DISPLAY_NAME } from '../../config/productIdentity';
 
 interface PasswordResetEmailProps {
     schoolName: string;
@@ -15,7 +16,7 @@ export const PasswordResetEmail = ({
 }: PasswordResetEmailProps) => {
     return (
         <EmailLayout
-            previewText="Reset your Trends CORE V1.0 password"
+            previewText={`Reset your ${PRODUCT_DISPLAY_NAME} password`}
             schoolName={schoolName}
             heading="Password Reset Request"
         >
@@ -24,7 +25,7 @@ export const PasswordResetEmail = ({
             </Text>
 
             <Text style={text}>
-                We received a request to reset your password for your Trends CORE V1.0 account at <strong>{schoolName}</strong>.
+                We received a request to reset your password for your {PRODUCT_DISPLAY_NAME} account at <strong>{schoolName}</strong>.
                 If you didn't request this, you can safely ignore this email.
             </Text>
 

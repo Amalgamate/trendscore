@@ -1,6 +1,6 @@
 /**
  * ============================================================
- * ZAWADI SMS — Fee Migration Script  (Term 1, 2026)
+ * TrendScore — Fee Migration Script  (Term 1, 2026)
  * ============================================================
  * Single-tenant system — NO schoolId on FeeType / FeeStructure
  * / FeeInvoice / FeePayment / User (by design).
@@ -624,7 +624,7 @@ function printReport(rows: FeeRow[], phoneReport: PhoneReport[]) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 async function main() {
-  console.log('🚀 ZAWADI SMS — Fee Migration (Term 1, 2026)');
+  console.log('🚀 TrendScore — Fee Migration (Term 1, 2026)');
   console.log('='.repeat(60));
   console.log('   Single-tenant system — no schoolId filtering applied');
 

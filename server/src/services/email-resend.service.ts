@@ -4,6 +4,7 @@ import { decrypt } from '../utils/encryption.util';
 import { render } from '@react-email/render';
 import * as React from 'react';
 import { COMMUNICATION_CONFIG } from '../config/communication.messages';
+import { PRODUCT_DISPLAY_NAME, PRODUCT_SUPPORT_EMAIL } from '../config/productIdentity';
 
 // Templates
 import WelcomeEmail from '../templates/emails/WelcomeEmail';
@@ -60,7 +61,7 @@ export class EmailService {
         return {
           apiKey: decrypt(config.emailApiKey),
           from: config.emailFrom || this.defaultFrom,
-          fromName: config.emailFromName || 'Trends CORE V1.0',
+          fromName: config.emailFromName || PRODUCT_DISPLAY_NAME,
           emailTemplates: config.emailTemplates as any
         };
       }
@@ -76,7 +77,7 @@ export class EmailService {
     const config = await this.getGlobalConfig();
     const client = this.getResendClient(config?.apiKey);
     const fromEmail = config?.from || this.defaultFrom;
-    const fromName = config?.fromName || 'Trends CORE V1.0';
+    const fromName = config?.fromName || PRODUCT_DISPLAY_NAME;
 
     if (!client) {
       console.warn(`⚠️ Skipped Welcome Email to ${to}: No Resend API Key configured.`);
@@ -98,7 +99,7 @@ export class EmailService {
       const response = await client.emails.send({
         from: fromName ? `${fromName} <${fromEmail}>` : fromEmail,
         to: [to],
-        subject: `Welcome to ${schoolName} on Trends CORE V1.0!`,
+        subject: `Welcome to ${schoolName} on ${PRODUCT_DISPLAY_NAME}!`,
         html,
       });
 
@@ -118,7 +119,7 @@ export class EmailService {
     const config = await this.getGlobalConfig();
     const client = this.getResendClient(config?.apiKey);
     const fromEmail = config?.from || this.defaultFrom;
-    const fromName = config?.fromName || 'Trends CORE V1.0';
+    const fromName = config?.fromName || PRODUCT_DISPLAY_NAME;
 
     if (!client) {
       console.warn(`⚠️ Skipped Onboarding Email to ${to}: No Resend API Key configured.`);
@@ -160,7 +161,7 @@ export class EmailService {
     const config = await this.getGlobalConfig();
     const client = this.getResendClient(config?.apiKey);
     const fromEmail = config?.from || this.defaultFrom;
-    const fromName = config?.fromName || 'Trends CORE V1.0';
+    const fromName = config?.fromName || PRODUCT_DISPLAY_NAME;
 
     if (!client) {
       console.warn(`⚠️ Skipped Password Reset Email to ${to}: No Resend API Key configured.`);
@@ -197,7 +198,7 @@ export class EmailService {
   static async sendTicketCreated(data: TicketCreatedEmailData): Promise<void> {
     const client = this.getResendClient();
     const fromEmail = this.defaultFrom;
-    const toEmail = process.env.SUPPORT_EMAIL || 'support@zawadisms.com';
+    const toEmail = process.env.SUPPORT_EMAIL || PRODUCT_SUPPORT_EMAIL;
 
     if (!client) {
       console.warn(`⚠️ Skipped Ticket Notification: No Resend API Key configured.`);
@@ -217,7 +218,7 @@ export class EmailService {
       );
 
       const response = await client.emails.send({
-        from: `Trends CORE V1.0 Support <${fromEmail}>`,
+        from: `${PRODUCT_DISPLAY_NAME} Support <${fromEmail}>`,
         to: [toEmail],
         subject: `[${data.ticketPriority}] New Ticket: ${data.ticketSubject}`,
         html,

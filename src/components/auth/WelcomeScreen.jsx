@@ -1,5 +1,6 @@
 import React from 'react';
 import { CheckCircle, ArrowRight } from 'lucide-react';
+import { PRODUCT_DISPLAY_NAME } from '../../config/productIdentity';
 
 export default function WelcomeScreen({ user, onGetStarted, brandingSettings }) {
   return (
@@ -24,7 +25,7 @@ export default function WelcomeScreen({ user, onGetStarted, brandingSettings }) 
               />
             )}
             <span className="text-2xl sm:text-4xl lg:text-5xl font-semibold tracking-tighter text-white whitespace-nowrap uppercase">
-              {brandingSettings?.schoolName || 'Trends CORE V1.0'}
+              {brandingSettings?.schoolName || PRODUCT_DISPLAY_NAME}
             </span>
           </div>
         </div>
@@ -53,7 +54,7 @@ export default function WelcomeScreen({ user, onGetStarted, brandingSettings }) 
 
         {/* Footer */}
         <p className="text-white/40 text-sm mt-12 font-medium tracking-wide">
-          © {new Date().getFullYear()} {brandingSettings?.schoolName || 'Trends CORE V1.0'} • CBC Grading System
+          © {new Date().getFullYear()} {brandingSettings?.schoolName || PRODUCT_DISPLAY_NAME} • CBC Grading System
         </p>
       </div>
     </div>

@@ -18,6 +18,7 @@ import { refreshBus } from '../../../utils/refreshBus';
 import AccountSwitcherMenu from '../../common/AccountSwitcherMenu';
 import ChatPanel from '../../chat/ChatPanel';
 import '../../../styles/notifications.css';
+import { PRODUCT_DISPLAY_NAME } from '../../../config/productIdentity';
 
 const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate }) => {
   const [showNotifications, setShowNotifications] = useState(false);
@@ -487,7 +488,7 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
         <div className="hidden sm:block">
           <div className="flex items-center gap-2">
             <h1 className="text-base lg:text-lg font-semibold text-gray-900 leading-none tracking-tight uppercase">
-              {brandingSettings?.schoolName || 'Trends CORE V1.0'}
+              {brandingSettings?.schoolName || PRODUCT_DISPLAY_NAME}
             </h1>
             {canSwitchInstitutionLocal ? (
               <label

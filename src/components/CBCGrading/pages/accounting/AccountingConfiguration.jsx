@@ -264,7 +264,7 @@ const CategoriesTab = () => {
   // Categories are stored in localStorage so they persist without a dedicated
   // backend endpoint. When the backend exposes /accounting/categories this
   // can be swapped to an API call.
-  const STORAGE_KEY = 'zawadi_expense_categories';
+  const STORAGE_KEY = 'trendscore_expense_categories';
 
   const loadStored = () => {
     try {
@@ -426,8 +426,8 @@ const CategoriesTab = () => {
 // ─── TAB 3 — Expense Types ────────────────────────────────────────────────────
 
 const ExpenseTypesTab = () => {
-  const STORAGE_KEY_CATS  = 'zawadi_expense_categories';
-  const STORAGE_KEY_TYPES = 'zawadi_expense_types';
+  const STORAGE_KEY_CATS  = 'trendscore_expense_categories';
+  const STORAGE_KEY_TYPES = 'trendscore_expense_types';
 
   const loadCategories = () => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY_CATS)) ?? DEFAULT_CATEGORIES; }

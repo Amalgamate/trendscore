@@ -22,6 +22,7 @@ import {
     MemberStatus
 } from '@prisma/client';
 import prisma from '../config/database';
+import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 import { SmsService } from './sms.service';
 import { accountingService } from './accounting.service';
 import logger from '../utils/logger';
@@ -201,7 +202,7 @@ export class LibraryAutomationService {
         let failed    = 0;
 
         const school     = await prisma.school.findFirst({ select: { name: true } });
-        const schoolName = school?.name || 'Zawadi Library';
+        const schoolName = school?.name || `${PRODUCT_DISPLAY_NAME} Library`;
 
         for (const [, loans] of byMember) {
             const member = loans[0].member;

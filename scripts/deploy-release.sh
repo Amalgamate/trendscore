@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy Trends CORE to one or more isolated school instances.
+# Deploy TrendScore to one or more isolated school instances.
 # Intended to run ON THE DEPLOY SERVER (via SSH from GitHub Actions).
 #
 # Required env:

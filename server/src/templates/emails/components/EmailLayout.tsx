@@ -14,6 +14,7 @@ import {
     Row,
     Column,
 } from '@react-email/components';
+import { PRODUCT_APP_URL, PRODUCT_DISPLAY_NAME } from '../../../config/productIdentity';
 
 interface EmailLayoutProps {
     previewText: string;
@@ -24,9 +25,9 @@ interface EmailLayoutProps {
     children: React.ReactNode;
 }
 
-const baseUrl = process.env.FRONTEND_URL || 'https://zawadi-sms.netlify.app';
-const brandColor = '#520050'; // Trends CORE V1.0 Purple
-const tealColor = '#017E84'; // Trends CORE V1.0 Teal
+const baseUrl = process.env.FRONTEND_URL || PRODUCT_APP_URL;
+const brandColor = '#520050';
+const tealColor = '#017E84';
 
 // For testing purposes, we use a public icon that won't break in Gmail
 const publicLogoUrl = 'https://img.icons8.com/fluency-systems-filled/96/714B67/graduation-cap.png';
@@ -34,7 +35,7 @@ const publicLogoUrl = 'https://img.icons8.com/fluency-systems-filled/96/714B67/g
 export const EmailLayout = ({
     previewText,
     heading,
-    schoolName = 'Trends CORE V1.0 Platform',
+    schoolName = `${PRODUCT_DISPLAY_NAME} Platform`,
     children,
 }: EmailLayoutProps) => {
     return (
@@ -56,7 +57,7 @@ export const EmailLayout = ({
                                 />
                             </Column>
                             <Column>
-                                <Text style={brandName}>Trends CORE V1.0</Text>
+                                <Text style={brandName}>{PRODUCT_DISPLAY_NAME}</Text>
                             </Column>
                         </Row>
                     </Section>
@@ -72,7 +73,7 @@ export const EmailLayout = ({
                     {/* Footer */}
                     <Section style={footer}>
                         <Text style={footerText}>
-                            &copy; {new Date().getFullYear()} Trends CORE V1.0 Inc. All rights reserved.
+                            &copy; {new Date().getFullYear()} {PRODUCT_DISPLAY_NAME}. All rights reserved.
                         </Text>
                         <Text style={footerText}>
                             <Link href={`${baseUrl}/support`} style={link}>Help Center</Link> •{' '}

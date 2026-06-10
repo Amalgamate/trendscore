@@ -12,42 +12,42 @@ const prisma = new PrismaClient();
 const DEMO_PASSWORD = 'Demo@2024';
 
 const schools = [
-  { name: 'Zawadi CBC Academy', institutionType: 'PRIMARY_CBC' },
-  { name: 'Zawadi Secondary School', institutionType: 'SECONDARY' },
-  { name: 'Zawadi University', institutionType: 'TERTIARY' },
+  { name: 'TrendScore CBC Academy', institutionType: 'PRIMARY_CBC' },
+  { name: 'TrendScore Secondary School', institutionType: 'SECONDARY' },
+  { name: 'TrendScore University', institutionType: 'TERTIARY' },
 ];
 
 const demoUsers = [
   { 
-    email: 'admin@cbc-demo.zawadi.co.ke', 
+    email: 'admin@cbc-demo.trendscore.co.ke',
     firstName: 'CBC', 
     lastName: 'Admin', 
     role: 'ADMIN', 
     institutionType: 'PRIMARY_CBC' 
   },
   { 
-    email: 'admin@secondary-demo.zawadi.co.ke', 
+    email: 'admin@secondary-demo.trendscore.co.ke',
     firstName: 'Secondary', 
     lastName: 'Admin', 
     role: 'ADMIN', 
     institutionType: 'SECONDARY' 
   },
   { 
-    email: 'teacher@secondary-demo.zawadi.co.ke', 
+    email: 'teacher@secondary-demo.trendscore.co.ke',
     firstName: 'Secondary', 
     lastName: 'Teacher', 
     role: 'TEACHER', 
     institutionType: 'SECONDARY' 
   },
   { 
-    email: 'admin@tertiary-demo.zawadi.co.ke', 
+    email: 'admin@tertiary-demo.trendscore.co.ke',
     firstName: 'Tertiary', 
     lastName: 'Admin', 
     role: 'ADMIN', 
     institutionType: 'TERTIARY' 
   },
   { 
-    email: 'lecturer@tertiary-demo.zawadi.co.ke', 
+    email: 'lecturer@tertiary-demo.trendscore.co.ke',
     firstName: 'Tertiary', 
     lastName: 'Lecturer', 
     role: 'TEACHER', 

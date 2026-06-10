@@ -13,6 +13,7 @@ import makeWASocket, {
   Browsers,
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
+import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as pino from 'pino';
@@ -302,7 +303,7 @@ class WhatsAppService {
     }
 
     const averageText = data.averageScore ? `*Average:* ${data.averageScore}% (${data.overallGrade || ''})\n` : '';
-    const schoolName = data.schoolName || 'Zawadi Academy';
+    const schoolName = data.schoolName || PRODUCT_DISPLAY_NAME;
 
     const message = 
       `*${schoolName.toUpperCase()}*\n` +
@@ -312,7 +313,7 @@ class WhatsAppService {
       subjectsText +
       averageText +
       `Please find the detailed report attached below.\n\n` +
-      `_Sent via Trends CORE V1.0 System_`;
+      `_Sent via ${PRODUCT_DISPLAY_NAME} System_`;
 
     return this.sendMessage({
       to: data.parentPhone,
@@ -360,7 +361,7 @@ class WhatsAppService {
       `*Status:* ${params.status}\n` +
       `*Current Balance:* KES ${params.balance.toLocaleString()}\n\n` +
       `Thank you for your payment.\n` +
-      `_Trends CORE V1.0_`;
+      `_${PRODUCT_DISPLAY_NAME}_`;
 
     return this.sendMessage({ to: params.parentPhone, message });
   }

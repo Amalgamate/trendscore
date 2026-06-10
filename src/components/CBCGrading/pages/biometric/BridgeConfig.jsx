@@ -23,7 +23,7 @@ const BridgeConfig = () => {
     },
     {
       title: 'Install Bridge Service',
-      desc: 'Download and run the Zawadi Biometric Bridge installer on the workstation.',
+      desc: 'Download and run the TrendScore Biometric Bridge installer on the workstation.',
       icon: Download
     },
     {
@@ -42,7 +42,7 @@ const BridgeConfig = () => {
         </div>
         <h2 className="text-3xl font-semibold text-slate-900 uppercase tracking-tight">Interface Architecture</h2>
         <p className="text-sm text-slate-500 font-medium max-w-xl mx-auto">
-          The Zawadi Biometric System uses a secure bridge architecture to connect local hardware (USB Fingerprint Scanners) to our cloud infrastructure.
+          The TrendScore Biometric System uses a secure bridge architecture to connect local hardware (USB Fingerprint Scanners) to our cloud infrastructure.
         </p>
       </div>
 

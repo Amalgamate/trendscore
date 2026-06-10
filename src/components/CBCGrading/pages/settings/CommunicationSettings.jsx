@@ -12,6 +12,7 @@ import {
 import { useNotifications } from '../../hooks/useNotifications';
 import { communicationAPI, notificationAPI } from '../../../../services/api';
 import { COMMUNICATION_DEFAULTS, TEST_MESSAGES } from '../../../../constants/communicationMessages';
+import { PRODUCT_DISPLAY_NAME } from '../../../../config/productIdentity';
 import { QRCodeSVG } from 'qrcode.react';
 
 const CommunicationSettings = () => {
@@ -350,7 +351,7 @@ const CommunicationSettings = () => {
                   setTestMessage('');
                 } else {
                   setTestContact('');
-                  setTestMessage('This is a test message from Zawadi Junior Academy. Thank You');
+                  setTestMessage(`This is a test message from ${PRODUCT_DISPLAY_NAME}. Thank you.`);
                   const saved = localStorage.getItem('testContactPhone');
                   if (saved) {
                     setTestContact(saved);
@@ -407,7 +408,7 @@ const CommunicationSettings = () => {
                     value={emailSettings.fromName}
                     onChange={(e) => setEmailSettings({ ...emailSettings, fromName: e.target.value })}
                     className="w-full px-4 py-2 border rounded-lg"
-                    placeholder="Trends CORE V1.0 / Your School Name"
+                    placeholder={`${PRODUCT_DISPLAY_NAME} / Your School Name`}
                   />
                 </div>
               </div>
