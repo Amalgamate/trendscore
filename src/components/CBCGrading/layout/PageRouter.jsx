@@ -152,6 +152,8 @@ const ACADEMIC_INTELLIGENCE_PAGE_COPY = {
     eyebrow: 'Academic Intelligence',
     breadcrumbs: ['Assessment', 'Academic Intelligence', 'Analytics Dashboards'],
     description: 'A consolidated academic intelligence view is planned for performance, completion, intervention and trend signals.',
+    showPageHeader: false,
+    showFilters: false,
   },
   'academic-section-analysis': {
     title: 'Section Analysis',
@@ -307,6 +309,8 @@ const PageRouter = ({
         description={copy.description}
         breadcrumbs={copy.breadcrumbs}
         filters={copy.filters}
+        showPageHeader={copy.showPageHeader}
+        showFilters={copy.showFilters}
         onNavigate={handleNavigate}
       >
         {content}

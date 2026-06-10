@@ -155,6 +155,8 @@ const AcademicIntelligenceShell = ({
   breadcrumbs = [],
   filters,
   headerActions = null,
+  showPageHeader = true,
+  showFilters = true,
   onNavigate,
   children,
 }) => {
@@ -218,25 +220,28 @@ const AcademicIntelligenceShell = ({
             </select>
           </div>
 
-          <section className="border-b border-slate-200 bg-white px-3 py-3 text-center">
-            <div className="flex min-w-0 flex-wrap items-center justify-center gap-2 text-xs font-semibold text-slate-950">
-              {(breadcrumbs.length ? breadcrumbs : [eyebrow, title]).map((crumb, index, list) => (
-                <React.Fragment key={`${crumb}-${index}`}>
-                  <span className={index === list.length - 1 ? 'font-black uppercase tracking-[0.12em] text-indigo-800' : 'font-semibold'}>
-                    {crumb}
-                  </span>
-                  {index < list.length - 1 && <span className="font-black text-slate-900">•</span>}
-                </React.Fragment>
-              ))}
-            </div>
-            {description && (
-              <p className="mx-auto mt-1 max-w-3xl text-xs font-medium text-slate-500">
-                {description}
-              </p>
-            )}
-          </section>
+          {showPageHeader && (
+            <section className="border-b border-slate-200 bg-white px-3 py-3 text-center">
+              <div className="flex min-w-0 flex-wrap items-center justify-center gap-2 text-xs font-semibold text-slate-950">
+                {(breadcrumbs.length ? breadcrumbs : [eyebrow, title]).map((crumb, index, list) => (
+                  <React.Fragment key={`${crumb}-${index}`}>
+                    <span className={index === list.length - 1 ? 'font-black uppercase tracking-[0.12em] text-indigo-800' : 'font-semibold'}>
+                      {crumb}
+                    </span>
+                    {index < list.length - 1 && <span className="font-black text-slate-900">•</span>}
+                  </React.Fragment>
+                ))}
+              </div>
+              {description && (
+                <p className="mx-auto mt-1 max-w-3xl text-xs font-medium text-slate-500">
+                  {description}
+                </p>
+              )}
+            </section>
+          )}
 
-          <section className="overflow-x-auto border-b border-slate-200 bg-white px-3 py-3">
+          {showFilters && (
+            <section className="overflow-x-auto border-b border-slate-200 bg-white px-3 py-3">
             <div className="flex min-w-max items-center justify-center gap-4">
                 {visiblePageFilters.map((filter) => (
                   <label key={filter.key} htmlFor={`academic-filter-${filter.key}`} className="flex h-11 items-center border border-slate-300 bg-white px-4">
@@ -261,7 +266,8 @@ const AcademicIntelligenceShell = ({
                   </div>
                 )}
             </div>
-          </section>
+            </section>
+          )}
 
           <section aria-label={`${title} content`} className="min-w-0">
             {(analytics.loading || analytics.error) && (
