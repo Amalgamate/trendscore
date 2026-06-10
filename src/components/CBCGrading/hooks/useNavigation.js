@@ -151,9 +151,6 @@ export const allNavSections = [
                     { id: 'assess-mobile-dashboard',      label: 'Assessment Overview', path: 'assess-mobile-dashboard',      permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'assess-summative-assessment', label: 'Summative Assessments', path: 'assess-summative-assessment', permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'assess-summary-report',       label: 'Assessment Matrix', path: 'assess-summary-report',      permission: 'ACCESS_ASSESSMENT_MODULE' },
-                    { id: 'assess-grade-sheet',          label: 'Grade Sheet',       path: 'assess-summative-report',     params: { reportType: 'GRADE_REPORT' },   permission: 'ACCESS_ASSESSMENT_MODULE' },
-                    { id: 'assess-stream-sheet',         label: 'Stream Sheet',      path: 'assess-summative-report',     params: { reportType: 'STREAM_REPORT' },  permission: 'ACCESS_ASSESSMENT_MODULE' },
-                    { id: 'assess-learner-sheet',        label: 'Learner Sheet',     path: 'assess-summative-report',     params: { reportType: 'LEARNER_REPORT' }, permission: 'ACCESS_ASSESSMENT_MODULE' },
                 ]
             },
             {
@@ -229,6 +226,9 @@ export const allNavSections = [
                 type: 'group',
                 icon: FileText,
                 items: [
+                    { id: 'academic-grade-sheet',         label: 'Grade Sheet',       path: 'assess-summative-report',     params: { reportType: 'GRADE_REPORT' },   permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'academic-stream-sheet',        label: 'Stream Sheet',      path: 'assess-summative-report',     params: { reportType: 'STREAM_REPORT' },  permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'academic-learner-sheet',       label: 'Learner Sheet',     path: 'assess-summative-report',     params: { reportType: 'LEARNER_REPORT' }, permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'academic-report-cards',         label: 'Report Cards',         path: 'assess-termly-report',           permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'academic-print-center',         label: 'Print Center',         path: 'assess-print-center',            permission: 'ACCESS_ASSESSMENT_MODULE' },
                 ]
