@@ -421,13 +421,110 @@ const CommunicationSettings = () => {
       setTesting(false);
     }
   };
+  const renderAiSettingsPanel = () => (
+    <div className="space-y-6">
+      <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 transition-colors duration-300">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-purple-50 text-purple-700">
+              <Sparkles size={22} />
+            </div>
+            <div>
+              <h3 className="text-lg font-medium">AI Assistant Settings</h3>
+              <p className="text-sm text-gray-500">
+                Configure OpenAI for email template drafting and future AI-assisted communication tools.
+              </p>
+            </div>
+          </div>
+          <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${aiSettings.hasApiKey ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+            {aiSettings.hasApiKey ? <CheckCircle size={14} /> : <Key size={14} />}
+            {aiSettings.hasApiKey ? `Configured via ${aiSettings.source === 'environment' ? 'server env' : 'settings'}` : 'Not configured'}
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+            <input
+              type="checkbox"
+              checked={aiSettings.enabled}
+              onChange={(e) => setAiSettings({ ...aiSettings, enabled: e.target.checked })}
+              className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+            />
+            <span className="text-sm font-semibold text-gray-700">Enable AI drafting</span>
+          </label>
+
+          <div>
+            <label className="block text-sm font-semibold mb-2">Provider</label>
+            <select
+              value={aiSettings.provider}
+              onChange={(e) => setAiSettings({ ...aiSettings, provider: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg"
+            >
+              <option value="openai">OpenAI</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold mb-2">OpenAI API Key</label>
+            <input
+              type="password"
+              value={aiSettings.apiKey}
+              onChange={(e) => setAiSettings({ ...aiSettings, apiKey: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg font-mono text-sm"
+              placeholder={aiSettings.hasApiKey ? 'Saved - enter a new key to replace' : 'sk-...'}
+              autoComplete="off"
+            />
+            <p className="text-xs text-gray-500 mt-1">The key is write-only and encrypted on the server. It is never shown back in the browser.</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold mb-2">Model</label>
+            <input
+              type="text"
+              value={aiSettings.model}
+              onChange={(e) => setAiSettings({ ...aiSettings, model: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg"
+              placeholder="gpt-4o-mini"
+            />
+          </div>
+
+          <div className="lg:col-span-2">
+            <label className="block text-sm font-semibold mb-2">API URL</label>
+            <input
+              type="url"
+              value={aiSettings.apiUrl}
+              onChange={(e) => setAiSettings({ ...aiSettings, apiUrl: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg"
+              placeholder="https://api.openai.com/v1/chat/completions"
+            />
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => handleSave('AI')}
+            disabled={loading}
+            className="flex items-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? <Loader size={20} className="animate-spin" /> : <Save size={20} />}
+            {loading ? 'Saving...' : 'Save AI Settings'}
+          </button>
+          <p className="text-xs text-gray-500">
+            Email template AI drafting will use this saved key first, then fall back to server environment variables.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
   // Render Logic
   return (
     <div className="space-y-6">
       {/* Tabs */}
       <div className="bg-white rounded-xl shadow-md border border-gray-200 transition-colors duration-300">
         <div className="border-b border-gray-200 flex overflow-x-auto">
-          {['email', 'sms', 'whatsapp', 'voip'].map((tab) => (
+          {['email', 'sms', 'whatsapp', 'voip', 'ai'].map((tab) => (
             <button
               key={tab}
               onClick={() => {
@@ -439,7 +536,7 @@ const CommunicationSettings = () => {
                   setTestEmailTemplate('welcome');
                   const saved = localStorage.getItem('testContactEmail');
                   if (saved) setTestContact(saved);
-                } else if (tab === 'voip') {
+                } else if (tab === 'voip' || tab === 'ai') {
                   setTestContact('');
                   setTestMessage('');
                 } else {
@@ -462,11 +559,14 @@ const CommunicationSettings = () => {
               {tab === 'sms' && <MessageSquare size={20} />}
               {tab === 'whatsapp' && <Phone size={20} />}
               {tab === 'voip' && <Phone size={20} />}
-              <span className="whitespace-nowrap">{tab.charAt(0).toUpperCase() + tab.slice(1)}</span>
+              {tab === 'ai' && <Sparkles size={20} />}
+              <span className="whitespace-nowrap">{tab === 'ai' ? 'AI' : tab.charAt(0).toUpperCase() + tab.slice(1)}</span>
             </button>
           ))}
         </div>
       </div>
+
+      {activeTab === 'ai' && renderAiSettingsPanel()}
 
       {/* EMAIL TAB */}
       {activeTab === 'email' && (
@@ -1247,101 +1347,9 @@ const CommunicationSettings = () => {
                   <p className="mt-3 text-sm text-gray-500 max-w-xl mx-auto">We are preparing the VoIP integration. You can return later to configure SIP providers, calling numbers, and voice communication routing.</p>
                 </div>
               </div>
-
-              <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 transition-colors duration-300">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-purple-50 text-purple-700">
-                      <Sparkles size={22} />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-medium">AI Assistant Settings</h3>
-                      <p className="text-sm text-gray-500">
-                        Configure OpenAI for email template drafting and future AI-assisted communication tools.
-                      </p>
-                    </div>
-                  </div>
-                  <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${aiSettings.hasApiKey ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
-                    {aiSettings.hasApiKey ? <CheckCircle size={14} /> : <Key size={14} />}
-                    {aiSettings.hasApiKey ? `Configured via ${aiSettings.source === 'environment' ? 'server env' : 'settings'}` : 'Not configured'}
-                  </div>
-                </div>
-
-                <div className="mt-6 grid gap-4 lg:grid-cols-2">
-                  <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-                    <input
-                      type="checkbox"
-                      checked={aiSettings.enabled}
-                      onChange={(e) => setAiSettings({ ...aiSettings, enabled: e.target.checked })}
-                      className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                    />
-                    <span className="text-sm font-semibold text-gray-700">Enable AI drafting</span>
-                  </label>
-
-                  <div>
-                    <label className="block text-sm font-semibold mb-2">Provider</label>
-                    <select
-                      value={aiSettings.provider}
-                      onChange={(e) => setAiSettings({ ...aiSettings, provider: e.target.value })}
-                      className="w-full px-4 py-2 border rounded-lg"
-                    >
-                      <option value="openai">OpenAI</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold mb-2">OpenAI API Key</label>
-                    <input
-                      type="password"
-                      value={aiSettings.apiKey}
-                      onChange={(e) => setAiSettings({ ...aiSettings, apiKey: e.target.value })}
-                      className="w-full px-4 py-2 border rounded-lg font-mono text-sm"
-                      placeholder={aiSettings.hasApiKey ? 'Saved - enter a new key to replace' : 'sk-...'}
-                      autoComplete="off"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">The key is write-only and encrypted on the server. It is never shown back in the browser.</p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold mb-2">Model</label>
-                    <input
-                      type="text"
-                      value={aiSettings.model}
-                      onChange={(e) => setAiSettings({ ...aiSettings, model: e.target.value })}
-                      className="w-full px-4 py-2 border rounded-lg"
-                      placeholder="gpt-4o-mini"
-                    />
-                  </div>
-
-                  <div className="lg:col-span-2">
-                    <label className="block text-sm font-semibold mb-2">API URL</label>
-                    <input
-                      type="url"
-                      value={aiSettings.apiUrl}
-                      onChange={(e) => setAiSettings({ ...aiSettings, apiUrl: e.target.value })}
-                      className="w-full px-4 py-2 border rounded-lg"
-                      placeholder="https://api.openai.com/v1/chat/completions"
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-6 flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => handleSave('AI')}
-                    disabled={loading}
-                    className="flex items-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {loading ? <Loader size={20} className="animate-spin" /> : <Save size={20} />}
-                    {loading ? 'Saving...' : 'Save AI Settings'}
-                  </button>
-                  <p className="text-xs text-gray-500">
-                    Email template AI drafting will use this saved key first, then fall back to server environment variables.
-                  </p>
-                </div>
-              </div>
             </div>
           )}
+
         </div>
       )}
     </div>
