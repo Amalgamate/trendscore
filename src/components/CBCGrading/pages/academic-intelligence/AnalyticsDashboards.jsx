@@ -1,15 +1,18 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowRight,
+  AlertTriangle,
   BarChart3,
   Check,
   ClipboardList,
   GraduationCap,
+  RefreshCw,
   ShieldCheck,
   Target,
+  TrendingDown,
   TrendingUp,
   Users,
 } from 'lucide-react';
+import { dashboardAPI } from '../../../../services/api';
 import {
   filterLearnersByAcademicFilters,
   getLearnerGrade,
@@ -19,7 +22,6 @@ import {
   normalizeGender,
   uniqueCount,
 } from './SimpleTablePage';
-import { formatScore } from './useAcademicAnalytics';
 
 const SECTION_LABELS = {
   all: 'All Sections',
@@ -31,132 +33,181 @@ const SECTION_LABELS = {
 };
 
 const getSectionLabel = (key) => SECTION_LABELS[key] || key || 'All Sections';
+const formatPercent = (value) => `${Number(value || 0).toFixed(Number(value || 0) % 1 ? 1 : 0)}%`;
+const formatScore = (value) => (value === null || value === undefined ? 'N/A' : `${Number(value).toFixed(1)}%`);
 
-const getPercent = (value, total) => (total > 0 ? Math.round((value / total) * 1000) / 10 : 0);
-
-const Sparkline = ({ color = '#6d5dfc', values = [7, 10, 9, 14, 12, 18, 15] }) => {
-  const max = Math.max(...values, 1);
-  const points = values.map((value, index) => {
-    const x = (index / Math.max(values.length - 1, 1)) * 100;
-    const y = 34 - (value / max) * 26;
-    return `${x},${y}`;
-  }).join(' ');
-
-  return (
-    <svg viewBox="0 0 100 40" className="h-10 w-24" aria-hidden="true">
-      <polyline points={points} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-};
-
-const StatCard = ({ icon: Icon, title, value, helper, color, bg, sparkValues }) => (
-  <div className="flex min-h-[96px] items-center gap-4 rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
-    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg" style={{ color, backgroundColor: bg }}>
-      <Icon size={24} strokeWidth={2.4} />
-    </div>
-    <div className="min-w-0 flex-1">
-      <p className="text-[11px] font-black text-slate-500">{title}</p>
-      <p className="mt-1 text-2xl font-black leading-none text-slate-950">{value}</p>
-      <p className="mt-1 truncate text-xs font-semibold text-slate-500">{helper}</p>
-    </div>
-    <Sparkline color={color} values={sparkValues} />
+const ProgressBar = ({ value = 0, tone = 'bg-violet-600', track = 'bg-slate-100' }) => (
+  <div className={`h-2 w-full rounded-full ${track}`}>
+    <div className={`h-2 rounded-full ${tone}`} style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
   </div>
 );
 
-const Donut = ({ boys, girls }) => {
-  const total = boys + girls;
-  const boysPercent = getPercent(boys, total);
-  const girlsPercent = getPercent(girls, total);
-
-  return (
-    <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
-      <div
-        className="relative flex h-40 w-40 items-center justify-center rounded-full"
-        style={{ background: `conic-gradient(#3678f5 0 ${boysPercent}%, #f044a7 ${boysPercent}% ${boysPercent + girlsPercent}%, #e5e7eb ${boysPercent + girlsPercent}% 100%)` }}
-      >
-        <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full bg-white shadow-inner">
-          <span className="text-2xl font-black text-slate-950">{total}</span>
-          <span className="text-xs font-semibold text-slate-500">Total</span>
-        </div>
+const StatCard = ({ icon: Icon, title, value, helper, cardClass, progress, tone }) => (
+  <div className={`relative min-h-[128px] overflow-hidden p-5 text-white shadow-sm ${cardClass}`}>
+    <div className="relative z-10 flex items-start justify-between gap-4">
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-bold uppercase leading-tight tracking-[0.18em] text-white/70">{title}</p>
+        <p className="mt-3 text-4xl font-black leading-none tracking-tight text-white">{value}</p>
+        <p className="mt-2 truncate text-[11px] font-semibold leading-snug text-white/70">{helper}</p>
       </div>
-      <div className="min-w-[150px] space-y-3 text-sm">
-        <div className="flex items-center justify-between gap-4">
-          <span className="flex items-center gap-2 font-bold text-slate-700"><i className="h-3 w-3 rounded-full bg-[#3678f5]" /> Boys</span>
-          <span className="font-black text-slate-900">{boys} <span className="ml-2 text-xs text-slate-500">{boysPercent}%</span></span>
-        </div>
-        <div className="flex items-center justify-between gap-4">
-          <span className="flex items-center gap-2 font-bold text-slate-700"><i className="h-3 w-3 rounded-full bg-[#f044a7]" /> Girls</span>
-          <span className="font-black text-slate-900">{girls} <span className="ml-2 text-xs text-slate-500">{girlsPercent}%</span></span>
-        </div>
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-white/30 bg-white/20 text-white/90">
+        <Icon size={19} strokeWidth={2.4} />
       </div>
     </div>
-  );
-};
-
-const TrendChart = ({ total }) => {
-  const points = [0.38, 0.48, 0.58, 0.72, 0.84, 1].map((factor) => Math.max(1, Math.round(total * factor)));
-  const max = Math.max(...points, 1);
-  const svgPoints = points.map((value, index) => {
-    const x = 42 + index * 92;
-    const y = 210 - (value / max) * 150;
-    return { x, y, value };
-  });
-  const line = svgPoints.map((point) => `${point.x},${point.y}`).join(' ');
-  const fill = `42,210 ${line} ${svgPoints[svgPoints.length - 1].x},210`;
-
-  return (
-    <svg viewBox="0 0 560 240" className="h-[260px] w-full" aria-label="Learner trend chart">
-      {[0, 1, 2, 3].map((lineIndex) => (
-        <line key={lineIndex} x1="42" x2="520" y1={60 + lineIndex * 45} y2={60 + lineIndex * 45} stroke="#e5e7eb" strokeDasharray="4 5" />
-      ))}
-      <polygon points={fill} fill="url(#trendFill)" />
-      <polyline points={line} fill="none" stroke="#6d4dfc" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-      {svgPoints.map((point, index) => (
-        <g key={index}>
-          <circle cx={point.x} cy={point.y} r="6" fill="#fff" stroke="#6d4dfc" strokeWidth="4" />
-          <text x={point.x} y={point.y - 14} textAnchor="middle" className="fill-slate-800 text-[12px] font-bold">{point.value}</text>
-          <text x={point.x} y="228" textAnchor="middle" className="fill-slate-500 text-[12px] font-bold">Week {index + 1}</text>
-        </g>
-      ))}
-      <defs>
-        <linearGradient id="trendFill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.25" />
-          <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.02" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
-};
-
-const EmptyAssessment = ({ scoredRecords }) => (
-  <div className="flex min-h-[260px] flex-col items-center justify-center text-center">
-    <div className="relative mb-4 flex h-28 w-28 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
-      <ClipboardList size={52} strokeWidth={1.8} />
-      <div className="absolute bottom-5 right-4 rounded-full bg-white p-1 text-indigo-600 shadow-sm">
-        <BarChart3 size={26} />
+    {progress !== undefined && (
+      <div className="relative z-10 mt-5">
+        <ProgressBar value={progress} tone={tone} track="bg-white/25" />
       </div>
+    )}
+    <div className="pointer-events-none absolute -bottom-5 -right-5 text-white/10">
+      <Icon size={96} strokeWidth={1} />
     </div>
-    <p className="text-base font-black text-slate-950">{scoredRecords ? `${scoredRecords} scored results` : 'No scored results'}</p>
-    <p className="mt-1 max-w-[220px] text-xs font-semibold text-slate-500">
-      {scoredRecords ? 'Assessment data is available for selected filters.' : 'No assessment data available for selected filters.'}
-    </p>
+  </div>
+);
+
+const SectionHeader = ({ title, helper, action }) => (
+  <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h2 className="text-base font-black text-slate-950">{title}</h2>
+      <p className="mt-1 text-xs font-semibold text-slate-500">{helper}</p>
+    </div>
+    {action}
+  </div>
+);
+
+const EmptyState = ({ title, helper, icon: Icon = ClipboardList }) => (
+  <div className="flex min-h-[220px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/70 p-6 text-center">
+    <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-lg bg-white text-slate-400 shadow-sm">
+      <Icon size={28} />
+    </div>
+    <p className="text-sm font-black text-slate-950">{title}</p>
+    <p className="mt-1 max-w-[260px] text-xs font-semibold text-slate-500">{helper}</p>
   </div>
 );
 
 const Insight = ({ icon: Icon, title, helper, tone }) => (
-  <div className="flex min-w-[190px] flex-1 items-center gap-3 border-r border-slate-200 px-4 py-2 last:border-r-0">
+  <div className="flex min-w-[210px] flex-1 items-center gap-3 border-r border-slate-200 px-4 py-2 last:border-r-0">
     <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${tone}`}>
       <Icon size={20} />
     </div>
     <div className="min-w-0">
-      <p className="text-xs font-black text-slate-950">{title}</p>
+      <p className="truncate text-xs font-black text-slate-950">{title}</p>
       <p className="truncate text-[11px] font-semibold text-slate-500">{helper}</p>
     </div>
   </div>
 );
 
+const StreamPerformance = ({ rows = [] }) => {
+  const visible = rows.filter((row) => row.learners > 0).slice(0, 7);
+  if (!visible.length) return <EmptyState title="No stream performance yet" helper="Scores will appear here once marks are entered." icon={BarChart3} />;
+
+  return (
+    <div className="space-y-3">
+      {visible.map((row) => (
+        <div key={row.label} className="rounded-lg border border-slate-100 p-3">
+          <div className="mb-2 flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-black text-slate-950">{row.label}</p>
+              <p className="text-xs font-semibold text-slate-500">{row.learners} learners - {row.atRisk} need attention</p>
+            </div>
+            <span className="text-sm font-black text-slate-900">{formatScore(row.mean)}</span>
+          </div>
+          <ProgressBar value={row.mean || 0} tone={(row.mean || 0) >= 60 ? 'bg-emerald-600' : (row.mean || 0) >= 50 ? 'bg-blue-600' : 'bg-orange-500'} />
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const SubjectTable = ({ rows = [] }) => {
+  const visible = rows.filter((row) => row.scored > 0 || row.expected > 0).slice(0, 8);
+  if (!visible.length) return <EmptyState title="No subject evidence" helper="Create tests and record marks to compare learning areas." icon={ClipboardList} />;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-left text-xs">
+        <thead>
+          <tr className="border-b border-slate-100 text-[11px] font-black uppercase tracking-[0.08em] text-slate-500">
+            <th className="py-2 pr-3">Subject</th>
+            <th className="py-2 pr-3">Mean</th>
+            <th className="py-2 pr-3">Scored</th>
+            <th className="py-2 pr-3">Coverage</th>
+          </tr>
+        </thead>
+        <tbody>
+          {visible.map((row) => (
+            <tr key={row.subject} className="border-b border-slate-50 last:border-0">
+              <td className="max-w-[220px] truncate py-3 pr-3 font-black text-slate-950">{row.subject}</td>
+              <td className="py-3 pr-3 font-semibold text-slate-700">{formatScore(row.mean)}</td>
+              <td className="py-3 pr-3 font-semibold text-slate-600">{row.scored}/{row.expected}</td>
+              <td className="min-w-[170px] py-3 pr-3">
+                <div className="flex items-center gap-3">
+                  <ProgressBar value={row.completionRate} tone={row.pending ? 'bg-orange-500' : 'bg-emerald-600'} />
+                  <span className="w-12 text-right font-black text-slate-700">{formatPercent(row.completionRate)}</span>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+const AchievementDistribution = ({ rows = [] }) => {
+  if (!rows.length) return <EmptyState title="No achievement bands" helper="Bands appear after scored records are available." icon={Target} />;
+
+  return (
+    <div className="space-y-3">
+      {rows.slice(0, 7).map((row) => (
+        <div key={row.label}>
+          <div className="mb-1 flex items-center justify-between gap-3 text-xs">
+            <span className="font-black text-slate-900">{row.label}</span>
+            <span className="font-semibold text-slate-500">{row.count} records</span>
+          </div>
+          <ProgressBar value={row.rate} tone="bg-violet-600" />
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const AtRiskLearners = ({ rows = [] }) => {
+  if (!rows.length) return <EmptyState title="No risk list for this view" helper="Learners with low means or missing entries will appear here." icon={ShieldCheck} />;
+
+  return (
+    <div className="space-y-2">
+      {rows.slice(0, 6).map((row) => (
+        <div key={row.learnerId} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 px-3 py-2">
+          <div className="min-w-0">
+            <p className="truncate text-xs font-black text-slate-950">{row.name}</p>
+            <p className="text-[11px] font-semibold text-slate-500">{row.grade} {row.stream || ''} - {row.admissionNumber}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs font-black text-slate-900">{formatScore(row.mean)}</p>
+            <p className="text-[11px] font-semibold text-orange-600">{row.missing} missing</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const AnalyticsDashboards = ({ learners = [], academicFilters = {}, analytics }) => {
-  const dashboard = useMemo(() => {
+  const [dashboard, setDashboard] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const queryFilters = useMemo(() => ({
+    academicYear: academicFilters.academicYear,
+    term: academicFilters.term,
+    section: academicFilters.section,
+    grade: academicFilters.grade,
+    stream: academicFilters.stream,
+    testType: academicFilters.testType,
+  }), [academicFilters]);
+
+  const fallback = useMemo(() => {
     const learnerList = analytics?.learners?.length
       ? analytics.learners.map((learner) => learner.raw || learner)
       : filterLearnersByAcademicFilters(learners, academicFilters);
@@ -164,12 +215,7 @@ const AnalyticsDashboards = ({ learners = [], academicFilters = {}, analytics })
     const girls = learnerList.filter((learner) => normalizeGender(learner.gender) === 'Girls').length;
     const streams = uniqueCount(learnerList.map(getLearnerStream));
     const gradeRows = groupLearners(learnerList, getLearnerGrade);
-    const largestGrade = gradeRows.slice().sort((a, b) => b.count - a.count)[0];
     const sections = uniqueCount(learnerList.map(getLearnerSection));
-    const sectionLabel = getSectionLabel(academicFilters.section || 'all');
-    const summary = analytics?.summary || {};
-    const scoredRecords = summary.scoredRecords || 0;
-    const mean = summary.mean;
 
     return {
       learnerList,
@@ -177,134 +223,154 @@ const AnalyticsDashboards = ({ learners = [], academicFilters = {}, analytics })
       girls,
       streams,
       gradeRows,
-      largestGrade,
       sections,
-      sectionLabel,
-      scoredRecords,
-      mean,
-      subjectCount: summary.subjectCount || 0,
-      trendGrowth: learnerList.length > 1 ? '+ 28.6%' : '+ 0%',
+      largestGrade: gradeRows.slice().sort((a, b) => b.count - a.count)[0],
+      summary: analytics?.summary || {},
     };
   }, [academicFilters, analytics, learners]);
 
+  const loadDashboard = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await dashboardAPI.getAcademicIntelligence(queryFilters);
+      setDashboard(response?.data || null);
+    } catch (err) {
+      setError(err?.message || 'Failed to load academic intelligence');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDashboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryFilters.academicYear, queryFilters.term, queryFilters.section, queryFilters.grade, queryFilters.stream, queryFilters.testType]);
+
+  const summary = dashboard?.summary || {};
+  const scoredRecords = summary.scoredEntries ?? fallback.summary.scoredRecords ?? 0;
+  const mean = summary.mean ?? fallback.summary.mean;
+  const subjectRows = dashboard?.subjectRows || [];
+  const streamRows = dashboard?.streamRows || [];
+  const achievementRows = dashboard?.achievementRows || [];
+  const atRiskRows = dashboard?.atRiskLearners || [];
+  const sectionLabel = getSectionLabel(academicFilters.section || 'all');
+  const highestSubject = summary.highestSubject;
+  const lowestSubject = summary.lowestSubject;
+
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm">
+        <div>
+          <h2 className="text-sm font-black text-slate-950">Academic Intelligence Overview</h2>
+          <p className="mt-1 text-xs font-semibold text-slate-500">Performance, coverage, achievement bands, and learner risk from scored report data.</p>
+        </div>
+        <button type="button" onClick={loadDashboard} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 hover:border-violet-300 hover:text-violet-700">
+          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          Refresh
+        </button>
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+          <AlertTriangle size={18} />
+          {error}
+        </div>
+      )}
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
           icon={Users}
-          title="Total Learners"
-          value={dashboard.learnerList.length}
-          helper={`${dashboard.sections || 0} section${dashboard.sections === 1 ? '' : 's'} - ${dashboard.streams || 0} stream${dashboard.streams === 1 ? '' : 's'}`}
-          color="#7c3aed"
-          bg="#f1e9ff"
-          sparkValues={[8, 11, 10, 16, 15, 21, 18]}
+          title="Learners in Scope"
+          value={summary.learners ?? fallback.learnerList.length}
+          helper={`${fallback.sections || 0} sections - ${fallback.streams || 0} streams`}
+          cardClass="bg-[#172554]"
         />
         <StatCard
-          icon={Users}
-          title="Gender Records"
-          value={dashboard.boys + dashboard.girls}
-          helper={`${dashboard.boys} boys - ${dashboard.girls} girls`}
-          color="#3678f5"
-          bg="#e8f0ff"
-          sparkValues={[6, 8, 8, 12, 10, 15, 17]}
+          icon={BarChart3}
+          title="Mean Score"
+          value={formatScore(mean)}
+          helper={`${scoredRecords} scored records`}
+          cardClass="bg-[#0F766E]"
+          progress={mean || 0}
+          tone="bg-white"
         />
         <StatCard
           icon={GraduationCap}
-          title="Section Coverage"
-          value={dashboard.gradeRows.length}
-          helper={dashboard.sectionLabel}
-          color="#16a34a"
-          bg="#e7f8ee"
-          sparkValues={[4, 6, 6, 7, 7, 8, 10]}
+          title="Subject Coverage"
+          value={summary.subjects ?? fallback.summary.subjectCount ?? 0}
+          helper={`${summary.tests ?? 0} tests configured`}
+          cardClass="bg-[#1B5E20]"
         />
         <StatCard
-          icon={ClipboardList}
-          title="Assessment Results"
-          value={dashboard.scoredRecords}
-          helper={dashboard.scoredRecords ? `${formatScore(dashboard.mean)} mean` : 'No scored results'}
-          color="#f97316"
-          bg="#fff1e7"
-          sparkValues={[0, 0, 1, 1, 2, 2, 5]}
-        />
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[1fr_1.35fr_1fr]">
-        <section className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
-          <div className="mb-4 flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-black text-slate-950">Learner Distribution</h2>
-              <p className="text-xs font-semibold text-slate-500">By gender</p>
-            </div>
-            <button type="button" className="text-slate-400" aria-label="Learner distribution options">...</button>
-          </div>
-          <Donut boys={dashboard.boys} girls={dashboard.girls} />
-          <div className="mt-5 flex items-center justify-between rounded-lg bg-violet-50 px-4 py-3 text-xs font-black text-violet-700">
-            <span>{dashboard.boys >= dashboard.girls ? 'More boys than girls in this selection' : 'More girls than boys in this selection'}</span>
-            <ArrowRight size={16} />
-          </div>
-        </section>
-
-        <section className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
-          <div className="mb-2 flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-black text-slate-950">Learner Trend</h2>
-              <p className="text-xs font-semibold text-slate-500">{dashboard.sectionLabel}</p>
-            </div>
-            <select aria-label="Trend interval" className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 outline-none">
-              <option>Weekly</option>
-              <option>Monthly</option>
-            </select>
-          </div>
-          <TrendChart total={dashboard.learnerList.length} />
-          <div className="flex items-center gap-3 rounded-lg bg-slate-50 px-4 py-3 text-xs font-bold text-slate-600">
-            <TrendingUp size={18} className="text-violet-600" />
-            <span className="font-black text-emerald-600">{dashboard.trendGrowth}</span>
-            <span>Growth from Week 1 to Week 6</span>
-          </div>
-        </section>
-
-        <section className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
-          <div className="mb-2 flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-black text-slate-950">Assessment Performance</h2>
-              <p className="text-xs font-semibold text-slate-500">Overview</p>
-            </div>
-            <button type="button" className="text-slate-400" aria-label="Assessment performance options">...</button>
-          </div>
-          <EmptyAssessment scoredRecords={dashboard.scoredRecords} />
-        </section>
-      </div>
-
-      <section className="flex flex-wrap items-center rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
-        <div className="min-w-[180px] border-r border-slate-200 px-4 py-2">
-          <h2 className="text-sm font-black text-slate-950">Quick Insights</h2>
-          <p className="text-xs font-semibold text-slate-500">Key takeaways for your selection</p>
-        </div>
-        <Insight
-          icon={Users}
-          title={dashboard.largestGrade ? `${dashboard.largestGrade.label} has the most learners (${dashboard.largestGrade.count})` : 'No learner records'}
-          helper="Largest grade group"
-          tone="bg-violet-50 text-violet-700"
-        />
-        <Insight
           icon={Target}
-          title={dashboard.learnerList.length ? 'Data coverage is complete' : 'No learner coverage'}
-          helper="Learner data"
-          tone="bg-blue-50 text-blue-700"
+          title="Learners Needing Attention"
+          value={summary.atRiskLearners ?? atRiskRows.length}
+          helper={`${summary.pendingEntries ?? 0} missing result entries`}
+          cardClass="bg-[#C2410C]"
+          progress={summary.markEntryCompletionRate || 0}
+          tone="bg-white"
         />
-        <Insight
-          icon={ShieldCheck}
-          title={dashboard.learnerList.length ? 'All records are available' : 'Records unavailable'}
-          helper="Selected section"
-          tone="bg-emerald-50 text-emerald-700"
-        />
-        <Insight
-          icon={dashboard.scoredRecords ? Check : TrendingUp}
-          title={dashboard.scoredRecords ? `${dashboard.subjectCount} subjects scored` : 'No assessment results yet'}
-          helper="Assessment coverage"
-          tone="bg-orange-50 text-orange-700"
-        />
-      </section>
+      </div>
+
+      {loading ? (
+        <div className="rounded-lg border border-slate-100 bg-white p-6 text-sm font-bold text-slate-500 shadow-sm">Loading live academic intelligence...</div>
+      ) : (
+        <div className="grid gap-4 xl:grid-cols-[1fr_1.25fr_1fr]">
+          <section className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+            <SectionHeader title="Stream Performance" helper={sectionLabel} />
+            <StreamPerformance rows={streamRows} />
+          </section>
+
+          <section className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+            <SectionHeader title="Subject Performance" helper="Mean score and report coverage by learning area." />
+            <SubjectTable rows={subjectRows} />
+          </section>
+
+          <section className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+            <SectionHeader title="Achievement Distribution" helper={`${scoredRecords} scored records`} />
+            <AchievementDistribution rows={achievementRows} />
+          </section>
+        </div>
+      )}
+
+      <div className="grid gap-4 xl:grid-cols-[1.25fr_1fr]">
+        <section className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+          <SectionHeader title="Learners to Review" helper="Low mean scores or incomplete report evidence." />
+          <AtRiskLearners rows={atRiskRows} />
+        </section>
+
+        <section className="flex flex-wrap items-center rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+          <div className="min-w-[180px] border-r border-slate-200 px-4 py-2">
+            <h2 className="text-sm font-black text-slate-950">Quick Insights</h2>
+            <p className="text-xs font-semibold text-slate-500">Key takeaways for this report view</p>
+          </div>
+          <Insight
+            icon={TrendingUp}
+            title={highestSubject ? `${highestSubject.subject} leads at ${formatScore(highestSubject.mean)}` : 'No leading subject yet'}
+            helper="Strongest learning area"
+            tone="bg-emerald-50 text-emerald-700"
+          />
+          <Insight
+            icon={TrendingDown}
+            title={lowestSubject ? `${lowestSubject.subject} needs support at ${formatScore(lowestSubject.mean)}` : 'No weak subject yet'}
+            helper="Lowest learning area"
+            tone="bg-orange-50 text-orange-700"
+          />
+          <Insight
+            icon={ShieldCheck}
+            title={`${formatPercent(summary.reportReadyRate)} report-ready`}
+            helper={`${summary.reportReadyLearners ?? 0} learners complete`}
+            tone="bg-blue-50 text-blue-700"
+          />
+          <Insight
+            icon={scoredRecords ? Check : ClipboardList}
+            title={scoredRecords ? `${scoredRecords} records scored` : 'No scored results yet'}
+            helper="Assessment evidence"
+            tone="bg-violet-50 text-violet-700"
+          />
+        </section>
+      </div>
     </div>
   );
 };

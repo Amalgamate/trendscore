@@ -1,22 +1,23 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   ArrowRight,
-  BarChart3,
   BookOpen,
   CheckCircle,
   ClipboardList,
   FileText,
   Heart,
   PenLine,
+  RefreshCw,
   Settings,
   ShieldCheck,
   Star,
   Target,
-  TrendingUp,
   Users,
 } from 'lucide-react';
+import { dashboardAPI } from '../../../services/api';
 import { getCurrentAcademicYear, getCurrentTerm } from '../utils/academicYear';
-import { getLearnerGrade, getLearnerStream, groupLearners, normalizeGender, uniqueCount } from './academic-intelligence/SimpleTablePage';
+import { getLearnerGrade, getLearnerStream, groupLearners, uniqueCount } from './academic-intelligence/SimpleTablePage';
 
 const TERM_LABELS = {
   TERM_1: 'Term 1',
@@ -24,34 +25,40 @@ const TERM_LABELS = {
   TERM_3: 'Term 3',
 };
 
+const SECTION_OPTIONS = [
+  { value: 'all', label: 'All Sections' },
+  { value: 'pre-primary', label: 'Pre Primary' },
+  { value: 'lower', label: 'Lower Primary' },
+  { value: 'upper', label: 'Upper Primary' },
+  { value: 'junior-sec', label: 'Junior Sec' },
+];
+
 const getTermLabel = (term) => TERM_LABELS[term] || String(term || '').replace(/_/g, ' ') || 'Current Term';
+const formatPercent = (value) => `${Number(value || 0).toFixed(Number(value || 0) % 1 ? 1 : 0)}%`;
 
-const Sparkline = ({ color = '#6d5dfc', values = [5, 8, 7, 12, 10, 16, 18] }) => {
-  const max = Math.max(...values, 1);
-  const points = values.map((value, index) => {
-    const x = (index / Math.max(values.length - 1, 1)) * 100;
-    const y = 36 - (value / max) * 28;
-    return `${x},${y}`;
-  }).join(' ');
+const ProgressBar = ({ value = 0, tone = 'bg-violet-600' }) => (
+  <div className="h-2 w-full rounded-full bg-slate-100">
+    <div className={`h-2 rounded-full ${tone}`} style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+  </div>
+);
 
-  return (
-    <svg viewBox="0 0 100 42" className="h-10 w-24" aria-hidden="true">
-      <polyline points={points} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-};
-
-const StatCard = ({ icon: Icon, label, value, helper, color, bg, values }) => (
-  <div className="flex min-h-[100px] items-center gap-4 rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
-    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg" style={{ color, backgroundColor: bg }}>
-      <Icon size={24} strokeWidth={2.4} />
+const StatCard = ({ icon: Icon, label, value, helper, color, bg, progress, tone }) => (
+  <div className="min-h-[112px] rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+    <div className="flex items-start gap-4">
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg" style={{ color, backgroundColor: bg }}>
+        <Icon size={24} strokeWidth={2.4} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-black uppercase tracking-[0.08em] text-slate-500">{label}</p>
+        <p className="mt-1 text-2xl font-black leading-none text-slate-950">{value}</p>
+        <p className="mt-1 truncate text-xs font-semibold text-slate-500">{helper}</p>
+      </div>
     </div>
-    <div className="min-w-0 flex-1">
-      <p className="text-[11px] font-black text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-black leading-none text-slate-950">{value}</p>
-      <p className="mt-1 truncate text-xs font-semibold text-slate-500">{helper}</p>
-    </div>
-    <Sparkline color={color} values={values} />
+    {progress !== undefined && (
+      <div className="mt-4">
+        <ProgressBar value={progress} tone={tone} />
+      </div>
+    )}
   </div>
 );
 
@@ -82,95 +89,139 @@ const SectionHeader = ({ title, helper, action }) => (
   </div>
 );
 
-const Donut = ({ complete, pending }) => {
-  const total = complete + pending;
-  const completePercent = total ? Math.round((complete / total) * 1000) / 10 : 0;
+const EmptyState = ({ title, helper, icon: Icon = ClipboardList }) => (
+  <div className="flex min-h-[220px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/70 p-6 text-center">
+    <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-lg bg-white text-slate-400 shadow-sm">
+      <Icon size={28} />
+    </div>
+    <p className="text-sm font-black text-slate-950">{title}</p>
+    <p className="mt-1 max-w-[260px] text-xs font-semibold text-slate-500">{helper}</p>
+  </div>
+);
+
+const ReadinessDonut = ({ ready = 0, pending = 0, rate = 0 }) => (
+  <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
+    <div
+      className="relative flex h-40 w-40 items-center justify-center rounded-full"
+      style={{ background: `conic-gradient(#16a34a 0 ${rate}%, #f97316 ${rate}% 100%)` }}
+    >
+      <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full bg-white shadow-inner">
+        <span className="text-2xl font-black text-slate-950">{formatPercent(rate)}</span>
+        <span className="text-xs font-semibold text-slate-500">Ready</span>
+      </div>
+    </div>
+    <div className="min-w-[170px] space-y-3 text-sm">
+      <div className="flex items-center justify-between gap-4">
+        <span className="flex items-center gap-2 font-bold text-slate-700"><i className="h-3 w-3 rounded-full bg-[#16a34a]" /> Report ready</span>
+        <span className="font-black text-slate-900">{ready}</span>
+      </div>
+      <div className="flex items-center justify-between gap-4">
+        <span className="flex items-center gap-2 font-bold text-slate-700"><i className="h-3 w-3 rounded-full bg-[#f97316]" /> Still pending</span>
+        <span className="font-black text-slate-900">{pending}</span>
+      </div>
+    </div>
+  </div>
+);
+
+const GradeReadinessTable = ({ rows = [] }) => {
+  if (!rows.length) return <EmptyState title="No grade setup found" helper="Create tests for the selected period to start tracking readiness." icon={BookOpen} />;
 
   return (
-    <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
-      <div
-        className="relative flex h-40 w-40 items-center justify-center rounded-full"
-        style={{ background: `conic-gradient(#6d4dfc 0 ${completePercent}%, #f97316 ${completePercent}% 100%)` }}
-      >
-        <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full bg-white shadow-inner">
-          <span className="text-2xl font-black text-slate-950">{completePercent}%</span>
-          <span className="text-xs font-semibold text-slate-500">Ready</span>
-        </div>
-      </div>
-      <div className="min-w-[160px] space-y-3 text-sm">
-        <div className="flex items-center justify-between gap-4">
-          <span className="flex items-center gap-2 font-bold text-slate-700"><i className="h-3 w-3 rounded-full bg-[#6d4dfc]" /> Prepared</span>
-          <span className="font-black text-slate-900">{complete}</span>
-        </div>
-        <div className="flex items-center justify-between gap-4">
-          <span className="flex items-center gap-2 font-bold text-slate-700"><i className="h-3 w-3 rounded-full bg-[#f97316]" /> Pending</span>
-          <span className="font-black text-slate-900">{pending}</span>
-        </div>
-      </div>
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-left text-xs">
+        <thead>
+          <tr className="border-b border-slate-100 text-[11px] font-black uppercase tracking-[0.08em] text-slate-500">
+            <th className="py-2 pr-3">Grade</th>
+            <th className="py-2 pr-3">Learners</th>
+            <th className="py-2 pr-3">Tests</th>
+            <th className="py-2 pr-3">Mark Entry</th>
+            <th className="py-2 pr-3">Reports</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.slice(0, 8).map((row) => (
+            <tr key={row.grade} className="border-b border-slate-50 last:border-0">
+              <td className="py-3 pr-3 font-black text-slate-950">{String(row.grade).replace(/_/g, ' ')}</td>
+              <td className="py-3 pr-3 font-semibold text-slate-600">{row.learners}</td>
+              <td className="py-3 pr-3 font-semibold text-slate-600">{row.tests}</td>
+              <td className="min-w-[180px] py-3 pr-3">
+                <div className="flex items-center gap-3">
+                  <ProgressBar value={row.completionRate} tone={row.pending ? 'bg-orange-500' : 'bg-emerald-600'} />
+                  <span className="w-12 text-right font-black text-slate-700">{formatPercent(row.completionRate)}</span>
+                </div>
+              </td>
+              <td className="py-3 pr-3 font-semibold text-slate-600">{row.reportReadyLearners}/{row.learners}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 };
 
-const TrendChart = ({ total }) => {
-  const points = [0.25, 0.4, 0.55, 0.62, 0.78, 1].map((factor) => Math.max(0, Math.round(total * factor)));
-  const max = Math.max(...points, 1);
-  const svgPoints = points.map((value, index) => {
-    const x = 42 + index * 92;
-    const y = 210 - (value / max) * 150;
-    return { x, y, value };
-  });
-  const line = svgPoints.map((point) => `${point.x},${point.y}`).join(' ');
-  const fill = `42,210 ${line} ${svgPoints[svgPoints.length - 1].x},210`;
+const SubjectBacklog = ({ rows = [] }) => {
+  const visible = rows.filter((row) => row.expected > 0).slice(0, 6);
+  if (!visible.length) return <EmptyState title="No subject backlog" helper="There are no configured subject tests for this selection yet." icon={ClipboardList} />;
 
   return (
-    <svg viewBox="0 0 560 240" className="h-[250px] w-full" aria-label="Assessment readiness trend">
-      {[0, 1, 2, 3].map((lineIndex) => (
-        <line key={lineIndex} x1="42" x2="520" y1={60 + lineIndex * 45} y2={60 + lineIndex * 45} stroke="#e5e7eb" strokeDasharray="4 5" />
+    <div className="space-y-3">
+      {visible.map((row) => (
+        <div key={row.subject} className="rounded-lg border border-slate-100 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-black text-slate-950">{row.subject}</p>
+              <p className="text-xs font-semibold text-slate-500">{row.tests} test{row.tests === 1 ? '' : 's'} - {row.pending} pending entries</p>
+            </div>
+            <span className="text-sm font-black text-slate-900">{formatPercent(row.completionRate)}</span>
+          </div>
+          <div className="mt-3">
+            <ProgressBar value={row.completionRate} tone={row.pending ? 'bg-orange-500' : 'bg-emerald-600'} />
+          </div>
+        </div>
       ))}
-      <polygon points={fill} fill="url(#assessmentTrendFill)" />
-      <polyline points={line} fill="none" stroke="#6d4dfc" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-      {svgPoints.map((point, index) => (
-        <g key={index}>
-          <circle cx={point.x} cy={point.y} r="6" fill="#fff" stroke="#6d4dfc" strokeWidth="4" />
-          <text x={point.x} y={point.y - 14} textAnchor="middle" className="fill-slate-800 text-[12px] font-bold">{point.value}</text>
-          <text x={point.x} y="228" textAnchor="middle" className="fill-slate-500 text-[12px] font-bold">Step {index + 1}</text>
-        </g>
-      ))}
-      <defs>
-        <linearGradient id="assessmentTrendFill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.25" />
-          <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.02" />
-        </linearGradient>
-      </defs>
-    </svg>
+    </div>
   );
 };
 
 const MobileAssessmentsDashboard = ({ learners = [], onNavigate }) => {
-  const overview = useMemo(() => {
+  const [filters, setFilters] = useState({
+    academicYear: getCurrentAcademicYear(),
+    term: getCurrentTerm(),
+    section: 'all',
+  });
+  const [dashboard, setDashboard] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const fallback = useMemo(() => {
     const learnerList = Array.isArray(learners) ? learners : [];
     const grades = groupLearners(learnerList, getLearnerGrade);
     const streams = uniqueCount(learnerList.map(getLearnerStream));
-    const boys = learnerList.filter((learner) => normalizeGender(learner.gender) === 'Boys').length;
-    const girls = learnerList.filter((learner) => normalizeGender(learner.gender) === 'Girls').length;
-    const configuredAreas = grades.length;
-    const pendingAreas = Math.max(0, 4 - configuredAreas);
-    const currentTerm = getCurrentTerm();
-
-    return {
-      learners: learnerList.length,
-      grades: grades.length,
-      streams,
-      boys,
-      girls,
-      configuredAreas,
-      pendingAreas,
-      academicYear: getCurrentAcademicYear(),
-      term: getTermLabel(currentTerm),
-      activeGrade: grades[0]?.label || 'No grade selected',
-    };
+    return { learners: learnerList.length, grades: grades.length, streams };
   }, [learners]);
 
+  const loadDashboard = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await dashboardAPI.getAssessmentOperations(filters);
+      setDashboard(response?.data || null);
+    } catch (err) {
+      setError(err?.message || 'Failed to load assessment dashboard');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDashboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.academicYear, filters.term, filters.section]);
+
+  const summary = dashboard?.summary || {};
+  const gradeRows = dashboard?.gradeRows || [];
+  const subjectRows = dashboard?.subjectRows || [];
+  const pendingLearners = Math.max(0, (summary.activeLearnersWithTests || 0) - (summary.reportReadyLearners || 0));
   const go = (page) => () => onNavigate?.(page);
 
   return (
@@ -180,15 +231,15 @@ const MobileAssessmentsDashboard = ({ learners = [], onNavigate }) => {
           <div>
             <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-950">
               <span>Assessment</span>
-              <span className="font-black">•</span>
-              <span className="font-black uppercase tracking-[0.12em] text-indigo-800">Assessment Overview</span>
+              <span className="font-black">-</span>
+              <span className="font-black uppercase tracking-[0.12em] text-indigo-800">Report Readiness</span>
             </div>
-            <p className="mt-1 text-xs font-medium text-slate-500">Prepare tests, record marks, monitor assessment readiness and open reports from one place.</p>
+            <p className="mt-1 text-xs font-medium text-slate-500">Live mark-entry completion, missing results, and report readiness for the selected period.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={go('assess-summative-tests')} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 hover:border-violet-300 hover:text-violet-700">
-              <Settings size={16} />
-              Configure Tests
+            <button type="button" onClick={loadDashboard} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 hover:border-violet-300 hover:text-violet-700">
+              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+              Refresh
             </button>
             <button type="button" onClick={go('assess-summative-assessment')} className="inline-flex h-10 items-center gap-2 rounded-md bg-violet-600 px-4 text-xs font-black text-white shadow-sm hover:bg-violet-700">
               <PenLine size={16} />
@@ -200,85 +251,91 @@ const MobileAssessmentsDashboard = ({ learners = [], onNavigate }) => {
         <section className="overflow-x-auto rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm">
           <div className="flex min-w-max items-center justify-center gap-4">
             <label className="flex h-11 items-center border border-slate-300 bg-white px-4">
-              <select aria-label="Academic year" className="min-w-[126px] bg-transparent text-sm font-semibold text-slate-950 outline-none" defaultValue={overview.academicYear}>
-                <option value={overview.academicYear}>{overview.academicYear}</option>
+              <select
+                aria-label="Academic year"
+                className="min-w-[126px] bg-transparent text-sm font-semibold text-slate-950 outline-none"
+                value={filters.academicYear}
+                onChange={(event) => setFilters((current) => ({ ...current, academicYear: Number(event.target.value) }))}
+              >
+                {[filters.academicYear, filters.academicYear - 1, filters.academicYear + 1].filter(Boolean).map((year) => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
               </select>
             </label>
             <label className="flex h-11 items-center border border-slate-300 bg-white px-4">
-              <select aria-label="Term" className="min-w-[126px] bg-transparent text-sm font-semibold text-slate-950 outline-none" defaultValue={overview.term}>
-                <option value={overview.term}>{overview.term}</option>
+              <select
+                aria-label="Term"
+                className="min-w-[126px] bg-transparent text-sm font-semibold text-slate-950 outline-none"
+                value={filters.term}
+                onChange={(event) => setFilters((current) => ({ ...current, term: event.target.value }))}
+              >
+                {Object.entries(TERM_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
               </select>
             </label>
             <label className="flex h-11 items-center border border-slate-300 bg-white px-4">
-              <select aria-label="Section" className="min-w-[126px] bg-transparent text-sm font-semibold text-slate-950 outline-none" defaultValue="all">
-                <option value="all">All Sections</option>
-                <option value="pre-primary">Pre Primary</option>
-                <option value="lower">Lower Primary</option>
-                <option value="upper">Upper Primary</option>
-                <option value="junior-sec">Junior Sec</option>
+              <select
+                aria-label="Section"
+                className="min-w-[126px] bg-transparent text-sm font-semibold text-slate-950 outline-none"
+                value={filters.section}
+                onChange={(event) => setFilters((current) => ({ ...current, section: event.target.value }))}
+              >
+                {SECTION_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
             </label>
-            <button type="button" className="inline-flex h-11 items-center gap-2 rounded-md border border-violet-300 bg-white px-4 text-sm font-black text-violet-700">
+            <div className="inline-flex h-11 items-center gap-2 rounded-md border border-violet-300 bg-violet-50 px-4 text-sm font-black text-violet-700">
               <Target size={16} />
-              Filters
-            </button>
-          </div>
-        </section>
-
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard icon={Users} label="Learners Ready" value={overview.learners} helper={`${overview.grades} grades - ${overview.streams} streams`} color="#7c3aed" bg="#f1e9ff" values={[6, 8, 10, 13, 12, 17, 20]} />
-          <StatCard icon={BookOpen} label="Grade Coverage" value={overview.grades} helper={overview.activeGrade} color="#3678f5" bg="#e8f0ff" values={[1, 2, 2, 3, 4, 4, 5]} />
-          <StatCard icon={ClipboardList} label="Assessment Setup" value={overview.configuredAreas} helper={`${overview.pendingAreas} pending setup areas`} color="#16a34a" bg="#e7f8ee" values={[1, 1, 2, 2, 3, 3, 4]} />
-          <StatCard icon={FileText} label="Reports" value="0" helper="No scored reports yet" color="#f97316" bg="#fff1e7" values={[0, 0, 0, 1, 1, 1, 2]} />
-        </section>
-
-        <section className="grid gap-4 xl:grid-cols-[1fr_1.35fr_1fr]">
-          <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
-            <SectionHeader title="Assessment Readiness" helper="Setup completion across the selected period." />
-            <Donut complete={overview.configuredAreas} pending={overview.pendingAreas} />
-            <button type="button" onClick={go('assess-summative-tests')} className="mt-5 flex w-full items-center justify-between rounded-lg bg-violet-50 px-4 py-3 text-xs font-black text-violet-700">
-              <span>Continue test configuration</span>
-              <ArrowRight size={16} />
-            </button>
-          </div>
-
-          <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
-            <SectionHeader
-              title="Assessment Timeline"
-              helper={`${overview.term} - ${overview.academicYear}`}
-              action={(
-                <select aria-label="Timeline interval" className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 outline-none">
-                  <option>Weekly</option>
-                  <option>Monthly</option>
-                </select>
-              )}
-            />
-            <TrendChart total={overview.learners} />
-            <div className="flex items-center gap-3 rounded-lg bg-slate-50 px-4 py-3 text-xs font-bold text-slate-600">
-              <TrendingUp size={18} className="text-violet-600" />
-              <span className="font-black text-emerald-600">Ready</span>
-              <span>Assessment workspace is available for setup and scoring.</span>
+              {getTermLabel(filters.term)}
             </div>
           </div>
+        </section>
 
-          <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
-            <SectionHeader title="Assessment Performance" helper="Current scoring overview." />
-            <div className="flex min-h-[260px] flex-col items-center justify-center text-center">
-              <div className="relative mb-4 flex h-28 w-28 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
-                <ClipboardList size={52} strokeWidth={1.8} />
-                <div className="absolute bottom-5 right-4 rounded-full bg-white p-1 text-indigo-600 shadow-sm">
-                  <BarChart3 size={26} />
-                </div>
-              </div>
-              <p className="text-base font-black text-slate-950">No scored results</p>
-              <p className="mt-1 max-w-[230px] text-xs font-semibold text-slate-500">Open Record Marks when test setup is ready.</p>
-              <button type="button" onClick={go('assess-summative-assessment')} className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-violet-600 px-4 text-xs font-black text-white hover:bg-violet-700">
-                Record Marks
+        {error && (
+          <div className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            <AlertTriangle size={18} />
+            {error}
+          </div>
+        )}
+
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <StatCard icon={Users} label="Learners in Scope" value={summary.learners ?? fallback.learners} helper={`${fallback.grades} grades - ${fallback.streams} streams`} color="#7c3aed" bg="#f1e9ff" />
+          <StatCard icon={BookOpen} label="Tests Configured" value={summary.tests ?? 0} helper={`${summary.subjects ?? 0} learning areas`} color="#3678f5" bg="#e8f0ff" />
+          <StatCard icon={ClipboardList} label="Mark Entry" value={formatPercent(summary.markEntryCompletionRate)} helper={`${summary.accountedEntries ?? 0}/${summary.expectedEntries ?? 0} entries accounted`} color="#16a34a" bg="#e7f8ee" progress={summary.markEntryCompletionRate || 0} tone="bg-emerald-600" />
+          <StatCard icon={FileText} label="Report Ready" value={formatPercent(summary.reportReadyRate)} helper={`${summary.reportReadyLearners ?? 0} learners ready`} color="#f97316" bg="#fff1e7" progress={summary.reportReadyRate || 0} tone="bg-orange-500" />
+        </section>
+
+        {loading ? (
+          <div className="rounded-lg border border-slate-100 bg-white p-6 text-sm font-bold text-slate-500 shadow-sm">Loading live assessment metrics...</div>
+        ) : (
+          <section className="grid gap-4 xl:grid-cols-[1fr_1.25fr_1fr]">
+            <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+              <SectionHeader title="Report Readiness" helper="Learners with all expected results accounted for." />
+              <ReadinessDonut ready={summary.reportReadyLearners || 0} pending={pendingLearners} rate={summary.reportReadyRate || 0} />
+              <button type="button" onClick={go('assess-summary-report')} className="mt-5 flex w-full items-center justify-between rounded-lg bg-violet-50 px-4 py-3 text-xs font-black text-violet-700">
+                <span>Open reports and printing</span>
                 <ArrowRight size={16} />
               </button>
             </div>
-          </div>
-        </section>
+
+            <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+              <SectionHeader title="Readiness by Grade" helper={`${getTermLabel(filters.term)} - ${filters.academicYear}`} />
+              <GradeReadinessTable rows={gradeRows} />
+            </div>
+
+            <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+              <SectionHeader title="Mark Entry Backlog" helper={`${summary.pendingEntries || 0} missing entries before reports are clean.`} />
+              <SubjectBacklog rows={subjectRows} />
+              {(summary.statusOnlyEntries || 0) > 0 && (
+                <div className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
+                  {summary.statusOnlyEntries} status-only entries are accounted for but excluded from averages.
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <ActionTile icon={Target} label="Summative Tests" helper="Create and deploy exams or tests." tone="bg-violet-50 text-violet-700" onClick={go('assess-summative-tests')} />
