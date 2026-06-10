@@ -1,15 +1,19 @@
-name: Deploy Demo (main only)
+name: Deploy Demo
 
-# After images are published from main, deploy the canary school (demoschool) and
-# roll the platform console. Production stacks require Promote Release.
+# Manual-only canary deployment. For production schools, use Promote Release
+# and type the target school_slug.
 
 on:
-  workflow_run:
-    workflows: ["Publish Docker Images"]
-    types: [completed]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Git branch/ref whose sha-<commit> images should be deployed"
+        required: true
+        type: string
+        default: main
 
 concurrency:
-  group: deploy-demo-${{ github.event.workflow_run.head_branch }}
+  group: deploy-demo-${{ inputs.branch }}
   cancel-in-progress: true
 
 permissions:
@@ -18,13 +22,31 @@ permissions:
 jobs:
   deploy-demo:
     runs-on: ubuntu-latest
-    if: |
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch == 'main'
     environment: deploy-demo
     steps:
-      - name: Checkout
+      - name: Checkout selected branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+
+      - name: Resolve image tag
+        id: image
+        run: |
+          set -euo pipefail
+          COMMIT_SHA="$(git rev-parse HEAD)"
+          echo "commit_sha=${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=sha-${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Resolved branch '${{ inputs.branch }}' to ${COMMIT_SHA}"
+
+      - name: Validate demo target
+        id: target
+        run: |
+          set -euo pipefail
+          node scripts/validate-deployment-target.js demo \
+            --environment demo \
+            --branch "${{ inputs.branch }}" \
+            --manifest deploy/instances.manifest.json
 
       - name: Configure SSH
         env:
@@ -33,38 +55,37 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: bash scripts/ci/configure-deploy-ssh.sh
 
-      - name: Verify demo target
-        run: |
-          set -euo pipefail
-          DEMO_COUNT="$(jq '[.instances[] | select(.tier == "demo")] | length' deploy/instances.manifest.json)"
-          if [[ "${DEMO_COUNT}" -lt 1 ]]; then
-            echo "No demo instance defined in deploy/instances.manifest.json" >&2
-            exit 1
-          fi
-          echo "Demo instances in manifest: ${DEMO_COUNT}"
-          jq -r '.instances[] | select(.tier == "demo") | "  - \(.id) (\(.label // .id))"' deploy/instances.manifest.json
-
       - name: Upload deploy assets
         run: bash scripts/ci/sync-deploy-assets.sh
 
       - name: Deploy demo instance
         env:
-          IMAGE_TAG: sha-${{ github.event.workflow_run.head_sha }}
+          IMAGE_TAG: ${{ steps.image.outputs.image_tag }}
+          SCHOOL_ID: ${{ steps.target.outputs.school_id }}
         run: |
           set -euo pipefail
           ssh production \
-            "DEPLOY_TARGET=demo DEPLOY_CONSOLE=true IMAGE_TAG=${IMAGE_TAG} MANIFEST_PATH=/srv/zawadi/apps/deploy/instances.manifest.json bash /srv/zawadi/apps/deploy/deploy-release.sh"
+            "DEPLOY_TARGET=school SCHOOL_ID=${SCHOOL_ID} IMAGE_TAG=${IMAGE_TAG} MANIFEST_PATH=/srv/zawadi/apps/deploy/instances.manifest.json bash /srv/zawadi/apps/deploy/deploy-release.sh"
 
       - name: Report success
         if: success()
         run: |
-          echo "## Demo deploy succeeded" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Image tag: \`sha-${{ github.event.workflow_run.head_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Target: demo only (see deploy/instances.manifest.json)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Platform console: rolled to the same tag (\`DEPLOY_CONSOLE=true\`)" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Demo deploy succeeded"
+            echo ""
+            echo "- School: \`${{ steps.target.outputs.school_name }}\`"
+            echo "- Domain: \`${{ steps.target.outputs.domain }}\`"
+            echo "- Container: \`${{ steps.target.outputs.compose_project }}\`"
+            echo "- Branch: \`${{ inputs.branch }}\`"
+            echo "- Image tag: \`${{ steps.image.outputs.image_tag }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report failure
         if: failure()
         run: |
-          echo "## Demo deploy failed" >> "$GITHUB_STEP_SUMMARY"
-          echo "Check the job log. Production and pilot instances were not changed." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Demo deploy failed"
+            echo ""
+            echo "If validation failed, no server deployment was started."
+            echo "If server deployment started, check the job log and server backups before retrying."
+          } >> "$GITHUB_STEP_SUMMARY"

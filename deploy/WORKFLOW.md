@@ -1,118 +1,123 @@
-# Release workflow (segmented)
+# Deployment Workflow
 
-This document defines how **school applications** and the **platform console** are built and deployed without stepping on each other.
+This document defines how TrendScore school applications are published, validated, and deployed.
 
-## Segments
+## Runtime Areas
 
-| Segment | Images | Serves | Typical URL |
-|---------|--------|--------|-------------|
-| **School app** | `zawadi-frontend`, `zawadi-backend` | Teachers, parents, school admins | `*.trendscore.co.ke` per school |
-| **Platform console** | `zawadi-console` | Super-admin control panel only | `admin.trendscore.co.ke` |
+| Area | Images | Users | Deployment model |
+| --- | --- | --- | --- |
+| School app | `zawadi-frontend`, `zawadi-backend` | Teachers, parents, school admins | Manual single-school deployment |
+| Platform console | `zawadi-console` | Operators and platform admins | Separate console deployment path |
 
-One git commit produces **one tag** (`sha-<full-commit>`) for all three images.  
-Schools and console share the tag family but deploy **independently**.
+Image publishing and school deployment are intentionally separated.
 
-## Tiers
+## 1. Publish Images
 
-| Tier | Meaning | Auto on `main`? |
-|------|---------|-----------------|
-| **demo** (`kind: main`) | **Canary** — single tenant (`demoschool`) on the main stack | Yes |
-| **pilot** | Early adopters (optional manifest entries) | No — Promote Release |
-| **production** | Live school stacks (`kind: stack`) | No — Promote Release |
+`Publish Docker Images` builds and publishes:
 
-**Demo is not “all schools.”** It is one isolated instance used to verify a build before production promote.
+- `ghcr.io/amalgamate/zawadi-frontend`
+- `ghcr.io/amalgamate/zawadi-backend`
+- `ghcr.io/amalgamate/zawadi-console`
 
-## Standard workflow
+Images are tagged as:
 
-### 1. Build (automatic)
+- `latest` on the default branch,
+- `sha-<commit>` for the exact commit,
+- `v*.*.*` for release tags.
 
-Push to `main` → **Publish Docker Images**
+Publishing images does not automatically deploy schools.
 
-- `ghcr.io/amalgamate/zawadi-frontend:sha-…`
-- `ghcr.io/amalgamate/zawadi-backend:sha-…`
-- `ghcr.io/amalgamate/zawadi-console:sha-…`
+## 2. Deploy One School Manually
 
-### 2. Canary (automatic)
+Use the `Promote Release` workflow from GitHub Actions.
 
-**Deploy Demo (main only)** → only manifest `tier: "demo"`:
+Typed inputs:
 
-- Deploys **school app** to demoschool (main stack)
-- Rolls **platform console** to the same tag (`DEPLOY_CONSOLE=true`)
-- Installs `/srv/zawadi/apps/deploy/deploy-release.sh` + manifest for the admin UI
+| Input | Example | Notes |
+| --- | --- | --- |
+| `school_slug` | `demo`, `lions-complex`, `zawadi-junior` | Free text. No static school dropdown is maintained in YAML. |
+| `environment` | `demo`, `pilot`, `production` | Must match the school entry in `deploy/instances.manifest.json`. |
+| `branch` | `main` | The workflow deploys the `sha-<commit>` image for this branch/ref. |
 
-### 3. Verify (human)
+Validation runs before SSH deployment:
 
-Test on **https://demoschool.trendscore.co.ke** (school app, not the admin URL).
+```bash
+node scripts/validate-deployment-target.js "$school_slug" \
+  --environment "$environment" \
+  --branch "$branch" \
+  --manifest deploy/instances.manifest.json
+```
 
-Record the tag, e.g. `sha-2113ff1…`.
+The script confirms:
 
-### 4. Promote school app (manual)
+1. the typed school slug exists,
+2. the school is active,
+3. deployment is allowed,
+4. the requested environment matches the manifest,
+5. the exact school/container/domain details can be resolved.
 
-**Promote Release** (GitHub Actions or admin → Promote Release):
+If validation fails, deployment stops immediately.
 
-| Target | What updates |
-|--------|----------------|
-| `demo` | Canary only |
-| `pilot` | All `tier: pilot` in manifest |
-| `selected_school` | One `school_id` from manifest |
-| `all_schools` | All `kind: stack` in manifest + any discovered stacks |
+## 3. Matched Target Output
 
-Uses **frontend + backend** images only. Does not require console redeploy.
+Before deployment starts, the workflow prints:
 
-Each instance: backup DB → pull images → `prisma migrate deploy` → restart → health check.
+- School name
+- Domain
+- Server/container name
+- Environment
+- Branch
+- Commit SHA
+- Image tag
 
-### 5. Console-only update (optional)
+The server deploy command is then scoped to the matched school:
 
-If only the admin panel changed (no school app QA needed):
+```bash
+DEPLOY_TARGET=school \
+SCHOOL_ID=<validated-school-id> \
+IMAGE_TAG=sha-<commit> \
+MANIFEST_PATH=/srv/zawadi/apps/deploy/instances.manifest.json \
+bash /srv/zawadi/apps/deploy/deploy-release.sh
+```
 
-- Admin UI → **Platform console** card → **Update console**, or
-- `DEPLOY_CONSOLE_ONLY=true IMAGE_TAG=sha-… bash deploy-release.sh`
+## 4. Demo Deployment
 
-Does **not** restart school stacks.
+`Deploy Demo` is also manual-only. It validates the `demo` manifest entry, resolves the selected branch to `sha-<commit>`, then deploys the demo/canary target.
 
-## Rules (avoid conflicts)
+## 5. Manifest Source of Truth
 
-1. **Never** promote a tag to production schools without testing it on the canary (demo) first.
-2. **Always** use the **same** `sha-…` tag for frontend and backend across all schools in one promote wave.
-3. **Do not** assume “Deploy Demo” updates every school — it updates **canary + console** only.
-4. **Manifest is source of truth** — `deploy/instances.manifest.json` lists production schools; discovery only adds unknown stacks on `all_schools`.
-5. **Admin panel** promotes school apps via `deploy-release.sh`; it is not a fourth runtime image for schools.
+Schools are defined in `deploy/instances.manifest.json`.
 
-## Instance manifest
-
-Edit `deploy/instances.manifest.json` when adding a school:
+Required fields:
 
 ```json
 {
   "id": "new-school",
-  "label": "New School Name",
+  "label": "New School",
   "tier": "production",
+  "active": true,
+  "deployment_allowed": true,
   "kind": "stack",
   "compose_project": "zawadi-new-school",
   "env_file": "/srv/zawadi/apps/env/.zawadi-new-school.env",
-  "public_domain": "new-school.trendscore.co.ke"
+  "public_domain": "new-school.trendscore.co.ke",
+  "aliases": ["new-school-main"]
 }
 ```
 
-## Quick reference
+Guidelines:
 
-```bash
-# School app → one production school
-export DEPLOY_TARGET=school
-export SCHOOL_ID=merti-cs
-export IMAGE_TAG=sha-<commit>
-export MANIFEST_PATH=/srv/zawadi/apps/deploy/instances.manifest.json
-bash /srv/zawadi/apps/deploy/deploy-release.sh
+1. `id` is the canonical deployment ID.
+2. `aliases` are operator-friendly typed slugs.
+3. `active: false` blocks deployment.
+4. `deployment_allowed: false` blocks deployment.
+5. `tier` should match the typed environment.
+6. No school list should be hardcoded in workflow YAML.
 
-# School app → all production stacks
-export DEPLOY_TARGET=all_schools
-export IMAGE_TAG=sha-<commit>
-bash /srv/zawadi/apps/deploy/deploy-release.sh
+## 6. Safety Rules
 
-# Console only
-export DEPLOY_CONSOLE_ONLY=true
-export IMAGE_TAG=sha-<commit>
-bash /srv/zawadi/apps/deploy/deploy-release.sh
-```
-
-See also [DEPLOYMENT.md](./DEPLOYMENT.md) for GitHub Environments and CI job names.
+1. Deployments are manual-only.
+2. Always validate against the manifest before SSH deployment.
+3. Deploy one matched school at a time.
+4. Do not maintain static school dropdowns in GitHub Actions YAML.
+5. Use `sha-<commit>` tags so frontend and backend images stay aligned.
