@@ -138,7 +138,7 @@ const TeacherProfile = ({ teacher, onBack, onEdit }) => {
 
     const handleSavePhoto = async (photoData) => {
         try {
-            const response = await api.users.uploadPhoto(teacher.id, photoData);
+            const response = await api.teachers.uploadPhoto(teacher.id, photoData);
             if (response?.success) {
                 showSuccess('Profile photo updated successfully');
                 window.location.reload();
