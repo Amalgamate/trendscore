@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../config/database';
-import { encrypt } from '../utils/encryption.util';
+import { decrypt, encrypt } from '../utils/encryption.util';
 import { SmsService } from '../services/sms.service';
 import { EmailService } from '../services/email-resend.service';
 import messageService from '../services/message.service';
@@ -29,6 +29,66 @@ const extractJsonObject = (value: string) => {
     const match = trimmed.match(/\{[\s\S]*\}/);
     if (!match) throw new Error('AI response did not include JSON');
     return JSON.parse(match[0]);
+};
+
+const OPENAI_DEFAULT_MODEL = 'gpt-4o-mini';
+const OPENAI_DEFAULT_API_URL = 'https://api.openai.com/v1/chat/completions';
+
+const getTemplateConfig = (templates: unknown): Record<string, any> =>
+    templates && typeof templates === 'object' ? { ...(templates as Record<string, any>) } : {};
+
+const getPublicEmailTemplates = (templates: unknown) => {
+    const publicTemplates = getTemplateConfig(templates);
+    delete publicTemplates.__ai;
+    return publicTemplates;
+};
+
+const getPublicAiConfig = (templates: unknown) => {
+    const ai = getTemplateConfig(templates).__ai || {};
+    const hasEnvKey = !!(process.env.OPENAI_API_KEY || process.env.AI_API_KEY);
+    const hasSavedKey = !!ai.apiKey;
+
+    return {
+        enabled: ai.enabled !== undefined ? !!ai.enabled : hasEnvKey,
+        provider: ai.provider || 'openai',
+        model: ai.model || process.env.OPENAI_MODEL || process.env.AI_MODEL || OPENAI_DEFAULT_MODEL,
+        apiUrl: ai.apiUrl || process.env.OPENAI_API_URL || OPENAI_DEFAULT_API_URL,
+        hasApiKey: hasSavedKey || hasEnvKey,
+        source: hasSavedKey ? 'settings' : hasEnvKey ? 'environment' : 'none'
+    };
+};
+
+const mergeEmailTemplatePatch = (base: Record<string, any>, patch: Record<string, any>) => {
+    const cleanedPatch = { ...patch };
+    delete cleanedPatch.__ai;
+    return {
+        ...base,
+        ...cleanedPatch,
+        ...(base.__ai ? { __ai: base.__ai } : {})
+    };
+};
+
+const resolveAiDraftConfig = async () => {
+    const config = await prisma.communicationConfig.findFirst({ select: { emailTemplates: true } });
+    const ai = getTemplateConfig(config?.emailTemplates).__ai || {};
+    const envKey = process.env.OPENAI_API_KEY || process.env.AI_API_KEY;
+
+    let savedKey: string | undefined;
+    if (ai.enabled !== false && ai.apiKey) {
+        try {
+            savedKey = decrypt(ai.apiKey);
+        } catch (error: any) {
+            logger.warn('[CommunicationController] Saved AI API key could not be decrypted; falling back to environment key.', {
+                message: error?.message
+            });
+        }
+    }
+
+    return {
+        apiKey: savedKey || envKey,
+        model: (ai.enabled !== false ? ai.model : undefined) || process.env.OPENAI_MODEL || process.env.AI_MODEL || OPENAI_DEFAULT_MODEL,
+        apiUrl: (ai.enabled !== false ? ai.apiUrl : undefined) || process.env.OPENAI_API_URL || OPENAI_DEFAULT_API_URL
+    };
 };
 
 /**
@@ -71,6 +131,14 @@ export const getCommunicationConfig = async (req: AuthRequest, res: Response) =>
                 },
                 otp: {
                     enabled: true
+                },
+                ai: {
+                    enabled: !!(process.env.OPENAI_API_KEY || process.env.AI_API_KEY),
+                    provider: 'openai',
+                    model: process.env.OPENAI_MODEL || process.env.AI_MODEL || OPENAI_DEFAULT_MODEL,
+                    apiUrl: process.env.OPENAI_API_URL || OPENAI_DEFAULT_API_URL,
+                    hasApiKey: !!(process.env.OPENAI_API_KEY || process.env.AI_API_KEY),
+                    source: (process.env.OPENAI_API_KEY || process.env.AI_API_KEY) ? 'environment' : 'none'
                 }
             }
         });
@@ -98,7 +166,7 @@ export const getCommunicationConfig = async (req: AuthRequest, res: Response) =>
                 fromEmail: config.emailFrom,
                 fromName: config.emailFromName,
                 hasApiKey: !!config.emailApiKey,
-                emailTemplates: config.emailTemplates
+                emailTemplates: getPublicEmailTemplates(config.emailTemplates)
             },
             mpesa: {
                 enabled: config.mpesaEnabled,
@@ -122,6 +190,7 @@ export const getCommunicationConfig = async (req: AuthRequest, res: Response) =>
             otp: {
                 enabled: otpEnabled
             },
+            ai: getPublicAiConfig(config.emailTemplates),
             createdAt: config.createdAt,
             updatedAt: config.updatedAt
         }
@@ -133,12 +202,10 @@ export const getCommunicationConfig = async (req: AuthRequest, res: Response) =>
  * POST /api/communication/config
  */
 export const saveCommunicationConfig = async (req: AuthRequest, res: Response) => {
-    const { sms, email, mpesa, birthdays, whatsapp, otp } = req.body;
+    const { sms, email, mpesa, birthdays, whatsapp, otp, ai } = req.body;
     const data: any = {};
     const existingConfig = await prisma.communicationConfig.findFirst();
-    const existingTemplates = (existingConfig?.emailTemplates && typeof existingConfig.emailTemplates === 'object')
-        ? (existingConfig.emailTemplates as any)
-        : {};
+    const existingTemplates = getTemplateConfig(existingConfig?.emailTemplates);
 
     if (sms) {
         logger.info(`[CommunicationController] SMS Config Update:`, {
@@ -177,7 +244,7 @@ export const saveCommunicationConfig = async (req: AuthRequest, res: Response) =
         data.emailFromName = email.fromName || null;
         data.emailEnabled = email.enabled !== undefined ? email.enabled : false;
         if (email.apiKey) data.emailApiKey = encrypt(email.apiKey);
-        if (email.emailTemplates) data.emailTemplates = email.emailTemplates;
+        if (email.emailTemplates) data.emailTemplates = mergeEmailTemplatePatch(existingTemplates, email.emailTemplates);
     }
 
     if (mpesa) {
@@ -213,6 +280,29 @@ export const saveCommunicationConfig = async (req: AuthRequest, res: Response) =
                 ...(baseTemplates?.__security || {}),
                 otpEnabled: otp.enabled
             }
+        };
+    }
+
+    if (ai) {
+        const baseTemplates = (data.emailTemplates && typeof data.emailTemplates === 'object')
+            ? data.emailTemplates
+            : existingTemplates;
+        const existingAi = baseTemplates.__ai || {};
+        const nextAi = {
+            ...existingAi,
+            enabled: ai.enabled !== undefined ? !!ai.enabled : existingAi.enabled !== false,
+            provider: 'openai',
+            model: ai.model || existingAi.model || OPENAI_DEFAULT_MODEL,
+            apiUrl: ai.apiUrl || existingAi.apiUrl || OPENAI_DEFAULT_API_URL
+        };
+
+        if (ai.apiKey && String(ai.apiKey).trim()) {
+            nextAi.apiKey = encrypt(String(ai.apiKey).trim());
+        }
+
+        data.emailTemplates = {
+            ...baseTemplates,
+            __ai: nextAi
         };
     }
 
@@ -342,15 +432,13 @@ export const draftEmailTemplate = async (req: AuthRequest, res: Response) => {
         existingBody
     } = req.body;
 
-    const apiKey = process.env.OPENAI_API_KEY || process.env.AI_API_KEY;
+    const { apiKey, model, apiUrl } = await resolveAiDraftConfig();
     if (!apiKey) {
-        throw new ApiError(400, 'AI drafting is not configured. Set OPENAI_API_KEY on the server.');
+        throw new ApiError(400, 'AI drafting is not configured. Add an OpenAI key in Communication Settings or set OPENAI_API_KEY on the server.');
     }
 
     const school = await prisma.school.findFirst({ select: { name: true } });
     const schoolName = school?.name || 'Your School';
-    const model = process.env.OPENAI_MODEL || process.env.AI_MODEL || 'gpt-4o-mini';
-    const apiUrl = process.env.OPENAI_API_URL || 'https://api.openai.com/v1/chat/completions';
 
     const prompt = [
         `School: ${schoolName}`,
