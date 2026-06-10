@@ -29,6 +29,11 @@ export const userAPI = {
     fetchWithAuth(`/users/${id}/unarchive`, { method: 'POST' }),
   delete: async (id) =>
     fetchWithAuth(`/users/${id}`, { method: 'DELETE' }),
+  uploadPhoto: async (id, photoData) =>
+    fetchWithAuth(`/users/${id}/photo`, {
+      method: 'POST',
+      body: JSON.stringify({ photoData }),
+    }),
   resetPassword: async (id, data) =>
     fetchWithAuth(`/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify(data) }),
   sendCredentials: async (id) =>
