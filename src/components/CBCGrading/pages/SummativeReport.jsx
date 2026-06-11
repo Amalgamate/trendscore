@@ -1742,7 +1742,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
         key: 'rank',
         label: 'RANK',
         // subjects are already sorted highest → lowest avg%, so rank is 1-based index
-        subjectValues: subjects.map((_, idx) => `#${idx + 1}`),
+        subjectValues: subjects.map((_, idx) => `${idx + 1}`),
         total: '-',
         average: '-',
       },
@@ -1881,16 +1881,8 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
             cell.alignment = { vertical: 'middle', horizontal: 'center' };
           }
           if (isSummaryRow) {
-            const isRankRow = r.getCell(2).value === 'RANK';
-            if (isRankRow) {
-              r.eachCell((cell) => {
-                cell.font = { bold: true, color: { argb: 'FFFBBF24' } };
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
-              });
-            } else {
-              cell.font = { bold: true, color: { argb: 'FF111827' } };
-              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
-            }
+            cell.font = { bold: true, color: { argb: 'FF111827' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
           }
         });
       });
@@ -3931,32 +3923,26 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                         <tr
                           key={`summary-${summaryRow.key}`}
                           style={{
-                            backgroundColor: summaryRow.key === 'rank' ? '#1e3a8a' : '#eff6ff',
+                            backgroundColor: '#eff6ff',
                             fontWeight: 'bold',
                           }}
                         >
                           <td style={{ ...cellBorder, padding: '4px', textAlign: 'center' }}></td>
-                          <td style={{
-                            ...cellBorder, padding: '4px', fontWeight: '900',
-                            color: summaryRow.key === 'rank' ? '#fbbf24' : 'inherit',
-                          }}>
+                          <td style={{ ...cellBorder, padding: '4px', fontWeight: '900' }}>
                             {summaryRow.label}
                           </td>
                           {summaryRow.subjectValues.map((value, subjectIdx) => (
                             <td
                               key={`summary-${summaryRow.key}-${reportData.subjects[subjectIdx]}`}
-                              style={{
-                                ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: summaryRow.key === 'rank' ? '900' : 'bold',
-                                color: summaryRow.key === 'rank' ? '#fbbf24' : 'inherit',
-                              }}
+                              style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold' }}
                             >
                               {value}
                             </td>
                           ))}
-                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold', color: summaryRow.key === 'rank' ? '#fbbf24' : 'inherit' }}>{summaryRow.total}</td>
-                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold', color: summaryRow.key === 'rank' ? '#fbbf24' : 'inherit' }}>{summaryRow.average}</td>
+                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold' }}>{summaryRow.total}</td>
+                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold' }}>{summaryRow.average}</td>
                           <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold', color: '#666' }}></td>
-                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold', color: '#1e3a8a', backgroundColor: summaryRow.key === 'rank' ? '#1e3a8a' : '#dbeafe' }}>
+                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold', color: '#1e3a8a', backgroundColor: '#dbeafe' }}>
                             {summaryRow.key === 'points' ? summaryRow.meanPts ?? '-' : ''}
                           </td>
                         </tr>
