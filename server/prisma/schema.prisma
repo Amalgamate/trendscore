@@ -171,7 +171,7 @@ model School {
   stampUrl            String?
   latitude            Float?
   longitude           Float?
-  geofenceRadiusMeters Int               @default(5)
+  geofenceRadiusMeters Int               @default(30)
   geofenceEnforcementMode GeofenceEnforcementMode @default(STRICT)
   brandColor          String?
   welcomeMessage      String?

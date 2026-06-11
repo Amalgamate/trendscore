@@ -66,25 +66,35 @@ export const isTeacherClockedIn = (teacherId, dateKey = getTodayDateKey()) => {
 export const clockInTeacher = (user, metadata = {}) => {
   const teacherId = resolveTeacherId(user);
   const dateKey = getTodayDateKey();
+
+  // Extract location fields forwarded by the caller (e.g. OwnerMobileDashboard)
+  // so the server can enforce the geofence authoritatively.
+  const { latitude, longitude, accuracyMeters, capturedAt, source, ...restMetadata } = metadata;
+
   const localRecord = {
     teacherId,
     dateKey,
     timestamp: new Date().toISOString(),
-    source: metadata?.source || 'web',
+    source: source || 'web',
     metadata: {
       role: user?.role,
-      ...metadata
+      ...restMetadata
     }
   };
 
   persistLocalClockInRecord(localRecord);
   notifyClockInChange(localRecord);
 
-  hrAPI.clockInStaff({
+  const apiPayload = {
     timestamp: localRecord.timestamp,
     source: localRecord.source,
-    metadata: localRecord.metadata
-  })
+    metadata: localRecord.metadata,
+    ...(latitude !== undefined && longitude !== undefined
+      ? { latitude, longitude, accuracyMeters, capturedAt }
+      : {})
+  };
+
+  hrAPI.clockInStaff(apiPayload)
     .then((response) => {
       if (!response?.success) return;
       const syncedRecord = mapBackendClockInRecord(response.data, teacherId, dateKey);
@@ -108,25 +118,34 @@ export const clockOutTeacher = (user, metadata = {}) => {
     return current || null;
   }
 
+  // Extract location fields forwarded by the caller so the server can enforce
+  // the geofence on clock-out authoritatively.
+  const { latitude, longitude, accuracyMeters, capturedAt, source, ...restMetadata } = metadata;
+
   const localRecord = {
     ...current,
     clockOutAt: new Date().toISOString(),
-    source: metadata?.source || current.source || 'web',
+    source: source || current.source || 'web',
     metadata: {
       ...(current.metadata || {}),
       role: user?.role,
-      ...metadata
+      ...restMetadata
     }
   };
 
   persistLocalClockInRecord(localRecord);
   notifyClockInChange(localRecord);
 
-  hrAPI.clockOutStaff({
+  const apiPayload = {
     timestamp: localRecord.clockOutAt,
     source: localRecord.source,
-    metadata: localRecord.metadata
-  })
+    metadata: localRecord.metadata,
+    ...(latitude !== undefined && longitude !== undefined
+      ? { latitude, longitude, accuracyMeters, capturedAt }
+      : {})
+  };
+
+  hrAPI.clockOutStaff(apiPayload)
     .then((response) => {
       if (!response?.success) return;
       const syncedRecord = mapBackendClockInRecord(response.data, teacherId, dateKey);

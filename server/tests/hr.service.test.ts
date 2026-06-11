@@ -210,7 +210,7 @@ const makeSchool = (overrides = {}) => ({
     id: 'school-001',
     latitude: -1.2921,
     longitude: 36.8219,
-    geofenceRadiusMeters: 5,
+    geofenceRadiusMeters: 30,
     geofenceEnforcementMode: 'STRICT',
     ...overrides
 });
@@ -980,6 +980,199 @@ describe('HRService', () => {
                     })
                 })
             );
+        });
+
+        // ── False rejection scenario tests ────────────────────────────────────
+        // These tests reproduce the exact conditions that caused legitimate staff
+        // to be rejected while physically standing at the school.
+
+        it('[FALSE REJECTION] succeeds when user is within 30m with 15m GPS accuracy', async () => {
+            // Simulates a user with typical indoor GPS (15m accuracy) who is ~20m from pin.
+            // With the old 5m radius this would have been OUT_OF_RANGE; with 30m it succeeds.
+            const timestamp = new Date('2026-04-11T08:05:00.000Z');
+            (mockPrisma.school.findFirst as Mock).mockResolvedValue(makeSchool({
+                latitude: -1.2921,
+                longitude: 36.8219,
+                geofenceRadiusMeters: 30,
+                geofenceEnforcementMode: 'STRICT'
+            }));
+            (mockPrisma.staffAttendanceLog.upsert as Mock).mockResolvedValue({ id: 'att-001', clockInAt: timestamp });
+            (mockPrisma.user.findUnique as Mock).mockResolvedValue(makeStaff());
+            (mockPrisma.payrollRecord.findUnique as Mock).mockResolvedValue(makePayrollRecord());
+
+            // ~20m away from school pin, accuracy 15m (within threshold)
+            const result = await service.clockInStaff(STAFF_ID, {
+                timestamp,
+                latitude: -1.29228,   // ≈20m north of school pin
+                longitude: 36.8219,
+                accuracyMeters: 15,
+                capturedAt: timestamp.toISOString(),
+                source: 'web'
+            });
+
+            expect(result.geofenceDecision.allowed).toBe(true);
+            expect(result.geofenceDecision.reasonCode).toBeNull();
+            expect(result.geofenceDecision.distanceMeters).not.toBeNull();
+            expect(result.geofenceDecision.distanceMeters!).toBeLessThanOrEqual(30);
+            // Debug fields must be present
+            expect(result.geofenceDecision.submittedLatitude).toBeCloseTo(-1.29228, 4);
+            expect(result.geofenceDecision.submittedLongitude).toBeCloseTo(36.8219, 4);
+            expect(result.geofenceDecision.schoolLatitude).toBeCloseTo(-1.2921, 4);
+            expect(result.geofenceDecision.schoolLongitude).toBeCloseTo(36.8219, 4);
+        });
+
+        it('[FALSE REJECTION] ACCURACY_TOO_LOW message includes actual vs threshold values', async () => {
+            (mockPrisma.school.findFirst as Mock).mockResolvedValue(makeSchool({
+                geofenceEnforcementMode: 'STRICT',
+                geofenceRadiusMeters: 30
+            }));
+
+            let caughtError: any;
+            try {
+                await service.clockInStaff(STAFF_ID, {
+                    latitude: -1.2921,
+                    longitude: 36.8219,
+                    accuracyMeters: 45   // too low — above 30m threshold
+                });
+            } catch (e) {
+                caughtError = e;
+            }
+
+            expect(caughtError).toBeDefined();
+            expect(caughtError.reasonCode).toBe('ACCURACY_TOO_LOW');
+            // Message must explain the actual vs required accuracy so user can act on it
+            expect(caughtError.message).toMatch(/45m/);
+            expect(caughtError.message).toMatch(/30m/);
+            // Debug coords must be present in the decision
+            expect(caughtError.geofenceDecision.submittedLatitude).toBeCloseTo(-1.2921, 4);
+            expect(caughtError.geofenceDecision.schoolLatitude).toBeCloseTo(-1.2921, 4);
+            expect(caughtError.geofenceDecision.accuracyMeters).toBe(45);
+        });
+
+        it('[FALSE REJECTION] ACCURACY_TOO_LOW message says "not reported" when accuracy is absent', async () => {
+            (mockPrisma.school.findFirst as Mock).mockResolvedValue(makeSchool({
+                geofenceEnforcementMode: 'STRICT',
+                geofenceRadiusMeters: 30
+            }));
+
+            let caughtError: any;
+            try {
+                await service.clockInStaff(STAFF_ID, {
+                    latitude: -1.2921,
+                    longitude: 36.8219
+                    // no accuracyMeters
+                });
+            } catch (e) {
+                caughtError = e;
+            }
+
+            expect(caughtError?.reasonCode).toBe('ACCURACY_TOO_LOW');
+            expect(caughtError.message).toMatch(/not reported/i);
+        });
+
+        it('[FALSE REJECTION] OUT_OF_RANGE message includes actual distance and configured radius', async () => {
+            (mockPrisma.school.findFirst as Mock).mockResolvedValue(makeSchool({
+                latitude: -1.2921,
+                longitude: 36.8219,
+                geofenceRadiusMeters: 30,
+                geofenceEnforcementMode: 'STRICT'
+            }));
+
+            let caughtError: any;
+            try {
+                await service.clockInStaff(STAFF_ID, {
+                    latitude: -1.2921,
+                    longitude: 36.823,   // ~1km away
+                    accuracyMeters: 10
+                });
+            } catch (e) {
+                caughtError = e;
+            }
+
+            expect(caughtError?.reasonCode).toBe('OUT_OF_RANGE');
+            // Message must include the actual distance and the radius
+            expect(caughtError.message).toMatch(/\d+m/);          // some distance in metres
+            expect(caughtError.message).toMatch(/30m/);           // configured radius
+            // Debug coords must be present
+            expect(caughtError.geofenceDecision.submittedLatitude).toBeCloseTo(-1.2921, 4);
+            expect(caughtError.geofenceDecision.submittedLongitude).toBeCloseTo(36.823, 4);
+            expect(caughtError.geofenceDecision.schoolLatitude).toBeCloseTo(-1.2921, 4);
+            expect(caughtError.geofenceDecision.schoolLongitude).toBeCloseTo(36.8219, 4);
+            expect(caughtError.geofenceDecision.distanceMeters).toBeGreaterThan(30);
+        });
+
+        it('[FALSE REJECTION] MISSING_LOCATION error explains that location must be enabled', async () => {
+            (mockPrisma.school.findFirst as Mock).mockResolvedValue(makeSchool({
+                geofenceEnforcementMode: 'STRICT'
+            }));
+
+            let caughtError: any;
+            try {
+                await service.clockInStaff(STAFF_ID, { source: 'mobile' });
+            } catch (e) {
+                caughtError = e;
+            }
+
+            expect(caughtError?.reasonCode).toBe('MISSING_LOCATION');
+            expect(caughtError.message).toMatch(/location/i);
+            expect(caughtError.message).toMatch(/enable/i);
+        });
+
+        it('[FALSE REJECTION] NO_SCHOOL_PIN error includes admin guidance', async () => {
+            (mockPrisma.school.findFirst as Mock).mockResolvedValue(makeSchool({
+                latitude: null,
+                longitude: null,
+                geofenceEnforcementMode: 'STRICT'
+            }));
+
+            let caughtError: any;
+            try {
+                await service.clockInStaff(STAFF_ID, {
+                    latitude: -1.2921,
+                    longitude: 36.8219,
+                    accuracyMeters: 10
+                });
+            } catch (e) {
+                caughtError = e;
+            }
+
+            expect(caughtError?.reasonCode).toBe('NO_SCHOOL_PIN');
+            // Message must guide admin to fix it
+            expect(caughtError.message).toMatch(/administrator|settings/i);
+        });
+
+        it('[FALSE REJECTION] geofenceDecision debug fields present in success response', async () => {
+            const timestamp = new Date('2026-04-11T08:00:00.000Z');
+            (mockPrisma.school.findFirst as Mock).mockResolvedValue(makeSchool({
+                latitude: -1.2921,
+                longitude: 36.8219,
+                geofenceRadiusMeters: 30,
+                geofenceEnforcementMode: 'STRICT'
+            }));
+            (mockPrisma.staffAttendanceLog.upsert as Mock).mockResolvedValue({ id: 'att-001', clockInAt: timestamp });
+            (mockPrisma.user.findUnique as Mock).mockResolvedValue(makeStaff());
+            (mockPrisma.payrollRecord.findUnique as Mock).mockResolvedValue(makePayrollRecord());
+
+            const result = await service.clockInStaff(STAFF_ID, {
+                timestamp,
+                latitude: -1.2921,
+                longitude: 36.82191,
+                accuracyMeters: 10,
+                source: 'web'
+            });
+
+            // All debug fields must be present so client/ops can diagnose any future rejection
+            expect(result.geofenceDecision).toMatchObject({
+                allowed: true,
+                submittedLatitude: expect.closeTo(-1.2921, 4),
+                submittedLongitude: expect.closeTo(36.82191, 4),
+                schoolLatitude: expect.closeTo(-1.2921, 4),
+                schoolLongitude: expect.closeTo(36.8219, 4),
+                distanceMeters: expect.any(Number),
+                accuracyMeters: 10,
+                radiusMeters: 30,
+                enforcementMode: 'STRICT'
+            });
         });
     });
 

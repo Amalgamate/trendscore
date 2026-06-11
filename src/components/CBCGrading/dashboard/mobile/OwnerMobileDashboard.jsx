@@ -28,7 +28,7 @@ function haversineMetres(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-const GEOFENCE_RADIUS_M = 5;
+const GEOFENCE_RADIUS_M = 30;
 
 // ─── Tone helpers ─────────────────────────────────────────────────────────────
 const CARD_TONES = {
@@ -78,6 +78,8 @@ function useClockIn(user) {
   const watchIdRef = useRef(null);
   const schoolLoadedRef = useRef(false);
   const [schoolCoords, setSchoolCoords] = useState(null);
+  // Keep the latest GPS position so we can send coords to the server on action
+  const lastPositionRef = useRef(null);
 
   // Load school pin
   useEffect(() => {
@@ -110,6 +112,7 @@ function useClockIn(user) {
     setGeoStatus('checking');
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
+        lastPositionRef.current = pos;
         const d = haversineMetres(pos.coords.latitude, pos.coords.longitude, schoolCoords.lat, schoolCoords.lng);
         setDistance(Math.round(d));
         setGeoStatus(d <= GEOFENCE_RADIUS_M ? 'in-range' : 'out-of-range');
@@ -124,8 +127,23 @@ function useClockIn(user) {
     if (clocking || geoStatus !== 'in-range') return;
     setClocking(true);
     try {
-      if (clockStatus?.clockedIn) clockOutTeacher(user, { source: 'mobile' });
-      else clockInTeacher(user, { source: 'mobile' });
+      // Always include the latest captured position so the server can enforce
+      // the geofence authoritatively. The client-side check is UI-only.
+      const pos = lastPositionRef.current;
+      const locationPayload = pos
+        ? {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracyMeters: pos.coords.accuracy,
+            capturedAt: new Date(pos.timestamp || Date.now()).toISOString(),
+          }
+        : {};
+
+      if (clockStatus?.clockedIn) {
+        clockOutTeacher(user, { source: 'mobile', ...locationPayload });
+      } else {
+        clockInTeacher(user, { source: 'mobile', ...locationPayload });
+      }
     } finally {
       setClocking(false);
     }

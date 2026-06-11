@@ -43,6 +43,11 @@ type AttendanceGeofenceDecision = {
     accuracyMeters: number | null;
     reasonCode: AttendanceGeofenceReasonCode | null;
     message: string;
+    // Debug fields — always populated when a distance check is possible
+    submittedLatitude: number | null;
+    submittedLongitude: number | null;
+    schoolLatitude: number | null;
+    schoolLongitude: number | null;
 };
 
 type AttendanceRequestContext = {
@@ -52,7 +57,9 @@ type AttendanceRequestContext = {
 
 export class HRService {
     private readonly staffRoles = ['ADMIN', 'HEAD_TEACHER', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST'] as const;
-    private readonly defaultGeofenceRadiusMeters = 5;
+    // 30m default: practical minimum for browser GPS (indoor accuracy is typically 5–50m).
+    // Admin can tighten this per-school via geofenceRadiusMeters in school settings.
+    private readonly defaultGeofenceRadiusMeters = 30;
     private readonly defaultGeofenceEnforcementMode: AttendanceGeofenceMode = 'STRICT';
     private readonly strictAccuracyThresholdMeters = 30;
 
@@ -120,6 +127,10 @@ export class HRService {
         accuracyMeters?: number | null;
         reasonCode?: AttendanceGeofenceReasonCode | null;
         message: string;
+        submittedLatitude?: number | null;
+        submittedLongitude?: number | null;
+        schoolLatitude?: number | null;
+        schoolLongitude?: number | null;
     }): AttendanceGeofenceDecision {
         return {
             allowed: params.allowed,
@@ -128,7 +139,11 @@ export class HRService {
             distanceMeters: params.distanceMeters == null ? null : Math.round(params.distanceMeters * 100) / 100,
             accuracyMeters: params.accuracyMeters == null ? null : params.accuracyMeters,
             reasonCode: params.reasonCode ?? null,
-            message: params.message
+            message: params.message,
+            submittedLatitude: params.submittedLatitude ?? null,
+            submittedLongitude: params.submittedLongitude ?? null,
+            schoolLatitude: params.schoolLatitude ?? null,
+            schoolLongitude: params.schoolLongitude ?? null,
         };
     }
 
@@ -160,6 +175,16 @@ export class HRService {
             : null;
         const actionLabel = action === 'clock-in' ? 'Clock-in' : 'Clock-out';
 
+        // Debug coords — resolved once and threaded through all decision branches
+        const submittedLatitude = typeof payload.latitude === 'number' && Number.isFinite(payload.latitude)
+            ? payload.latitude
+            : null;
+        const submittedLongitude = typeof payload.longitude === 'number' && Number.isFinite(payload.longitude)
+            ? payload.longitude
+            : null;
+        const schoolLatitude = school?.latitude ?? null;
+        const schoolLongitude = school?.longitude ?? null;
+
         if (enforcementMode === 'OFF') {
             return this.buildGeofenceDecision({
                 allowed: true,
@@ -167,12 +192,14 @@ export class HRService {
                 radiusMeters,
                 accuracyMeters,
                 reasonCode: 'GEOFENCE_DISABLED',
-                message: 'Geofence enforcement is disabled for this school.'
+                message: 'Geofence enforcement is disabled for this school.',
+                submittedLatitude,
+                submittedLongitude,
+                schoolLatitude,
+                schoolLongitude,
             });
         }
 
-        const schoolLatitude = school?.latitude ?? null;
-        const schoolLongitude = school?.longitude ?? null;
         const hasSchoolPin = this.isFiniteCoordinate(schoolLatitude, -90, 90) && this.isFiniteCoordinate(schoolLongitude, -180, 180);
 
         if (!hasSchoolPin) {
@@ -182,7 +209,11 @@ export class HRService {
                 radiusMeters,
                 accuracyMeters,
                 reasonCode: 'NO_SCHOOL_PIN',
-                message: `${actionLabel} blocked because the school geofence pin is not configured.`
+                message: `${actionLabel} blocked because the school geofence pin is not configured. Ask an administrator to set the school GPS pin in School Settings.`,
+                submittedLatitude,
+                submittedLongitude,
+                schoolLatitude,
+                schoolLongitude,
             });
             return decision;
         }
@@ -194,7 +225,11 @@ export class HRService {
                 radiusMeters,
                 accuracyMeters,
                 reasonCode: 'MISSING_LOCATION',
-                message: `${actionLabel} location is required for geofence verification.`
+                message: `${actionLabel} blocked: location is required for geofence verification. Enable location access and try again.`,
+                submittedLatitude,
+                submittedLongitude,
+                schoolLatitude,
+                schoolLongitude,
             });
         }
 
@@ -208,18 +243,29 @@ export class HRService {
                 radiusMeters,
                 accuracyMeters,
                 reasonCode: 'INVALID_LOCATION',
-                message: `${actionLabel} location is invalid.`
+                message: `${actionLabel} blocked: the submitted location coordinates are invalid (lat=${payload.latitude}, lng=${payload.longitude}).`,
+                submittedLatitude,
+                submittedLongitude,
+                schoolLatitude,
+                schoolLongitude,
             });
         }
 
         if (accuracyMeters === null || accuracyMeters > this.strictAccuracyThresholdMeters) {
+            const accuracyDetail = accuracyMeters === null
+                ? 'accuracy not reported by device'
+                : `reported accuracy: ${Math.round(accuracyMeters)}m, required: ≤${this.strictAccuracyThresholdMeters}m`;
             return this.buildGeofenceDecision({
                 allowed: enforcementMode === 'SOFT',
                 enforcementMode,
                 radiusMeters,
                 accuracyMeters,
                 reasonCode: 'ACCURACY_TOO_LOW',
-                message: `${actionLabel} location accuracy is too low. Move closer or retry outdoors.`
+                message: `GPS accuracy is too low. Move outdoors and try again (${accuracyDetail}).`,
+                submittedLatitude,
+                submittedLongitude,
+                schoolLatitude,
+                schoolLongitude,
             });
         }
 
@@ -238,7 +284,11 @@ export class HRService {
                 distanceMeters,
                 accuracyMeters,
                 reasonCode: 'OUT_OF_RANGE',
-                message: `${actionLabel} rejected because you are outside the allowed geofence radius.`
+                message: `${actionLabel} rejected: you are ${Math.round(distanceMeters)}m from the school (allowed radius: ${radiusMeters}m).`,
+                submittedLatitude,
+                submittedLongitude,
+                schoolLatitude,
+                schoolLongitude,
             });
         }
 
@@ -248,7 +298,11 @@ export class HRService {
             radiusMeters,
             distanceMeters,
             accuracyMeters,
-            message: `${actionLabel} allowed within the school geofence.`
+            message: `${actionLabel} allowed within the school geofence (${Math.round(distanceMeters)}m from school, radius: ${radiusMeters}m).`,
+            submittedLatitude,
+            submittedLongitude,
+            schoolLatitude,
+            schoolLongitude,
         });
     }
 
