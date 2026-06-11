@@ -202,7 +202,7 @@ const SubjectAllocationPage = () => {
 
       const currentTeacher = currentLesson?.teacher
         ? `${currentLesson.teacher.firstName || ''} ${currentLesson.teacher.lastName || ''}`.trim()
-        : currentLesson?.classTeacherName || activeTeacher;
+        : currentLesson?.classTeacherName || '—';
 
       const timetableSummary = todaysSchedules.length > 0
         ? todaysSchedules.slice(0, 2).map((slot) => `${slot.className} ${slot.startTime}-${slot.endTime}`).join(' • ')
