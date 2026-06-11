@@ -3,7 +3,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { School, Save, Upload, X, AlertTriangle, MapPin, Loader2, Image as ImageIcon, Info, Phone, Mail, MessageSquare } from 'lucide-react';
+import { School, Save, Upload, X, AlertTriangle, MapPin, Loader2, Image as ImageIcon, Info, Phone, Mail, MessageSquare, ShieldCheck } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useNotifications } from '../../hooks/useNotifications';
 import axiosInstance from '../../../../services/api/axiosConfig';
@@ -40,6 +40,8 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
     mission: '',
     latitude: null,
     longitude: null,
+    geofenceRadiusMeters: 30,
+    geofenceEnforcementMode: 'STRICT',
     primaryColor: normalizeHexColor(brandingSettings?.primaryColor, '#030b82'),
     secondaryColor: normalizeHexColor(brandingSettings?.secondaryColor, '#0D9488'),
     accentColor1: normalizeHexColor(brandingSettings?.accentColor1, '#3b82f6'),
@@ -76,6 +78,8 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
       mission: '',
       latitude: null,
       longitude: null,
+      geofenceRadiusMeters: 30,
+      geofenceEnforcementMode: 'STRICT',
       primaryColor: normalizeHexColor(brandingSettings?.primaryColor, '#030b82'),
       secondaryColor: normalizeHexColor(brandingSettings?.secondaryColor, '#0D9488'),
       accentColor1: normalizeHexColor(brandingSettings?.accentColor1, '#3b82f6'),
@@ -133,6 +137,8 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
             mission: school.mission || '',
             latitude: school.latitude || null,
             longitude: school.longitude || null,
+            geofenceRadiusMeters: school.geofenceRadiusMeters ?? 30,
+            geofenceEnforcementMode: school.geofenceEnforcementMode || 'STRICT',
             primaryColor: normalizeHexColor(school.primaryColor, '#030b82'),
             secondaryColor: normalizeHexColor(school.secondaryColor, '#0D9488'),
             accentColor1: normalizeHexColor(school.accentColor1, '#3b82f6'),
@@ -269,6 +275,8 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
         accentColor2: settings.accentColor2,
         latitude: settings.latitude,
         longitude: settings.longitude,
+        geofenceRadiusMeters: settings.geofenceRadiusMeters,
+        geofenceEnforcementMode: settings.geofenceEnforcementMode,
         welcomeTitle: settings.welcomeTitle,
         welcomeMessage: settings.welcomeMessage,
         onboardingTitle: settings.onboardingTitle,
@@ -617,6 +625,109 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition"
                     placeholder="How the school plans to achieve its vision..."
                   />
+                </div>
+              </div>
+            </div>
+
+            {/* ── Geofence / Clock-In Settings ── */}
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+              <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+                <ShieldCheck className="text-blue-600" size={20} />
+                <h3 className="font-medium text-gray-700">Staff Clock-In Geofence</h3>
+              </div>
+              <div className="p-6 space-y-6">
+                <p className="text-sm text-gray-500">
+                  Controls whether staff must be physically at school to clock in.
+                  The GPS pin is set via <strong>Get GPS Location</strong> above.
+                  Browser GPS accuracy indoors is typically 5–50 m — keep the radius at least <strong>30 m</strong> to avoid false rejections.
+                </p>
+
+                {/* Enforcement mode */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Enforcement Mode</label>
+                  <div className="flex flex-wrap gap-3">
+                    {[
+                      { value: 'STRICT', label: 'Strict', desc: 'Clock-in is blocked when outside the radius.' },
+                      { value: 'SOFT',   label: 'Soft',   desc: 'Outside-radius clocks in but is flagged for review.' },
+                      { value: 'OFF',    label: 'Off',    desc: 'No location check — anyone can clock in anywhere.' },
+                    ].map(({ value, label, desc }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => handleChange('geofenceEnforcementMode', value)}
+                        className={`flex-1 min-w-[140px] px-4 py-3 rounded-lg border-2 text-left transition ${
+                          settings.geofenceEnforcementMode === value
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <span className={`block text-sm font-bold ${settings.geofenceEnforcementMode === value ? 'text-blue-700' : 'text-gray-700'}`}>{label}</span>
+                        <span className="block text-xs text-gray-500 mt-0.5">{desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Radius slider + number input */}
+                {settings.geofenceEnforcementMode !== 'OFF' && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Allowed Radius
+                      <span className="ml-2 text-blue-600 font-bold">{settings.geofenceRadiusMeters} m</span>
+                      {settings.geofenceRadiusMeters < 30 && (
+                        <span className="ml-2 text-amber-600 text-xs font-normal">⚠ Below 30 m may cause false rejections indoors</span>
+                      )}
+                    </label>
+                    <div className="flex items-center gap-4">
+                      <input
+                        type="range"
+                        min="10"
+                        max="500"
+                        step="5"
+                        value={settings.geofenceRadiusMeters}
+                        onChange={(e) => handleChange('geofenceRadiusMeters', parseInt(e.target.value))}
+                        className="flex-1 h-2 accent-blue-600 cursor-pointer"
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        max="100000"
+                        value={settings.geofenceRadiusMeters}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value);
+                          if (!isNaN(v) && v >= 1) handleChange('geofenceRadiusMeters', v);
+                        }}
+                        className="w-24 px-3 py-2 border border-gray-200 rounded-lg text-sm text-center font-mono focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                      <span className="text-sm text-gray-500 whitespace-nowrap">metres</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-400 mt-1 px-0.5">
+                      <span>10 m</span>
+                      <span>Recommended: 30–100 m</span>
+                      <span>500 m</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* GPS pin status */}
+                <div className={`flex items-start gap-3 p-3 rounded-lg text-sm ${
+                  settings.latitude && settings.longitude
+                    ? 'bg-green-50 border border-green-200 text-green-800'
+                    : 'bg-amber-50 border border-amber-200 text-amber-800'
+                }`}>
+                  <MapPin size={16} className="mt-0.5 shrink-0" />
+                  {settings.latitude && settings.longitude ? (
+                    <span>
+                      GPS pin set — lat <strong>{settings.latitude}</strong>, lng <strong>{settings.longitude}</strong>.
+                      Staff must be within <strong>{settings.geofenceRadiusMeters} m</strong> of this point to clock in
+                      {settings.geofenceEnforcementMode === 'SOFT' ? ' (soft — logged but not blocked)' : ''}.
+                    </span>
+                  ) : (
+                    <span>
+                      No GPS pin set. Click <strong>Get GPS Location</strong> above while standing at school to set it.
+                      Clock-in will be blocked until a pin is configured.
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
