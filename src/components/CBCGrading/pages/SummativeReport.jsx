@@ -2970,14 +2970,14 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           };
         });
 
-        const subjects = Array.from(new Set(targetTests.map(t => t.learningArea))).sort();
-        const subjectMaxScores = subjects.reduce((acc, subject) => {
+        const subjectsRaw = Array.from(new Set(targetTests.map(t => t.learningArea))).sort();
+        const subjectMaxScores = subjectsRaw.reduce((acc, subject) => {
           acc[subject] = targetTests
             .filter((test) => test.learningArea === subject)
             .reduce((sum, test) => sum + (Number(test?.totalMarks) || 100), 0);
           return acc;
         }, {});
-        const subjectSummaries = subjects.reduce((acc, subject) => {
+        const subjectSummaries = subjectsRaw.reduce((acc, subject) => {
           const subjectMax = subjectMaxScores[subject] || 0;
           const values = broadsheetData.map((row) => Number(row.subjectScores?.[subject]) || 0);
           const total = values.reduce((sum, value) => sum + value, 0);
@@ -2990,6 +2990,11 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           };
           return acc;
         }, {});
+
+        // Sort subjects by average % descending so highest-performing subject appears first
+        const subjects = [...subjectsRaw].sort(
+          (a, b) => (subjectSummaries[b]?.averagePct ?? 0) - (subjectSummaries[a]?.averagePct ?? 0)
+        );
 
         // 5. Compute per-learner merit points (sum of CBC points per subject)
         broadsheetData.forEach((d) => {
