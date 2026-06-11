@@ -496,7 +496,7 @@ pull_images() {
   fi
 
   if [[ "${kind}" == "main" ]]; then
-    compose_with_pinned_images "${kind}" "${project}" "${env_file}" pull backend frontend
+    compose_with_pinned_images "${kind}" "${project}" "${env_file}" pull backend frontend || return 1
     return 0
   fi
 
@@ -512,7 +512,7 @@ run_migrations() {
 
   if [[ "${kind}" == "main" ]]; then
     compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
-      run -T --no-deps --rm backend npx prisma migrate deploy < /dev/null
+      run -T --no-deps --rm backend npx prisma migrate deploy < /dev/null || return 1
     return 0
   fi
 
@@ -529,7 +529,7 @@ restart_services() {
 
   if [[ "${kind}" == "main" ]]; then
     compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
-      up -d --no-deps --force-recreate backend frontend
+      up -d --no-deps --force-recreate backend frontend || return 1
     return 0
   fi
 
@@ -560,11 +560,18 @@ health_check_instance() {
   [[ -n "${port}" ]] || { log "Could not resolve backend port for ${backend_container}"; return 1; }
 
   local url="http://${HEALTH_HOST}:${port}/api/health"
+  local readiness_url="http://${HEALTH_HOST}:${port}/api/schools/public/branding"
   for attempt in $(seq 1 30); do
     if body="$(curl -fsS --max-time 15 "${url}" 2>/dev/null)"; then
       if echo "${body}" | grep -q '"success":true'; then
-        log "OK ${url}"
-        return 0
+        if readiness_body="$(curl -fsS --max-time 15 "${readiness_url}" 2>/dev/null)" \
+          && echo "${readiness_body}" | grep -q '"success":true'; then
+          log "OK ${url}"
+          log "OK ${readiness_url}"
+          return 0
+        fi
+        log "Health passed but school schema readiness failed: ${readiness_url}"
+        return 1
       fi
       log "Unexpected health body: ${body}"
       return 1
