@@ -253,7 +253,8 @@ const OwnerMobileDashboard = ({ user, onNavigate, currentPath, brandingSettings 
           subvalue={fmtAttendance(teacherAttendanceRate)}
           loading={loadingMetrics}
           chips={[
-            { value: s.activeTeachers ?? s.totalTeachers ?? 0, label: 'active' },
+            { value: s.presentTeachers ?? s.activeTeachers ?? 0,  label: 'present' },
+            { value: s.absentTeachers  ?? 0,                       label: 'absent'  },
             ...(s.staffOnLeave != null ? [{ value: s.staffOnLeave, label: 'on leave' }] : []),
           ]}
         />
@@ -263,7 +264,8 @@ const OwnerMobileDashboard = ({ user, onNavigate, currentPath, brandingSettings 
           subvalue={fmtAttendance(staffAttendanceRate)}
           loading={loadingMetrics}
           chips={[
-            { value: s.activeSubordinateStaff ?? s.totalSubordinateStaff ?? s.subordinateStaff ?? 0, label: 'support roles' },
+            { value: s.presentSubordinateStaff ?? 0, label: 'present' },
+            { value: s.absentSubordinateStaff  ?? 0, label: 'absent'  },
           ]}
         />
       </div>

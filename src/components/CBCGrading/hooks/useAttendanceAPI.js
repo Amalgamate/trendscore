@@ -68,7 +68,9 @@ export const useAttendance = () => {
   const { user } = useAuth();
 
   const isTeacher = user?.role === 'TEACHER';
-  const currentUserId = user?.id || user?.userId;
+  // The login response stores the user's primary key as `id`.
+  // `userId` may exist on older cached objects — check both to be safe.
+  const currentUserId = user?.id ?? user?.userId ?? '';
 
   /**
    * Sync context classes and grades
@@ -77,16 +79,15 @@ export const useAttendance = () => {
     if (!schoolDataLoading) {
       const resolvedClasses = isTeacher
         ? (contextClasses || []).filter((classItem) => {
+          // If we can't determine the current user's ID, show all classes
+          // rather than showing none (fail-open is safer than fail-closed here).
           if (!currentUserId) return true;
+          // Only check the two fields that actually exist on the API response:
+          //   - teacherId  → the raw FK stored on the class record
+          //   - teacher.id → the joined User record's id
           const assignedTeacherIds = [
             classItem?.teacherId,
             classItem?.teacher?.id,
-            classItem?.teacher?.userId,
-            classItem?.classTeacherId,
-            classItem?.classTeacher?.id,
-            classItem?.classTeacher?.userId,
-            classItem?.teacherUserId,
-            classItem?.classTeacherUserId,
           ]
             .map(normalizeId)
             .filter(Boolean);

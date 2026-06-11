@@ -1038,6 +1038,32 @@ export class DashboardController {
                     take: 5,
                     include: { account: true }
                 }),
+                // [28] teacher/tutor clock-in records for today
+                prisma.staffAttendanceLog.findMany({
+                    where: {
+                        date: startOfToday,
+                        user: { role: 'TEACHER', archived: false },
+                    },
+                    select: { userId: true },
+                }),
+                // [29] subordinate staff user count (non-teacher, non-parent roles)
+                prisma.user.count({
+                    where: {
+                        role: { in: ['ACCOUNTANT', 'RECEPTIONIST', 'ADMIN', 'HEAD_TEACHER'] as any },
+                        archived: false,
+                    },
+                }),
+                // [30] subordinate staff clock-in records for today
+                prisma.staffAttendanceLog.findMany({
+                    where: {
+                        date: startOfToday,
+                        user: {
+                            role: { in: ['ACCOUNTANT', 'RECEPTIONIST', 'ADMIN', 'HEAD_TEACHER'] as any },
+                            archived: false,
+                        },
+                    },
+                    select: { userId: true },
+                }),
             ]);
 
             const [
@@ -1048,7 +1074,8 @@ export class DashboardController {
                 latestTest, feeAgg, feeByGrade, summativeByGrade,
                 subjectRatings, assessedClassCount, staffOnLeaveCount,
                 expensesToday, expensesThisMonth, expensesThisTerm, expensesByCategory,
-                recentExpenses
+                recentExpenses,
+                teacherClockInsToday, subordinateStaffCount, subordinateClockInsToday,
             ] = resultStage1 as any[];
 
             // ── Stage 2: Assessment-series detail ─────────────────────────────
@@ -1383,6 +1410,18 @@ export class DashboardController {
                     females: genderDistribution.find((g: any) => g.gender === 'FEMALE')?._count || 0,
                     totalPendingAssessments: pendingDraftCount,
                     performance: { ee: 0, me: 0, ae: 0, be: 0 },
+                    // ── Staff / tutor clock-in attendance (today) ──────────────
+                    presentTeachers: (teacherClockInsToday as any[]).length,
+                    absentTeachers: Math.max(0, (activeTeachers as number) - (teacherClockInsToday as any[]).length),
+                    teacherAttendanceRate: (activeTeachers as number) > 0
+                        ? parseFloat((((teacherClockInsToday as any[]).length / (activeTeachers as number)) * 100).toFixed(1))
+                        : 0,
+                    totalSubordinateStaff: subordinateStaffCount as number,
+                    presentSubordinateStaff: (subordinateClockInsToday as any[]).length,
+                    absentSubordinateStaff: Math.max(0, (subordinateStaffCount as number) - (subordinateClockInsToday as any[]).length),
+                    staffAttendanceRate: (subordinateStaffCount as number) > 0
+                        ? parseFloat((((subordinateClockInsToday as any[]).length / (subordinateStaffCount as number)) * 100).toFixed(1))
+                        : 0,
                 },
                 unAssessedBreakdown,
                 distributions: {

@@ -243,10 +243,13 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
               {
                 label: 'Tutors',
                 value: stats.totalTeachers,
-                subvalue: `${stats.activeTeachers} active`,
+                subvalue: metrics?.stats?.teacherAttendanceRate != null
+                  ? `${metrics.stats.teacherAttendanceRate}% present today`
+                  : `${stats.activeTeachers} active`,
                 chips: [
-                  { value: stats.activeTeachers,             label: 'Present',  dot: '#86efac' },
-                  { value: metrics?.stats?.staffOnLeave ?? 0, label: 'On Leave', dot: '#fde047' },
+                  { value: metrics?.stats?.presentTeachers ?? stats.activeTeachers, label: 'Present',  dot: '#86efac' },
+                  { value: metrics?.stats?.absentTeachers  ?? 0,                    label: 'Absent',   dot: '#fca5a5' },
+                  { value: metrics?.stats?.staffOnLeave    ?? 0,                    label: 'On Leave', dot: '#fde047' },
                 ],
                 icon: <GraduationCap size={26} />,
                 tone: 'teal',
@@ -254,11 +257,13 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
               },
               {
                 label: 'Subordinate Staff',
-                value: subordinateCount,
-                subvalue: 'Support roles',
+                value: metrics?.stats?.totalSubordinateStaff ?? subordinateCount,
+                subvalue: metrics?.stats?.staffAttendanceRate != null
+                  ? `${metrics.stats.staffAttendanceRate}% present today`
+                  : 'Support roles',
                 chips: [
-                  { value: metrics?.stats?.subordinateAdmin   ?? 0,               label: 'Admin',   dot: '#86efac' },
-                  { value: metrics?.stats?.subordinateSupport ?? subordinateCount, label: 'Support', dot: '#fca5a5' },
+                  { value: metrics?.stats?.presentSubordinateStaff ?? 0,                                           label: 'Present', dot: '#86efac' },
+                  { value: metrics?.stats?.absentSubordinateStaff  ?? (metrics?.stats?.totalSubordinateStaff ?? subordinateCount), label: 'Absent',  dot: '#fca5a5' },
                 ],
                 icon: <Users size={26} />,
                 tone: 'red',

@@ -74,6 +74,12 @@ export class ClassController {
 
     if (active) whereClause.active = active === 'true';
 
+    // Scope teachers to only their assigned class(es) so the frontend
+    // never needs to do its own fragile ID-matching filter.
+    if (req.user?.role === 'TEACHER') {
+      whereClause.teacherId = req.user.userId;
+    }
+
     const classes = await prisma.class.findMany({
       where: whereClause,
       include: {
