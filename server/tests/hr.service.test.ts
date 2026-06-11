@@ -56,6 +56,9 @@ jest.mock('../src/services/redis-cache.service', () => {
 // ─── Prisma Mock ──────────────────────────────────────────────────────────────
 
 const mockPrisma = {
+    school: {
+        findFirst: jest.fn(),
+    },
     user: {
         findMany: jest.fn(),
         findUnique: jest.fn(),
@@ -101,6 +104,9 @@ const mockPrisma = {
         upsert: jest.fn(),
         update: jest.fn(),
         findMany: jest.fn(),
+    },
+    staffAttendanceAttemptLog: {
+        create: jest.fn(),
     },
     performanceReview: {
         findMany: jest.fn(),
@@ -197,6 +203,15 @@ const makeLeaveRequest = (overrides = {}) => ({
     createdAt: new Date(),
     user: { firstName: 'Amina', phone: STAFF_PHONE },
     leaveType: makeLeaveType(),
+    ...overrides
+});
+
+const makeSchool = (overrides = {}) => ({
+    id: 'school-001',
+    latitude: -1.2921,
+    longitude: 36.8219,
+    geofenceRadiusMeters: 5,
+    geofenceEnforcementMode: 'STRICT',
     ...overrides
 });
 
@@ -326,6 +341,8 @@ describe('HRService', () => {
     beforeEach(() => {
         service = new HRService();
         jest.clearAllMocks();
+        (mockPrisma.school.findFirst as Mock).mockResolvedValue(makeSchool({ geofenceEnforcementMode: 'OFF' }));
+        (mockPrisma.staffAttendanceAttemptLog.create as Mock).mockResolvedValue({ id: 'attempt-001' });
     });
 
     // ── 2.1 Staff Directory ────────────────────────────────────────────────────
@@ -732,6 +749,20 @@ describe('HRService', () => {
             const result = await service.clockInStaff(STAFF_ID, { timestamp });
             expect(result.attendance.clockInAt).toEqual(timestamp);
             expect(result.payrollCreated).toBe(true);
+            expect(result.geofenceDecision).toMatchObject({
+                allowed: true,
+                enforcementMode: 'OFF',
+                reasonCode: 'GEOFENCE_DISABLED'
+            });
+            expect(mockPrisma.staffAttendanceAttemptLog.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    data: expect.objectContaining({
+                        action: 'CLOCK_IN',
+                        result: 'ALLOWED',
+                        reasonCode: 'GEOFENCE_DISABLED'
+                    })
+                })
+            );
         });
 
         it('does not create payroll if it already exists for the month', async () => {
@@ -743,6 +774,212 @@ describe('HRService', () => {
             const result = await service.clockInStaff(STAFF_ID, { timestamp });
             expect(result.payrollCreated).toBe(false);
             expect(mockPrisma.payrollRecord.create).not.toHaveBeenCalled();
+        });
+
+        it('allows clock-in in STRICT mode when within radius', async () => {
+            const timestamp = new Date('2026-04-11T08:00:00.000Z');
+            (mockPrisma.school.findFirst as Mock).mockResolvedValue(makeSchool({
+                latitude: -1.2921,
+                longitude: 36.8219,
+                geofenceRadiusMeters: 20,
+                geofenceEnforcementMode: 'STRICT'
+            }));
+            (mockPrisma.staffAttendanceLog.upsert as Mock).mockResolvedValue({ id: 'att-001', clockInAt: timestamp });
+            (mockPrisma.user.findUnique as Mock).mockResolvedValue(makeStaff());
+            (mockPrisma.payrollRecord.findUnique as Mock).mockResolvedValue(makePayrollRecord());
+
+            const result = await service.clockInStaff(STAFF_ID, {
+                timestamp,
+                latitude: -1.2921,
+                longitude: 36.82191,
+                accuracyMeters: 5,
+                source: 'web'
+            });
+
+            expect(result.geofenceDecision.allowed).toBe(true);
+            expect(result.geofenceDecision.enforcementMode).toBe('STRICT');
+            expect(result.geofenceDecision.distanceMeters).not.toBeNull();
+            expect(mockPrisma.staffAttendanceAttemptLog.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    data: expect.objectContaining({
+                        action: 'CLOCK_IN',
+                        result: 'ALLOWED',
+                        enforcementMode: 'STRICT'
+                    })
+                })
+            );
+        });
+
+        it('rejects clock-in in STRICT mode when outside radius', async () => {
+            (mockPrisma.school.findFirst as Mock).mockResolvedValue(makeSchool({
+                geofenceRadiusMeters: 5,
+                geofenceEnforcementMode: 'STRICT'
+            }));
+
+            await expect(service.clockInStaff(STAFF_ID, {
+                latitude: -1.2921,
+                longitude: 36.823,
+                accuracyMeters: 5,
+                source: 'web'
+            })).rejects.toMatchObject({
+                reasonCode: 'OUT_OF_RANGE',
+                geofenceDecision: expect.objectContaining({
+                    allowed: false,
+                    reasonCode: 'OUT_OF_RANGE',
+                    enforcementMode: 'STRICT'
+                })
+            });
+            expect(mockPrisma.staffAttendanceAttemptLog.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    data: expect.objectContaining({
+                        action: 'CLOCK_IN',
+                        result: 'DENIED',
+                        reasonCode: 'OUT_OF_RANGE'
+                    })
+                })
+            );
+        });
+
+        it('rejects clock-in in STRICT mode when location is missing', async () => {
+            (mockPrisma.school.findFirst as Mock).mockResolvedValue(makeSchool({
+                geofenceEnforcementMode: 'STRICT'
+            }));
+
+            await expect(service.clockInStaff(STAFF_ID, {
+                source: 'web'
+            })).rejects.toMatchObject({
+                reasonCode: 'MISSING_LOCATION',
+                geofenceDecision: expect.objectContaining({
+                    allowed: false,
+                    reasonCode: 'MISSING_LOCATION'
+                })
+            });
+            expect(mockPrisma.staffAttendanceAttemptLog.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    data: expect.objectContaining({
+                        action: 'CLOCK_IN',
+                        result: 'DENIED',
+                        reasonCode: 'MISSING_LOCATION'
+                    })
+                })
+            );
+        });
+
+        it('rejects clock-in in STRICT mode when school pin is missing', async () => {
+            (mockPrisma.school.findFirst as Mock).mockResolvedValue(makeSchool({
+                latitude: null,
+                longitude: null,
+                geofenceEnforcementMode: 'STRICT'
+            }));
+
+            await expect(service.clockInStaff(STAFF_ID, {
+                latitude: -1.2921,
+                longitude: 36.8219,
+                accuracyMeters: 5
+            })).rejects.toMatchObject({
+                reasonCode: 'NO_SCHOOL_PIN',
+                geofenceDecision: expect.objectContaining({
+                    allowed: false,
+                    reasonCode: 'NO_SCHOOL_PIN'
+                })
+            });
+            expect(mockPrisma.staffAttendanceAttemptLog.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    data: expect.objectContaining({
+                        action: 'CLOCK_IN',
+                        result: 'DENIED',
+                        reasonCode: 'NO_SCHOOL_PIN'
+                    })
+                })
+            );
+        });
+
+        it('rejects clock-in in STRICT mode when accuracy is too low', async () => {
+            (mockPrisma.school.findFirst as Mock).mockResolvedValue(makeSchool({
+                geofenceEnforcementMode: 'STRICT',
+                geofenceRadiusMeters: 20
+            }));
+
+            await expect(service.clockInStaff(STAFF_ID, {
+                latitude: -1.2921,
+                longitude: 36.8219,
+                accuracyMeters: 50
+            })).rejects.toMatchObject({
+                reasonCode: 'ACCURACY_TOO_LOW',
+                geofenceDecision: expect.objectContaining({
+                    allowed: false,
+                    reasonCode: 'ACCURACY_TOO_LOW'
+                })
+            });
+            expect(mockPrisma.staffAttendanceAttemptLog.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    data: expect.objectContaining({
+                        action: 'CLOCK_IN',
+                        result: 'DENIED',
+                        reasonCode: 'ACCURACY_TOO_LOW'
+                    })
+                })
+            );
+        });
+
+        it('allows clock-in in SOFT mode and returns warning details', async () => {
+            const timestamp = new Date('2026-04-11T08:00:00.000Z');
+            (mockPrisma.school.findFirst as Mock).mockResolvedValue(makeSchool({
+                geofenceRadiusMeters: 5,
+                geofenceEnforcementMode: 'SOFT'
+            }));
+            (mockPrisma.staffAttendanceLog.upsert as Mock).mockResolvedValue({ id: 'att-001', clockInAt: timestamp });
+            (mockPrisma.user.findUnique as Mock).mockResolvedValue(makeStaff());
+            (mockPrisma.payrollRecord.findUnique as Mock).mockResolvedValue(makePayrollRecord());
+
+            const result = await service.clockInStaff(STAFF_ID, {
+                timestamp,
+                latitude: -1.2921,
+                longitude: 36.823,
+                accuracyMeters: 5
+            });
+
+            expect(result.geofenceDecision).toMatchObject({
+                allowed: true,
+                enforcementMode: 'SOFT',
+                reasonCode: 'OUT_OF_RANGE'
+            });
+            expect(mockPrisma.staffAttendanceAttemptLog.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    data: expect.objectContaining({
+                        action: 'CLOCK_IN',
+                        result: 'ALLOWED',
+                        reasonCode: 'OUT_OF_RANGE'
+                    })
+                })
+            );
+        });
+
+        it('allows clock-in in OFF mode without checking location', async () => {
+            const timestamp = new Date('2026-04-11T08:00:00.000Z');
+            (mockPrisma.school.findFirst as Mock).mockResolvedValue(makeSchool({
+                geofenceEnforcementMode: 'OFF'
+            }));
+            (mockPrisma.staffAttendanceLog.upsert as Mock).mockResolvedValue({ id: 'att-001', clockInAt: timestamp });
+            (mockPrisma.user.findUnique as Mock).mockResolvedValue(makeStaff());
+            (mockPrisma.payrollRecord.findUnique as Mock).mockResolvedValue(makePayrollRecord());
+
+            const result = await service.clockInStaff(STAFF_ID, { timestamp });
+            expect(result.geofenceDecision).toMatchObject({
+                allowed: true,
+                enforcementMode: 'OFF',
+                reasonCode: 'GEOFENCE_DISABLED',
+                distanceMeters: null
+            });
+            expect(mockPrisma.staffAttendanceAttemptLog.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    data: expect.objectContaining({
+                        action: 'CLOCK_IN',
+                        result: 'ALLOWED',
+                        reasonCode: 'GEOFENCE_DISABLED'
+                    })
+                })
+            );
         });
     });
 
@@ -762,6 +999,53 @@ describe('HRService', () => {
             const result = await service.clockOutStaff(STAFF_ID, { timestamp: clockOut });
             expect(result.workedMinutesDelta).toBe(540);
             expect(result.workedDaysIncremented).toBe(true);
+            expect(mockPrisma.staffAttendanceAttemptLog.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    data: expect.objectContaining({
+                        action: 'CLOCK_OUT',
+                        result: 'ALLOWED',
+                        reasonCode: 'GEOFENCE_DISABLED'
+                    })
+                })
+            );
+        });
+
+        it('rejects clock-out in STRICT mode when outside radius', async () => {
+            const clockIn = new Date('2026-04-11T08:00:00.000Z');
+            (mockPrisma.school.findFirst as Mock).mockResolvedValue(makeSchool({
+                geofenceRadiusMeters: 5,
+                geofenceEnforcementMode: 'STRICT'
+            }));
+            (mockPrisma.staffAttendanceLog.findUnique as Mock).mockResolvedValue({
+                id: 'att-001',
+                userId: STAFF_ID,
+                date: new Date('2026-04-11'),
+                clockInAt: clockIn,
+                clockOutAt: null
+            });
+
+            await expect(service.clockOutStaff(STAFF_ID, {
+                timestamp: new Date('2026-04-11T17:00:00.000Z'),
+                latitude: -1.2921,
+                longitude: 36.823,
+                accuracyMeters: 5
+            })).rejects.toMatchObject({
+                reasonCode: 'OUT_OF_RANGE',
+                geofenceDecision: expect.objectContaining({
+                    allowed: false,
+                    reasonCode: 'OUT_OF_RANGE',
+                    enforcementMode: 'STRICT'
+                })
+            });
+            expect(mockPrisma.staffAttendanceAttemptLog.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    data: expect.objectContaining({
+                        action: 'CLOCK_OUT',
+                        result: 'DENIED',
+                        reasonCode: 'OUT_OF_RANGE'
+                    })
+                })
+            );
         });
 
         it('throws if no clock-in record found for today', async () => {

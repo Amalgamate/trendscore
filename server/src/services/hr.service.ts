@@ -1,11 +1,60 @@
 import prisma from '../config/database';
+import { Prisma } from '@prisma/client';
 import { accountingService } from './accounting.service';
 import { TaxCalculator } from '../utils/tax.calculator';
 import { SmsService } from './sms.service';
 import { whatsappService } from './whatsapp.service';
+import { ApiError } from '../utils/error.util';
+
+type AttendanceLocationPayload = {
+    latitude?: number;
+    longitude?: number;
+    accuracyMeters?: number;
+    capturedAt?: string | Date;
+    timestamp?: string | Date;
+    source?: string;
+    metadata?: Record<string, unknown> | null;
+};
+
+type AttendanceGeofenceMode = 'STRICT' | 'SOFT' | 'OFF';
+type AttendanceGeofenceReasonCode =
+    | 'NO_SCHOOL_PIN'
+    | 'MISSING_LOCATION'
+    | 'INVALID_LOCATION'
+    | 'ACCURACY_TOO_LOW'
+    | 'OUT_OF_RANGE'
+    | 'GEOFENCE_DISABLED';
+
+type AttendanceAction = 'clock-in' | 'clock-out';
+
+type SchoolGeofenceContext = {
+    id: string;
+    latitude: number | null;
+    longitude: number | null;
+    geofenceRadiusMeters: number | null;
+    geofenceEnforcementMode: AttendanceGeofenceMode | null;
+} | null;
+
+type AttendanceGeofenceDecision = {
+    allowed: boolean;
+    enforcementMode: AttendanceGeofenceMode;
+    radiusMeters: number;
+    distanceMeters: number | null;
+    accuracyMeters: number | null;
+    reasonCode: AttendanceGeofenceReasonCode | null;
+    message: string;
+};
+
+type AttendanceRequestContext = {
+    ipAddress?: string | null;
+    userAgent?: string | null;
+};
 
 export class HRService {
     private readonly staffRoles = ['ADMIN', 'HEAD_TEACHER', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST'] as const;
+    private readonly defaultGeofenceRadiusMeters = 5;
+    private readonly defaultGeofenceEnforcementMode: AttendanceGeofenceMode = 'STRICT';
+    private readonly strictAccuracyThresholdMeters = 30;
 
     private toDateOnly(dateValue: Date) {
         const date = new Date(dateValue);
@@ -16,6 +65,256 @@ export class HRService {
     private toWorkedMinutes(clockInAt: Date, clockOutAt: Date) {
         const ms = new Date(clockOutAt).getTime() - new Date(clockInAt).getTime();
         return Math.max(0, Math.floor(ms / 60000));
+    }
+
+    private resolveAttendanceTimestamp(payload: AttendanceLocationPayload = {}) {
+        const rawTimestamp = payload.timestamp || payload.capturedAt;
+        return rawTimestamp ? new Date(rawTimestamp) : new Date();
+    }
+
+    private async resolveCurrentSchoolGeofenceContext(): Promise<SchoolGeofenceContext> {
+        return prisma.school.findFirst({
+            where: { archived: false },
+            orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }, { createdAt: 'desc' }],
+            select: {
+                id: true,
+                latitude: true,
+                longitude: true,
+                geofenceRadiusMeters: true,
+                geofenceEnforcementMode: true
+            }
+        });
+    }
+
+    private normalizeGeofenceMode(mode?: AttendanceGeofenceMode | null): AttendanceGeofenceMode {
+        return mode || this.defaultGeofenceEnforcementMode;
+    }
+
+    private isFiniteCoordinate(value: number | undefined | null, min: number, max: number) {
+        return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
+    }
+
+    private toRadians(value: number) {
+        return (value * Math.PI) / 180;
+    }
+
+    private haversineDistanceMeters(latitudeA: number, longitudeA: number, latitudeB: number, longitudeB: number) {
+        const earthRadiusMeters = 6_371_000;
+        const latitudeDelta = this.toRadians(latitudeB - latitudeA);
+        const longitudeDelta = this.toRadians(longitudeB - longitudeA);
+        const latitudeARadians = this.toRadians(latitudeA);
+        const latitudeBRadians = this.toRadians(latitudeB);
+
+        const haversine =
+            Math.sin(latitudeDelta / 2) ** 2 +
+            Math.cos(latitudeARadians) * Math.cos(latitudeBRadians) * Math.sin(longitudeDelta / 2) ** 2;
+
+        return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+    }
+
+    private buildGeofenceDecision(params: {
+        allowed: boolean;
+        enforcementMode: AttendanceGeofenceMode;
+        radiusMeters: number;
+        distanceMeters?: number | null;
+        accuracyMeters?: number | null;
+        reasonCode?: AttendanceGeofenceReasonCode | null;
+        message: string;
+    }): AttendanceGeofenceDecision {
+        return {
+            allowed: params.allowed,
+            enforcementMode: params.enforcementMode,
+            radiusMeters: params.radiusMeters,
+            distanceMeters: params.distanceMeters == null ? null : Math.round(params.distanceMeters * 100) / 100,
+            accuracyMeters: params.accuracyMeters == null ? null : params.accuracyMeters,
+            reasonCode: params.reasonCode ?? null,
+            message: params.message
+        };
+    }
+
+    private buildGeofenceError(decision: AttendanceGeofenceDecision) {
+        const error = new ApiError(403, decision.message).withCode(decision.reasonCode || 'GEOFENCE_DENIED') as ApiError & {
+            reasonCode?: string;
+            geofenceDecision?: AttendanceGeofenceDecision;
+        };
+        error.reasonCode = decision.reasonCode || undefined;
+        error.geofenceDecision = decision;
+        return error;
+    }
+
+    private enforceGeofenceDecision(decision: AttendanceGeofenceDecision) {
+        if (!decision.allowed) {
+            throw this.buildGeofenceError(decision);
+        }
+    }
+
+    private evaluateAttendanceGeofence(
+        action: AttendanceAction,
+        school: SchoolGeofenceContext,
+        payload: AttendanceLocationPayload = {}
+    ): AttendanceGeofenceDecision {
+        const enforcementMode = this.normalizeGeofenceMode(school?.geofenceEnforcementMode);
+        const radiusMeters = school?.geofenceRadiusMeters ?? this.defaultGeofenceRadiusMeters;
+        const accuracyMeters = typeof payload.accuracyMeters === 'number' && Number.isFinite(payload.accuracyMeters)
+            ? payload.accuracyMeters
+            : null;
+        const actionLabel = action === 'clock-in' ? 'Clock-in' : 'Clock-out';
+
+        if (enforcementMode === 'OFF') {
+            return this.buildGeofenceDecision({
+                allowed: true,
+                enforcementMode,
+                radiusMeters,
+                accuracyMeters,
+                reasonCode: 'GEOFENCE_DISABLED',
+                message: 'Geofence enforcement is disabled for this school.'
+            });
+        }
+
+        const schoolLatitude = school?.latitude ?? null;
+        const schoolLongitude = school?.longitude ?? null;
+        const hasSchoolPin = this.isFiniteCoordinate(schoolLatitude, -90, 90) && this.isFiniteCoordinate(schoolLongitude, -180, 180);
+
+        if (!hasSchoolPin) {
+            const decision = this.buildGeofenceDecision({
+                allowed: enforcementMode === 'SOFT',
+                enforcementMode,
+                radiusMeters,
+                accuracyMeters,
+                reasonCode: 'NO_SCHOOL_PIN',
+                message: `${actionLabel} blocked because the school geofence pin is not configured.`
+            });
+            return decision;
+        }
+
+        if (payload.latitude === undefined || payload.longitude === undefined) {
+            return this.buildGeofenceDecision({
+                allowed: enforcementMode === 'SOFT',
+                enforcementMode,
+                radiusMeters,
+                accuracyMeters,
+                reasonCode: 'MISSING_LOCATION',
+                message: `${actionLabel} location is required for geofence verification.`
+            });
+        }
+
+        if (
+            !this.isFiniteCoordinate(payload.latitude, -90, 90) ||
+            !this.isFiniteCoordinate(payload.longitude, -180, 180)
+        ) {
+            return this.buildGeofenceDecision({
+                allowed: enforcementMode === 'SOFT',
+                enforcementMode,
+                radiusMeters,
+                accuracyMeters,
+                reasonCode: 'INVALID_LOCATION',
+                message: `${actionLabel} location is invalid.`
+            });
+        }
+
+        if (accuracyMeters === null || accuracyMeters > this.strictAccuracyThresholdMeters) {
+            return this.buildGeofenceDecision({
+                allowed: enforcementMode === 'SOFT',
+                enforcementMode,
+                radiusMeters,
+                accuracyMeters,
+                reasonCode: 'ACCURACY_TOO_LOW',
+                message: `${actionLabel} location accuracy is too low. Move closer or retry outdoors.`
+            });
+        }
+
+        const distanceMeters = this.haversineDistanceMeters(
+            payload.latitude,
+            payload.longitude,
+            schoolLatitude!,
+            schoolLongitude!
+        );
+
+        if (distanceMeters > radiusMeters) {
+            return this.buildGeofenceDecision({
+                allowed: enforcementMode === 'SOFT',
+                enforcementMode,
+                radiusMeters,
+                distanceMeters,
+                accuracyMeters,
+                reasonCode: 'OUT_OF_RANGE',
+                message: `${actionLabel} rejected because you are outside the allowed geofence radius.`
+            });
+        }
+
+        return this.buildGeofenceDecision({
+            allowed: true,
+            enforcementMode,
+            radiusMeters,
+            distanceMeters,
+            accuracyMeters,
+            message: `${actionLabel} allowed within the school geofence.`
+        });
+    }
+
+    private buildAttendanceMetadata(
+        payload: AttendanceLocationPayload = {},
+        geofenceDecision?: AttendanceGeofenceDecision
+    ) {
+        const metadataObject = payload.metadata && typeof payload.metadata === 'object'
+            ? payload.metadata
+            : {};
+
+        const metadata: Record<string, unknown> = { ...metadataObject };
+
+        if (payload.latitude !== undefined && payload.longitude !== undefined) {
+            metadata.location = {
+                latitude: payload.latitude,
+                longitude: payload.longitude,
+                accuracyMeters: payload.accuracyMeters ?? null,
+                capturedAt: payload.capturedAt || payload.timestamp || null
+            };
+        }
+
+        if (geofenceDecision) {
+            metadata.geofence = geofenceDecision;
+        }
+
+        if (!Object.keys(metadata).length) {
+            return payload.metadata === null ? Prisma.DbNull : undefined;
+        }
+
+        return metadata as Prisma.InputJsonValue;
+    }
+
+    private async recordAttendanceAttempt(params: {
+        userId: string;
+        schoolId: string | null;
+        action: 'CLOCK_IN' | 'CLOCK_OUT';
+        payload: AttendanceLocationPayload;
+        geofenceDecision: AttendanceGeofenceDecision;
+        context?: AttendanceRequestContext;
+    }) {
+        const { userId, schoolId, action, payload, geofenceDecision, context } = params;
+        const latitude = typeof payload.latitude === 'number' && Number.isFinite(payload.latitude) ? payload.latitude : undefined;
+        const longitude = typeof payload.longitude === 'number' && Number.isFinite(payload.longitude) ? payload.longitude : undefined;
+        const accuracyMeters = typeof payload.accuracyMeters === 'number' && Number.isFinite(payload.accuracyMeters) ? payload.accuracyMeters : undefined;
+        try {
+            await prisma.staffAttendanceAttemptLog.create({
+                data: {
+                    userId,
+                    schoolId: schoolId || undefined,
+                    action,
+                    result: geofenceDecision.allowed ? 'ALLOWED' : 'DENIED',
+                    reasonCode: geofenceDecision.reasonCode || undefined,
+                    latitude,
+                    longitude,
+                    accuracyMeters,
+                    distanceMeters: geofenceDecision.distanceMeters ?? undefined,
+                    radiusMeters: geofenceDecision.radiusMeters,
+                    enforcementMode: geofenceDecision.enforcementMode,
+                    ipAddress: context?.ipAddress || undefined,
+                    userAgent: context?.userAgent || undefined
+                }
+            });
+        } catch {
+            return;
+        }
     }
 
     /**
@@ -632,14 +931,41 @@ export class HRService {
         });
     }
 
-    async clockInStaff(userId: string, payload: any = {}) {
-        const timestamp = payload?.timestamp ? new Date(payload.timestamp) : new Date();
+    async clockInStaff(userId: string, payload: AttendanceLocationPayload = {}, context: AttendanceRequestContext = {}) {
+        const timestamp = this.resolveAttendanceTimestamp(payload);
         const dateOnly = this.toDateOnly(timestamp);
+        const school = await this.resolveCurrentSchoolGeofenceContext();
+        const schoolId = school?.id || null;
+        const geofenceDecision = this.evaluateAttendanceGeofence('clock-in', school, payload);
+        await this.recordAttendanceAttempt({
+            userId,
+            schoolId,
+            action: 'CLOCK_IN',
+            payload,
+            geofenceDecision,
+            context
+        });
+        if (!geofenceDecision.allowed) {
+            throw this.buildGeofenceError(geofenceDecision);
+        }
+        const metadata = this.buildAttendanceMetadata(payload, geofenceDecision);
 
         const attendance = await prisma.staffAttendanceLog.upsert({
             where: { userId_date: { userId, date: dateOnly } },
-            update: { clockInAt: timestamp, source: payload?.source || 'web', metadata: payload?.metadata || null },
-            create: { userId, date: dateOnly, clockInAt: timestamp, source: payload?.source || 'web', metadata: payload?.metadata || null }
+            update: {
+                schoolId: schoolId || undefined,
+                clockInAt: timestamp,
+                source: payload?.source || 'web',
+                metadata
+            },
+            create: {
+                userId,
+                schoolId,
+                date: dateOnly,
+                clockInAt: timestamp,
+                source: payload?.source || 'web',
+                metadata
+            }
         });
 
         const user = await prisma.user.findUnique({
@@ -685,11 +1011,11 @@ export class HRService {
             payrollCreated = true;
         }
 
-        return { attendance, payroll: payrollRecord, payrollCreated };
+        return { attendance, payroll: payrollRecord, payrollCreated, geofenceDecision };
     }
 
-    async clockOutStaff(userId: string, payload: any = {}) {
-        const timestamp = payload?.timestamp ? new Date(payload.timestamp) : new Date();
+    async clockOutStaff(userId: string, payload: AttendanceLocationPayload = {}, context: AttendanceRequestContext = {}) {
+        const timestamp = this.resolveAttendanceTimestamp(payload);
         const dateOnly = this.toDateOnly(timestamp);
 
         const attendance = await prisma.staffAttendanceLog.findUnique({
@@ -699,6 +1025,22 @@ export class HRService {
         if (timestamp.getTime() < new Date(attendance.clockInAt).getTime()) {
             throw new Error('Clock-out time cannot be earlier than clock-in time');
         }
+
+        const school = await this.resolveCurrentSchoolGeofenceContext();
+        const schoolId = school?.id || null;
+        const geofenceDecision = this.evaluateAttendanceGeofence('clock-out', school, payload);
+        await this.recordAttendanceAttempt({
+            userId,
+            schoolId: attendance.schoolId || schoolId,
+            action: 'CLOCK_OUT',
+            payload,
+            geofenceDecision,
+            context
+        });
+        if (!geofenceDecision.allowed) {
+            throw this.buildGeofenceError(geofenceDecision);
+        }
+        const metadata = this.buildAttendanceMetadata(payload, geofenceDecision);
 
         const previousWorkedMinutes = attendance.clockOutAt
             ? this.toWorkedMinutes(attendance.clockInAt, attendance.clockOutAt)
@@ -710,9 +1052,10 @@ export class HRService {
         const updatedAttendance = await prisma.staffAttendanceLog.update({
             where: { id: attendance.id },
             data: {
+                schoolId: attendance.schoolId || schoolId || undefined,
                 clockOutAt: timestamp,
                 source: payload?.source || attendance.source || 'web',
-                metadata: payload?.metadata || attendance.metadata || null
+                metadata: metadata === undefined ? undefined : metadata
             }
         });
 
@@ -731,7 +1074,13 @@ export class HRService {
             });
         }
 
-        return { attendance: updatedAttendance, payroll: payrollRecord, workedMinutesDelta, workedDaysIncremented: shouldIncrementWorkedDays };
+        return {
+            attendance: updatedAttendance,
+            payroll: payrollRecord,
+            workedMinutesDelta,
+            workedDaysIncremented: shouldIncrementWorkedDays,
+            geofenceDecision
+        };
     }
 
     // ─── Leave Type CRUD ──────────────────────────────────────────────────────

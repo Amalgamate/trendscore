@@ -3,12 +3,26 @@
  * Predicts collection patterns and forecasts cash flow
  */
 
+import { intelligenceDataService } from '../IntelligenceDataService';
+
+const toNumber = (value) => {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : 0;
+};
+
+const toRate = (value) => Math.max(0, Math.min(1, toNumber(value)));
+
 export class FeeCollectionForecaster {
+  constructor() {
+    this._cachedData = null;
+    this._cachedContextKey = null;
+  }
+
   async forecast(contextType, contextId, options = {}) {
     try {
-      const feeData = await this.fetchFeeData(contextType, contextId);
+      const feeData = await this.fetchFeeData(contextType, contextId, options);
       const trends = this.analyzeTrends(feeData);
-      const forecast = this.generateForecast(trends);
+      const forecast = this.generateForecast(trends, feeData);
       const alerts = this.generateAlerts(forecast, feeData);
 
       return {
@@ -22,6 +36,7 @@ export class FeeCollectionForecaster {
           collectionRate: feeData.collectionRate,
           daysInTerm: feeData.daysInTerm,
         },
+        history: feeData.monthlyHistory,
         trends,
         forecast,
         alerts,
@@ -33,24 +48,54 @@ export class FeeCollectionForecaster {
     }
   }
 
-  async fetchFeeData(contextType, contextId) {
-    // Mock data - replace with actual API calls
-    return {
-      totalExpected: 5000000, // 5M KES
-      totalCollected: 3200000, // 3.2M KES
-      outstanding: 1800000, // 1.8M KES
-      collectionRate: 0.64, // 64%
-      daysInTerm: 45,
-      monthlyHistory: [
-        { month: 'Month 1', collected: 1200000, expected: 1667000, rate: 0.72 },
-        { month: 'Month 2', collected: 1100000, expected: 1667000, rate: 0.66 },
-        { month: 'Month 3', collected: 900000, expected: 1667000, rate: 0.54 },
-      ],
+  async fetchFeeData(contextType, contextId, options = {}) {
+    const contextKey = `${contextType}:${contextId}`;
+    if (options.forceRefresh || this._cachedContextKey !== contextKey) {
+      this._cachedData = null;
+      this._cachedContextKey = contextKey;
+    }
+
+    if (this._cachedData) {
+      return this._cachedData;
+    }
+
+    const summary = await intelligenceDataService.fetchSummary(options.forceRefresh);
+    const fees = summary?.fees || {};
+    const monthlyHistory = Array.isArray(fees.monthlyHistory)
+      ? fees.monthlyHistory.map((entry, index) => ({
+          month: entry?.month || `Month ${index + 1}`,
+          collected: toNumber(entry?.collected),
+          expected: toNumber(entry?.billed),
+          rate: toRate(entry?.rate),
+        }))
+      : [];
+
+    const mappedData = {
+      totalExpected: toNumber(fees.totalBilled),
+      totalCollected: toNumber(fees.totalCollected),
+      outstanding: toNumber(fees.totalOutstanding),
+      collectionRate: toRate(fees.collectionRate),
+      daysInTerm: Math.max(1, monthlyHistory.length * 30),
+      monthlyHistory,
     };
+
+    this._cachedData = mappedData;
+    return mappedData;
   }
 
   analyzeTrends(feeData) {
     const { monthlyHistory, collectionRate } = feeData;
+
+    if (!monthlyHistory || monthlyHistory.length === 0) {
+      return {
+        averageRate: collectionRate || 0,
+        currentRate: collectionRate || 0,
+        trend: 'stable',
+        trendMagnitude: 0,
+        volatility: 0,
+        seasonalPattern: 'insufficient_data',
+      };
+    }
     
     // Calculate trend slope
     let totalRate = 0;
@@ -69,15 +114,19 @@ export class FeeCollectionForecaster {
     };
   }
 
-  generateForecast(trends) {
-    const { currentRate, trend, averageRate } = trends;
-    const forecastedRate = Math.max(0.3, Math.min(1, currentRate + trend * 0.5));
+  generateForecast(trends, feeData) {
+    const { currentRate, trend, trendMagnitude, averageRate } = trends;
+    const monthlyExpected = Math.round(feeData.totalExpected / Math.max(1, feeData.monthlyHistory.length));
+    const trendDelta =
+      trend === 'declining' ? -trendMagnitude : trend === 'improving' ? trendMagnitude : 0;
+    const forecastedRate = Math.max(0.3, Math.min(1, currentRate + trendDelta * 0.5));
 
     return {
+      totalExpected: feeData.totalExpected,
       nextMonthRate: forecastedRate,
-      nextMonthRevenue: Math.round(forecastedRate * 1667000),
+      nextMonthRevenue: Math.round(forecastedRate * monthlyExpected),
       confidence: trends.volatility < 0.15 ? 'high' : trends.volatility < 0.25 ? 'medium' : 'low',
-      expectedTotalByEndOfTerm: Math.round(averageRate * 5000000),
+      expectedTotalByEndOfTerm: Math.round(averageRate * feeData.totalExpected),
       riskFactors: this.identifyRiskFactors(trends),
     };
   }
@@ -131,12 +180,13 @@ export class FeeCollectionForecaster {
       },
       termEndPrediction: {
         expectedTotal: forecast.expectedTotalByEndOfTerm,
-        expectedShortfall: Math.round(5000000 - forecast.expectedTotalByEndOfTerm),
+        expectedShortfall: Math.round(forecast.totalExpected - forecast.expectedTotalByEndOfTerm),
       },
     };
   }
 
   calculateVolatility(monthlyHistory) {
+    if (!monthlyHistory || monthlyHistory.length === 0) return 0;
     const rates = monthlyHistory.map(m => m.rate);
     const mean = rates.reduce((a, b) => a + b, 0) / rates.length;
     const variance =
@@ -155,7 +205,7 @@ export class FeeCollectionForecaster {
   identifyRiskFactors(trends) {
     const factors = [];
     
-    if (trends.trend < -0.05) factors.push('declining_collection_rate');
+    if (trends.trend === 'declining' && trends.trendMagnitude > 0.05) factors.push('declining_collection_rate');
     if (trends.volatility > 0.2) factors.push('high_collection_volatility');
     if (trends.currentRate < 0.55) factors.push('below_target_collection');
     

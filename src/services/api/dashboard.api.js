@@ -23,6 +23,8 @@ export const dashboardAPI = {
     fetchWithAuth(`/dashboard/admin?filter=${filter}`),
   getInsights: async (fresh = false) =>
     fetchWithAuth(`/dashboard/insights${fresh ? '?fresh=1' : ''}`),
+  getIntelligenceSummary: async () =>
+    fetchWithAuth('/dashboard/intelligence-summary'),
   getAssessmentOperations: async (filters = {}) =>
     fetchWithAuth(`/dashboard/assessment-operations${buildQuery(filters)}`),
   getAcademicIntelligence: async (filters = {}) =>

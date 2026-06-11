@@ -64,7 +64,7 @@ export interface InsightsPayload {
 
 // ─── Snapshot shape (populated once per request) ─────────────────────────────
 
-interface MetricsSnapshot {
+export interface MetricsSnapshot {
   totalStudents: number;
   activeStudents: number;
   totalTeachers: number;
@@ -412,7 +412,7 @@ function operationsInsights(s: MetricsSnapshot): Insight[] {
 
 // ─── Snapshot builder ─────────────────────────────────────────────────────────
 
-async function buildSnapshot(): Promise<MetricsSnapshot> {
+export async function buildSnapshot(): Promise<MetricsSnapshot> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 

@@ -84,6 +84,14 @@ bash /srv/zawadi/apps/deploy/deploy-release.sh
 
 `Deploy Demo` is also manual-only. It validates the `demo` manifest entry, resolves the selected branch to `sha-<commit>`, then deploys the demo/canary target.
 
+The demo target is an isolated stack:
+
+- `compose_project`: `zawadi-demoschool`
+- `env_file`: `/srv/zawadi/apps/env/.zawadi-demoschool.env`
+- public domain: `demoschool.trendscore.co.ke`
+
+Do not point `demo` at the `zawadijrn` main stack. JRN production and demo must be promoted independently.
+
 ## 5. Manifest Source of Truth
 
 Schools are defined in `deploy/instances.manifest.json`.

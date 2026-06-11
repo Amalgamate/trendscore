@@ -5,9 +5,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle, TrendingDown, Users, ChevronRight } from 'lucide-react';
+import { AlertTriangle, TrendingDown, ChevronRight } from 'lucide-react';
 import { getIntelligenceEngine } from '../../../services/intelligence/IntelligenceEngine';
-import { COLORS } from '../../../design-system/colors';
 
 /**
  * Risk Alerts Widget
@@ -15,17 +14,22 @@ import { COLORS } from '../../../design-system/colors';
  * @param {string} props.contextType - 'school', 'class', or 'learner'
  * @param {string|number} props.contextId - ID of the context
  */
-const RiskAlerts = ({ contextType = 'school', contextId = 'default' }) => {
+const RiskAlerts = ({ contextType = 'school', contextId = 'default', refreshKey = 0 }) => {
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     const fetchInsights = async () => {
       try {
+        setLoading(true);
         const engine = getIntelligenceEngine();
         const data = await engine.getRiskInsights(contextType, contextId);
         setInsights(data);
+        setError(null);
       } catch (error) {
+        setError(error.message);
         console.error('Failed to fetch risk insights:', error);
       } finally {
         setLoading(false);
@@ -33,7 +37,7 @@ const RiskAlerts = ({ contextType = 'school', contextId = 'default' }) => {
     };
 
     fetchInsights();
-  }, [contextType, contextId]);
+  }, [contextType, contextId, refreshKey, retryKey]);
 
   if (loading) {
     return (
@@ -47,12 +51,32 @@ const RiskAlerts = ({ contextType = 'school', contextId = 'default' }) => {
     );
   }
 
-  if (!insights || !insights.risk) {
-    return null;
+  if (error || !insights?.risk) {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="bg-gradient-to-r from-red-50 to-orange-50 px-4 py-3 border-b border-gray-200">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-red-600" />
+            <h3 className="font-semibold text-gray-900">Risk Alerts</h3>
+          </div>
+        </div>
+        <div className="p-4 text-center text-gray-500">
+          <p className="text-sm">Unable to load risk alerts</p>
+          <button
+            type="button"
+            onClick={() => setRetryKey((current) => current + 1)}
+            className="mt-3 text-xs font-medium text-brand-purple hover:underline"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const { risk, alerts } = insights;
   const distribution = risk.distribution || {};
+  const hasNoRiskLearners = !risk.riskScores || risk.riskScores.length === 0;
 
   const getSeverityColor = (severity) => {
     switch (severity) {
@@ -119,7 +143,11 @@ const RiskAlerts = ({ contextType = 'school', contextId = 'default' }) => {
 
       {/* Alerts List */}
       <div className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
-        {alerts && alerts.length > 0 ? (
+        {hasNoRiskLearners ? (
+          <div className="p-4 text-center text-gray-500">
+            <p className="text-sm">No learners flagged at risk</p>
+          </div>
+        ) : alerts && alerts.length > 0 ? (
           alerts.slice(0, 8).map((alert, idx) => (
             <div key={idx} className={`p-3 border-l-4 ${getSeverityColor(alert.severity)}`}>
               <div className="flex items-start gap-3">

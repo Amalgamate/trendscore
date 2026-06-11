@@ -89,6 +89,7 @@ model User {
   performanceReviews        PerformanceReview[]      @relation("StaffReviews")
   schemesOfWork             SchemeOfWork[]           @relation("TeacherSchemes")
   staffAttendanceLogs       StaffAttendanceLog[]
+  staffAttendanceAttemptLogs StaffAttendanceAttemptLog[]
   staffDocuments            StaffDocument[]
   staffAllowances           StaffAllowance[]
   staffDeductions           StaffDeduction[]
@@ -170,6 +171,8 @@ model School {
   stampUrl            String?
   latitude            Float?
   longitude           Float?
+  geofenceRadiusMeters Int               @default(5)
+  geofenceEnforcementMode GeofenceEnforcementMode @default(STRICT)
   brandColor          String?
   welcomeMessage      String?
   welcomeTitle        String?
@@ -187,6 +190,9 @@ model School {
   tertiaryDepartments TertiaryDepartment[]
   tertiaryPrograms    TertiaryProgram[]
   tertiaryUnits       TertiaryUnit[]
+  aiGeneratedContents AIGeneratedContent[]
+  staffAttendanceLogs StaffAttendanceLog[]
+  staffAttendanceAttemptLogs StaffAttendanceAttemptLog[]
 
   @@index([kraPin])
   @@index([county])
@@ -1841,6 +1847,7 @@ model StaffDeduction {
 model StaffAttendanceLog {
   id         String    @id @default(uuid())
   userId     String
+  schoolId   String?
   date       DateTime  @db.Date
   clockInAt  DateTime
   clockOutAt DateTime?
@@ -1848,11 +1855,37 @@ model StaffAttendanceLog {
   metadata   Json?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
+  school     School?   @relation(fields: [schoolId], references: [id], onDelete: SetNull)
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, date])
+  @@index([schoolId, date])
   @@index([userId, clockInAt])
   @@map("staff_attendance_logs")
+}
+
+model StaffAttendanceAttemptLog {
+  id              String                       @id @default(uuid())
+  userId          String
+  schoolId        String?
+  action          StaffAttendanceAttemptAction
+  result          StaffAttendanceAttemptResult
+  reasonCode      String?
+  latitude        Float?
+  longitude       Float?
+  accuracyMeters  Float?
+  distanceMeters  Float?
+  radiusMeters    Int
+  enforcementMode GeofenceEnforcementMode
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime                     @default(now())
+  school          School?                      @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  user            User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([schoolId, createdAt])
+  @@map("staff_attendance_attempt_logs")
 }
 
 model StaffDocument {
@@ -2448,7 +2481,42 @@ model LMSProgress {
   @@map("lms_progress")
 }
 
+model AIGeneratedContent {
+  id         String        @id @default(cuid())
+  schoolId   String
+  type       AIContentType
+  entityId   String
+  entityType String
+  content    String        @db.Text
+  prompt     String?       @db.Text
+  provider   String?
+  tokensUsed Int?
+  createdBy  String
+  createdAt  DateTime      @default(now())
+  archived   Boolean       @default(false)
+  school     School        @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId])
+  @@index([type])
+  @@index([entityType, entityId])
+  @@index([createdBy])
+  @@index([createdAt])
+  @@index([archived])
+  @@map("ai_generated_content")
+}
+
 // ─── ENUMS ──────────────────────────────────────────────────────────────────
+
+enum AIContentType {
+  REPORT_COMMENT
+  PARENT_MESSAGE
+  ACADEMIC_ANALYSIS
+  DAILY_BRIEF
+  RISK_ANALYSIS
+  CAREER_GUIDANCE
+  COMMUNICATION_DRAFT
+  NL_ANSWER
+}
 
 enum BookStatus {
   AVAILABLE
@@ -2579,6 +2647,22 @@ enum AttendanceStatus {
   LATE
   EXCUSED
   SICK
+}
+
+enum GeofenceEnforcementMode {
+  STRICT
+  SOFT
+  OFF
+}
+
+enum StaffAttendanceAttemptAction {
+  CLOCK_IN
+  CLOCK_OUT
+}
+
+enum StaffAttendanceAttemptResult {
+  ALLOWED
+  DENIED
 }
 
 enum FormativeAssessmentType {

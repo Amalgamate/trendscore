@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Zap, TrendingUp, AlertCircle, CheckCircle } from 'lucide-react';
+import { Zap, CheckCircle } from 'lucide-react';
 import { getIntelligenceEngine } from '../../../services/intelligence/IntelligenceEngine';
 
 /**
@@ -15,7 +15,7 @@ import { getIntelligenceEngine } from '../../../services/intelligence/Intelligen
  * @param {string|number} props.contextId - ID of the context
  * @param {string} props.variant - 'default', 'compact', or 'detailed'
  */
-const AIInsights = ({ contextType = 'school', contextId = 'default', variant = 'default' }) => {
+const AIInsights = ({ contextType = 'school', contextId = 'default', variant = 'default', refreshKey = 0 }) => {
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -36,7 +36,7 @@ const AIInsights = ({ contextType = 'school', contextId = 'default', variant = '
     };
 
     fetchInsights();
-  }, [contextType, contextId]);
+  }, [contextType, contextId, refreshKey]);
 
   if (loading) {
     return (

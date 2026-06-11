@@ -54,6 +54,33 @@ const voidPayrollSchema = z.object({
     reason: z.string().min(5, 'Reason must be at least 5 characters').max(500)
 });
 
+const attendanceLocationPayloadBodySchema = z.object({
+    latitude: z.number().min(-90).max(90).optional(),
+    longitude: z.number().min(-180).max(180).optional(),
+    accuracyMeters: z.number().min(0).max(100000).optional(),
+    capturedAt: z.string().datetime().optional(),
+    timestamp: z.string().datetime().optional(),
+    source: z.string().min(1).max(50).optional(),
+    metadata: z.record(z.unknown()).optional().nullable()
+}).refine(
+    (data) => (data.latitude === undefined) === (data.longitude === undefined),
+    {
+        message: 'latitude and longitude must be provided together',
+        path: ['longitude']
+    }
+).refine(
+    (data) => data.accuracyMeters === undefined || data.latitude !== undefined,
+    {
+        message: 'accuracyMeters requires latitude and longitude',
+        path: ['accuracyMeters']
+    }
+);
+
+const attendanceLocationPayloadSchema = z.preprocess(
+    (value) => (value === undefined || value === null ? {} : value),
+    attendanceLocationPayloadBodySchema
+);
+
 // ── Dashboard ────────────────────────────────────────────────────────────────
 
 router.get(
@@ -70,6 +97,7 @@ router.post(
     '/attendance/clock-in',
     authenticate,
     rateLimit({ windowMs: 60_000, maxRequests: 60 }),
+    validate(attendanceLocationPayloadSchema),
     auditLog('STAFF_CLOCK_IN'),
     hrController.clockIn
 );
@@ -78,6 +106,7 @@ router.post(
     '/attendance/clock-out',
     authenticate,
     rateLimit({ windowMs: 60_000, maxRequests: 60 }),
+    validate(attendanceLocationPayloadSchema),
     auditLog('STAFF_CLOCK_OUT'),
     hrController.clockOut
 );

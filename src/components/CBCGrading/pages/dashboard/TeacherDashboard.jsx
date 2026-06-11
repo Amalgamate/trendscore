@@ -13,6 +13,7 @@ import {
 import DashboardSummary, { DashboardGreetingBanner } from './DashboardSummary';
 import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
 import AdminOverviewTabs from './AdminOverviewTabs';
+import ClockInStatusWidget from '../../dashboard/widgets/teacher/ClockInStatusWidget';
 
 import {
   Clock,
@@ -172,6 +173,8 @@ const TeacherDashboard = ({ user, onNavigate }) => {
     <div className="space-y-6">
 
       <DashboardGreetingBanner user={user} fallbackName="Teacher" />
+
+      <ClockInStatusWidget user={user} onNavigate={onNavigate} />
 
       <DashboardSection id="executive-summary" controls={sectionControls}>
       <DashboardSummary

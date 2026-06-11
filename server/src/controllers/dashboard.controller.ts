@@ -5,7 +5,7 @@ import { ApiError } from '../utils/error.util';
 import { AuthRequest } from '../middleware/permissions.middleware';
 import { redisCacheService } from '../services/redis-cache.service';
 import { configService } from '../services/config.service';
-import { generateInsights } from '../services/insights.service';
+import { buildSnapshot, generateInsights } from '../services/insights.service';
 import { reportDashboardService } from '../services/reportDashboard.service';
 import { CanonicalInstitutionType } from '../utils/institutionNormalizer';
 
@@ -185,15 +185,18 @@ export class DashboardController {
         }).slice(0, take);
     }
 
-    private async getTeacherLearnerRiskItems(classIds: string[], take = 6) {
-        if (classIds.length === 0) return [];
+    private async getLearnerRiskSignals(options: { classIds?: string[]; take?: number; schoolWide?: boolean } = {}) {
+        const { classIds = [], take = 50, schoolWide = false } = options;
+        if (!schoolWide && classIds.length === 0) return [];
 
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         thirtyDaysAgo.setHours(0, 0, 0, 0);
 
         const enrollments = await prisma.classEnrollment.findMany({
-            where: { classId: { in: classIds }, active: true, archived: false },
+            where: schoolWide
+                ? { active: true, archived: false }
+                : { classId: { in: classIds }, active: true, archived: false },
             include: {
                 class: { select: { name: true, grade: true, stream: true } },
                 learner: {
@@ -208,10 +211,14 @@ export class DashboardController {
                             select: { status: true },
                         },
                         summativeResults: {
-                            where: { archived: false },
+                            where: { archived: false, percentage: { not: null } },
                             orderBy: { createdAt: 'desc' },
                             take: 5,
                             select: { percentage: true },
+                        },
+                        feeInvoices: {
+                            where: { archived: false, balance: { gt: 0 } },
+                            select: { balance: true },
                         },
                         formativeAssessments: {
                             where: { archived: false, status: 'DRAFT' as any },
@@ -220,10 +227,10 @@ export class DashboardController {
                     },
                 },
             },
-            take: 200,
+            take: schoolWide ? 1000 : 200,
         });
 
-        const risks = enrollments.flatMap((enrollment) => {
+        const learnerSignals = enrollments.map((enrollment) => {
             const learner = enrollment.learner;
             const attendanceTotal = learner.attendances.length;
             const attendanceRate = attendanceTotal > 0
@@ -232,41 +239,90 @@ export class DashboardController {
             const avgScore = learner.summativeResults.length > 0
                 ? Math.round(learner.summativeResults.reduce((sum, result) => sum + Number(result.percentage || 0), 0) / learner.summativeResults.length)
                 : null;
-            const className = enrollment.class?.name || [learner.grade, learner.stream].filter(Boolean).join(' ');
-            const name = [learner.firstName, learner.lastName].filter(Boolean).join(' ');
+            const className = enrollment.class?.name || [learner.grade, learner.stream].filter(Boolean).join(' ') || 'Class';
+            const feeBalance = learner.feeInvoices.reduce((sum, invoice) => sum + Number(invoice.balance || 0), 0);
+            const riskFactors: string[] = [];
+            if (attendanceRate !== null && attendanceRate < 80) riskFactors.push('low_attendance');
+            if (avgScore !== null && avgScore < 50) riskFactors.push('declining_academics');
+            if (feeBalance > 0) riskFactors.push('fee_balance');
+
+            let severity: 'critical' | 'high' | 'medium' | null = null;
+            if ((attendanceRate !== null && attendanceRate < 65) && (avgScore !== null && avgScore < 40)) severity = 'critical';
+            else if ((attendanceRate !== null && attendanceRate < 65) || (avgScore !== null && avgScore < 40)) severity = 'high';
+            else if ((attendanceRate !== null && attendanceRate < 80) || (avgScore !== null && avgScore < 50)) severity = 'medium';
+
+            return {
+                learnerId: learner.id,
+                name: [learner.firstName, learner.lastName].filter(Boolean).join(' '),
+                grade: className,
+                stream: enrollment.class?.stream || learner.stream || '',
+                attendanceRate,
+                avgPercentage: avgScore,
+                feeBalance: Math.round(feeBalance),
+                draftCount: learner.formativeAssessments.length,
+                riskFactors,
+                severity,
+            };
+        });
+
+        const dedupedSignals = Array.from(
+            learnerSignals.reduce((map, signal) => {
+                const existing = map.get(signal.learnerId);
+                const rank = { critical: 3, high: 2, medium: 1, null: 0 } as const;
+                const currentRank = rank[String(signal.severity) as keyof typeof rank] ?? 0;
+                const existingRank = existing ? (rank[String(existing.severity) as keyof typeof rank] ?? 0) : -1;
+                if (!existing || currentRank > existingRank) map.set(signal.learnerId, signal);
+                return map;
+            }, new Map<string, typeof learnerSignals[number]>())
+        )
+            .map(([, signal]) => signal)
+            .filter((signal) => signal.severity !== null)
+            .sort((a, b) => {
+                const order = { critical: 0, high: 1, medium: 2 } as const;
+                return (order[a.severity as keyof typeof order] ?? 3) - (order[b.severity as keyof typeof order] ?? 3);
+            })
+            .slice(0, take);
+
+        return dedupedSignals;
+    }
+
+    private async getTeacherLearnerRiskItems(classIds: string[], take = 6) {
+        const learnerSignals = await this.getLearnerRiskSignals({ classIds, take });
+
+        const risks = learnerSignals.flatMap((signal) => {
             const items: any[] = [];
 
-            if (attendanceRate !== null && attendanceRate < 80) {
+            if (signal.attendanceRate !== null && signal.attendanceRate < 80) {
                 items.push({
-                    id: `${learner.id}:attendance`,
-                    learnerId: learner.id,
-                    name,
-                    grade: className,
-                    issue: `Low attendance (${attendanceRate}%)`,
-                    severity: attendanceRate < 65 ? 'high' : 'medium',
+                    id: `${signal.learnerId}:attendance`,
+                    learnerId: signal.learnerId,
+                    name: signal.name,
+                    grade: signal.grade,
+                    issue: `Low attendance (${signal.attendanceRate}%)`,
+                    severity: signal.attendanceRate < 65 ? 'high' : 'medium',
                     actionPage: 'attendance-analytics',
                 });
             }
 
-            if (avgScore !== null && avgScore < 50) {
+            if (signal.avgPercentage !== null && signal.avgPercentage < 50) {
                 items.push({
-                    id: `${learner.id}:performance`,
-                    learnerId: learner.id,
-                    name,
-                    grade: className,
-                    issue: `Academic support needed (${avgScore}%)`,
-                    severity: avgScore < 40 ? 'high' : 'medium',
+                    id: `${signal.learnerId}:performance`,
+                    learnerId: signal.learnerId,
+                    name: signal.name,
+                    grade: signal.grade,
+                    issue: `Academic support needed (${signal.avgPercentage}%)`,
+                    severity: signal.avgPercentage < 40 ? 'high' : 'medium',
                     actionPage: 'learners-list',
                 });
             }
 
-            if (learner.formativeAssessments.length > 0) {
+            if (signal.draftCount > 0) {
                 items.push({
-                    id: `${learner.id}:drafts`,
-                    learnerId: learner.id,
-                    name,
-                    grade: className,
-                    issue: `${learner.formativeAssessments.length} draft assessment${learner.formativeAssessments.length === 1 ? '' : 's'}`,
+                    id: `${signal.learnerId}:drafts`,
+                    learnerId: signal.learnerId,
+                    name: signal.name,
+                    grade: signal.grade,
+                    issue: `${signal.draftCount} draft assessment${signal.draftCount === 1 ? '' : 's'}`,
                     severity: 'medium',
                     actionPage: 'assess-summative-assessment',
                 });
@@ -354,6 +410,305 @@ export class DashboardController {
      */
     private getInstitutionType(req: AuthRequest): CanonicalInstitutionType {
         return (req.resolvedInstitutionType ?? 'PRIMARY_CBC') as CanonicalInstitutionType;
+    }
+
+    private formatAcademicPeriod(term: string, academicYear: number) {
+        const termLabel = String(term || '')
+            .replace(/^TERM_/i, 'Term ')
+            .replace(/_/g, ' ')
+            .trim();
+        return `${academicYear} ${termLabel}`.trim();
+    }
+
+    async getIntelligenceSummary(req: AuthRequest, res: Response) {
+        try {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const thirtyDaysAgo = new Date(today);
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+
+            const currentWeekStart = new Date(today);
+            const mondayOffset = (currentWeekStart.getDay() + 6) % 7;
+            currentWeekStart.setDate(currentWeekStart.getDate() - mondayOffset);
+
+            const weeklyRanges = Array.from({ length: 9 }, (_, index) => {
+                const start = new Date(currentWeekStart);
+                start.setDate(start.getDate() - ((8 - index) * 7));
+                const end = new Date(start);
+                end.setDate(end.getDate() + 7);
+                return { start, end };
+            });
+
+            const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+            const monthlyWindowStart = new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() - 2, 1);
+
+            const [
+                snapshot,
+                averagePercentageAgg,
+                subjectAverageRows,
+                formativeSubjectRatings,
+                termHistoryRows,
+                attendanceLast30Days,
+                weeklyAttendanceGroups,
+                monthlyCollectionRows,
+                monthlyBillingRows,
+                riskSignals,
+            ] = await Promise.all([
+                buildSnapshot(),
+                prisma.summativeResult.aggregate({
+                    where: {
+                        archived: false,
+                        percentage: { not: null },
+                    },
+                    _avg: { percentage: true },
+                }),
+                prisma.$queryRaw<Array<{ subject: string; avgPct: number; totalAssessed: number }>>(Prisma.sql`
+                    SELECT
+                        st."learningArea" AS subject,
+                        AVG(sr.percentage)::float AS "avgPct",
+                        COUNT(sr.id)::int AS "totalAssessed"
+                    FROM summative_results sr
+                    INNER JOIN summative_tests st ON st.id = sr."testId"
+                    WHERE sr.archived = false
+                      AND st.archived = false
+                      AND sr.percentage IS NOT NULL
+                    GROUP BY st."learningArea"
+                    ORDER BY AVG(sr.percentage) ASC, st."learningArea" ASC
+                `),
+                prisma.formativeAssessment.groupBy({
+                    by: ['learningArea', 'overallRating'],
+                    where: { archived: false },
+                    _count: true,
+                }),
+                prisma.$queryRaw<Array<{ academicYear: number; term: string; avgPct: number }>>(Prisma.sql`
+                    SELECT
+                        st."academicYear" AS "academicYear",
+                        st.term AS term,
+                        AVG(sr.percentage)::float AS "avgPct"
+                    FROM summative_results sr
+                    INNER JOIN summative_tests st ON st.id = sr."testId"
+                    WHERE sr.archived = false
+                      AND st.archived = false
+                      AND sr.percentage IS NOT NULL
+                    GROUP BY st."academicYear", st.term
+                    ORDER BY st."academicYear" DESC, st.term DESC
+                    LIMIT 6
+                `),
+                prisma.attendance.findMany({
+                    where: {
+                        date: { gte: thirtyDaysAgo },
+                        archived: false,
+                    },
+                    select: {
+                        learnerId: true,
+                        date: true,
+                        status: true,
+                    },
+                }),
+                Promise.all(
+                    weeklyRanges.map(({ start, end }) =>
+                        prisma.attendance.groupBy({
+                            by: ['status'],
+                            where: {
+                                date: { gte: start, lt: end },
+                                archived: false,
+                            },
+                            _count: true,
+                        })
+                    )
+                ),
+                prisma.$queryRaw<Array<{ monthStart: Date; collected: number }>>(Prisma.sql`
+                    SELECT
+                        DATE_TRUNC('month', p."paymentDate") AS "monthStart",
+                        SUM(p.amount)::float AS collected
+                    FROM fee_payments p
+                    WHERE p.archived = false
+                      AND p."paymentDate" >= ${monthlyWindowStart}
+                    GROUP BY DATE_TRUNC('month', p."paymentDate")
+                    ORDER BY DATE_TRUNC('month', p."paymentDate")
+                `),
+                prisma.$queryRaw<Array<{ monthStart: Date; billed: number }>>(Prisma.sql`
+                    SELECT
+                        DATE_TRUNC('month', i."createdAt") AS "monthStart",
+                        SUM(i."totalAmount")::float AS billed
+                    FROM fee_invoices i
+                    WHERE i.archived = false
+                      AND i."createdAt" >= ${monthlyWindowStart}
+                    GROUP BY DATE_TRUNC('month', i."createdAt")
+                    ORDER BY DATE_TRUNC('month', i."createdAt")
+                `),
+                this.getLearnerRiskSignals({ schoolWide: true, take: 50 }),
+            ]);
+
+            const subjectTotals = new Map<string, number>();
+            const subjectBeCounts = new Map<string, number>();
+            formativeSubjectRatings.forEach((row) => {
+                const key = row.learningArea || 'Unknown';
+                subjectTotals.set(key, (subjectTotals.get(key) || 0) + row._count);
+                if (row.overallRating === 'BE') {
+                    subjectBeCounts.set(key, (subjectBeCounts.get(key) || 0) + row._count);
+                }
+            });
+
+            const subjectBreakdown = subjectAverageRows.map((row) => {
+                const totalAssessed = Number(row.totalAssessed || 0);
+                const totalRated = subjectTotals.get(row.subject) || totalAssessed;
+                const beCount = subjectBeCounts.get(row.subject) || 0;
+                const bePct = totalRated > 0 ? Math.round((beCount / totalRated) * 100) : 0;
+                return {
+                    subject: row.subject,
+                    bePct,
+                    avgPct: Math.round(Number(row.avgPct || 0)),
+                    totalAssessed,
+                };
+            });
+
+            const termOrder = ['TERM_1', 'TERM_2', 'TERM_3'];
+            const termHistory = termHistoryRows
+                .map((row) => ({
+                    period: this.formatAcademicPeriod(String(row.term || ''), Number(row.academicYear || 0)),
+                    avgPct: Math.round(Number(row.avgPct || 0)),
+                    _year: Number(row.academicYear || 0),
+                    _termIndex: termOrder.indexOf(String(row.term || '')),
+                }))
+                .sort((a, b) => (a._year - b._year) || (a._termIndex - b._termIndex))
+                .slice(-6)
+                .map(({ period, avgPct }) => ({ period, avgPct }));
+
+            const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+            const dayMap = new Map<string, { total: number; present: number }>();
+            dayOrder.forEach((day) => dayMap.set(day, { total: 0, present: 0 }));
+            attendanceLast30Days.forEach((record) => {
+                const day = record.date.toLocaleDateString('en-US', { weekday: 'long' });
+                const bucket = dayMap.get(day) || { total: 0, present: 0 };
+                bucket.total += 1;
+                if (record.status === 'PRESENT') bucket.present += 1;
+                dayMap.set(day, bucket);
+            });
+            const dailyBreakdown = dayOrder
+                .filter((day) => (dayMap.get(day)?.total || 0) > 0)
+                .map((day) => {
+                    const bucket = dayMap.get(day)!;
+                    return {
+                        dayOfWeek: day,
+                        avgRate: bucket.total > 0 ? Number((bucket.present / bucket.total).toFixed(3)) : 0,
+                    };
+                });
+
+            const weeklyHistory = weeklyRanges.map(({ start }, index) => {
+                const grouped = weeklyAttendanceGroups[index] || [];
+                const present = grouped.find((item) => item.status === 'PRESENT')?._count || 0;
+                const total = grouped.reduce((sum, item) => sum + item._count, 0);
+                const isoYear = start.getUTCFullYear();
+                const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+                const dayOfYear = Math.floor((Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()) - yearStart.getTime()) / 86400000) + 1;
+                const weekNumber = Math.ceil(dayOfYear / 7);
+
+                return {
+                    week: `${isoYear}-W${String(weekNumber).padStart(2, '0')}`,
+                    avgRate: total > 0 ? Number((present / total).toFixed(3)) : 0,
+                };
+            });
+
+            const monthKeys = Array.from({ length: 3 }, (_, index) => {
+                const date = new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() - (2 - index), 1);
+                return date;
+            });
+            const collectedByMonth = new Map(
+                monthlyCollectionRows.map((row) => [
+                    new Date(row.monthStart).toISOString().slice(0, 7),
+                    Number(row.collected || 0),
+                ])
+            );
+            const billedByMonth = new Map(
+                monthlyBillingRows.map((row) => [
+                    new Date(row.monthStart).toISOString().slice(0, 7),
+                    Number(row.billed || 0),
+                ])
+            );
+            const monthlyHistory = monthKeys.map((monthStart) => {
+                const key = monthStart.toISOString().slice(0, 7);
+                const collected = collectedByMonth.get(key) || 0;
+                const billed = billedByMonth.get(key) || 0;
+                return {
+                    month: monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+                    collected: Math.round(collected),
+                    billed: Math.round(billed),
+                    rate: billed > 0 ? Number((collected / billed).toFixed(3)) : 0,
+                };
+            });
+
+            const riskDistribution = riskSignals.reduce(
+                (acc, learner) => {
+                    if (learner.severity === 'critical') acc.critical += 1;
+                    else if (learner.severity === 'high') acc.high += 1;
+                    else if (learner.severity === 'medium') acc.medium += 1;
+                    return acc;
+                },
+                { critical: 0, high: 0, medium: 0, total: snapshot.totalStudents }
+            );
+
+            const atRiskLearners = riskSignals.map((learner) => ({
+                learnerId: learner.learnerId,
+                name: learner.name,
+                grade: learner.grade,
+                stream: learner.stream,
+                attendanceRate: learner.attendanceRate !== null ? Number((learner.attendanceRate / 100).toFixed(3)) : 0,
+                avgPercentage: learner.avgPercentage !== null ? learner.avgPercentage : 0,
+                feeBalance: learner.feeBalance,
+                riskFactors: learner.riskFactors,
+            }));
+
+            const totalExpectedAttendance = Math.max(snapshot.activeStudents, snapshot.totalStudents);
+            const totalBilled = snapshot.feeCollected + snapshot.feePending;
+
+            res.json({
+                academics: {
+                    averagePercentage: Math.round(Number(averagePercentageAgg._avg.percentage || 0)),
+                    assessmentCompletionRate: snapshot.totalClasses > 0
+                        ? Number((snapshot.assessedClassCount / snapshot.totalClasses).toFixed(3))
+                        : 0,
+                    totalLearners: snapshot.totalStudents,
+                    learnersBelowExpectations: snapshot.be,
+                    ratingDistribution: {
+                        EE: snapshot.ee,
+                        ME: snapshot.me,
+                        AE: snapshot.ae,
+                        BE: snapshot.be,
+                    },
+                    subjectBreakdown,
+                    termHistory,
+                    pendingDraftCount: snapshot.pendingDraftCount,
+                },
+                fees: {
+                    totalBilled: Math.round(totalBilled),
+                    totalCollected: Math.round(snapshot.feeCollected),
+                    totalOutstanding: Math.round(snapshot.feePending),
+                    collectionRate: totalBilled > 0 ? Number((snapshot.feeCollected / totalBilled).toFixed(3)) : 0,
+                    overdueCount: snapshot.overdueInvoices,
+                    overpaidCount: snapshot.overpaidInvoices,
+                    monthlyHistory,
+                },
+                attendance: {
+                    presentToday: snapshot.presentToday,
+                    absentToday: snapshot.absentToday,
+                    lateToday: snapshot.lateToday,
+                    totalExpected: totalExpectedAttendance,
+                    todayRate: totalExpectedAttendance > 0 ? Number((snapshot.presentToday / totalExpectedAttendance).toFixed(3)) : 0,
+                    weeklyHistory,
+                    dailyBreakdown,
+                },
+                risk: {
+                    atRiskLearners,
+                    distribution: riskDistribution,
+                },
+            });
+        } catch (error: any) {
+            logger.error('Dashboard Intelligence Summary Error:', error);
+            if (error instanceof ApiError) throw error;
+            throw new ApiError(500, error.message || 'Failed to fetch dashboard intelligence summary');
+        }
     }
 
     /** GET /api/dashboard/secondary */

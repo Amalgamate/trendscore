@@ -1,8 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { User, Mail, Lock, Eye, EyeOff, CheckCircle, Loader2, XCircle, Building2, MapPin } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { onboardingAPI, authAPI } from '../../services/api';
-import debounce from 'lodash/debounce';
 import { PRODUCT_DISPLAY_NAME } from '../../config/productIdentity';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -36,18 +35,16 @@ export default function RegisterForm({ onSwitchToLogin, onRegisterSuccess, brand
 
   // validationStatus: { [field]: 'valid' | 'invalid' | 'loading' | null }
   const [fieldStatus, setFieldStatus] = useState({});
-  const [checkingField, setCheckingField] = useState(null);
+  const checkAvailability = useMemo(() => {
+    let timeoutId = null;
 
-  // Debounced check function
-  const checkAvailability = useCallback(
-    debounce(async (field, value) => {
+    const runCheck = async (field, value) => {
       if (!value) return;
 
       // Regex pre-check
       if (field === 'email' && !/\S+@\S+\.\S+/.test(value)) return;
       if (field === 'phone' && !/^\+?[0-9]{10,15}$/.test(value)) return;
 
-      setCheckingField(field);
       setFieldStatus(prev => ({ ...prev, [field]: 'loading' }));
 
       try {
@@ -65,11 +62,31 @@ export default function RegisterForm({ onSwitchToLogin, onRegisterSuccess, brand
         setFieldStatus(prev => ({ ...prev, [field]: 'invalid' }));
         setErrors(prev => ({ ...prev, [field]: msg }));
       } finally {
-        setCheckingField(null);
       }
-    }, 500),
-    []
-  );
+    };
+
+    const debounced = (field, value) => {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+      timeoutId = window.setTimeout(() => {
+        runCheck(field, value);
+      }, 500);
+    };
+
+    debounced.cancel = () => {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+
+    return debounced;
+  }, []);
+
+  useEffect(() => () => {
+    checkAvailability.cancel();
+  }, [checkAvailability]);
 
   // Update field status immediately for synchronous validations
   const updateFieldStatus = (name, value) => {
@@ -704,7 +721,7 @@ export default function RegisterForm({ onSwitchToLogin, onRegisterSuccess, brand
                     className="w-5 h-5 rounded border-gray-300 text-brand-purple focus:ring-brand-purple accent-brand-purple cursor-pointer transition-transform group-active:scale-95"
                   />
                   <span className="text-sm text-gray-600 font-medium group-hover:text-gray-900 transition-colors">
-                    I agree to the <a href="#" className="text-brand-purple hover:underline underline-offset-4">Terms of Service</a> & <a href="#" className="text-brand-purple hover:underline underline-offset-4">Privacy Policy</a>
+                    I agree to the <button type="button" className="text-brand-purple hover:underline underline-offset-4">Terms of Service</button> & <button type="button" className="text-brand-purple hover:underline underline-offset-4">Privacy Policy</button>
                   </span>
                 </label>
               </div>

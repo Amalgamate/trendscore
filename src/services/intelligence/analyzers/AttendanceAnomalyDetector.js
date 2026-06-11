@@ -3,10 +3,24 @@
  * Detects unusual attendance patterns and behavioral changes
  */
 
+import { intelligenceDataService } from '../IntelligenceDataService';
+
+const toNumber = (value) => {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : 0;
+};
+
+const toRate = (value) => Math.max(0, Math.min(1, toNumber(value)));
+
 export class AttendanceAnomalyDetector {
+  constructor() {
+    this._cachedData = null;
+    this._cachedContextKey = null;
+  }
+
   async detectAnomalies(contextType, contextId, options = {}) {
     try {
-      const attendanceData = await this.fetchAttendanceData(contextType, contextId);
+      const attendanceData = await this.fetchAttendanceData(contextType, contextId, options);
       const baseline = this.calculateBaseline(attendanceData);
       const anomalies = this.findAnomalies(attendanceData, baseline);
       const alerts = this.generateAlerts(anomalies, attendanceData);
@@ -18,10 +32,14 @@ export class AttendanceAnomalyDetector {
         currentMetrics: {
           presentToday: attendanceData.presentToday,
           totalExpected: attendanceData.totalExpected,
-          attendanceRate: attendanceData.presentToday / attendanceData.totalExpected,
+          attendanceRate:
+            attendanceData.totalExpected > 0
+              ? attendanceData.presentToday / attendanceData.totalExpected
+              : 0,
           daysPresent: attendanceData.daysPresent,
           daysAbsent: attendanceData.daysAbsent,
         },
+        weeklyHistory: attendanceData.weeklyHistory,
         baseline,
         anomalies,
         alerts,
@@ -33,38 +51,62 @@ export class AttendanceAnomalyDetector {
     }
   }
 
-  async fetchAttendanceData(contextType, contextId) {
-    // Mock data - replace with actual API calls
-    const dailyData = [
-      { date: 'Monday', present: 420, absent: 30, rate: 0.933 },
-      { date: 'Tuesday', present: 418, absent: 32, rate: 0.929 },
-      { date: 'Wednesday', present: 350, absent: 100, rate: 0.778 }, // Anomaly
-      { date: 'Thursday', present: 425, absent: 25, rate: 0.944 },
-      { date: 'Friday', present: 410, absent: 40, rate: 0.911 },
-    ];
+  async fetchAttendanceData(contextType, contextId, options = {}) {
+    const contextKey = `${contextType}:${contextId}`;
+    if (options.forceRefresh || this._cachedContextKey !== contextKey) {
+      this._cachedData = null;
+      this._cachedContextKey = contextKey;
+    }
 
-    return {
-      presentToday: 420,
-      totalExpected: 450,
-      daysPresent: 2065,
-      daysAbsent: 160,
+    if (this._cachedData) {
+      return this._cachedData;
+    }
+
+    const summary = await intelligenceDataService.fetchSummary(options.forceRefresh);
+    const attendance = summary?.attendance || {};
+    const totalExpected = toNumber(attendance.totalExpected);
+    const dailyData = Array.isArray(attendance.dailyBreakdown)
+      ? attendance.dailyBreakdown.map((entry, index) => {
+          const rate = toRate(entry?.avgRate);
+          const present = Math.round(rate * totalExpected);
+          return {
+            date: entry?.dayOfWeek || `Day ${index + 1}`,
+            present,
+            absent: Math.max(0, Math.round((1 - rate) * totalExpected)),
+            rate,
+          };
+        })
+      : [];
+
+    const mappedData = {
+      presentToday: toNumber(attendance.presentToday),
+      totalExpected,
+      daysPresent: toNumber(attendance.presentToday),
+      daysAbsent: toNumber(attendance.absentToday),
       dailyData,
-      weeklyHistory: [
-        { week: 'Week 1', avgRate: 0.92 },
-        { week: 'Week 2', avgRate: 0.91 },
-        { week: 'Week 3', avgRate: 0.88 },
-        { week: 'Week 4', avgRate: 0.85 },
-        { week: 'Week 5', avgRate: 0.83 },
-        { week: 'Week 6', avgRate: 0.79 },
-        { week: 'Week 7', avgRate: 0.81 },
-        { week: 'Week 8', avgRate: 0.80 },
-        { week: 'Week 9', avgRate: 0.82 },
-      ],
+      weeklyHistory: Array.isArray(attendance.weeklyHistory)
+        ? attendance.weeklyHistory.map((entry, index) => ({
+            week: entry?.week || `Week ${index + 1}`,
+            avgRate: toRate(entry?.avgRate),
+          }))
+        : [],
     };
+
+    this._cachedData = mappedData;
+    return mappedData;
   }
 
   calculateBaseline(attendanceData) {
     const rates = attendanceData.weeklyHistory.map(w => w.avgRate);
+    if (rates.length === 0) {
+      return {
+        expectedRate: 0,
+        standardDeviation: 0,
+        upperBound: 0,
+        lowerBound: 0,
+      };
+    }
+
     const mean = rates.reduce((a, b) => a + b, 0) / rates.length;
     const variance = rates.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / rates.length;
     const stdDev = Math.sqrt(variance);
@@ -96,6 +138,10 @@ export class AttendanceAnomalyDetector {
     });
 
     // Check weekly trend
+    if (attendanceData.weeklyHistory.length === 0) {
+      return anomalies;
+    }
+
     const lastWeekRate = attendanceData.weeklyHistory[attendanceData.weeklyHistory.length - 1].avgRate;
     const previousWeekRate = attendanceData.weeklyHistory[attendanceData.weeklyHistory.length - 2]?.avgRate || lastWeekRate;
 
@@ -131,7 +177,10 @@ export class AttendanceAnomalyDetector {
     });
 
     // Alert if overall rate is below threshold
-    const overallRate = attendanceData.presentToday / attendanceData.totalExpected;
+    const overallRate =
+      attendanceData.totalExpected > 0
+        ? attendanceData.presentToday / attendanceData.totalExpected
+        : 0;
     if (overallRate < 0.85) {
       alerts.push({
         type: 'attendance',
@@ -155,7 +204,7 @@ export class AttendanceAnomalyDetector {
 
     // Day-of-week pattern
     const mondayRate = dailyRates[0];
-    const fridayRate = dailyRates[4] || dailyRates[dailyRates.length - 1];
+    const fridayRate = dailyRates.length >= 5 ? dailyRates[4] : dailyRates[dailyRates.length - 1];
     if (fridayRate < mondayRate - 0.05) {
       patterns.push({
         pattern: 'friday_effect',
@@ -165,6 +214,10 @@ export class AttendanceAnomalyDetector {
     }
 
     // Trend pattern
+    if (weeklyRates.length === 0) {
+      return patterns;
+    }
+
     const firstWeekRate = weeklyRates[0];
     const lastWeekRate = weeklyRates[weeklyRates.length - 1];
     const trend = lastWeekRate - firstWeekRate;

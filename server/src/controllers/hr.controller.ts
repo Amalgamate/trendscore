@@ -27,10 +27,18 @@ export class HRController {
         try {
             const userId = req.user?.userId;
             if (!userId) throw new ApiError(401, 'Unauthorized');
-            const result = await hrService.clockInStaff(userId, req.body || {});
+            const result = await hrService.clockInStaff(userId, req.body || {}, {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            });
             res.status(201).json({ success: true, message: 'Clock-in recorded', data: result });
         } catch (error: any) {
-            res.status(error.statusCode || 500).json({ success: false, message: error.message });
+            res.status(error.statusCode || 500).json({
+                success: false,
+                message: error.message,
+                ...(error.reasonCode || error.code ? { reasonCode: error.reasonCode || error.code } : {}),
+                ...(error.geofenceDecision ? { geofenceDecision: error.geofenceDecision } : {})
+            });
         }
     }
 
@@ -49,13 +57,21 @@ export class HRController {
         try {
             const userId = req.user?.userId;
             if (!userId) throw new ApiError(401, 'Unauthorized');
-            const result = await hrService.clockOutStaff(userId, req.body || {});
+            const result = await hrService.clockOutStaff(userId, req.body || {}, {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            });
             res.status(200).json({ success: true, message: 'Clock-out recorded', data: result });
         } catch (error: any) {
             const message    = error?.message || 'Failed to clock out';
             const statusCode = error?.statusCode ||
                 (message.includes('No clock-in record') || message.includes('earlier than clock-in') ? 400 : 500);
-            res.status(statusCode).json({ success: false, message });
+            res.status(statusCode).json({
+                success: false,
+                message,
+                ...(error.reasonCode || error.code ? { reasonCode: error.reasonCode || error.code } : {}),
+                ...(error.geofenceDecision ? { geofenceDecision: error.geofenceDecision } : {})
+            });
         }
     }
 

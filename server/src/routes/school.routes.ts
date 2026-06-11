@@ -45,6 +45,8 @@ const updateSchoolSchema = z.object({
   accentColor2: z.string().max(20).optional().nullable(),
   latitude: z.number().optional().nullable(),
   longitude: z.number().optional().nullable(),
+  geofenceRadiusMeters: z.number().int().min(1).max(100000).optional(),
+  geofenceEnforcementMode: z.enum(['STRICT', 'SOFT', 'OFF']).optional(),
   welcomeTitle: z.string().max(255).optional().nullable(),
   welcomeMessage: z.string().max(2000).optional().nullable(),
   onboardingTitle: z.string().max(255).optional().nullable(),

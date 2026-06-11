@@ -84,6 +84,18 @@ router.get(
 );
 
 /**
+ * @route   GET /api/dashboard/intelligence-summary
+ * @desc    Get consolidated intelligence data for dashboard analyzers
+ * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM
+ */
+router.get(
+  '/intelligence-summary',
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM']),
+  rateLimit({ windowMs: 60_000, maxRequests: 30 }),
+  asyncHandler(dashboardController.getIntelligenceSummary.bind(dashboardController))
+);
+
+/**
  * @route   GET /api/dashboard/assessment-operations
  * @desc    Get live assessment readiness and mark-entry metrics
  * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM

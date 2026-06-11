@@ -1,11 +1,34 @@
 import { fetchWithAuth } from './core';
+import { axiosInstance } from './axiosConfig';
+
+const normalizeAttendanceError = (error, fallbackMessage) => {
+    const response = error?.response?.data;
+    return {
+        success: false,
+        message: response?.message || response?.error?.message || error?.message || fallbackMessage,
+        reasonCode: response?.reasonCode || response?.error?.code || null,
+        geofenceDecision: response?.geofenceDecision || response?.error?.geofenceDecision || null
+    };
+};
 
 export const hrAPI = {
     // ── Attendance ────────────────────────────────────────────────────────────
-    clockInStaff: async (data = {}) =>
-        fetchWithAuth('/hr/attendance/clock-in', { method: 'POST', body: JSON.stringify(data) }),
-    clockOutStaff: async (data = {}) =>
-        fetchWithAuth('/hr/attendance/clock-out', { method: 'POST', body: JSON.stringify(data) }),
+    clockInStaff: async (data = {}) => {
+        try {
+            const response = await axiosInstance.post('/hr/attendance/clock-in', data);
+            return response.data;
+        } catch (error) {
+            return normalizeAttendanceError(error, 'Failed to clock in');
+        }
+    },
+    clockOutStaff: async (data = {}) => {
+        try {
+            const response = await axiosInstance.post('/hr/attendance/clock-out', data);
+            return response.data;
+        } catch (error) {
+            return normalizeAttendanceError(error, 'Failed to clock out');
+        }
+    },
     getTodayClockIn: async () => fetchWithAuth('/hr/attendance/today'),
     getAttendanceReport: async (params = {}) => {
         const qs = new URLSearchParams(params).toString();

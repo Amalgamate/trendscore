@@ -8,6 +8,7 @@ import { dashboardAPI } from '../../../../services/api';
 import { Clock, FileText, Users, AlertTriangle } from 'lucide-react';
 import { GreetingToast } from '../../pages/dashboard/DashboardSummary';
 import MobileBottomNav from './MobileBottomNav';
+import ClockInStatusWidget from '../widgets/teacher/ClockInStatusWidget';
 
 /**
  * Teacher Mobile Dashboard
@@ -59,6 +60,7 @@ const TeacherMobileDashboard = ({ user, onNavigate, currentPath }) => {
 
       {/* Teaching Metrics */}
       <div className="px-3 py-4 space-y-3">
+        <ClockInStatusWidget user={user} onNavigate={onNavigate} />
         {teachingMetrics.map((metric, idx) => {
           const Icon = metric.icon;
           return (

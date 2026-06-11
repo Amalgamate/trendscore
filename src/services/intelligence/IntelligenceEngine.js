@@ -14,7 +14,7 @@ import { NaturalLanguageInsightGenerator } from './analyzers/NaturalLanguageInsi
  * Intelligence Engine Configuration
  */
 const ENGINE_CONFIG = {
-  cacheTimeout: 1800000, // 30 minutes
+  cacheTimeout: 300000, // 5 minutes
   maxInsightsPerType: 10,
   anomalyThreshold: 0.2, // 20% deviation
   riskScoringWeights: {
@@ -48,22 +48,24 @@ class IntelligenceEngine {
    */
   async getInsights(contextType, contextId, options = {}) {
     const cacheKey = `${contextType}:${contextId}`;
+    const forceRefresh = Boolean(options.forceRefresh);
+    const analyzerOptions = { ...options, forceRefresh };
     
     // Check cache validity
     if (this.cache.has(cacheKey)) {
       const cached = this.cache.get(cacheKey);
       const age = Date.now() - cached.timestamp;
-      if (age < this.config.cacheTimeout && !options.forceRefresh) {
+      if (age < this.config.cacheTimeout && !forceRefresh) {
         return cached.data;
       }
     }
 
     try {
       const insights = await Promise.all([
-        this.analyzers.risk.analyze(contextType, contextId, options),
-        this.analyzers.fees.forecast(contextType, contextId, options),
-        this.analyzers.attendance.detectAnomalies(contextType, contextId, options),
-        this.analyzers.academics.analyzeTrends(contextType, contextId, options),
+        this.analyzers.risk.analyze(contextType, contextId, analyzerOptions),
+        this.analyzers.fees.forecast(contextType, contextId, analyzerOptions),
+        this.analyzers.attendance.detectAnomalies(contextType, contextId, analyzerOptions),
+        this.analyzers.academics.analyzeTrends(contextType, contextId, analyzerOptions),
       ]);
 
       const combinedInsights = {

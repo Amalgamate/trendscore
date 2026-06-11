@@ -20,11 +20,12 @@
       "tier": "demo",
       "active": true,
       "deployment_allowed": true,
-      "kind": "main",
-      "compose_project": "zawadijrn",
+      "kind": "stack",
+      "compose_project": "zawadi-demoschool",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-demoschool.env",
       "public_domain": "demoschool.trendscore.co.ke",
       "auto_deploy_on_main": true,
-      "notes": "QA canary URL on the zawadijrn main stack (same stack as JRN). Auto-deploys on every main build."
+      "notes": "QA canary stack with its own compose project, database volume, ports, and env file. It must stay isolated from JRN production."
     },
     {
       "id": "ighs",
@@ -101,7 +102,6 @@
     "school_stack_only": true,
     "exclude_compose_projects": [
       "zawadijrn",
-      "zawadi-demoschool",
       "zawadi-amalgamate-images",
       "zawadi-naet",
       "zawadi-zayan-electricals"

@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle, TrendingDown, Calendar } from 'lucide-react';
+import { AlertTriangle, Calendar } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { getIntelligenceEngine } from '../../../services/intelligence/IntelligenceEngine';
 
@@ -15,17 +15,21 @@ import { getIntelligenceEngine } from '../../../services/intelligence/Intelligen
  * @param {string} props.contextType - 'school', 'class', or 'teacher'
  * @param {string|number} props.contextId - ID of the context
  */
-const AttendanceAnomalies = ({ contextType = 'school', contextId = 'default' }) => {
+const AttendanceAnomalies = ({ contextType = 'school', contextId = 'default', refreshKey = 0 }) => {
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchInsights = async () => {
       try {
+        setLoading(true);
         const engine = getIntelligenceEngine();
         const data = await engine.getAcademicInsights(contextType, contextId);
         setInsights(data);
+        setError(null);
       } catch (error) {
+        setError(error.message);
         console.error('Failed to fetch attendance insights:', error);
       } finally {
         setLoading(false);
@@ -33,31 +37,53 @@ const AttendanceAnomalies = ({ contextType = 'school', contextId = 'default' }) 
     };
 
     fetchInsights();
-  }, [contextType, contextId]);
+  }, [contextType, contextId, refreshKey]);
+
+  const attendance = insights?.attendance;
+  const chartData = Array.isArray(attendance?.weeklyHistory)
+    ? attendance.weeklyHistory.map((entry) => ({
+        week: entry.week,
+        rate: Math.round((entry.avgRate || 0) * 100),
+      }))
+    : [];
+  const hasChartData = chartData.length > 0;
 
   if (loading) {
-    return <div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />;
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-amber-50 to-orange-50">
+          <div className="h-5 w-36 bg-gray-200 rounded animate-pulse" />
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            {[1, 2, 3].map((item) => (
+              <div key={item} className="h-16 bg-gray-100 rounded animate-pulse" />
+            ))}
+          </div>
+          <div className="h-48 bg-gray-100 rounded animate-pulse" />
+          <div className="h-20 bg-gray-100 rounded animate-pulse" />
+        </div>
+      </div>
+    );
   }
 
-  if (!insights?.attendance) {
-    return null;
+  if (error || !attendance) {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 px-4 py-3 border-b border-gray-200">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-amber-600" />
+            <h3 className="font-semibold text-gray-900">Attendance Patterns</h3>
+          </div>
+        </div>
+        <div className="p-4 text-center text-gray-500">
+          <p className="text-sm">Unable to load attendance insights</p>
+        </div>
+      </div>
+    );
   }
 
-  const { attendance, alerts } = insights;
   const { currentMetrics, anomalies, patterns } = attendance;
-
-  // Mock chart data from weekly history
-  const chartData = [
-    { week: 'W1', rate: 92 },
-    { week: 'W2', rate: 91 },
-    { week: 'W3', rate: 88 },
-    { week: 'W4', rate: 85 },
-    { week: 'W5', rate: 83 },
-    { week: 'W6', rate: 79 },
-    { week: 'W7', rate: 81 },
-    { week: 'W8', rate: 82 },
-    { week: 'W9', rate: 80 },
-  ];
 
   const attendanceRate = (currentMetrics.attendanceRate * 100).toFixed(0);
   const anomalyCount = (anomalies || []).length;
@@ -100,22 +126,28 @@ const AttendanceAnomalies = ({ contextType = 'school', contextId = 'default' }) 
       {/* Trend Chart */}
       <div className="p-4 h-64 border-b border-gray-200">
         <p className="text-xs font-semibold text-gray-600 mb-3">Attendance Trend (Weekly)</p>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ top: 5, right: 20, left: -20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis dataKey="week" tick={{ fontSize: 12 }} />
-            <YAxis domain={[70, 100]} tick={{ fontSize: 12 }} />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: '#fff',
-                border: '1px solid #e5e7eb',
-                borderRadius: '8px',
-              }}
-              formatter={(value) => [`${value}%`, 'Attendance']}
-            />
-            <Line type="monotone" dataKey="rate" stroke="#f59e0b" strokeWidth={2} dot={{ fill: '#f59e0b' }} />
-          </LineChart>
-        </ResponsiveContainer>
+        {hasChartData ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData} margin={{ top: 5, right: 20, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis dataKey="week" tick={{ fontSize: 12 }} />
+              <YAxis domain={[70, 100]} tick={{ fontSize: 12 }} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#fff',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '8px',
+                }}
+                formatter={(value) => [`${value}%`, 'Attendance']}
+              />
+              <Line type="monotone" dataKey="rate" stroke="#f59e0b" strokeWidth={2} dot={{ fill: '#f59e0b' }} />
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex h-[calc(100%-1.5rem)] items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50 px-6 text-center">
+            <p className="text-sm text-gray-500">No live attendance trend data is available for this view yet.</p>
+          </div>
+        )}
       </div>
 
       {/* Anomalies & Patterns */}

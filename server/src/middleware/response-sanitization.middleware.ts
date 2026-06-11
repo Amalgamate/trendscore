@@ -84,6 +84,15 @@ function normalizeErrorPayload(data: any): any {
     normalized.error = { ...errorObject, ...data.error };
   }
 
+  const errorCode = data.reasonCode || data.code;
+  if (errorCode) {
+    normalized.error.code = errorCode;
+  }
+
+  if (data.geofenceDecision && typeof data.geofenceDecision === 'object') {
+    normalized.error.geofenceDecision = data.geofenceDecision;
+  }
+
   return normalized;
 }
 
@@ -104,6 +113,10 @@ function sanitizeErrorResponse(
 
   if (error.code) {
     sanitized.code = escapeHtml(String(error.code));
+  }
+
+  if (error.geofenceDecision && typeof error.geofenceDecision === 'object') {
+    sanitized.geofenceDecision = error.geofenceDecision;
   }
 
   if (isDevelopment && error.stack) {

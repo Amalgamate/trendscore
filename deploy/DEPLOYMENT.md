@@ -69,7 +69,7 @@ Edit `deploy/instances.manifest.json`:
 - `active: false` blocks deployment.
 - `deployment_allowed: false` blocks deployment.
 - `aliases` can be used for operator-friendly typed slugs, for example `lions-complex` for a manifest ID such as `lionscomplex`.
-- **demo** — `kind: "main"` uses `defaults.main_dir` (canary / demoschool).  
+- **demo** — `kind: "stack"` uses `zawadi-demoschool` with its own env file, DB volume, ports, and nginx route. It must not share the `zawadijrn` production stack.
 
 Set `ALLOW_PUBLIC_REGISTRATION` is unrelated; for deploys set secrets `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`.
 

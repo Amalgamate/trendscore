@@ -3,7 +3,21 @@
  * Identifies at-risk learners based on multiple factors
  */
 
+import { intelligenceDataService } from '../IntelligenceDataService';
+
+const toNumber = (value) => {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : 0;
+};
+
+const toRate = (value) => Math.max(0, Math.min(1, toNumber(value)));
+
 export class RiskDetectionAnalyzer {
+  constructor() {
+    this._cachedData = null;
+    this._cachedContextKey = null;
+  }
+
   /**
    * Analyze risk factors for learners
    * @param {string} contextType - 'school', 'class', 'learner'
@@ -12,11 +26,14 @@ export class RiskDetectionAnalyzer {
    */
   async analyze(contextType, contextId, options = {}) {
     try {
-      // Mock data fetching - replace with actual API calls
-      const learnerData = await this.fetchLearnerData(contextType, contextId);
+      const learnerData = await this.fetchLearnerData(contextType, contextId, options);
       const riskFactors = this.calculateRiskFactors(learnerData);
       const riskScores = this.scoreRisks(riskFactors);
       const alerts = this.generateAlerts(riskScores, riskFactors);
+      const distribution = learnerData.distribution || this.analyzeRiskDistribution(riskScores);
+      const atRiskCount = learnerData.distribution
+        ? distribution.critical + distribution.high + distribution.medium
+        : riskScores.filter(r => r.riskScore > 0.5).length;
 
       return {
         type: 'risk',
@@ -25,8 +42,8 @@ export class RiskDetectionAnalyzer {
         riskFactors,
         riskScores,
         alerts,
-        atRiskCount: riskScores.filter(r => r.riskScore > 0.5).length,
-        distribution: this.analyzeRiskDistribution(riskScores),
+        atRiskCount,
+        distribution,
         recommendations: this.generateRecommendations(riskScores, riskFactors),
       };
     } catch (error) {
@@ -43,45 +60,41 @@ export class RiskDetectionAnalyzer {
   /**
    * Fetch learner data for analysis
    */
-  async fetchLearnerData(contextType, contextId) {
-    // Mock implementation - replace with actual API calls
-    return {
-      learners: [
-        {
-          id: 1,
-          name: 'John Doe',
-          attendanceRate: 0.75, // 75%
-          assessmentRate: 0.6, // 60%
-          avgGrade: 2.1, // C+ scale
-          outstandingFees: 15000,
-          behaviorIncidents: 2,
-          trendAttendance: -0.15, // declining 15%
-          trendAcademics: -0.1, // declining 10%
-        },
-        {
-          id: 2,
-          name: 'Jane Smith',
-          attendanceRate: 0.92,
-          assessmentRate: 0.85,
-          avgGrade: 3.8,
-          outstandingFees: 0,
+  async fetchLearnerData(contextType, contextId, options = {}) {
+    const contextKey = `${contextType}:${contextId}`;
+    if (options.forceRefresh || this._cachedContextKey !== contextKey) {
+      this._cachedData = null;
+      this._cachedContextKey = contextKey;
+    }
+
+    if (this._cachedData) {
+      return this._cachedData;
+    }
+
+    const summary = await intelligenceDataService.fetchSummary(options.forceRefresh);
+    const risk = summary?.risk || {};
+    const learners = Array.isArray(risk.atRiskLearners)
+      ? risk.atRiskLearners.map((learner, index) => ({
+          id: learner?.learnerId || `risk-${index + 1}`,
+          name: learner?.name || 'Unknown Learner',
+          attendanceRate: toRate(learner?.attendanceRate),
+          assessmentRate: 1,
+          avgGrade: toNumber(learner?.avgPercentage) / 25,
+          outstandingFees: toNumber(learner?.feeBalance),
           behaviorIncidents: 0,
-          trendAttendance: 0.05,
-          trendAcademics: 0.08,
-        },
-        {
-          id: 3,
-          name: 'Bob Johnson',
-          attendanceRate: 0.65,
-          assessmentRate: 0.5,
-          avgGrade: 1.9,
-          outstandingFees: 45000,
-          behaviorIncidents: 5,
-          trendAttendance: -0.25,
-          trendAcademics: -0.2,
-        },
-      ],
+          trendAttendance: 0,
+          trendAcademics: 0,
+        }))
+      : [];
+
+    const distribution = this.normalizeDistribution(risk.distribution);
+    const mappedData = {
+      learners,
+      distribution,
     };
+
+    this._cachedData = mappedData;
+    return mappedData;
   }
 
   /**
@@ -243,8 +256,25 @@ export class RiskDetectionAnalyzer {
       high,
       medium,
       total,
-      criticalPercentage: ((critical / total) * 100).toFixed(1),
-      highPercentage: ((high / total) * 100).toFixed(1),
+      criticalPercentage: total > 0 ? ((critical / total) * 100).toFixed(1) : '0.0',
+      highPercentage: total > 0 ? ((high / total) * 100).toFixed(1) : '0.0',
+    };
+  }
+
+  normalizeDistribution(distribution) {
+    const critical = toNumber(distribution?.critical);
+    const high = toNumber(distribution?.high);
+    const medium = toNumber(distribution?.medium);
+    const reportedTotal = toNumber(distribution?.total);
+    const total = Math.max(reportedTotal, critical + high + medium);
+
+    return {
+      critical,
+      high,
+      medium,
+      total,
+      criticalPercentage: total > 0 ? ((critical / total) * 100).toFixed(1) : '0.0',
+      highPercentage: total > 0 ? ((high / total) * 100).toFixed(1) : '0.0',
     };
   }
 

@@ -3,10 +3,17 @@
  * Analyzes academic performance trends and subject-specific patterns
  */
 
+import { intelligenceDataService } from '../IntelligenceDataService';
+
 export class AcademicTrendAnalyzer {
+  constructor() {
+    this._cachedData = null;
+    this._cachedContextKey = null;
+  }
+
   async analyzeTrends(contextType, contextId, options = {}) {
     try {
-      const academicData = await this.fetchAcademicData(contextType, contextId);
+      const academicData = await this.fetchAcademicData(contextType, contextId, options);
       const trends = this.calculateTrends(academicData);
       const subjectAnalysis = this.analyzeSubjects(academicData);
       const alerts = this.generateAlerts(trends, subjectAnalysis, academicData);
@@ -33,45 +40,71 @@ export class AcademicTrendAnalyzer {
     }
   }
 
-  async fetchAcademicData(contextType, contextId) {
-    // Mock data - replace with actual API calls
-    const assessmentHistory = [
-      { week: 'Week 1', avg: 3.2, completed: 0.88 },
-      { week: 'Week 2', avg: 3.15, completed: 0.87 },
-      { week: 'Week 3', avg: 3.1, completed: 0.85 },
-      { week: 'Week 4', avg: 3.05, completed: 0.83 },
-      { week: 'Week 5', avg: 2.95, completed: 0.80 },
-      { week: 'Week 6', avg: 2.9, completed: 0.78 },
-      { week: 'Week 7', avg: 2.85, completed: 0.76 },
-      { week: 'Week 8', avg: 2.88, completed: 0.77 },
-      { week: 'Week 9', avg: 2.92, completed: 0.79 },
-    ];
+  async fetchAcademicData(contextType, contextId, options = {}) {
+    const contextKey = `${contextType}:${contextId}`;
+    if (options.forceRefresh || this._cachedContextKey !== contextKey) {
+      this._cachedData = null;
+      this._cachedContextKey = contextKey;
+    }
 
-    return {
-      averageGrade: 2.92,
-      assessmentCompletion: 0.79,
-      learnersBelowAverage: 145,
-      totalLearners: 450,
-      subjectPerformance: [
-        { subject: 'English', avgGrade: 3.2, completion: 0.88, trend: 0.05 },
-        { subject: 'Mathematics', avgGrade: 2.8, completion: 0.75, trend: -0.08 },
-        { subject: 'Science', avgGrade: 3.0, completion: 0.82, trend: -0.02 },
-        { subject: 'History', avgGrade: 3.4, completion: 0.90, trend: 0.03 },
-        { subject: 'Geography', avgGrade: 2.9, completion: 0.80, trend: -0.05 },
-      ],
-      assessmentHistory,
+    if (this._cachedData) {
+      return this._cachedData;
+    }
+
+    const summary = await intelligenceDataService.fetchSummary(options.forceRefresh);
+    const academics = summary?.academics;
+
+    if (!academics) {
+      throw new Error('Academic intelligence data is unavailable');
+    }
+
+    const mappedData = {
+      averageGrade: Number(academics.averagePercentage || 0) / 25,
+      assessmentCompletion: Number(academics.assessmentCompletionRate || 0),
+      learnersBelowAverage: Number(academics.learnersBelowExpectations || 0),
+      totalLearners: Number(academics.totalLearners || 0),
+      assessmentHistory: Array.isArray(academics.termHistory)
+        ? academics.termHistory.map((entry) => ({
+            week: entry.period,
+            avg: Number(entry.avgPct || 0) / 25,
+            completed: Number(academics.assessmentCompletionRate || 0),
+          }))
+        : [],
+      subjectPerformance: Array.isArray(academics.subjectBreakdown)
+        ? academics.subjectBreakdown.map((subject) => ({
+            subject: subject.subject,
+            avgGrade: Number(subject.avgPct || 0) / 25,
+            completion: 1 - (Number(subject.bePct || 0) / 100),
+            trend: 0,
+          }))
+        : [],
       gradeDistribution: {
-        A: 85,
-        B: 135,
-        C: 150,
-        D: 60,
-        E: 20,
+        A: Number(academics.ratingDistribution?.EE || 0),
+        B: Number(academics.ratingDistribution?.ME || 0),
+        C: Number(academics.ratingDistribution?.AE || 0),
+        D: Number(academics.ratingDistribution?.BE || 0),
+        E: 0,
       },
     };
+
+    this._cachedData = mappedData;
+    return mappedData;
   }
 
   calculateTrends(academicData) {
     const { assessmentHistory } = academicData;
+
+    if (!assessmentHistory || assessmentHistory.length === 0) {
+      return {
+        gradeChange: 0,
+        gradeDirection: 'stable',
+        completionChange: 0,
+        completionDirection: 'stable',
+        volatility: 0,
+        weakestWeek: null,
+        strongestWeek: null,
+      };
+    }
     
     // Calculate grade trend
     const firstAvg = assessmentHistory[0].avg;
@@ -100,6 +133,16 @@ export class AcademicTrendAnalyzer {
 
   analyzeSubjects(academicData) {
     const { subjectPerformance } = academicData;
+    if (!subjectPerformance || subjectPerformance.length === 0) {
+      return {
+        topSubject: null,
+        bottomSubject: null,
+        byPerformance: [],
+        atRisk: [],
+        strong: [],
+        completionIssues: [],
+      };
+    }
     
     const sorted = [...subjectPerformance].sort((a, b) => b.avgGrade - a.avgGrade);
     
@@ -171,11 +214,7 @@ export class AcademicTrendAnalyzer {
 
   generatePredictions(trends) {
     const currentGrade = trends.strongestWeek?.avg || 3.0;
-    const projection = trends.gradeDirection === 'declining' 
-      ? currentGrade - Math.random() * 0.3
-      : trends.gradeDirection === 'improving'
-      ? currentGrade + Math.random() * 0.2
-      : currentGrade;
+    const projection = currentGrade;
 
     return {
       projectedGradeByEndOfTerm: Math.max(0, Math.min(4, projection)),

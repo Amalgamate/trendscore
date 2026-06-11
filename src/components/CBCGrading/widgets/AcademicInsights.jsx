@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { BookOpen, TrendingUp, AlertCircle } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { getIntelligenceEngine } from '../../../services/intelligence/IntelligenceEngine';
 
 /**
@@ -15,17 +15,21 @@ import { getIntelligenceEngine } from '../../../services/intelligence/Intelligen
  * @param {string} props.contextType - 'school', 'class', or 'teacher'
  * @param {string|number} props.contextId - ID of the context
  */
-const AcademicInsights = ({ contextType = 'school', contextId = 'default' }) => {
+const AcademicInsights = ({ contextType = 'school', contextId = 'default', refreshKey = 0 }) => {
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchInsights = async () => {
       try {
+        setLoading(true);
         const engine = getIntelligenceEngine();
         const data = await engine.getAcademicInsights(contextType, contextId);
         setInsights(data);
+        setError(null);
       } catch (error) {
+        setError(error.message);
         console.error('Failed to fetch academic insights:', error);
       } finally {
         setLoading(false);
@@ -33,18 +37,47 @@ const AcademicInsights = ({ contextType = 'school', contextId = 'default' }) => 
     };
 
     fetchInsights();
-  }, [contextType, contextId]);
+  }, [contextType, contextId, refreshKey]);
 
   if (loading) {
-    return <div className="bg-white rounded-lg border border-gray-200 p-4 h-80 animate-pulse" />;
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50">
+          <div className="h-5 w-32 bg-gray-200 rounded animate-pulse" />
+        </div>
+        <div className="p-4 space-y-4">
+          {[1, 2, 3].map((row) => (
+            <div key={row} className="space-y-2">
+              <div className="h-4 w-40 bg-gray-200 rounded animate-pulse" />
+              <div className="h-10 w-full bg-gray-100 rounded animate-pulse" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
-  if (!insights?.academics) {
-    return null;
+  if (error || !insights?.academics) {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="bg-gradient-to-r from-blue-50 to-purple-50 px-4 py-3 border-b border-gray-200">
+          <div className="flex items-center gap-2">
+            <BookOpen className="w-5 h-5 text-blue-600" />
+            <h3 className="font-semibold text-gray-900">Academic Insights</h3>
+          </div>
+        </div>
+        <div className="p-4 text-center text-gray-500">
+          <p className="text-sm">Unable to load academic insights</p>
+        </div>
+      </div>
+    );
   }
 
   const { academics, alerts } = insights;
   const { currentMetrics, subjectAnalysis, trends, predictions } = academics;
+  const hasEnoughTermData =
+    Boolean(trends?.weakestWeek && trends?.strongestWeek) &&
+    trends.weakestWeek.week !== trends.strongestWeek.week;
 
   // Chart data for subject performance
   const subjectChartData = subjectAnalysis?.byPerformance?.slice(0, 5).map(s => ({
@@ -97,7 +130,7 @@ const AcademicInsights = ({ contextType = 'school', contextId = 'default' }) => 
       </div>
 
       {/* Subject Performance Chart */}
-      {subjectChartData.length > 0 && (
+      {hasEnoughTermData ? (
         <div className="p-4 h-64 border-b border-gray-200">
           <p className="text-xs font-semibold text-gray-600 mb-3">Subject Performance (Grade Average)</p>
           <ResponsiveContainer width="100%" height="100%">
@@ -115,6 +148,10 @@ const AcademicInsights = ({ contextType = 'school', contextId = 'default' }) => 
               <Bar dataKey="grade" fill="#3b82f6" name="Grade Average" />
             </BarChart>
           </ResponsiveContainer>
+        </div>
+      ) : (
+        <div className="p-4 border-b border-gray-200 text-center text-gray-500">
+          <p className="text-sm">Not enough term data yet</p>
         </div>
       )}
 
