@@ -343,16 +343,17 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
 
       if (searchLearnerId) pages = 1;
 
-      // Keep table totals mathematically consistent:
-      // Current due = billed - paid - waived (floored at 0)
-      // Overpaid = credits created when paid exceeds net bill after waivers.
-      totals = {
-        totalBilled: rows.reduce((s, i) => s + Number(i.totalAmount || 0), 0),
-        totalPaid: rows.reduce((s, i) => s + getInvoiceCashPaid(i), 0),
-        totalWaived: rows.reduce((s, i) => s + getApprovedWaiverAmount(i), 0),
-        totalBalance: rows.reduce((s, i) => s + getInvoiceCurrentDue(i), 0),
-        totalOverpaid: rows.reduce((s, i) => s + getInvoiceNetOverpaid(i), 0)
-      };
+      // API totals cover the entire filtered result set. Only fall back to
+      // visible rows when the API does not provide aggregate totals.
+      if (!totals) {
+        totals = {
+          totalBilled: rows.reduce((s, i) => s + Number(i.totalAmount || 0), 0),
+          totalPaid: rows.reduce((s, i) => s + getInvoiceCashPaid(i), 0),
+          totalWaived: rows.reduce((s, i) => s + getApprovedWaiverAmount(i), 0),
+          totalBalance: rows.reduce((s, i) => s + getInvoiceCurrentDue(i), 0),
+          totalOverpaid: rows.reduce((s, i) => s + getInvoiceNetOverpaid(i), 0)
+        };
+      }
 
       setInvoices(rows);
       setTotalPages(pages);
