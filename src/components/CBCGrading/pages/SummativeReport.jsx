@@ -1732,6 +1732,11 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
         subjectValues: subjects.map((subject) => String(getGradeForPct(summaries[subject]?.averagePct).points)),
         total: '-',
         average: String(overallGrade.points),
+        meanPts: (() => {
+          const validPts = rows.map((r) => r.meritPoints).filter((p) => typeof p === 'number');
+          if (!validPts.length) return '-';
+          return String(Math.round(validPts.reduce((a, b) => a + b, 0) / validPts.length));
+        })(),
       },
     ];
   };
@@ -1755,7 +1760,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       });
 
       const subjectHeaders = reportData.subjects.map((s) => getAbbreviatedName(s));
-      const headers = ['#', 'LEARNER NAME', ...subjectHeaders, 'TOTAL', 'AVG %', 'GRD'];
+      const headers = ['#', 'LEARNER NAME', ...subjectHeaders, 'TOTAL', 'AVG %', 'GRD', 'PTS'];
       const totalColumns = headers.length;
       const lastColLetter = worksheet.getColumn(totalColumns).letter;
       const schoolName = (user?.school?.name || brandingSettings?.schoolName || 'TRENDS CORE SCHOOL').toUpperCase();
@@ -1818,7 +1823,8 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           ...subjectValues,
           Math.round(row.totalScore),
           Number(row.averagePct) / 100,
-          row.grade || ''
+          row.grade || '',
+          row.meritPoints ?? ''
         ]);
       });
 
@@ -1830,7 +1836,8 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           ...summaryRow.subjectValues,
           summaryRow.total,
           summaryRow.average,
-          ''
+          '',
+          summaryRow.key === 'points' ? (summaryRow.meanPts ?? '') : ''
         ]);
       });
 
@@ -2984,8 +2991,27 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           return acc;
         }, {});
 
-        // 5. Ranking
-        broadsheetData.sort((a, b) => b.averagePct - a.averagePct);
+        // 5. Compute per-learner merit points (sum of CBC points per subject)
+        broadsheetData.forEach((d) => {
+          let pts = 0;
+          subjects.forEach((subj) => {
+            const subjectMax = subjectMaxScores[subj] || 0;
+            if (subjectMax > 0) {
+              const subjectScore = Number(d.subjectScores?.[subj]) || 0;
+              const subjectPct = (subjectScore / subjectMax) * 100;
+              const { points } = getCBCGrade(subjectPct);
+              if (typeof points === 'number') pts += points;
+            }
+          });
+          d.meritPoints = pts;
+        });
+
+        // 5b. Ranking — primary: merit points desc, secondary: average % desc
+        broadsheetData.sort((a, b) =>
+          b.meritPoints !== a.meritPoints
+            ? b.meritPoints - a.meritPoints
+            : b.averagePct - a.averagePct
+        );
         const rankedData = broadsheetData.map((d, index) => ({ ...d, position: index + 1 }));
 
         setReportData({
@@ -3855,6 +3881,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                         <th style={{ ...cellBorder, padding: '6px', textAlign: 'center' }}>TOTAL</th>
                         <th style={{ ...cellBorder, padding: '6px', textAlign: 'center' }}>AVG %</th>
                         <th style={{ ...cellBorder, padding: '6px', textAlign: 'center' }}>GRD</th>
+                        <th style={{ ...cellBorder, padding: '6px', textAlign: 'center', backgroundColor: '#1e3a8a', color: '#fbbf24' }}>PTS</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3874,6 +3901,9 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                           <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold', color: row.grade?.includes('EE') ? 'green' : row.grade?.includes('ME') ? 'blue' : 'orange' }}>
                             {row.grade}
                           </td>
+                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: '900', color: '#1e3a8a', backgroundColor: idx % 2 === 0 ? '#eff6ff' : '#e0f2fe' }}>
+                            {row.meritPoints ?? '-'}
+                          </td>
                         </tr>
                       ))}
                       {getBroadsheetSummaryRows(reportData).map((summaryRow) => (
@@ -3887,7 +3917,10 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                           ))}
                           <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold' }}>{summaryRow.total}</td>
                           <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold' }}>{summaryRow.average}</td>
-                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center' }}></td>
+                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold', color: '#666' }}></td>
+                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold', color: '#1e3a8a', backgroundColor: '#dbeafe' }}>
+                            {summaryRow.key === 'points' ? summaryRow.meanPts ?? '-' : ''}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

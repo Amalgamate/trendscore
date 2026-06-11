@@ -9,6 +9,7 @@ import StatusBadge from '../shared/StatusBadge';
 import EmptyState from '../shared/EmptyState';
 import { DataCard } from '../shared';
 import { useAuth } from '../../../hooks/useAuth';
+import { usePermissions } from '../../../hooks/usePermissions';
 import { useMobile } from '../../../hooks/useMobileDetection';
 import BulkOperationsModal from '../shared/bulk/BulkOperationsModal';
 import TeacherClassAssignmentModal from '../shared/TeacherClassAssignmentModal';

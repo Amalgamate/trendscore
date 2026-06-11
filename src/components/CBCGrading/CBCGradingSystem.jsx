@@ -424,11 +424,12 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
 
   const handleDeleteTeacher = (teacherId) => {
     setConfirmAction(() => async () => {
-      const isSuperAdmin = user?.role === 'SUPER_ADMIN';
-      const result = isSuperAdmin
+      const canHardDelete = ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'].includes(user?.role);
+      const result = canHardDelete
         ? await deleteTeacher(teacherId)
         : await archiveTeacher(teacherId);
       if (result.success) notify.showSuccess('Operation successful');
+      else notify.showError(result.error || 'Operation failed');
       setShowConfirmDialog(false);
     });
     setShowConfirmDialog(true);
