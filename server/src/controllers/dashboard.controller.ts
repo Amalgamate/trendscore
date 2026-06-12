@@ -881,22 +881,28 @@ export class DashboardController {
         try {
             const { filter = 'today', fresh } = req.query;
             const institutionType = this.getInstitutionType(req);
-            const secondaryGrades = ['GRADE10', 'GRADE11', 'GRADE12', 'GRADE_10', 'GRADE_11', 'GRADE_12', 'FORM_1', 'FORM_2', 'FORM_3'];
+            const secondaryGrades = ['GRADE10', 'GRADE11', 'GRADE12', 'GRADE_10', 'GRADE_11', 'GRADE_12', 'FORM_1', 'FORM_2', 'FORM_3', 'FORM_4'];
             const isSecondaryContext = institutionType === 'SECONDARY';
             const allowedFeeGrades = new Set<string>(isSecondaryContext ? SENIOR_FEE_GRADES : JUNIOR_FEE_GRADES);
             const summativeTestScope: Prisma.SummativeTestWhereInput = isSecondaryContext
-                ? { grade: { in: secondaryGrades as any } }
-                : { NOT: { grade: { in: secondaryGrades as any } } };
+                ? { OR: [{ grade: { in: secondaryGrades as any } }, { grade: { startsWith: 'FORM' } }] }
+                : { NOT: { OR: [{ grade: { in: secondaryGrades as any } }, { grade: { startsWith: 'FORM' } }] } };
             const learnerScope: Prisma.LearnerWhereInput = isSecondaryContext
                 ? {
                     archived: false,
-                    institutionType: 'SECONDARY' as any,
-                    grade: { in: secondaryGrades as any },
+                    OR: [
+                        { grade: { in: secondaryGrades as any } },
+                        { grade: { startsWith: 'FORM' } },
+                    ],
                 }
                 : {
                     archived: false,
-                    institutionType: { not: 'SECONDARY' as any },
-                    NOT: { grade: { in: secondaryGrades as any } },
+                    NOT: {
+                        OR: [
+                            { grade: { in: secondaryGrades as any } },
+                            { grade: { startsWith: 'FORM' } },
+                        ],
+                    },
                 };
             const cacheKey = `dashboard:admin:v4:${institutionType}:${filter}`;
 
@@ -933,7 +939,7 @@ export class DashboardController {
                 prisma.learner.count({ where: { ...learnerScope, status: 'ACTIVE' } }),
                 prisma.user.count({ where: { role: 'TEACHER', status: 'ACTIVE', archived: false } }),
                 // [7] group-bys
-                prisma.attendance.groupBy({ by: ['status'], where: { date: dateFilter }, _count: true }),
+                prisma.attendance.groupBy({ by: ['status'], where: { date: dateFilter, learner: { ...learnerScope, status: 'ACTIVE' } }, _count: true }),
                 prisma.learner.groupBy({ by: ['grade'], where: learnerScope, _count: true }),
                 prisma.user.groupBy({ by: ['role'], where: { archived: false }, _count: true }),
                 // [10] recent records
