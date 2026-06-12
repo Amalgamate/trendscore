@@ -939,7 +939,7 @@ export class DashboardController {
                 prisma.learner.count({ where: { ...learnerScope, status: 'ACTIVE' } }),
                 prisma.user.count({ where: { role: 'TEACHER', status: 'ACTIVE', archived: false } }),
                 // [7] group-bys
-                prisma.attendance.groupBy({ by: ['status'], where: { date: dateFilter, learner: { ...learnerScope, status: 'ACTIVE' } }, _count: true }),
+                prisma.attendance.groupBy({ by: ['status'], where: { date: startOfToday, learner: { ...learnerScope, status: 'ACTIVE' } }, _count: true }),
                 prisma.learner.groupBy({ by: ['grade'], where: learnerScope, _count: true }),
                 prisma.user.groupBy({ by: ['role'], where: { archived: false }, _count: true }),
                 // [10] recent records
