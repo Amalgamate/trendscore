@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { dashboardAPI, accountingAPI, userAPI } from '../../../../services/api';
+import { dashboardAPI, userAPI } from '../../../../services/api';
 import { ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Area, AreaChart } from 'recharts';
 import {
   AppCard,
@@ -32,14 +32,21 @@ import {
   BarChart3,
   Clock,
   Briefcase,
-  Package
+  Package,
+  Shield
 } from 'lucide-react';
 
 import BillingInsightsCard from '../../dashboard/BillingInsightsCard';
+import StaffPopup from '../../dashboard/widgets/StaffPopup';
 
-const SUBORDINATE_ROLES = [
-  'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN', 'NURSE',
-  'SECURITY', 'DRIVER', 'COOK', 'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT'
+const ADMIN_ROLES = [
+  'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER',
+  'HEAD_OF_CURRICULUM', 'RECEPTIONIST', 'ACCOUNTANT',
+];
+
+const SUBORDINATE_ROLES_LIST = [
+  'LIBRARIAN', 'NURSE', 'SECURITY', 'DRIVER',
+  'COOK', 'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT',
 ];
 
 const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavigate }) => {
@@ -48,8 +55,12 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
   const [apiError, setApiError] = useState(null);
   const [activeOverviewTab, setActiveOverviewTab] = useState('general');
   const [subordinateCount, setSubordinateCount] = useState(0);
-  const [vendorCount, setVendorCount] = useState(0);
-  const [activeVendorCount, setActiveVendorCount] = useState(0);
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [subordinateUsers, setSubordinateUsers] = useState([]);
+  const [adminPopupOpen, setAdminPopupOpen] = useState(false);
+  const [subordinatePopupOpen, setSubordinatePopupOpen] = useState(false);
+  // Tutors attendance popup: { open, statusFilter, title }
+  const [tutorsPopup, setTutorsPopup] = useState({ open: false, statusFilter: 'ABSENT', title: 'Absent Tutors Today' });
 
   const userId = user?.id || user?.userId;
   const sectionControls = useDashboardSections('admin', [
@@ -85,28 +96,17 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  // Load subordinate staff count and vendor count in parallel
+  // Load all admin + subordinate staff in one call
   useEffect(() => {
-    // Subordinate staff — use userAPI stats if available, otherwise fetch all users
-    userAPI.getStats()
+    userAPI.getAll()
       .then((res) => {
-        const data = res?.data ?? res;
-        // Sum up all subordinate role counts if the stats endpoint returns per-role breakdown
-        if (data?.byRole) {
-          const count = SUBORDINATE_ROLES.reduce((acc, role) => acc + (data.byRole[role] ?? 0), 0);
-          setSubordinateCount(count);
-        } else if (typeof data?.subordinateStaff === 'number') {
-          setSubordinateCount(data.subordinateStaff);
-        }
-      })
-      .catch(() => {});
-
-    // Vendors / suppliers
-    accountingAPI.getVendors()
-      .then((res) => {
-        const vendors = Array.isArray(res?.data) ? res.data : [];
-        setVendorCount(vendors.length);
-        setActiveVendorCount(vendors.filter(v => v.isActive !== false && v.status !== 'INACTIVE').length);
+        const allUsers = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+        const admins = allUsers.filter(u => ADMIN_ROLES.includes(u.role));
+        const subordinates = allUsers.filter(u => SUBORDINATE_ROLES_LIST.includes(u.role));
+        setAdminUsers(admins);
+        setSubordinateUsers(subordinates);
+        // keep subordinateCount for legacy metrics fallback
+        setSubordinateCount(subordinates.length || admins.length);
       })
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -247,9 +247,9 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
                   ? `${metrics.stats.teacherAttendanceRate}% present today`
                   : `${stats.activeTeachers} active`,
                 chips: [
-                  { value: metrics?.stats?.presentTeachers ?? stats.activeTeachers, label: 'Present',  dot: '#86efac' },
-                  { value: metrics?.stats?.absentTeachers  ?? 0,                    label: 'Absent',   dot: '#fca5a5' },
-                  { value: metrics?.stats?.staffOnLeave    ?? 0,                    label: 'On Leave', dot: '#fde047' },
+                  { value: metrics?.stats?.presentTeachers ?? stats.activeTeachers, label: 'Present',  dot: '#86efac', onClick: () => setTutorsPopup({ open: true, statusFilter: 'PRESENT', title: 'Present Tutors Today' }) },
+                  { value: metrics?.stats?.absentTeachers  ?? 0,                    label: 'Absent',   dot: '#fca5a5', onClick: () => setTutorsPopup({ open: true, statusFilter: 'ABSENT',  title: 'Absent Tutors Today' }) },
+                  { value: metrics?.stats?.staffOnLeave    ?? 0,                    label: 'On Leave', dot: '#fde047', onClick: () => setTutorsPopup({ open: true, statusFilter: 'ON_LEAVE', title: 'Tutors On Leave Today' }) },
                 ],
                 icon: <GraduationCap size={26} />,
                 tone: 'teal',
@@ -257,29 +257,47 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
               },
               {
                 label: 'Subordinate Staff',
-                value: metrics?.stats?.totalSubordinateStaff ?? subordinateCount,
-                subvalue: metrics?.stats?.staffAttendanceRate != null
-                  ? `${metrics.stats.staffAttendanceRate}% present today`
-                  : 'Support roles',
+                value: subordinateUsers.length || metrics?.stats?.totalSubordinateStaff || subordinateCount,
+                subvalue: 'Support & operations roles',
                 chips: [
-                  { value: metrics?.stats?.presentSubordinateStaff ?? 0,                                           label: 'Present', dot: '#86efac' },
-                  { value: metrics?.stats?.absentSubordinateStaff  ?? (metrics?.stats?.totalSubordinateStaff ?? subordinateCount), label: 'Absent',  dot: '#fca5a5' },
+                  {
+                    value: subordinateUsers.filter(u => u.status !== 'INACTIVE' && u.archived !== true).length || metrics?.stats?.presentSubordinateStaff || 0,
+                    label: 'Active',
+                    dot: '#86efac',
+                    onClick: () => setSubordinatePopupOpen(true),
+                  },
+                  {
+                    value: subordinateUsers.filter(u => u.status === 'INACTIVE' || u.archived === true).length || metrics?.stats?.absentSubordinateStaff || 0,
+                    label: 'Inactive',
+                    dot: '#fca5a5',
+                    onClick: () => setSubordinatePopupOpen(true),
+                  },
                 ],
                 icon: <Users size={26} />,
                 tone: 'red',
-                onClick: () => onNavigate('settings-users'),
+                onClick: () => setSubordinatePopupOpen(true),
               },
               {
-                label: 'Suppliers',
-                value: vendorCount,
-                subvalue: 'Registered vendors',
+                label: 'Administration',
+                value: adminUsers.length,
+                subvalue: 'Admin & leadership staff',
                 chips: [
-                  { value: activeVendorCount,               label: 'Active',   dot: '#86efac' },
-                  { value: vendorCount - activeVendorCount, label: 'Inactive', dot: '#fca5a5' },
+                  {
+                    value: adminUsers.filter(u => u.status !== 'INACTIVE' && u.archived !== true).length,
+                    label: 'Active',
+                    dot: '#86efac',
+                    onClick: () => setAdminPopupOpen(true),
+                  },
+                  {
+                    value: adminUsers.filter(u => u.status === 'INACTIVE' || u.archived === true).length,
+                    label: 'Inactive',
+                    dot: '#fca5a5',
+                    onClick: () => setAdminPopupOpen(true),
+                  },
                 ],
-                icon: <DollarSign size={26} />,
+                icon: <Shield size={26} />,
                 tone: 'green',
-                onClick: () => onNavigate('accounting-vendors'),
+                onClick: () => setAdminPopupOpen(true),
               },
             ]}
           />
@@ -569,6 +587,41 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
           </div>
         )}
       </div>
+
+      {/* ── Tutors attendance popup ── */}
+      <StaffPopup
+        open={tutorsPopup.open}
+        onClose={() => setTutorsPopup(p => ({ ...p, open: false }))}
+        mode="attendance"
+        title={tutorsPopup.title}
+        headerColor="bg-red-50"
+        headerIcon={<Users size={14} className="text-red-500" />}
+        statusFilter={tutorsPopup.statusFilter}
+      />
+
+      {/* ── Administration staff popup ── */}
+      <StaffPopup
+        open={adminPopupOpen}
+        onClose={() => setAdminPopupOpen(false)}
+        mode="grouped"
+        title="Administration Staff"
+        headerColor="bg-purple-50"
+        headerIcon={<Shield size={14} className="text-purple-500" />}
+        users={adminUsers}
+        roleOrder={ADMIN_ROLES}
+      />
+
+      {/* ── Subordinate staff popup ── */}
+      <StaffPopup
+        open={subordinatePopupOpen}
+        onClose={() => setSubordinatePopupOpen(false)}
+        mode="grouped"
+        title="Subordinate Staff"
+        headerColor="bg-red-50"
+        headerIcon={<Users size={14} className="text-red-500" />}
+        users={subordinateUsers}
+        roleOrder={SUBORDINATE_ROLES_LIST}
+      />
     </>
   );
 };

@@ -5,6 +5,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Calendar, Save, BookOpen, Plus, Edit, Trash2, Users, Loader, X, UserPlus, Layers, Gauge, Hash } from 'lucide-react';
+import ModuleTabNav from '../../shared/ModuleTabNav';
 import { toast } from 'react-hot-toast';
 import { useNotifications } from '../../hooks/useNotifications';
 import { useAuth } from '../../../../hooks/useAuth';
@@ -783,86 +784,24 @@ const AcademicSettings = () => {
     setShowAddModal(true);
   };
 
+  const ACADEMIC_TABS = [
+    { id: 'terms',                label: 'Academic Year & Terms', icon: <Calendar size={13} /> },
+    { id: 'learning-areas',       label: 'Learning Areas',         icon: <BookOpen size={13} /> },
+    { id: 'classes',              label: 'Classes',                icon: <Users size={13} /> },
+    { id: 'allocation',           label: 'Subject Allocation',     icon: <UserPlus size={13} /> },
+    { id: 'streams',              label: 'Streams',                icon: <Users size={13} /> },
+    { id: 'performance-levels',   label: 'Performance Levels',     icon: <Gauge size={13} /> },
+    { id: 'admissions-numbering', label: 'Admissions Numbering',   icon: <Hash size={13} /> },
+  ];
+
   return (
     <div className="space-y-6">
       {/* Tabs */}
-      <div className="bg-white rounded-xl shadow-md">
-        <div className="border-b border-gray-200">
-          <div className="flex">
-            <button
-              onClick={() => setActiveTab('terms')}
-              className={`flex items-center gap-2 px-6 py-4 font-medium transition-all border-b-2 ${activeTab === 'terms'
-                ? 'border-blue-600 text-blue-600 bg-blue-50/50'
-                : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'
-                }`}
-            >
-              <Calendar size={18} />
-              Academic Year & Terms
-            </button>
-            <button
-              onClick={() => setActiveTab('learning-areas')}
-              className={`flex items-center gap-2 px-6 py-4 font-semibold transition ${activeTab === 'learning-areas'
-                ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-gray-600 hover:text-gray-800'
-                }`}
-            >
-              <BookOpen size={20} />
-              Learning Areas
-            </button>
-
-            <button
-              onClick={() => setActiveTab('classes')}
-              className={`flex items-center gap-2 px-6 py-4 font-semibold transition ${activeTab === 'classes'
-                ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-gray-600 hover:text-gray-800'
-                }`}
-            >
-              <Users size={20} />
-              Classes
-            </button>
-            <button
-              onClick={() => setActiveTab('allocation')}
-              className={`flex items-center gap-2 px-6 py-4 font-semibold transition ${activeTab === 'allocation'
-                ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-gray-600 hover:text-gray-800'
-                }`}
-            >
-              <UserPlus size={20} />
-              Subject Allocation
-            </button>
-            <button
-              onClick={() => setActiveTab('streams')}
-              className={`flex items-center gap-2 px-6 py-4 font-semibold transition ${activeTab === 'streams'
-                ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-gray-600 hover:text-gray-800'
-                }`}
-            >
-              <Users size={20} />
-              Streams
-            </button>
-            <button
-              onClick={() => setActiveTab('performance-levels')}
-              className={`flex items-center gap-2 px-6 py-4 font-semibold transition ${activeTab === 'performance-levels'
-                ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-gray-600 hover:text-gray-800'
-                }`}
-            >
-              <Gauge size={20} />
-              Performance Levels
-            </button>
-            <button
-              onClick={() => setActiveTab('admissions-numbering')}
-              className={`flex items-center gap-2 px-6 py-4 font-semibold transition ${activeTab === 'admissions-numbering'
-                ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-gray-600 hover:text-gray-800'
-                }`}
-            >
-              <Hash size={20} />
-              Admissions Numbering
-            </button>
-          </div>
-        </div>
-      </div>
+      <ModuleTabNav
+        tabs={ACADEMIC_TABS}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+      />
 
       {/* Tab Content */}
       {activeTab === 'terms' && (

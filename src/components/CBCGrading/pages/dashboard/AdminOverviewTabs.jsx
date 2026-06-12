@@ -195,8 +195,8 @@ const AdminOverviewTabs = ({
       aria-label="Dashboard overview tabs"
     >
       {/* Desktop Tabs */}
-      <div className="hidden md:block overflow-x-auto">
-        <div className="flex min-w-max px-[var(--app-gutter-x)]">
+      <div className="hidden md:flex items-stretch w-full overflow-x-auto">
+        <div className="flex flex-1 min-w-0 px-[var(--app-gutter-x)]">
           {OVERVIEW_TABS.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -207,19 +207,19 @@ const AdminOverviewTabs = ({
                 type="button"
                 onClick={() => handleTabClick(tab)}
                 aria-current={isActive ? 'page' : undefined}
-                className={`flex min-h-[46px] min-w-[158px] items-center justify-center gap-2 border-r border-slate-200 px-3 text-xs font-black transition last:border-r-0 ${
+                className={`flex flex-1 min-h-[46px] items-center justify-center gap-2 border-r border-slate-200 px-2 text-xs font-black transition last:border-r-0 ${
                   isActive
                     ? `border-b-4 ${color.border} ${color.bg} ${color.text}`
                     : `border-b-2 border-transparent ${color.bg}/30 ${color.text}/70 hover:${color.bg}/50`
                 }`}
               >
-                <Icon size={16} className={isActive ? color.icon : `${color.icon}/70`} />
-                <span className="whitespace-normal leading-tight">{tab.label}</span>
+                <Icon size={15} className={isActive ? color.icon : `${color.icon}/70`} />
+                <span className="whitespace-normal leading-tight text-center">{tab.label}</span>
               </button>
             );
           })}
-          {sectionControls && <DashboardSectionControls {...sectionControls} variant="menu" />}
         </div>
+        {sectionControls && <DashboardSectionControls {...sectionControls} />}
       </div>
 
       {/* Mobile Dropdown */}

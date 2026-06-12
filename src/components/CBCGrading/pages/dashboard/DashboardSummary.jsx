@@ -132,33 +132,54 @@ export const GreetingToast = ({
 export const DashboardGreetingBanner = GreetingToast;
 
 /* ─── Chip row ────────────────────────────────────────────────────────────
-   Each chip: { label, value, dot? }
+   Each chip: { label, value, dot?, onClick? }
    Rendered as  ● value label  pills separated by a hairline divider.
+   When a chip has an `onClick`, it renders as an interactive button with a
+   subtle hover ring so users can tell it's clickable.
 ────────────────────────────────────────────────────────────────────────── */
 
 function ChipRow({ chips }) {
   if (!chips?.length) return null;
   return (
-    <div className="flex items-center gap-0 mt-3 border-t border-white/20 pt-2.5">
-      {chips.map((chip, i) => (
-        <React.Fragment key={i}>
-          {i > 0 && <span className="w-px h-3 bg-white/25 mx-2.5 shrink-0" />}
-          <div className="flex items-center gap-1.5 min-w-0">
+    <div className="flex flex-wrap items-center gap-x-0 gap-y-1">
+      {chips.map((chip, i) => {
+        const inner = (
+          <>
             {chip.dot && (
               <span
-                className="w-2 h-2 rounded-full shrink-0 ring-1 ring-white/20"
+                className="w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-white/20"
                 style={{ backgroundColor: chip.dot }}
               />
             )}
-            <span className="text-white font-bold text-xs leading-none whitespace-nowrap">
+            <span className="text-white font-bold text-sm leading-none whitespace-nowrap">
               {chip.value}
             </span>
-            <span className="text-white/60 font-semibold text-[10px] leading-none truncate">
+            <span className="text-white/70 font-semibold text-xs leading-none whitespace-nowrap">
               {chip.label}
             </span>
-          </div>
-        </React.Fragment>
-      ))}
+          </>
+        );
+
+        return (
+          <React.Fragment key={i}>
+            {i > 0 && <span className="w-px h-3.5 bg-white/25 mx-2.5 shrink-0" />}
+            {chip.onClick ? (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); chip.onClick(); }}
+                className="flex items-center gap-1.5 rounded px-1 py-0.5 hover:bg-white/15 active:bg-white/25 transition-colors cursor-pointer"
+                title={`View ${chip.label} details`}
+              >
+                {inner}
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                {inner}
+              </div>
+            )}
+          </React.Fragment>
+        );
+      })}
     </div>
   );
 }
@@ -208,35 +229,38 @@ export const DashboardSummaryCard = ({
 
   const content = (
     <>
-      {/* ── Header row: label + icon ── */}
-      <div className="relative z-10 flex items-start justify-between gap-3 mb-4">
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/70 leading-tight">
-          {label}
-        </p>
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center bg-white/20 border border-white/30 text-white/90">
+      {/* ── Row 1: label full width ── */}
+      <p className="relative z-10 text-xs font-bold uppercase tracking-[0.15em] text-white/75 leading-tight mb-3">
+        {label}
+      </p>
+
+      {/* ── Row 2: big number (left) + icon (right) ── */}
+      <div className="relative z-10 flex items-start justify-between gap-3">
+        {/* Left: number + subvalue */}
+        <div className="min-w-0">
+          <div className="flex items-baseline gap-2">
+            <p className="text-4xl font-black tracking-tight leading-none text-white">
+              {value}
+            </p>
+            <TrendBadge trend={trend} trendValue={trendValue} />
+          </div>
+          {subvalue && (
+            <p className="mt-1.5 text-sm font-semibold text-white/75 leading-snug">
+              {subvalue}
+            </p>
+          )}
+        </div>
+
+        {/* Right: icon box */}
+        <span className="flex-shrink-0 flex h-10 w-10 items-center justify-center bg-white/20 border border-white/30 text-white/90">
           {React.isValidElement(icon)
-            ? React.cloneElement(icon, { size: 17, strokeWidth: 2.3 })
+            ? React.cloneElement(icon, { size: 18, strokeWidth: 2.2 })
             : icon}
         </span>
       </div>
 
-      {/* ── Big number ── */}
-      <div className="relative z-10 flex items-baseline gap-2">
-        <p className="text-4xl font-black tracking-tight leading-none text-white">
-          {value}
-        </p>
-        <TrendBadge trend={trend} trendValue={trendValue} />
-      </div>
-
-      {/* ── Sub-line (freeform text / JSX) ── */}
-      {subvalue && (
-        <p className="relative z-10 mt-1.5 text-[11px] font-semibold text-white/65 truncate leading-snug">
-          {subvalue}
-        </p>
-      )}
-
-      {/* ── Chip breakdown row ── */}
-      <div className="relative z-10">
+      {/* ── Row 3: chips — full width, never truncated ── */}
+      <div className="relative z-10 mt-4 pt-3 border-t border-white/20">
         <ChipRow chips={chips} />
       </div>
 

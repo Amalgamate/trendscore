@@ -9,6 +9,7 @@ import {
   TestTube, CheckCircle, XCircle, Loader,
   Phone, QrCode, RefreshCw, LogOut, Key, Sparkles
 } from 'lucide-react';
+import ModuleTabNav from '../../shared/ModuleTabNav';
 import { useNotifications } from '../../hooks/useNotifications';
 import { communicationAPI, notificationAPI } from '../../../../services/api';
 import { COMMUNICATION_DEFAULTS, TEST_MESSAGES } from '../../../../constants/communicationMessages';
@@ -518,53 +519,44 @@ const CommunicationSettings = () => {
     </div>
   );
 
+  const COMM_TABS = [
+    { id: 'email',    label: 'Email',    icon: <Mail size={13} /> },
+    { id: 'sms',      label: 'SMS',      icon: <MessageSquare size={13} /> },
+    { id: 'whatsapp', label: 'WhatsApp', icon: <Phone size={13} /> },
+    { id: 'voip',     label: 'VoIP',     icon: <Phone size={13} /> },
+    { id: 'ai',       label: 'AI',       icon: <Sparkles size={13} /> },
+  ];
+
   // Render Logic
   return (
     <div className="space-y-6">
       {/* Tabs */}
-      <div className="bg-white rounded-xl shadow-md border border-gray-200 transition-colors duration-300">
-        <div className="border-b border-gray-200 flex overflow-x-auto">
-          {['email', 'sms', 'whatsapp', 'voip', 'ai'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => {
-                setActiveTab(tab);
-                setTestResult(null);
-                // Reset test fields based on tab
-                if (tab === 'email') {
-                  setTestContact('');
-                  setTestEmailTemplate('welcome');
-                  const saved = localStorage.getItem('testContactEmail');
-                  if (saved) setTestContact(saved);
-                } else if (tab === 'voip' || tab === 'ai') {
-                  setTestContact('');
-                  setTestMessage('');
-                } else {
-                  setTestContact('');
-                  setTestMessage(`This is a test message from ${PRODUCT_DISPLAY_NAME}. Thank you.`);
-                  const saved = localStorage.getItem('testContactPhone');
-                  if (saved) {
-                    setTestContact(saved);
-                  } else if (schoolPhone) {
-                    setTestContact(schoolPhone);
-                  }
-                }
-              }}
-              className={`flex items-center gap-2 px-6 py-4 font-semibold transition ${activeTab === tab
-                ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-gray-600 hover:text-gray-800'
-                }`}
-            >
-              {tab === 'email' && <Mail size={20} />}
-              {tab === 'sms' && <MessageSquare size={20} />}
-              {tab === 'whatsapp' && <Phone size={20} />}
-              {tab === 'voip' && <Phone size={20} />}
-              {tab === 'ai' && <Sparkles size={20} />}
-              <span className="whitespace-nowrap">{tab === 'ai' ? 'AI' : tab.charAt(0).toUpperCase() + tab.slice(1)}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+      <ModuleTabNav
+        tabs={COMM_TABS}
+        activeTab={activeTab}
+        onTabChange={(tab) => {
+          setActiveTab(tab);
+          setTestResult(null);
+          if (tab === 'email') {
+            setTestContact('');
+            setTestEmailTemplate('welcome');
+            const saved = localStorage.getItem('testContactEmail');
+            if (saved) setTestContact(saved);
+          } else if (tab === 'voip' || tab === 'ai') {
+            setTestContact('');
+            setTestMessage('');
+          } else {
+            setTestContact('');
+            setTestMessage(`This is a test message from ${PRODUCT_DISPLAY_NAME}. Thank you.`);
+            const saved = localStorage.getItem('testContactPhone');
+            if (saved) {
+              setTestContact(saved);
+            } else if (schoolPhone) {
+              setTestContact(schoolPhone);
+            }
+          }
+        }}
+      />
 
       {activeTab === 'ai' && renderAiSettingsPanel()}
 
