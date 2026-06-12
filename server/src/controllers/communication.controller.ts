@@ -219,7 +219,7 @@ export const saveCommunicationConfig = async (req: AuthRequest, res: Response) =
         data.smsBaseUrl = sms.baseUrl || 'https://api.mobilesasa.com';
         data.smsEnabled = sms.enabled !== undefined ? sms.enabled : true;
 
-        if (sms.senderId) data.smsSenderId = sms.senderId;
+        if (sms.senderId) data.smsSenderId = sms.senderId.trim() || null;
 
         if (sms.apiKey && sms.apiKey.trim()) {
             logger.info(`[CommunicationController] Encrypting SMS API Key for provider: ${sms.provider}`);
@@ -951,6 +951,45 @@ export const getSmsBalance = async (req: AuthRequest, res: Response) => {
         }
     }
 
+    if (config.smsProvider === 'mobilesasa') {
+        try {
+            const { SmsService } = await import('../services/sms.service');
+            const result = await SmsService.getMobileSasaBalance(config);
+            if (result.success) {
+                return res.status(200).json({
+                    success: true,
+                    data: {
+                        balance: result.balance,
+                        internationalBalance: result.internationalBalance,
+                        smsRate: result.smsRate,
+                        postpaidLimit: result.postpaidLimit,
+                        remainingPostpaid: result.remainingPostpaid,
+                        walletBalance: result.walletBalance,
+                        currency: result.currency,
+                        localAccountNumber: result.localAccountNumber,
+                        internationalAccountNumber: result.internationalAccountNumber,
+                        emailAccountNumber: result.emailAccountNumber,
+                        walletAccountNumber: result.walletAccountNumber,
+                        ussdAccount: result.ussdAccount,
+                        paymentDetails: result.paymentDetails,
+                        provider: 'mobilesasa',
+                        available: true
+                    }
+                });
+            }
+            return res.status(200).json({
+                success: true,
+                data: { balance: null, provider: 'mobilesasa', available: false, reason: result.error }
+            });
+        } catch (error: any) {
+            logger.warn('[Communication] Failed to fetch SMS balance from MobileSasa', { message: error?.message });
+            return res.status(200).json({
+                success: true,
+                data: { balance: null, provider: 'mobilesasa', available: false, reason: error?.message || 'Provider request failed' }
+            });
+        }
+    }
+
     res.status(200).json({
         success: true,
         data: {
@@ -959,5 +998,23 @@ export const getSmsBalance = async (req: AuthRequest, res: Response) => {
             available: false,
             reason: 'Balance lookup not supported for this provider yet'
         }
+    });
+};
+
+export const initiateSmsTopUp = async (req: AuthRequest, res: Response) => {
+    const config = await prisma.communicationConfig.findFirst();
+    if (!config || config.smsProvider !== 'mobilesasa' || !config.smsEnabled) {
+        throw new ApiError(400, 'MobileSasa SMS must be enabled before purchasing a top-up.');
+    }
+
+    const result = await SmsService.initiateMobileSasaTopUp(config, req.body);
+    if (!result.success) {
+        throw new ApiError(400, result.error || 'Failed to initiate MobileSasa top-up.');
+    }
+
+    res.status(200).json({
+        success: true,
+        message: result.message,
+        data: { responseCode: result.responseCode }
     });
 };

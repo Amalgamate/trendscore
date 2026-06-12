@@ -394,6 +394,73 @@ export class FeeController {
     });
   }
 
+  /**
+   * GET /fees/invoices/aggregates
+   *
+   * Lightweight aggregate-only endpoint used by the frontend TOTALS row.
+   * Returns per-learner closing balances (learnerId, term, academicYear, balance)
+   * for all invoices matching the filter set — no invoice payload, no pagination.
+   *
+   * The frontend uses these to compute carry-forward (B/F) and current-term-due
+   * totals without downloading the full invoice dataset, fixing the performance
+   * loophole introduced by limit='all' in fetchGrandTotals.
+   */
+  async getInvoiceAggregates(req: AuthRequest, res: Response) {
+    const { status, term, academicYear, grade, learnerId, startDate, endDate, paymentMethod } = req.query;
+    const where: any = {};
+
+    if (status && status !== 'undefined' && status !== 'all' && status !== 'ALL') {
+      where.status = status;
+    }
+    if (term) where.term = normalizeEnumValue(term as string) || term;
+    if (academicYear) where.academicYear = parseInt(academicYear as string);
+    if (learnerId) where.learnerId = learnerId;
+    if (grade) where.learner = { grade: normalizeEnumValue(grade as string) || grade };
+
+    if (paymentMethod && paymentMethod !== 'all') {
+      where.payments = { some: { paymentMethod: paymentMethod as string, archived: false } };
+    }
+
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate as string);
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        where.createdAt.lte = end;
+      }
+    }
+
+    // Return only the fields needed to compute B/F and current-term-due on the client.
+    // Including the learner's grade allows the client to apply institution-type scoping.
+    const rows = await prisma.feeInvoice.findMany({
+      where,
+      select: {
+        learnerId: true,
+        term: true,
+        academicYear: true,
+        totalAmount: true,
+        paidAmount: true,
+        balance: true,
+        status: true,
+        feeStructure: {
+          select: { totalAmount: true, feeItems: { select: { amount: true } } }
+        },
+        learner: { select: { id: true, grade: true } },
+        payments: {
+          where: { archived: false },
+          select: { amount: true }
+        },
+        waivers: {
+          where: { status: 'APPROVED', archived: false },
+          select: { amountWaived: true }
+        }
+      }
+    });
+
+    res.json({ success: true, data: rows });
+  }
+
   async getLearnerInvoices(req: AuthRequest, res: Response) {
     const { learnerId } = req.params;
     const learner = await prisma.learner.findUnique({ where: { id: learnerId } });

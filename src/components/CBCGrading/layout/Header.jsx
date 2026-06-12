@@ -17,6 +17,7 @@ import { useChat } from '../../../contexts/ChatContext';
 import { refreshBus } from '../../../utils/refreshBus';
 import AccountSwitcherMenu from '../../common/AccountSwitcherMenu';
 import ChatPanel from '../../chat/ChatPanel';
+import SmsBalanceWidget from './SmsBalanceWidget';
 import '../../../styles/notifications.css';
 import { PRODUCT_DISPLAY_NAME } from '../../../config/productIdentity';
 
@@ -29,7 +30,6 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
   const [readNotificationKeys, setReadNotificationKeys] = useState(() => new Set());
   const [reminderCycle, setReminderCycle] = useState(0);
   const [clockInState, setClockInState] = useState(() => getCurrentUserClockInStatus(user));
-  const [smsBalance, setSmsBalance] = useState(null);
   const [activeTermLabel, setActiveTermLabel] = useState('');
   const [activeTermMeta, setActiveTermMeta] = useState({ isFallback: false });
   
@@ -244,25 +244,6 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
   };
 
 
-
-  // Fetch SMS Balance
-  useEffect(() => {
-    if (role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'HEAD_TEACHER') {
-      const fetchBalance = async () => {
-        try {
-          const resp = await api.communication.getSmsBalance();
-          if (resp?.success && resp?.data?.balance) {
-            setSmsBalance(resp.data.balance);
-          }
-        } catch (error) {
-          console.error("Failed to fetch SMS balance:", error);
-        }
-      };
-      fetchBalance();
-      const interval = setInterval(fetchBalance, 300000); // 5 minutes
-      return () => clearInterval(interval);
-    }
-  }, [role]);
 
   useEffect(() => {
     if (role === 'PARENT') {
@@ -557,14 +538,8 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
       </div>
 
       <div className="flex items-center gap-2 lg:gap-4">
-        {/* SMS Balance display */}
-        {(role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'HEAD_TEACHER') && smsBalance && (
-          <div className="hidden md:flex items-center gap-2 bg-brand-purple/5 border border-brand-purple/20 px-3 py-1.5 rounded-full mr-2 hover:bg-brand-purple/10 transition-colors shadow-sm cursor-default">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="text-[10px] font-semibold text-brand-purple uppercase tracking-widest leading-none">
-              AT AIRTIME: {smsBalance}
-            </span>
-          </div>
+        {(role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'HEAD_TEACHER') && (
+          <SmsBalanceWidget />
         )}
 
 

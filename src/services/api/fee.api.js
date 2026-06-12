@@ -16,6 +16,10 @@ export const feeAPI = {
     const query = new URLSearchParams(params).toString();
     return fetchWithAuth(`/fees/invoices${query ? `?${query}` : ''}`);
   },
+  getInvoiceAggregates: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchWithAuth(`/fees/invoices/aggregates${query ? `?${query}` : ''}`);
+  },
   getLearnerInvoices: async (learnerId) => fetchWithAuth(`/fees/invoices/learner/${learnerId}`),
   createInvoice: async (data) =>
     fetchWithAuth('/fees/invoices', { method: 'POST', body: JSON.stringify(data) }),

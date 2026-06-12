@@ -85,6 +85,7 @@ export class MessageService {
     const now = new Date();
     let successCount = 0;
     let failureCount = 0;
+    const failureReasons: string[] = [];
     const updatedReceiptIds: string[] = [];
 
     for (const receipt of receipts) {
@@ -114,6 +115,9 @@ export class MessageService {
         successCount++;
       } else {
         failureCount++;
+        if (result.error?.trim()) {
+          failureReasons.push(result.error.trim());
+        }
       }
 
       await prisma.messageReceipt.update({
@@ -136,12 +140,19 @@ export class MessageService {
       }
     });
 
+    const uniqueFailureReasons = [...new Set(failureReasons)];
+    const deliveryError = uniqueFailureReasons.length === 1
+      ? uniqueFailureReasons[0]
+      : uniqueFailureReasons.length > 1
+        ? `Failed to deliver to any recipients: ${uniqueFailureReasons.join('; ')}`
+        : 'Failed to deliver to any recipients';
+
     return {
       success: successCount > 0,
       messageId: message.id,
       sent: successCount,
       failed: failureCount,
-      error: successCount === 0 ? 'Failed to deliver to any recipients' : undefined
+      error: successCount === 0 ? deliveryError : undefined
     };
   }
 

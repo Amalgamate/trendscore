@@ -18,7 +18,8 @@ import {
     getContactGroupById,
     updateContactGroup,
     deleteContactGroup,
-    getSmsBalance
+    getSmsBalance,
+    initiateSmsTopUp
 } from '../controllers/communication.controller';
 import { requireRole, auditLog } from '../middleware/permissions.middleware';
 import { authenticate } from '../middleware/auth.middleware';
@@ -87,6 +88,12 @@ const sendTestSmsSchema = z.object({
     scheduledFor: z.string().optional()
 });
 
+const initiateSmsTopUpSchema = z.object({
+    phone: z.string().min(9).max(20),
+    amount: z.coerce.number().min(10).max(1_000_000),
+    accountNo: z.string().min(3).max(100)
+});
+
 const sendTestEmailSchema = z.object({
     email: z.string().email(),
     template: z.enum([
@@ -141,6 +148,15 @@ router.get(
     requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
     rateLimit({ windowMs: 60_000, maxRequests: 50 }),
     getSmsBalance
+);
+
+router.post(
+    '/top-up',
+    requireRole(['SUPER_ADMIN', 'ADMIN']),
+    rateLimit({ windowMs: 60_000, maxRequests: 5 }),
+    validate(initiateSmsTopUpSchema),
+    auditLog('INITIATE_SMS_TOP_UP'),
+    initiateSmsTopUp
 );
 
 // Save Configuration

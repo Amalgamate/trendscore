@@ -182,6 +182,13 @@ router.get(
 );
 
 router.get(
+  '/invoices/aggregates',
+  requirePermission('FEE_MANAGEMENT'),
+  rateLimit({ windowMs: 60_000, maxRequests: 100 }),
+  asyncHandler(feeController.getInvoiceAggregates.bind(feeController))
+);
+
+router.get(
   '/invoices/export',
   requirePermission('FEE_MANAGEMENT'),
   rateLimit({ windowMs: 60_000, maxRequests: 20 }),

@@ -4,6 +4,8 @@ import axiosInstance from './axiosConfig';
 export const communicationAPI = {
   getConfig: async () => fetchWithAuth('/communication/config'),
   getSmsBalance: async () => fetchWithAuth('/communication/balance'),
+  initiateSmsTopUp: async (data) =>
+    fetchWithAuth('/communication/top-up', { method: 'POST', body: JSON.stringify(data) }),
   saveConfig: async (data) =>
     fetchWithAuth('/communication/config', { method: 'POST', body: JSON.stringify(data) }),
   sendTestSMS: async (data) =>

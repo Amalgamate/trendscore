@@ -70,6 +70,8 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
   const [printingInvoice, setPrintingInvoice] = useState(null);
   const [schoolInfo, setSchoolInfo] = useState(null);
   const [listTotals, setListTotals] = useState({ totalBilled: 0, totalPaid: 0, totalBalance: 0, totalWaived: 0, totalOverpaid: 0 });
+  // Grand totals for B/F and current-term-due cover ALL pages, not just the visible one.
+  const [grandTotals, setGrandTotals] = useState({ carryFwd: 0, currentTermDue: 0 });
   const [showMetrics, setShowMetrics] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -197,11 +199,21 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
     getInvoiceCashPaid(invoice) + getApprovedWaiverAmount(invoice)
   ), [getInvoiceCashPaid, getApprovedWaiverAmount]);
 
+  const isBalanceOnlyInvoice = React.useCallback((invoice) => (
+    Number(invoice?.totalAmount || 0) === 0 &&
+    Number(invoice?.paidAmount || 0) === 0 &&
+    Number(invoice?.balance || 0) > 0
+  ), []);
+
   const getInvoiceNetBalance = React.useCallback((invoice) => {
+    if (isBalanceOnlyInvoice(invoice)) {
+      return Number(invoice?.balance || 0);
+    }
+
     const billed = Number(invoice?.totalAmount || 0);
     const settled = getInvoiceSettledAmount(invoice);
     return billed - settled;
-  }, [getInvoiceSettledAmount]);
+  }, [getInvoiceSettledAmount, isBalanceOnlyInvoice]);
 
   const getInvoiceCurrentDue = React.useCallback((invoice) => (
     Math.max(0, getInvoiceNetBalance(invoice))
@@ -211,19 +223,9 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
     Math.max(0, -getInvoiceNetBalance(invoice))
   ), [getInvoiceNetBalance]);
 
-  const listCarryFwdTotal = React.useMemo(
-    () => invoices.reduce((sum, inv) => sum + getInvoiceCarryFwd(inv), 0),
-    [invoices, getInvoiceCarryFwd]
-  );
-
   const getInvoiceCurrentTermDue = React.useCallback((invoice) => (
     Math.max(0, getInvoiceCurrentDue(invoice) - getInvoiceCarryFwd(invoice))
   ), [getInvoiceCurrentDue, getInvoiceCarryFwd]);
-
-  const listCurrentTermDueTotal = React.useMemo(
-    () => invoices.reduce((sum, inv) => sum + getInvoiceCurrentTermDue(inv), 0),
-    [invoices, getInvoiceCurrentTermDue]
-  );
 
   const activeFilterCount = (gradeFilter !== 'all' ? 1 : 0) +
     (termFilter !== 'all' ? 1 : 0) +
@@ -343,9 +345,15 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
 
       if (searchLearnerId) pages = 1;
 
-      // API totals cover the entire filtered result set. Only fall back to
-      // visible rows when the API does not provide aggregate totals.
-      if (!totals) {
+      // API totals cover the entire filtered result set.
+      // For the paginated (non-learner) path the API ALWAYS returns totals —
+      // if it doesn't, something went wrong and we should NOT silently show
+      // page-only numbers as if they were global. Log and preserve the last
+      // known good listTotals instead.
+      if (!totals && !searchLearnerId) {
+        console.warn('[FeeCollection] Paginated API response missing totals — keeping previous values');
+      } else if (!totals) {
+        // Learner-search path returns all rows at once; computing from rows is safe here.
         totals = {
           totalBilled: rows.reduce((s, i) => s + Number(i.totalAmount || 0), 0),
           totalPaid: rows.reduce((s, i) => s + getInvoiceCashPaid(i), 0),
@@ -366,6 +374,50 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
       setLoading(false);
     }
   }, [statusFilter, termFilter, startDate, endDate, gradeFilter, searchLearnerId, currentPage, sortConfig, showError, paymentMethodFilter, getApprovedWaiverAmount, getInvoiceCashPaid, getInvoiceCurrentDue, getInvoiceNetOverpaid, isSecondaryPortal, isSecondaryGrade]);
+
+  /**
+   * Fetch grand B/F + current-term-due totals across ALL pages for the
+   * current filter set. This runs separately from fetchInvoices so that
+   * changing the page number does not reset the TOTALS row values.
+   *
+   * Uses the lightweight /invoices/aggregates endpoint (returns only the
+   * fields needed for B/F computation, not the full invoice payload) to
+   * avoid the performance cost of fetching limit='all' with all columns.
+   */
+  const fetchGrandTotals = React.useCallback(async () => {
+    try {
+      let allRows = [];
+      if (searchLearnerId) {
+        const res = await api.fees.getLearnerInvoices(searchLearnerId);
+        allRows = Array.isArray(res?.data) ? res.data : [];
+      } else {
+        const params = {
+          ...(statusFilter !== 'all' && { status: statusFilter.toUpperCase() }),
+          ...(termFilter !== 'all' && { term: termFilter }),
+          ...(startDate && { startDate }),
+          ...(endDate && { endDate }),
+          ...(gradeFilter !== 'all' && { grade: gradeFilter }),
+          ...(paymentMethodFilter !== 'all' && { paymentMethod: paymentMethodFilter }),
+        };
+        const res = await api.fees.getInvoiceAggregates(params);
+        allRows = Array.isArray(res?.data) ? res.data : [];
+      }
+
+      // Mirror the institution-type scoping applied in fetchInvoices
+      allRows = allRows.filter((inv) => {
+        const learnerIsSecondary = isSecondaryGrade(inv?.learner?.grade);
+        return isSecondaryPortal ? learnerIsSecondary : !learnerIsSecondary;
+      });
+
+      const carryFwd = allRows.reduce((sum, inv) => sum + getInvoiceCarryFwd(inv), 0);
+      const currentTermDue = allRows.reduce((sum, inv) => sum + getInvoiceCurrentTermDue(inv), 0);
+      setGrandTotals({ carryFwd, currentTermDue });
+    } catch (err) {
+      console.error('Failed to fetch grand totals:', err);
+    }
+  }, [statusFilter, termFilter, startDate, endDate, gradeFilter, searchLearnerId,
+      paymentMethodFilter, isSecondaryPortal, isSecondaryGrade,
+      getInvoiceCarryFwd, getInvoiceCurrentTermDue]);
 
   // Separate fetch — no filters — solely powers the metric cards
   const fetchStatsInvoices = React.useCallback(async () => {
@@ -416,6 +468,32 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
     // Fetch unmatched payment badge count
     api.mpesa?.getUnmatchedCount?.().then(res => setUnmatchedCount(res?.count || 0)).catch(() => { });
   }, [fetchInvoices, fetchStatsInvoices, fetchLearners, fetchBranding]);
+
+  // Recompute grand B/F + current-term totals whenever filters change.
+  // This is intentionally separate from fetchInvoices so that paging does NOT
+  // reset the TOTALS row — only an actual filter change should do that.
+  const prevFilterKey = React.useRef(null);
+  useEffect(() => {
+    const key = JSON.stringify({ statusFilter, termFilter, startDate, endDate, gradeFilter, searchLearnerId, paymentMethodFilter });
+    if (key === prevFilterKey.current) return; // page-only change — skip
+    prevFilterKey.current = key;
+    fetchGrandTotals();
+  }, [statusFilter, termFilter, startDate, endDate, gradeFilter, searchLearnerId, paymentMethodFilter, fetchGrandTotals]);
+
+  // Re-run grand totals once statsInvoices has loaded — it populates
+  // closingBalanceByLearnerTermMap which backs getInvoiceCarryFwd.
+  // Without this, the initial B/F computation runs before prior-term balances
+  // are available and shows 0 for all carry-forwards.
+  const statsInvoicesLoaded = statsInvoices.length > 0;
+  const grandTotalsBootstrapped = React.useRef(false);
+  useEffect(() => {
+    if (!statsInvoicesLoaded) return;
+    if (grandTotalsBootstrapped.current) return; // only need to bootstrap once
+    grandTotalsBootstrapped.current = true;
+    // Reset the filter key so the next fetchGrandTotals call runs unconditionally
+    prevFilterKey.current = null;
+    fetchGrandTotals();
+  }, [statsInvoicesLoaded, fetchGrandTotals]);
 
 
   const handleQuickApproveWaiver = async (e, invoice) => {
@@ -1955,8 +2033,8 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
                       <td className="px-3 py-2 text-xs font-semibold border-r border-gray-300 text-right">
                         {showBalanceBreakdown ? (
                           <div className="grid grid-cols-2 gap-3">
-                            <span className="text-amber-700">B/F {Number(listCarryFwdTotal || 0).toLocaleString()}</span>
-                            <span className="text-red-700 border-l border-gray-200 pl-3">Current {Number(listCurrentTermDueTotal || 0).toLocaleString()}</span>
+                            <span className="text-amber-700">B/F {Number(grandTotals.carryFwd || 0).toLocaleString()}</span>
+                            <span className="text-red-700 border-l border-gray-200 pl-3">Current {Number(grandTotals.currentTermDue || 0).toLocaleString()}</span>
                           </div>
                         ) : (
                           <span className="text-red-700">{Number(listTotals.totalBalance || 0).toLocaleString()}</span>
@@ -2199,8 +2277,8 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
                       <td className="px-3 py-3 text-xs font-semibold border-r border-gray-300 text-right">
                         {showBalanceBreakdown ? (
                           <div className="grid grid-cols-2 gap-3">
-                            <span className="text-amber-700">B/F {Number(listCarryFwdTotal || 0).toLocaleString()}</span>
-                            <span className="text-red-600 border-l border-gray-200 pl-3">Current {Number(listCurrentTermDueTotal || 0).toLocaleString()}</span>
+                            <span className="text-amber-700">B/F {Number(grandTotals.carryFwd || 0).toLocaleString()}</span>
+                            <span className="text-red-600 border-l border-gray-200 pl-3">Current {Number(grandTotals.currentTermDue || 0).toLocaleString()}</span>
                           </div>
                         ) : (
                           <span className="text-red-600">{Number(listTotals.totalBalance || 0).toLocaleString()}</span>
@@ -2223,7 +2301,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
                     <td colSpan={Object.values(visibleColumns).filter(v => v).length + 1} className="px-6 py-2 bg-blue-50/50">
                       <div className="flex items-center gap-2 text-[10px] font-medium text-blue-600 uppercase tracking-widest">
                         <Info size={12} />
-                        Note: This is the total of the ({totalPages} page{totalPages !== 1 ? 's' : ''})
+                        Note: Totals cover all {totalInvoicesCount} record{totalInvoicesCount !== 1 ? 's' : ''} across {totalPages} page{totalPages !== 1 ? 's' : ''}
                       </div>
                     </td>
                   </tr>
