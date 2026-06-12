@@ -386,10 +386,18 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
    */
   const fetchGrandTotals = React.useCallback(async () => {
     try {
-      let allRows = [];
       if (searchLearnerId) {
+        // Learner-search path: all rows returned at once — compute client-side
         const res = await api.fees.getLearnerInvoices(searchLearnerId);
-        allRows = Array.isArray(res?.data) ? res.data : [];
+        let allRows = Array.isArray(res?.data) ? res.data : [];
+        allRows = allRows.filter((inv) => {
+          const learnerIsSecondary = isSecondaryGrade(inv?.learner?.grade);
+          return isSecondaryPortal ? learnerIsSecondary : !learnerIsSecondary;
+        });
+        const carryFwd = allRows.reduce((sum, inv) => sum + getInvoiceCarryFwd(inv), 0);
+        const currentTermDue = allRows.reduce((sum, inv) => sum + getInvoiceCurrentTermDue(inv), 0);
+        const totalBalance = allRows.reduce((sum, inv) => sum + getInvoiceCurrentDue(inv), 0);
+        setGrandTotals({ carryFwd, currentTermDue, totalBalance });
       } else {
         const params = {
           ...(statusFilter !== 'all' && { status: statusFilter.toUpperCase() }),
@@ -400,24 +408,38 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
           ...(paymentMethodFilter !== 'all' && { paymentMethod: paymentMethodFilter }),
         };
         const res = await api.fees.getInvoiceAggregates(params);
-        allRows = Array.isArray(res?.data) ? res.data : [];
+        const allRows = Array.isArray(res?.data) ? res.data : [];
+
+        // Use server-computed grand totals when available (eliminates timing race)
+        if (res?.grandTotals) {
+          const serverCarryFwd = Number(res.grandTotals.totalCarryFwd || 0);
+          const serverBalance = Number(res.grandTotals.totalBalance || 0);
+
+          // currentTermDue = totalBalance - carryFwd (balance owed this term only)
+          const scopedRows = allRows.filter((inv) => {
+            const learnerIsSecondary = isSecondaryGrade(inv?.learner?.grade);
+            return isSecondaryPortal ? learnerIsSecondary : !learnerIsSecondary;
+          });
+          const currentTermDue = scopedRows.reduce((sum, inv) => sum + getInvoiceCurrentTermDue(inv), 0);
+          setGrandTotals({ carryFwd: serverCarryFwd, currentTermDue, totalBalance: serverBalance });
+        } else {
+          // Fallback: client-side computation (legacy / graceful degradation)
+          const scopedRows = allRows.filter((inv) => {
+            const learnerIsSecondary = isSecondaryGrade(inv?.learner?.grade);
+            return isSecondaryPortal ? learnerIsSecondary : !learnerIsSecondary;
+          });
+          const carryFwd = scopedRows.reduce((sum, inv) => sum + getInvoiceCarryFwd(inv), 0);
+          const currentTermDue = scopedRows.reduce((sum, inv) => sum + getInvoiceCurrentTermDue(inv), 0);
+          const totalBalance = scopedRows.reduce((sum, inv) => sum + getInvoiceCurrentDue(inv), 0);
+          setGrandTotals({ carryFwd, currentTermDue, totalBalance });
+        }
       }
-
-      // Mirror the institution-type scoping applied in fetchInvoices
-      allRows = allRows.filter((inv) => {
-        const learnerIsSecondary = isSecondaryGrade(inv?.learner?.grade);
-        return isSecondaryPortal ? learnerIsSecondary : !learnerIsSecondary;
-      });
-
-      const carryFwd = allRows.reduce((sum, inv) => sum + getInvoiceCarryFwd(inv), 0);
-      const currentTermDue = allRows.reduce((sum, inv) => sum + getInvoiceCurrentTermDue(inv), 0);
-      setGrandTotals({ carryFwd, currentTermDue });
     } catch (err) {
       console.error('Failed to fetch grand totals:', err);
     }
   }, [statusFilter, termFilter, startDate, endDate, gradeFilter, searchLearnerId,
       paymentMethodFilter, isSecondaryPortal, isSecondaryGrade,
-      getInvoiceCarryFwd, getInvoiceCurrentTermDue]);
+      getInvoiceCarryFwd, getInvoiceCurrentTermDue, getInvoiceCurrentDue]);
 
   // Separate fetch — no filters — solely powers the metric cards
   const fetchStatsInvoices = React.useCallback(async () => {
@@ -2037,7 +2059,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
                             <span className="text-red-700 border-l border-gray-200 pl-3">Current {Number(grandTotals.currentTermDue || 0).toLocaleString()}</span>
                           </div>
                         ) : (
-                          <span className="text-red-700">{Number(listTotals.totalBalance || 0).toLocaleString()}</span>
+                          <span className="text-red-700">{Number(grandTotals.totalBalance ?? listTotals.totalBalance ?? 0).toLocaleString()}</span>
                         )}
                       </td>
                     )}
@@ -2281,7 +2303,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
                             <span className="text-red-600 border-l border-gray-200 pl-3">Current {Number(grandTotals.currentTermDue || 0).toLocaleString()}</span>
                           </div>
                         ) : (
-                          <span className="text-red-600">{Number(listTotals.totalBalance || 0).toLocaleString()}</span>
+                          <span className="text-red-600">{Number(grandTotals.totalBalance ?? listTotals.totalBalance ?? 0).toLocaleString()}</span>
                         )}
                       </td>
                     )}
