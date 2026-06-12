@@ -68,10 +68,16 @@ function applyInvoiceInstitutionScope(req: AuthRequest, whereClause: any = {}) {
     learnerFilter.grade = whereClause.learner.grade;
   } else {
     if (institutionType === 'SECONDARY') {
-      learnerFilter.grade = { in: [...SECONDARY_GRADE_CODES] as any };
+      learnerFilter.OR = [
+        { grade: { in: [...SECONDARY_GRADE_CODES] as any } },
+        { grade: { startsWith: 'FORM' } }
+      ];
     } else {
       learnerFilter.NOT = {
-        grade: { in: [...SECONDARY_GRADE_CODES] as any }
+        OR: [
+          { grade: { in: [...SECONDARY_GRADE_CODES] as any } },
+          { grade: { startsWith: 'FORM' } }
+        ]
       };
     }
   }
@@ -497,69 +503,9 @@ export class FeeController {
       }
     });
 
-    // ── Server-side grand totals ────────────────────────────────────────────
-    // totalBalance: simple DB sum of the balance field across all filtered rows.
-    const totalBalance = rows.reduce((sum, r) => sum + Number(r.balance || 0), 0);
-
-    // totalCarryFwd: sum of each learner's PREVIOUS-TERM closing balance.
-    // Collect unique (learnerId, prevTerm, prevYear) tuples from the filtered set.
-    const prevTermKeys: { learnerId: string; term: string; academicYear: number }[] = [];
-    const seen = new Set<string>();
-    for (const row of rows) {
-      const t = row.term as string;
-      const y = Number(row.academicYear);
-      let prevTerm: string | null = null;
-      let prevYear = y;
-      if (t === 'TERM_2') { prevTerm = 'TERM_1'; }
-      else if (t === 'TERM_3') { prevTerm = 'TERM_2'; }
-      else if (t === 'TERM_1') { prevTerm = 'TERM_3'; prevYear = y - 1; }
-      if (!prevTerm) continue;
-      const key = `${row.learnerId}|${prevTerm}|${prevYear}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        prevTermKeys.push({ learnerId: row.learnerId, term: prevTerm, academicYear: prevYear });
-      }
-    }
-
-    let totalCarryFwd = 0;
-    if (prevTermKeys.length > 0) {
-      // Fetch prior-term closing balances in one batched query.
-      const prevInvoices = await prisma.feeInvoice.findMany({
-        where: {
-          OR: prevTermKeys.map(({ learnerId, term, academicYear }) => ({
-            learnerId,
-            term: term as any,
-            academicYear,
-            archived: false,
-            status: { not: 'CANCELLED' as any }
-          }))
-        },
-        select: { learnerId: true, term: true, academicYear: true, balance: true }
-      });
-
-      // Build a map: learnerId|term|year → closing balance
-      const prevBalMap = new Map<string, number>();
-      for (const inv of prevInvoices) {
-        const k = `${inv.learnerId}|${inv.term}|${inv.academicYear}`;
-        prevBalMap.set(k, (prevBalMap.get(k) || 0) + Number(inv.balance || 0));
-      }
-
-      // Sum up carry-forwards for the filtered rows
-      for (const row of rows) {
-        const t = row.term as string;
-        const y = Number(row.academicYear);
-        let prevTerm: string | null = null;
-        let prevYear = y;
-        if (t === 'TERM_2') { prevTerm = 'TERM_1'; }
-        else if (t === 'TERM_3') { prevTerm = 'TERM_2'; }
-        else if (t === 'TERM_1') { prevTerm = 'TERM_3'; prevYear = y - 1; }
-        if (!prevTerm) continue;
-        const prevBal = prevBalMap.get(`${row.learnerId}|${prevTerm}|${prevYear}`) || 0;
-        totalCarryFwd += Math.max(0, prevBal);
-      }
-    }
-
-    res.json({ success: true, data: rows, grandTotals: { totalCarryFwd, totalBalance } });
+    // Server-side grand totals logic was incomplete (ignored legacy B/F and non-sequential terms)
+    // Removed so that the frontend's robust `closingBalanceByLearnerTermMap` logic takes over.
+    res.json({ success: true, data: rows });
   }
 
   async getLearnerInvoices(req: AuthRequest, res: Response) {

@@ -28,12 +28,18 @@ const applyInstitutionGradeScope = (
   whereClause: any = {}
 ) => {
   if (institutionType === 'SECONDARY') {
-    whereClause.grade = { in: [...SECONDARY_GRADE_CODES] as any };
+    whereClause.OR = [
+      { grade: { in: [...SECONDARY_GRADE_CODES] as any } },
+      { grade: { startsWith: 'FORM' } }
+    ];
     return whereClause;
   }
   whereClause.NOT = {
     ...(whereClause.NOT || {}),
-    grade: { in: [...SECONDARY_GRADE_CODES] as any },
+    OR: [
+      { grade: { in: [...SECONDARY_GRADE_CODES] as any } },
+      { grade: { startsWith: 'FORM' } }
+    ]
   };
   return whereClause;
 };
