@@ -444,7 +444,7 @@ export class FeeController {
         balance: true,
         status: true,
         feeStructure: {
-          select: { totalAmount: true, feeItems: { select: { amount: true } } }
+          select: { feeItems: { select: { amount: true } } }
         },
         learner: { select: { id: true, grade: true } },
         payments: {
