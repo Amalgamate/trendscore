@@ -81,6 +81,12 @@ const attendanceLocationPayloadSchema = z.preprocess(
     attendanceLocationPayloadBodySchema
 );
 
+const markAttendanceSchema = z.object({
+    userId: z.string().min(1),
+    status: z.enum(['PRESENT', 'ABSENT']),
+    date: z.string().optional()
+});
+
 // ── Dashboard ────────────────────────────────────────────────────────────────
 
 router.get(
@@ -282,6 +288,16 @@ router.get(
     hrController.getAttendanceReport
 );
 
+router.post(
+    '/attendance/mark',
+    authenticate,
+    requireRole([...ROLE_HR_ADMIN]),
+    rateLimit({ windowMs: 60_000, maxRequests: 60 }),
+    validate(markAttendanceSchema),
+    auditLog('MARK_STAFF_ATTENDANCE'),
+    hrController.markAttendance
+);
+
 // ── Payroll ──────────────────────────────────────────────────────────────────
 
 router.post(
@@ -411,5 +427,4 @@ router.put(
 );
 
 export default router;
-
 

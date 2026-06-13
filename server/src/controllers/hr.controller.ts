@@ -267,6 +267,22 @@ export class HRController {
         }
     }
 
+    async markAttendance(req: AuthRequest, res: Response) {
+        try {
+            const markedBy = req.user?.userId;
+            if (!markedBy) throw new ApiError(401, 'Unauthorized');
+            const data = await hrService.markStaffAttendance({
+                userId: req.body.userId,
+                status: req.body.status,
+                date: req.body.date,
+                markedBy
+            });
+            res.json({ success: true, message: `Teacher marked ${req.body.status.toLowerCase()}`, data });
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ success: false, message: error.message });
+        }
+    }
+
     // ─── Payroll ──────────────────────────────────────────────────────────────
 
     async generatePayroll(req: AuthRequest, res: Response) {

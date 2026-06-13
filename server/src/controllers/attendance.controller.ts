@@ -57,8 +57,10 @@ export class AttendanceController {
     }
 
     // Parse date
-    const attendanceDate = new Date(date);
-    attendanceDate.setHours(0, 0, 0, 0);
+    let attendanceDate = new Date(date);
+    if (!isNaN(attendanceDate.getTime())) {
+      attendanceDate = new Date(Date.UTC(attendanceDate.getFullYear(), attendanceDate.getMonth(), attendanceDate.getDate()));
+    }
 
     let resolvedClassId: string | undefined = classId;
     if (currentUserRole === 'TEACHER') {
@@ -173,8 +175,10 @@ export class AttendanceController {
       throw new ApiError(400, 'Missing required fields: attendanceRecords (array), date');
     }
 
-    const attendanceDate = new Date(date);
-    attendanceDate.setHours(0, 0, 0, 0);
+    let attendanceDate = new Date(date);
+    if (!isNaN(attendanceDate.getTime())) {
+      attendanceDate = new Date(Date.UTC(attendanceDate.getFullYear(), attendanceDate.getMonth(), attendanceDate.getDate()));
+    }
 
     let resolvedClassId: string | undefined = classId;
     let teacherClassIds: string[] = [];
@@ -311,18 +315,17 @@ export class AttendanceController {
 
     if (date) {
       const queryDate = new Date(date as string);
-      queryDate.setHours(0, 0, 0, 0);
-      whereClause.date = queryDate;
+      whereClause.date = new Date(Date.UTC(queryDate.getFullYear(), queryDate.getMonth(), queryDate.getDate()));
     }
 
     if (startDate && endDate) {
       const start = new Date(startDate as string);
-      start.setHours(0, 0, 0, 0);
+      const utcStart = new Date(Date.UTC(start.getFullYear(), start.getMonth(), start.getDate()));
       const end = new Date(endDate as string);
-      end.setHours(23, 59, 59, 999);
+      const utcEnd = new Date(Date.UTC(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999));
       whereClause.date = {
-        gte: start,
-        lte: end,
+        gte: utcStart,
+        lte: utcEnd,
       };
     }
 
@@ -394,12 +397,12 @@ export class AttendanceController {
 
     if (startDate && endDate) {
       const start = new Date(startDate as string);
-      start.setHours(0, 0, 0, 0);
+      const utcStart = new Date(Date.UTC(start.getFullYear(), start.getMonth(), start.getDate()));
       const end = new Date(endDate as string);
-      end.setHours(23, 59, 59, 999);
+      const utcEnd = new Date(Date.UTC(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999));
       whereClause.date = {
-        gte: start,
-        lte: end,
+        gte: utcStart,
+        lte: utcEnd,
       };
     }
 
@@ -502,12 +505,12 @@ export class AttendanceController {
 
     if (startDate && endDate) {
       const start = new Date(startDate as string);
-      start.setHours(0, 0, 0, 0);
+      const utcStart = new Date(Date.UTC(start.getFullYear(), start.getMonth(), start.getDate()));
       const end = new Date(endDate as string);
-      end.setHours(23, 59, 59, 999);
+      const utcEnd = new Date(Date.UTC(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999));
       whereClause.date = {
-        gte: start,
-        lte: end,
+        gte: utcStart,
+        lte: utcEnd,
       };
     }
 
@@ -576,7 +579,7 @@ export class AttendanceController {
     }
 
     const queryDate = new Date(date as string);
-    queryDate.setHours(0, 0, 0, 0);
+    const utcQueryDate = new Date(Date.UTC(queryDate.getFullYear(), queryDate.getMonth(), queryDate.getDate()));
 
     // Get learners: either explicitly enrolled OR matching grade & stream
     const learners = await prisma.learner.findMany({

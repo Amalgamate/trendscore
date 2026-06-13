@@ -1197,6 +1197,44 @@ export class HRService {
         });
     }
 
+    async markStaffAttendance(params: { userId: string; status: 'PRESENT' | 'ABSENT'; date?: string; markedBy: string }) {
+        const dateOnly = this.toDateOnly(params.date ? new Date(params.date) : new Date());
+        const target = await prisma.user.findUnique({
+            where: { id: params.userId },
+            select: { id: true, role: true, archived: true, firstName: true, lastName: true, staffId: true }
+        });
+        if (!target || target.archived) throw new Error('Teacher not found');
+        if (!['TEACHER', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].includes(String(target.role))) {
+            throw new Error('Attendance can only be marked for tutors');
+        }
+
+        if (params.status === 'ABSENT') {
+            await prisma.staffAttendanceLog.deleteMany({
+                where: { userId: params.userId, date: dateOnly }
+            });
+            return { userId: params.userId, status: 'ABSENT', date: dateOnly };
+        }
+
+        const timestamp = new Date();
+        const attendance = await prisma.staffAttendanceLog.upsert({
+            where: { userId_date: { userId: params.userId, date: dateOnly } },
+            update: {
+                clockInAt: timestamp,
+                source: 'admin-register',
+                metadata: { markedBy: params.markedBy, markedVia: 'dashboard-register' } as any
+            },
+            create: {
+                userId: params.userId,
+                date: dateOnly,
+                clockInAt: timestamp,
+                source: 'admin-register',
+                metadata: { markedBy: params.markedBy, markedVia: 'dashboard-register' } as any
+            }
+        });
+
+        return { ...attendance, status: 'PRESENT' };
+    }
+
     // ─── Business days in a calendar month ───────────────────────────────────
 
     calcBusinessDaysInMonth(month: number, year: number): number {

@@ -13,8 +13,11 @@ const buildQuery = (params = {}) => {
 export const dashboardAPI = {
   getSecondaryMetrics: async () =>
     fetchWithAuth('/dashboard/secondary'),
-  getAdminMetrics: async (filter = 'today') =>
-    fetchWithAuth(`/dashboard/admin?filter=${filter}`),
+  getAdminMetrics: async (filter = 'today', options = {}) => {
+    const query = new URLSearchParams({ filter });
+    if (options.fresh) query.set('fresh', '1');
+    return fetchWithAuth(`/dashboard/admin?${query.toString()}`);
+  },
   getTeacherMetrics: async (filter = 'today') =>
     fetchWithAuth(`/dashboard/teacher?filter=${filter}`),
   getParentMetrics: async () =>

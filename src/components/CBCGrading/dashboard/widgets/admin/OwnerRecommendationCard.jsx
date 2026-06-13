@@ -1,71 +1,37 @@
 /**
  * OwnerRecommendationCard
- * Dashboard Components › OwnerRecommendationCard
  *
- * Reusable AI-advisor recommendation card used across:
- *   - School Owner Dashboard
- *   - Head Teacher Dashboard
- *   - Accountant Dashboard
- *   - Super Admin Dashboard
- *
- * @typedef {Object} OwnerRecommendation
- * @property {string}  id
- * @property {string}  type
- * @property {string}  title
- * @property {string}  description
- * @property {string}  actionLabel
- * @property {string}  actionRoute
- * @property {'high'|'medium'|'low'} priority
- * @property {React.ComponentType} icon   — Lucide icon component
- * @property {'red'|'orange'|'blue'|'green'} color
+ * Solid-color background card for the Personal Advisor carousel.
+ * Color is driven by severity/priority:
+ *   critical → deep red     (#B91C1C)
+ *   high     → strong red   (#C62828)
+ *   warning  → amber/orange (#B45309)
+ *   positive → forest green (#1B5E20)
+ *   info     → navy blue    (#1E3A5F)
+ *   default  → slate        (#1E293B)
  */
 
 import React from 'react';
 
-/** Map colour key → Tailwind classes using only existing palette tokens */
-const COLOR_MAP = {
-  red: {
-    iconBg:    'bg-rose-100',
-    iconText:  'text-rose-600',
-    border:    'border-rose-200',
-    btnBorder: 'border-rose-500',
-    btnText:   'text-rose-600',
-    btnHover:  'hover:bg-rose-50',
-  },
-  orange: {
-    iconBg:    'bg-orange-100',
-    iconText:  'text-orange-600',
-    border:    'border-orange-200',
-    btnBorder: 'border-orange-500',
-    btnText:   'text-orange-600',
-    btnHover:  'hover:bg-orange-50',
-  },
-  blue: {
-    iconBg:    'bg-blue-100',
-    iconText:  'text-blue-600',
-    border:    'border-blue-200',
-    btnBorder: 'border-blue-500',
-    btnText:   'text-blue-600',
-    btnHover:  'hover:bg-blue-50',
-  },
-  green: {
-    iconBg:    'bg-emerald-100',
-    iconText:  'text-emerald-600',
-    border:    'border-emerald-200',
-    btnBorder: 'border-emerald-500',
-    btnText:   'text-emerald-600',
-    btnHover:  'hover:bg-emerald-50',
-  },
+const BG_COLORS = {
+  // severity-based
+  critical: '#7F1D1D',   // deep red
+  high:     '#C62828',   // strong red
+  warning:  '#92400E',   // amber
+  positive: '#14532D',   // forest green
+  info:     '#1E3A5F',   // navy
+  // priority aliases
+  medium:   '#92400E',
+  low:      '#1E3A5F',
 };
 
-/**
- * OwnerRecommendationCard
- *
- * @param {Object}  props
- * @param {OwnerRecommendation} props.recommendation
- * @param {Function} [props.onAction]   — called with (actionRoute) on button click
- * @param {boolean}  [props.loading]
- */
+const getBg = (rec) => {
+  if (rec.severity) return BG_COLORS[rec.severity] ?? BG_COLORS.info;
+  if (rec.priority === 'high')   return BG_COLORS.high;
+  if (rec.priority === 'medium') return BG_COLORS.warning;
+  return BG_COLORS.low;
+};
+
 const OwnerRecommendationCard = ({ recommendation, onAction, loading = false }) => {
   const {
     title,
@@ -73,48 +39,46 @@ const OwnerRecommendationCard = ({ recommendation, onAction, loading = false }) 
     actionLabel,
     actionRoute,
     icon: Icon,
-    color = 'blue',
   } = recommendation;
 
-  const c = COLOR_MAP[color] ?? COLOR_MAP.blue;
+  const bg = getBg(recommendation);
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm animate-pulse">
-        <div className="flex items-start gap-3">
-          <div className="h-9 w-9 rounded-full bg-gray-100 shrink-0" />
-          <div className="flex-1 space-y-2">
-            <div className="h-3 w-3/4 rounded bg-gray-100" />
-            <div className="h-3 w-1/2 rounded bg-gray-100" />
-          </div>
-        </div>
-        <div className="h-8 w-32 rounded-lg bg-gray-100 mt-auto" />
+      <div className="flex-shrink-0 w-72 flex flex-col gap-3 rounded-xl bg-gray-200 p-4 animate-pulse h-full">
+        <div className="h-4 w-3/4 rounded bg-gray-300" />
+        <div className="h-3 w-full rounded bg-gray-300" />
+        <div className="h-3 w-2/3 rounded bg-gray-300" />
+        <div className="h-8 w-28 rounded-lg bg-gray-300 mt-auto" />
       </div>
     );
   }
 
   return (
     <article
-      className={`group flex flex-col gap-3 rounded-xl border ${c.border} bg-white p-4 shadow-sm
-        transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-400`}
+      className="flex-shrink-0 w-72 flex flex-col gap-3 rounded-xl p-4 text-white
+        transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl select-none"
+      style={{ backgroundColor: bg }}
     >
-      {/* ── Top: icon + title ── */}
+      {/* icon + title */}
       <div className="flex items-start gap-3">
-        <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${c.iconBg} ${c.iconText}`}>
-          {Icon && <Icon size={18} strokeWidth={2} />}
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 border border-white/30">
+          {Icon && <Icon size={17} strokeWidth={2} className="text-white" />}
         </span>
-        <h3 className="text-sm font-bold text-gray-900 leading-snug">{title}</h3>
+        <h3 className="text-sm font-bold text-white leading-snug">{title}</h3>
       </div>
 
-      {/* ── Middle: description ── */}
-      <p className="text-xs text-gray-500 leading-relaxed flex-1">{description}</p>
+      {/* description */}
+      <p className="text-xs text-white/80 leading-relaxed flex-1">{description}</p>
 
-      {/* ── Bottom: action button ── */}
+      {/* action button */}
       <button
         type="button"
         onClick={() => onAction?.(actionRoute)}
-        className={`mt-auto self-start rounded-lg border ${c.btnBorder} ${c.btnText} ${c.btnHover}
-          px-3 py-1.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-current`}
+        className="mt-auto self-start rounded-lg border border-white/40 bg-white/15
+          px-3 py-1.5 text-xs font-semibold text-white
+          hover:bg-white/25 active:bg-white/30 transition-colors
+          focus:outline-none focus:ring-2 focus:ring-white/50"
         aria-label={`${actionLabel} — ${title}`}
       >
         {actionLabel}

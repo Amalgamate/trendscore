@@ -294,6 +294,7 @@ export const allNavSections = [
             { id: 'hr-payroll',        label: 'Payroll Processing', path: 'hr-payroll',       permission: 'HR_MANAGEMENT', app: 'payroll' },
             { id: 'hr-leave',          label: 'Leave Management',  path: 'hr-leave',          permission: 'HR_MANAGEMENT' },
             { id: 'hr-documents',      label: 'Staff Documents',   path: 'hr-documents',      permission: 'HR_MANAGEMENT' },
+            { id: 'hr-attendance',     label: 'Attendance',        path: 'hr-attendance',     permission: 'HR_MANAGEMENT' },
             { id: 'hr-performance',    label: 'Performance',       path: 'hr-performance',    permission: 'HR_MANAGEMENT' }
         ]
     },

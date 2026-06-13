@@ -17,7 +17,12 @@ import { hrAPI, userAPI } from '../../../../services/api';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-const todayISO = () => new Date().toISOString().split('T')[0];
+const todayISO = () => {
+  const today = new Date();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${today.getFullYear()}-${month}-${day}`;
+};
 
 const getInitials = (first = '', last = '') =>
   `${(first[0] || '').toUpperCase()}${(last[0] || '').toUpperCase()}` || '?';
@@ -100,7 +105,7 @@ function ContactActions({ phone }) {
 
 // ── row components ────────────────────────────────────────────────────────────
 
-function UserRow({ person, showRole = false, statusBadge }) {
+function UserRow({ person, showRole = false, statusBadge, actions = null }) {
   const phone = person.phone || person.phoneNumber || '';
   const isActive = person.status !== 'INACTIVE' && person.archived !== true;
   const roleMeta = ROLE_META[person.role];
@@ -144,6 +149,7 @@ function UserRow({ person, showRole = false, statusBadge }) {
             {isActive ? 'Active' : 'Inactive'}
           </span>
       }
+      {actions}
     </div>
   );
 }
@@ -163,6 +169,7 @@ function UserRow({ person, showRole = false, statusBadge }) {
  *   — for mode='grouped' —
  *   users         array      raw user objects
  *   roleOrder     string[]   role keys in display order
+ *   initialStatusFilter string 'all' | 'active' | 'inactive'
  *
  *   — for mode='attendance' —
  *   statusFilter  string     'ABSENT' | 'PRESENT' | 'ON_LEAVE'
@@ -178,8 +185,11 @@ const StaffPopup = ({
   // grouped mode
   users = [],
   roleOrder = [],
+  initialStatusFilter = 'all',
   // attendance mode
   statusFilter = 'ABSENT',
+  canMarkAttendance = false,
+  onAttendanceChanged = null,
 }) => {
   const [search, setSearch] = useState('');
   const [statusToggle, setStatusToggle] = useState('all'); // grouped mode only
@@ -188,6 +198,7 @@ const StaffPopup = ({
   const [attRecords, setAttRecords] = useState([]);
   const [attLoading, setAttLoading] = useState(false);
   const [attError, setAttError] = useState(null);
+  const [markingId, setMarkingId] = useState(null);
   const [classFilter, setClassFilter] = useState('all');
 
   const overlayRef = useRef(null);
@@ -196,10 +207,10 @@ const StaffPopup = ({
   useEffect(() => {
     if (open) {
       setSearch('');
-      setStatusToggle('all');
+      setStatusToggle(initialStatusFilter);
       setClassFilter('all');
     }
-  }, [open]);
+  }, [initialStatusFilter, open]);
 
   // ── attendance fetch ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -209,41 +220,32 @@ const StaffPopup = ({
       setAttLoading(true);
       setAttError(null);
       try {
-        const res = await hrAPI.getAttendanceReport({ date: todayISO(), limit: 200 });
+        const date = todayISO();
+        const [res, usersRes] = await Promise.all([
+          hrAPI.getAttendanceReport({ startDate: date, endDate: date }),
+          userAPI.getByRole('TEACHER', { limit: 500 }),
+        ]);
         if (cancelled) return;
         const rows = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
-        const filtered = statusFilter === 'ALL' ? rows
-          : rows.filter(r => String(r.status || r.attendanceStatus || '').toUpperCase() === statusFilter);
-
-        if (filtered.length === 0 && statusFilter === 'ABSENT') {
-          // fallback: all teachers with no record = absent
-          const usersRes = await userAPI.getAll();
-          if (cancelled) return;
-          const all = Array.isArray(usersRes?.data) ? usersRes.data : Array.isArray(usersRes) ? usersRes : [];
-          setAttRecords(all
-            .filter(u => u.role === 'TEACHER' || u.role === 'HEAD_TEACHER')
-            .map(u => ({
+        const all = Array.isArray(usersRes?.data) ? usersRes.data : Array.isArray(usersRes) ? usersRes : [];
+        const presentByUserId = new Map(rows.map(r => [r.userId || r.user?.id, r]));
+        setAttRecords(all
+          .filter(u => ['TEACHER', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].includes(u.role))
+          .map(u => {
+            const record = presentByUserId.get(u.id);
+            return {
               id: u.id,
+              attendanceId: record?.id || null,
               firstName: u.firstName || '',
               lastName: u.lastName || '',
               phone: u.phone || u.phoneNumber || '',
-              status: 'ABSENT',
+              status: record ? 'PRESENT' : 'ABSENT',
               assignedClass: u.assignedClass || u.class || u.grade || '',
               role: u.role,
-            })));
-        } else {
-          setAttRecords(filtered.map(r => ({
-            id: r.id || r.userId || r.user?.id,
-            firstName: r.firstName || r.user?.firstName || '',
-            lastName: r.lastName || r.user?.lastName || '',
-            phone: r.phone || r.user?.phone || r.user?.phoneNumber || '',
-            status: String(r.status || r.attendanceStatus || 'ABSENT').toUpperCase(),
-            assignedClass: r.assignedClass || r.class || r.grade
-              || r.user?.assignedClass || r.user?.class || r.user?.grade || '',
-            role: r.role || r.user?.role || 'TEACHER',
-            reason: r.reason || r.note || '',
-          })));
-        }
+              staffId: u.staffId,
+              reason: record?.clockInAt ? `Marked ${new Date(record.clockInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '',
+            };
+          }));
       } catch (err) {
         if (!cancelled) setAttError(err.message || 'Failed to load data');
       } finally {
@@ -253,6 +255,29 @@ const StaffPopup = ({
     fetch();
     return () => { cancelled = true; };
   }, [open, mode, statusFilter]);
+
+  const markAttendance = async (person, status) => {
+    if (!canMarkAttendance || !person?.id) return;
+    setMarkingId(person.id);
+    setAttError(null);
+    try {
+      await hrAPI.markStaffAttendance({ userId: person.id, status, date: todayISO() });
+      setAttRecords(prev => prev.map(row => row.id === person.id
+        ? {
+            ...row,
+            status,
+            reason: status === 'PRESENT'
+              ? `Marked ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+              : '',
+          }
+        : row));
+      onAttendanceChanged?.();
+    } catch (err) {
+      setAttError(err.message || `Failed to mark ${status.toLowerCase()}`);
+    } finally {
+      setMarkingId(null);
+    }
+  };
 
   // ── grouped mode — filtered + grouped ─────────────────────────────────────
   const grouped = useMemo(() => {
@@ -290,9 +315,10 @@ const StaffPopup = ({
       const name = `${r.firstName} ${r.lastName}`.toLowerCase();
       const matchQ = !q || name.includes(q) || (r.assignedClass || '').toLowerCase().includes(q);
       const matchClass = classFilter === 'all' || r.assignedClass === classFilter;
-      return matchQ && matchClass;
+      const matchStatus = statusFilter === 'ALL' || String(r.status || '').toUpperCase() === statusFilter;
+      return matchQ && matchClass && matchStatus;
     });
-  }, [attRecords, search, classFilter]);
+  }, [attRecords, search, classFilter, statusFilter]);
 
   const totalVisible = mode === 'grouped'
     ? grouped.reduce((s, g) => s + g.members.length, 0)
@@ -425,6 +451,26 @@ const StaffPopup = ({
                     person={s}
                     showRole
                     statusBadge={{ label: s.status.replace('_', ' '), color: sc }}
+                    actions={canMarkAttendance ? (
+                      <div className="flex flex-shrink-0 gap-1">
+                        <button
+                          type="button"
+                          disabled={markingId === s.id || s.status === 'PRESENT'}
+                          onClick={() => markAttendance(s, 'PRESENT')}
+                          className="text-[10px] font-semibold px-2 py-1 rounded-md bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Present
+                        </button>
+                        <button
+                          type="button"
+                          disabled={markingId === s.id || s.status === 'ABSENT'}
+                          onClick={() => markAttendance(s, 'ABSENT')}
+                          className="text-[10px] font-semibold px-2 py-1 rounded-md bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Absent
+                        </button>
+                      </div>
+                    ) : null}
                   />
                 );
               })}

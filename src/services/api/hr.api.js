@@ -34,6 +34,8 @@ export const hrAPI = {
         const qs = new URLSearchParams(params).toString();
         return fetchWithAuth(`/hr/attendance/report${qs ? '?' + qs : ''}`);
     },
+    markStaffAttendance: async (data) =>
+        fetchWithAuth('/hr/attendance/mark', { method: 'POST', body: JSON.stringify(data) }),
 
     // ── Staff Directory ───────────────────────────────────────────────────────
     getStaffDirectory: async () => fetchWithAuth('/hr/staff'),

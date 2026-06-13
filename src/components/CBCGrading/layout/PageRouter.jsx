@@ -100,6 +100,7 @@ const LeaveManager = lazy(() => import('../pages/hr/LeaveManager'));
 const PayrollManager = lazy(() => import('../pages/hr/PayrollManager'));
 const StaffDocuments = lazy(() => import('../pages/hr/StaffDocuments'));
 const PerformanceManager = lazy(() => import('../pages/hr/PerformanceManager'));
+const AttendanceManager = lazy(() => import('../pages/hr/AttendanceManager'));
 
 // Accounting Module
 const AccountingManager = lazy(() => import('../pages/accounting/AccountingManager'));
@@ -633,12 +634,13 @@ const PageRouter = ({
 
           case 'help': return <SupportHub />;
 
-          case 'hr-portal': return <DashboardPageLayout activeTab="hr" onNavigate={handleNavigate}><HRManager onNavigate={handleNavigate} /></DashboardPageLayout>;
+          case 'hr-portal': return <HRManager onNavigate={handleNavigate} />;
           case 'hr-staff-profiles': return <StaffDirectory />;
           case 'hr-leave': return <LeaveManager />;
           case 'hr-payroll': return <PayrollManager />;
           case 'hr-documents': return <StaffDocuments />;
           case 'hr-performance': return <PerformanceManager />;
+          case 'hr-attendance': return <AttendanceManager />;
 
           case 'settings-school': return <SchoolSettings brandingSettings={brandingSettings} setBrandingSettings={handlers.setBrandingSettings} />;
           case 'settings-academic': return <AcademicSettings />;

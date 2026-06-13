@@ -51,6 +51,8 @@ const FEE_TERM_LABELS: Record<string, string> = {
     TERM_3: 'Term 3',
 };
 
+const TUTOR_ROLES = ['TEACHER', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'] as const;
+
 const parseReportDashboardFilters = (query: AuthRequest['query']) => ({
     academicYear: query.academicYear ? Number(query.academicYear) : undefined,
     term: query.term,
@@ -376,11 +378,14 @@ export class DashboardController {
         });
     }
 
-    private async getTeacherAttendanceGroups(activeTeachers: Array<{ id: string; subject: string | null; role: string }>, today: Date) {
+    private async getTeacherAttendanceGroups(activeTeachers: Array<{ id: string; subject: string | null; role: string }>, todayStart: Date, todayEnd: Date) {
         if (activeTeachers.length === 0) return [];
 
         const logs = await prisma.staffAttendanceLog.findMany({
-            where: { date: today, userId: { in: activeTeachers.map(teacher => teacher.id) } },
+            where: {
+                date: { gte: todayStart, lte: todayEnd },
+                userId: { in: activeTeachers.map(teacher => teacher.id) }
+            },
             select: { userId: true },
         });
         const presentIds = new Set(logs.map(log => log.userId));
@@ -922,6 +927,10 @@ export class DashboardController {
 
             const now = new Date();
             const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+            const staffStartOfToday = new Date(now);
+            staffStartOfToday.setHours(0, 0, 0, 0);
+            const staffEndOfToday = new Date(staffStartOfToday);
+            staffEndOfToday.setHours(23, 59, 59, 999);
             const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
             const startOfTerm = activeTermConfig?.startDate ? new Date(activeTermConfig.startDate) : new Date(now.getFullYear(), 0, 1);
 
@@ -932,12 +941,12 @@ export class DashboardController {
             const resultStage1 = await Promise.all([
                 // [0] counts
                 prisma.learner.count({ where: learnerScope }),
-                prisma.user.count({ where: { role: 'TEACHER', archived: false } }),
+                prisma.user.count({ where: { role: { in: [...TUTOR_ROLES] as any }, archived: false } }),
                 prisma.class.count({ where: { archived: false, institutionType: isSecondaryContext ? ('SECONDARY' as any) : ('PRIMARY_CBC' as any) } }),
                 prisma.learner.count({ where: { ...learnerScope, createdAt: prevDateFilter } }),
-                prisma.user.count({ where: { role: 'TEACHER', archived: false, createdAt: prevDateFilter } }),
+                prisma.user.count({ where: { role: { in: [...TUTOR_ROLES] as any }, archived: false, createdAt: prevDateFilter } }),
                 prisma.learner.count({ where: { ...learnerScope, status: 'ACTIVE' } }),
-                prisma.user.count({ where: { role: 'TEACHER', status: 'ACTIVE', archived: false } }),
+                prisma.user.count({ where: { role: { in: [...TUTOR_ROLES] as any }, status: 'ACTIVE', archived: false } }),
                 // [7] group-bys
                 prisma.attendance.groupBy({ by: ['status'], where: { date: startOfToday, learner: { ...learnerScope, status: 'ACTIVE' } }, _count: true }),
                 prisma.learner.groupBy({ by: ['grade'], where: learnerScope, _count: true }),
@@ -1047,8 +1056,8 @@ export class DashboardController {
                 // [28] teacher/tutor clock-in records for today
                 prisma.staffAttendanceLog.findMany({
                     where: {
-                        date: startOfToday,
-                        user: { role: 'TEACHER', archived: false },
+                        date: { gte: staffStartOfToday, lte: staffEndOfToday },
+                        user: { role: { in: [...TUTOR_ROLES] as any }, archived: false },
                     },
                     select: { userId: true },
                 }),
@@ -1062,7 +1071,7 @@ export class DashboardController {
                 // [30] subordinate staff clock-in records for today
                 prisma.staffAttendanceLog.findMany({
                     where: {
-                        date: startOfToday,
+                        date: { gte: staffStartOfToday, lte: staffEndOfToday },
                         user: {
                             role: { in: ['ACCOUNTANT', 'RECEPTIONIST', 'ADMIN', 'HEAD_TEACHER'] as any },
                             archived: false,
@@ -1385,13 +1394,16 @@ export class DashboardController {
             attendanceTrendStart.setDate(attendanceTrendStart.getDate() - 35);
             attendanceTrendStart.setHours(0, 0, 0, 0);
             const activeTeacherList = await prisma.user.findMany({
-                where: { role: 'TEACHER', status: 'ACTIVE', archived: false },
+                where: { role: { in: [...TUTOR_ROLES] as any }, status: 'ACTIVE', archived: false },
                 select: { id: true, subject: true, role: true },
             });
             const [attendanceTrend, teacherAttendanceByDept] = await Promise.all([
                 this.getAttendanceTrend(attendanceTrendStart, activeTeacherList.map(teacher => teacher.id)),
-                this.getTeacherAttendanceGroups(activeTeacherList, startOfToday),
+                this.getTeacherAttendanceGroups(activeTeacherList, staffStartOfToday, staffEndOfToday),
             ]);
+
+            const presentTeacherCount = new Set((teacherClockInsToday as any[]).map(record => record.userId)).size;
+            const presentSubordinateStaffCount = new Set((subordinateClockInsToday as any[]).map(record => record.userId)).size;
 
             const payload = {
                 context: {
@@ -1417,16 +1429,16 @@ export class DashboardController {
                     totalPendingAssessments: pendingDraftCount,
                     performance: { ee: 0, me: 0, ae: 0, be: 0 },
                     // ── Staff / tutor clock-in attendance (today) ──────────────
-                    presentTeachers: (teacherClockInsToday as any[]).length,
-                    absentTeachers: Math.max(0, (activeTeachers as number) - (teacherClockInsToday as any[]).length),
+                    presentTeachers: presentTeacherCount,
+                    absentTeachers: Math.max(0, (activeTeachers as number) - presentTeacherCount),
                     teacherAttendanceRate: (activeTeachers as number) > 0
-                        ? parseFloat((((teacherClockInsToday as any[]).length / (activeTeachers as number)) * 100).toFixed(1))
+                        ? parseFloat(((presentTeacherCount / (activeTeachers as number)) * 100).toFixed(1))
                         : 0,
                     totalSubordinateStaff: subordinateStaffCount as number,
-                    presentSubordinateStaff: (subordinateClockInsToday as any[]).length,
-                    absentSubordinateStaff: Math.max(0, (subordinateStaffCount as number) - (subordinateClockInsToday as any[]).length),
+                    presentSubordinateStaff: presentSubordinateStaffCount,
+                    absentSubordinateStaff: Math.max(0, (subordinateStaffCount as number) - presentSubordinateStaffCount),
                     staffAttendanceRate: (subordinateStaffCount as number) > 0
-                        ? parseFloat((((subordinateClockInsToday as any[]).length / (subordinateStaffCount as number)) * 100).toFixed(1))
+                        ? parseFloat(((presentSubordinateStaffCount / (subordinateStaffCount as number)) * 100).toFixed(1))
                         : 0,
                 },
                 unAssessedBreakdown,
