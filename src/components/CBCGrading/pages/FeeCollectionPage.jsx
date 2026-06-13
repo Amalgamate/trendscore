@@ -34,6 +34,14 @@ import { useBootstrapStore } from '../../../store/useBootstrapStore';
 import { useMobile } from '../../../hooks/useMobileDetection';
 import { DataCard } from '../shared';
 
+const TERM_ORDER = { TERM_1: 1, TERM_2: 2, TERM_3: 3 };
+
+const getFeeCycleRank = (invoice) => {
+  const year = Number(invoice?.academicYear || 0);
+  const termRank = TERM_ORDER[String(invoice?.term || '').toUpperCase()] || 0;
+  return year * 10 + termRank;
+};
+
 const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
   const isMobile = useMobile();
   const navigateTo = usePageNavigation();
@@ -1164,10 +1172,21 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
     });
   }, [statsInvoices, termFilter, gradeFilter, searchLearnerId, startDate, endDate, isSecondaryPortal, isSecondaryGrade]);
 
+  const currentCycleStatsInvoices = React.useMemo(() => {
+    if (termFilter !== 'all' || searchLearnerId) return scopedStatsInvoices;
+
+    const latestRank = scopedStatsInvoices.reduce(
+      (max, inv) => Math.max(max, getFeeCycleRank(inv)),
+      0
+    );
+    if (!latestRank) return scopedStatsInvoices;
+    return scopedStatsInvoices.filter((inv) => getFeeCycleRank(inv) === latestRank);
+  }, [scopedStatsInvoices, termFilter, searchLearnerId]);
+
   // ——— Computed KES totals for each metric card —————————————
   const stats = React.useMemo(() => {
     const fmt = (n) => `KES ${Number(n || 0).toLocaleString('en-KE')}`;
-    const src = scopedStatsInvoices;
+    const src = currentCycleStatsInvoices;
     const getStructureExpected = (invoice) => {
       const fs = invoice?.feeStructure;
       if (fs && typeof fs.totalAmount === 'number') return Number(fs.totalAmount || 0);
@@ -1269,7 +1288,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
         return recentMode === 'BANK_TRANSFER' ? s + getInvoiceCashPaid(i) : s;
       }, 0))
     };
-  }, [scopedStatsInvoices, metricsStructureExpectedMap, getInvoiceCarryFwd, normalizeGradeKey, getApprovedWaiverAmount, getInvoiceCashPaid, getInvoiceCurrentDue, getInvoiceNetOverpaid]);
+  }, [currentCycleStatsInvoices, metricsStructureExpectedMap, getInvoiceCarryFwd, normalizeGradeKey, getApprovedWaiverAmount, getInvoiceCashPaid, getInvoiceCurrentDue, getInvoiceNetOverpaid]);
 
 
   if (loading && !showCreateModal) return <LoadingSpinner />;

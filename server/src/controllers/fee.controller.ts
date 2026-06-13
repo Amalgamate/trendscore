@@ -61,7 +61,7 @@ function getInstitutionType(req: AuthRequest): 'PRIMARY_CBC' | 'SECONDARY' | 'TE
 
 function applyInvoiceInstitutionScope(req: AuthRequest, whereClause: any = {}) {
   const institutionType = getInstitutionType(req);
-  const learnerFilter: any = { archived: false };
+  const learnerFilter: any = { archived: false, status: 'ACTIVE' };
 
   // If the query already filters by a specific grade, we use it, otherwise apply scope
   if (whereClause.learner?.grade) {
@@ -561,6 +561,9 @@ export class FeeController {
     ]);
 
     if (!learner || !feeStructure) throw new ApiError(404, 'Learner or fee structure not found');
+    if (learner.archived || learner.status !== 'ACTIVE') {
+      throw new ApiError(400, 'Cannot create a fee invoice for an inactive or archived learner');
+    }
 
     const shouldIncludeTransport =
       includeTransport !== undefined
@@ -1574,6 +1577,7 @@ export class FeeController {
     if (academicYear) where.academicYear = parseInt(academicYear as string);
     if (learnerId)   where.learnerId = learnerId;
     if (grade)       where.learner = { grade };
+    applyInvoiceInstitutionScope(req, where);
 
     const invoices = await prisma.feeInvoice.findMany({
       where,
