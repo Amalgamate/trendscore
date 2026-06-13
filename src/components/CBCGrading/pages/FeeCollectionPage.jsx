@@ -2405,6 +2405,9 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
           )}
 
           {/* Create Invoice Modal */}
+
+          </>
+          )}
           {showCreateModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden">
@@ -2892,8 +2895,6 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                 </div>
               </div>
             </div>
-          )}
-          </>
           )}
 
           {/* Toast Notification */}

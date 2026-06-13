@@ -176,13 +176,21 @@ const GroupDropdown = ({ group, currentPage, onNavigate, color }) => {
   );
 };
 
-// ── main component ─────────────────────────────────────────────────────────────
 const HorizontalSubmenu = ({ currentPage, onNavigate }) => {
   const { navSections } = useNavigation();
   const { feeActions } = useFeeActions();
 
   // Show fee action links only while on the fee collection page
-  const showFeeActions = (currentPage === 'fees-collection' || currentPage === 'fees-structure') && feeActions;
+  const showFeeActions = [
+    'fees-overview',
+    'fees-collection',
+    'fees-invoices',
+    'fees-structure',
+    'fees-types',
+    'fees-waivers',
+    'fees-statements',
+    'fees-unmatched'
+  ].includes(currentPage) && feeActions;
 
   const activeSection = useMemo(() => {
     const byPage = (navSections || []).find((section) => {

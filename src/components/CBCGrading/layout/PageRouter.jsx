@@ -621,17 +621,17 @@ const PageRouter = ({
 
           case 'docs-center': return <DocumentCenter />;
 
-          case 'fees-structure': return <FeeStructurePage />;
-          case 'fees-types': return <FeeTypesPage />;
+          case 'fees-structure': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="structure" />;
+          case 'fees-types': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="types" />;
           case 'fees-overview': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="overview" />;
           case 'fees-invoices':
           case 'fees-collection': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="invoices" />;
           case 'fees-invoice-detail': return <InvoiceDetailPage invoice={pageParams.invoice} />;
           case 'fees-record-payment': return <RecordPaymentPage invoice={pageParams.invoice} initialMode={pageParams.initialMode} />;
-          case 'fees-waivers': return <WaiversPage />;
+          case 'fees-waivers': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="waivers" />;
           case 'fees-reports': return <FeeReportsPage />;
-          case 'fees-statements': return <StudentStatementsPage />;
-          case 'fees-unmatched': return <UnmatchedPaymentsPanel />;
+          case 'fees-statements': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="statements" />;
+          case 'fees-unmatched': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="unmatched" />;
 
           case 'help': return <SupportHub />;
 

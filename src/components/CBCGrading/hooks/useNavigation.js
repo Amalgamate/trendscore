@@ -333,22 +333,7 @@ export const allNavSections = [
         app: 'fee-management',
         permission: 'FEE_MANAGEMENT',
         items: [
-            {
-                id: 'group-fees',
-                label: 'Fee Management',
-                type: 'group',
-                icon: Receipt,
-                permission: 'FEE_MANAGEMENT',
-                items: [
-                    { id: 'fees-overview',    label: 'Fee Overview',       path: 'fees-overview',    permission: 'FEE_MANAGEMENT' },
-                    { id: 'fees-collection',  label: 'Fee Collection',     path: 'fees-collection',  permission: 'FEE_MANAGEMENT' },
-                    { id: 'fees-unmatched',   label: 'Unmatched Payments', path: 'fees-unmatched',   permission: 'FEE_MANAGEMENT' },
-                    { id: 'fees-waivers',     label: 'Fee Waivers',        path: 'fees-waivers',     permission: 'FEE_MANAGEMENT', icon: Gift },
-                    { id: 'fees-statements',  label: 'Student Statements', path: 'fees-statements',  permission: 'FEE_MANAGEMENT' },
-                    { id: 'fees-types',       label: 'Fee Types',          path: 'fees-types',       permission: 'FEE_MANAGEMENT' },
-                    { id: 'fees-structure',   label: 'Fee Structure',      path: 'fees-structure',   permission: 'FEE_MANAGEMENT' }
-                ]
-            },
+            { id: 'fees-overview', label: 'Fee Management', path: 'fees-overview', permission: 'FEE_MANAGEMENT', icon: Receipt },
             {
                 id: 'group-accounting',
                 label: 'Accounting',
@@ -449,13 +434,7 @@ const PARENT_PORTAL_KEEP_EMPTY_SECTION_IDS = new Set(['dashboard', 'communicatio
 
 const accountantFinanceNavigation = [
     { id: 'finance-dashboard', label: 'Dashboard', path: 'finance-dashboard', permission: null, icon: Home },
-    { id: 'fees-overview', label: 'Fee Overview', path: 'fees-overview', permission: 'FEE_MANAGEMENT', icon: Receipt },
-    { id: 'fees-collection', label: 'Fee Collection', path: 'fees-collection', permission: 'FEE_MANAGEMENT', icon: Receipt },
-    { id: 'fees-unmatched', label: 'Unmatched Payments', path: 'fees-unmatched', permission: 'FEE_MANAGEMENT', icon: FileText },
-    { id: 'fees-waivers', label: 'Fee Waivers', path: 'fees-waivers', permission: 'FEE_MANAGEMENT', icon: Gift },
-    { id: 'fees-statements', label: 'Student Statements', path: 'fees-statements', permission: 'FEE_MANAGEMENT', icon: FileText },
-    { id: 'fees-types', label: 'Fee Types', path: 'fees-types', permission: 'FEE_MANAGEMENT', icon: Receipt },
-    { id: 'fees-structure', label: 'Fee Structure', path: 'fees-structure', permission: 'FEE_MANAGEMENT', icon: ClipboardList },
+    { id: 'fees-overview', label: 'Fee Management', path: 'fees-overview', permission: 'FEE_MANAGEMENT', icon: Receipt },
     { id: 'accounting-expenses', label: 'Expenses', path: 'accounting-expenses', permission: 'ACCOUNTING_MANAGEMENT', icon: ClipboardList },
     { id: 'accounting-reconciliation', label: 'Banking', path: 'accounting-reconciliation', permission: 'ACCOUNTING_MANAGEMENT', icon: Building2 },
     { id: 'accounting-accounts', label: 'Chart of Accounts', path: 'accounting-accounts', permission: 'ACCOUNTING_MANAGEMENT', icon: BookOpen },
