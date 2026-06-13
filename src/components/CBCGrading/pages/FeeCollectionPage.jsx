@@ -42,6 +42,12 @@ const getFeeCycleRank = (invoice) => {
   return year * 10 + termRank;
 };
 
+const getLatestFeeCycleRows = (rows = []) => {
+  const latestRank = rows.reduce((max, inv) => Math.max(max, getFeeCycleRank(inv)), 0);
+  if (!latestRank) return rows;
+  return rows.filter((inv) => getFeeCycleRank(inv) === latestRank);
+};
+
 const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
   const isMobile = useMobile();
   const navigateTo = usePageNavigation();
@@ -79,7 +85,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
   const [schoolInfo, setSchoolInfo] = useState(null);
   const [listTotals, setListTotals] = useState({ totalBilled: 0, totalPaid: 0, totalBalance: 0, totalWaived: 0, totalOverpaid: 0 });
   // Grand totals for B/F and current-term-due cover ALL pages, not just the visible one.
-  const [grandTotals, setGrandTotals] = useState({ carryFwd: 0, currentTermDue: 0 });
+  const [grandTotals, setGrandTotals] = useState({ carryFwd: 0, currentTermDue: 0, totalBalance: 0 });
   const [showMetrics, setShowMetrics] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -402,9 +408,10 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
           const learnerIsSecondary = isSecondaryGrade(inv?.learner?.grade);
           return isSecondaryPortal ? learnerIsSecondary : !learnerIsSecondary;
         });
-        const carryFwd = allRows.reduce((sum, inv) => sum + getInvoiceCarryFwd(inv), 0);
-        const currentTermDue = allRows.reduce((sum, inv) => sum + getInvoiceCurrentTermDue(inv), 0);
-        const totalBalance = allRows.reduce((sum, inv) => sum + getInvoiceCurrentDue(inv), 0);
+        const totalRows = termFilter === 'all' ? getLatestFeeCycleRows(allRows) : allRows;
+        const carryFwd = totalRows.reduce((sum, inv) => sum + getInvoiceCarryFwd(inv), 0);
+        const currentTermDue = totalRows.reduce((sum, inv) => sum + getInvoiceCurrentTermDue(inv), 0);
+        const totalBalance = totalRows.reduce((sum, inv) => sum + getInvoiceCurrentDue(inv), 0);
         setGrandTotals({ carryFwd, currentTermDue, totalBalance });
       } else {
         const params = {
@@ -418,29 +425,15 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
         const res = await api.fees.getInvoiceAggregates(params);
         const allRows = Array.isArray(res?.data) ? res.data : [];
 
-        // Use server-computed grand totals when available (eliminates timing race)
-        if (res?.grandTotals) {
-          const serverCarryFwd = Number(res.grandTotals.totalCarryFwd || 0);
-          const serverBalance = Number(res.grandTotals.totalBalance || 0);
-
-          // currentTermDue = totalBalance - carryFwd (balance owed this term only)
-          const scopedRows = allRows.filter((inv) => {
-            const learnerIsSecondary = isSecondaryGrade(inv?.learner?.grade);
-            return isSecondaryPortal ? learnerIsSecondary : !learnerIsSecondary;
-          });
-          const currentTermDue = scopedRows.reduce((sum, inv) => sum + getInvoiceCurrentTermDue(inv), 0);
-          setGrandTotals({ carryFwd: serverCarryFwd, currentTermDue, totalBalance: serverBalance });
-        } else {
-          // Fallback: client-side computation (legacy / graceful degradation)
-          const scopedRows = allRows.filter((inv) => {
-            const learnerIsSecondary = isSecondaryGrade(inv?.learner?.grade);
-            return isSecondaryPortal ? learnerIsSecondary : !learnerIsSecondary;
-          });
-          const carryFwd = scopedRows.reduce((sum, inv) => sum + getInvoiceCarryFwd(inv), 0);
-          const currentTermDue = scopedRows.reduce((sum, inv) => sum + getInvoiceCurrentTermDue(inv), 0);
-          const totalBalance = scopedRows.reduce((sum, inv) => sum + getInvoiceCurrentDue(inv), 0);
-          setGrandTotals({ carryFwd, currentTermDue, totalBalance });
-        }
+        const scopedRows = allRows.filter((inv) => {
+          const learnerIsSecondary = isSecondaryGrade(inv?.learner?.grade);
+          return isSecondaryPortal ? learnerIsSecondary : !learnerIsSecondary;
+        });
+        const totalRows = termFilter === 'all' ? getLatestFeeCycleRows(scopedRows) : scopedRows;
+        const carryFwd = totalRows.reduce((sum, inv) => sum + getInvoiceCarryFwd(inv), 0);
+        const currentTermDue = totalRows.reduce((sum, inv) => sum + getInvoiceCurrentTermDue(inv), 0);
+        const totalBalance = totalRows.reduce((sum, inv) => sum + getInvoiceCurrentDue(inv), 0);
+        setGrandTotals({ carryFwd, currentTermDue, totalBalance });
       }
     } catch (err) {
       console.error('Failed to fetch grand totals:', err);
@@ -1174,13 +1167,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
 
   const currentCycleStatsInvoices = React.useMemo(() => {
     if (termFilter !== 'all' || searchLearnerId) return scopedStatsInvoices;
-
-    const latestRank = scopedStatsInvoices.reduce(
-      (max, inv) => Math.max(max, getFeeCycleRank(inv)),
-      0
-    );
-    if (!latestRank) return scopedStatsInvoices;
-    return scopedStatsInvoices.filter((inv) => getFeeCycleRank(inv) === latestRank);
+    return getLatestFeeCycleRows(scopedStatsInvoices);
   }, [scopedStatsInvoices, termFilter, searchLearnerId]);
 
   // ——— Computed KES totals for each metric card —————————————
@@ -1471,7 +1458,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
                       Total Balances
                     </p>
                     <span className="text-xl font-medium text-gray-900 tracking-tight leading-none block">
-                      {Number(listTotals.totalBalance || 0).toLocaleString()}
+                      {Number(grandTotals.totalBalance ?? listTotals.totalBalance ?? 0).toLocaleString()}
                       <span className="text-[10px] font-medium text-gray-500 ml-1">KES</span>
                     </span>
                   </div>
