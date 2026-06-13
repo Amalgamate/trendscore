@@ -25,7 +25,8 @@ export const resolveCurrentSchoolId = () => null;
 
 export const getSelectedInstitutionType = () => {
     try {
-        return localStorage.getItem(INSTITUTION_KEY);
+        localStorage.removeItem(INSTITUTION_KEY);
+        return getStoredUser()?.institutionType || null;
     } catch (_err) {
         return null;
     }
@@ -33,8 +34,7 @@ export const getSelectedInstitutionType = () => {
 
 export const setSelectedInstitutionType = (institutionType) => {
     try {
-        if (!institutionType) return;
-        localStorage.setItem(INSTITUTION_KEY, institutionType);
+        localStorage.removeItem(INSTITUTION_KEY);
     } catch (_err) {
         // no-op
     }

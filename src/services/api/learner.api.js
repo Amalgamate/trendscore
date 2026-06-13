@@ -4,8 +4,7 @@ import { communicationAPI } from './communication.api';
 
 const institutionCacheKeySuffix = () => {
   try {
-    const selected = localStorage.getItem('selectedInstitutionType');
-    if (selected) return selected;
+    localStorage.removeItem('selectedInstitutionType');
     const raw = localStorage.getItem('user');
     if (!raw) return 'PRIMARY_CBC';
     const u = JSON.parse(raw);

@@ -1,13 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bell, Zap, ChevronDown, ClipboardList, BarChart3, MessageSquare, Calendar, Gift, User as UserIcon, GitBranch } from 'lucide-react';
 import { usePermissions } from '../../../hooks/usePermissions';
-import { useAuth } from '../../../hooks/useAuth';
 import { useRolePreview } from '../../../contexts/RolePreviewContext';
 import api from '../../../services/api';
 import { getReminderDelay, shouldScheduleReminder } from './notificationReminder';
 import { clockInTeacher, clockOutTeacher, getCurrentUserClockInStatus, syncCurrentUserClockInStatus } from '../../../utils/teacherClockIn';
-import { setSelectedInstitutionType } from '../../../services/schoolContext';
-import { setInstitutionType } from '../../../services/api/institutionContext';
 import { Button } from "../../ui/button";
 import { Badge } from "../../ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "../../ui/popover";
@@ -50,41 +47,14 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
   const dropdownRef = useRef(null);
   const sessionStartedAtRef = useRef(Date.now());
   const { role } = usePermissions();
-  const { updateUser } = useAuth();
-  const [institutionOverride, setInstitutionOverride] = useState(() => {
-    try {
-      return localStorage.getItem('selectedInstitutionType') || '';
-    } catch {
-      return '';
-    }
-  });
 
   useEffect(() => {
-    const nextInstitution = String(user?.institutionType || '').toUpperCase();
-    if (!nextInstitution) return;
-
     try {
-      const currentStored = String(localStorage.getItem('selectedInstitutionType') || '').toUpperCase();
-      if (currentStored) {
-        // Keep AuthContext and API header source aligned with the persisted local switch.
-        if (currentStored !== nextInstitution) {
-          updateUser?.({ institutionType: currentStored });
-          setInstitutionType(currentStored);
-        }
-        if (institutionOverride !== currentStored) {
-          setInstitutionOverride(currentStored);
-        }
-        return;
-      }
-
-      setSelectedInstitutionType(nextInstitution);
-      if (institutionOverride !== nextInstitution) {
-        setInstitutionOverride(nextInstitution);
-      }
+      localStorage.removeItem('selectedInstitutionType');
     } catch {
-      // ignore storage access issues
+      // Storage can be unavailable in restricted browser modes.
     }
-  }, [institutionOverride, updateUser, user?.institutionType]);
+  }, []);
 
   // Key is scoped to the resolved user id. We wait until user.id is available
   // before loading from localStorage so we never load from the 'unknown' key
@@ -433,22 +403,10 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
   };
 
   const brandColor = brandingSettings?.brandColor || 'var(--brand-purple)';
-  const canSwitchInstitutionLocal =
-    String(user?.role || '').toUpperCase() === 'SUPER_ADMIN';
-
-  const effectiveInstitutionType = institutionOverride || user?.institutionType || 'PRIMARY_CBC';
+  const effectiveInstitutionType = String(user?.institutionType || 'PRIMARY_CBC').toUpperCase();
   const isSecondaryPortal = effectiveInstitutionType === 'SECONDARY';
   const isTertiaryPortal = effectiveInstitutionType === 'TERTIARY';
   const institutionLabel = isSecondaryPortal ? 'Senior School' : isTertiaryPortal ? 'Tertiary' : 'Junior School';
-
-  const handleInstitutionSwitch = (nextType) => {
-    const value = String(nextType || '').toUpperCase();
-    if (!value) return;
-    setInstitutionOverride(value);
-    setSelectedInstitutionType(value);
-    setInstitutionType(value);
-    updateUser?.({ institutionType: value });
-  };
 
   return (
     <>
@@ -471,50 +429,19 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
             <h1 className="text-base lg:text-lg font-semibold text-gray-900 leading-none tracking-tight uppercase">
               {brandingSettings?.schoolName || PRODUCT_DISPLAY_NAME}
             </h1>
-            {canSwitchInstitutionLocal ? (
-              <label
-                className={cn(
-                  "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest leading-none shadow-sm",
-                  isSecondaryPortal
-                    ? "bg-indigo-50 text-indigo-800 border-indigo-200"
-                    : isTertiaryPortal
-                      ? "bg-amber-50 text-amber-800 border-amber-200"
-                      : "bg-emerald-50 text-emerald-800 border-emerald-200"
-                )}
-                title={`Context switch (${institutionLabel})`}
-              >
-                <select
-                  value={effectiveInstitutionType}
-                  onChange={(e) => handleInstitutionSwitch(e.target.value)}
-                  className={cn(
-                    "bg-transparent border-none outline-none text-[10px] font-semibold uppercase tracking-widest pl-1 pr-1",
-                    isSecondaryPortal
-                      ? "text-indigo-900"
-                      : isTertiaryPortal
-                        ? "text-amber-900"
-                        : "text-emerald-900"
-                  )}
-                >
-                  <option value="PRIMARY_CBC">Junior</option>
-                  <option value="SECONDARY">Secondary</option>
-                  <option value="TERTIARY">Tertiary</option>
-                </select>
-              </label>
-            ) : (
-              <span
-                className={cn(
-                  "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest leading-none shadow-sm",
-                  isSecondaryPortal
-                    ? "bg-indigo-50 text-indigo-800 border-indigo-200"
-                    : isTertiaryPortal
-                      ? "bg-amber-50 text-amber-800 border-amber-200"
-                      : "bg-emerald-50 text-emerald-800 border-emerald-200"
-                )}
-                title={isSecondaryPortal ? 'Senior School portal' : isTertiaryPortal ? 'Tertiary portal' : 'Junior School portal'}
-              >
-                {institutionLabel}
-              </span>
-            )}
+            <span
+              className={cn(
+                "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest leading-none shadow-sm",
+                isSecondaryPortal
+                  ? "bg-indigo-50 text-indigo-800 border-indigo-200"
+                  : isTertiaryPortal
+                    ? "bg-amber-50 text-amber-800 border-amber-200"
+                    : "bg-emerald-50 text-emerald-800 border-emerald-200"
+              )}
+              title={isSecondaryPortal ? 'Senior School portal' : isTertiaryPortal ? 'Tertiary portal' : 'Junior School portal'}
+            >
+              {institutionLabel}
+            </span>
             <span className="hidden md:inline-block h-4 w-px bg-gray-200 mx-1" aria-hidden="true" />
             <span className="hidden md:inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-gray-500">
               <span className="text-gray-800 font-bold">{formatToday()}</span>

@@ -4,11 +4,11 @@
  * Holds the data pre-loaded during the splash screen so every page gets it
  * instantly instead of waiting for an in-page fetch.
  *
- * What is pre-loaded (all in parallel during splash):
- *   - learners   (active students, limit 200)
- *   - teachers
+ * What is pre-loaded during splash:
  *   - classes + streams (school config)
  *   - subjects  (learning areas)
+ * Learners, teachers, and fee stats hydrate after the shell is ready so large
+ * imports cannot keep the app stuck on the splash screen.
  *
  * Persistence: sessionStorage — survives F5 within the same tab, cleared on
  * tab close or logout. A `loadedAt` timestamp lets consumers detect stale
@@ -23,6 +23,24 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
 const STALE_AFTER_MS = 5 * 60 * 1000; // 5 minutes
+const CORE_BOOTSTRAP_TIMEOUT_MS = 6000;
+const BACKGROUND_BOOTSTRAP_TIMEOUT_MS = 15000;
+
+const loadWithTimeout = (loader, fallback = [], timeoutMs = CORE_BOOTSTRAP_TIMEOUT_MS) => {
+  let timeoutId;
+  const load = Promise.resolve()
+    .then(loader)
+    .then((value) => ({ ok: true, value }))
+    .catch((error) => ({ ok: false, error, value: fallback }));
+
+  const timeout = new Promise((resolve) => {
+    timeoutId = setTimeout(() => {
+      resolve({ ok: false, timedOut: true, value: fallback });
+    }, timeoutMs);
+  });
+
+  return Promise.race([load, timeout]).finally(() => clearTimeout(timeoutId));
+};
 
 export const useBootstrapStore = create(
   persist(
@@ -45,7 +63,8 @@ export const useBootstrapStore = create(
 
       /**
        * bootstrap(apiFns)
-       * Called once by the splash screen. Runs all five fetches in parallel.
+       * Called once by the splash screen. Loads lightweight shell config first,
+       * then hydrates heavier datasets in the background.
        *
        * apiFns: {
        *   fetchLearners:  () => Promise<learner[]>
@@ -56,39 +75,54 @@ export const useBootstrapStore = create(
        * }
        */
       bootstrap: async (apiFns) => {
-        const { loadedAt, loading, ready } = get();
+        const { loadedAt, loading, ready, classes, streams, subjects } = get();
 
         if (loading) return;   // already in progress
 
         // Data is fresh enough — nothing to do
-        if (ready && loadedAt && Date.now() - loadedAt < STALE_AFTER_MS) return;
+        if (
+          ready &&
+          classes !== null &&
+          streams !== null &&
+          subjects !== null &&
+          loadedAt &&
+          Date.now() - loadedAt < STALE_AFTER_MS
+        ) {
+          return;
+        }
 
         set({ loading: true, error: null });
 
         try {
-          // Keep startup fast: wait only for core datasets required by the shell.
-          // Heavy fee stats hydrate asynchronously after the app becomes ready.
-          const results = await Promise.allSettled([
-            apiFns.fetchLearners(),
-            apiFns.fetchTeachers(),
-            apiFns.fetchClasses(),
-            apiFns.fetchStreams(),
-            apiFns.fetchSubjects(),
+          const coreResults = await Promise.all([
+            loadWithTimeout(apiFns.fetchClasses),
+            loadWithTimeout(apiFns.fetchStreams),
+            loadWithTimeout(apiFns.fetchSubjects),
           ]);
 
-          const val = (r, fallback = []) =>
-            r.status === 'fulfilled' ? r.value : fallback;
+          const val = (r, fallback = []) => (r.ok ? r.value : fallback);
 
           set({
-            learners:  val(results[0]),
-            teachers:  val(results[1]),
-            classes:   val(results[2]),
-            streams:   val(results[3]),
-            subjects:  val(results[4]),
+            classes:   val(coreResults[0]),
+            streams:   val(coreResults[1]),
+            subjects:  val(coreResults[2]),
             loadedAt:  Date.now(),
             loading:   false,
             ready:     true,
             error:     null,
+          });
+
+          Promise.all([
+            loadWithTimeout(apiFns.fetchLearners, [], BACKGROUND_BOOTSTRAP_TIMEOUT_MS),
+            loadWithTimeout(apiFns.fetchTeachers, [], BACKGROUND_BOOTSTRAP_TIMEOUT_MS),
+          ]).then(([learnersResult, teachersResult]) => {
+            const updates = {};
+            if (learnersResult.ok) updates.learners = learnersResult.value;
+            if (teachersResult.ok) updates.teachers = teachersResult.value;
+            if (Object.keys(updates).length > 0) {
+              updates.loadedAt = Date.now();
+              set(updates);
+            }
           });
 
           if (apiFns.fetchFeeStats) {

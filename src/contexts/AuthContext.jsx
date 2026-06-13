@@ -26,18 +26,18 @@ export const AuthProvider = ({ children }) => {
 
   const normalizeUser = useCallback((u) => {
     if (!u) return u;
-    const isLocalhost =
-      typeof window !== 'undefined' &&
-      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
     // Don't force PRIMARY_CBC default when the backend has signalled that institution
     // setup is still required (post-reset). The wizard will lock the type and then
     // call updateUser() to patch this value in memory.
     const institutionType = u.requiresInstitutionSetup
       ? (u.institutionType ?? null)
       : (u.institutionType || 'PRIMARY_CBC');
-    const localOverride = isLocalhost ? localStorage.getItem('selectedInstitutionType') : null;
-    const resolvedInstitutionType = localOverride || institutionType;
-    return { ...u, institutionType: resolvedInstitutionType };
+    try {
+      localStorage.removeItem('selectedInstitutionType');
+    } catch {
+      // Storage can be unavailable in restricted browser modes.
+    }
+    return { ...u, institutionType };
   }, []);
 
   // Keep the axios interceptor and bootstrap cache in sync whenever user changes
@@ -111,6 +111,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('user');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('authToken'); // Also clear legacy authToken if present
+    localStorage.removeItem('selectedInstitutionType');
 
     // Expire HttpOnly cookies (server will honour these on next request,
     // but clearing them client-side removes them from browser storage immediately)

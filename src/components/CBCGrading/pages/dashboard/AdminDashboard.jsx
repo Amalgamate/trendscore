@@ -17,6 +17,7 @@ import AdminOverviewTabs from './AdminOverviewTabs';
 import { useDashboardMetrics, formatKesAmount, formatPercent } from '../../hooks/useDashboardMetrics';
 import OwnerAdvisorSection from '../../dashboard/widgets/admin/OwnerAdvisorSection';
 import FinanceIntelligenceSection from '../../dashboard/widgets/admin/FinanceIntelligenceSection';
+import FeeCollectionTrend from '../../dashboard/widgets/admin/FeeCollectionTrend';
 
 import {
   TrendingUp,
@@ -57,10 +58,11 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
   const [subordinateCount, setSubordinateCount] = useState(0);
   const [adminUsers, setAdminUsers] = useState([]);
   const [subordinateUsers, setSubordinateUsers] = useState([]);
-  const [adminPopupOpen, setAdminPopupOpen] = useState(false);
-  const [subordinatePopupOpen, setSubordinatePopupOpen] = useState(false);
+  const [adminPopup, setAdminPopup] = useState({ open: false, statusFilter: 'all', title: 'Administration Staff' });
+  const [subordinatePopup, setSubordinatePopup] = useState({ open: false, statusFilter: 'all', title: 'Subordinate Staff' });
   // Tutors attendance popup: { open, statusFilter, title }
   const [tutorsPopup, setTutorsPopup] = useState({ open: false, statusFilter: 'ABSENT', title: 'Absent Tutors Today' });
+  const canMarkTutorAttendance = ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'].includes(String(user?.role || '').toUpperCase());
 
   const userId = user?.id || user?.userId;
   const sectionControls = useDashboardSections('admin', [
@@ -73,11 +75,11 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
   ]);
   const hasInstantData = learners.length > 0 || teachers.length > 0 || (pagination?.total || 0) > 0;
   
-  const loadMetrics = async (filter = 'term') => {
+  const loadMetrics = async (filter = 'term', options = {}) => {
     try {
       setRefreshing(true);
       setApiError(null);
-      const response = await dashboardAPI.getAdminMetrics(filter);
+      const response = await dashboardAPI.getAdminMetrics(filter, options);
       if (response.success) {
         setMetrics(response.data);
       } else {
@@ -264,18 +266,18 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
                     value: subordinateUsers.filter(u => u.status !== 'INACTIVE' && u.archived !== true).length || metrics?.stats?.presentSubordinateStaff || 0,
                     label: 'Active',
                     dot: '#86efac',
-                    onClick: () => setSubordinatePopupOpen(true),
+                    onClick: () => setSubordinatePopup({ open: true, statusFilter: 'active', title: 'Active Subordinate Staff' }),
                   },
                   {
                     value: subordinateUsers.filter(u => u.status === 'INACTIVE' || u.archived === true).length || metrics?.stats?.absentSubordinateStaff || 0,
                     label: 'Inactive',
                     dot: '#fca5a5',
-                    onClick: () => setSubordinatePopupOpen(true),
+                    onClick: () => setSubordinatePopup({ open: true, statusFilter: 'inactive', title: 'Inactive Subordinate Staff' }),
                   },
                 ],
                 icon: <Users size={26} />,
                 tone: 'red',
-                onClick: () => setSubordinatePopupOpen(true),
+                onClick: () => setSubordinatePopup({ open: true, statusFilter: 'all', title: 'Subordinate Staff' }),
               },
               {
                 label: 'Administration',
@@ -286,76 +288,81 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
                     value: adminUsers.filter(u => u.status !== 'INACTIVE' && u.archived !== true).length,
                     label: 'Active',
                     dot: '#86efac',
-                    onClick: () => setAdminPopupOpen(true),
+                    onClick: () => setAdminPopup({ open: true, statusFilter: 'active', title: 'Active Administration Staff' }),
                   },
                   {
                     value: adminUsers.filter(u => u.status === 'INACTIVE' || u.archived === true).length,
                     label: 'Inactive',
                     dot: '#fca5a5',
-                    onClick: () => setAdminPopupOpen(true),
+                    onClick: () => setAdminPopup({ open: true, statusFilter: 'inactive', title: 'Inactive Administration Staff' }),
                   },
                 ],
                 icon: <Shield size={26} />,
                 tone: 'green',
-                onClick: () => setAdminPopupOpen(true),
+                onClick: () => setAdminPopup({ open: true, statusFilter: 'all', title: 'Administration Staff' }),
               },
             ]}
           />
         )}
 
-        {/* ── Personal Advisor — shown only on General Overview tab ── */}
+        {/* ── Finance chart + compact Personal Advisor — shown only on General Overview tab ── */}
         {activeOverviewTab === 'general' && (
-          <DashboardSection id="owner-advisor" controls={sectionControls}>
-            <OwnerAdvisorSection onNavigate={onNavigate} />
-          </DashboardSection>
-        )}
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[35fr_65fr]">
+            <DashboardSection id="finance-intelligence" controls={sectionControls}>
+              <FinanceIntelligenceSection
+                collected={metrics?.stats?.feeCollected ?? 0}
+                outstanding={metrics?.stats?.feePending ?? 0}
+                waived={metrics?.stats?.feeWaived ?? 0}
+                loading={refreshing && !metrics}
+                onNavigate={onNavigate}
+              />
+            </DashboardSection>
 
-        {/* ── Finance Intelligence — shown only on General Overview tab ── */}
-        {activeOverviewTab === 'general' && (
-          <DashboardSection id="finance-intelligence" controls={sectionControls}>
-            <FinanceIntelligenceSection
-              collected={metrics?.stats?.feeCollected ?? 0}
-              outstanding={metrics?.stats?.feePending ?? 0}
-              waived={metrics?.stats?.feeWaived ?? 0}
-              trendData={metrics?.financials?.trendData ?? undefined}
-              loading={refreshing && !metrics}
-              onNavigate={onNavigate}
-            />
-          </DashboardSection>
+            <DashboardSection id="owner-advisor" controls={sectionControls}>
+              <OwnerAdvisorSection onNavigate={onNavigate} variant="minimal" />
+            </DashboardSection>
+          </div>
         )}
 
         {/* Financials */}
         {activeOverviewTab === 'financials' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <AppCard className="!bg-green-700 !border-green-700">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Fee Collected</p>
-                  <p className="mt-2 text-2xl font-bold text-white">{formatKesAmount(stats.feeCollected)}</p>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <AppCard className="!bg-green-700 !border-green-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Fee Collected</p>
+                    <p className="mt-2 text-2xl font-bold text-white">{formatKesAmount(stats.feeCollected)}</p>
+                  </div>
+                  <DollarSign size={32} className="text-white/20" />
                 </div>
-                <DollarSign size={32} className="text-white/20" />
-              </div>
-            </AppCard>
+              </AppCard>
 
-            <AppCard className="!bg-rose-600 !border-rose-600">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Outstanding</p>
-                  <p className="mt-2 text-2xl font-bold text-white">{formatKesAmount(stats.feePending)}</p>
+              <AppCard className="!bg-rose-600 !border-rose-600">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Outstanding</p>
+                    <p className="mt-2 text-2xl font-bold text-white">{formatKesAmount(stats.feePending)}</p>
+                  </div>
+                  <AlertTriangle size={32} className="text-white/20" />
                 </div>
-                <AlertTriangle size={32} className="text-white/20" />
-              </div>
-            </AppCard>
+              </AppCard>
 
-            <AppCard className="!bg-teal-700 !border-teal-700">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Collection Rate</p>
-                  <p className="mt-2 text-2xl font-bold text-white">{formatPercent(collectionRate)}</p>
+              <AppCard className="!bg-teal-700 !border-teal-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Collection Rate</p>
+                    <p className="mt-2 text-2xl font-bold text-white">{formatPercent(collectionRate)}</p>
+                  </div>
+                  <Activity size={32} className="text-white/20" />
                 </div>
-                <Activity size={32} className="text-white/20" />
-              </div>
-            </AppCard>
+              </AppCard>
+            </div>
+
+            <FeeCollectionTrend
+              loading={refreshing && !metrics}
+              onNavigate={onNavigate}
+            />
           </div>
         )}
 
@@ -597,30 +604,34 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
         headerColor="bg-red-50"
         headerIcon={<Users size={14} className="text-red-500" />}
         statusFilter={tutorsPopup.statusFilter}
+        canMarkAttendance={canMarkTutorAttendance}
+        onAttendanceChanged={() => loadMetrics('term', { fresh: true })}
       />
 
       {/* ── Administration staff popup ── */}
       <StaffPopup
-        open={adminPopupOpen}
-        onClose={() => setAdminPopupOpen(false)}
+        open={adminPopup.open}
+        onClose={() => setAdminPopup(p => ({ ...p, open: false }))}
         mode="grouped"
-        title="Administration Staff"
+        title={adminPopup.title}
         headerColor="bg-purple-50"
         headerIcon={<Shield size={14} className="text-purple-500" />}
         users={adminUsers}
         roleOrder={ADMIN_ROLES}
+        initialStatusFilter={adminPopup.statusFilter}
       />
 
       {/* ── Subordinate staff popup ── */}
       <StaffPopup
-        open={subordinatePopupOpen}
-        onClose={() => setSubordinatePopupOpen(false)}
+        open={subordinatePopup.open}
+        onClose={() => setSubordinatePopup(p => ({ ...p, open: false }))}
         mode="grouped"
-        title="Subordinate Staff"
+        title={subordinatePopup.title}
         headerColor="bg-red-50"
         headerIcon={<Users size={14} className="text-red-500" />}
         users={subordinateUsers}
         roleOrder={SUBORDINATE_ROLES_LIST}
+        initialStatusFilter={subordinatePopup.statusFilter}
       />
     </>
   );
