@@ -2,12 +2,13 @@ import React, { useState, useRef } from 'react';
 import { X, Upload, FileSpreadsheet, Loader2, RefreshCw, CreditCard, Download, Info, Gift, Bus } from 'lucide-react';
 import { API_BASE_URL } from '../../../services/api/index';
 import { downloadFeeTemplate, downloadBalanceTemplate, downloadWaiverTemplate, downloadTransportTemplate } from '../../../utils/feeTemplateGenerator';
+import { getCurrentTerm } from '../utils/academicYear';
 
 const FeeImportModal = ({ isOpen, onClose, onComplete }) => {
   const [importMode, setImportMode] = useState('balances'); // 'balances', 'payments', or 'waivers'
   const [file, setFile] = useState(null);
   const [academicYear, setAcademicYear] = useState(new Date().getFullYear());
-  const [term, setTerm] = useState('TERM_1');
+  const [term, setTerm] = useState(getCurrentTerm());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [results, setResults] = useState(null);
