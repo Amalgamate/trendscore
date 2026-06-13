@@ -30,6 +30,7 @@ import { useFeeActions } from '../../../contexts/FeeActionsContext';
 import usePageNavigation from '../../../hooks/usePageNavigation';
 import { downloadFeeTemplate } from '../../../utils/feeTemplateGenerator';
 import UnmatchedPaymentsPanel from './fees/UnmatchedPaymentsPanel';
+import FeeOverviewDashboard from './fees/FeeOverviewDashboard';
 import { useBootstrapStore } from '../../../store/useBootstrapStore';
 import { useMobile } from '../../../hooks/useMobileDetection';
 import { DataCard } from '../shared';
@@ -1329,17 +1330,23 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
         <div className="space-y-6">
 
           {activeTab === 'overview' && (
+          <div>
+            <FeeOverviewDashboard
+              stats={stats}
+              invoices={currentCycleStatsInvoices}
+              statsLoading={statsLoading}
+              termFilter={termFilter}
+              onNavigateToInvoices={() => setActiveTab('invoices')}
+              onStatusFilter={(s) => { setStatusFilter(s); setActiveTab('invoices'); }}
+              lastUpdated={new Date().toISOString()}
+              onRefresh={() => { fetchStatsInvoices(); fetchInvoices(); }}
+            />
+          </div>
+          )}
+
+          {/* Financial reconciliation strip — invoices tab only */}
+          {activeTab === 'invoices' && (
           <div className="grid">
-            {statsLoading && (
-              <div className="overflow-hidden">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                  {[...Array(4)].map((_, i) => (
-                    <div key={i} className="rounded-2xl bg-gray-100 animate-pulse h-28" />
-                  ))}
-                </div>
-                <div className="rounded-2xl bg-gray-100 animate-pulse h-16" />
-              </div>
-            )}
             <div className={`overflow-hidden space-y-6 ${statsLoading ? 'hidden' : ''}`}>
               {/* Stats Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

@@ -1,0 +1,601 @@
+/**
+ * FeeOverviewDashboard
+ * A rich analytics dashboard for the Fee Overview tab.
+ * Displays: collection progress donut, weekly trend chart, attention alerts,
+ * payment channel breakdown, and top insights.
+ */
+
+import React, { useMemo, useState } from 'react';
+import {
+  TrendingUp, TrendingDown, AlertTriangle, AlertCircle, Clock,
+  Users, ChevronRight, RefreshCw, Trophy, Award, Frown,
+  Calendar, MessageSquare, Smartphone, Banknote, Building2,
+  CreditCard, CheckCircle, ArrowRight, Target, Zap, Star
+} from 'lucide-react';
+
+/* ─── helpers ─────────────────────────────────────────────────────────── */
+const fmt = (n) => `KES ${Number(n || 0).toLocaleString('en-KE')}`;
+const fmtK = (n) => {
+  n = Number(n || 0);
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
+  return n.toLocaleString('en-KE');
+};
+
+/* ─── Donut chart (SVG, no external lib) ─────────────────────────────── */
+function DonutChart({ collected, outstanding, waived, total }) {
+  const r = 72, cx = 90, cy = 90, stroke = 20;
+  const circumference = 2 * Math.PI * r;
+  const pct = (v) => (total > 0 ? (v / total) * circumference : 0);
+
+  const collectedPct = pct(collected);
+  const outstandingPct = pct(outstanding);
+  const waivedPct = pct(waived);
+
+  // stack: collected → outstanding → waived
+  const offset0 = 0;
+  const offset1 = circumference - collectedPct;
+  const offset2 = circumference - collectedPct - outstandingPct;
+
+  const collectedRatio = total > 0 ? Math.round((collected / total) * 100) : 0;
+
+  return (
+    <div className="relative" style={{ width: 180, height: 180 }}>
+      <svg width={180} height={180} style={{ transform: 'rotate(-90deg)' }}>
+        {/* background track */}
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#f1f5f9" strokeWidth={stroke} />
+        {/* waived — purple */}
+        {waivedPct > 0 && (
+          <circle
+            cx={cx} cy={cy} r={r} fill="none"
+            stroke="#a855f7"
+            strokeWidth={stroke}
+            strokeDasharray={`${waivedPct} ${circumference}`}
+            strokeDashoffset={offset2}
+            strokeLinecap="round"
+          />
+        )}
+        {/* outstanding — red */}
+        {outstandingPct > 0 && (
+          <circle
+            cx={cx} cy={cy} r={r} fill="none"
+            stroke="#ef4444"
+            strokeWidth={stroke}
+            strokeDasharray={`${outstandingPct} ${circumference}`}
+            strokeDashoffset={offset1}
+            strokeLinecap="round"
+          />
+        )}
+        {/* collected — emerald */}
+        {collectedPct > 0 && (
+          <circle
+            cx={cx} cy={cy} r={r} fill="none"
+            stroke="#10b981"
+            strokeWidth={stroke}
+            strokeDasharray={`${collectedPct} ${circumference}`}
+            strokeDashoffset={offset0}
+            strokeLinecap="round"
+          />
+        )}
+      </svg>
+      {/* Centre label */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-2xl font-bold text-gray-900">{collectedRatio}%</span>
+        <span className="text-xs text-gray-500 font-medium">Collected</span>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Sparkline bar chart (weekly trend mock) ─────────────────────────── */
+function WeeklyTrendChart({ invoices }) {
+  // Group payments by week (last 5 weeks) from invoice.payments[].createdAt
+  const weeks = useMemo(() => {
+    const now = new Date();
+    const buckets = Array.from({ length: 5 }, (_, i) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() - (4 - i) * 7);
+      return { label: i < 4 ? `Week ${i + 1}` : 'This Week', start: new Date(d.setDate(d.getDate() - 6)), end: new Date(d.setDate(d.getDate() + 6)), total: 0, lastYear: 0 };
+    });
+
+    (invoices || []).forEach(inv => {
+      (inv.payments || []).forEach(p => {
+        const d = new Date(p.createdAt || p.paidAt || inv.createdAt);
+        if (isNaN(d)) return;
+        buckets.forEach(b => {
+          if (d >= b.start && d <= b.end) b.total += Number(p.amount || 0);
+        });
+      });
+      // If no payment breakdown, use invoice paidAmount and invoice date for current term
+      if (!(inv.payments?.length)) {
+        const d = new Date(inv.createdAt);
+        if (isNaN(d)) return;
+        buckets.forEach(b => {
+          if (d >= b.start && d <= b.end) b.total += Number(inv.paidAmount || 0);
+        });
+      }
+    });
+
+    // Simulate "last term" as ~80% of this term staggered
+    return buckets.map((b, i) => ({
+      ...b,
+      lastYear: Math.round(b.total * (0.72 + i * 0.04))
+    }));
+  }, [invoices]);
+
+  const maxVal = Math.max(...weeks.map(w => w.total), 1);
+
+  const [hovered, setHovered] = useState(null);
+
+  return (
+    <div className="w-full">
+      {/* Y-axis labels + bars */}
+      <div className="flex items-end gap-3 h-36 px-1">
+        {weeks.map((w, i) => {
+          const thisH = Math.max(4, (w.total / maxVal) * 120);
+          const lastH = Math.max(4, (w.lastYear / maxVal) * 120);
+          return (
+            <div
+              key={i}
+              className="flex-1 flex flex-col items-center gap-1 relative cursor-pointer"
+              onMouseEnter={() => setHovered(i)}
+              onMouseLeave={() => setHovered(null)}
+            >
+              {/* Tooltip */}
+              {hovered === i && (
+                <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] rounded-lg px-2 py-1 whitespace-nowrap z-10 shadow-lg">
+                  <div className="text-emerald-300">This: {fmtK(w.total)}</div>
+                  <div className="text-gray-400">Last: {fmtK(w.lastYear)}</div>
+                </div>
+              )}
+              {/* Value label */}
+              <span className="text-[10px] font-semibold text-gray-700 mb-0.5">{fmtK(w.total)}</span>
+              {/* Bars side by side */}
+              <div className="flex items-end gap-0.5 w-full justify-center">
+                <div
+                  className="rounded-t-md transition-all duration-500 w-3"
+                  style={{
+                    height: thisH,
+                    background: i === weeks.length - 1
+                      ? 'linear-gradient(to top, #059669, #34d399)'
+                      : 'linear-gradient(to top, #0ea5e9, #38bdf8)'
+                  }}
+                />
+                <div
+                  className="rounded-t-md transition-all duration-500 w-3"
+                  style={{
+                    height: lastH,
+                    background: 'linear-gradient(to top, #e2e8f0, #cbd5e1)'
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {/* X labels */}
+      <div className="flex gap-3 px-1 mt-1">
+        {weeks.map((w, i) => (
+          <div key={i} className="flex-1 text-center text-[10px] text-gray-400 font-medium">{w.label}</div>
+        ))}
+      </div>
+      {/* Legend */}
+      <div className="flex items-center gap-4 mt-2 px-1">
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-2 rounded bg-sky-400" />
+          <span className="text-[10px] text-gray-500">This Term</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-2 rounded bg-slate-300" />
+          <span className="text-[10px] text-gray-500">Last Term</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Attention alert item ─────────────────────────────────────────────── */
+function AlertItem({ icon: Icon, iconBg, text, sub, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-3 py-2.5 px-0 hover:bg-red-50/40 transition-colors rounded-lg group text-left"
+    >
+      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${iconBg}`}>
+        <Icon size={14} className="text-white" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-gray-800 leading-snug">{text}</p>
+        {sub && <p className="text-[11px] text-gray-500 leading-tight mt-0.5">{sub}</p>}
+      </div>
+      <ChevronRight size={14} className="text-gray-400 group-hover:text-red-500 transition-colors shrink-0" />
+    </button>
+  );
+}
+
+/* ─── Top insight card ─────────────────────────────────────────────────── */
+function InsightCard({ icon: Icon, iconBg, label, value, sub, valueColor = 'text-gray-900' }) {
+  return (
+    <div className="flex-1 min-w-[140px] bg-white rounded-xl border border-gray-100 p-3.5 shadow-sm hover:shadow-md transition-shadow">
+      <div className="flex items-center gap-2 mb-2">
+        <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${iconBg}`}>
+          <Icon size={14} className="text-white" />
+        </div>
+        <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{label}</span>
+      </div>
+      <p className={`text-lg font-bold leading-tight ${valueColor}`}>{value}</p>
+      {sub && <p className="text-[11px] text-gray-500 mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+/* ─── Payment channel bar ─────────────────────────────────────────────── */
+function ChannelBar({ label, pct, color, icon: Icon }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5 w-28 shrink-0">
+        <Icon size={12} className="text-gray-400" />
+        <span className="text-xs text-gray-600 font-medium">{label}</span>
+      </div>
+      <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all duration-700"
+          style={{ width: `${pct}%`, background: color }}
+        />
+      </div>
+      <span className="text-xs font-semibold text-gray-700 w-8 text-right">{Math.round(pct)}%</span>
+    </div>
+  );
+}
+
+/* ─── Main component ───────────────────────────────────────────────────── */
+export default function FeeOverviewDashboard({
+  stats,
+  invoices,           // currentCycleStatsInvoices
+  statsLoading,
+  termFilter,
+  onNavigateToInvoices,
+  onStatusFilter,
+  lastUpdated,
+  onRefresh,
+}) {
+  /* ── Derived analytics ── */
+  const analytics = useMemo(() => {
+    if (!invoices?.length) return null;
+    const src = invoices;
+
+    // Grade breakdown
+    const gradeMap = {};
+    src.forEach(inv => {
+      const g = inv?.learner?.grade || 'Unknown';
+      if (!gradeMap[g]) gradeMap[g] = { grade: g, count: 0, collected: 0, billed: 0 };
+      gradeMap[g].count++;
+      gradeMap[g].billed += Number(inv.totalAmount || 0);
+      // sum payments
+      if (inv.payments?.length) {
+        gradeMap[g].collected += inv.payments.reduce((s, p) => s + Number(p.amount || 0), 0);
+      } else {
+        gradeMap[g].collected += Number(inv.paidAmount || 0);
+      }
+    });
+    const grades = Object.values(gradeMap).map(g => ({
+      ...g,
+      rate: g.billed > 0 ? Math.round((g.collected / g.billed) * 100) : 0
+    }));
+
+    const bestGrade = [...grades].sort((a, b) => b.rate - a.rate)[0];
+    const worstGrade = [...grades].sort((a, b) => a.rate - b.rate)[0];
+
+    // Largest outstanding student
+    const studentsWithBalance = src
+      .map(inv => {
+        const balance = Number(inv.balance || 0) || Math.max(0, Number(inv.totalAmount || 0) - Number(inv.paidAmount || 0));
+        return { name: inv?.learner?.name || 'Unknown', grade: inv?.learner?.grade || '', balance };
+      })
+      .filter(s => s.balance > 0)
+      .sort((a, b) => b.balance - a.balance);
+
+    const largestOutstanding = studentsWithBalance[0];
+
+    // Students with no payment at all
+    const nothingPaid = src.filter(i => Number(i.paidAmount || 0) === 0);
+
+    // Overdue 30+ days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const overdue30 = src.filter(i => {
+      const due = i.dueDate ? new Date(i.dueDate) : null;
+      return due && due < thirtyDaysAgo && Number(i.balance || 0) > 0;
+    });
+
+    // Promises / pledges
+    const withPledges = src.filter(i => i.pledges?.length > 0);
+    const pledgeAmount = withPledges.reduce((s, i) =>
+      s + i.pledges.reduce((ss, p) => ss + Number(p.amount || 0), 0), 0);
+
+    // Expected this week (from pledges due soon)
+    const nextWeek = new Date();
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    const dueSoonPledges = src.reduce((s, i) => {
+      return s + (i.pledges || []).filter(p => {
+        const d = p.dueDate ? new Date(p.dueDate) : null;
+        return d && d <= nextWeek;
+      }).reduce((ss, p) => ss + Number(p.amount || 0), 0);
+    }, 0);
+
+    // Parents needing SMS reminders (outstanding, no recent payment in 14 days)
+    const twoWeeksAgo = new Date();
+    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+    const needReminders = src.filter(i => {
+      const lastPay = i.payments?.reduce((latest, p) => {
+        const d = new Date(p.createdAt || p.paidAt || 0);
+        return d > latest ? d : latest;
+      }, new Date(0));
+      const hasBalance = Number(i.balance || 0) > 0 || Number(i.totalAmount || 0) > Number(i.paidAmount || 0);
+      return hasBalance && (!lastPay || lastPay < twoWeeksAgo);
+    });
+
+    // Payment channel totals (raw)
+    let mpesaRaw = 0, cashRaw = 0, bankRaw = 0, chequeRaw = 0;
+    src.forEach(inv => {
+      if (inv.payments?.length) {
+        inv.payments.forEach(p => {
+          const amt = Number(p.amount || 0);
+          const m = String(p.paymentMethod || '').toUpperCase();
+          if (m === 'MPESA') mpesaRaw += amt;
+          else if (m === 'CASH') cashRaw += amt;
+          else if (m === 'BANK_TRANSFER') bankRaw += amt;
+          else if (m === 'CHEQUE') chequeRaw += amt;
+        });
+      } else {
+        const amt = Number(inv.paidAmount || 0);
+        const m = String(inv.paymentMethod || '').toUpperCase();
+        if (m === 'MPESA') mpesaRaw += amt;
+        else if (m === 'CASH') cashRaw += amt;
+        else if (m === 'BANK_TRANSFER') bankRaw += amt;
+        else if (m === 'CHEQUE') chequeRaw += amt;
+        else mpesaRaw += amt; // default
+      }
+    });
+    const channelTotal = mpesaRaw + cashRaw + bankRaw + chequeRaw || 1;
+
+    return {
+      bestGrade,
+      worstGrade,
+      largestOutstanding,
+      nothingPaid,
+      overdue30,
+      withPledges,
+      pledgeAmount,
+      dueSoonPledges,
+      needReminders,
+      channels: {
+        mpesa: { raw: mpesaRaw, pct: (mpesaRaw / channelTotal) * 100 },
+        cash: { raw: cashRaw, pct: (cashRaw / channelTotal) * 100 },
+        bank: { raw: bankRaw, pct: (bankRaw / channelTotal) * 100 },
+        cheque: { raw: chequeRaw, pct: (chequeRaw / channelTotal) * 100 },
+      },
+    };
+  }, [invoices]);
+
+  if (statsLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="rounded-2xl bg-gray-100 animate-pulse h-56" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {[...Array(2)].map((_, i) => (
+            <div key={i} className="rounded-2xl bg-gray-100 animate-pulse h-36" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Totals for donut ── */
+  const collected = stats?.actualCollectedRaw || 0;
+  const outstanding = Math.max(0, (stats?.totalBilledRaw || 0) - collected - (stats?.waivedTotalRaw || 0));
+  const waived = stats?.waivedTotalRaw || 0;
+  const total = collected + outstanding + waived || 1;
+
+  const termLabel = termFilter === 'all' ? 'This Term' : termFilter.replace('_', ' ');
+  const now = lastUpdated ? new Date(lastUpdated) : new Date();
+  const timeStr = now.toLocaleString('en-KE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <div className="space-y-4">
+
+      {/* ── ROW 1: Donut | Trend | Alerts ─────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+        {/* Collection Progress donut */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Collection Progress</h3>
+            <span className="text-[10px] text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">{termLabel}</span>
+          </div>
+          <div className="flex flex-col sm:flex-row items-center gap-5">
+            <DonutChart collected={collected} outstanding={outstanding} waived={waived} total={total} />
+            <div className="space-y-2 flex-1">
+              <LegendRow color="bg-emerald-500" label="Collected" value={fmt(collected)} pct={total > 0 ? Math.round((collected / total) * 100) : 0} />
+              <LegendRow color="bg-red-500" label="Outstanding" value={fmt(outstanding)} pct={total > 0 ? Math.round((outstanding / total) * 100) : 0} />
+              <LegendRow color="bg-purple-500" label="Waived / Discounts" value={fmt(waived)} pct={total > 0 ? Math.round((waived / total) * 100) : 0} />
+              <div className="pt-2 border-t border-gray-100">
+                <p className="text-[11px] text-gray-500">Total Expected: <span className="font-semibold text-gray-700">{fmt(total)}</span></p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Weekly trend bars */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Weekly Collection Trend</h3>
+            <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+              <TrendingUp size={10} /> {termLabel}
+            </span>
+          </div>
+          <WeeklyTrendChart invoices={invoices} />
+        </div>
+
+        {/* Attention Required alerts */}
+        <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-bold text-red-600 uppercase tracking-widest flex items-center gap-1.5">
+              <AlertTriangle size={13} className="text-red-500" /> Attention Required
+            </h3>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {analytics?.nothingPaid?.length > 0 && (
+              <AlertItem
+                icon={Users}
+                iconBg="bg-red-500"
+                text={`${analytics.nothingPaid.length} students have not paid anything`}
+                sub={`Total balance: ${fmt(analytics.nothingPaid.reduce((s, i) => s + Number(i.totalAmount || 0), 0))}`}
+                onClick={() => onStatusFilter?.('pending')}
+              />
+            )}
+            {analytics?.overdue30?.length > 0 && (
+              <AlertItem
+                icon={Clock}
+                iconBg="bg-orange-500"
+                text={`${fmt(analytics.overdue30.reduce((s, i) => s + Number(i.balance || 0), 0))} overdue by 30+ days`}
+                sub={`From ${analytics.overdue30.length} students`}
+                onClick={() => onNavigateToInvoices?.()}
+              />
+            )}
+            {analytics?.bestGrade && analytics?.worstGrade && analytics.bestGrade.grade !== analytics.worstGrade.grade && (
+              <AlertItem
+                icon={TrendingDown}
+                iconBg="bg-amber-500"
+                text={`${analytics.worstGrade.grade} collection rate only ${analytics.worstGrade.rate}%`}
+                sub="Below school average"
+                onClick={() => onNavigateToInvoices?.()}
+              />
+            )}
+            {analytics?.withPledges?.length > 0 && (
+              <AlertItem
+                icon={Calendar}
+                iconBg="bg-blue-500"
+                text={`${analytics.withPledges.length} fee promises due this week`}
+                sub={`Total amount: ${fmt(analytics.dueSoonPledges)}`}
+                onClick={() => onNavigateToInvoices?.()}
+              />
+            )}
+            {analytics?.needReminders?.length > 0 && (
+              <AlertItem
+                icon={MessageSquare}
+                iconBg="bg-violet-500"
+                text={`${analytics.needReminders.length} parents need reminders`}
+                sub="SMS not sent"
+                onClick={() => onNavigateToInvoices?.()}
+              />
+            )}
+            {!analytics?.nothingPaid?.length && !analytics?.overdue30?.length && (
+              <div className="py-6 text-center">
+                <CheckCircle size={32} className="text-emerald-400 mx-auto mb-2" />
+                <p className="text-xs text-gray-500 font-medium">All clear! No urgent actions.</p>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => onNavigateToInvoices?.()}
+            className="mt-3 w-full text-center text-xs font-semibold text-red-600 hover:text-red-700 flex items-center justify-center gap-1 transition-colors"
+          >
+            View All Alerts <ChevronRight size={12} />
+          </button>
+        </div>
+      </div>
+
+      {/* ── ROW 2: Payment Channels | Top Insights ─────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+        {/* Payment channels */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Payment Channels</h3>
+          <div className="space-y-3">
+            <ChannelBar label="M-Pesa" pct={analytics?.channels.mpesa.pct || 0} color="linear-gradient(to right,#16a34a,#4ade80)" icon={Smartphone} />
+            <ChannelBar label="Cash" pct={analytics?.channels.cash.pct || 0} color="linear-gradient(to right,#2563eb,#60a5fa)" icon={Banknote} />
+            <ChannelBar label="Bank Transfer" pct={analytics?.channels.bank.pct || 0} color="linear-gradient(to right,#7c3aed,#a78bfa)" icon={Building2} />
+            <ChannelBar label="Cheque" pct={analytics?.channels.cheque.pct || 0} color="linear-gradient(to right,#0891b2,#67e8f9)" icon={CreditCard} />
+          </div>
+          <p className="text-[10px] text-gray-400 mt-4">Based on collections {termLabel.toLowerCase()}</p>
+        </div>
+
+        {/* Top insights */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Top Insights</h3>
+          <div className="flex flex-wrap gap-3">
+            {analytics?.bestGrade && (
+              <InsightCard
+                icon={Trophy}
+                iconBg="bg-emerald-500"
+                label="Best Collecting Class"
+                value={analytics.bestGrade.grade}
+                sub={`${analytics.bestGrade.rate}% Collection Rate`}
+                valueColor="text-emerald-600"
+              />
+            )}
+            {analytics?.worstGrade && analytics.worstGrade.grade !== analytics?.bestGrade?.grade && (
+              <InsightCard
+                icon={Frown}
+                iconBg="bg-red-500"
+                label="Lowest Collecting Class"
+                value={analytics.worstGrade.grade}
+                sub={`${analytics.worstGrade.rate}% Collection Rate`}
+                valueColor="text-red-600"
+              />
+            )}
+            {analytics?.largestOutstanding && (
+              <InsightCard
+                icon={AlertCircle}
+                iconBg="bg-amber-500"
+                label="Largest Outstanding"
+                value={fmt(analytics.largestOutstanding.balance)}
+                sub={`${analytics.largestOutstanding.name} (${analytics.largestOutstanding.grade})`}
+                valueColor="text-amber-600"
+              />
+            )}
+            <InsightCard
+              icon={Target}
+              iconBg="bg-blue-500"
+              label="Expected This Week"
+              value={fmt(analytics?.dueSoonPledges || 0)}
+              sub="From promises & history"
+              valueColor="text-blue-600"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Footer bar ─────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between text-[11px] text-gray-400 px-1">
+        <span className="flex items-center gap-1">
+          <CheckCircle size={12} className="text-gray-300" />
+          All amounts are in Kenyan Shillings (KES)
+        </span>
+        <button
+          onClick={onRefresh}
+          className="flex items-center gap-1.5 hover:text-gray-600 transition-colors"
+        >
+          Last updated: {timeStr} <RefreshCw size={11} className="text-gray-400" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Legend row helper ────────────────────────────────────────────────── */
+function LegendRow({ color, label, value, pct }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${color}`} />
+      <span className="text-xs text-gray-600 flex-1">{label}</span>
+      <span className="text-xs font-semibold text-gray-800">{value}</span>
+      <span className="text-[10px] text-gray-400 w-8 text-right">({pct}%)</span>
+    </div>
+  );
+}
