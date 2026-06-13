@@ -48,7 +48,7 @@ const getLatestFeeCycleRows = (rows = []) => {
   return rows.filter((inv) => getFeeCycleRank(inv) === latestRank);
 };
 
-const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
+const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoices' }) => {
   const isMobile = useMobile();
   const navigateTo = usePageNavigation();
   const [invoices, setInvoices] = useState([]);
@@ -67,7 +67,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
   const [totalInvoicesCount, setTotalInvoicesCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [statsLoading, setStatsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('invoices'); // 'invoices' | 'unmatched'
+  const [activeTab, setActiveTab] = useState(initialTab); // 'overview' | 'invoices' | 'unmatched'
   const [unmatchedCount, setUnmatchedCount] = useState(0);
   const [whatsappStatus, setWhatsappStatus] = useState({ status: 'fetching', qrCode: null });
   const [allLearners, setAllLearners] = useState([]);
@@ -86,7 +86,6 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
   const [listTotals, setListTotals] = useState({ totalBilled: 0, totalPaid: 0, totalBalance: 0, totalWaived: 0, totalOverpaid: 0 });
   // Grand totals for B/F and current-term-due cover ALL pages, not just the visible one.
   const [grandTotals, setGrandTotals] = useState({ carryFwd: 0, currentTermDue: 0, totalBalance: 0 });
-  const [showMetrics, setShowMetrics] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -282,6 +281,10 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
   useEffect(() => {
     if (gradeParam) setGradeFilter(gradeParam);
   }, [gradeParam]);
+
+  useEffect(() => {
+    setActiveTab(initialTab || 'invoices');
+  }, [initialTab]);
 
   // Update learner search if prop changes
   useEffect(() => {
@@ -1137,14 +1140,10 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
           setCurrentPage(1);
         }
       },
-      metricsProps: {
-        show: showMetrics,
-        toggle: () => setShowMetrics(prev => !prev)
-      }
     });
     return () => clearFeeActions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.role, allLearners, searchLearnerId, showMetrics]);
+  }, [user?.role, allLearners, searchLearnerId]);
 
   const gradeOptions = React.useMemo(() => (
     Array.from(new Set((allLearners || []).map((l) => l.grade).filter(Boolean))).sort()
@@ -1286,6 +1285,15 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
       {/* Page Tabs */}
       <div className="flex items-center gap-1 border-b border-gray-200 -mb-2">
         <button
+          onClick={() => setActiveTab('overview')}
+          className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === 'overview'
+              ? 'border-brand-teal text-brand-teal'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+        >
+          Fee Overview
+        </button>
+        <button
           onClick={() => setActiveTab('invoices')}
           className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === 'invoices'
               ? 'border-brand-teal text-brand-teal'
@@ -1316,15 +1324,13 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
         <UnmatchedPaymentsPanel onCountChange={setUnmatchedCount} />
       )}
 
-      {/* Main Invoices Tab — wrap everything else */}
-      {activeTab === 'invoices' && (
+      {/* Fee Overview / Invoices */}
+      {(activeTab === 'overview' || activeTab === 'invoices') && (
         <div className="space-y-6">
 
-          {/* Collapsible Metrics Section */}
-          <div
-            className={`grid transition-all duration-500 ease-in-out ${showMetrics ? 'grid-rows-[1fr] opacity-100 mb-6' : 'grid-rows-[0fr] opacity-0 mb-0'}`}
-          >
-            {statsLoading && showMetrics && (
+          {activeTab === 'overview' && (
+          <div className="grid">
+            {statsLoading && (
               <div className="overflow-hidden">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                   {[...Array(4)].map((_, i) => (
@@ -1568,10 +1574,13 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
               </div>
             </div>
           </div>
+          )}
 
 
 
           {/* Unified Action & Filter Toolbar */}
+          {activeTab === 'invoices' && (
+          <>
           <div className="bg-white rounded-xl shadow-sm p-4 border-[0.5px] border-gray-200">
             <div className="flex flex-wrap items-center gap-4 w-full">          {/* Quick Action Chips Bar (Unified) */}
               <div className="flex flex-wrap gap-2 items-center flex-1 overflow-x-auto custom-scrollbar whitespace-nowrap pb-1 lg:pb-0">
@@ -2883,6 +2892,8 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam }) => {
                 </div>
               </div>
             </div>
+          )}
+          </>
           )}
 
           {/* Toast Notification */}

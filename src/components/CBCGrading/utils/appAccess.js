@@ -112,6 +112,7 @@ const PAGE_APP_REQUIREMENTS = {
   'biometric-reports': 'biometric',
   'biometric-api': 'biometric',
 
+  'fees-overview': 'fee-management',
   'fees-collection': 'fee-management',
   'finance-dashboard': 'fee-management',
   'fees-invoice-detail': 'fee-management',

@@ -122,6 +122,7 @@ const PREFETCH_MAP = {
   'attendance-reports':   () => import('../pages/AttendanceReports'),
   'assess-formative':     () => import('../pages/FormativeAssessment'),
   'assess-summative-tests':() => import('../pages/SummativeTestsRouter'),
+  'fees-overview':        () => import('../pages/FeeCollectionPage'),
   'fees-collection':      () => import('../pages/FeeCollectionPage'),
   'fees-structure':       () => import('../pages/FeeStructurePage'),
   'fees-reports':         () => import('../pages/FeeReportsPage'),
@@ -147,6 +148,7 @@ const ACCOUNTANT_NAV_GROUPS = [
     label: 'Finance',
     items: [
       { label: 'Dashboard', path: 'finance-dashboard', icon: Home },
+      { label: 'Fee Overview', path: 'fees-overview', icon: Receipt },
       { label: 'Fee Collection', path: 'fees-collection', icon: Receipt },
       { label: 'Unmatched Payments', path: 'fees-unmatched', icon: FileText },
       { label: 'Fee Waivers', path: 'fees-waivers', icon: Receipt },

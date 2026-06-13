@@ -199,6 +199,7 @@ export const PAGE_TITLES = {
   'facilities-classes': 'Campus Configuration',
 
   // Fees
+  'fees-overview': 'Fee Overview',
   'fees-structure': 'Fee Structure',
   'fees-collection': 'Fee Collection',
   'fees-reports': 'Fee Reports',
