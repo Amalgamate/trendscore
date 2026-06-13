@@ -6,6 +6,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   TrendingUp, TrendingDown, AlertTriangle, AlertCircle, Clock,
   Users, ChevronRight, RefreshCw, Trophy, Award, Frown,
@@ -22,66 +23,71 @@ const fmtK = (n) => {
   return n.toLocaleString('en-KE');
 };
 
-/* ─── Donut chart (SVG, no external lib) ─────────────────────────────── */
+/* ─── Donut chart tooltip ────────────────────────────────────────────── */
+const DonutTooltip = ({ active, payload }) => {
+  if (!active || !payload?.length) return null;
+  const { name, value } = payload[0].payload;
+  return (
+    <div className="bg-white border border-gray-100 shadow-md rounded-lg px-3 py-2 z-50">
+      <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">{name}</p>
+      <p className="text-sm font-black text-gray-900">KES {Number(value).toLocaleString('en-KE')}</p>
+    </div>
+  );
+};
+
+/* ─── Donut chart (Recharts) ─────────────────────────────── */
 function DonutChart({ collected, outstanding, waived, total }) {
-  const r = 72, cx = 90, cy = 90, stroke = 20;
-  const circumference = 2 * Math.PI * r;
-  const pct = (v) => (total > 0 ? (v / total) * circumference : 0);
+  const [activeIndex, setActiveIndex] = useState(null);
 
-  const collectedPct = pct(collected);
-  const outstandingPct = pct(outstanding);
-  const waivedPct = pct(waived);
+  const data = [
+    { name: 'Collected',           value: collected,   color: '#22C55E' },
+    { name: 'Outstanding',         value: outstanding, color: '#F59E0B' },
+    { name: 'Waived / Discounted', value: waived,      color: '#3B82F6' },
+  ].filter(d => d.value > 0);
 
-  // stack: collected → outstanding → waived
-  const offset0 = 0;
-  const offset1 = circumference - collectedPct;
-  const offset2 = circumference - collectedPct - outstandingPct;
-
-  const collectedRatio = total > 0 ? Math.round((collected / total) * 100) : 0;
+  const fmtK = (n) => {
+    n = Number(n || 0);
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
+    return n.toLocaleString('en-KE');
+  };
 
   return (
-    <div className="relative" style={{ width: 180, height: 180 }}>
-      <svg width={180} height={180} style={{ transform: 'rotate(-90deg)' }}>
-        {/* background track */}
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#f1f5f9" strokeWidth={stroke} />
-        {/* waived — purple */}
-        {waivedPct > 0 && (
-          <circle
-            cx={cx} cy={cy} r={r} fill="none"
-            stroke="#a855f7"
-            strokeWidth={stroke}
-            strokeDasharray={`${waivedPct} ${circumference}`}
-            strokeDashoffset={offset2}
-            strokeLinecap="round"
-          />
-        )}
-        {/* outstanding — red */}
-        {outstandingPct > 0 && (
-          <circle
-            cx={cx} cy={cy} r={r} fill="none"
-            stroke="#ef4444"
-            strokeWidth={stroke}
-            strokeDasharray={`${outstandingPct} ${circumference}`}
-            strokeDashoffset={offset1}
-            strokeLinecap="round"
-          />
-        )}
-        {/* collected — emerald */}
-        {collectedPct > 0 && (
-          <circle
-            cx={cx} cy={cy} r={r} fill="none"
-            stroke="#10b981"
-            strokeWidth={stroke}
-            strokeDasharray={`${collectedPct} ${circumference}`}
-            strokeDashoffset={offset0}
-            strokeLinecap="round"
-          />
-        )}
-      </svg>
+    <div className="relative flex items-center justify-center" style={{ width: 180, height: 180 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie
+            data={data}
+            cx="50%"
+            cy="50%"
+            innerRadius={58}
+            outerRadius={76}
+            paddingAngle={3}
+            dataKey="value"
+            stroke="none"
+            onMouseEnter={(_, idx) => setActiveIndex(idx)}
+            onMouseLeave={() => setActiveIndex(null)}
+          >
+            {data.map((entry, idx) => (
+              <Cell
+                key={entry.name}
+                fill={entry.color}
+                opacity={activeIndex === null || activeIndex === idx ? 1 : 0.6}
+              />
+            ))}
+          </Pie>
+          <Tooltip content={<DonutTooltip />} />
+        </PieChart>
+      </ResponsiveContainer>
+
       {/* Centre label */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-2xl font-bold text-gray-900">{collectedRatio}%</span>
-        <span className="text-xs text-gray-500 font-medium">Collected</span>
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+        <span className="text-base font-black text-gray-900 leading-none">
+          KES {fmtK(total)}
+        </span>
+        <span className="text-[8px] font-bold text-gray-400 mt-1 uppercase tracking-wider">
+          Total Expected
+        </span>
       </div>
     </div>
   );
@@ -100,7 +106,7 @@ function WeeklyTrendChart({ invoices }) {
 
     (invoices || []).forEach(inv => {
       (inv.payments || []).forEach(p => {
-        const d = new Date(p.createdAt || p.paidAt || inv.createdAt);
+        const d = new Date(p.paymentDate || p.createdAt || p.paidAt || inv.createdAt);
         if (isNaN(d)) return;
         buckets.forEach(b => {
           if (d >= b.start && d <= b.end) b.total += Number(p.amount || 0);
@@ -309,18 +315,19 @@ export default function FeeOverviewDashboard({
     });
 
     // Promises / pledges
-    const withPledges = src.filter(i => i.pledges?.length > 0);
+    const withPledges = src.filter(i => (i.pledges || []).some(p => p.status === 'PENDING' || p.status === 'DUE'));
     const pledgeAmount = withPledges.reduce((s, i) =>
-      s + i.pledges.reduce((ss, p) => ss + Number(p.amount || 0), 0), 0);
+      s + (i.pledges || []).filter(p => p.status === 'PENDING' || p.status === 'DUE').reduce((ss, p) => ss + Number(p.pledgedAmount || 0), 0), 0);
 
     // Expected this week (from pledges due soon)
     const nextWeek = new Date();
     nextWeek.setDate(nextWeek.getDate() + 7);
     const dueSoonPledges = src.reduce((s, i) => {
       return s + (i.pledges || []).filter(p => {
-        const d = p.dueDate ? new Date(p.dueDate) : null;
-        return d && d <= nextWeek;
-      }).reduce((ss, p) => ss + Number(p.amount || 0), 0);
+        const d = p.pledgeDate ? new Date(p.pledgeDate) : null;
+        const isActive = p.status === 'PENDING' || p.status === 'DUE';
+        return isActive && d && d <= nextWeek;
+      }).reduce((ss, p) => ss + Number(p.pledgedAmount || 0), 0);
     }, 0);
 
     // Parents needing SMS reminders (outstanding, no recent payment in 14 days)
@@ -328,7 +335,7 @@ export default function FeeOverviewDashboard({
     twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
     const needReminders = src.filter(i => {
       const lastPay = i.payments?.reduce((latest, p) => {
-        const d = new Date(p.createdAt || p.paidAt || 0);
+        const d = new Date(p.paymentDate || p.createdAt || p.paidAt || 0);
         return d > latest ? d : latest;
       }, new Date(0));
       const hasBalance = Number(i.balance || 0) > 0 || Number(i.totalAmount || 0) > Number(i.paidAmount || 0);
@@ -419,12 +426,43 @@ export default function FeeOverviewDashboard({
           </div>
           <div className="flex flex-col sm:flex-row items-center gap-5">
             <DonutChart collected={collected} outstanding={outstanding} waived={waived} total={total} />
-            <div className="space-y-2 flex-1">
-              <LegendRow color="bg-emerald-500" label="Collected" value={fmt(collected)} pct={total > 0 ? Math.round((collected / total) * 100) : 0} />
-              <LegendRow color="bg-red-500" label="Outstanding" value={fmt(outstanding)} pct={total > 0 ? Math.round((outstanding / total) * 100) : 0} />
-              <LegendRow color="bg-purple-500" label="Waived / Discounts" value={fmt(waived)} pct={total > 0 ? Math.round((waived / total) * 100) : 0} />
-              <div className="pt-2 border-t border-gray-100">
-                <p className="text-[11px] text-gray-500">Total Expected: <span className="font-semibold text-gray-700">{fmt(total)}</span></p>
+            <div className="flex-1 min-w-0 w-full">
+              <div className="space-y-2.5">
+                {/* Collected */}
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#22C55E] shrink-0" />
+                    <span>Collected</span>
+                  </div>
+                  <div className="text-xs font-bold text-gray-900" style={{ paddingLeft: '18px' }}>
+                    {fmt(collected)}
+                  </div>
+                </div>
+
+                {/* Outstanding */}
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B] shrink-0" />
+                    <span>Outstanding</span>
+                  </div>
+                  <div className="text-xs font-bold text-gray-900" style={{ paddingLeft: '18px' }}>
+                    {fmt(outstanding)}
+                  </div>
+                </div>
+
+                {/* Waived / Discounted */}
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-gray-600">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#3B82F6] shrink-0" />
+                    <span>Waived / Discounted</span>
+                  </div>
+                  <div className="text-xs font-bold text-gray-900" style={{ paddingLeft: '18px' }}>
+                    {fmt(waived)}
+                  </div>
+                </div>
+              </div>
+              <div className="pt-2 border-t border-gray-100 mt-3">
+                <p className="text-[11px] text-gray-500 font-medium">Total Expected: <span className="font-semibold text-gray-750">{fmt(total)}</span></p>
               </div>
             </div>
           </div>

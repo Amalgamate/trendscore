@@ -350,6 +350,15 @@ export class FeeController {
               referenceNumber: true, 
               receiptNumber: true 
             }
+          },
+          pledges: {
+            where: { archived: false },
+            select: {
+              id: true,
+              pledgedAmount: true,
+              pledgeDate: true,
+              status: true
+            }
           }
         },
         skip,
