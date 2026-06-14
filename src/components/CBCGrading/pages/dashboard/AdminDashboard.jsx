@@ -5,14 +5,13 @@
 
 import React, { useEffect, useState } from 'react';
 import { dashboardAPI, userAPI } from '../../../../services/api';
-import { ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Area, AreaChart } from 'recharts';
+import { ResponsiveContainer, Tooltip, PieChart, Pie, Cell } from 'recharts';
 import {
   AppCard,
-  SectionHeader,
   EmptyState
 } from '@/design-system/components';
 import DashboardSummary from './DashboardSummary';
-import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
+import { DashboardSection, useDashboardSections } from './DashboardSections';
 import AdminOverviewTabs from './AdminOverviewTabs';
 import { useDashboardMetrics, formatKesAmount, formatPercent } from '../../hooks/useDashboardMetrics';
 import OwnerAdvisorSection from '../../dashboard/widgets/admin/OwnerAdvisorSection';
@@ -26,7 +25,6 @@ import {
   DollarSign,
   Calendar,
   Activity,
-  ChevronDown,
   CheckCircle2,
   GraduationCap,
   Cog,
@@ -37,7 +35,6 @@ import {
   Shield
 } from 'lucide-react';
 
-import BillingInsightsCard from '../../dashboard/BillingInsightsCard';
 import StaffPopup from '../../dashboard/widgets/StaffPopup';
 
 const ADMIN_ROLES = [
@@ -49,6 +46,117 @@ const SUBORDINATE_ROLES_LIST = [
   'LIBRARIAN', 'NURSE', 'SECURITY', 'DRIVER',
   'COOK', 'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT',
 ];
+
+const REPORT_COLORS = ['#0f766e', '#e11d48', '#4f46e5', '#f59e0b', '#16a34a'];
+
+const compactValue = (value) => {
+  const numeric = Number(value || 0);
+  return Number.isFinite(numeric) ? numeric.toLocaleString() : value;
+};
+
+const ReportingWidgets = ({ config }) => {
+  if (!config) return null;
+
+  const pieData = (config.pieData || []).filter(item => Number(item.value || 0) > 0);
+  const total = pieData.reduce((sum, item) => sum + Number(item.value || 0), 0);
+
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-[minmax(320px,0.85fr)_minmax(420px,1.15fr)] gap-4">
+      <AppCard className="!p-0 overflow-hidden">
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-gray-500">{config.pieTitle}</p>
+            <p className="mt-1 text-xs font-medium text-gray-400">{config.pieSubtitle}</p>
+          </div>
+          <BarChart3 size={18} className="text-gray-300" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-[190px_1fr] items-center gap-3 px-5 py-4">
+          <div className="relative h-[180px] min-w-0">
+            {pieData.length > 0 ? (
+              <>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={50}
+                      outerRadius={76}
+                      paddingAngle={3}
+                      stroke="none"
+                    >
+                      {pieData.map((entry, index) => (
+                        <Cell key={entry.name} fill={entry.color || REPORT_COLORS[index % REPORT_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => compactValue(value)} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-xl font-semibold text-gray-900">{compactValue(total)}</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">total</span>
+                </div>
+              </>
+            ) : (
+              <div className="flex h-full items-center justify-center text-xs font-medium text-gray-400">No chart data</div>
+            )}
+          </div>
+          <div className="space-y-2">
+            {pieData.map((item, index) => {
+              const percent = total > 0 ? Math.round((Number(item.value || 0) / total) * 100) : 0;
+              return (
+                <div key={item.name} className="flex items-center justify-between gap-3 rounded-md border border-gray-100 px-3 py-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color || REPORT_COLORS[index % REPORT_COLORS.length] }} />
+                    <span className="truncate text-xs font-semibold text-gray-700">{item.name}</span>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-gray-900">{compactValue(item.value)}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{percent}%</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </AppCard>
+
+      <AppCard className="!p-0 overflow-hidden">
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-gray-500">{config.summaryTitle}</p>
+            <p className="mt-1 text-xs font-medium text-gray-400">{config.summarySubtitle}</p>
+          </div>
+          <Activity size={18} className="text-gray-300" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 px-5 py-4">
+          {(config.summaryItems || []).map((item, index) => {
+            const Icon = item.icon || Activity;
+            return (
+              <button
+                key={`${item.label}-${index}`}
+                type="button"
+                onClick={item.onClick}
+                className="group min-h-[82px] rounded-md border border-gray-100 bg-gray-50/60 px-4 py-3 text-left transition hover:border-gray-200 hover:bg-white hover:shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-[10px] font-bold uppercase tracking-widest text-gray-500">{item.label}</p>
+                    <p className="mt-1 text-xl font-semibold text-gray-900">{item.value}</p>
+                    <p className="mt-1 truncate text-xs font-medium text-gray-500">{item.note}</p>
+                  </div>
+                  <span className="rounded-md bg-white p-2 text-gray-400 ring-1 ring-gray-100 group-hover:text-gray-700">
+                    <Icon size={16} />
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </AppCard>
+    </div>
+  );
+};
 
 const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavigate }) => {
   const [refreshing, setRefreshing] = useState(false);
@@ -188,6 +296,136 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
       icon: Activity
     }))
   ].slice(0, 5);
+
+  const assessedStudents = Math.max(0, stats.totalStudents - stats.totalMissedExams);
+  const inactiveTeachers = Math.max(0, stats.totalTeachers - stats.activeTeachers);
+  const inactiveAdminUsers = adminUsers.filter(u => u.status === 'INACTIVE' || u.archived === true).length;
+  const activeAdminUsers = Math.max(0, adminUsers.length - inactiveAdminUsers);
+  const inactiveSubordinateUsers = subordinateUsers.filter(u => u.status === 'INACTIVE' || u.archived === true).length;
+  const activeSubordinateUsers = Math.max(0, subordinateUsers.length - inactiveSubordinateUsers);
+  const stableLearners = Math.max(0, stats.totalStudents - stats.atRiskStudents);
+  const schoolDaysReadiness = [
+    { name: 'Calendar', value: 1, color: '#1e3a8a' },
+    { name: 'Timetable', value: 1, color: '#0f766e' },
+    { name: 'Agenda', value: 1, color: '#16a34a' },
+  ];
+
+  const reportingConfigByTab = {
+    financials: {
+      pieTitle: 'Collection Mix',
+      pieSubtitle: 'Collected against outstanding balance',
+      pieData: [
+        { name: 'Collected', value: stats.feeCollected, color: '#16a34a' },
+        { name: 'Outstanding', value: stats.feePending, color: '#e11d48' },
+        { name: 'Waived', value: metrics?.stats?.feeWaived || 0, color: '#14b8a6' },
+      ],
+      summaryTitle: 'Finance Signals',
+      summarySubtitle: 'Cash position and follow-up pressure',
+      summaryItems: [
+        { label: 'Collection Rate', value: formatPercent(collectionRate), note: 'Against expected fee position', icon: Activity, onClick: () => onNavigate('fees-collection') },
+        { label: 'Outstanding', value: formatKesAmount(stats.feePending), note: 'Requires parent follow-up', icon: AlertTriangle, onClick: () => onNavigate('fees-collection') },
+        { label: 'Collected', value: formatKesAmount(stats.feeCollected), note: 'Recorded fee collections', icon: DollarSign, onClick: () => onNavigate('fees-collection') },
+        { label: 'Trend Points', value: revenueTrendData.length || 0, note: 'Revenue trend records loaded', icon: TrendingUp },
+      ],
+    },
+    academic: {
+      pieTitle: 'Assessment Coverage',
+      pieSubtitle: 'Assessed learners versus pending marks',
+      pieData: [
+        { name: 'Assessed', value: assessedStudents, color: '#0f766e' },
+        { name: 'Unassessed', value: stats.totalMissedExams, color: '#e11d48' },
+      ],
+      summaryTitle: 'Academic Report',
+      summarySubtitle: 'Class performance and completion status',
+      summaryItems: [
+        { label: 'Assessment Progress', value: formatPercent(assessmentRate), note: `${stats.totalMissedExams} learners still pending`, icon: GraduationCap, onClick: () => onNavigate('assess-summary-report') },
+        { label: 'Top Class', value: topClasses[0]?.name || 'N/A', note: `Score ${topClasses[0]?.score?.toFixed?.(1) || '0'}`, icon: TrendingUp },
+        { label: 'Assessed Classes', value: stats.totalAssessedClasses || 0, note: 'Classes with recorded data', icon: BarChart3 },
+        { label: 'At Risk', value: stats.atRiskStudents || 0, note: 'Learners needing support', icon: AlertTriangle, onClick: () => onNavigate('learners-list') },
+      ],
+    },
+    operations: {
+      pieTitle: 'Daily Attendance Split',
+      pieSubtitle: 'Present and absent learners today',
+      pieData: [
+        { name: 'Present', value: stats.presentToday, color: '#0f766e' },
+        { name: 'Absent', value: stats.absentToday, color: '#e11d48' },
+      ],
+      summaryTitle: 'Operations Report',
+      summarySubtitle: 'Attendance and staffing coverage',
+      summaryItems: [
+        { label: 'Attendance Rate', value: formatPercent(attendanceRate), note: `${stats.presentToday} present today`, icon: Users, onClick: () => onNavigate('attendance-reports') },
+        { label: 'Absent Today', value: stats.absentToday || 0, note: 'Needs follow-up', icon: AlertTriangle, onClick: () => onNavigate('attendance-reports') },
+        { label: 'Staff Coverage', value: formatPercent(operationsRate), note: `${stats.activeTeachers}/${stats.totalTeachers} active`, icon: CheckCircle2 },
+        { label: 'Health Score', value: formatPercent(healthScore), note: 'Overall operating pulse', icon: Activity },
+      ],
+    },
+    calendar: {
+      pieTitle: 'Planning Readiness',
+      pieSubtitle: 'Calendar, timetable, and agenda setup',
+      pieData: schoolDaysReadiness,
+      summaryTitle: 'Planning Report',
+      summarySubtitle: 'Daily school coordination snapshot',
+      summaryItems: [
+        { label: 'Calendar', value: 'Ready', note: 'Events and key dates', icon: Calendar, onClick: () => onNavigate('school-calendar') },
+        { label: 'Timetable', value: 'Active', note: 'Class and staff schedules', icon: Clock, onClick: () => onNavigate('timetable') },
+        { label: 'Agenda', value: 'Ready', note: 'Daily planning status', icon: Activity },
+        { label: 'Recent Updates', value: recentActivities.length || 0, note: 'Latest school events in feed', icon: TrendingUp },
+      ],
+    },
+    insights: {
+      pieTitle: 'Learner Risk Profile',
+      pieSubtitle: 'Risk signals against stable learners',
+      pieData: [
+        { name: 'Stable', value: stableLearners, color: '#0f766e' },
+        { name: 'At Risk', value: stats.atRiskStudents, color: '#e11d48' },
+        { name: 'Warnings', value: attentionItems.length, color: '#f59e0b' },
+      ],
+      summaryTitle: 'AI Insight Report',
+      summarySubtitle: 'Signals that need admin attention',
+      summaryItems: [
+        { label: 'At-Risk Learners', value: stats.atRiskStudents || 0, note: 'Require support', icon: AlertTriangle, onClick: () => onNavigate('learners-list') },
+        { label: 'Attention Areas', value: attentionItems.length, note: 'Active warnings', icon: Cog },
+        { label: 'Recent Activity', value: recentActivities.length || 0, note: 'Latest updates', icon: Activity },
+        { label: 'Stable Learners', value: stableLearners, note: 'No active risk signal', icon: CheckCircle2 },
+      ],
+    },
+    hr: {
+      pieTitle: 'Staff Status Profile',
+      pieSubtitle: 'Active and inactive staff records',
+      pieData: [
+        { name: 'Active Tutors', value: stats.activeTeachers, color: '#0f766e' },
+        { name: 'Inactive Tutors', value: inactiveTeachers, color: '#e11d48' },
+        { name: 'Active Admin', value: activeAdminUsers, color: '#4f46e5' },
+        { name: 'Active Support', value: activeSubordinateUsers, color: '#f59e0b' },
+      ],
+      summaryTitle: 'HR Report',
+      summarySubtitle: 'Staff coverage across teams',
+      summaryItems: [
+        { label: 'Total Tutors', value: stats.totalTeachers || 0, note: `${stats.activeTeachers} active`, icon: GraduationCap, onClick: () => onNavigate('teachers-list') },
+        { label: 'Administration', value: adminUsers.length, note: `${activeAdminUsers} active`, icon: Shield, onClick: () => setAdminPopup({ open: true, statusFilter: 'all', title: 'Administration Staff' }) },
+        { label: 'Support Staff', value: subordinateUsers.length, note: `${activeSubordinateUsers} active`, icon: Users, onClick: () => setSubordinatePopup({ open: true, statusFilter: 'all', title: 'Subordinate Staff' }) },
+        { label: 'Inactive Records', value: inactiveTeachers + inactiveAdminUsers + inactiveSubordinateUsers, note: 'Staff records needing review', icon: AlertTriangle },
+      ],
+    },
+    inventory: {
+      pieTitle: 'Inventory Readiness',
+      pieSubtitle: 'Operational stock reporting areas',
+      pieData: [
+        { name: 'Assets', value: metrics?.inventory?.assets || 1, color: '#0f766e' },
+        { name: 'Consumables', value: metrics?.inventory?.consumables || 1, color: '#4f46e5' },
+        { name: 'Alerts', value: metrics?.inventory?.alerts || 1, color: '#e11d48' },
+      ],
+      summaryTitle: 'Inventory Report',
+      summarySubtitle: 'Stock control and accountability',
+      summaryItems: [
+        { label: 'Stock Items', value: metrics?.inventory?.totalItems || 'Ready', note: 'Inventory register status', icon: Package, onClick: () => onNavigate('inventory-items') },
+        { label: 'Assets', value: metrics?.inventory?.assets || 0, note: 'Tracked asset records', icon: Briefcase, onClick: () => onNavigate('inventory-items') },
+        { label: 'Consumables', value: metrics?.inventory?.consumables || 0, note: 'Daily-use stock lines', icon: Activity, onClick: () => onNavigate('inventory-items') },
+        { label: 'Alerts', value: metrics?.inventory?.alerts || 0, note: 'Low-stock or attention flags', icon: AlertTriangle },
+      ],
+    },
+  };
 
   if (apiError && !metrics) {
     return (
@@ -593,6 +831,8 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
             </AppCard>
           </div>
         )}
+
+        <ReportingWidgets config={reportingConfigByTab[activeOverviewTab]} />
       </div>
 
       {/* ── Tutors attendance popup ── */}
