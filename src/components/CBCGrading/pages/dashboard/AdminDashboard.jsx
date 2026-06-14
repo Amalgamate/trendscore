@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { dashboardAPI, userAPI } from '../../../../services/api';
+import { dashboardAPI, inventoryAPI, userAPI } from '../../../../services/api';
 import { ResponsiveContainer, Tooltip, PieChart, Pie, Cell } from 'recharts';
 import {
   AppCard,
@@ -166,6 +166,12 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
   const [subordinateCount, setSubordinateCount] = useState(0);
   const [adminUsers, setAdminUsers] = useState([]);
   const [subordinateUsers, setSubordinateUsers] = useState([]);
+  const [inventoryReport, setInventoryReport] = useState({
+    loaded: false,
+    items: [],
+    assets: [],
+    movements: [],
+  });
   const [adminPopup, setAdminPopup] = useState({ open: false, statusFilter: 'all', title: 'Administration Staff' });
   const [subordinatePopup, setSubordinatePopup] = useState({ open: false, statusFilter: 'all', title: 'Subordinate Staff' });
   // Tutors attendance popup: { open, statusFilter, title }
@@ -222,6 +228,36 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    Promise.allSettled([
+      inventoryAPI.getItems(),
+      inventoryAPI.getAssetRegister(),
+      inventoryAPI.getMovements(),
+    ]).then(([itemsResult, assetsResult, movementsResult]) => {
+      if (cancelled) return;
+
+      const unwrap = (result) => {
+        if (result.status !== 'fulfilled') return [];
+        const value = result.value;
+        if (Array.isArray(value)) return value;
+        return Array.isArray(value?.data) ? value.data : [];
+      };
+
+      setInventoryReport({
+        loaded: true,
+        items: unwrap(itemsResult),
+        assets: unwrap(assetsResult),
+        movements: unwrap(movementsResult),
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Compute stats from metrics and local data
   const stats = {
     totalStudents: metrics?.stats?.totalStudents || pagination?.total || learners.length || 0,
@@ -235,6 +271,7 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
     totalMissedExams: metrics?.stats?.totalMissedExams || 0,
     atRiskStudents: metrics?.stats?.atRiskStudents || 0,
     totalAssessedClasses: metrics?.stats?.totalAssessedClasses || 0,
+    avgAttendance: metrics?.stats?.avgAttendance || 0,
   };
 
   // Use shared metrics hook to calculate rates
@@ -242,8 +279,7 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
     attendanceRate, 
     collectionRate, 
     assessmentRate, 
-    teacherActiveRate, 
-    healthScore 
+    teacherActiveRate
   } = useDashboardMetrics(stats);
   
   const operationsRate = teacherActiveRate;
@@ -297,18 +333,45 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
     }))
   ].slice(0, 5);
 
-  const assessedStudents = Math.max(0, stats.totalStudents - stats.totalMissedExams);
+  const assessmentBreakdown = Array.isArray(metrics?.unAssessedBreakdown) ? metrics.unAssessedBreakdown : [];
+  const assessmentPopulation = assessmentBreakdown.reduce((sum, row) => sum + Number(row.total || 0), 0);
+  const assessedStudents = assessmentBreakdown.reduce((sum, row) => sum + Number(row.assessed || 0), 0);
+  const unassessedStudents = assessmentBreakdown.reduce((sum, row) => sum + Number(row.unAssessed || 0), 0);
+  const currentAssessmentRate = assessmentPopulation > 0
+    ? Math.round((assessedStudents / assessmentPopulation) * 100)
+    : assessmentRate;
   const inactiveTeachers = Math.max(0, stats.totalTeachers - stats.activeTeachers);
   const inactiveAdminUsers = adminUsers.filter(u => u.status === 'INACTIVE' || u.archived === true).length;
   const activeAdminUsers = Math.max(0, adminUsers.length - inactiveAdminUsers);
   const inactiveSubordinateUsers = subordinateUsers.filter(u => u.status === 'INACTIVE' || u.archived === true).length;
   const activeSubordinateUsers = Math.max(0, subordinateUsers.length - inactiveSubordinateUsers);
   const stableLearners = Math.max(0, stats.totalStudents - stats.atRiskStudents);
-  const schoolDaysReadiness = [
-    { name: 'Calendar', value: 1, color: '#1e3a8a' },
-    { name: 'Timetable', value: 1, color: '#0f766e' },
-    { name: 'Agenda', value: 1, color: '#16a34a' },
-  ];
+  const upcomingEvents = Array.isArray(metrics?.upcomingEvents) ? metrics.upcomingEvents : [];
+  const eventCategoryMap = upcomingEvents.reduce((acc, event) => {
+    const category = String(event.category || 'OTHER').replace(/_/g, ' ');
+    acc[category] = (acc[category] || 0) + 1;
+    return acc;
+  }, {});
+  const calendarPieData = Object.entries(eventCategoryMap).map(([name, value], index) => ({
+    name,
+    value,
+    color: REPORT_COLORS[index % REPORT_COLORS.length],
+  }));
+  const nextEvent = [...upcomingEvents]
+    .filter(event => event.date)
+    .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+
+  const inventoryItems = inventoryReport.items;
+  const inventoryAssets = inventoryReport.assets;
+  const inventoryMovements = inventoryReport.movements;
+  const consumableCount = inventoryItems.filter(item => String(item.type || '').toUpperCase() === 'CONSUMABLE').length;
+  const nonConsumableCount = Math.max(0, inventoryItems.length - consumableCount);
+  const lowStockCount = inventoryItems.filter(item => (
+    Number(item.quantity || 0) <= Number(item.minimumStock ?? item.reorderLevel ?? 5)
+  )).length;
+  const inventoryValue = inventoryItems.reduce((sum, item) => (
+    sum + (Number(item.quantity || 0) * Number(item.unitPrice || 0))
+  ), 0);
 
   const reportingConfigByTab = {
     financials: {
@@ -317,7 +380,6 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
       pieData: [
         { name: 'Collected', value: stats.feeCollected, color: '#16a34a' },
         { name: 'Outstanding', value: stats.feePending, color: '#e11d48' },
-        { name: 'Waived', value: metrics?.stats?.feeWaived || 0, color: '#14b8a6' },
       ],
       summaryTitle: 'Finance Signals',
       summarySubtitle: 'Cash position and follow-up pressure',
@@ -330,15 +392,15 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
     },
     academic: {
       pieTitle: 'Assessment Coverage',
-      pieSubtitle: 'Assessed learners versus pending marks',
+      pieSubtitle: metrics?.stats?.currentTestSeries || 'Current assessment series',
       pieData: [
         { name: 'Assessed', value: assessedStudents, color: '#0f766e' },
-        { name: 'Unassessed', value: stats.totalMissedExams, color: '#e11d48' },
+        { name: 'Unassessed', value: unassessedStudents, color: '#e11d48' },
       ],
       summaryTitle: 'Academic Report',
       summarySubtitle: 'Class performance and completion status',
       summaryItems: [
-        { label: 'Assessment Progress', value: formatPercent(assessmentRate), note: `${stats.totalMissedExams} learners still pending`, icon: GraduationCap, onClick: () => onNavigate('assess-summary-report') },
+        { label: 'Assessment Progress', value: assessmentPopulation > 0 ? formatPercent(currentAssessmentRate) : 'No data', note: `${unassessedStudents} learners still pending`, icon: GraduationCap, onClick: () => onNavigate('assess-summary-report') },
         { label: 'Top Class', value: topClasses[0]?.name || 'N/A', note: `Score ${topClasses[0]?.score?.toFixed?.(1) || '0'}`, icon: TrendingUp },
         { label: 'Assessed Classes', value: stats.totalAssessedClasses || 0, note: 'Classes with recorded data', icon: BarChart3 },
         { label: 'At Risk', value: stats.atRiskStudents || 0, note: 'Learners needing support', icon: AlertTriangle, onClick: () => onNavigate('learners-list') },
@@ -357,20 +419,20 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
         { label: 'Attendance Rate', value: formatPercent(attendanceRate), note: `${stats.presentToday} present today`, icon: Users, onClick: () => onNavigate('attendance-reports') },
         { label: 'Absent Today', value: stats.absentToday || 0, note: 'Needs follow-up', icon: AlertTriangle, onClick: () => onNavigate('attendance-reports') },
         { label: 'Staff Coverage', value: formatPercent(operationsRate), note: `${stats.activeTeachers}/${stats.totalTeachers} active`, icon: CheckCircle2 },
-        { label: 'Health Score', value: formatPercent(healthScore), note: 'Overall operating pulse', icon: Activity },
+        { label: 'Term Attendance', value: formatPercent(stats.avgAttendance), note: 'Average recorded attendance', icon: Activity },
       ],
     },
     calendar: {
-      pieTitle: 'Planning Readiness',
-      pieSubtitle: 'Calendar, timetable, and agenda setup',
-      pieData: schoolDaysReadiness,
+      pieTitle: 'Upcoming Event Mix',
+      pieSubtitle: `${upcomingEvents.length} scheduled events`,
+      pieData: calendarPieData,
       summaryTitle: 'Planning Report',
-      summarySubtitle: 'Daily school coordination snapshot',
+      summarySubtitle: 'Live calendar and activity snapshot',
       summaryItems: [
-        { label: 'Calendar', value: 'Ready', note: 'Events and key dates', icon: Calendar, onClick: () => onNavigate('school-calendar') },
-        { label: 'Timetable', value: 'Active', note: 'Class and staff schedules', icon: Clock, onClick: () => onNavigate('timetable') },
-        { label: 'Agenda', value: 'Ready', note: 'Daily planning status', icon: Activity },
-        { label: 'Recent Updates', value: recentActivities.length || 0, note: 'Latest school events in feed', icon: TrendingUp },
+        { label: 'Scheduled Events', value: upcomingEvents.length, note: 'Upcoming calendar entries', icon: Calendar, onClick: () => onNavigate('planner-calendar') },
+        { label: 'Next Event', value: nextEvent?.title || 'None', note: nextEvent?.date ? new Date(nextEvent.date).toLocaleDateString() : 'No upcoming event recorded', icon: Clock, onClick: () => onNavigate('planner-calendar') },
+        { label: 'Event Categories', value: calendarPieData.length, note: 'Types represented in calendar', icon: Activity },
+        { label: 'Recent Updates', value: recentActivities.length || 0, note: 'Admissions and assessment updates', icon: TrendingUp },
       ],
     },
     insights: {
@@ -379,7 +441,6 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
       pieData: [
         { name: 'Stable', value: stableLearners, color: '#0f766e' },
         { name: 'At Risk', value: stats.atRiskStudents, color: '#e11d48' },
-        { name: 'Warnings', value: attentionItems.length, color: '#f59e0b' },
       ],
       summaryTitle: 'AI Insight Report',
       summarySubtitle: 'Signals that need admin attention',
@@ -409,20 +470,19 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
       ],
     },
     inventory: {
-      pieTitle: 'Inventory Readiness',
-      pieSubtitle: 'Operational stock reporting areas',
+      pieTitle: 'Inventory Item Mix',
+      pieSubtitle: inventoryReport.loaded ? `${inventoryItems.length} registered stock items` : 'Loading inventory records',
       pieData: [
-        { name: 'Assets', value: metrics?.inventory?.assets || 1, color: '#0f766e' },
-        { name: 'Consumables', value: metrics?.inventory?.consumables || 1, color: '#4f46e5' },
-        { name: 'Alerts', value: metrics?.inventory?.alerts || 1, color: '#e11d48' },
+        { name: 'Consumables', value: consumableCount, color: '#4f46e5' },
+        { name: 'Other Items', value: nonConsumableCount, color: '#0f766e' },
       ],
       summaryTitle: 'Inventory Report',
       summarySubtitle: 'Stock control and accountability',
       summaryItems: [
-        { label: 'Stock Items', value: metrics?.inventory?.totalItems || 'Ready', note: 'Inventory register status', icon: Package, onClick: () => onNavigate('inventory-items') },
-        { label: 'Assets', value: metrics?.inventory?.assets || 0, note: 'Tracked asset records', icon: Briefcase, onClick: () => onNavigate('inventory-items') },
-        { label: 'Consumables', value: metrics?.inventory?.consumables || 0, note: 'Daily-use stock lines', icon: Activity, onClick: () => onNavigate('inventory-items') },
-        { label: 'Alerts', value: metrics?.inventory?.alerts || 0, note: 'Low-stock or attention flags', icon: AlertTriangle },
+        { label: 'Stock Items', value: inventoryReport.loaded ? inventoryItems.length : '...', note: 'Registered inventory lines', icon: Package, onClick: () => onNavigate('inventory-items') },
+        { label: 'Asset Register', value: inventoryReport.loaded ? inventoryAssets.length : '...', note: 'Tracked fixed assets', icon: Briefcase, onClick: () => onNavigate('inventory-assets') },
+        { label: 'Stock Value', value: inventoryReport.loaded ? formatKesAmount(inventoryValue) : '...', note: `${inventoryMovements.length} recorded movements`, icon: Activity, onClick: () => onNavigate('inventory-movements') },
+        { label: 'Low Stock', value: inventoryReport.loaded ? lowStockCount : '...', note: 'Items at or below reorder level', icon: AlertTriangle, onClick: () => onNavigate('inventory-items') },
       ],
     },
   };
@@ -611,8 +671,8 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Assessment Progress</p>
-                  <p className="mt-2 text-2xl font-bold text-white">{formatPercent(assessmentRate)}</p>
-                  <p className="mt-1 text-xs text-white/70">{stats.totalMissedExams} unassessed</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{formatPercent(currentAssessmentRate)}</p>
+                  <p className="mt-1 text-xs text-white/70">{unassessedStudents} unassessed</p>
                 </div>
                 <GraduationCap size={32} className="text-white/20" />
               </div>
@@ -687,8 +747,8 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Calendar</p>
-                  <p className="mt-2 text-2xl font-bold text-white">Planner</p>
-                  <p className="mt-1 text-xs text-white/70">School events & dates</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{upcomingEvents.length}</p>
+                  <p className="mt-1 text-xs text-white/70">Upcoming scheduled events</p>
                 </div>
                 <Calendar size={32} className="text-white/20" />
               </div>
@@ -697,9 +757,9 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
             <AppCard className="!bg-teal-700 !border-teal-700">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Timetable</p>
-                  <p className="mt-2 text-2xl font-bold text-white">Active</p>
-                  <p className="mt-1 text-xs text-white/70">Class & staff schedules</p>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Next Event</p>
+                  <p className="mt-2 truncate text-2xl font-bold text-white">{nextEvent?.title || 'None'}</p>
+                  <p className="mt-1 text-xs text-white/70">{nextEvent?.date ? new Date(nextEvent.date).toLocaleDateString() : 'No event scheduled'}</p>
                 </div>
                 <Clock size={32} className="text-white/20" />
               </div>
@@ -708,9 +768,9 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
             <AppCard className="!bg-green-700 !border-green-700">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Agenda</p>
-                  <p className="mt-2 text-2xl font-bold text-white">Ready</p>
-                  <p className="mt-1 text-xs text-white/70">Daily planning</p>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Event Categories</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{calendarPieData.length}</p>
+                  <p className="mt-1 text-xs text-white/70">Types represented</p>
                 </div>
                 <Activity size={32} className="text-white/20" />
               </div>
@@ -801,8 +861,8 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Stock Items</p>
-                  <p className="mt-2 text-2xl font-bold text-white">Catalog</p>
-                  <p className="mt-1 text-xs text-white/70">Manage school supplies</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{inventoryReport.loaded ? inventoryItems.length : '...'}</p>
+                  <p className="mt-1 text-xs text-white/70">Registered inventory lines</p>
                 </div>
                 <Package size={32} className="text-white/20" />
               </div>
@@ -811,9 +871,9 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
             <AppCard className="!bg-green-700 !border-green-700">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Stock Movements</p>
-                  <p className="mt-2 text-2xl font-bold text-white">Tracked</p>
-                  <p className="mt-1 text-xs text-white/70">Movement history</p>
+                  <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Low Stock</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{inventoryReport.loaded ? lowStockCount : '...'}</p>
+                  <p className="mt-1 text-xs text-white/70">At or below reorder level</p>
                 </div>
                 <TrendingUp size={32} className="text-white/20" />
               </div>
@@ -823,8 +883,8 @@ const AdminDashboard = ({ learners = [], pagination, teachers = [], user, onNavi
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-semibold text-white/80 uppercase tracking-wide">Assets</p>
-                  <p className="mt-2 text-2xl font-bold text-white">Register</p>
-                  <p className="mt-1 text-xs text-white/70">Assigned assets</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{inventoryReport.loaded ? inventoryAssets.length : '...'}</p>
+                  <p className="mt-1 text-xs text-white/70">Registered fixed assets</p>
                 </div>
                 <Briefcase size={32} className="text-white/20" />
               </div>
