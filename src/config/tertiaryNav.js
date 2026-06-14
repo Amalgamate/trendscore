@@ -155,6 +155,7 @@ export const tertiaryNavSections = [
         items: [
           { id: 'fees-collection', label: 'Fee Collection',     path: 'fees-collection', permission: 'FEE_MANAGEMENT' },
           { id: 'fees-statements', label: 'Student Statements', path: 'fees-statements', permission: 'FEE_MANAGEMENT' },
+          { id: 'fees-types',      label: 'Fee Types',          path: 'fees-types',      permission: 'FEE_MANAGEMENT' },
           { id: 'fees-structure',  label: 'Fee Structure',      path: 'fees-structure',  permission: 'FEE_MANAGEMENT' },
         ],
       },

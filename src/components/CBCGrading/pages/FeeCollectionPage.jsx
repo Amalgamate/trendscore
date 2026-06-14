@@ -31,6 +31,8 @@ import usePageNavigation from '../../../hooks/usePageNavigation';
 import { downloadFeeTemplate } from '../../../utils/feeTemplateGenerator';
 import UnmatchedPaymentsPanel from './fees/UnmatchedPaymentsPanel';
 import FeeOverviewDashboard from './fees/FeeOverviewDashboard';
+import FeeTypesPage from './FeeTypesPage';
+import FeeStructurePage from './FeeStructurePage';
 import { useBootstrapStore } from '../../../store/useBootstrapStore';
 import { useMobile } from '../../../hooks/useMobileDetection';
 import { DataCard } from '../shared';
@@ -68,7 +70,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
   const [totalInvoicesCount, setTotalInvoicesCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [statsLoading, setStatsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState(initialTab); // 'overview' | 'invoices' | 'unmatched'
+  const [activeTab, setActiveTab] = useState(initialTab); // 'overview' | 'invoices' | 'types' | 'structure' | 'unmatched'
   const [unmatchedCount, setUnmatchedCount] = useState(0);
   const [whatsappStatus, setWhatsappStatus] = useState({ status: 'fetching', qrCode: null });
   const [allLearners, setAllLearners] = useState([]);
@@ -78,6 +80,10 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
   const [termFilter, setTermFilter] = useState('all');
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
   const [startDate, setStartDate] = useState('');
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
   const [endDate, setEndDate] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -1304,6 +1310,24 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
           Fee Invoices
         </button>
         <button
+          onClick={() => setActiveTab('types')}
+          className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === 'types'
+              ? 'border-brand-teal text-brand-teal'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+        >
+          Fee Types
+        </button>
+        <button
+          onClick={() => setActiveTab('structure')}
+          className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === 'structure'
+              ? 'border-brand-teal text-brand-teal'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+        >
+          Fee Structure
+        </button>
+        <button
           onClick={() => setActiveTab('unmatched')}
           className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center gap-2 ${activeTab === 'unmatched'
               ? 'border-amber-500 text-amber-700'
@@ -1324,6 +1348,10 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
       {activeTab === 'unmatched' && (
         <UnmatchedPaymentsPanel onCountChange={setUnmatchedCount} />
       )}
+
+      {activeTab === 'types' && <FeeTypesPage />}
+
+      {activeTab === 'structure' && <FeeStructurePage />}
 
       {/* Fee Overview / Invoices */}
       {(activeTab === 'overview' || activeTab === 'invoices') && (
