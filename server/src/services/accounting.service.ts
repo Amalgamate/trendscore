@@ -227,7 +227,7 @@ export class AccountingService {
      * Cr: Tuition Revenue (4000)
      */
     async postFeeInvoiceToLedger(invoice: any) {
-        const totalAmount = invoice.totalAmount;
+        const totalAmount = Number(invoice.totalAmount || 0) + Number(invoice.sponsorAmount || 0);
         const invoiceNumber = invoice.invoiceNumber;
 
         let arAccount = await this.getAccountByCode('1100');
@@ -259,6 +259,39 @@ export class AccountingService {
             ]
         });
 
+        return this.postJournalEntry(entry.id);
+    }
+
+    async postFeeInvoiceRevisionToLedger(invoiceNumber: string, revisionNumber: number, delta: number) {
+        const amount = Math.abs(Number(delta || 0));
+        if (amount < 0.01) return;
+        let arAccount = await this.getAccountByCode('1100');
+        let revenueAccount = await this.getAccountByCode('4000');
+        let salesJournal = await this.getJournalByCode('INV');
+        if (!arAccount || !revenueAccount || !salesJournal) {
+            await this.ensureDefaultAccountingSetup();
+            this.clearCache();
+            arAccount = await this.getAccountByCode('1100');
+            revenueAccount = await this.getAccountByCode('4000');
+            salesJournal = await this.getJournalByCode('INV');
+        }
+        if (!arAccount || !revenueAccount || !salesJournal) return;
+        const increase = delta > 0;
+        const reference = `${invoiceNumber}-REV-${revisionNumber}`;
+        const entry = await this.createJournalEntry({
+            journalId: salesJournal.id,
+            reference,
+            date: new Date(),
+            items: increase
+                ? [
+                    { accountId: arAccount.id, debit: amount, label: `Invoice revision increase: ${invoiceNumber}` },
+                    { accountId: revenueAccount.id, credit: amount, label: `Fee revenue revision: ${invoiceNumber}` },
+                ]
+                : [
+                    { accountId: revenueAccount.id, debit: amount, label: `Fee revenue reduction: ${invoiceNumber}` },
+                    { accountId: arAccount.id, credit: amount, label: `Invoice revision reduction: ${invoiceNumber}` },
+                ],
+        });
         return this.postJournalEntry(entry.id);
     }
 

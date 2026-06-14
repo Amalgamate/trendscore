@@ -346,7 +346,7 @@ export class LearnerController {
         logger.error('Failed to create student system user:', userError);
       }
 
-      const shouldGenerateInvoice = generateInvoice !== false && generateInvoice !== 'false' && !scholarshipSelected;
+      const shouldGenerateInvoice = generateInvoice !== false && generateInvoice !== 'false';
 
       // ── Generate Initial Fee Invoice ──────────────────────────────────────────
       let invoiceMessage = '';
@@ -366,9 +366,6 @@ export class LearnerController {
           logger.error('Invoice generation failed:', e);
           invoiceMessage = ` (⚠️ Error: Automated invoice failed: ${e.message})`;
         }
-      } else if (scholarshipSelected) {
-        const scholarshipLabel = scholarshipType === 'PARTIAL' ? 'Partial scholarship' : 'Full scholarship';
-        invoiceMessage = ` (${scholarshipLabel}: automatic invoice skipped).`;
       } else {
         invoiceMessage = ' (Automatic invoice disabled).';
       }

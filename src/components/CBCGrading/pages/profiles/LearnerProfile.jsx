@@ -2,23 +2,99 @@ import React, { useState, useEffect } from 'react';
 import {
     User, Calendar, MapPin, Users, Heart,
     GraduationCap, Receipt, FileText, Activity,
-    Download, AlertCircle, Camera, Plus, Bus, Zap, TrendingUp, Brain, Lock
+    AlertCircle, Camera, Plus, Bus, Zap, TrendingUp, Brain,
+    Bookmark, Gift, CreditCard
 } from 'lucide-react';
 import api from '../../../../services/api';
 import { useAuth } from '../../../../hooks/useAuth';
-import { generatePDFFromElement } from '../../../../utils/simplePdfGenerator';
 import StatusBadge from '../../shared/StatusBadge';
-import ProfileHeader from '../../shared/ProfileHeader';
 import ProfileLayout from '../../shared/ProfileLayout';
 import { useNotifications } from '../../hooks/useNotifications';
 import ProfilePhotoModal from '../../shared/ProfilePhotoModal';
 import PathwaysWizard from './PathwaysWizard';
+import LearnerFeeConfigurator from './LearnerFeeConfigurator';
+
+const CompactLearnerHeader = ({
+    learner,
+    name,
+    avatarFallback,
+    feeBalance,
+    age,
+    tabs,
+    activeTab,
+    onTabChange,
+    onPhotoClick
+}) => (
+    <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center gap-4 px-5 py-4">
+            <button
+                type="button"
+                onClick={onPhotoClick}
+                className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-full border-2 border-white bg-brand-purple text-xl font-semibold text-white shadow ring-1 ring-gray-200"
+                title="Change profile photo"
+            >
+                {learner.photoUrl ? (
+                    <img src={learner.photoUrl} alt={name} className="h-full w-full object-cover" />
+                ) : (
+                    <span className="flex h-full w-full items-center justify-center">{avatarFallback}</span>
+                )}
+                <span className="absolute inset-0 hidden items-center justify-center bg-black/40 text-white group-hover:flex">
+                    <Camera size={18} />
+                </span>
+            </button>
+
+            <div className="min-w-[220px] flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-xl font-semibold tracking-tight text-gray-950">{name}</h2>
+                    <StatusBadge status={learner.status} />
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-700">
+                    <span className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-2 py-1 font-semibold">
+                        <GraduationCap size={14} className="text-gray-400" />
+                        {learner.admissionNumber}
+                    </span>
+                    <span className="font-semibold">{learner.grade} {learner.stream || ''}</span>
+                </div>
+            </div>
+
+            <div className="grid min-w-[280px] grid-cols-2 gap-2">
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Age</p>
+                    <p className="text-sm font-semibold text-gray-950">{age} years</p>
+                </div>
+                <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-red-500">Fee Balance</p>
+                    <p className={`text-sm font-semibold ${feeBalance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        KES {feeBalance.toLocaleString()}
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div className="flex overflow-x-auto border-t border-gray-100 bg-gray-50/70 px-4 py-2 no-print">
+            {tabs.map((tab) => (
+                <button
+                    key={tab.id}
+                    onClick={() => onTabChange(tab.id)}
+                    className={`mr-2 flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${activeTab === tab.id
+                        ? 'bg-white text-brand-purple shadow-sm ring-1 ring-gray-200'
+                        : 'text-gray-600 hover:bg-white hover:text-gray-950'
+                    }`}
+                >
+                    <tab.icon size={16} />
+                    {tab.label}
+                </button>
+            ))}
+        </div>
+    </section>
+);
 
 const LearnerProfile = ({ learner: initialLearner, onBack, brandingSettings, onNavigate }) => {
     const { showSuccess, showError } = useNotifications();
     const { user } = useAuth();
     const [currentLearner, setCurrentLearner] = useState(initialLearner);
     const [activeTab, setActiveTab] = useState('overview');
+    const [financeTab, setFinanceTab] = useState('configuration');
     const [loading, setLoading] = useState(false);
     const [invoices, setInvoices] = useState([]);
     const [assessments, setAssessments] = useState([]);
@@ -137,37 +213,54 @@ const LearnerProfile = ({ learner: initialLearner, onBack, brandingSettings, onN
         { id: 'documents',   label: 'Documents',   icon: FileText      },
     ];
 
+    const activePledges = invoices.flatMap((invoice) =>
+        (invoice.pledges || [])
+            .filter((pledge) => ['PENDING', 'DUE'].includes(pledge.status))
+            .map((pledge) => ({ ...pledge, invoice }))
+    );
+    const feeWaivers = invoices.flatMap((invoice) =>
+        (invoice.waivers || []).map((waiver) => ({ ...waiver, invoice }))
+    );
+    const creditInvoices = invoices.filter((invoice) => Number(invoice.balance || 0) < 0);
+    const financeTabs = [
+        { id: 'configuration', label: 'Fee Configuration', icon: CreditCard },
+        { id: 'statement', label: 'Fee Statement', icon: Receipt },
+        { id: 'pledges', label: 'Pledges', icon: Bookmark, count: activePledges.length },
+        { id: 'waivers', label: 'Waivers', icon: Gift, count: feeWaivers.length },
+        { id: 'credits', label: 'Credits & Adjustments', icon: TrendingUp, count: creditInvoices.length },
+    ];
+
     if (!currentLearner) return null;
+
+    const handleReviseInvoice = async (invoice) => {
+        const reason = window.prompt('Reason for revising this unpaid invoice using the approved fee configuration:');
+        if (!reason) return;
+        try {
+            await api.fees.reviseInvoiceFromConfiguration(invoice.id, reason);
+            showSuccess('Invoice revised successfully');
+            await fetchTabData('financials');
+        } catch (error) {
+            showError(error.message || 'Failed to revise invoice');
+        }
+    };
 
     return (
         <ProfileLayout
             title="Student Profile"
             onBack={onBack}
+            compact
             primaryAction={{
                 label: "Edit Profile",
                 icon: FileText,
                 onClick: () => onNavigate('learners-admissions', { learner: currentLearner })
             }}
         >
-            <ProfileHeader
+            <CompactLearnerHeader
+                learner={currentLearner}
                 name={`${currentLearner.firstName} ${currentLearner.middleName || ''} ${currentLearner.lastName}`}
-                avatar={currentLearner.photoUrl}
-                avatarFallback={`${currentLearner.firstName?.[0]}${currentLearner.lastName?.[0]}`}
-                status={currentLearner.status}
-                bannerColor="brand-purple"
-                compact={true}
-                badges={[
-                    { text: currentLearner.admissionNumber, icon: GraduationCap, className: "bg-gray-100 border border-gray-200 px-2.5 py-0.5 rounded-md" },
-                    { text: `${currentLearner.grade} ${currentLearner.stream || ''}`, className: "font-medium text-gray-700" }
-                ]}
-                quickStats={[
-                    { label: "Age", value: `${calculateAge(currentLearner.dateOfBirth)} years` },
-                    {
-                        label: "Fee Balance",
-                        value: `KES ${feeBalance.toLocaleString()}`,
-                        className: feeBalance > 0 ? 'text-red-500' : 'text-emerald-600'
-                    }
-                ]}
+                avatarFallback={`${currentLearner.firstName?.[0] || ''}${currentLearner.lastName?.[0] || ''}`}
+                age={calculateAge(currentLearner.dateOfBirth)}
+                feeBalance={feeBalance}
                 tabs={tabs}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
@@ -175,7 +268,7 @@ const LearnerProfile = ({ learner: initialLearner, onBack, brandingSettings, onN
             />
 
             {/* Tab Content */}
-            <div className="min-h-[400px]">
+            <div className="mt-3 min-h-[400px]">
                 {loading && activeTab !== 'pathways' ? (
                     <div className="flex justify-center items-center h-64">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-purple"></div>
@@ -184,14 +277,14 @@ const LearnerProfile = ({ learner: initialLearner, onBack, brandingSettings, onN
                     <>
                         {/* OVERVIEW TAB */}
                         {activeTab === 'overview' && (
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-fade-in">
                                 {/* Personal Info Card */}
-                                <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
-                                    <div className="flex items-center gap-2 mb-4 pb-2 border-b border-gray-100">
+                                <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                                    <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100">
                                         <User className="text-brand-purple" size={18} />
                                         <h3 className="text-base font-medium text-gray-800">Personal Data</h3>
                                     </div>
-                                    <div className="space-y-3">
+                                    <div className="space-y-2.5">
                                         <InfoRow label="Date of Birth" value={currentLearner.dateOfBirth ? new Date(currentLearner.dateOfBirth).toLocaleDateString() : 'N/A'} />
                                         <InfoRow label="Gender" value={currentLearner.gender} />
                                         <InfoRow label="Nationality" value={currentLearner.nationality || 'Kenyan'} />
@@ -200,12 +293,12 @@ const LearnerProfile = ({ learner: initialLearner, onBack, brandingSettings, onN
                                 </div>
 
                                 {/* Academic Info Card */}
-                                <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
-                                    <div className="flex items-center gap-2 mb-4 pb-2 border-b border-gray-100">
+                                <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                                    <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100">
                                         <Calendar className="text-brand-teal" size={18} />
                                         <h3 className="text-base font-medium text-gray-800">Academic</h3>
                                     </div>
-                                    <div className="space-y-3">
+                                    <div className="space-y-2.5">
                                         <InfoRow label="Adm Number" value={currentLearner.admissionNumber} />
                                         <InfoRow label="Date of Adm" value={currentLearner.dateOfAdmission ? new Date(currentLearner.dateOfAdmission).toLocaleDateString() : 'N/A'} />
                                         <InfoRow label="Current Grade" value={currentLearner.grade} />
@@ -214,13 +307,13 @@ const LearnerProfile = ({ learner: initialLearner, onBack, brandingSettings, onN
                                 </div>
 
                                 {/* Contacts Info Card */}
-                                <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
-                                    <div className="flex items-center gap-2 mb-4 pb-2 border-b border-gray-100">
+                                <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                                    <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100">
                                         <Users className="text-blue-500" size={18} />
                                         <h3 className="text-base font-medium text-gray-800">Contacts</h3>
                                     </div>
-                                    <div className="space-y-4">
-                                        <div className="pb-3 border-b border-dashed border-gray-100 last:border-0 last:pb-0">
+                                    <div className="space-y-3">
+                                        <div className="pb-2.5 border-b border-dashed border-gray-100 last:border-0 last:pb-0">
                                             <p className="text-[10px] font-semibold uppercase text-blue-500 mb-1 tracking-wider">👨 Father</p>
                                             <div className="space-y-1">
                                                 <p className="text-sm font-medium text-gray-800">{currentLearner.fatherName || 'N/A'}</p>
@@ -231,7 +324,7 @@ const LearnerProfile = ({ learner: initialLearner, onBack, brandingSettings, onN
                                                 )}
                                             </div>
                                         </div>
-                                        <div className="pb-3 border-b border-dashed border-gray-100 last:border-0 last:pb-0">
+                                        <div className="pb-2.5 border-b border-dashed border-gray-100 last:border-0 last:pb-0">
                                             <p className="text-[10px] font-semibold uppercase text-amber-500 mb-1 tracking-wider">👩 Mother</p>
                                             <div className="space-y-1">
                                                 <p className="text-sm font-medium text-gray-800">{currentLearner.motherName || 'N/A'}</p>
@@ -256,9 +349,9 @@ const LearnerProfile = ({ learner: initialLearner, onBack, brandingSettings, onN
                                     </div>
                                 </div>
 
-                                <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
-                                        <div className="flex items-center gap-2 mb-4 pb-2 border-b border-gray-100">
+                                <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+                                        <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100">
                                             <MapPin className="text-orange-500" size={18} />
                                             <h3 className="text-base font-medium text-gray-800">Location Details</h3>
                                         </div>
@@ -273,6 +366,125 @@ const LearnerProfile = ({ learner: initialLearner, onBack, brandingSettings, onN
 
                         {/* FINANCIALS TAB */}
                         {activeTab === 'financials' && (
+                            <div className="space-y-4 animate-fade-in">
+                                <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+                                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 bg-gray-50/70 px-3 py-2">
+                                        <div className="flex gap-2 overflow-x-auto">
+                                            {financeTabs.map((tab) => {
+                                                const Icon = tab.icon;
+                                                const active = financeTab === tab.id;
+                                                return (
+                                                    <button
+                                                        key={tab.id}
+                                                        onClick={() => setFinanceTab(tab.id)}
+                                                        className={`flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-bold transition ${active
+                                                            ? 'bg-slate-950 text-white shadow-sm'
+                                                            : 'bg-white text-gray-600 ring-1 ring-gray-200 hover:text-gray-950'
+                                                        }`}
+                                                    >
+                                                        <Icon size={15} />
+                                                        {tab.label}
+                                                        {tab.count > 0 && (
+                                                            <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                                                                {tab.count}
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        {onNavigate && feeBalance > 0 && (
+                                            <button
+                                                onClick={() => onNavigate('fees-collection', { learnerId: currentLearner.id })}
+                                                className="flex items-center gap-2 rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-white shadow-sm transition hover:bg-green-700"
+                                            >
+                                                <Plus size={14} />
+                                                Record Payment
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {financeTab === 'configuration' && (
+                                    <LearnerFeeConfigurator
+                                        learner={currentLearner}
+                                        user={user}
+                                        onChanged={() => fetchTabData('financials')}
+                                    />
+                                )}
+
+                                {financeTab === 'pledges' && (
+                                    <div className="rounded-xl border border-amber-100 bg-white p-4 shadow-sm">
+                                        <h3 className="mb-3 flex items-center gap-2 text-base font-semibold text-gray-900">
+                                            <Bookmark size={17} className="text-amber-600" /> Pledges
+                                        </h3>
+                                        {activePledges.length > 0 ? (
+                                            <div className="divide-y divide-gray-100">
+                                                {activePledges.map((pledge) => (
+                                                    <div key={pledge.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+                                                        <div>
+                                                            <p className="font-semibold text-gray-900">KES {Number(pledge.pledgedAmount || 0).toLocaleString()}</p>
+                                                            <p className="text-xs text-gray-500">Invoice {pledge.invoice?.invoiceNumber} · Due {pledge.pledgeDate ? new Date(pledge.pledgeDate).toLocaleDateString() : 'N/A'}</p>
+                                                        </div>
+                                                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase text-amber-700">{pledge.status}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-gray-500">No active payment pledges for this learner.</p>
+                                        )}
+                                    </div>
+                                )}
+
+                                {financeTab === 'waivers' && (
+                                    <div className="rounded-xl border border-teal-100 bg-white p-4 shadow-sm">
+                                        <h3 className="mb-3 flex items-center gap-2 text-base font-semibold text-gray-900">
+                                            <Gift size={17} className="text-teal-600" /> Waivers
+                                        </h3>
+                                        {feeWaivers.length > 0 ? (
+                                            <div className="divide-y divide-gray-100">
+                                                {feeWaivers.map((waiver) => (
+                                                    <div key={waiver.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+                                                        <div>
+                                                            <p className="font-semibold text-gray-900">KES {Number(waiver.amountWaived || 0).toLocaleString()}</p>
+                                                            <p className="text-xs text-gray-500">Invoice {waiver.invoice?.invoiceNumber} · {waiver.reason || 'No reason recorded'}</p>
+                                                        </div>
+                                                        <span className="rounded-full bg-teal-50 px-2.5 py-1 text-[10px] font-bold uppercase text-teal-700">{waiver.status}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-gray-500">No waivers recorded for this learner.</p>
+                                        )}
+                                    </div>
+                                )}
+
+                                {financeTab === 'credits' && (
+                                    <div className="rounded-xl border border-indigo-100 bg-white p-4 shadow-sm">
+                                        <h3 className="mb-3 flex items-center gap-2 text-base font-semibold text-gray-900">
+                                            <TrendingUp size={17} className="text-indigo-600" /> Credits & Adjustments
+                                        </h3>
+                                        {creditInvoices.length > 0 ? (
+                                            <div className="divide-y divide-gray-100">
+                                                {creditInvoices.map((invoice) => (
+                                                    <div key={invoice.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+                                                        <div>
+                                                            <p className="font-semibold text-gray-900">Credit on {invoice.invoiceNumber}</p>
+                                                            <p className="text-xs text-gray-500">{invoice.feeStructure?.term?.replace('_', ' ')} · {invoice.feeStructure?.academicYear}</p>
+                                                        </div>
+                                                        <span className="font-bold text-indigo-700">KES {Math.abs(Number(invoice.balance || 0)).toLocaleString()}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-gray-500">No credit balances or manual adjustments are currently recorded.</p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {activeTab === 'financials' && financeTab === 'statement' && (
                             <div className="space-y-6 animate-fade-in">
                                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                                     <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
@@ -309,6 +521,7 @@ const LearnerProfile = ({ learner: initialLearner, onBack, brandingSettings, onN
                                                         <th className="px-6 py-4 font-semibold text-[color:var(--table-header-fg)]">Description</th>
                                                         <th className="px-6 py-4 text-right font-semibold text-[color:var(--table-header-fg)]">Amount</th>
                                                         <th className="px-6 py-4 text-center font-semibold text-[color:var(--table-header-fg)]">Status</th>
+                                                        {user?.role === 'ADMIN' && <th className="px-6 py-4 text-right font-semibold text-[color:var(--table-header-fg)]">Action</th>}
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-100">
@@ -322,15 +535,30 @@ const LearnerProfile = ({ learner: initialLearner, onBack, brandingSettings, onN
                                                                 <p className="font-medium text-gray-800">{inv.feeStructure?.name || 'Academic Fee'}</p>
                                                                 <p className="text-[10px] opacity-60 uppercase">{inv.feeStructure?.term?.replace('_', ' ')} • {inv.feeStructure?.academicYear}</p>
                                                             </td>
-                                                            <td className="px-6 py-4 text-right">
-                                                                <div className="font-semibold text-gray-900">KES {Number(inv.totalAmount || inv.amount).toLocaleString()}</div>
-                                                                <div className="text-[10px] text-red-500 font-medium">Bal: {Number(inv.balance).toLocaleString()}</div>
-                                                            </td>
+                                                             <td className="px-6 py-4 text-right">
+                                                                 <div className="font-semibold text-gray-900">KES {Number(inv.totalAmount || inv.amount).toLocaleString()}</div>
+                                                                 {Number(inv.sponsorAmount || 0) > 0 && (
+                                                                     <div className="text-[10px] font-medium text-indigo-600">Sponsor: KES {Number(inv.sponsorAmount).toLocaleString()}</div>
+                                                                 )}
+                                                                 <div className="text-[10px] text-red-500 font-medium">Bal: {Number(inv.balance).toLocaleString()}</div>
+                                                             </td>
                                                             <td className="px-6 py-4 text-center">
-                                                                <span className={`px-2 py-1 rounded-full text-[10px] font-semibold uppercase ${inv.status === 'PAID' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                 <span className={`px-2 py-1 rounded-full text-[10px] font-semibold uppercase ${inv.status === 'PAID' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                                                                     {inv.status}
-                                                                </span>
-                                                            </td>
+                                                                 </span>
+                                                             </td>
+                                                             {user?.role === 'ADMIN' && (
+                                                                 <td className="px-6 py-4 text-right">
+                                                                     {Number(inv.paidAmount || 0) === 0 && inv.status !== 'CANCELLED' && (
+                                                                         <button
+                                                                             onClick={() => handleReviseInvoice(inv)}
+                                                                             className="rounded-md border border-indigo-200 px-2.5 py-1.5 text-[10px] font-semibold uppercase text-indigo-700 hover:bg-indigo-50"
+                                                                         >
+                                                                             Revise Invoice
+                                                                         </button>
+                                                                     )}
+                                                                 </td>
+                                                             )}
                                                         </tr>
                                                     ))}
                                                 </tbody>

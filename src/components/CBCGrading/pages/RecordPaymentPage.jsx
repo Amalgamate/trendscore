@@ -23,6 +23,7 @@ const RecordPaymentPage = ({ invoice, initialMode }) => {
   const [loading, setLoading] = useState(false);
   const [paymentData, setPaymentData] = useState({
     amount: invoice?.balance ?? '',
+    payerType: 'STUDENT',
     paymentMethod: initialMode || 'CASH',
     referenceNumber: '',
     paymentDate: new Date().toISOString().split('T')[0]
@@ -84,7 +85,7 @@ const RecordPaymentPage = ({ invoice, initialMode }) => {
 
       let finalAllocation = {};
       
-      if (hasTransport && allocationMode === 'CUSTOM') {
+      if (paymentData.payerType !== 'SPONSOR' && hasTransport && allocationMode === 'CUSTOM') {
         const tuit = parseFloat(allocatedTuition) || 0;
         const trans = parseFloat(allocatedTransport) || 0;
         if (Math.abs(tuit + trans - parseFloat(paymentData.amount)) > 0.01) {
@@ -100,6 +101,7 @@ const RecordPaymentPage = ({ invoice, initialMode }) => {
         paymentMethod: paymentData.paymentMethod,
         referenceNumber: paymentData.referenceNumber || null,
         paymentDate: paymentData.paymentDate,
+        payerType: paymentData.payerType,
         ...finalAllocation
       });
 
@@ -264,6 +266,14 @@ const RecordPaymentPage = ({ invoice, initialMode }) => {
                 </span>
               </div>
             )}
+            {Number(invoice.sponsorAmount || 0) > 0 && (
+              <div>
+                <span className="text-gray-500">Sponsor Balance:</span>
+                <span className="ml-2 font-medium text-indigo-600 text-xl">
+                  KES {Number(invoice.sponsorBalance || 0).toLocaleString()}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -271,6 +281,27 @@ const RecordPaymentPage = ({ invoice, initialMode }) => {
       {/* Payment Form */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-5">
         <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Payment Information</h2>
+
+        {Number(invoice.sponsorAmount || 0) > 0 && (
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-gray-700">Payment responsibility</label>
+            <select
+              value={paymentData.payerType}
+              onChange={(e) => {
+                const payerType = e.target.value;
+                setPaymentData({
+                  ...paymentData,
+                  payerType,
+                  amount: payerType === 'SPONSOR' ? Number(invoice.sponsorBalance || 0) : Number(invoice.balance || 0),
+                });
+              }}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500"
+            >
+              <option value="STUDENT">Student / Parent</option>
+              <option value="SPONSOR">Sponsor</option>
+            </select>
+          </div>
+        )}
 
         <div className="space-y-2">
           <label className="block text-sm font-semibold text-gray-700">Payment Date *</label>
@@ -307,7 +338,7 @@ const RecordPaymentPage = ({ invoice, initialMode }) => {
           />
         </div>
 
-        {hasTransport && paymentData.amount && (
+        {paymentData.payerType !== 'SPONSOR' && hasTransport && paymentData.amount && (
             <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 mt-2 space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium text-orange-900">Payment Allocation</label>

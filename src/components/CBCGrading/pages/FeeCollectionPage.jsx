@@ -1329,6 +1329,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
       {(activeTab === 'overview' || activeTab === 'invoices') && (
         <div className="space-y-6">
 
+          {activeTab === 'overview' && (
           <div className="grid">
             {statsLoading && (
               <div className="overflow-hidden">
@@ -1574,6 +1575,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
               </div>
             </div>
           </div>
+          )}
 
           {/* Overview Dashboard — below the stats cards, overview tab only */}
           {activeTab === 'overview' && (
@@ -1593,7 +1595,58 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
           {activeTab === 'invoices' && (
           <>
           <div className="bg-white rounded-xl shadow-sm p-4 border-[0.5px] border-gray-200">
-            <div className="flex flex-wrap items-center gap-4 w-full">          {/* Quick Action Chips Bar (Unified) */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-3">
+              <div className="min-w-[260px] flex-1 lg:max-w-md">
+                <SmartLearnerSearch
+                  learners={allLearners}
+                  selectedLearnerId={searchLearnerId}
+                  onSelect={(id) => {
+                    setSearchLearnerId(id || null);
+                    setCurrentPage(1);
+                  }}
+                  placeholder="Search student..."
+                  compact
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(true)}
+                  className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-blue-600 transition-colors hover:bg-blue-50"
+                >
+                  <Plus size={13} strokeWidth={2.5} />
+                  New Invoice
+                </button>
+                <span className="h-4 w-px bg-gray-200" />
+                <button
+                  type="button"
+                  onClick={() => setShowBulkCreateModal(true)}
+                  className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-indigo-600 transition-colors hover:bg-indigo-50"
+                >
+                  <Users size={13} strokeWidth={2.5} />
+                  Bulk Invoices
+                </button>
+                <span className="h-4 w-px bg-gray-200" />
+                <button
+                  type="button"
+                  onClick={() => setShowImportModal(true)}
+                  className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-emerald-600 transition-colors hover:bg-emerald-50"
+                >
+                  <Upload size={13} strokeWidth={2.5} />
+                  Import
+                </button>
+                <span className="h-4 w-px bg-gray-200" />
+                <button
+                  type="button"
+                  onClick={() => setShowExportModal(true)}
+                  className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-blue-600 transition-colors hover:bg-blue-50"
+                >
+                  <Download size={13} strokeWidth={2.5} />
+                  Export
+                </button>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-4 w-full pt-3">          {/* Quick Action Chips Bar (Unified) */}
               <div className="flex flex-wrap gap-2 items-center flex-1 overflow-x-auto custom-scrollbar whitespace-nowrap pb-1 lg:pb-0">
                 <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mr-1 shrink-0">Quick Filters:</span>
 
@@ -2922,4 +2975,3 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
 };
 
 export default FeeCollectionPage;
-

@@ -29,7 +29,7 @@ import { whatsappService } from '../services/whatsapp.service';
 import { accountingService } from '../services/accounting.service';
 import { complianceService } from '../services/compliance.service';
 import { EmailService } from '../services/email.service';
-import { resolveTransportAmount } from '../services/fee.service';
+import { calculateLearnerInvoice } from '../services/learnerFeeConfiguration.service';
 
 import logger from '../utils/logger';
 function normalizeEnumValue(value?: string): string | undefined {
@@ -579,21 +579,6 @@ export class FeeController {
         ? includeTransport === true || includeTransport === 'true'
         : (learner as any).isTransportStudent;
 
-    const allItems: any[] = (feeStructure as any).feeItems || [];
-    const nonTransportItems = allItems.filter((i: any) => i.feeType?.code !== 'TRANSPORT');
-    const baseTotal = nonTransportItems.reduce(
-      (sum: number, item: any) => sum + Number(item.amount),
-      0
-    );
-
-    // FIX: use canonical resolveTransportAmount instead of inline filter
-    let totalAmount = baseTotal;
-    let transportBilled = 0;
-    if (shouldIncludeTransport) {
-      transportBilled = await resolveTransportAmount(learnerId, allItems);
-      totalAmount += transportBilled;
-    }
-
     // Enforce carry-forward: billed amount for a term must include prior-term outstanding balance.
     const prevCtx = getPreviousTermContext(normalizedTerm, normalizedYear);
     let carryForwardAmount = 0;
@@ -611,7 +596,14 @@ export class FeeController {
       // Use net prior-term balance so credits (negative balances) automatically reduce next-term billed amount.
       carryForwardAmount = previousInvoices.reduce((sum, inv) => sum + Number(inv.balance || 0), 0);
     }
-    totalAmount += carryForwardAmount;
+    const calculation = await calculateLearnerInvoice({
+      learner,
+      feeStructure,
+      term: normalizedTerm,
+      academicYear: normalizedYear,
+      includeTransport: shouldIncludeTransport,
+      carryForwardAmount,
+    });
 
     const existing = await prisma.feeInvoice.findFirst({
       where: { learnerId, feeStructureId, term: normalizedTerm, academicYear: normalizedYear }
@@ -626,13 +618,22 @@ export class FeeController {
         term: normalizedTerm,
         academicYear: normalizedYear,
         dueDate: new Date(dueDate),
-        totalAmount,
+        totalAmount: calculation.totalAmount,
         paidAmount: 0,
-        balance: totalAmount,
-        transportBilled,
+        balance: calculation.totalAmount,
+        transportBilled: calculation.transportAmount,
         transportPaid: 0,
-        transportBalance: transportBilled,
-        status: 'PENDING',
+        transportBalance: calculation.transportAmount,
+        grossAmount: calculation.grossAmount,
+        adjustmentAmount: calculation.adjustmentAmount,
+        sponsorAmount: calculation.sponsorAmount,
+        sponsorPaidAmount: 0,
+        sponsorBalance: calculation.sponsorAmount,
+        studentAmount: calculation.studentAmount,
+        carryForwardAmount: calculation.carryForwardAmount,
+        calculationSnapshot: calculation.calculationSnapshot,
+        feeConfigurationId: calculation.feeConfigurationId,
+        status: calculation.totalAmount === 0 && calculation.sponsorAmount === 0 ? 'PAID' : 'PENDING',
         issuedBy: userId
       },
       {
@@ -700,7 +701,7 @@ export class FeeController {
     if (invoice.status === 'CANCELLED') {
       throw new ApiError(400, 'Cannot edit a cancelled invoice');
     }
-    if (Number(invoice.paidAmount) > 0) {
+    if (Number(invoice.paidAmount) > 0 || Number(invoice.sponsorPaidAmount || 0) > 0) {
       throw new ApiError(
         400,
         'Cannot edit an invoice that already has recorded payments. Reverse the payment(s) first.'
@@ -741,6 +742,88 @@ export class FeeController {
     res.json({ success: true, data: updated });
   }
 
+  async reviseInvoiceFromConfiguration(req: AuthRequest, res: Response) {
+    const { id } = req.params;
+    const reason = String(req.body.reason || '').trim();
+    if (reason.length < 5) throw new ApiError(400, 'A revision reason is required');
+    const invoice = await prisma.feeInvoice.findUnique({
+      where: { id },
+      include: {
+        learner: true,
+        feeStructure: { include: { feeItems: { include: { feeType: true } } } } as any,
+      },
+    });
+    if (!invoice) throw new ApiError(404, 'Invoice not found');
+    if (invoice.status === 'CANCELLED') throw new ApiError(400, 'Cannot revise a cancelled invoice');
+    if (Number(invoice.paidAmount) > 0) {
+      throw new ApiError(400, 'Only unpaid invoices can be revised. Reverse recorded payments first.');
+    }
+
+    const calculation = await calculateLearnerInvoice({
+      learner: invoice.learner,
+      feeStructure: invoice.feeStructure,
+      term: invoice.term,
+      academicYear: invoice.academicYear,
+      includeTransport: Number(invoice.transportBilled) > 0 || invoice.learner.isTransportStudent,
+      carryForwardAmount: Number(invoice.carryForwardAmount || 0),
+    });
+    const revisionNumber = invoice.revisionNumber + 1;
+    const previousSnapshot = {
+      totalAmount: Number(invoice.totalAmount),
+      balance: Number(invoice.balance),
+      grossAmount: Number(invoice.grossAmount || invoice.totalAmount),
+      adjustmentAmount: Number(invoice.adjustmentAmount || 0),
+      sponsorAmount: Number(invoice.sponsorAmount || 0),
+      studentAmount: Number(invoice.studentAmount || invoice.totalAmount),
+      carryForwardAmount: Number(invoice.carryForwardAmount || 0),
+      calculationSnapshot: invoice.calculationSnapshot,
+      feeConfigurationId: invoice.feeConfigurationId,
+    };
+    const revisedSnapshot = { ...calculation, revisionNumber };
+
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.feeInvoiceRevision.create({
+        data: {
+          invoiceId: invoice.id,
+          revisionNumber,
+          reason,
+          previousSnapshot,
+          revisedSnapshot,
+          revisedById: req.user!.userId,
+        },
+      });
+      return tx.feeInvoice.update({
+        where: { id: invoice.id },
+        data: {
+          totalAmount: calculation.totalAmount,
+          balance: calculation.totalAmount,
+          grossAmount: calculation.grossAmount,
+          adjustmentAmount: calculation.adjustmentAmount,
+          sponsorAmount: calculation.sponsorAmount,
+          sponsorPaidAmount: 0,
+          sponsorBalance: calculation.sponsorAmount,
+          studentAmount: calculation.studentAmount,
+          carryForwardAmount: calculation.carryForwardAmount,
+          transportBilled: calculation.transportAmount,
+          transportBalance: calculation.transportAmount,
+          calculationSnapshot: calculation.calculationSnapshot,
+          feeConfigurationId: calculation.feeConfigurationId,
+          revisionNumber,
+          status: calculation.totalAmount === 0 && calculation.sponsorAmount === 0 ? 'PAID' : 'PENDING',
+        },
+        include: { revisions: { orderBy: { revisionNumber: 'desc' } } },
+      });
+    });
+
+    await accountingService.postFeeInvoiceRevisionToLedger(
+      invoice.invoiceNumber,
+      revisionNumber,
+      (calculation.totalAmount + calculation.sponsorAmount)
+        - (Number(invoice.totalAmount) + Number(invoice.sponsorAmount || 0))
+    );
+    res.json({ success: true, data: updated, message: 'Invoice revised from the approved fee configuration' });
+  }
+
   /**
    * Record payment.
    * Status transitions: PENDING/PARTIAL → PARTIAL | PAID | OVERPAID
@@ -753,7 +836,7 @@ export class FeeController {
    * html2canvas / jsPDF with this data.
    */
   async recordPayment(req: AuthRequest, res: Response) {
-    const { invoiceId, learnerId, amount: rawAmount, paymentMethod, paymentDate, referenceNumber, notes, allocatedTuition, allocatedTransport } = req.body;
+    const { invoiceId, learnerId, amount: rawAmount, paymentMethod, paymentDate, referenceNumber, notes, allocatedTuition, allocatedTransport, payerType = 'STUDENT' } = req.body;
     const userId = req.user!.userId;
 
     if ((!invoiceId && !learnerId) || rawAmount === undefined || rawAmount === null || !paymentMethod) {
@@ -803,12 +886,22 @@ export class FeeController {
             return m ? parseInt(m[1], 10) : 0;
           })();
           const receiptNumber = `RCP-${new Date().getFullYear()}-${String(lastSeq + 1).padStart(6, '0')}`;
+          const isSponsorPayment = payerType === 'SPONSOR';
+          if (isSponsorPayment && Number(invoice.sponsorBalance || 0) <= 0) {
+            throw new ApiError(400, 'This invoice has no outstanding sponsor balance');
+          }
+          if (isSponsorPayment && amount > Number(invoice.sponsorBalance || 0) + 0.01) {
+            throw new ApiError(400, 'Sponsor payment cannot exceed the sponsor balance');
+          }
 
           // Calculate Explicit Allocation. Default: Tuition First
           let tuitionChunk = 0;
           let transportChunk = 0;
 
-          if (allocatedTuition !== undefined || allocatedTransport !== undefined) {
+          if (isSponsorPayment) {
+            tuitionChunk = 0;
+            transportChunk = 0;
+          } else if (allocatedTuition !== undefined || allocatedTransport !== undefined) {
              tuitionChunk = Number(allocatedTuition || 0);
              transportChunk = Number(allocatedTransport || 0);
              // Safety check: ensure manually allocated chunks do not exceed total payment
@@ -838,19 +931,23 @@ export class FeeController {
                transportAmount: transportChunk,
                paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
                paymentMethod, 
-               referenceNumber, 
-               notes, 
-               recordedBy: userId 
+                referenceNumber,
+                notes,
+                payerType,
+                recordedBy: userId
             }
           });
 
           const updatedInvoice = await tx.feeInvoice.update({
             where: { id: actualInvoiceId },
-            data: { 
-               paidAmount: { increment: tuitionChunk }, 
-               balance: { decrement: tuitionChunk },
-               transportPaid: { increment: transportChunk },
-               transportBalance: { decrement: transportChunk }
+            data: isSponsorPayment ? {
+              sponsorPaidAmount: { increment: amount },
+              sponsorBalance: { decrement: amount },
+            } : {
+              paidAmount: { increment: tuitionChunk },
+              balance: { decrement: tuitionChunk },
+              transportPaid: { increment: transportChunk },
+              transportBalance: { decrement: transportChunk },
             },
             include: { waivers: { where: { archived: false } } }
           });
@@ -858,13 +955,14 @@ export class FeeController {
           const balance = Number(updatedInvoice.balance);
           const totalAmount = Number(updatedInvoice.totalAmount);
           const paidAmount = Number(updatedInvoice.paidAmount);
+          const sponsorBalance = Number(updatedInvoice.sponsorBalance || 0);
 
           let newStatus: PaymentStatus;
           if (paidAmount > totalAmount) {
             newStatus = 'OVERPAID';
-          } else if (balance <= 0) {
+          } else if (balance <= 0 && sponsorBalance <= 0) {
             newStatus = 'PAID';
-          } else if (paidAmount > 0) {
+          } else if (paidAmount > 0 || Number(updatedInvoice.sponsorPaidAmount || 0) > 0) {
             newStatus = 'PARTIAL';
           } else {
             // Check if there are any waivers (even if balance > 0)
@@ -1266,7 +1364,6 @@ export class FeeController {
 
     // Resolve fee structure per learner (whole school) or single provided structure.
     let structureByGrade = new Map<string, any>();
-    let allItemsByStructureId = new Map<string, any[]>();
 
     if (normalizedScope === 'WHOLE_SCHOOL') {
       const structures = await prisma.feeStructure.findMany({
@@ -1281,7 +1378,6 @@ export class FeeController {
       for (const fs of structures) {
         if (fs.grade && !structureByGrade.has(fs.grade)) {
           structureByGrade.set(fs.grade, fs);
-          allItemsByStructureId.set(fs.id, (fs as any).feeItems || []);
         }
       }
 
@@ -1295,7 +1391,6 @@ export class FeeController {
         include: { feeItems: { include: { feeType: true } } } as any
       });
       if (!feeStructure) throw new ApiError(404, 'Fee structure not found');
-      allItemsByStructureId.set(feeStructure.id, (feeStructure as any).feeItems || []);
     }
 
     // Pre-fetch already-invoiced learners in one query
@@ -1349,20 +1444,26 @@ export class FeeController {
           : { id: feeStructureId };
 
         if (!resolvedStructure?.id) return null;
-        const items = allItemsByStructureId.get(resolvedStructure.id) || [];
-        const nonTransportItems = items.filter((i: any) => i.feeType?.code !== 'TRANSPORT');
-        const baseTotal = nonTransportItems.reduce((sum: number, i: any) => sum + Number(i.amount), 0);
-        const transportAmount = (learner as any).isTransportStudent
-          ? await resolveTransportAmount(learner.id, items)
-          : 0;
         const carryForwardAmount = Number(carryForwardByLearner.get(learner.id) || 0);
-        const totalAmount = baseTotal + transportAmount + carryForwardAmount;
+        const structure = normalizedScope === 'WHOLE_SCHOOL'
+          ? resolvedStructure
+          : await prisma.feeStructure.findUnique({
+              where: { id: resolvedStructure.id },
+              include: { feeItems: { include: { feeType: true } } } as any,
+            });
+        if (!structure) return null;
+        const calculation = await calculateLearnerInvoice({
+          learner,
+          feeStructure: structure,
+          term: normalizedTerm,
+          academicYear: normalizedYear,
+          carryForwardAmount,
+        });
 
         return {
           learner,
           feeStructureId: resolvedStructure.id,
-          transportAmount,
-          totalAmount
+          calculation,
         };
       })
     );
@@ -1399,13 +1500,22 @@ export class FeeController {
                 term: normalizedTerm,
                 academicYear: normalizedYear,
                 dueDate: new Date(dueDate),
-                totalAmount: draft.totalAmount,
+                totalAmount: draft.calculation.totalAmount,
                 paidAmount: 0,
-                balance: draft.totalAmount,
-                transportBilled: draft.transportAmount,
+                balance: draft.calculation.totalAmount,
+                transportBilled: draft.calculation.transportAmount,
                 transportPaid: 0,
-                transportBalance: draft.transportAmount,
-                status: 'PENDING',
+                transportBalance: draft.calculation.transportAmount,
+                grossAmount: draft.calculation.grossAmount,
+                adjustmentAmount: draft.calculation.adjustmentAmount,
+                sponsorAmount: draft.calculation.sponsorAmount,
+                sponsorPaidAmount: 0,
+                sponsorBalance: draft.calculation.sponsorAmount,
+                studentAmount: draft.calculation.studentAmount,
+                carryForwardAmount: draft.calculation.carryForwardAmount,
+                calculationSnapshot: draft.calculation.calculationSnapshot,
+                feeConfigurationId: draft.calculation.feeConfigurationId,
+                status: draft.calculation.totalAmount === 0 && draft.calculation.sponsorAmount === 0 ? 'PAID' : 'PENDING',
                 issuedBy: userId
               }
             });

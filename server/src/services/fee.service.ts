@@ -13,6 +13,7 @@
  */
 
 import prisma from '../config/database';
+import { calculateLearnerInvoice } from './learnerFeeConfiguration.service';
 import { configService } from './config.service';
 import { SmsService } from './sms.service';
 import { EmailService } from './email.service';
@@ -165,23 +166,6 @@ export class FeeService {
         return { success: true, invoice: existingInvoice, created: false };
       }
 
-      // 5. Calculate amount — use resolveTransportAmount() for canonical transport logic
-      const allItems = (feeStructure as any).feeItems || [];
-      const nonTransportItems = allItems.filter((i: any) => i.feeType?.code !== 'TRANSPORT');
-      const baseTotal = nonTransportItems.reduce(
-        (sum: number, item: any) => sum + Number(item.amount),
-        0
-      );
-
-      let totalAmount = baseTotal;
-      if (learner.isTransportStudent) {
-        const transportAmount = await resolveTransportAmount(learnerId, allItems);
-        totalAmount += transportAmount;
-        console.log(
-          `[FeeService] Transport fee for ${learner.admissionNumber}: KES ${transportAmount}`
-        );
-      }
-
       // Carry forward previous-term net balance (positive = outstanding, negative = credit/overpaid)
       const getPreviousTermContext = (
         currentTerm: 'TERM_1' | 'TERM_2' | 'TERM_3',
@@ -193,6 +177,7 @@ export class FeeService {
       };
 
       const prevCtx = getPreviousTermContext(term as any, Number(academicYear));
+      let carryForwardAmount = 0;
       if (prevCtx) {
         const previousInvoices = await prisma.feeInvoice.findMany({
           where: {
@@ -204,12 +189,18 @@ export class FeeService {
           },
           select: { balance: true }
         });
-        const carryForwardAmount = previousInvoices.reduce(
+        carryForwardAmount = previousInvoices.reduce(
           (sum, inv) => sum + Number(inv.balance || 0),
           0
         );
-        totalAmount = totalAmount + carryForwardAmount;
       }
+      const calculation = await calculateLearnerInvoice({
+        learner,
+        feeStructure,
+        term,
+        academicYear,
+        carryForwardAmount,
+      });
 
       // 6. Due date = 14 days from today
       const dueDate = new Date();
@@ -224,10 +215,22 @@ export class FeeService {
           term,
           academicYear,
           dueDate,
-          totalAmount,
+          totalAmount: calculation.totalAmount,
           paidAmount: 0,
-          balance: totalAmount,
-          status: 'PENDING',
+          balance: calculation.totalAmount,
+          transportBilled: calculation.transportAmount,
+          transportPaid: 0,
+          transportBalance: calculation.transportAmount,
+          grossAmount: calculation.grossAmount,
+          adjustmentAmount: calculation.adjustmentAmount,
+          sponsorAmount: calculation.sponsorAmount,
+          sponsorPaidAmount: 0,
+          sponsorBalance: calculation.sponsorAmount,
+          studentAmount: calculation.studentAmount,
+          carryForwardAmount: calculation.carryForwardAmount,
+          calculationSnapshot: calculation.calculationSnapshot,
+          feeConfigurationId: calculation.feeConfigurationId,
+          status: calculation.totalAmount === 0 && calculation.sponsorAmount === 0 ? 'PAID' : 'PENDING',
           issuedBy: 'SYSTEM'
         },
         { learner: true }
@@ -257,14 +260,14 @@ export class FeeService {
             learnerName,
             invoiceNumber: newInvoice.invoiceNumber,
             term: `${term.replace('_', ' ')} ${academicYear}`,
-            amount: totalAmount,
+            amount: calculation.totalAmount,
             dueDate: dueDate.toLocaleDateString()
           }),
           whatsappService.sendFeeReminder({
             parentPhone,
             parentName,
             learnerName,
-            amountDue: totalAmount,
+            amountDue: calculation.totalAmount,
             dueDate: dueDate.toLocaleDateString()
           }),
           ...(learner.parent.email
@@ -276,11 +279,11 @@ export class FeeService {
                   learnerName,
                   invoiceNumber: newInvoice.invoiceNumber,
                   term: `${term.replace('_', ' ')} ${academicYear}`,
-                  amount: totalAmount,
+                  amount: calculation.totalAmount,
                   dueDate: dueDate.toLocaleDateString(),
-                  feeItems: allItems.map((item: any) => ({
-                    name: item.feeType.name,
-                    amount: Number(item.amount)
+                  feeItems: (calculation.calculationSnapshot.lineItems || []).map((item: any) => ({
+                    name: item.name,
+                    amount: Number(item.studentAmount)
                   }))
                 })
               ]

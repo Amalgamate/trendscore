@@ -21,6 +21,23 @@ export const feeAPI = {
     return fetchWithAuth(`/fees/invoices/aggregates${query ? `?${query}` : ''}`);
   },
   getLearnerInvoices: async (learnerId) => fetchWithAuth(`/fees/invoices/learner/${learnerId}`),
+  getLearnerFeeConfigurations: async (learnerId) =>
+    fetchWithAuth(`/fees/configurations/learner/${learnerId}`),
+  createLearnerFeeConfiguration: async (data) =>
+    fetchWithAuth('/fees/configurations', { method: 'POST', body: JSON.stringify(data) }),
+  updateLearnerFeeConfiguration: async (id, data) =>
+    fetchWithAuth(`/fees/configurations/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  approveLearnerFeeConfiguration: async (id) =>
+    fetchWithAuth(`/fees/configurations/${id}/approve`, { method: 'PATCH', body: JSON.stringify({}) }),
+  revokeLearnerFeeConfiguration: async (id) =>
+    fetchWithAuth(`/fees/configurations/${id}/revoke`, { method: 'PATCH', body: JSON.stringify({}) }),
+  previewLearnerFeeConfiguration: async (data) =>
+    fetchWithAuth('/fees/configurations/preview', { method: 'POST', body: JSON.stringify(data) }),
+  reviseInvoiceFromConfiguration: async (id, reason) =>
+    fetchWithAuth(`/fees/invoices/${id}/revise-configuration`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
   createInvoice: async (data) =>
     fetchWithAuth('/fees/invoices', { method: 'POST', body: JSON.stringify(data) }),
   bulkGenerateInvoices: async (data) =>

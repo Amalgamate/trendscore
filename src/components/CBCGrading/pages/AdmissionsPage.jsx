@@ -213,7 +213,7 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null, learnerId 
     const finalFormData = {
       ...data,
       ...primaryContact,
-      generateInvoice: data.isScholarshipStudent ? false : generateInvoice
+      generateInvoice
     };
     return sanitizeLearnerPayload(finalFormData);
   }, [generateInvoice]);
@@ -524,7 +524,7 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null, learnerId 
     const finalFormData = {
       ...formData,
       ...primaryContact,
-      generateInvoice: formData.isScholarshipStudent ? false : generateInvoice,
+      generateInvoice,
       changeReason: hasSensitiveFieldChanges ? changeReason.trim() : undefined
     };
 
@@ -876,13 +876,12 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null, learnerId 
                                     scholarshipType: checked ? (formData.scholarshipType || 'FULL') : '',
                                     scholarshipAmount: checked ? formData.scholarshipAmount : ''
                                   });
-                                  if (checked) setGenerateInvoice(false);
                                 }}
                             className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500 cursor-pointer"
                           />
                           <label htmlFor="isScholarshipStudent" className="flex flex-col cursor-pointer">
                             <span className="text-sm font-medium text-amber-800">Scholarship Student</span>
-                            <span className="text-[10px] text-amber-700 uppercase tracking-widest font-semibold font-mono">Optional. Scholarship learners are not invoiced automatically.</span>
+                            <span className="text-[10px] text-amber-700 uppercase tracking-widest font-semibold font-mono">Scholarship terms are applied to the generated invoice for a complete audit trail.</span>
                           </label>
                         </div>
                         {formData.isScholarshipStudent && (

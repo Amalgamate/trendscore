@@ -2,9 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { lazy, Suspense } from 'react';
 import { HashRouter, Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
-
-const Auth = lazy(() => import('./pages/Auth'));
-const CBCGradingSystem = lazy(() => import('./components/CBCGrading/CBCGradingSystem'));
 import SplashScreen from './components/common/SplashScreen';
 import { Toaster } from 'react-hot-toast';
 import { SchoolDataProvider } from './contexts/SchoolDataContext';
@@ -12,12 +9,16 @@ import { FeeActionsProvider } from './contexts/FeeActionsContext';
 import { UserNotificationProvider } from './contexts/UserNotificationContext';
 import { ChatProvider } from './contexts/ChatContext';
 import { RolePreviewProvider } from './contexts/RolePreviewContext';
+import FeeApprovalReminder from './components/CBCGrading/layout/FeeApprovalReminder';
 import axiosInstance from './services/api/axiosConfig';
 import { useBootstrapStore } from './store/useBootstrapStore';
 
 import useSubjectStore from './store/useSubjectStore';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import { LEGACY_BRAND_NAMES, PRODUCT_DISPLAY_NAME } from './config/productIdentity';
+
+const Auth = lazy(() => import('./pages/Auth'));
+const CBCGradingSystem = lazy(() => import('./components/CBCGrading/CBCGradingSystem'));
 
 // ── SW update banner ─────────────────────────────────────────────────────────
 function SWUpdateBanner() {
@@ -311,6 +312,7 @@ function AppContent() {
                             />
                           </RolePreviewProvider>
                         </ChatProvider>
+                        <FeeApprovalReminder />
                       </UserNotificationProvider>
                     </FeeActionsProvider>
                   </SchoolDataProvider>

@@ -92,6 +92,8 @@ export default function InvoiceA5({ invoice, schoolInfo, onClose }) {
   const learner    = invoice.learner  || {};
   const structure  = invoice.feeStructure || {};
   const feeItems   = structure.feeItems   || [];
+  const snapshotItems = invoice.calculationSnapshot?.lineItems || [];
+  const displayItems = snapshotItems.length ? snapshotItems : feeItems;
   const payments   = invoice.payments     || [];
   const waivers    = (invoice.waivers || []).filter(w => w.status === 'APPROVED' || w.amountWaived);
 
@@ -356,7 +358,7 @@ export default function InvoiceA5({ invoice, schoolInfo, onClose }) {
 
           {/* Rows */}
           <div style={{ border:`1px solid ${BRAND.border}`, borderTop:'none', borderRadius:'0 0 4px 4px', overflow:'hidden' }}>
-            {feeItems.length === 0 ? (
+            {displayItems.length === 0 ? (
               /* Fallback single row when feeItems not populated */
               <TableRow
                 name={structure.name || 'School Fees'}
@@ -365,24 +367,24 @@ export default function InvoiceA5({ invoice, schoolInfo, onClose }) {
                 idx={0}
               />
             ) : (
-              feeItems.map((item, idx) => (
+              displayItems.map((item, idx) => (
                 <TableRow
                   key={item.id || idx}
                   name={item.feeType?.name || item.name || 'Fee'}
-                  type={item.mandatory !== false ? 'MANDATORY' : 'OPTIONAL'}
-                  amount={fmt(item.amount)}
+                  type={item.mode || (item.mandatory !== false ? 'MANDATORY' : 'OPTIONAL')}
+                  amount={fmt(item.studentAmount ?? item.amount)}
                   idx={idx}
                 />
               ))
             )}
 
             {/* Transport row if visible in total but not in items */}
-            {learner.isTransportStudent && !feeItems.find(i => i.feeType?.code === 'TRANSPORT') && (
+            {learner.isTransportStudent && !displayItems.find(i => (i.feeType?.code || i.code) === 'TRANSPORT') && (
               <TableRow
                 name="Transport Fee"
                 type="OPTIONAL"
                 amount="—"
-                idx={feeItems.length}
+                idx={displayItems.length}
                 italic
               />
             )}
@@ -428,7 +430,19 @@ export default function InvoiceA5({ invoice, schoolInfo, onClose }) {
             borderRadius:'6px', overflow:'hidden',
             flexShrink:0,
           }}>
-            <TotalRow label="Total Charged" value={`KES ${fmt(totalCharged)}`} />
+            {invoice.grossAmount !== null && invoice.grossAmount !== undefined && (
+              <TotalRow label="Standard Fees" value={`KES ${fmt(invoice.grossAmount)}`} />
+            )}
+            {Number(invoice.adjustmentAmount || 0) !== 0 && (
+              <TotalRow label="Adjustments" value={`KES ${fmt(invoice.adjustmentAmount)}`} color="#0D9488" />
+            )}
+            {Number(invoice.sponsorAmount || 0) > 0 && (
+              <TotalRow label="Sponsor Portion" value={`KES ${fmt(invoice.sponsorAmount)}`} color="#4F46E5" />
+            )}
+            {Number(invoice.sponsorBalance || 0) > 0 && (
+              <TotalRow label="Sponsor Balance" value={`KES ${fmt(invoice.sponsorBalance)}`} color="#4F46E5" />
+            )}
+            <TotalRow label="Student Invoice" value={`KES ${fmt(totalCharged)}`} />
             {totalPaid > 0 && <TotalRow label="Total Paid"    value={`KES ${fmt(totalPaid)}`}    color="#15803d" />}
             {totalWaived > 0 && <TotalRow label="Waived"     value={`KES ${fmt(totalWaived)}`}   color="#0D9488" />}
             <TotalRow

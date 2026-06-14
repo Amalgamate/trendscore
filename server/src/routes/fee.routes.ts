@@ -27,6 +27,7 @@ import { Router } from 'express';
 import { FeeController } from '../controllers/fee.controller';
 import { feeWaiverController } from '../controllers/feeWaiver.controller';
 import { feeCommentsController } from '../controllers/feeComments.controller';
+import { learnerFeeConfigurationController } from '../controllers/learnerFeeConfiguration.controller';
 import { authenticate } from '../middleware/auth.middleware';
 import { requirePermission, requireRole, auditLog } from '../middleware/permissions.middleware';
 import { requireSchoolContext } from '../middleware/school.middleware';
@@ -71,6 +72,7 @@ const processPaymentSchema = z.object({
   paymentDate: z.string().min(1).optional(),
   referenceNumber: z.string().min(1).nullable().optional(),
   notes: z.string().nullable().optional(),
+  payerType: z.enum(['STUDENT', 'SPONSOR']).optional(),
   allocatedTuition: z.number().nonnegative().optional(),
   allocatedTransport: z.number().nonnegative().optional()
 }).superRefine((data, ctx) => {
@@ -129,6 +131,33 @@ const cancelInvoiceSchema = z.object({
   reason: z.string().max(500).optional()
 });
 
+const feeAdjustmentSchema = z.object({
+  feeTypeId: z.string().min(1),
+  mode: z.enum([
+    'STANDARD', 'EXEMPT', 'FIXED_STUDENT_AMOUNT', 'PERCENT_DISCOUNT',
+    'FIXED_DISCOUNT', 'SPONSOR_FULL', 'SPONSOR_FIXED', 'SPONSOR_PERCENT',
+    'CUSTOM_AMOUNT', 'EXCLUDE'
+  ]),
+  value: z.union([z.string(), z.number()]).optional(),
+  included: z.boolean().optional(),
+});
+
+const feeConfigurationSchema = z.object({
+  learnerId: z.string().min(1),
+  name: z.string().min(2).max(120),
+  status: z.enum(['DRAFT', 'PENDING_APPROVAL']).optional(),
+  startTerm: z.enum(['TERM_1', 'TERM_2', 'TERM_3']),
+  startAcademicYear: z.number().int().min(2000),
+  endTerm: z.enum(['TERM_1', 'TERM_2', 'TERM_3']).nullable().optional(),
+  endAcademicYear: z.number().int().min(2000).nullable().optional(),
+  fullExemption: z.boolean().optional(),
+  sponsorName: z.string().max(150).nullable().optional(),
+  sponsorReference: z.string().max(150).nullable().optional(),
+  reason: z.string().max(500).nullable().optional(),
+  notes: z.string().max(1000).nullable().optional(),
+  adjustments: z.array(feeAdjustmentSchema),
+});
+
 // ─── Global Middleware ─────────────────────────────────────────────────────
 
 router.use(authenticate, requireSchoolContext);
@@ -170,6 +199,50 @@ router.delete(
   rateLimit({ windowMs: 60_000, maxRequests: 10 }),
   auditLog('DELETE_FEE_STRUCTURE'),
   asyncHandler(feeController.deleteFeeStructure.bind(feeController))
+);
+
+// ─── Learner Fee Configurations ─────────────────────────────────────────────
+
+router.get(
+  '/configurations/learner/:learnerId',
+  requirePermission('FEE_MANAGEMENT'),
+  asyncHandler(learnerFeeConfigurationController.list.bind(learnerFeeConfigurationController))
+);
+
+router.post(
+  '/configurations',
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  validate(feeConfigurationSchema),
+  auditLog('CREATE_LEARNER_FEE_CONFIGURATION'),
+  asyncHandler(learnerFeeConfigurationController.create.bind(learnerFeeConfigurationController))
+);
+
+router.patch(
+  '/configurations/:id',
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  validate(feeConfigurationSchema.partial()),
+  auditLog('UPDATE_LEARNER_FEE_CONFIGURATION'),
+  asyncHandler(learnerFeeConfigurationController.update.bind(learnerFeeConfigurationController))
+);
+
+router.patch(
+  '/configurations/:id/approve',
+  requireRole(['ADMIN', 'SUPER_ADMIN']),
+  auditLog('APPROVE_LEARNER_FEE_CONFIGURATION'),
+  asyncHandler(learnerFeeConfigurationController.approve.bind(learnerFeeConfigurationController))
+);
+
+router.patch(
+  '/configurations/:id/revoke',
+  requireRole(['ADMIN', 'SUPER_ADMIN']),
+  auditLog('REVOKE_LEARNER_FEE_CONFIGURATION'),
+  asyncHandler(learnerFeeConfigurationController.revoke.bind(learnerFeeConfigurationController))
+);
+
+router.post(
+  '/configurations/preview',
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  asyncHandler(learnerFeeConfigurationController.preview.bind(learnerFeeConfigurationController))
 );
 
 // ─── Invoices ──────────────────────────────────────────────────────────────
@@ -245,6 +318,13 @@ router.patch(
   validate(updateInvoiceSchema),
   auditLog('UPDATE_INVOICE'),
   asyncHandler(feeController.updateInvoice.bind(feeController))
+);
+
+router.post(
+  '/invoices/:id/revise-configuration',
+  requireRole(['ADMIN', 'SUPER_ADMIN']),
+  auditLog('REVISE_INVOICE_FROM_FEE_CONFIGURATION'),
+  asyncHandler(feeController.reviseInvoiceFromConfiguration.bind(feeController))
 );
 
 /**

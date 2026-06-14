@@ -402,6 +402,7 @@ model Learner {
   isScholarshipStudent   Boolean                   @default(false)
   scholarshipType        String?
   scholarshipAmount      Decimal?                  @db.Decimal(12, 2)
+  feeConfigurations      LearnerFeeConfiguration[]
   idCardIssued           DateTime?
   idCardExpiry           DateTime?
   idCardNumber           String?
@@ -1174,6 +1175,16 @@ model FeeInvoice {
   transportBilled  Decimal       @default(0) @db.Decimal(10, 2)
   transportPaid    Decimal       @default(0) @db.Decimal(10, 2)
   transportBalance Decimal       @default(0) @db.Decimal(10, 2)
+  grossAmount      Decimal?      @db.Decimal(10, 2)
+  adjustmentAmount Decimal?      @db.Decimal(10, 2)
+  sponsorAmount    Decimal?      @db.Decimal(10, 2)
+  sponsorPaidAmount Decimal      @default(0) @db.Decimal(10, 2)
+  sponsorBalance   Decimal       @default(0) @db.Decimal(10, 2)
+  studentAmount    Decimal?      @db.Decimal(10, 2)
+  carryForwardAmount Decimal?    @db.Decimal(10, 2)
+  calculationSnapshot Json?
+  feeConfigurationId String?
+  revisionNumber   Int          @default(0)
 
   feeStructure     FeeStructure  @relation(fields: [feeStructureId], references: [id])
   learner          Learner       @relation("LearnerInvoices", fields: [learnerId], references: [id], onDelete: Cascade)
@@ -1181,6 +1192,7 @@ model FeeInvoice {
   comments         FeeComment[]
   pledges          FeePledge[]
   waivers          FeeWaiver[]
+  revisions        FeeInvoiceRevision[]
 
   @@index([learnerId])
   @@index([term, academicYear])
@@ -1192,6 +1204,51 @@ model FeeInvoice {
   @@map("fee_invoices")
 }
 
+model LearnerFeeConfiguration {
+  id                 String   @id @default(uuid())
+  learnerId          String
+  name               String
+  status             String   @default("DRAFT")
+  startTerm          Term
+  startAcademicYear  Int
+  endTerm            Term?
+  endAcademicYear    Int?
+  fullExemption      Boolean  @default(false)
+  sponsorName        String?
+  sponsorReference   String?
+  reason             String?
+  notes              String?
+  adjustments        Json
+  createdById        String
+  approvedById       String?
+  approvedAt         DateTime?
+  revokedById        String?
+  revokedAt          DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  learner            Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+
+  @@index([learnerId, status])
+  @@index([startAcademicYear, startTerm])
+  @@map("learner_fee_configurations")
+}
+
+model FeeInvoiceRevision {
+  id              String     @id @default(uuid())
+  invoiceId       String
+  revisionNumber  Int
+  reason          String
+  previousSnapshot Json
+  revisedSnapshot  Json
+  revisedById     String
+  createdAt       DateTime   @default(now())
+  invoice         FeeInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@unique([invoiceId, revisionNumber])
+  @@index([invoiceId])
+  @@map("fee_invoice_revisions")
+}
+
 model FeePayment {
   id              String        @id @default(uuid())
   receiptNumber   String        @unique
@@ -1200,6 +1257,7 @@ model FeePayment {
   paymentMethod   PaymentMethod
   paymentDate     DateTime      @default(now())
   referenceNumber String?
+  payerType       String        @default("STUDENT")
   notes           String?
   createdAt       DateTime      @default(now())
   recordedBy      String

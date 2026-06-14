@@ -304,9 +304,15 @@ const InvoiceDetailPage = ({ invoice }) => {
       </div>
 
       {/* Quick stats */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className={`grid gap-4 ${Number(invoice.sponsorAmount || 0) > 0 ? 'grid-cols-5' : 'grid-cols-4'}`}>
         {[
           { label: 'Total Due', value: `KES ${Number(invoice.totalAmount).toLocaleString()}`, color: 'text-gray-900', bg: 'bg-white' },
+          ...(Number(invoice.sponsorAmount || 0) > 0 ? [{
+            label: 'Sponsor Portion',
+            value: `KES ${Number(invoice.sponsorAmount).toLocaleString()}`,
+            color: 'text-indigo-600',
+            bg: 'bg-indigo-50/50 border-indigo-100'
+          }] : []),
           { label: 'Total Paid', value: `KES ${Number(invoice.paidAmount).toLocaleString()}`, color: 'text-green-600', bg: 'bg-white' },
           { label: 'Waived', value: `KES ${(invoice.waivers || []).reduce((acc, w) => acc + Number(w.amountWaived), 0).toLocaleString()}`, color: 'text-teal-600', bg: 'bg-white' },
           { 

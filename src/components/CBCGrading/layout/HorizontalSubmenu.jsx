@@ -183,8 +183,6 @@ const HorizontalSubmenu = ({ currentPage, onNavigate }) => {
   // Show fee action links only while on the fee collection page
   const showFeeActions = [
     'fees-overview',
-    'fees-collection',
-    'fees-invoices',
     'fees-structure',
     'fees-types',
     'fees-waivers',

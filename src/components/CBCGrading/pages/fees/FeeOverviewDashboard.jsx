@@ -8,7 +8,7 @@
 import React, { useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import {
-  TrendingUp, TrendingDown, AlertTriangle, AlertCircle, Clock,
+  TrendingDown, AlertTriangle, AlertCircle, Clock,
   Users, ChevronRight, RefreshCw, Trophy, Award, Frown,
   Calendar, MessageSquare, Smartphone, Banknote, Building2,
   CreditCard, CheckCircle, ArrowRight, Target, Zap, Star
@@ -93,112 +93,170 @@ function DonutChart({ collected, outstanding, waived, total }) {
   );
 }
 
-/* ─── Sparkline bar chart (weekly trend mock) ─────────────────────────── */
-function WeeklyTrendChart({ invoices }) {
-  // Group payments by week (last 5 weeks) from invoice.payments[].createdAt
-  const weeks = useMemo(() => {
-    const now = new Date();
-    const buckets = Array.from({ length: 5 }, (_, i) => {
-      const d = new Date(now);
-      d.setDate(d.getDate() - (4 - i) * 7);
-      return { label: i < 4 ? `Week ${i + 1}` : 'This Week', start: new Date(d.setDate(d.getDate() - 6)), end: new Date(d.setDate(d.getDate() + 6)), total: 0, lastYear: 0 };
-    });
+/* ─── Payment by Grade widget ────────────────────────────────────────────── */
+function PaymentByGrade({ invoices }) {
+  const [selectedGrade, setSelectedGrade] = useState('ALL');
+  const [hoveredBar, setHoveredBar] = useState(null);
 
+  // Build per-grade totals
+  const { gradeMap, allGrades } = useMemo(() => {
+    const map = {};
     (invoices || []).forEach(inv => {
-      (inv.payments || []).forEach(p => {
-        const d = new Date(p.paymentDate || p.createdAt || p.paidAt || inv.createdAt);
-        if (isNaN(d)) return;
-        buckets.forEach(b => {
-          if (d >= b.start && d <= b.end) b.total += Number(p.amount || 0);
-        });
-      });
-      // If no payment breakdown, use invoice paidAmount and invoice date for current term
-      if (!(inv.payments?.length)) {
-        const d = new Date(inv.createdAt);
-        if (isNaN(d)) return;
-        buckets.forEach(b => {
-          if (d >= b.start && d <= b.end) b.total += Number(inv.paidAmount || 0);
-        });
-      }
+      const g = inv?.learner?.grade || 'Unknown';
+      if (!map[g]) map[g] = { paid: 0, partial: 0, unpaid: 0, total: 0 };
+      const billed  = Number(inv.totalAmount || 0);
+      const paidAmt = inv.payments?.length
+        ? inv.payments.reduce((s, p) => s + Number(p.amount || 0), 0)
+        : Number(inv.paidAmount || 0);
+      const balance = Math.max(0, billed - paidAmt);
+      map[g].total++;
+      if (paidAmt <= 0)      map[g].unpaid++;
+      else if (balance <= 0) map[g].paid++;
+      else                   map[g].partial++;
     });
-
-    // Simulate "last term" as ~80% of this term staggered
-    return buckets.map((b, i) => ({
-      ...b,
-      lastYear: Math.round(b.total * (0.72 + i * 0.04))
-    }));
+    const grades = Object.keys(map).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    return { gradeMap: map, allGrades: grades };
   }, [invoices]);
 
-  const maxVal = Math.max(...weeks.map(w => w.total), 1);
+  // Active dataset — either all grades summed, or one grade
+  const counts = useMemo(() => {
+    if (selectedGrade === 'ALL') {
+      return Object.values(gradeMap).reduce(
+        (acc, g) => ({ paid: acc.paid + g.paid, partial: acc.partial + g.partial, unpaid: acc.unpaid + g.unpaid, total: acc.total + g.total }),
+        { paid: 0, partial: 0, unpaid: 0, total: 0 }
+      );
+    }
+    return gradeMap[selectedGrade] || { paid: 0, partial: 0, unpaid: 0, total: 0 };
+  }, [gradeMap, selectedGrade]);
 
-  const [hovered, setHovered] = useState(null);
+  const BARS = [
+    { key: 'paid',    label: 'Paid',    fill: 'linear-gradient(to top,#15803d,#4ade80)', dot: '#22c55e', shadow: 'rgba(34,197,94,0.25)'  },
+    { key: 'partial', label: 'Partial', fill: 'linear-gradient(to top,#92400e,#fcd34d)', dot: '#f59e0b', shadow: 'rgba(245,158,11,0.25)' },
+    { key: 'unpaid',  label: 'Unpaid',  fill: 'linear-gradient(to top,#991b1b,#f87171)', dot: '#ef4444', shadow: 'rgba(239,68,68,0.25)'  },
+  ];
+
+  const CHART_H  = 130;
+  const maxCount = Math.max(counts.paid, counts.partial, counts.unpaid, 1);
+
+  // Nice Y-axis ticks
+  const yMax   = Math.ceil(maxCount / 5) * 5 || 5;
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(f * yMax));
 
   return (
-    <div className="w-full">
-      {/* Y-axis labels + bars */}
-      <div className="flex items-end gap-3 h-36 px-1">
-        {weeks.map((w, i) => {
-          const thisH = Math.max(4, (w.total / maxVal) * 120);
-          const lastH = Math.max(4, (w.lastYear / maxVal) * 120);
-          return (
-            <div
-              key={i}
-              className="flex-1 flex flex-col items-center gap-1 relative cursor-pointer"
-              onMouseEnter={() => setHovered(i)}
-              onMouseLeave={() => setHovered(null)}
-            >
-              {/* Tooltip */}
-              {hovered === i && (
-                <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] rounded-lg px-2 py-1 whitespace-nowrap z-10 shadow-lg">
-                  <div className="text-emerald-300">This: {fmtK(w.total)}</div>
-                  <div className="text-gray-400">Last: {fmtK(w.lastYear)}</div>
-                </div>
-              )}
-              {/* Value label */}
-              <span className="text-[10px] font-semibold text-gray-700 mb-0.5">{fmtK(w.total)}</span>
-              {/* Bars side by side */}
-              <div className="flex items-end gap-0.5 w-full justify-center">
-                <div
-                  className="rounded-t-md transition-all duration-500 w-3"
-                  style={{
-                    height: thisH,
-                    background: i === weeks.length - 1
-                      ? 'linear-gradient(to top, #059669, #34d399)'
-                      : 'linear-gradient(to top, #0ea5e9, #38bdf8)'
-                  }}
-                />
-                <div
-                  className="rounded-t-md transition-all duration-500 w-3"
-                  style={{
-                    height: lastH,
-                    background: 'linear-gradient(to top, #e2e8f0, #cbd5e1)'
-                  }}
-                />
-              </div>
+    <div className="w-full flex flex-col gap-3">
+
+      {/* Dropdown */}
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] text-gray-500 font-medium">
+          {selectedGrade === 'ALL'
+            ? `All grades · ${counts.total} students`
+            : `${selectedGrade} · ${counts.total} students`}
+        </p>
+        <select
+          value={selectedGrade}
+          onChange={e => setSelectedGrade(e.target.value)}
+          className="text-[11px] font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1 cursor-pointer hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all"
+        >
+          <option value="ALL">All Grades</option>
+          {allGrades.map(g => <option key={g} value={g}>{g}</option>)}
+        </select>
+      </div>
+
+      {/* Chart */}
+      <div className="flex gap-2 w-full">
+
+        {/* Y-axis */}
+        <div className="flex flex-col justify-between items-end pr-1 shrink-0 pb-7" style={{ height: CHART_H + 28 }}>
+          {[...yTicks].reverse().map(tick => (
+            <span key={tick} className="text-[10px] text-gray-400 font-medium leading-none tabular-nums">
+              {tick}
+            </span>
+          ))}
+        </div>
+
+        {/* Plot + X-axis */}
+        <div className="flex-1 flex flex-col">
+
+          {/* Bar area */}
+          <div className="relative border-l-2 border-b-2 border-gray-200 rounded-bl" style={{ height: CHART_H }}>
+
+            {/* Grid lines */}
+            {[0.25, 0.5, 0.75, 1].map(f => (
+              <div
+                key={f}
+                className="absolute left-0 right-0 pointer-events-none"
+                style={{ top: `${(1 - f) * 100}%`, borderTop: f === 1 ? '1px dashed #e2e8f0' : '1px dashed #f1f5f9' }}
+              />
+            ))}
+
+            {/* 3 bars — evenly spaced */}
+            <div className="absolute inset-0 flex items-end justify-around px-6 pb-0">
+              {BARS.map(bar => {
+                const val  = counts[bar.key] || 0;
+                const pct  = counts.total > 0 ? Math.round((val / counts.total) * 100) : 0;
+                const h    = Math.max(val > 0 ? 6 : 0, (val / yMax) * (CHART_H - 4));
+                const isHov = hoveredBar === bar.key;
+
+                return (
+                  <div key={bar.key} className="flex flex-col items-center gap-1 w-16">
+                    {/* Value label above bar */}
+                    <span
+                      className="text-[11px] font-bold transition-opacity duration-200"
+                      style={{ color: bar.dot, opacity: val > 0 ? 1 : 0.3 }}
+                    >
+                      {val}
+                    </span>
+
+                    {/* Bar */}
+                    <div className="relative w-full flex justify-center">
+                      {/* Tooltip */}
+                      {isHov && (
+                        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] rounded-lg px-2.5 py-1.5 whitespace-nowrap z-30 shadow-xl pointer-events-none">
+                          <div className="font-bold" style={{ color: bar.dot }}>{bar.label}</div>
+                          <div>{val} students &nbsp;·&nbsp; <span className="font-semibold">{pct}%</span></div>
+                        </div>
+                      )}
+                      <div
+                        className="rounded-t-md transition-all duration-600 cursor-default w-12"
+                        style={{
+                          height: h,
+                          background: bar.fill,
+                          boxShadow: isHov ? `0 -4px 16px 0 ${bar.shadow}` : 'none',
+                          transform: isHov ? 'scaleY(1.03) scaleX(1.05)' : 'scaleY(1)',
+                          transformOrigin: 'bottom',
+                          transition: 'all 0.25s ease',
+                        }}
+                        onMouseEnter={() => setHoveredBar(bar.key)}
+                        onMouseLeave={() => setHoveredBar(null)}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
-      </div>
-      {/* X labels */}
-      <div className="flex gap-3 px-1 mt-1">
-        {weeks.map((w, i) => (
-          <div key={i} className="flex-1 text-center text-[10px] text-gray-400 font-medium">{w.label}</div>
-        ))}
-      </div>
-      {/* Legend */}
-      <div className="flex items-center gap-4 mt-2 px-1">
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-2 rounded bg-sky-400" />
-          <span className="text-[10px] text-gray-500">This Term</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-2 rounded bg-slate-300" />
-          <span className="text-[10px] text-gray-500">Last Term</span>
+          </div>
+
+          {/* X-axis labels */}
+          <div className="flex justify-around px-6 mt-1.5">
+            {BARS.map(bar => (
+              <div key={bar.key} className="w-16 flex flex-col items-center gap-0.5">
+                <span className="text-[11px] font-bold" style={{ color: bar.dot }}>{bar.label}</span>
+                <span className="text-[9px] text-gray-400 font-medium">
+                  {counts.total > 0 ? `${Math.round((counts[bar.key] / counts.total) * 100)}%` : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
+
+      {/* Y-axis label */}
+      <p className="text-[9px] text-gray-400 pl-8">Y = No. of students &nbsp;·&nbsp; Use dropdown to filter by grade</p>
     </div>
   );
 }
+
+
 
 /* ─── Attention alert item ─────────────────────────────────────────────── */
 function AlertItem({ icon: Icon, iconBg, text, sub, onClick }) {
@@ -468,15 +526,15 @@ export default function FeeOverviewDashboard({
           </div>
         </div>
 
-        {/* Weekly trend bars */}
+        {/* Payment by Grade */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Weekly Collection Trend</h3>
-            <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
-              <TrendingUp size={10} /> {termLabel}
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Payment by Grade</h3>
+            <span className="text-[10px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full font-medium">
+              {termLabel}
             </span>
           </div>
-          <WeeklyTrendChart invoices={invoices} />
+          <PaymentByGrade invoices={invoices} />
         </div>
 
         {/* Attention Required alerts */}
