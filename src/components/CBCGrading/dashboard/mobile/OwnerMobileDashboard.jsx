@@ -1,13 +1,15 @@
 /**
  * Owner/Admin Mobile Dashboard
  * Compact mobile view for executives with combined greeting/clock-in banner,
- * entity stat cards with attendance counts, and geofenced clock-in.
+ * entity stat cards with attendance counts, and IP-based clock-in.
+ *
+ * NOTE: Location/GPS geofence has been replaced with IP-based verification.
+ * Staff must be connected to the school Wi-Fi to clock in.
  */
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Users, GraduationCap, UserCheck, MapPin, Clock, CheckCircle, Loader2, AlertTriangle } from 'lucide-react';
+import { Users, GraduationCap, UserCheck, Wifi, WifiOff, Clock, Loader2 } from 'lucide-react';
 import { dashboardAPI } from '../../../../services/api';
-import axiosInstance from '../../../../services/api/axiosConfig';
 import { GreetingToast } from '../../pages/dashboard/DashboardSummary';
 import {
   clockInTeacher,
@@ -16,19 +18,26 @@ import {
 } from '../../../../utils/teacherClockIn';
 import MobileBottomNav from './MobileBottomNav';
 
-// ─── Haversine distance in metres ─────────────────────────────────────────────
-function haversineMetres(lat1, lon1, lat2, lon2) {
-  const R = 6_371_000;
-  const toRad = (d) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-const GEOFENCE_RADIUS_M = 30;
+// ── GPS / Geofence (DISABLED — replaced by IP/Wi-Fi check) ───────────────────
+// Location-based clock-in is paused because indoor GPS accuracy (5–50 m) causes
+// legitimate staff to be rejected. Restore by un-commenting the block below and
+// wiring geoStatus back into handleClockAction / ClockInButton.
+//
+// import axiosInstance from '../../../../services/api/axiosConfig';
+//
+// function haversineMetres(lat1, lon1, lat2, lon2) {
+//   const R = 6_371_000;
+//   const toRad = (d) => (d * Math.PI) / 180;
+//   const dLat = toRad(lat2 - lat1);
+//   const dLon = toRad(lon2 - lon1);
+//   const a =
+//     Math.sin(dLat / 2) ** 2 +
+//     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+//   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+// }
+//
+// const GEOFENCE_RADIUS_M = 30;
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Tone helpers ─────────────────────────────────────────────────────────────
 const CARD_TONES = {
@@ -71,30 +80,52 @@ const StatCard = ({ tone = 'navy', icon: Icon, label, value, subvalue, chips = [
 
 // ─── useClockIn hook ──────────────────────────────────────────────────────────
 function useClockIn(user) {
-  const [geoStatus, setGeoStatus] = useState('idle');
-  const [distance, setDistance] = useState(null);
   const [clockStatus, setClockStatus] = useState(null);
   const [clocking, setClocking] = useState(false);
-  const watchIdRef = useRef(null);
-  const schoolLoadedRef = useRef(false);
-  const [schoolCoords, setSchoolCoords] = useState(null);
-  // Keep the latest GPS position so we can send coords to the server on action
-  const lastPositionRef = useRef(null);
+  const [ipDenied, setIpDenied] = useState(false);
+  const [errorMsg, setErrorMsg] = useState(null);
 
-  // Load school pin
-  useEffect(() => {
-    if (schoolLoadedRef.current) return;
-    schoolLoadedRef.current = true;
-    axiosInstance.get('/schools')
-      .then((res) => {
-        const school = res.data?.data || res.data;
-        const lat = parseFloat(school?.latitude);
-        const lng = parseFloat(school?.longitude);
-        if (!isNaN(lat) && !isNaN(lng)) setSchoolCoords({ lat, lng });
-        else setGeoStatus('unsupported');
-      })
-      .catch(() => setGeoStatus('error'));
-  }, []);
+  // ── GPS / Geofence state (DISABLED — see comment block at top of file) ──────
+  // const [geoStatus, setGeoStatus] = useState('idle');
+  // const [distance, setDistance] = useState(null);
+  // const watchIdRef = useRef(null);
+  // const schoolLoadedRef = useRef(false);
+  // const [schoolCoords, setSchoolCoords] = useState(null);
+  // const lastPositionRef = useRef(null);
+  //
+  // // Load school GPS pin
+  // useEffect(() => {
+  //   if (schoolLoadedRef.current) return;
+  //   schoolLoadedRef.current = true;
+  //   axiosInstance.get('/schools')
+  //     .then((res) => {
+  //       const school = res.data?.data || res.data;
+  //       const lat = parseFloat(school?.latitude);
+  //       const lng = parseFloat(school?.longitude);
+  //       if (!isNaN(lat) && !isNaN(lng)) setSchoolCoords({ lat, lng });
+  //       else setGeoStatus('unsupported');
+  //     })
+  //     .catch(() => setGeoStatus('error'));
+  // }, []);
+  //
+  // // Watch device position and compare to school pin
+  // useEffect(() => {
+  //   if (!schoolCoords || geoStatus === 'unsupported') return;
+  //   if (!navigator.geolocation) { setGeoStatus('unsupported'); return; }
+  //   setGeoStatus('checking');
+  //   watchIdRef.current = navigator.geolocation.watchPosition(
+  //     (pos) => {
+  //       lastPositionRef.current = pos;
+  //       const d = haversineMetres(pos.coords.latitude, pos.coords.longitude, schoolCoords.lat, schoolCoords.lng);
+  //       setDistance(Math.round(d));
+  //       setGeoStatus(d <= GEOFENCE_RADIUS_M ? 'in-range' : 'out-of-range');
+  //     },
+  //     () => setGeoStatus('error'),
+  //     { enableHighAccuracy: true, maximumAge: 5_000, timeout: 15_000 },
+  //   );
+  //   return () => { if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current); };
+  // }, [schoolCoords]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ────────────────────────────────────────────────────────────────────────────
 
   // Sync clock status
   useEffect(() => {
@@ -105,75 +136,56 @@ function useClockIn(user) {
     return () => window.removeEventListener('teacherClockInChanged', handler);
   }, [user]);
 
-  // Watch position
-  useEffect(() => {
-    if (!schoolCoords || geoStatus === 'unsupported') return;
-    if (!navigator.geolocation) { setGeoStatus('unsupported'); return; }
-    setGeoStatus('checking');
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (pos) => {
-        lastPositionRef.current = pos;
-        const d = haversineMetres(pos.coords.latitude, pos.coords.longitude, schoolCoords.lat, schoolCoords.lng);
-        setDistance(Math.round(d));
-        setGeoStatus(d <= GEOFENCE_RADIUS_M ? 'in-range' : 'out-of-range');
-      },
-      () => setGeoStatus('error'),
-      { enableHighAccuracy: true, maximumAge: 5_000, timeout: 15_000 },
-    );
-    return () => { if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current); };
-  }, [schoolCoords]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const handleClockAction = useCallback(async () => {
-    if (clocking || geoStatus !== 'in-range') return;
+    if (clocking) return;
     setClocking(true);
+    setIpDenied(false);
+    setErrorMsg(null);
     try {
-      // Always include the latest captured position so the server can enforce
-      // the geofence authoritatively. The client-side check is UI-only.
-      const pos = lastPositionRef.current;
-      const locationPayload = pos
-        ? {
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-            accuracyMeters: pos.coords.accuracy,
-            capturedAt: new Date(pos.timestamp || Date.now()).toISOString(),
-          }
-        : {};
-
+      // No GPS payload — server validates by IP (school Wi-Fi).
+      // To restore geofence, un-comment the location payload block below and
+      // pass it into clockInTeacher / clockOutTeacher.
+      //
+      // const pos = lastPositionRef.current;
+      // const locationPayload = pos
+      //   ? {
+      //       latitude: pos.coords.latitude,
+      //       longitude: pos.coords.longitude,
+      //       accuracyMeters: pos.coords.accuracy,
+      //       capturedAt: new Date(pos.timestamp || Date.now()).toISOString(),
+      //     }
+      //   : {};
       if (clockStatus?.clockedIn) {
-        clockOutTeacher(user, { source: 'mobile', ...locationPayload });
+        await clockOutTeacher(user, { source: 'mobile' });
       } else {
-        clockInTeacher(user, { source: 'mobile', ...locationPayload });
+        await clockInTeacher(user, { source: 'mobile' });
       }
+    } catch (err) {
+      const msg = err?.message || '';
+      if (msg.toLowerCase().includes('wi-fi') || msg.toLowerCase().includes('ip') || err?.reasonCode === 'IP_DENIED') {
+        setIpDenied(true);
+      }
+      setErrorMsg(msg || 'Clock-in failed. Please try again.');
     } finally {
       setClocking(false);
     }
-  }, [clocking, geoStatus, clockStatus, user]);
+  }, [clocking, clockStatus, user]);
 
-  return { geoStatus, distance, clockStatus, clocking, handleClockAction };
+  return { clockStatus, clocking, ipDenied, errorMsg, handleClockAction };
 }
 
 // ─── ClockInButton — compact inline button for the banner ─────────────────────
 const ClockInButton = ({ user }) => {
-  const { geoStatus, distance, clockStatus, clocking, handleClockAction } = useClockIn(user);
-  const canAct = geoStatus === 'in-range';
+  const { clockStatus, clocking, ipDenied, errorMsg, handleClockAction } = useClockIn(user);
   const isClockedIn = clockStatus?.clockedIn;
-
-  const statusText = (() => {
-    if (geoStatus === 'unsupported') return '⚠ No school pin set';
-    if (geoStatus === 'error')       return '⚠ Location error';
-    if (geoStatus === 'checking')    return 'Locating…';
-    if (geoStatus === 'in-range')    return `✓ At school`;
-    if (geoStatus === 'out-of-range') return distance != null ? `${distance}m away` : 'Outside zone';
-    return '';
-  })();
 
   return (
     <div className="flex flex-col items-end gap-1">
       <button
         onClick={handleClockAction}
-        disabled={!canAct || clocking}
+        disabled={clocking}
         className={`h-8 px-3 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
-          !canAct || clocking
+          clocking
             ? 'bg-white/20 text-white/50 cursor-not-allowed'
             : isClockedIn
             ? 'bg-white text-rose-600 hover:bg-white/90'
@@ -185,7 +197,17 @@ const ClockInButton = ({ user }) => {
           : <Clock size={12} />}
         {isClockedIn ? 'Clock Out' : 'Clock In'}
       </button>
-      <span className="text-[10px] text-white/60 font-medium">{statusText}</span>
+      {ipDenied ? (
+        <span className="text-[10px] text-red-300 font-medium flex items-center gap-0.5">
+          <WifiOff size={9} /> Not on school Wi-Fi
+        </span>
+      ) : errorMsg ? (
+        <span className="text-[10px] text-red-300 font-medium">Failed — retry</span>
+      ) : (
+        <span className="text-[10px] text-white/60 font-medium flex items-center gap-0.5">
+          <Wifi size={9} /> School Wi-Fi required
+        </span>
+      )}
     </div>
   );
 };

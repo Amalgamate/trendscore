@@ -172,7 +172,8 @@ model School {
   latitude            Float?
   longitude           Float?
   geofenceRadiusMeters Int               @default(30)
-  geofenceEnforcementMode GeofenceEnforcementMode @default(STRICT)
+  geofenceEnforcementMode GeofenceEnforcementMode @default(OFF)
+  allowedClockInIps   String?
   brandColor          String?
   welcomeMessage      String?
   welcomeTitle        String?
@@ -1247,6 +1248,17 @@ model FeeInvoiceRevision {
   @@unique([invoiceId, revisionNumber])
   @@index([invoiceId])
   @@map("fee_invoice_revisions")
+}
+
+model FeeNumberSequence {
+  id        String   @id @default(uuid())
+  type      String   // 'INVOICE' | 'RECEIPT'
+  year      Int
+  nextVal   Int      @default(1)
+  updatedAt DateTime @updatedAt
+
+  @@unique([type, year])
+  @@map("fee_number_sequences")
 }
 
 model FeePayment {

@@ -33,7 +33,14 @@ type SchoolGeofenceContext = {
     longitude: number | null;
     geofenceRadiusMeters: number | null;
     geofenceEnforcementMode: AttendanceGeofenceMode | null;
+    allowedClockInIps: string | null;
 } | null;
+
+type IpCheckResult = {
+    allowed: boolean;
+    message: string;
+    reasonCode: 'IP_ALLOWED' | 'IP_DENIED' | 'IP_CHECK_DISABLED';
+};
 
 type AttendanceGeofenceDecision = {
     allowed: boolean;
@@ -60,7 +67,7 @@ export class HRService {
     // 30m default: practical minimum for browser GPS (indoor accuracy is typically 5–50m).
     // Admin can tighten this per-school via geofenceRadiusMeters in school settings.
     private readonly defaultGeofenceRadiusMeters = 30;
-    private readonly defaultGeofenceEnforcementMode: AttendanceGeofenceMode = 'STRICT';
+    private readonly defaultGeofenceEnforcementMode: AttendanceGeofenceMode = 'OFF';
     private readonly strictAccuracyThresholdMeters = 30;
 
     private toDateOnly(dateValue: Date) {
@@ -88,7 +95,8 @@ export class HRService {
                 latitude: true,
                 longitude: true,
                 geofenceRadiusMeters: true,
-                geofenceEnforcementMode: true
+                geofenceEnforcementMode: true,
+                allowedClockInIps: true
             }
         });
     }
@@ -145,6 +153,58 @@ export class HRService {
             schoolLatitude: params.schoolLatitude ?? null,
             schoolLongitude: params.schoolLongitude ?? null,
         };
+    }
+
+    // ─── IP-based clock-in enforcement ─────────────────────────────────────────
+
+    /**
+     * Parse the allowedClockInIps field from the school record.
+     * Accepts a comma-separated list of IPv4/IPv6 addresses or CIDR ranges (basic string match).
+     * Returns an empty array if none configured (IP check disabled).
+     */
+    private parseAllowedIps(raw: string | null | undefined): string[] {
+        if (!raw || !raw.trim()) return [];
+        return raw.split(',').map(ip => ip.trim()).filter(Boolean);
+    }
+
+    /**
+     * Normalise a client IP — strip IPv6-mapped IPv4 prefix so that
+     * "::ffff:192.168.1.5" matches the stored "192.168.1.5".
+     */
+    private normaliseIp(ip: string | null | undefined): string {
+        if (!ip) return '';
+        return ip.replace(/^::ffff:/, '');
+    }
+
+    /**
+     * Check whether the request IP is in the school's allowed list.
+     * If no IPs are configured, the check is disabled (all allowed).
+     */
+    private evaluateIpCheck(requestIp: string | null | undefined, school: SchoolGeofenceContext): IpCheckResult {
+        const allowed = this.parseAllowedIps(school?.allowedClockInIps);
+        if (allowed.length === 0) {
+            return { allowed: true, message: 'IP check disabled — no allowed IPs configured.', reasonCode: 'IP_CHECK_DISABLED' };
+        }
+        const normalised = this.normaliseIp(requestIp);
+        const isAllowed = allowed.some(entry => normalised === entry || normalised.startsWith(entry));
+        if (isAllowed) {
+            return { allowed: true, message: `IP ${normalised} is on the allowed list.`, reasonCode: 'IP_ALLOWED' };
+        }
+        return {
+            allowed: false,
+            message: `Clock-in blocked: your device's network (${normalised || 'unknown'}) is not on the approved workplace Wi-Fi list. Please connect to the school Wi-Fi network and try again.`,
+            reasonCode: 'IP_DENIED'
+        };
+    }
+
+    private buildIpDeniedError(ipResult: IpCheckResult) {
+        const error = new ApiError(403, ipResult.message).withCode(ipResult.reasonCode) as ApiError & {
+            reasonCode?: string;
+            ipCheckResult?: IpCheckResult;
+        };
+        error.reasonCode = ipResult.reasonCode;
+        error.ipCheckResult = ipResult;
+        return error;
     }
 
     private buildGeofenceError(decision: AttendanceGeofenceDecision) {
@@ -990,6 +1050,14 @@ export class HRService {
         const dateOnly = this.toDateOnly(timestamp);
         const school = await this.resolveCurrentSchoolGeofenceContext();
         const schoolId = school?.id || null;
+
+        // ── IP-based enforcement (primary check) ─────────────────────────────
+        const ipResult = this.evaluateIpCheck(context.ipAddress, school);
+        if (!ipResult.allowed) {
+            throw this.buildIpDeniedError(ipResult);
+        }
+
+        // ── Geofence (disabled — kept for future use, always OFF) ────────────
         const geofenceDecision = this.evaluateAttendanceGeofence('clock-in', school, payload);
         await this.recordAttendanceAttempt({
             userId,
@@ -999,9 +1067,6 @@ export class HRService {
             geofenceDecision,
             context
         });
-        if (!geofenceDecision.allowed) {
-            throw this.buildGeofenceError(geofenceDecision);
-        }
         const metadata = this.buildAttendanceMetadata(payload, geofenceDecision);
 
         const attendance = await prisma.staffAttendanceLog.upsert({
@@ -1082,6 +1147,14 @@ export class HRService {
 
         const school = await this.resolveCurrentSchoolGeofenceContext();
         const schoolId = school?.id || null;
+
+        // ── IP-based enforcement (primary check) ─────────────────────────────
+        const ipResult = this.evaluateIpCheck(context.ipAddress, school);
+        if (!ipResult.allowed) {
+            throw this.buildIpDeniedError(ipResult);
+        }
+
+        // ── Geofence (disabled — kept for future use, always OFF) ────────────
         const geofenceDecision = this.evaluateAttendanceGeofence('clock-out', school, payload);
         await this.recordAttendanceAttempt({
             userId,

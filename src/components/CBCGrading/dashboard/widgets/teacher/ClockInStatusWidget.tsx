@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { hrAPI } from '../../../../../services/api/hr.api';
+import { Wifi, WifiOff, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 
 interface WidgetProps {
   user?: any;
@@ -10,24 +11,37 @@ interface WidgetProps {
 type WidgetMode =
   | 'idle'
   | 'loading_status'
-  | 'getting_location'
   | 'submitting_clock_in'
   | 'submitting_clock_out'
-  | 'permission_denied'
   | 'clock_in_success'
   | 'clock_in_denied'
   | 'clock_out_success'
   | 'clock_out_denied';
 
-type GeofenceDecision = {
-  allowed: boolean;
-  enforcementMode: string;
-  radiusMeters: number;
-  distanceMeters: number | null;
-  accuracyMeters: number | null;
-  reasonCode: string | null;
-  message: string;
-};
+// ── GPS / Geofence (DISABLED — replaced by IP/Wi-Fi check) ───────────────────
+// Location-based clock-in is paused because indoor GPS accuracy (5–50 m) causes
+// legitimate staff to be rejected. Restore by un-commenting below, wiring the
+// position into the payload, and removing the IP-only path in performAction.
+//
+// type GeofenceDecision = {
+//   allowed: boolean;
+//   enforcementMode: string;
+//   radiusMeters: number;
+//   distanceMeters: number | null;
+//   accuracyMeters: number | null;
+//   reasonCode: string | null;
+//   message: string;
+// };
+//
+// const getLocation = (options?: PositionOptions) =>
+//   new Promise<GeolocationPosition>((resolve, reject) => {
+//     if (!navigator.geolocation) {
+//       reject(new Error('Geolocation is not supported on this device.'));
+//       return;
+//     }
+//     navigator.geolocation.getCurrentPosition(resolve, reject, options);
+//   });
+// ─────────────────────────────────────────────────────────────────────────────
 
 type AttendanceRecord = {
   id?: string;
@@ -39,21 +53,11 @@ type AttendanceRecord = {
   metadata?: any;
 };
 
-const getLocation = (options?: PositionOptions) =>
-  new Promise<GeolocationPosition>((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error('Geolocation is not supported on this device.'));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(resolve, reject, options);
-  });
-
 const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
   const [mode, setMode] = useState<WidgetMode>('loading_status');
   const [attendance, setAttendance] = useState<AttendanceRecord | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [reasonCode, setReasonCode] = useState<string | null>(null);
-  const [decision, setDecision] = useState<GeofenceDecision | null>(null);
 
   const isClockedIn = useMemo(() => {
     if (!attendance?.clockInAt) return false;
@@ -77,70 +81,65 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
     refreshStatus();
   }, [refreshStatus]);
 
-  const mapDeniedState = (action: 'clock-in' | 'clock-out', code?: string | null) => {
-    if (action === 'clock-in') return 'clock_in_denied';
-    return 'clock_out_denied';
-  };
-
   const performAction = useCallback(async (action: 'clock-in' | 'clock-out') => {
     setMessage(null);
     setReasonCode(null);
-    setDecision(null);
 
-    setMode('getting_location');
-    let position: GeolocationPosition;
-    try {
-      position = await getLocation({
-        enableHighAccuracy: true,
-        timeout: 15_000,
-        maximumAge: 0
-      });
-    } catch (error: any) {
-      const permDenied =
-        error?.code === 1 || String(error?.message || '').toLowerCase().includes('permission');
-      const response = action === 'clock-in'
-        ? await hrAPI.clockInStaff({
-            source: 'web',
-            metadata: { widget: 'CLOCK_IN_STATUS', locationError: permDenied ? 'permission_denied' : 'unavailable' }
-          })
-        : await hrAPI.clockOutStaff({
-            source: 'web',
-            metadata: { widget: 'CLOCK_IN_STATUS', locationError: permDenied ? 'permission_denied' : 'unavailable' }
-          });
-      const nextDecision: GeofenceDecision | null = response?.geofenceDecision || null;
-      const nextReason = response?.reasonCode || nextDecision?.reasonCode || (permDenied ? 'MISSING_LOCATION' : null);
-      const nextMessage = response?.message || nextDecision?.message ||
-        (permDenied
-          ? 'Location permission denied. Enable location access and try again.'
-          : error?.message || 'Failed to get your location.');
-
-      setDecision(nextDecision);
-      setReasonCode(nextReason);
-      setMessage(nextMessage);
-      setMode(permDenied ? 'permission_denied' : mapDeniedState(action, nextReason));
-      return;
-    }
-
+    // ── IP-based clock-in (no location/GPS required) ──────────────────────────
+    // The server will verify the request IP against the school's allowed Wi-Fi IPs.
     const payload = {
-      latitude: position.coords.latitude,
-      longitude: position.coords.longitude,
-      accuracyMeters: position.coords.accuracy,
-      capturedAt: new Date(position.timestamp || Date.now()).toISOString(),
       source: 'web',
       metadata: { widget: 'CLOCK_IN_STATUS' }
     };
 
+    // ── GPS / Geofence payload (DISABLED — un-comment to restore) ─────────────
+    // setMode('getting_location');
+    // let position: GeolocationPosition;
+    // try {
+    //   position = await getLocation({ enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 });
+    // } catch (error: any) {
+    //   const permDenied =
+    //     error?.code === 1 || String(error?.message || '').toLowerCase().includes('permission');
+    //   const response = action === 'clock-in'
+    //     ? await hrAPI.clockInStaff({
+    //         source: 'web',
+    //         metadata: { widget: 'CLOCK_IN_STATUS', locationError: permDenied ? 'permission_denied' : 'unavailable' }
+    //       })
+    //     : await hrAPI.clockOutStaff({
+    //         source: 'web',
+    //         metadata: { widget: 'CLOCK_IN_STATUS', locationError: permDenied ? 'permission_denied' : 'unavailable' }
+    //       });
+    //   const nextDecision: GeofenceDecision | null = response?.geofenceDecision || null;
+    //   const nextReason = response?.reasonCode || nextDecision?.reasonCode || (permDenied ? 'MISSING_LOCATION' : null);
+    //   const nextMessage = response?.message || nextDecision?.message ||
+    //     (permDenied
+    //       ? 'Location permission denied. Enable location access and try again.'
+    //       : error?.message || 'Failed to get your location.');
+    //   setDecision(nextDecision);
+    //   setReasonCode(nextReason);
+    //   setMessage(nextMessage);
+    //   setMode(permDenied ? 'permission_denied' : mapDeniedState(action, nextReason));
+    //   return;
+    // }
+    // const payload = {
+    //   latitude: position.coords.latitude,
+    //   longitude: position.coords.longitude,
+    //   accuracyMeters: position.coords.accuracy,
+    //   capturedAt: new Date(position.timestamp || Date.now()).toISOString(),
+    //   source: 'web',
+    //   metadata: { widget: 'CLOCK_IN_STATUS' }
+    // };
+    // ─────────────────────────────────────────────────────────────────────────
+
     setMode(action === 'clock-in' ? 'submitting_clock_in' : 'submitting_clock_out');
+
     const response = action === 'clock-in'
       ? await hrAPI.clockInStaff(payload)
       : await hrAPI.clockOutStaff(payload);
 
-    const nextDecision: GeofenceDecision | null =
-      response?.data?.geofenceDecision || response?.geofenceDecision || null;
-    const nextReason = response?.reasonCode || nextDecision?.reasonCode || null;
-    const nextMessage = response?.message || nextDecision?.message || null;
+    const nextReason = response?.reasonCode || null;
+    const nextMessage = response?.message || null;
 
-    setDecision(nextDecision);
     setReasonCode(nextReason);
     setMessage(nextMessage);
 
@@ -151,21 +150,17 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
       return;
     }
 
-    setMode(mapDeniedState(action, nextReason));
+    setMode(action === 'clock-in' ? 'clock_in_denied' : 'clock_out_denied');
   }, []);
 
   const statusLabel = useMemo(() => {
     if (mode === 'loading_status') return 'Loading…';
-    if (mode === 'getting_location') return 'Getting location…';
     if (mode === 'submitting_clock_in') return 'Submitting clock-in…';
     if (mode === 'submitting_clock_out') return 'Submitting clock-out…';
-    if (mode === 'permission_denied') return 'Location permission denied';
     if (mode === 'clock_in_success') return 'Clock-in successful';
     if (mode === 'clock_out_success') return 'Clock-out successful';
     if (mode === 'clock_in_denied' || mode === 'clock_out_denied') {
-      if (reasonCode === 'ACCURACY_TOO_LOW') return 'Accuracy too low';
-      if (reasonCode === 'OUT_OF_RANGE') return 'Outside allowed zone';
-      if (reasonCode === 'NO_SCHOOL_PIN') return 'School pin missing';
+      if (reasonCode === 'IP_DENIED') return 'Not on school Wi-Fi';
       return mode === 'clock_in_denied' ? 'Clock-in denied' : 'Clock-out denied';
     }
     if (isClockedIn) return 'Clocked in';
@@ -173,7 +168,7 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
   }, [isClockedIn, mode, reasonCode]);
 
   const primaryButton = useMemo(() => {
-    const busy = mode === 'getting_location' || mode === 'submitting_clock_in' || mode === 'submitting_clock_out';
+    const busy = mode === 'submitting_clock_in' || mode === 'submitting_clock_out';
     if (isClockedIn) {
       return {
         label: busy ? 'Clocking out…' : 'Clock Out',
@@ -188,16 +183,7 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
     };
   }, [isClockedIn, mode, performAction]);
 
-  const secondaryNote = useMemo(() => {
-    if (!decision) return null;
-    if (decision.allowed && decision.reasonCode && decision.reasonCode !== 'GEOFENCE_DISABLED') {
-      return `Warning: ${decision.reasonCode}`;
-    }
-    if (!decision.allowed && decision.reasonCode) {
-      return `Denied: ${decision.reasonCode}`;
-    }
-    return null;
-  }, [decision]);
+  const isIpDenied = reasonCode === 'IP_DENIED';
 
   return (
     <div className="p-4 bg-white border border-gray-200 rounded-lg">
@@ -222,19 +208,38 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
         </button>
       </div>
 
+      {/* ── IP / Wi-Fi status indicator ── */}
+      <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+        <Wifi size={13} className="text-blue-500" />
+        <span>Requires school Wi-Fi connection</span>
+      </div>
+
+      {/*
+       * ── GPS / Geofence indicator (DISABLED — uncomment to re-enable) ──────────
+       * <div className="mt-2 flex items-center gap-2 text-xs text-gray-400">
+       *   <MapPin size={13} className="text-gray-300" />
+       *   <span className="line-through text-gray-300">GPS location check (disabled)</span>
+       * </div>
+       */}
+
       {message && (
-        <div className="mt-3 p-3 rounded-lg bg-gray-50 border border-gray-200">
-          <p className="text-sm text-gray-800">{message}</p>
-          {reasonCode && <p className="text-xs text-gray-500 mt-1">Reason: {reasonCode}</p>}
-          {decision?.accuracyMeters != null && (
-            <p className="text-xs text-gray-500 mt-1">Accuracy: {Math.round(decision.accuracyMeters)}m</p>
-          )}
-          {decision?.distanceMeters != null && decision?.radiusMeters != null && (
-            <p className="text-xs text-gray-500 mt-1">
-              Distance: {Math.round(decision.distanceMeters)}m · Radius: {decision.radiusMeters}m · Mode: {decision.enforcementMode}
-            </p>
-          )}
-          {secondaryNote && <p className="text-xs text-amber-700 mt-1">{secondaryNote}</p>}
+        <div className={`mt-3 p-3 rounded-lg border ${isIpDenied ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
+          <div className="flex items-start gap-2">
+            {isIpDenied
+              ? <WifiOff size={14} className="text-amber-600 mt-0.5 shrink-0" />
+              : <XCircle size={14} className="text-gray-400 mt-0.5 shrink-0" />}
+            <div>
+              <p className={`text-sm ${isIpDenied ? 'text-amber-800' : 'text-gray-800'}`}>{message}</p>
+              {reasonCode && <p className="text-xs text-gray-500 mt-1">Code: {reasonCode}</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(mode === 'clock_in_success' || mode === 'clock_out_success') && !message && (
+        <div className="mt-3 flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+          <CheckCircle size={14} className="shrink-0" />
+          <span>{mode === 'clock_in_success' ? 'Clock-in recorded successfully.' : 'Clock-out recorded successfully.'}</span>
         </div>
       )}
 
@@ -243,7 +248,7 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
           type="button"
           onClick={primaryButton.onClick}
           disabled={primaryButton.disabled}
-          className={`w-full px-4 py-2 rounded-lg font-semibold text-sm transition ${
+          className={`w-full px-4 py-2 rounded-lg font-semibold text-sm transition flex items-center justify-center gap-2 ${
             primaryButton.disabled
               ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
               : isClockedIn
@@ -251,11 +256,16 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
                 : 'bg-emerald-600 text-white hover:bg-emerald-700'
           }`}
         >
+          {primaryButton.disabled
+            ? <Loader2 size={14} className="animate-spin" />
+            : isClockedIn
+              ? <Clock size={14} />
+              : <CheckCircle size={14} />}
           {primaryButton.label}
         </button>
 
         <p className="text-xs text-gray-500">
-          Your location is verified by the server. {user?.role ? `Role: ${user.role}.` : ''}
+          Your clock-in is verified by the server via network IP. {user?.role ? `Role: ${user.role}.` : ''}
         </p>
       </div>
     </div>

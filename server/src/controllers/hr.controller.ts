@@ -37,7 +37,8 @@ export class HRController {
                 success: false,
                 message: error.message,
                 ...(error.reasonCode || error.code ? { reasonCode: error.reasonCode || error.code } : {}),
-                ...(error.geofenceDecision ? { geofenceDecision: error.geofenceDecision } : {})
+                ...(error.geofenceDecision ? { geofenceDecision: error.geofenceDecision } : {}),
+                ...(error.ipCheckResult ? { ipCheckResult: error.ipCheckResult } : {})
             });
         }
     }
@@ -70,7 +71,8 @@ export class HRController {
                 success: false,
                 message,
                 ...(error.reasonCode || error.code ? { reasonCode: error.reasonCode || error.code } : {}),
-                ...(error.geofenceDecision ? { geofenceDecision: error.geofenceDecision } : {})
+                ...(error.geofenceDecision ? { geofenceDecision: error.geofenceDecision } : {}),
+                ...(error.ipCheckResult ? { ipCheckResult: error.ipCheckResult } : {})
             });
         }
     }

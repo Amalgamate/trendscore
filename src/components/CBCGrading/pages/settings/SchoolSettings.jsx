@@ -3,7 +3,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { School, Save, Upload, X, AlertTriangle, MapPin, Loader2, Image as ImageIcon, Info, Phone, Mail, MessageSquare, ShieldCheck } from 'lucide-react';
+import { School, Save, Upload, X, AlertTriangle, MapPin, Loader2, Image as ImageIcon, Info, Phone, Mail, MessageSquare, ShieldCheck, Wifi } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useNotifications } from '../../hooks/useNotifications';
 import axiosInstance from '../../../../services/api/axiosConfig';
@@ -41,7 +41,8 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
     latitude: null,
     longitude: null,
     geofenceRadiusMeters: 30,
-    geofenceEnforcementMode: 'STRICT',
+    geofenceEnforcementMode: 'OFF',
+    allowedClockInIps: '',
     primaryColor: normalizeHexColor(brandingSettings?.primaryColor, '#030b82'),
     secondaryColor: normalizeHexColor(brandingSettings?.secondaryColor, '#0D9488'),
     accentColor1: normalizeHexColor(brandingSettings?.accentColor1, '#3b82f6'),
@@ -79,7 +80,8 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
       latitude: null,
       longitude: null,
       geofenceRadiusMeters: 30,
-      geofenceEnforcementMode: 'STRICT',
+      geofenceEnforcementMode: 'OFF',
+      allowedClockInIps: '',
       primaryColor: normalizeHexColor(brandingSettings?.primaryColor, '#030b82'),
       secondaryColor: normalizeHexColor(brandingSettings?.secondaryColor, '#0D9488'),
       accentColor1: normalizeHexColor(brandingSettings?.accentColor1, '#3b82f6'),
@@ -138,7 +140,8 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
             latitude: school.latitude || null,
             longitude: school.longitude || null,
             geofenceRadiusMeters: school.geofenceRadiusMeters ?? 30,
-            geofenceEnforcementMode: school.geofenceEnforcementMode || 'STRICT',
+            geofenceEnforcementMode: school.geofenceEnforcementMode || 'OFF',
+            allowedClockInIps: school.allowedClockInIps || '',
             primaryColor: normalizeHexColor(school.primaryColor, '#030b82'),
             secondaryColor: normalizeHexColor(school.secondaryColor, '#0D9488'),
             accentColor1: normalizeHexColor(school.accentColor1, '#3b82f6'),
@@ -277,6 +280,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
         longitude: settings.longitude,
         geofenceRadiusMeters: settings.geofenceRadiusMeters,
         geofenceEnforcementMode: settings.geofenceEnforcementMode,
+        allowedClockInIps: settings.allowedClockInIps || null,
         welcomeTitle: settings.welcomeTitle,
         welcomeMessage: settings.welcomeMessage,
         onboardingTitle: settings.onboardingTitle,
@@ -629,104 +633,78 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
               </div>
             </div>
 
-            {/* ── Geofence / Clock-In Settings ── */}
+            {/* ── Staff Clock-In: IP / Wi-Fi Restriction ── */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
               <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex items-center gap-2">
-                <ShieldCheck className="text-blue-600" size={20} />
-                <h3 className="font-medium text-gray-700">Staff Clock-In Geofence</h3>
+                <Wifi className="text-blue-600" size={20} />
+                <h3 className="font-medium text-gray-700">Staff Clock-In: Wi-Fi / IP Restriction</h3>
               </div>
-              <div className="p-6 space-y-6">
+              <div className="p-6 space-y-5">
                 <p className="text-sm text-gray-500">
-                  Controls whether staff must be physically at school to clock in.
-                  The GPS pin is set via <strong>Get GPS Location</strong> above.
-                  Browser GPS accuracy indoors is typically 5–50 m — keep the radius at least <strong>30 m</strong> to avoid false rejections.
+                  Staff can only clock in when connected to an approved network.
+                  Enter the school Wi-Fi's public IP address(es) below — one per line or comma-separated.
+                  Leave blank to allow clock-in from any network (unrestricted).
                 </p>
 
-                {/* Enforcement mode */}
+                {/* Allowed IPs textarea */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Enforcement Mode</label>
-                  <div className="flex flex-wrap gap-3">
-                    {[
-                      { value: 'STRICT', label: 'Strict', desc: 'Clock-in is blocked when outside the radius.' },
-                      { value: 'SOFT',   label: 'Soft',   desc: 'Outside-radius clocks in but is flagged for review.' },
-                      { value: 'OFF',    label: 'Off',    desc: 'No location check — anyone can clock in anywhere.' },
-                    ].map(({ value, label, desc }) => (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() => handleChange('geofenceEnforcementMode', value)}
-                        className={`flex-1 min-w-[140px] px-4 py-3 rounded-lg border-2 text-left transition ${
-                          settings.geofenceEnforcementMode === value
-                            ? 'border-blue-500 bg-blue-50'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <span className={`block text-sm font-bold ${settings.geofenceEnforcementMode === value ? 'text-blue-700' : 'text-gray-700'}`}>{label}</span>
-                        <span className="block text-xs text-gray-500 mt-0.5">{desc}</span>
-                      </button>
-                    ))}
-                  </div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Allowed Wi-Fi IP Addresses
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={settings.allowedClockInIps}
+                    onChange={(e) => handleChange('allowedClockInIps', e.target.value)}
+                    placeholder={`e.g.\n197.248.10.5\n41.90.64.200\n10.0.0.0/24`}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm resize-none"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    IPv4 addresses or CIDR prefixes, comma-separated or one per line.
+                    Tip: visit <a href="https://whatismyip.com" target="_blank" rel="noreferrer" className="underline hover:text-blue-600">whatismyip.com</a> from the school network to find your public IP.
+                  </p>
                 </div>
 
-                {/* Radius slider + number input */}
-                {settings.geofenceEnforcementMode !== 'OFF' && (
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Allowed Radius
-                      <span className="ml-2 text-blue-600 font-bold">{settings.geofenceRadiusMeters} m</span>
-                      {settings.geofenceRadiusMeters < 30 && (
-                        <span className="ml-2 text-amber-600 text-xs font-normal">⚠ Below 30 m may cause false rejections indoors</span>
-                      )}
-                    </label>
-                    <div className="flex items-center gap-4">
-                      <input
-                        type="range"
-                        min="10"
-                        max="500"
-                        step="5"
-                        value={settings.geofenceRadiusMeters}
-                        onChange={(e) => handleChange('geofenceRadiusMeters', parseInt(e.target.value))}
-                        className="flex-1 h-2 accent-blue-600 cursor-pointer"
-                      />
-                      <input
-                        type="number"
-                        min="1"
-                        max="100000"
-                        value={settings.geofenceRadiusMeters}
-                        onChange={(e) => {
-                          const v = parseInt(e.target.value);
-                          if (!isNaN(v) && v >= 1) handleChange('geofenceRadiusMeters', v);
-                        }}
-                        className="w-24 px-3 py-2 border border-gray-200 rounded-lg text-sm text-center font-mono focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
-                      <span className="text-sm text-gray-500 whitespace-nowrap">metres</span>
-                    </div>
-                    <div className="flex justify-between text-xs text-gray-400 mt-1 px-0.5">
-                      <span>10 m</span>
-                      <span>Recommended: 30–100 m</span>
-                      <span>500 m</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* GPS pin status */}
+                {/* Status */}
                 <div className={`flex items-start gap-3 p-3 rounded-lg text-sm ${
-                  settings.latitude && settings.longitude
+                  settings.allowedClockInIps?.trim()
                     ? 'bg-green-50 border border-green-200 text-green-800'
                     : 'bg-amber-50 border border-amber-200 text-amber-800'
                 }`}>
-                  <MapPin size={16} className="mt-0.5 shrink-0" />
-                  {settings.latitude && settings.longitude ? (
+                  <Wifi size={16} className="mt-0.5 shrink-0" />
+                  {settings.allowedClockInIps?.trim() ? (
                     <span>
-                      GPS pin set — lat <strong>{settings.latitude}</strong>, lng <strong>{settings.longitude}</strong>.
-                      Staff must be within <strong>{settings.geofenceRadiusMeters} m</strong> of this point to clock in
-                      {settings.geofenceEnforcementMode === 'SOFT' ? ' (soft — logged but not blocked)' : ''}.
+                      IP restriction active — staff must be on the school Wi-Fi to clock in.
                     </span>
                   ) : (
                     <span>
-                      No GPS pin set. Click <strong>Get GPS Location</strong> above while standing at school to set it.
-                      Clock-in will be blocked until a pin is configured.
+                      No IPs configured — clock-in is allowed from any network. Add at least one IP to restrict to school Wi-Fi only.
                     </span>
+                  )}
+                </div>
+
+                {/*
+                  ── GPS Geofence (DISABLED — needs more work) ───────────────────────────
+                  Location-based clock-in is currently disabled because GPS accuracy indoors
+                  is too variable (5–50 m) and causes legitimate staff to be blocked.
+                  The geofence infrastructure (STRICT/SOFT/OFF modes, radius) is preserved
+                  in the backend and can be re-enabled once the pin accuracy issues are resolved.
+                */}
+                <div className="rounded-lg border border-gray-200 p-4 opacity-50 cursor-not-allowed select-none">
+                  <div className="flex items-center gap-2 mb-2">
+                    <ShieldCheck size={16} className="text-gray-400" />
+                    <span className="text-sm font-semibold text-gray-400">GPS Geofence (Coming Soon)</span>
+                    <span className="ml-auto text-[10px] font-bold uppercase tracking-wide bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full">Disabled</span>
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    GPS-based clock-in is paused while pin accuracy is improved.
+                    Use the Wi-Fi IP restriction above in the meantime.
+                  </p>
+                  {/* GPS lat/lng display preserved for reference */}
+                  {(settings.latitude || settings.longitude) && (
+                    <div className="mt-2 text-[10px] text-gray-300 flex gap-3 font-mono">
+                      <span className="bg-gray-50 px-2 py-0.5 rounded border border-gray-100">LAT: {settings.latitude}</span>
+                      <span className="bg-gray-50 px-2 py-0.5 rounded border border-gray-100">LNG: {settings.longitude}</span>
+                    </div>
                   )}
                 </div>
               </div>
