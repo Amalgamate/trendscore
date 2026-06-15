@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowUp, ArrowDown, X } from 'lucide-react';
+import { ArrowUp, ArrowDown, Clock, Loader2, Wifi, WifiOff, X } from 'lucide-react';
+import { hrAPI } from '../../../../services/api';
+import { syncCurrentUserClockInStatus } from '../../../../utils/teacherClockIn';
 
 /**
  * Flat solid-color palette — exact colors from the receptionist dashboard screenshot.
@@ -52,6 +54,94 @@ const getDisplayName = (user, fallback = 'SYSTEM') => {
   return String(raw).trim().split(' ')[0] || fallback;
 };
 
+const CLOCK_IN_EXCLUDED_ROLES = new Set(['PARENT', 'STUDENT']);
+
+const canUseClockIn = (user) => {
+  const role = String(user?.role || '').toUpperCase();
+  return !!user && !!role && !CLOCK_IN_EXCLUDED_ROLES.has(role);
+};
+
+const DesktopClockInButton = ({ user }) => {
+  const [status, setStatus] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      const nextStatus = await syncCurrentUserClockInStatus(user);
+      if (active) setStatus(nextStatus);
+    };
+    refresh();
+    const handleClockChange = () => refresh();
+    window.addEventListener('teacherClockInChanged', handleClockChange);
+    window.addEventListener('storage', handleClockChange);
+    return () => {
+      active = false;
+      window.removeEventListener('teacherClockInChanged', handleClockChange);
+      window.removeEventListener('storage', handleClockChange);
+    };
+  }, [user]);
+
+  const handleClockAction = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    setError(null);
+
+    const clockedIn = !!status?.clockedIn;
+    const payload = {
+      timestamp: new Date().toISOString(),
+      source: 'desktop-dashboard',
+      metadata: { role: user?.role }
+    };
+    const response = clockedIn
+      ? await hrAPI.clockOutStaff(payload)
+      : await hrAPI.clockInStaff(payload);
+
+    if (!response?.success) {
+      setError({
+        message: response?.message || (clockedIn ? 'Failed to clock out.' : 'Failed to clock in.'),
+        reasonCode: response?.reasonCode,
+        ipCheckResult: response?.ipCheckResult
+      });
+      setSubmitting(false);
+      return;
+    }
+
+    const nextStatus = await syncCurrentUserClockInStatus(user);
+    setStatus(nextStatus);
+    window.dispatchEvent(new CustomEvent('teacherClockInChanged', { detail: nextStatus?.record || null }));
+    setSubmitting(false);
+  };
+
+  const clockedIn = !!status?.clockedIn;
+  const ipDenied = error?.reasonCode === 'IP_DENIED' || error?.message?.toLowerCase?.().includes('wi-fi');
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={handleClockAction}
+        disabled={submitting}
+        className={`h-9 px-4 border text-[11px] font-black uppercase tracking-wider transition flex items-center gap-2 ${
+          submitting
+            ? 'bg-white/20 border-white/20 text-white/60 cursor-not-allowed'
+            : clockedIn
+              ? 'bg-white text-rose-700 border-white hover:bg-white/90'
+              : 'bg-white text-orange-700 border-white hover:bg-white/90'
+        }`}
+      >
+        {submitting ? <Loader2 size={13} className="animate-spin" /> : <Clock size={13} />}
+        {clockedIn ? 'Clock Out' : 'Clock In'}
+      </button>
+      <span className={`text-[10px] font-semibold flex items-center gap-1 ${ipDenied ? 'text-red-200' : 'text-white/70'}`}>
+        {ipDenied ? <WifiOff size={10} /> : <Wifi size={10} />}
+        {ipDenied ? 'Not on school Wi-Fi' : error ? 'Clock-in failed' : 'School Wi-Fi required'}
+      </span>
+    </div>
+  );
+};
+
 /**
  * GreetingToast / DashboardGreetingBanner
  *
@@ -70,6 +160,7 @@ export const GreetingToast = ({
   fallbackName = 'SYSTEM',
   description,
   clockInSlot,
+  showClockIn,
 }) => {
   // Version suffix forces the banner to re-show after a code update.
   // Bump this string whenever you want all users to see it again.
@@ -91,6 +182,7 @@ export const GreetingToast = ({
   const greeting = getGreeting();
   const name = getDisplayName(user, fallbackName);
   const subtitle = description ?? 'Here is your institutional summary for today.';
+  const resolvedClockInSlot = clockInSlot || ((showClockIn ?? canUseClockIn(user)) ? <DesktopClockInButton user={user} /> : null);
 
   return (
     <div
@@ -110,9 +202,9 @@ export const GreetingToast = ({
       </div>
 
       {/* ── Optional clock-in slot ── */}
-      {clockInSlot && (
+      {resolvedClockInSlot && (
         <div className="shrink-0">
-          {clockInSlot}
+          {resolvedClockInSlot}
         </div>
       )}
 

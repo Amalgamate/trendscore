@@ -7,7 +7,8 @@ const normalizeAttendanceError = (error, fallbackMessage) => {
         success: false,
         message: response?.message || response?.error?.message || error?.message || fallbackMessage,
         reasonCode: response?.reasonCode || response?.error?.code || null,
-        geofenceDecision: response?.geofenceDecision || response?.error?.geofenceDecision || null
+        geofenceDecision: response?.geofenceDecision || response?.error?.geofenceDecision || null,
+        ipCheckResult: response?.ipCheckResult || response?.error?.ipCheckResult || null
     };
 };
 
