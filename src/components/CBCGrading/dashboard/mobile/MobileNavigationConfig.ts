@@ -287,43 +287,43 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
     ]
   },
 
-  // Parent
+  // Parent - Mobile-first portal redesign
   PARENT: {
     role: 'PARENT',
     items: [
       {
-        id: 'dashboard',
-        label: 'Dashboard',
+        id: 'home',
+        label: 'Home',
         icon: Home,
-        path: 'dashboard',
+        path: 'parent-portal-home',
         color: 'text-brand-purple'
       },
       {
         id: 'children',
         label: 'Children',
         icon: Users,
-        path: 'learners-list',
+        path: 'parent-portal-children',
         color: 'text-blue-600'
       },
       {
         id: 'fees',
         label: 'Fees',
         icon: Wallet,
-        path: 'fees-management',
+        path: 'parent-portal-fees',
         color: 'text-amber-600'
       },
       {
         id: 'messages',
         label: 'Messages',
         icon: MessageSquare,
-        path: 'comm-notices',
+        path: 'parent-portal-messages',
         color: 'text-violet-600'
       },
       {
-        id: 'settings',
-        label: 'Settings',
+        id: 'more',
+        label: 'More',
         icon: Settings,
-        path: 'settings',
+        path: 'parent-portal-more',
         color: 'text-gray-600'
       }
     ]

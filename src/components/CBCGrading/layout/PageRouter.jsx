@@ -72,6 +72,18 @@ const ParentProfile = lazy(() => import('../pages/profiles/ParentProfile'));
 const PlannerLayout = lazy(() => import('../pages/planner/PlannerLayout'));
 const DutyRosterPage = lazy(() => import('../pages/planner/DutyRosterPage'));
 const ParentEventsPage = lazy(() => import('../pages/parent/ParentEventsPage'));
+
+// Parent Portal - Mobile-first redesign
+const ParentPortalHome = lazy(() => import('../pages/parent-portal/ParentPortalHome'));
+const ParentPortalChildren = lazy(() => import('../pages/parent-portal/ParentPortalChildren'));
+const ParentPortalFees = lazy(() => import('../pages/parent-portal/ParentPortalFees'));
+const ParentPortalMessages = lazy(() => import('../pages/parent-portal/ParentPortalMessages'));
+const ParentPortalMore = lazy(() => import('../pages/parent-portal/ParentPortalMore'));
+const ParentPortalResults = lazy(() => import('../pages/parent-portal/ParentPortalResults'));
+const ParentPortalAttendance = lazy(() => import('../pages/parent-portal/ParentPortalAttendance'));
+const ParentPortalTransport = lazy(() => import('../pages/parent-portal/ParentPortalTransport'));
+const ParentPortalDocuments = lazy(() => import('../pages/parent-portal/ParentPortalDocuments'));
+const ParentPortalSupport = lazy(() => import('../pages/parent-portal/ParentPortalSupport'));
 const UniformAllocationPage = lazy(() => import('../pages/UniformAllocationPage'));
 const IDPrintingPage = lazy(() => import('../pages/IDPrintingPage'));
 const PathwaysHub = lazy(() => import('../pages/secondary/PathwaysHub'));
@@ -447,6 +459,28 @@ const PageRouter = ({
             );
           case 'parent-profile':
             return <ParentProfile parent={pageParams.parent} onBack={() => handleNavigate('parents-list')} />;
+
+          // Parent Portal - Mobile-first redesign
+          case 'parent-portal-home':
+            return <ParentPortalHome user={user} onNavigate={handleNavigate} />;
+          case 'parent-portal-children':
+            return <ParentPortalChildren user={user} onNavigate={handleNavigate} />;
+          case 'parent-portal-fees':
+            return <ParentPortalFees user={user} onNavigate={handleNavigate} />;
+          case 'parent-portal-messages':
+            return <ParentPortalMessages user={user} onNavigate={handleNavigate} />;
+          case 'parent-portal-more':
+            return <ParentPortalMore user={user} onNavigate={handleNavigate} onLogout={handlers?.onLogout} />;
+          case 'parent-portal-results':
+            return <ParentPortalResults onNavigate={handleNavigate} />;
+          case 'parent-portal-attendance':
+            return <ParentPortalAttendance onNavigate={handleNavigate} />;
+          case 'parent-portal-transport':
+            return <ParentPortalTransport onNavigate={handleNavigate} />;
+          case 'parent-portal-documents':
+            return <ParentPortalDocuments onNavigate={handleNavigate} />;
+          case 'parent-portal-support':
+            return <ParentPortalSupport onNavigate={handleNavigate} />;
 
           // Others
           case 'timetable': return <TimetablePage />;
