@@ -68,6 +68,22 @@ const mergeEmailTemplatePatch = (base: Record<string, any>, patch: Record<string
     };
 };
 
+const normalizeOptionalString = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+};
+
+const encryptSetting = (label: string, value: string): string => {
+    try {
+        return encrypt(value);
+    } catch (error: any) {
+        logger.error({ label, message: error?.message }, '[CommunicationController] Failed to encrypt communication setting');
+        throw new ApiError(500, `${label} could not be saved because server encryption is not configured correctly.`)
+            .withCode('COMMUNICATION_ENCRYPTION_FAILED');
+    }
+};
+
 const resolveAiDraftConfig = async () => {
     const config = await prisma.communicationConfig.findFirst({ select: { emailTemplates: true } });
     const ai = getTemplateConfig(config?.emailTemplates).__ai || {};
@@ -216,25 +232,24 @@ export const saveCommunicationConfig = async (req: AuthRequest, res: Response) =
         });
 
         data.smsProvider = sms.provider || 'mobilesasa';
-        data.smsBaseUrl = sms.baseUrl || 'https://api.mobilesasa.com';
+        data.smsBaseUrl = normalizeOptionalString(sms.baseUrl) || 'https://api.mobilesasa.com';
         data.smsEnabled = sms.enabled !== undefined ? sms.enabled : true;
+        data.smsSenderId = normalizeOptionalString(sms.senderId);
 
-        if (sms.senderId) data.smsSenderId = sms.senderId.trim() || null;
-
-        if (sms.apiKey && sms.apiKey.trim()) {
+        const smsApiKey = normalizeOptionalString(sms.apiKey);
+        if (smsApiKey) {
             logger.info(`[CommunicationController] Encrypting SMS API Key for provider: ${sms.provider}`);
-            data.smsApiKey = encrypt(sms.apiKey);
+            data.smsApiKey = encryptSetting('SMS API key', smsApiKey);
         }
 
-        if (sms.username && sms.username.trim()) {
-            data.smsUsername = sms.username;
-        }
+        data.smsUsername = normalizeOptionalString(sms.username);
 
         if (sms.provider === 'custom') {
-            data.smsCustomName = sms.customName || null;
-            data.smsCustomBaseUrl = sms.customBaseUrl || null;
-            data.smsCustomAuthHeader = sms.customAuthHeader || 'Authorization';
-            if (sms.customToken) data.smsCustomToken = encrypt(sms.customToken);
+            data.smsCustomName = normalizeOptionalString(sms.customName);
+            data.smsCustomBaseUrl = normalizeOptionalString(sms.customBaseUrl);
+            data.smsCustomAuthHeader = normalizeOptionalString(sms.customAuthHeader) || 'Authorization';
+            const smsCustomToken = normalizeOptionalString(sms.customToken);
+            if (smsCustomToken) data.smsCustomToken = encryptSetting('Custom SMS token', smsCustomToken);
         }
     }
 
@@ -243,7 +258,8 @@ export const saveCommunicationConfig = async (req: AuthRequest, res: Response) =
         data.emailFrom = email.fromEmail || null;
         data.emailFromName = email.fromName || null;
         data.emailEnabled = email.enabled !== undefined ? email.enabled : false;
-        if (email.apiKey) data.emailApiKey = encrypt(email.apiKey);
+        const emailApiKey = normalizeOptionalString(email.apiKey);
+        if (emailApiKey) data.emailApiKey = encryptSetting('Email API key', emailApiKey);
         if (email.emailTemplates) data.emailTemplates = mergeEmailTemplatePatch(existingTemplates, email.emailTemplates);
     }
 
@@ -254,8 +270,10 @@ export const saveCommunicationConfig = async (req: AuthRequest, res: Response) =
         data.mpesaEnabled = mpesa.enabled !== undefined ? mpesa.enabled : false;
         data.mpesaSandbox = mpesa.sandbox !== undefined ? mpesa.sandbox : false;
         
-        if (mpesa.secretKey) data.mpesaSecretKey = encrypt(mpesa.secretKey);
-        if (mpesa.apiKey) data.mpesaApiKey = encrypt(mpesa.apiKey);
+        const mpesaSecretKey = normalizeOptionalString(mpesa.secretKey);
+        const mpesaApiKey = normalizeOptionalString(mpesa.apiKey);
+        if (mpesaSecretKey) data.mpesaSecretKey = encryptSetting('M-Pesa secret key', mpesaSecretKey);
+        if (mpesaApiKey) data.mpesaApiKey = encryptSetting('M-Pesa API key', mpesaApiKey);
     }
 
     if (birthdays) {
@@ -266,7 +284,8 @@ export const saveCommunicationConfig = async (req: AuthRequest, res: Response) =
     if (whatsapp) {
         data.whatsappProvider = whatsapp.provider || 'ultramsg';
         data.whatsappEnabled = whatsapp.enabled !== undefined ? whatsapp.enabled : false;
-        if (whatsapp.apiKey) data.whatsappApiKey = encrypt(whatsapp.apiKey);
+        const whatsappApiKey = normalizeOptionalString(whatsapp.apiKey);
+        if (whatsappApiKey) data.whatsappApiKey = encryptSetting('WhatsApp API key', whatsappApiKey);
         if (whatsapp.instanceId !== undefined) data.whatsappInstanceId = whatsapp.instanceId;
     }
 
@@ -297,7 +316,7 @@ export const saveCommunicationConfig = async (req: AuthRequest, res: Response) =
         };
 
         if (ai.apiKey && String(ai.apiKey).trim()) {
-            nextAi.apiKey = encrypt(String(ai.apiKey).trim());
+            nextAi.apiKey = encryptSetting('AI API key', String(ai.apiKey).trim());
         }
 
         data.emailTemplates = {
@@ -306,9 +325,20 @@ export const saveCommunicationConfig = async (req: AuthRequest, res: Response) =
         };
     }
 
-    const config = existingConfig
-        ? await prisma.communicationConfig.update({ where: { id: existingConfig.id }, data })
-        : await prisma.communicationConfig.create({ data });
+    let config;
+    try {
+        config = existingConfig
+            ? await prisma.communicationConfig.update({ where: { id: existingConfig.id }, data })
+            : await prisma.communicationConfig.create({ data });
+    } catch (error: any) {
+        logger.error({
+            message: error?.message,
+            code: error?.code,
+            meta: error?.meta,
+            fields: Object.keys(data)
+        }, '[CommunicationController] Failed to persist communication config');
+        throw error;
+    }
 
     // Clear SMS config cache so changes take effect immediately
     const { SmsService: SmsServiceImport } = await import('../services/sms.service');
