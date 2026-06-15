@@ -164,7 +164,11 @@ export class HRService {
      */
     private parseAllowedIps(raw: string | null | undefined): string[] {
         if (!raw || !raw.trim()) return [];
-        return raw.split(',').map(ip => ip.trim()).filter(Boolean);
+        // Split on both commas and newlines to support "one per line or comma-separated"
+        return raw
+            .split(/[,\n\r]+/)
+            .map(ip => ip.trim())
+            .filter(Boolean);
     }
 
     /**
