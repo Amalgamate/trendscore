@@ -749,6 +749,14 @@ describe('HRService', () => {
             const result = await service.clockInStaff(STAFF_ID, { timestamp });
             expect(result.attendance.clockInAt).toEqual(timestamp);
             expect(result.payrollCreated).toBe(true);
+            expect(mockPrisma.staffAttendanceLog.upsert).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    update: expect.objectContaining({
+                        clockInAt: timestamp,
+                        clockOutAt: null
+                    })
+                })
+            );
             expect(result.geofenceDecision).toMatchObject({
                 allowed: true,
                 enforcementMode: 'OFF',

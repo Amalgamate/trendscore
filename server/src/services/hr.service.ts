@@ -1078,6 +1078,7 @@ export class HRService {
             update: {
                 schoolId: schoolId || undefined,
                 clockInAt: timestamp,
+                clockOutAt: null,
                 source: payload?.source || 'web',
                 metadata
             },
