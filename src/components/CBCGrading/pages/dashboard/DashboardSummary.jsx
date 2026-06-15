@@ -145,9 +145,9 @@ const DesktopClockInButton = ({ user }) => {
 /**
  * GreetingToast / DashboardGreetingBanner
  *
- * Orange dismissable banner shown at the top of every dashboard — desktop and mobile.
- * Remembers dismissal per calendar-day in sessionStorage.
- * When dismissed it renders nothing so the content below collapses up naturally.
+ * Orange banner shown at the top of every dashboard — desktop and mobile.
+ * Greeting-only banners remember dismissal per calendar-day in sessionStorage.
+ * Banners with a clock-in action remain visible so attendance is always accessible.
  *
  * Props:
  *   user          — user object
@@ -162,12 +162,16 @@ export const GreetingToast = ({
   clockInSlot,
   showClockIn,
 }) => {
+  const clockInEnabled = showClockIn ?? canUseClockIn(user);
+  const hasClockInAction = Boolean(clockInSlot) || clockInEnabled;
+
   // Version suffix forces the banner to re-show after a code update.
   // Bump this string whenever you want all users to see it again.
   const storageKey = `greeting_dismissed_v2_${new Date().toDateString()}`;
 
   // Read synchronously so there's no flash-of-hidden-banner on mount.
   const [visible, setVisible] = useState(() => {
+    if (hasClockInAction) return true;
     try { return !sessionStorage.getItem(storageKey); }
     catch { return true; }
   });
@@ -182,7 +186,7 @@ export const GreetingToast = ({
   const greeting = getGreeting();
   const name = getDisplayName(user, fallbackName);
   const subtitle = description ?? 'Here is your institutional summary for today.';
-  const resolvedClockInSlot = clockInSlot || ((showClockIn ?? canUseClockIn(user)) ? <DesktopClockInButton user={user} /> : null);
+  const resolvedClockInSlot = clockInSlot || (clockInEnabled ? <DesktopClockInButton user={user} /> : null);
 
   return (
     <div
@@ -208,14 +212,16 @@ export const GreetingToast = ({
         </div>
       )}
 
-      {/* ── Close button ── */}
-      <button
-        onClick={dismiss}
-        aria-label="Dismiss greeting"
-        className="shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
-      >
-        <X size={14} strokeWidth={2.5} />
-      </button>
+      {/* Clock-in controls must remain available throughout the session. */}
+      {!hasClockInAction && (
+        <button
+          onClick={dismiss}
+          aria-label="Dismiss greeting"
+          className="shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
+        >
+          <X size={14} strokeWidth={2.5} />
+        </button>
+      )}
     </div>
   );
 };
