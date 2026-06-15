@@ -26,7 +26,7 @@ import { Input } from "../../../ui/input";
 import { Label } from "../../../ui/label";
 import { toast } from "react-hot-toast";
 
-const JournalEntries = () => {
+const JournalEntries = ({ onNavigate }) => {
     const [entries, setEntries] = useState([]);
     const [journals, setJournals] = useState([]);
     const [accounts, setAccounts] = useState([]);
@@ -195,7 +195,7 @@ const JournalEntries = () => {
                         Export
                     </button>
                     <button 
-                        onClick={() => onNavigate('accounting-reports')}
+                        onClick={() => onNavigate?.('accounting-reports')}
                         className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-100 transition-all font-medium"
                     >
                         <BarChart3 size={18} />

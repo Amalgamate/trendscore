@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+
 /**
  * Lightweight event bus for triggering data refreshes across pages.
  * Usage:
@@ -22,7 +24,6 @@ export const refreshBus = {
 };
 
 /** React hook: calls `callback` whenever `channel` (or 'global') is emitted. */
-import { useEffect } from 'react';
 export function useRefreshListener(channel, callback) {
   useEffect(() => {
     const unsub = refreshBus.on(channel, callback);

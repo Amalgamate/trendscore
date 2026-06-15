@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   FileText, Download, Search, User,
-  CheckCircle, AlertCircle, Clock, Printer, Mail, Eye, Loader2, Filter, X, RefreshCw
+  CheckCircle, AlertCircle, Clock, Printer, Mail, Eye, Loader2, Filter, X, RefreshCw, MapPin, Phone
 } from 'lucide-react';
 import EmptyState from '../shared/EmptyState';
 import LoadingSpinner from '../shared/LoadingSpinner';
@@ -612,4 +612,3 @@ const StudentStatementsPage = () => {
 };
 
 export default StudentStatementsPage;
-

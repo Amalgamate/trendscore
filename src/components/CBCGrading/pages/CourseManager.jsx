@@ -190,7 +190,7 @@ const CourseManager = ({ createDialogOpen: externalOpen, setCreateDialogOpen: se
     };
 
     const handleDeleteCourse = async (courseId) => {
-        if (!confirm('Are you sure you want to delete this course?')) return;
+        if (!window.confirm('Are you sure you want to delete this course?')) return;
 
         try {
             await apiCall(`/lms/courses/${courseId}`, 'DELETE');

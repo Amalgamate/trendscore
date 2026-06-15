@@ -120,7 +120,7 @@ const EnrollmentManager = () => {
     };
 
     const handleUnenrollLearner = async (enrollmentId) => {
-        if (!confirm('Are you sure you want to unenroll this learner?')) return;
+        if (!window.confirm('Are you sure you want to unenroll this learner?')) return;
 
         try {
             await apiCall(`/lms/enrollments/${enrollmentId}`, 'DELETE');

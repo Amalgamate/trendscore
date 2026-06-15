@@ -127,7 +127,7 @@ const ContentLibrary = () => {
     };
 
     const handleDeleteContent = async (contentId) => {
-        if (!confirm('Are you sure you want to delete this content?')) return;
+        if (!window.confirm('Are you sure you want to delete this content?')) return;
 
         try {
             await apiCall(`/lms/content/${contentId}`, 'DELETE');

@@ -53,7 +53,7 @@ const MobileUserManagement = ({ onNavigate }) => {
   };
 
   const handleDelete = async (userId) => {
-    if (confirm('Delete this user?')) {
+    if (window.confirm('Delete this user?')) {
       try {
         await userAPI.delete?.(userId);
         fetchUsers();

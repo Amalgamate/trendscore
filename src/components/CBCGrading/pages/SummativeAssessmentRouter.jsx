@@ -9,7 +9,7 @@ import SummativeAssessmentMobile from './SummativeAssessmentMobile';
 import SummativeAssessment from './SummativeAssessment';
 import { useMobile } from '../../../hooks/useMobileDetection';
 
-const SummativeAssessmentRouter = ({ learners, initialTestId, defaultTestType = null, onBack, isMobile: deviceIsMobile, brandingSettings, embedded }) => {
+const SummativeAssessmentRouter = ({ learners, initialTestId, defaultTestType = null, onBack, onNavigate, isMobile: deviceIsMobile, brandingSettings, embedded }) => {
   const mobileByViewport = useMobile();
   const isMobile = typeof deviceIsMobile === 'boolean' ? deviceIsMobile : mobileByViewport;
 
@@ -18,13 +18,13 @@ const SummativeAssessmentRouter = ({ learners, initialTestId, defaultTestType = 
     if (embedded) {
       return (
         <div className="absolute inset-0 bg-gray-50 overflow-hidden">
-          <SummativeAssessmentMobile learners={learners} initialTestId={initialTestId} defaultTestType={defaultTestType} onBack={onBack} brandingSettings={brandingSettings} embedded={embedded} />
+          <SummativeAssessmentMobile learners={learners} initialTestId={initialTestId} defaultTestType={defaultTestType} onBack={onBack} onNavigate={onNavigate} brandingSettings={brandingSettings} embedded={embedded} />
         </div>
       );
     }
     return (
       <div className="fixed inset-0 z-50 bg-gray-50 overflow-hidden">
-        <SummativeAssessmentMobile learners={learners} initialTestId={initialTestId} defaultTestType={defaultTestType} onBack={onBack} brandingSettings={brandingSettings} />
+        <SummativeAssessmentMobile learners={learners} initialTestId={initialTestId} defaultTestType={defaultTestType} onBack={onBack} onNavigate={onNavigate} brandingSettings={brandingSettings} />
       </div>
     );
   }
