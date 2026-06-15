@@ -65,12 +65,16 @@ const DesktopClockInButton = ({ user }) => {
   const [status, setStatus] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [statusLoaded, setStatusLoaded] = useState(false);
 
   useEffect(() => {
     let active = true;
     const refresh = async () => {
       const nextStatus = await syncCurrentUserClockInStatus(user);
-      if (active) setStatus(nextStatus);
+      if (active) {
+        setStatus(nextStatus);
+        setStatusLoaded(true);
+      }
     };
     refresh();
     const handleClockChange = () => refresh();
@@ -84,7 +88,7 @@ const DesktopClockInButton = ({ user }) => {
   }, [user]);
 
   const handleClockAction = async () => {
-    if (submitting) return;
+    if (submitting || !statusLoaded) return;
     setSubmitting(true);
     setError(null);
 
@@ -116,27 +120,41 @@ const DesktopClockInButton = ({ user }) => {
 
   const clockedIn = !!status?.clockedIn;
   const ipDenied = error?.reasonCode === 'IP_DENIED' || error?.message?.toLowerCase?.().includes('wi-fi');
+  const statusMessage = !statusLoaded
+    ? 'Checking attendance status'
+    : ipDenied
+      ? error?.message || 'Not on school Wi-Fi'
+      : error
+        ? error.message
+        : clockedIn
+          ? 'Clocked in successfully'
+          : 'Network verified when you clock in';
 
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="flex max-w-72 flex-col items-end gap-1">
       <button
         type="button"
         onClick={handleClockAction}
-        disabled={submitting}
+        disabled={submitting || !statusLoaded}
         className={`h-9 px-4 border text-[11px] font-black uppercase tracking-wider transition flex items-center gap-2 ${
-          submitting
+          submitting || !statusLoaded
             ? 'bg-white/20 border-white/20 text-white/60 cursor-not-allowed'
             : clockedIn
               ? 'bg-white text-rose-700 border-white hover:bg-white/90'
               : 'bg-white text-orange-700 border-white hover:bg-white/90'
         }`}
       >
-        {submitting ? <Loader2 size={13} className="animate-spin" /> : <Clock size={13} />}
-        {clockedIn ? 'Clock Out' : 'Clock In'}
+        {submitting || !statusLoaded ? <Loader2 size={13} className="animate-spin" /> : <Clock size={13} />}
+        {submitting ? 'Saving' : !statusLoaded ? 'Checking' : clockedIn ? 'Clock Out' : 'Clock In'}
       </button>
-      <span className={`text-[10px] font-semibold flex items-center gap-1 ${ipDenied ? 'text-red-200' : 'text-white/70'}`}>
+      <span
+        title={statusMessage}
+        className={`max-w-full truncate text-[10px] font-semibold flex items-center gap-1 ${
+          ipDenied || error ? 'text-red-200' : clockedIn ? 'text-emerald-100' : 'text-white/70'
+        }`}
+      >
         {ipDenied ? <WifiOff size={10} /> : <Wifi size={10} />}
-        {ipDenied ? 'Not on school Wi-Fi' : error ? 'Clock-in failed' : 'School Wi-Fi required'}
+        {statusMessage}
       </span>
     </div>
   );

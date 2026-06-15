@@ -170,7 +170,6 @@ export const syncCurrentUserClockInStatus = async (user) => {
 
     if (backendRecord) {
       persistLocalClockInRecord(backendRecord);
-      notifyClockInChange(backendRecord);
       return {
         teacherId,
         dateKey,
