@@ -706,7 +706,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     const gradeDistribution = {};
     if (gradingScale && gradingScale.ranges && selectedTest?.totalMarks) {
       numericMarks.forEach(mark => {
-        const percentage = (mark / selectedTest.totalMarks) * 100;
+        const percentage = Math.min(100, (mark / selectedTest.totalMarks) * 100);
         const range = gradingScale.ranges.find(r =>
           percentage >= r.minPercentage && percentage <= r.maxPercentage
         );
@@ -1046,7 +1046,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
         ...prev,
         [learnerId]: {
           ...(prev[learnerId] || {}),
-          mark: Math.min(Math.max(0, numValue), selectedTest?.totalMarks || 100),
+          mark: Math.max(0, numValue),
           assessmentStatusCode: ''
         }
       }));
@@ -1078,7 +1078,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
   const getDescriptionForGrade = (mark, total, learnerName) => {
     if (!total || mark === undefined || mark === null || mark === '') return 'Not assessed';
 
-    const percentage = (mark / total) * 100;
+    const percentage = Math.min(100, (mark / total) * 100);
 
     if (gradingScale && gradingScale.ranges) {
       const range = gradingScale.ranges.find(r =>
@@ -1267,7 +1267,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
           let teacherComment = markData.comment || existingResult?.teacherComment || '';
 
           if (selectedTest?.totalMarks && mark !== null && mark !== undefined && mark !== '') {
-            const percentage = (mark / selectedTest.totalMarks) * 100;
+            const percentage = Math.min(100, (mark / selectedTest.totalMarks) * 100);
             if (gradingScale && gradingScale.ranges) {
               const range = gradingScale.ranges.find(r => percentage >= r.minPercentage && percentage <= r.maxPercentage);
               remarks = range ? range.label : remarks;
@@ -1839,7 +1839,6 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
                         <input
                           type="number"
                           min="0"
-                          max={selectedTest?.totalMarks}
                           value={marks[learner.id]?.mark ?? ''}
                           onChange={(e) => handleMarkChange(learner.id, e.target.value)}
                           disabled={Boolean(selectedStatus)}

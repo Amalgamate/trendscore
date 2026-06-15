@@ -197,7 +197,8 @@ export const gradingService = {
    * Calculate grade with details (sync — caller must supply ranges)
    */
   calculateGradeSync(percentage: number, ranges: any[]): string {
-    const range = ranges.find(r => percentage >= r.minPercentage && percentage <= r.maxPercentage);
+    const capped = Math.min(100, Math.max(0, percentage));
+    const range = ranges.find(r => capped >= r.minPercentage && capped <= r.maxPercentage);
     return range?.summativeGrade || 'BE2';
   },
 
@@ -205,7 +206,8 @@ export const gradingService = {
    * Calculate CBC rating (sync — caller must supply ranges)
    */
   calculateRatingSync(percentage: number, ranges: any[]): DetailedRubricRating {
-    const range = ranges.find(r => percentage >= r.minPercentage && percentage <= r.maxPercentage);
+    const capped = Math.min(100, Math.max(0, percentage));
+    const range = ranges.find(r => capped >= r.minPercentage && capped <= r.maxPercentage);
     return range?.rubricRating || 'BE2';
   },
 

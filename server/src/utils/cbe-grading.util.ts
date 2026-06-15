@@ -92,8 +92,8 @@ export function assertValidAssessmentEntry(input: {
     return { ok: false as const, reason: 'Score is not a valid number' };
   }
 
-  if (score < 0 || score > input.totalMarks) {
-    return { ok: false as const, reason: `Score ${score} out of valid range 0-${input.totalMarks}` };
+  if (score < 0) {
+    return { ok: false as const, reason: `Score ${score} cannot be negative` };
   }
 
   return { ok: true as const, kind: 'score' as const, score };

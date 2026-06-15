@@ -114,10 +114,10 @@ const BulkMarkImportModal = ({ show, onClose, onImport, learners, totalMarks }) 
           return;
         }
 
-        if (mark < 0 || mark > totalMarks) {
+        if (mark < 0) {
           invalidEntries.push({
             row: index + 2,
-            reason: `Mark ${mark} is out of range (0-${totalMarks}) for learner ${admissionNumber}.`,
+            reason: `Mark ${mark} cannot be negative for learner ${admissionNumber}.`,
             data: row
           });
           return;
