@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, UploadCloud, FileText, CheckCircle, AlertCircle, Loader, Search } from 'lucide-react';
+import { X, UploadCloud, FileText, CheckCircle, AlertCircle, Loader, Search, Download } from 'lucide-react';
 import ExcelJS from 'exceljs';
 
 const BulkMarkImportModal = ({ show, onClose, onImport, learners, totalMarks }) => {
@@ -9,6 +9,89 @@ const BulkMarkImportModal = ({ show, onClose, onImport, learners, totalMarks }) 
   const [error, setError] = useState(null);
 
   if (!show) return null;
+
+  const getCellText = (value) => {
+    if (value == null) return '';
+    if (typeof value === 'object') {
+      if (Array.isArray(value.richText)) {
+        return value.richText.map((part) => part.text || '').join('');
+      }
+      if (value.text) return String(value.text);
+      if (value.result != null) return String(value.result);
+    }
+    return String(value);
+  };
+
+  const downloadTemplate = async () => {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'TrendSCORE';
+    workbook.created = new Date();
+
+    const sheet = workbook.addWorksheet('Summative Marks Template', {
+      views: [{ state: 'frozen', ySplit: 1 }],
+    });
+
+    sheet.columns = [
+      { header: 'Admission Number', key: 'admissionNumber', width: 22 },
+      { header: 'Student Name', key: 'studentName', width: 34 },
+      { header: 'Mark', key: 'mark', width: 14 },
+    ];
+
+    sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
+    sheet.getRow(1).alignment = { vertical: 'middle' };
+
+    const sortedLearners = [...(learners || [])].sort((a, b) =>
+      String(a.admissionNumber || '').localeCompare(String(b.admissionNumber || ''))
+    );
+
+    sortedLearners.forEach((learner) => {
+      sheet.addRow({
+        admissionNumber: learner.admissionNumber || '',
+        studentName: `${learner.firstName || ''} ${learner.lastName || ''}`.trim(),
+        mark: '',
+      });
+    });
+
+    const maxMark = Number(totalMarks);
+    if (Number.isFinite(maxMark) && maxMark > 0) {
+      for (let row = 2; row <= Math.max(sortedLearners.length + 1, 100); row += 1) {
+        sheet.getCell(`C${row}`).dataValidation = {
+          type: 'decimal',
+          operator: 'between',
+          allowBlank: true,
+          formulae: [0, maxMark],
+          showErrorMessage: true,
+          errorTitle: 'Invalid mark',
+          error: `Enter a mark between 0 and ${maxMark}.`,
+        };
+      }
+    }
+
+    sheet.eachRow((row) => {
+      row.eachCell((cell) => {
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        };
+      });
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `summative_marks_template_${new Date().getFullYear()}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
@@ -88,8 +171,9 @@ const BulkMarkImportModal = ({ show, onClose, onImport, learners, totalMarks }) 
       const headers = data[0];
       const rows = data.slice(1);
 
-      const admissionNoIndex = headers.findIndex(h => h && h.toLowerCase().includes('admission number'));
-      const markIndex = headers.findIndex(h => h && h.toLowerCase().includes('mark'));
+      const normalizedHeaders = headers.map(getCellText);
+      const admissionNoIndex = normalizedHeaders.findIndex(h => h.toLowerCase().includes('admission number'));
+      const markIndex = normalizedHeaders.findIndex(h => h.toLowerCase().includes('mark'));
 
       if (admissionNoIndex === -1 || markIndex === -1) {
         throw new Error("Missing required columns: 'Admission Number' and 'Mark'.");
@@ -98,10 +182,20 @@ const BulkMarkImportModal = ({ show, onClose, onImport, learners, totalMarks }) 
       const validMarks = {};
       const invalidEntries = [];
       const learnerMap = new Map(learners.map(l => [l.admissionNumber.toLowerCase(), l]));
+      const maxMark = Number(totalMarks);
 
       rows.forEach((row, index) => {
-        const admissionNumber = String(row[admissionNoIndex]).trim();
-        const mark = parseFloat(row[markIndex]);
+        const admissionNumber = getCellText(row[admissionNoIndex]).trim();
+        const markValue = getCellText(row[markIndex]).trim();
+        const mark = parseFloat(markValue);
+
+        if (!admissionNumber && !markValue) {
+          return;
+        }
+
+        if (admissionNumber && !markValue) {
+          return;
+        }
 
         if (!admissionNumber || isNaN(mark)) {
           invalidEntries.push({ row: index + 2, reason: "Missing admission number or invalid mark.", data: row });
@@ -118,6 +212,15 @@ const BulkMarkImportModal = ({ show, onClose, onImport, learners, totalMarks }) 
           invalidEntries.push({
             row: index + 2,
             reason: `Mark ${mark} cannot be negative for learner ${admissionNumber}.`,
+            data: row
+          });
+          return;
+        }
+
+        if (Number.isFinite(maxMark) && maxMark > 0 && mark > maxMark) {
+          invalidEntries.push({
+            row: index + 2,
+            reason: `Mark ${mark} exceeds the test total of ${maxMark} for learner ${admissionNumber}.`,
             data: row
           });
           return;
@@ -167,11 +270,14 @@ const BulkMarkImportModal = ({ show, onClose, onImport, learners, totalMarks }) 
             Upload an Excel/CSV file containing student admission numbers and their marks.
             The file should have columns titled 'Admission Number' and 'Mark'.
             <br/>
-            <a 
-              href="/templates/summative_marks_template.xlsx" 
-              download
-              className="text-blue-600 hover:underline text-sm font-medium mt-2 inline-block"
-            >Download Template File</a>
+            <button
+              type="button"
+              onClick={downloadTemplate}
+              className="text-blue-600 hover:underline text-sm font-medium mt-2 inline-flex items-center gap-1"
+            >
+              <Download size={14} />
+              Download Template File
+            </button>
           </p>
 
           <div 

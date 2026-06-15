@@ -459,8 +459,8 @@ const PageRouter = ({
             return <MobileAssessmentsDashboard learners={learners} brandingSettings={brandingSettings} onNavigate={handleNavigate} />;
           case 'assess-formative': return <ErrorBoundary><FormativeAssessment learners={learners} /></ErrorBoundary>;
           case 'assess-formative-report': return <ErrorBoundary><FormativeReport learners={learners} brandingSettings={brandingSettings} user={user} /></ErrorBoundary>;
-          case 'assess-summative-tests': return <ErrorBoundary><SummativeTestsRouter onNavigate={handleNavigate} defaultTestType={pageParams.defaultTestType} /></ErrorBoundary>;
-          case 'assess-summative-assessment': return <ErrorBoundary><SummativeAssessmentRouter learners={learners} initialTestId={pageParams.initialTestId} defaultTestType={pageParams.defaultTestType} brandingSettings={brandingSettings} /></ErrorBoundary>;
+          case 'assess-summative-tests': return <ErrorBoundary><SummativeTestsRouter onNavigate={handleNavigate} onBack={() => handleNavigate('assess-mobile-dashboard')} defaultTestType={pageParams.defaultTestType} /></ErrorBoundary>;
+          case 'assess-summative-assessment': return <ErrorBoundary><SummativeAssessmentRouter learners={learners} initialTestId={pageParams.initialTestId} defaultTestType={pageParams.defaultTestType} onBack={() => handleNavigate('assess-mobile-dashboard')} brandingSettings={brandingSettings} /></ErrorBoundary>;
           case 'assess-summative-report': return <ErrorBoundary><SummativeReport learners={learners} onFetchLearners={fetchLearners} brandingSettings={brandingSettings} user={user} pageParams={pageParams} onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'assess-summary-report': return <ErrorBoundary><SummaryReportPage pageParams={pageParams} /></ErrorBoundary>;
           case 'assess-termly-report': return <ErrorBoundary><TermlyReport learners={learners} brandingSettings={brandingSettings} user={user} pageParams={pageParams} /></ErrorBoundary>;
@@ -669,11 +669,11 @@ const PageRouter = ({
           case 'sec-subjects':        return <SubjectManagement />;
           case 'sec-form-groups':     return <FormGroups />;
           case 'sec-schemes':         return <PlannerLayout currentPage="planner-schemes" onNavigate={handleNavigate} />;
-          case 'sec-mark-entry':      return <ErrorBoundary><SummativeAssessmentRouter learners={learners} defaultTestType={pageParams.defaultTestType} brandingSettings={brandingSettings} /></ErrorBoundary>;
-          case 'sec-cats':            return <ErrorBoundary><SummativeAssessmentRouter learners={learners} defaultTestType="CAT" brandingSettings={brandingSettings} /></ErrorBoundary>;
-          case 'sec-mid-term':        return <ErrorBoundary><SummativeAssessmentRouter learners={learners} defaultTestType="MID_TERM" brandingSettings={brandingSettings} /></ErrorBoundary>;
-          case 'sec-end-term':        return <ErrorBoundary><SummativeAssessmentRouter learners={learners} defaultTestType="END_TERM" brandingSettings={brandingSettings} /></ErrorBoundary>;
-          case 'sec-kcse-mock':       return <ErrorBoundary><SummativeAssessmentRouter learners={learners} defaultTestType="MOCK" brandingSettings={brandingSettings} /></ErrorBoundary>;
+          case 'sec-mark-entry':      return <ErrorBoundary><SummativeAssessmentRouter learners={learners} defaultTestType={pageParams.defaultTestType} onBack={() => handleNavigate('dashboard')} brandingSettings={brandingSettings} /></ErrorBoundary>;
+          case 'sec-cats':            return <ErrorBoundary><SummativeAssessmentRouter learners={learners} defaultTestType="CAT" onBack={() => handleNavigate('dashboard')} brandingSettings={brandingSettings} /></ErrorBoundary>;
+          case 'sec-mid-term':        return <ErrorBoundary><SummativeAssessmentRouter learners={learners} defaultTestType="MID_TERM" onBack={() => handleNavigate('dashboard')} brandingSettings={brandingSettings} /></ErrorBoundary>;
+          case 'sec-end-term':        return <ErrorBoundary><SummativeAssessmentRouter learners={learners} defaultTestType="END_TERM" onBack={() => handleNavigate('dashboard')} brandingSettings={brandingSettings} /></ErrorBoundary>;
+          case 'sec-kcse-mock':       return <ErrorBoundary><SummativeAssessmentRouter learners={learners} defaultTestType="MOCK" onBack={() => handleNavigate('dashboard')} brandingSettings={brandingSettings} /></ErrorBoundary>;
           case 'sec-mean-grades':     return <ResultsWorkbench variant="mean" pageParams={pageParams} onNavigate={handleNavigate} />;
           case 'sec-rankings':        return <ResultsWorkbench variant="rankings" pageParams={pageParams} onNavigate={handleNavigate} />;
           case 'sec-subject-analysis':return <ResultsWorkbench variant="subject" pageParams={pageParams} onNavigate={handleNavigate} />;

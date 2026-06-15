@@ -9,7 +9,7 @@ import SummativeTestsMobile from './SummativeTestsMobile';
 import SummativeTests from './SummativeTests';
 import { useMobile } from '../../../hooks/useMobileDetection';
 
-const SummativeTestsRouter = ({ onNavigate, isMobile: deviceIsMobile, defaultTestType = null }) => {
+const SummativeTestsRouter = ({ onNavigate, onBack, isMobile: deviceIsMobile, defaultTestType = null }) => {
   const mobileByViewport = useMobile();
   const isMobile = typeof deviceIsMobile === 'boolean' ? deviceIsMobile : mobileByViewport;
 
@@ -17,7 +17,7 @@ const SummativeTestsRouter = ({ onNavigate, isMobile: deviceIsMobile, defaultTes
   if (isMobile) {
     return (
       <div className="fixed inset-0 z-50 bg-gray-50 overflow-hidden">
-        <SummativeTestsMobile onNavigate={onNavigate} defaultTestType={defaultTestType} />
+        <SummativeTestsMobile onNavigate={onNavigate} onBack={onBack} defaultTestType={defaultTestType} />
       </div>
     );
   }
