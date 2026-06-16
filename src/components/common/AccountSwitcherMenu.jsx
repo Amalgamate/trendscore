@@ -7,7 +7,7 @@
  */
 
 import React, { useState } from 'react';
-import { Shield, LogOut, Search, RotateCcw } from 'lucide-react';
+import { Shield, LogOut, Search, RotateCcw, User } from 'lucide-react';
 import { useRolePreview } from '../../contexts/RolePreviewContext';
 import { Button } from '../ui/button';
 import {
@@ -47,7 +47,7 @@ const getRoleColor = (role) => {
   return colorMap[role] || 'bg-gray-50 text-gray-700 border-gray-200';
 };
 
-const AccountSwitcherMenu = ({ user, onLogout }) => {
+const AccountSwitcherMenu = ({ user, onLogout, onProfile }) => {
   const rolePreview = useRolePreview();
   const [searchQuery, setSearchQuery] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -87,6 +87,11 @@ const AccountSwitcherMenu = ({ user, onLogout }) => {
   const handleLogout = () => {
     setMenuOpen(false);
     onLogout?.();
+  };
+
+  const handleProfile = () => {
+    setMenuOpen(false);
+    onProfile?.();
   };
 
   return (
@@ -203,6 +208,16 @@ const AccountSwitcherMenu = ({ user, onLogout }) => {
             <DropdownMenuSeparator className="my-2" />
           </>
         )}
+
+        <button
+          onClick={handleProfile}
+          className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-50 transition-colors text-left border-0 cursor-pointer"
+        >
+          <User size={16} />
+          My Profile
+        </button>
+
+        <DropdownMenuSeparator className="my-2" />
 
         {/* Logout Button */}
         <button

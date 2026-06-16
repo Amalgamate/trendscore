@@ -133,7 +133,9 @@ const ROLE_PAGE_ALLOWLIST = {
     'student-assignments',
     'student-progress',
     'student-quizzes',
-    'student-course-view'
+    'student-course-view',
+    'student-profile',
+    'settings-profile'
   ])
 };
 
@@ -226,6 +228,7 @@ const INSTITUTION_AGNOSTIC_PAGES = new Set([
   'settings-system-control',
   'settings-communication',
   'settings-payment',
+  'settings-profile',
   'system-maintenance',
   'comm-notices',
   'comm-messages',

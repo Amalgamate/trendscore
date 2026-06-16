@@ -54,6 +54,7 @@ const AcademicSettings = lazy(() => import('../pages/settings/AcademicSettings')
 const UserManagement = lazy(() => import('../pages/settings/UserManagement'));
 const CommunicationSettings = lazy(() => import('../pages/settings/CommunicationSettings'));
 const PaymentSettings = lazy(() => import('../pages/settings/PaymentSettings'));
+const SelfProfilePage = lazy(() => import('../pages/settings/SelfProfilePage'));
 const IDCardTemplatesDesigner = lazy(() => import('../pages/settings/IDCardTemplatesDesigner'));
 const SystemLogsPage = lazy(() => import('../pages/settings/SystemLogsPage'));
 const SystemControlPage = lazy(() => import('../pages/settings/SystemControlPage'));
@@ -615,6 +616,8 @@ const PageRouter = ({
           case 'student-assignments': return <ErrorBoundary><MyAssignments onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'student-quizzes':
           case 'student-progress': return <ErrorBoundary><MyProgress onNavigate={handleNavigate} /></ErrorBoundary>;
+          case 'student-profile':
+            return <ErrorBoundary><SelfProfilePage user={user} onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'student-course-view': return <ErrorBoundary><CourseViewer courseId={pageParams.courseId} onNavigate={handleNavigate} /></ErrorBoundary>;
 
           // Library Module
@@ -696,7 +699,7 @@ const PageRouter = ({
             );
           case 'settings': 
             return isMobile ? (
-              <MobileGeneralSettings user={user} onLogout={handlers.onLogout} brandingSettings={brandingSettings} />
+              <MobileGeneralSettings user={user} onLogout={handlers.onLogout} brandingSettings={brandingSettings} onNavigate={handleNavigate} />
             ) : (
               <SchoolSettings brandingSettings={brandingSettings} setBrandingSettings={handlers.setBrandingSettings} />
             );
@@ -705,6 +708,7 @@ const PageRouter = ({
           case 'settings-backup': return <SystemMaintenancePage />;
           case 'settings-communication': return <ErrorBoundary><CommunicationSettings /></ErrorBoundary>;
           case 'settings-payment': return <PaymentSettings />;
+          case 'settings-profile': return <ErrorBoundary><SelfProfilePage user={user} onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'settings-system-logs': return <ErrorBoundary><SystemLogsPage /></ErrorBoundary>;
           case 'settings-system-control': return <ErrorBoundary><SystemControlPage /></ErrorBoundary>;
           case 'settings-id-templates': return <ErrorBoundary><IDCardTemplatesDesigner /></ErrorBoundary>;

@@ -47,6 +47,32 @@ const normalizeRoles = (input: unknown): Role[] => {
   return Array.from(new Set(normalized));
 };
 
+const trimOptionalString = (value: unknown): string | null | undefined => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const trimmed = String(value).trim();
+  return trimmed || null;
+};
+
+const userProfileSelect = {
+  id: true,
+  email: true,
+  firstName: true,
+  middleName: true,
+  lastName: true,
+  phone: true,
+  role: true,
+  roles: true,
+  status: true,
+  institutionType: true,
+  staffId: true,
+  subject: true,
+  gender: true,
+  profilePicture: true,
+  createdAt: true,
+  updatedAt: true
+} as const;
+
 export class UserController {
   /**
    * Get all users
@@ -330,6 +356,74 @@ export class UserController {
     });
   }
 
+  async updateOwnProfile(req: AuthRequest, res: Response) {
+    const currentUserId = req.user!.userId;
+    const { firstName, middleName, lastName, phone, profilePicture } = req.body || {};
+
+    const updateData: Record<string, unknown> = {};
+    const normalizedFirstName = trimOptionalString(firstName);
+    const normalizedMiddleName = trimOptionalString(middleName);
+    const normalizedLastName = trimOptionalString(lastName);
+    const normalizedPhone = trimOptionalString(phone);
+    const normalizedProfilePicture = trimOptionalString(profilePicture);
+
+    if (normalizedFirstName !== undefined) {
+      if (!normalizedFirstName || normalizedFirstName.length < 2 || normalizedFirstName.length > 50) {
+        throw new ApiError(400, 'First name must be between 2 and 50 characters');
+      }
+      updateData.firstName = normalizedFirstName;
+    }
+
+    if (normalizedLastName !== undefined) {
+      if (!normalizedLastName || normalizedLastName.length < 2 || normalizedLastName.length > 50) {
+        throw new ApiError(400, 'Last name must be between 2 and 50 characters');
+      }
+      updateData.lastName = normalizedLastName;
+    }
+
+    if (normalizedMiddleName !== undefined) {
+      if (normalizedMiddleName && normalizedMiddleName.length > 50) {
+        throw new ApiError(400, 'Middle name must be 50 characters or less');
+      }
+      updateData.middleName = normalizedMiddleName;
+    }
+
+    if (normalizedPhone !== undefined) {
+      if (normalizedPhone && normalizedPhone.length > 30) {
+        throw new ApiError(400, 'Phone number must be 30 characters or less');
+      }
+      updateData.phone = normalizedPhone;
+    }
+
+    if (normalizedProfilePicture !== undefined) {
+      if (normalizedProfilePicture && normalizedProfilePicture.length > 2000) {
+        throw new ApiError(400, 'Profile image URL is too long');
+      }
+      updateData.profilePicture = normalizedProfilePicture;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      throw new ApiError(400, 'No profile changes provided');
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: currentUserId },
+      data: updateData,
+      select: userProfileSelect
+    });
+
+    await redisCacheService.delete(`auth:user:${updatedUser.email}`);
+
+    res.json({
+      success: true,
+      data: {
+        ...updatedUser,
+        name: `${updatedUser.firstName} ${updatedUser.lastName}`.trim(),
+        roles: updatedUser.roles && updatedUser.roles.length > 0 ? updatedUser.roles : [updatedUser.role],
+      }
+    });
+  }
+
   /**
    * Update user
    */
@@ -547,10 +641,16 @@ export class UserController {
     const { id } = req.params;
     const { photoData } = req.body;
     const currentUserId = req.user!.userId;
+    const currentUserRole = req.user!.role;
+
+    if (currentUserId !== id && !['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'].includes(currentUserRole)) {
+      throw new ApiError(403, 'Permission denied');
+    }
 
     const user = await prisma.user.update({
       where: { id },
-      data: { profilePicture: photoData }
+      data: { profilePicture: photoData },
+      select: userProfileSelect
     });
 
     res.json({ success: true, data: user });

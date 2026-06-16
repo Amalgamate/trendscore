@@ -56,7 +56,7 @@ function MenuItem({ icon: Icon, label, subtitle, action, rightContent, isDanger 
   );
 }
 
-function ProfileCard({ user }) {
+function ProfileCard({ user, onEditProfile }) {
   return (
     <div className="bg-gradient-to-br from-brand-purple/20 to-purple-100 rounded-2xl p-5 border border-brand-purple/30">
       <div className="flex items-start gap-3">
@@ -69,7 +69,10 @@ function ProfileCard({ user }) {
           <p className="text-xs text-gray-500 mt-0.5">{user?.phone || 'Phone not set'}</p>
         </div>
       </div>
-      <button className="w-full mt-4 px-4 py-2 bg-brand-purple text-white font-semibold rounded-lg hover:bg-purple-700 transition text-sm">
+      <button
+        onClick={onEditProfile}
+        className="w-full mt-4 px-4 py-2 bg-brand-purple text-white font-semibold rounded-lg hover:bg-purple-700 transition text-sm"
+      >
         Edit Profile
       </button>
     </div>
@@ -132,7 +135,7 @@ const ParentPortalMore = ({ user, onNavigate, onLogout }) => {
       <div className="px-4 py-5">
         {/* Profile Card */}
         <div className="mb-6">
-          <ProfileCard user={user} />
+          <ProfileCard user={user} onEditProfile={() => onNavigate('settings-profile')} />
         </div>
 
         {/* Account Section */}
@@ -141,7 +144,7 @@ const ParentPortalMore = ({ user, onNavigate, onLogout }) => {
             icon={User}
             label="Profile Information"
             subtitle="Edit name, email, phone"
-            action={() => console.log('Edit profile')}
+            action={() => onNavigate('settings-profile')}
           />
           <MenuItem
             icon={Lock}

@@ -1,12 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { ChevronRight, Moon, Bell, Lock, LogOut } from 'lucide-react';
+import React, { useState } from 'react';
+import { ChevronRight, Moon, Bell, Lock, LogOut, User } from 'lucide-react';
 import { PRODUCT_DISPLAY_NAME } from '../../../../config/productIdentity';
 
-const MobileGeneralSettings = ({ user, onLogout, brandingSettings }) => {
+const MobileGeneralSettings = ({ user, onLogout, brandingSettings, onNavigate }) => {
   const [darkMode, setDarkMode] = useState(false);
   const [notifications, setNotifications] = useState(true);
 
   const settingsItems = [
+    {
+      icon: User,
+      label: 'My Profile',
+      action: 'link',
+      onClick: () => onNavigate?.('settings-profile'),
+    },
     {
       icon: Moon,
       label: 'Dark Mode',

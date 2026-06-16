@@ -640,7 +640,7 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
               {user?.role || 'Guest'}
             </p>
           </div>
-          <AccountSwitcherMenu user={user} onLogout={onLogout} />
+          <AccountSwitcherMenu user={user} onLogout={onLogout} onProfile={() => onNavigate?.('settings-profile')} />
         </div>
       </div>
 

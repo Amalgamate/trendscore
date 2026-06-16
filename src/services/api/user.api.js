@@ -16,6 +16,8 @@ export const userAPI = {
     fetchWithAuth('/users/verification-settings', { method: 'PUT', body: JSON.stringify(data) }),
   create: async (userData) =>
     fetchWithAuth('/users', { method: 'POST', body: JSON.stringify(userData) }),
+  updateOwnProfile: async (userData) =>
+    fetchWithAuth('/users/me/profile', { method: 'PUT', body: JSON.stringify(userData) }),
   update: async (id, userData) =>
     fetchWithAuth(`/users/${id}`, { method: 'PUT', body: JSON.stringify(userData) }),
   updateVerificationRequired: async (id, verificationRequired) =>

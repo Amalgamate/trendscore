@@ -59,6 +59,13 @@ router.put(
   asyncHandler(userController.updateSchoolVerificationSettings)
 );
 
+router.put(
+  '/me/profile',
+  rateLimit({ windowMs: 15 * 60 * 1000, maxRequests: 30 }),
+  auditLog('UPDATE_OWN_PROFILE'),
+  asyncHandler(userController.updateOwnProfile)
+);
+
 /**
  * @route   GET /api/users/role/:role
  * @access  VIEW_ALL_USERS permission
