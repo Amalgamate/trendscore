@@ -19,8 +19,8 @@ const ParentsList = lazy(() => import('../pages/ParentsList'));
 const LearningHubPage = lazy(() => import('../pages/LearningHubPage'));
 const PromotionPage = lazy(() => import('../pages/PromotionPage'));
 const TransferOutPage = lazy(() => import('../pages/TransferOutPage'));
-const DailyAttendance = lazy(() => import('../pages/DailyAttendanceAPI'));
-const AttendanceReports = lazy(() => import('../pages/AttendanceReports'));
+const DailyAttendance = lazy(() => import('../pages/attendance/AttendanceModule'));
+const AttendanceReports = lazy(() => import('../pages/attendance/AttendanceReportsV2'));
 const AdmissionsPage = lazy(() => import('../pages/AdmissionsPage'));
 const TransfersInPage = lazy(() => import('../pages/TransfersInPage'));
 const ExitedLearnersPage = lazy(() => import('../pages/ExitedLearnersPage'));
@@ -352,9 +352,9 @@ const PageRouter = ({
       {(() => {
         switch (normalizedPage) {
           case 'dashboard':
-            return effectiveRole === 'STUDENT'
-              ? <StudentDashboardView user={user} onNavigate={handleNavigate} />
-              : <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} />;
+            if (effectiveRole === 'STUDENT') return <StudentDashboardView user={user} onNavigate={handleNavigate} />;
+            if (effectiveRole === 'PARENT')  return <ParentPortalHome user={user} onNavigate={handleNavigate} />;
+            return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} />;
           case 'finance-dashboard':
             return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} />;
 
@@ -485,7 +485,7 @@ const PageRouter = ({
           // Others
           case 'timetable': return <TimetablePage />;
           case 'coding-playground': return <CodingPlayground />;
-          case 'attendance-daily': return <DailyAttendance learners={learners} />;
+          case 'attendance-daily': return <DailyAttendance />;
           case 'attendance-reports': return <AttendanceReports learners={learners} />;
 
           // Assessment Module

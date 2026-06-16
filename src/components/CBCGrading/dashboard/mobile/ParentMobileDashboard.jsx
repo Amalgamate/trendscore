@@ -124,25 +124,25 @@ const ParentMobileDashboard = ({ user, onNavigate, currentPath }) => {
         <p className="text-xs font-semibold text-gray-600 uppercase px-2">Quick Actions</p>
         <div className="grid grid-cols-2 gap-2">
           <button
-            onClick={() => onNavigate('dashboard')}
+            onClick={() => onNavigate('parent-portal-children')}
             className="p-3 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 transition"
           >
             View Children
           </button>
           <button
-            onClick={() => onNavigate('comm-messages')}
+            onClick={() => onNavigate('parent-portal-fees')}
             className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-xs font-semibold hover:bg-amber-100 transition"
           >
             Fees
           </button>
           <button
-            onClick={() => onNavigate('events-calendar')}
+            onClick={() => onNavigate('parent-portal-attendance')}
             className="p-3 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 transition"
           >
             Attendance
           </button>
           <button
-            onClick={() => onNavigate('comm-messages')}
+            onClick={() => onNavigate('parent-portal-messages')}
             className="p-3 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 text-xs font-semibold hover:bg-violet-100 transition"
           >
             Messages

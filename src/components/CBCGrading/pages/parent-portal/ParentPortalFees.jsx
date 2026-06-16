@@ -1,392 +1,349 @@
 /**
- * Parent Portal Fees Screen
- * Modern banking app-style fees management
- * Display outstanding balance, fee breakdown, transactions, and payment options
+ * ParentPortalFees — Family Fees Management
+ *
+ * Three payment modes:
+ *  1. Pay One Child  — select child, pay that balance
+ *  2. Pay Full Family Balance — clears all at once
+ *  3. Partial Payment — enter amount then choose distribution strategy
+ *
+ * Real data from dashboardAPI.getParentMetrics + feeAPI.getLearnerInvoices
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  ArrowLeft, DollarSign, TrendingDown, Download, History,
-  ChevronRight, AlertCircle, CheckCircle, Clock, FileText,
-  Wallet, Phone
+  ArrowLeft, Wallet, CheckCircle2, AlertTriangle,
+  ChevronRight, RefreshCw, X, Users,
 } from 'lucide-react';
-import { dashboardAPI } from '../../../../services/api';
+import { dashboardAPI, feeAPI } from '../../../../services/api';
+import MobileBottomNav from '../../dashboard/mobile/MobileBottomNav';
 
-// ─── Helper Components ──────────────────────────────────────────────
+const fmt    = (n) => Number(n || 0).toLocaleString();
+const fmtPct = (n) => `${Math.round(Number(n || 0))}%`;
 
-function OutstandingBalanceCard({ balance, dueDate, statusMessage }) {
-  const isOverdue = statusMessage?.toLowerCase().includes('overdue');
+function Skeleton({ className = '' }) {
+  return <div className={`animate-pulse rounded-lg bg-gray-100 ${className}`} />;
+}
+
+// ─── Family Fee Overview ──────────────────────────────────────────────────────
+
+function FamilyFeeHeader({ children, loading }) {
+  const totalBalance = children.reduce((s, c) => s + Number(c.feeBalance || 0), 0);
+  const allCleared   = totalBalance === 0 && children.length > 0;
 
   return (
-    <div className={`rounded-2xl p-6 text-white ${
-      isOverdue
-        ? 'bg-gradient-to-br from-rose-600 to-rose-700'
-        : 'bg-gradient-to-br from-brand-purple to-purple-700'
-    } relative overflow-hidden`}>
-      {/* Decorative circles */}
-      <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16" />
-      <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12" />
-
-      <div className="relative z-10">
-        <p className="text-white/80 text-sm font-medium mb-2">Outstanding Balance</p>
-        <h2 className="text-4xl font-bold mb-1">KES {Number(balance || 0).toLocaleString()}</h2>
-        
-        {dueDate && (
-          <p className="text-white/70 text-xs">Due: {dueDate}</p>
-        )}
-
-        {statusMessage && (
-          <div className="mt-3 p-2 bg-white/20 rounded-lg">
-            <p className="text-xs font-semibold">{statusMessage}</p>
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="px-4 pt-4 pb-3">
+        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Total Outstanding</p>
+        {loading ? (
+          <Skeleton className="h-8 w-36" />
+        ) : (
+          <div className="flex items-end gap-2">
+            <p className={`text-3xl font-bold ${allCleared ? 'text-emerald-600' : 'text-rose-600'}`}>
+              KES {fmt(totalBalance)}
+            </p>
+            {allCleared && <CheckCircle2 size={18} className="text-emerald-500 mb-1" />}
+            {!allCleared && totalBalance > 0 && <AlertTriangle size={18} className="text-amber-500 mb-1" />}
           </div>
         )}
+        <p className="text-xs text-gray-500 mt-0.5">across {children.length} child{children.length !== 1 ? 'ren' : ''}</p>
       </div>
 
-      {/* Status icon */}
-      <div className={`absolute top-4 right-4 p-3 rounded-xl ${
-        isOverdue ? 'bg-white/20' : 'bg-white/10'
-      }`}>
-        {isOverdue ? (
-          <AlertCircle size={20} />
-        ) : (
-          <DollarSign size={20} />
-        )}
-      </div>
-    </div>
-  );
-}
-
-function PaymentProgressCard({ paid, outstanding, total }) {
-  const progressPercent = total > 0 ? (paid / total * 100) : 0;
-  const remainingPercent = 100 - progressPercent;
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-5">
-      <h3 className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-4">Payment Progress</h3>
-
-      {/* Progress visualization */}
-      <div className="flex h-6 gap-1 rounded-full overflow-hidden bg-gray-100 mb-4">
-        <div
-          className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-all"
-          style={{ width: `${Math.min(progressPercent, 100)}%` }}
-        />
-        <div className="h-full bg-gray-300 flex-1" />
-      </div>
-
-      {/* Progress details */}
-      <div className="grid grid-cols-3 gap-3">
-        <div>
-          <p className="text-xs text-gray-500 mb-1">Paid</p>
-          <p className="text-lg font-bold text-emerald-600">
-            {Math.round(progressPercent)}%
-          </p>
-          <p className="text-xs text-gray-400 mt-1">KES {Number(paid).toLocaleString()}</p>
-        </div>
-        <div>
-          <p className="text-xs text-gray-500 mb-1">Due</p>
-          <p className="text-lg font-bold text-amber-600">
-            {Math.round(remainingPercent)}%
-          </p>
-          <p className="text-xs text-gray-400 mt-1">KES {Number(outstanding).toLocaleString()}</p>
-        </div>
-        <div>
-          <p className="text-xs text-gray-500 mb-1">Total Fees</p>
-          <p className="text-lg font-bold text-gray-900">
-            100%
-          </p>
-          <p className="text-xs text-gray-400 mt-1">KES {Number(total).toLocaleString()}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FeeBreakdownCard({ breakdown }) {
-  const items = breakdown || [
-    { category: 'Tuition', amount: 50000, status: 'PAID', paid: 50000 },
-    { category: 'Transport', amount: 15000, status: 'PAID', paid: 15000 },
-    { category: 'Activity', amount: 5000, status: 'PARTIALLY_PAID', paid: 2500 },
-    { category: 'Exams', amount: 3000, status: 'UNPAID', paid: 0 },
-    { category: 'Meals', amount: 8000, status: 'UNPAID', paid: 0 },
-  ];
-
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'PAID':
-        return { bg: 'bg-emerald-50', text: 'text-emerald-700', label: '✓ Paid' };
-      case 'PARTIALLY_PAID':
-        return { bg: 'bg-amber-50', text: 'text-amber-700', label: '◐ Partial' };
-      case 'UNPAID':
-        return { bg: 'bg-rose-50', text: 'text-rose-700', label: '◯ Unpaid' };
-      default:
-        return { bg: 'bg-gray-50', text: 'text-gray-700', label: status };
-    }
-  };
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-5">
-      <h3 className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-3">Fee Breakdown</h3>
-      
-      <div className="space-y-2">
-        {items.map((item, idx) => {
-          const badge = getStatusBadge(item.status);
-          const outstanding = item.amount - item.paid;
-
-          return (
-            <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition">
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-gray-900 text-sm">{item.category}</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {item.paid > 0 && `KES ${Number(item.paid).toLocaleString()} paid • `}
-                  {outstanding > 0 ? `KES ${Number(outstanding).toLocaleString()} outstanding` : 'Complete'}
-                </p>
-              </div>
-              <div className={`px-2.5 py-1 rounded-lg font-semibold text-xs ${badge.bg} ${badge.text}`}>
-                {badge.label}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <button className="w-full mt-3 text-brand-purple font-semibold py-2 text-sm hover:bg-brand-purple/5 rounded-lg transition flex items-center justify-center gap-2">
-        Download Detailed Breakdown <ChevronRight size={16} />
-      </button>
-    </div>
-  );
-}
-
-function RecentTransactionsCard({ transactions }) {
-  const recentTxns = (transactions || []).slice(0, 5);
-
-  const getTransactionIcon = (type) => {
-    switch (type) {
-      case 'PAYMENT':
-        return { icon: TrendingDown, color: 'text-emerald-600 bg-emerald-50' };
-      case 'INVOICE':
-        return { icon: FileText, color: 'text-blue-600 bg-blue-50' };
-      case 'CREDIT':
-        return { icon: CheckCircle, color: 'text-purple-600 bg-purple-50' };
-      case 'WAIVER':
-        return { icon: Wallet, color: 'text-amber-600 bg-amber-50' };
-      default:
-        return { icon: DollarSign, color: 'text-gray-600 bg-gray-50' };
-    }
-  };
-
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'COMPLETED':
-        return 'bg-emerald-50 text-emerald-700';
-      case 'PENDING':
-        return 'bg-amber-50 text-amber-700';
-      case 'FAILED':
-        return 'bg-rose-50 text-rose-700';
-      default:
-        return 'bg-gray-50 text-gray-700';
-    }
-  };
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-5">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-bold text-gray-600 uppercase tracking-wider">Recent Transactions</h3>
-        <button className="text-brand-purple text-xs font-semibold hover:bg-brand-purple/5 px-2 py-1 rounded">
-          View All
-        </button>
-      </div>
-
-      {recentTxns.length > 0 ? (
-        <div className="space-y-2">
-          {recentTxns.map((txn, idx) => {
-            const txnIcon = getTransactionIcon(txn.type);
-            const Icon = txnIcon.icon;
-
+      {!loading && children.length > 0 && (
+        <div className="border-t border-gray-100">
+          {children.map((child) => {
+            const bal = Number(child.feeBalance || 0);
             return (
-              <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${txnIcon.color}`}>
-                  <Icon size={18} />
+              <div key={child.id} className="flex items-center justify-between px-4 py-2.5 border-b border-gray-50 last:border-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 text-[10px] font-bold flex items-center justify-center">
+                    {child.name?.[0]}
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-800 font-medium">{child.name}</p>
+                    <p className="text-[10px] text-gray-400">{child.grade}</p>
+                  </div>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-gray-900 text-sm">{txn.description || txn.type}</p>
-                  <p className="text-xs text-gray-500">{txn.date}</p>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <p className={`font-bold text-sm ${
-                    txn.type === 'PAYMENT' 
-                      ? 'text-emerald-600' 
-                      : txn.type === 'INVOICE'
-                      ? 'text-rose-600'
-                      : 'text-gray-900'
-                  }`}>
-                    {txn.type === 'PAYMENT' ? '-' : '+'} KES {Number(txn.amount).toLocaleString()}
-                  </p>
-                  <p className={`text-xs font-semibold mt-0.5 ${getStatusBadge(txn.status)}`}>
-                    {txn.status}
-                  </p>
-                </div>
+                <span className={`text-sm font-bold ${bal > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                  {bal > 0 ? `KES ${fmt(bal)}` : '✓ Cleared'}
+                </span>
               </div>
             );
           })}
         </div>
-      ) : (
-        <p className="text-center py-6 text-gray-400 text-sm">No transactions yet</p>
       )}
     </div>
   );
 }
 
-function PaymentMethodsCard({ onPayNow }) {
-  const methods = [
-    { id: 'card', name: 'Credit/Debit Card', icon: Wallet },
-    { id: 'bank', name: 'Bank Transfer', icon: DollarSign },
-    { id: 'mobile', name: 'Mobile Money', icon: Phone },
-  ];
+// ─── Step indicator ───────────────────────────────────────────────────────────
 
+function StepIndicator({ step, total }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-5">
-      <h3 className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-3">Payment Methods</h3>
-      
-      <div className="space-y-2 mb-4">
-        {methods.map((method) => {
-          const Icon = method.icon;
-          return (
-            <button
-              key={method.id}
-              className="w-full flex items-center gap-3 p-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition text-left"
-            >
-              <Icon size={20} className="text-brand-purple flex-shrink-0" />
-              <span className="font-semibold text-gray-900">{method.name}</span>
-              <ChevronRight size={16} className="ml-auto text-gray-400" />
-            </button>
-          );
-        })}
-      </div>
-
-      <button
-        onClick={onPayNow}
-        className="w-full bg-brand-purple text-white font-bold py-3 rounded-xl hover:bg-purple-700 transition flex items-center justify-center gap-2"
-      >
-        <DollarSign size={18} />
-        Pay Now
-      </button>
+    <div className="flex items-center gap-1.5 mb-1">
+      {Array.from({ length: total }).map((_, i) => (
+        <div
+          key={i}
+          className={`h-1 flex-1 rounded-full transition-colors ${i < step ? 'bg-[#3B1FA3]' : 'bg-gray-200'}`}
+        />
+      ))}
     </div>
   );
 }
 
-// ─── Main Component ─────────────────────────────────────────────────────────
+function StepHeader({ number, title }) {
+  return (
+    <div className="flex items-center gap-2 mb-3">
+      <div className="w-6 h-6 rounded-full bg-[#3B1FA3] text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
+        {number}
+      </div>
+      <p className="text-sm font-bold text-[#3B1FA3]">{title}</p>
+    </div>
+  );
+}
 
-const ParentPortalFees = ({ user, onNavigate }) => {
-  const [feesData, setFeesData] = useState(null);
-  const [loading, setLoading] = useState(true);
+// ─── Step 1 — Choose payment type ────────────────────────────────────────────
 
-  useEffect(() => {
-    const loadFeesData = async () => {
-      try {
-        const response = await dashboardAPI.getParentMetrics?.() || { success: true, data: {} };
-        if (response.success) {
-          const firstChild = response.data?.children?.[0];
-          if (firstChild) {
-            setFeesData({
-              outstandingBalance: firstChild.feeBalance || 0,
-              amountDue: firstChild.amountDue || 0,
-              nextPaymentDate: firstChild.nextPaymentDate,
-              totalFees: firstChild.totalFees || 50000,
-              paidAmount: firstChild.paidAmount || 0,
-              dueDate: firstChild.dueDate,
-              statusMessage: firstChild.feeBalance > 0 ? 'Payment Due' : 'All Paid',
-              breakdown: firstChild.feeBreakdown || [],
-              transactions: firstChild.transactions || [],
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Failed to load fees data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadFeesData();
-  }, []);
+function Step1ChooseType({ selected, onChange, children }) {
+  const total = children.reduce((s, c) => s + Number(c.feeBalance || 0), 0);
+  const modes = [
+    { id: 'full',    icon: '💳', label: 'Pay Full Amount',  sub: `Pay KES ${fmt(total)}`       },
+    { id: 'partial', icon: '💰', label: 'Partial Payment',  sub: 'Pay part of the total'       },
+    { id: 'one',     icon: '👤', label: 'Pay One Child',    sub: 'Pay for a specific child'    },
+  ];
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <StepHeader number={1} title="Choose payment type" />
+      {modes.map(m => (
+        <button
+          key={m.id}
+          onClick={() => onChange(m.id)}
+          className={`w-full flex items-center gap-3 px-4 py-3 border-t border-gray-50 transition-colors text-left ${selected === m.id ? 'bg-[#3B1FA3]/5' : 'hover:bg-gray-50'}`}
+        >
+          <span className="text-base">{m.icon}</span>
+          <div className="flex-1">
+            <p className={`text-sm font-semibold ${selected === m.id ? 'text-[#3B1FA3]' : 'text-gray-800'}`}>{m.label}</p>
+            <p className="text-[10px] text-gray-400">{m.sub}</p>
+          </div>
+          <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${selected === m.id ? 'border-[#3B1FA3] bg-[#3B1FA3]' : 'border-gray-300'}`}>
+            {selected === m.id && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
 
-  const handlePayNow = () => {
-    // This would typically open a payment gateway or form
-    // For now, navigate to payment processing
-    alert('Payment gateway would open here');
-  };
+// ─── Step 2 — Enter Amount ───────────────────────────────────────────────────
+
+function Step2EnterAmount({ mode, amount, setAmount, children }) {
+  if (mode === 'full') return null;
+  const total = children.reduce((s, c) => s + Number(c.feeBalance || 0), 0);
+  const n     = Number(amount) || 0;
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-100 sticky top-0 z-10">
-        <div className="flex items-center gap-3 px-4 py-4">
-          <button
-            onClick={() => onNavigate('parent-portal-home')}
-            className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-gray-100 transition text-gray-600"
+    <div className="bg-white border border-gray-200 rounded-xl p-4">
+      <StepHeader number={2} title="Enter amount" />
+      <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-2">Amount to Pay</p>
+      <div className="flex items-center border-2 border-[#3B1FA3] rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-[#3B1FA3]/30">
+        <span className="px-3 py-3 text-sm font-bold text-gray-500 bg-gray-50 border-r border-gray-200">KES</span>
+        <input
+          type="number" min="1" max={total}
+          value={amount}
+          onChange={e => setAmount(e.target.value)}
+          placeholder="0"
+          className="flex-1 px-3 py-3 text-xl font-bold text-gray-900 focus:outline-none"
+        />
+      </div>
+      {n > total && <p className="text-xs text-rose-600 mt-1.5">Exceeds outstanding balance of KES {fmt(total)}</p>}
+    </div>
+  );
+}
+
+// ─── Step 3 — Choose distribution ────────────────────────────────────────────
+
+function Step3Distribution({ mode, amount, strategy, setStrategy, custom, setCustom, children }) {
+  if (mode === 'one') {
+    const [selected, setSelected] = useState(null);
+    // (Step 3 for 'one' is child selector)
+    return (
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="px-4 pt-3 pb-1"><StepHeader number={3} title="Select child" /></div>
+        {children.map(c => {
+          const bal = Number(c.feeBalance || 0);
+          const isSel = selected === c.id;
+          return (
+            <button key={c.id} onClick={() => setSelected(isSel ? null : c.id)}
+              className={`w-full flex items-center gap-3 px-4 py-3 border-t border-gray-50 text-left transition-colors ${isSel ? 'bg-[#3B1FA3]/5' : 'hover:bg-gray-50'}`}
+            >
+              <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${isSel ? 'border-[#3B1FA3] bg-[#3B1FA3]' : 'border-gray-300'}`} />
+              <div className="flex-1"><p className="text-sm font-medium text-gray-800">{c.name}</p><p className="text-[10px] text-gray-400">{c.grade}</p></div>
+              <span className={`text-sm font-bold ${bal > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{bal > 0 ? `KES ${fmt(bal)}` : 'Cleared'}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  if (mode !== 'partial') return null;
+  const n        = Number(amount) || 0;
+  const even     = children.length > 0 ? Math.floor(n / children.length) : 0;
+  const options  = [
+    { id: 'even',   label: 'Distribute Evenly',       sub: even > 0 ? `≈ KES ${fmt(even)} each` : '' },
+    { id: 'oldest', label: 'Oldest Balances First',   sub: 'Clear oldest invoices first'             },
+    { id: 'custom', label: 'Custom Allocation',       sub: 'Choose amount per child'                 },
+  ];
+  const customTotal = Object.values(custom).reduce((s, v) => s + (Number(v) || 0), 0);
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="px-4 pt-3 pb-1"><StepHeader number={3} title="Choose distribution" /></div>
+        {options.map(o => (
+          <button key={o.id} onClick={() => setStrategy(o.id)}
+            className={`w-full flex items-center gap-3 px-4 py-3 border-t border-gray-50 text-left transition-colors ${strategy === o.id ? 'bg-[#3B1FA3]/5' : 'hover:bg-gray-50'}`}
           >
-            <ArrowLeft size={20} />
+            <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${strategy === o.id ? 'border-[#3B1FA3] bg-[#3B1FA3]' : 'border-gray-300'}`}>
+              {strategy === o.id && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+            </div>
+            <div><p className={`text-sm font-semibold ${strategy === o.id ? 'text-[#3B1FA3]' : 'text-gray-800'}`}>{o.label}</p>
+            {o.sub && <p className="text-[10px] text-gray-400">{o.sub}</p>}</div>
+          </button>
+        ))}
+      </div>
+      {strategy === 'custom' && (
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider px-4 pt-3 pb-2">Allocate Per Child</p>
+          {children.map(c => (
+            <div key={c.id} className="flex items-center gap-3 px-4 py-2.5 border-t border-gray-50">
+              <span className="text-sm text-gray-700 flex-1 truncate">{c.name}</span>
+              <input type="number" min="0" value={custom[c.id] ?? ''} onChange={e => setCustom(p => ({ ...p, [c.id]: e.target.value }))}
+                placeholder="0" className="w-24 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm font-bold text-right focus:outline-none focus:ring-2 focus:ring-[#3B1FA3]" />
+            </div>
+          ))}
+          <div className="px-4 py-2.5 border-t border-gray-100 flex justify-between">
+            <span className="text-xs text-gray-500">Allocated</span>
+            <span className={`text-xs font-bold ${customTotal === n ? 'text-emerald-600' : 'text-rose-600'}`}>KES {fmt(customTotal)} / KES {fmt(n)}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+const ParentPortalFees = ({ user, onNavigate }) => {
+  const [children, setChildren] = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState(null);
+  const [payMode, setPayMode]   = useState(null);   // null = not started
+  const [amount, setAmount]     = useState('');
+  const [strategy, setStrategy] = useState(null);
+  const [custom, setCustom]     = useState({});
+
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const res = await dashboardAPI.getParentMetrics();
+      if (res?.success) setChildren(res.data?.children || []);
+      else setError(res?.message || 'Failed to load fee data');
+    } catch (e) { setError(e?.message || 'Failed to load fee data'); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const totalBalance = children.reduce((s, c) => s + Number(c.feeBalance || 0), 0);
+
+  // Determine current step for progress bar
+  const step = !payMode ? 0 : payMode === 'full' ? 2 : amount ? (strategy ? 4 : 3) : 2;
+
+  return (
+    <div className="min-h-screen bg-[#F5F5F7] pb-20">
+      <div className="bg-white border-b border-gray-100 sticky top-0 z-10">
+        <div className="flex items-center gap-3 px-4 py-3">
+          <button onClick={() => onNavigate('parent-portal-home')} className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-600 transition-colors">
+            <ArrowLeft size={18} />
           </button>
           <div className="flex-1">
-            <h1 className="text-xl font-bold text-gray-900">School Fees</h1>
-            <p className="text-xs text-gray-500">Payment & Fee Management</p>
+            <h1 className="text-base font-bold text-gray-900">School Fees</h1>
+            <p className="text-[10px] text-gray-500">Family fee management</p>
           </div>
-          <div className="p-2 rounded-lg bg-amber-50 text-amber-600">
-            <DollarSign size={20} />
-          </div>
+          <button onClick={load} className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400 transition-colors">
+            <RefreshCw size={14} />
+          </button>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="px-4 py-5 space-y-4">
-        {loading ? (
+      <div className="px-4 pt-4 space-y-4">
+        {error && <div className="bg-rose-50 border border-rose-200 rounded-xl p-3"><p className="text-xs text-rose-700">{error}</p></div>}
+
+        {/* Family balance header */}
+        <FamilyFeeHeader children={children} loading={loading} />
+
+        {!loading && totalBalance > 0 && (
           <>
-            <div className="h-40 bg-white rounded-2xl border border-gray-200 animate-pulse" />
-            <div className="h-32 bg-white rounded-2xl border border-gray-200 animate-pulse" />
-          </>
-        ) : feesData ? (
-          <>
-            {/* Outstanding Balance */}
-            <OutstandingBalanceCard
-              balance={feesData.outstandingBalance}
-              dueDate={feesData.dueDate}
-              statusMessage={feesData.statusMessage}
-            />
-
-            {/* Payment Progress */}
-            <PaymentProgressCard
-              paid={feesData.paidAmount}
-              outstanding={feesData.outstandingBalance}
-              total={feesData.totalFees}
-            />
-
-            {/* Fee Breakdown */}
-            <FeeBreakdownCard breakdown={feesData.breakdown} />
-
-            {/* Recent Transactions */}
-            <RecentTransactionsCard transactions={feesData.transactions} />
-
-            {/* Payment Methods & Pay Button */}
-            <PaymentMethodsCard onPayNow={handlePayNow} />
-
-            {/* Help Section */}
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
-              <h3 className="font-semibold text-blue-900 mb-2">❓ Need Help?</h3>
-              <p className="text-sm text-blue-800 mb-3">
-                For payment issues or fee inquiries, contact the school finance office.
-              </p>
-              <button className="text-blue-600 font-semibold text-sm hover:underline flex items-center gap-2">
-                Contact Finance Office <ChevronRight size={16} />
-              </button>
+            {/* Section title */}
+            <div>
+              <h2 className="text-sm font-bold text-[#3B1FA3] mb-1">Smart Payment Flow</h2>
+              <StepIndicator step={step} total={4} />
             </div>
+
+            {/* Step 1 */}
+            <Step1ChooseType
+              selected={payMode}
+              onChange={m => { setPayMode(m); setAmount(''); setStrategy(null); setCustom({}); }}
+              children={children}
+            />
+
+            {/* Step 2 — amount (only for partial / one) */}
+            {payMode && payMode !== 'full' && (
+              <Step2EnterAmount mode={payMode} amount={amount} setAmount={setAmount} children={children} />
+            )}
+
+            {/* Step 3 — distribution */}
+            {payMode && (payMode === 'full' || Number(amount) > 0) && (
+              <Step3Distribution
+                mode={payMode}
+                amount={amount}
+                strategy={strategy}
+                setStrategy={setStrategy}
+                custom={custom}
+                setCustom={setCustom}
+                children={children}
+              />
+            )}
+
+            {/* Step 4 — Review & Pay CTA */}
+            {payMode && (payMode === 'full' || (Number(amount) > 0 && strategy)) && (
+              <div className="bg-white border border-gray-200 rounded-xl p-4">
+                <StepHeader number={4} title="Review & Pay" />
+                <button className="w-full py-3.5 bg-[#3B1FA3] text-white text-sm font-bold rounded-xl hover:bg-[#2d1680] transition-colors">
+                  Review Payment
+                </button>
+              </div>
+            )}
           </>
-        ) : (
-          <div className="text-center py-12">
-            <DollarSign size={40} className="mx-auto mb-3 text-gray-300" />
-            <h3 className="font-semibold text-gray-900 mb-1">No Fee Data Available</h3>
-            <p className="text-sm text-gray-500">Contact your school to set up fee management</p>
+        )}
+
+        {!loading && totalBalance === 0 && children.length > 0 && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 text-center">
+            <CheckCircle2 size={28} className="mx-auto mb-2 text-emerald-500" />
+            <p className="text-sm font-bold text-emerald-700">All fees are cleared!</p>
+            <p className="text-xs text-emerald-600 mt-1">No outstanding balances for any child.</p>
+          </div>
+        )}
+
+        {!loading && children.length === 0 && (
+          <div className="bg-white border border-dashed border-gray-200 rounded-xl p-8 text-center">
+            <Users size={28} className="mx-auto mb-2 text-gray-300" />
+            <p className="text-sm text-gray-500">No children linked to your account</p>
           </div>
         )}
       </div>
+
+      <MobileBottomNav role="PARENT" currentPath="parent-portal-fees" onNavigate={onNavigate} />
     </div>
   );
 };

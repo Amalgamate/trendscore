@@ -223,6 +223,11 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
       setCurrentPage('finance-dashboard');
       return;
     }
+    // Redirect parents away from the generic dashboard to the parent portal home
+    if (user?.role === 'PARENT' && currentPage === 'dashboard') {
+      setCurrentPage('parent-portal-home');
+      return;
+    }
     if (!hasPageAccess(user, currentPage)) {
       setCurrentPage('dashboard');
     }
@@ -552,6 +557,40 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
 
   // ── Layout ────────────────────────────────────────────────────────────────
   if (isMobile) {
+    // Parents get their own shell-free layout — the parent portal pages
+    // manage their own headers and bottom navigation (ParentBottomNav).
+    if (parentPortal) {
+      return (
+        <>
+          <ErrorBoundary>
+            <PageRouter
+              currentPage={currentPage}
+              pageParams={pageParams}
+              user={user}
+              learners={learners}
+              teachers={teachers}
+              parents={parents}
+              pagination={pagination}
+              teacherPagination={teacherPagination}
+              parentPagination={parentPagination}
+              learnersLoading={learnersLoading}
+              brandingSettings={brandingSettings}
+              editingLearner={editingLearner}
+              editingTeacher={editingTeacher}
+              handlers={handlers}
+            />
+          </ErrorBoundary>
+          <GlobalModals
+            showConfirmDialog={showConfirmDialog} setShowConfirmDialog={setShowConfirmDialog}
+            confirmAction={confirmAction}
+            showParentModal={showParentModal} setShowParentModal={setShowParentModal}
+            editingParent={editingParent} handleSaveParent={handleSaveParent}
+            {...notify}
+          />
+        </>
+      );
+    }
+
     return (
       <MobileAppShell
         user={user}
@@ -624,7 +663,7 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
         onOpenGitDialog={() => setGitDialogOpen(true)}
       />
       <div className="flex-1 flex min-h-0 flex-col min-w-0 overflow-hidden relative">
-        {!(user?.role === 'PARENT' && currentPage === 'dashboard') && !(user?.role === 'ACCOUNTANT' && currentPage === 'finance-dashboard') && (
+        {!(user?.role === 'PARENT' && currentPage.startsWith('parent-portal')) && !(user?.role === 'ACCOUNTANT' && currentPage === 'finance-dashboard') && (
           <>
             <Header user={user} onLogout={handleLogout} onNavigate={handleNavigate} />
             <HorizontalSubmenu currentPage={currentPage} onNavigate={handleNavigate} />

@@ -9,6 +9,7 @@ import {
   Settings, LogOut, Shield, Eye, Languages, Lock,
   ChevronRight, ExternalLink, AlertCircle, MessageSquare
 } from 'lucide-react';
+import MobileBottomNav from '../../dashboard/mobile/MobileBottomNav';
 
 // ─── Helper Components ──────────────────────────────────────────────
 
@@ -281,6 +282,7 @@ const ParentPortalMore = ({ user, onNavigate, onLogout }) => {
           </div>
         </div>
       )}
+      <MobileBottomNav role="PARENT" currentPath="parent-portal-more" onNavigate={onNavigate} />
     </div>
   );
 };

@@ -293,7 +293,7 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
     items: [
       {
         id: 'home',
-        label: 'Home',
+        label: 'Overview',
         icon: Home,
         path: 'parent-portal-home',
         color: 'text-brand-purple'
@@ -321,7 +321,7 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
       },
       {
         id: 'more',
-        label: 'More',
+        label: 'Menu',
         icon: Settings,
         path: 'parent-portal-more',
         color: 'text-gray-600'

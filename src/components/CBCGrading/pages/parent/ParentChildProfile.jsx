@@ -1,124 +1,338 @@
 /**
- * ParentChildProfile — Sophisticated child profile view for parents
- * Tabs: Overview · Fees · Attendance · Academics
+ * ParentChildProfile
+ * Design ref: purple header card + avatar + name + grade/class + Present today badge
+ * Tabs: Overview · Results · Attendance · Fees · Info
+ * Overview: outstanding balance card, latest assessment subject grid,
+ *           attendance donut + counts, recent announcements
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  ArrowLeft, User, CreditCard, Calendar, BookOpen,
-  CheckCircle2, XCircle, Clock, AlertTriangle,
-  TrendingUp, Download, Loader2, RefreshCw, GraduationCap,
-  ChevronRight, Receipt, FileText,
+  ArrowLeft, MoreVertical, CreditCard, TrendingUp,
+  CheckCircle2, XCircle, Clock, Loader2, GraduationCap,
+  ChevronRight, Receipt, FileText, Info, Bell,
 } from 'lucide-react';
 import api from '../../../../services/api';
 import { cn } from '../../../../utils/cn';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const fmt = (n) => Number(n || 0).toLocaleString();
-const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
-const fmtPct  = (n) => `${Math.round(Number(n || 0))}%`;
-
-const STATUS_COLORS = {
-  PRESENT:  'bg-emerald-100 text-emerald-700',
-  ABSENT:   'bg-red-100    text-red-700',
-  LATE:     'bg-amber-100  text-amber-700',
-  EXCUSED:  'bg-blue-100   text-blue-700',
-};
-
+const fmt     = (n)  => Number(n || 0).toLocaleString();
+const fmtDate = (d)  => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+const fmtPct  = (n)  => `${Math.round(Number(n || 0))}%`;
 const INVOICE_COLORS = {
-  PAID:         'bg-emerald-100 text-emerald-700',
+  PAID:          'bg-emerald-100 text-emerald-700',
   PARTIALLY_PAID:'bg-amber-100 text-amber-700',
-  UNPAID:       'bg-red-100    text-red-700',
-  CANCELLED:    'bg-gray-100   text-gray-500',
+  UNPAID:        'bg-red-100 text-red-700',
+  CANCELLED:     'bg-gray-100 text-gray-500',
 };
 
-// ─── Sub-components ────────────────────────────────────────────────────────────
-
-function StatCard({ label, value, sub, icon: Icon, tone = 'purple' }) {
-  const tones = {
-    purple:  'bg-brand-purple/10 text-brand-purple',
-    emerald: 'bg-emerald-50 text-emerald-600',
-    amber:   'bg-amber-50 text-amber-600',
-    rose:    'bg-rose-50 text-rose-600',
-    blue:    'bg-blue-50 text-blue-600',
-  };
-  return (
-    <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-3">
-      <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center shrink-0', tones[tone])}>
-        <Icon size={18} />
-      </div>
-      <div className="min-w-0">
-        <p className="text-xs text-gray-500 font-medium">{label}</p>
-        <p className="text-base font-bold text-gray-900 truncate">{value}</p>
-        {sub && <p className="text-[10px] text-gray-400">{sub}</p>}
-      </div>
-    </div>
-  );
-}
-
-function SectionHeader({ title, action }) {
-  return (
-    <div className="flex items-center justify-between mb-3">
-      <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">{title}</h3>
-      {action}
-    </div>
-  );
+function Skeleton({ className = '' }) {
+  return <div className={`animate-pulse rounded-lg bg-gray-200 ${className}`} />;
 }
 
 function EmptyCard({ icon: Icon, message }) {
   return (
-    <div className="bg-white rounded-xl border border-dashed border-gray-200 p-8 flex flex-col items-center justify-center text-gray-400 gap-2">
+    <div className="bg-white rounded-xl border border-dashed border-gray-200 p-8 flex flex-col items-center text-gray-400 gap-2">
       <Icon size={28} className="opacity-30" />
       <p className="text-xs font-medium text-center">{message}</p>
     </div>
   );
 }
 
+// ─── Attendance Donut ─────────────────────────────────────────────────────────
+
+function AttendanceDonut({ rate = 0, size = 80 }) {
+  const r        = (size / 2) - 8;
+  const circ     = 2 * Math.PI * r;
+  const filled   = (rate / 100) * circ;
+  const color    = rate >= 90 ? '#10b981' : rate >= 75 ? '#f59e0b' : '#ef4444';
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#e5e7eb" strokeWidth="8" />
+      <circle
+        cx={size/2} cy={size/2} r={r} fill="none"
+        stroke={color} strokeWidth="8" strokeLinecap="round"
+        strokeDasharray={`${filled} ${circ}`}
+        transform={`rotate(-90 ${size/2} ${size/2})`}
+      />
+      <text x={size/2} y={size/2 + 1} textAnchor="middle" dominantBaseline="middle" className="text-sm font-bold" style={{ fontSize: 13, fontWeight: 700, fill: '#111827' }}>
+        {rate}%
+      </text>
+      <text x={size/2} y={size/2 + 14} textAnchor="middle" dominantBaseline="middle" style={{ fontSize: 8, fill: '#6b7280' }}>
+        Overall
+      </text>
+    </svg>
+  );
+}
+
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
 
-function OverviewTab({ child }) {
+function OverviewTab({ child, onNavigate }) {
+  const bal         = Number(child.feeBalance || 0);
+  const attendance  = Math.round(Number(child.attendanceRate || 0));
+  const subjects    = child.subjects || child.recentSubjects || [];
+  const notices     = child.notices || child.recentAnnouncements || [];
+
+  const subjectColors = ['text-emerald-600', 'text-blue-600', 'text-[#3B1FA3]', 'text-amber-500'];
+
   return (
-    <div className="space-y-5">
-      {/* Profile card */}
-      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-        <div className="h-16 bg-gradient-to-r from-brand-purple to-purple-700" />
-        <div className="px-4 pb-4 -mt-8">
-          <div className="w-16 h-16 rounded-2xl bg-white border-2 border-white shadow-md flex items-center justify-center text-brand-purple font-bold text-xl mb-3">
-            {child.name?.[0] || '?'}
+    <div className="space-y-4">
+
+      {/* Outstanding Balance */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Outstanding Balance</p>
+            <p className={`text-2xl font-bold ${bal > 0 ? 'text-gray-900' : 'text-emerald-600'}`}>
+              KES {fmt(bal)}
+            </p>
+            {child.nextPaymentDate && (
+              <p className="text-xs text-gray-500 mt-1">Next Payment Date<br /><span className="font-semibold text-gray-700">{child.nextPaymentDate}</span></p>
+            )}
           </div>
-          <p className="font-bold text-gray-900 text-lg leading-tight">{child.name}</p>
-          <p className="text-sm text-gray-500">{child.grade} · {child.className}</p>
-          {child.admissionNumber && (
-            <span className="inline-block mt-1 text-[10px] font-semibold bg-brand-purple/10 text-brand-purple px-2 py-0.5 rounded-full">
-              Adm #{child.admissionNumber}
-            </span>
+          {bal > 0 && (
+            <div className="w-9 h-9 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
+              <CreditCard size={16} className="text-amber-600" />
+            </div>
           )}
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button className="py-2.5 bg-[#3B1FA3] text-white text-xs font-bold rounded-xl hover:bg-[#2d1680] transition flex items-center justify-center gap-1.5">
+            <CreditCard size={13} /> Pay Now
+          </button>
+          <button className="py-2.5 border border-gray-200 text-gray-700 text-xs font-bold rounded-xl hover:bg-gray-50 transition">
+            Statement
+          </button>
         </div>
       </div>
 
-      {/* Key metrics */}
-      <div className="grid grid-cols-2 gap-3">
-        <StatCard label="Attendance" value={fmtPct(child.attendanceRate)} sub="this term" icon={CheckCircle2} tone="emerald" />
-        <StatCard label="Fee Balance" value={`KES ${fmt(child.feeBalance)}`} sub={child.feeBalance > 0 ? 'outstanding' : 'cleared'} icon={CreditCard} tone={child.feeBalance > 0 ? 'rose' : 'emerald'} />
-        <StatCard label="Performance" value={child.performanceLevel || 'N/A'} sub="CBC level" icon={TrendingUp} tone="purple" />
-        <StatCard label="Today" value={child.todayStatus?.replace('_', ' ') || 'Not marked'} sub="attendance" icon={Calendar} tone={child.todayStatus === 'PRESENT' ? 'emerald' : child.todayStatus === 'ABSENT' ? 'rose' : 'amber'} />
+      {/* Latest Assessment */}
+      {subjects.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-bold text-gray-900">Latest Assessment</p>
+            <button className="text-xs text-[#3B1FA3] font-semibold flex items-center gap-0.5">
+              View all <ChevronRight size={12} />
+            </button>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {subjects.slice(0, 4).map((s, i) => {
+              const score = s.score ?? s.percentage ?? s.marks ?? s.averageScore;
+              return (
+                <div key={i} className="text-center">
+                  <p className={`text-lg font-bold ${subjectColors[i % subjectColors.length]}`}>
+                    {score != null ? `${Math.round(score)}%` : (s.grade || '—')}
+                  </p>
+                  <p className="text-[9px] text-gray-500 truncate">{s.name || s.subject || s.learningArea || `Subject ${i+1}`}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Attendance */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-bold text-gray-900">Attendance (This Term)</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <AttendanceDonut rate={attendance} size={80} />
+          <div className="flex-1 space-y-1.5">
+            {[
+              { label: 'Present', value: child.attendanceSummary?.presentDays ?? child.presentDays ?? '—', color: 'text-emerald-600' },
+              { label: 'Late',    value: child.attendanceSummary?.lateDays    ?? child.lateDays    ?? '—', color: 'text-amber-500'   },
+              { label: 'Absent',  value: child.attendanceSummary?.absentDays  ?? child.absentDays  ?? '—', color: 'text-rose-600'    },
+            ].map(s => (
+              <div key={s.label} className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">{s.label}</span>
+                <span className={`text-sm font-bold ${s.color}`}>{s.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <button className="w-full mt-3 py-2 border border-gray-200 text-xs font-semibold text-gray-700 rounded-xl hover:bg-gray-50 transition">
+          View Attendance
+        </button>
       </div>
 
-      {/* Recent assessments */}
-      {child.recentAssessments?.length > 0 && (
-        <div>
-          <SectionHeader title="Recent Assessments" />
+      {/* Recent Announcements */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-bold text-gray-900">Recent Announcements</p>
+          <button className="text-xs text-[#3B1FA3] font-semibold">View all</button>
+        </div>
+        {notices.length > 0 ? (
           <div className="space-y-2">
-            {child.recentAssessments.slice(0, 3).map((a, i) => (
-              <div key={i} className="bg-white rounded-xl border border-gray-100 p-3 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">{a.subject || a.learningArea}</p>
-                  <p className="text-xs text-gray-400">{fmtDate(a.date)}</p>
+            {notices.slice(0, 3).map((n, i) => (
+              <div key={i} className="flex items-start gap-2.5">
+                <div className="w-7 h-7 bg-[#3B1FA3]/10 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <Bell size={12} className="text-[#3B1FA3]" />
                 </div>
-                <span className={cn('px-2 py-1 rounded-lg text-xs font-bold', a.grade === 'EE' || a.grade === 'ME' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700')}>
-                  {a.grade || `${a.score}%`}
-                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-gray-900 truncate">{n.title || n.subject}</p>
+                  <p className="text-[10px] text-gray-400">{n.timeLabel || (n.createdAt ? new Date(n.createdAt).toLocaleDateString() : 'Recent')}</p>
+                </div>
+                {n.unread && <div className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0 mt-1.5" />}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400 text-center py-2">No recent announcements</p>
+        )}
+      </div>
+
+    </div>
+  );
+}
+
+// ─── Results Tab (child-level: subject rows with progress bars) ───────────────
+
+function ResultsTab({ learnerId }) {
+  const [report, setReport]   = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const r = await api.reports.getFormativeReport(learnerId);
+      setReport(r?.data || r);
+    } catch {
+      try {
+        const r2 = await api.reports.getLearnerAnalytics(learnerId);
+        setReport(r2?.data || r2);
+      } catch { setError('Academic records unavailable.'); }
+    } finally { setLoading(false); }
+  }, [learnerId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <div className="flex justify-center py-12"><Loader2 size={22} className="animate-spin text-[#3B1FA3]" /></div>;
+  if (error)   return <EmptyCard icon={GraduationCap} message={error} />;
+  if (!report) return <EmptyCard icon={GraduationCap} message="No academic records yet." />;
+
+  const subjects = report.subjects || report.learningAreas || report.assessments || [];
+  const overall  = report.overallGrade || report.performanceLevel;
+  const avgNum   = subjects.length
+    ? Math.round(subjects.reduce((s, sub) => s + Number(sub.score ?? sub.percentage ?? sub.marks ?? 0), 0) / subjects.length)
+    : null;
+
+  const BAR_COLORS = ['bg-emerald-500', 'bg-blue-500', 'bg-[#3B1FA3]', 'bg-amber-500', 'bg-rose-500', 'bg-violet-500'];
+
+  return (
+    <div className="space-y-4">
+      {/* Snapshot row */}
+      {(overall || avgNum != null) && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-[10px] text-gray-500 mb-0.5">Overall Average</p>
+              <p className="text-2xl font-bold text-emerald-600">{avgNum != null ? `${avgNum}%` : overall}</p>
+              <p className="text-[10px] text-gray-500">{avgNum >= 70 ? 'Very Good' : avgNum >= 50 ? 'Average' : 'Needs Work'}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] text-gray-500 mb-0.5">Class Rank</p>
+              <p className="text-2xl font-bold text-gray-900">{report.classRank ? `${report.classRank} / ${report.classSize}` : '—'}</p>
+              {report.classSize && <p className="text-[10px] text-gray-500">Top {Math.round((report.classRank / report.classSize) * 100)}%</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Subject Progress */}
+      {subjects.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 pt-3 pb-2">
+            <p className="text-sm font-bold text-gray-900">Subject Performance</p>
+            <button className="text-xs text-[#3B1FA3] font-semibold">View by Subject</button>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {subjects.map((s, i) => {
+              const score = s.score ?? s.percentage ?? s.marks;
+              const n     = score != null ? Math.round(Number(score)) : null;
+              const color = n >= 70 ? 'text-emerald-600' : n >= 50 ? 'text-amber-500' : 'text-rose-600';
+              const bar   = n >= 70 ? 'bg-emerald-500' : n >= 50 ? 'bg-amber-400' : 'bg-rose-500';
+              return (
+                <div key={s.id || i} className="px-4 py-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-sm font-medium text-gray-900 truncate max-w-[180px]">
+                      {s.name || s.subject || s.learningArea || s.title}
+                    </p>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {n != null && <span className={`text-sm font-bold ${color}`}>{n}%</span>}
+                      <ChevronRight size={14} className="text-gray-300" />
+                    </div>
+                  </div>
+                  {n != null && (
+                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className={`h-full ${bar} rounded-full transition-all`} style={{ width: `${n}%` }} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {subjects.length === 0 && <EmptyCard icon={GraduationCap} message="No subject results yet." />}
+    </div>
+  );
+}
+
+// ─── Attendance Tab ───────────────────────────────────────────────────────────
+
+function AttendanceTab({ learnerId }) {
+  const [data, setData]       = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const r = await api.attendance.getLearnerSummary(learnerId);
+      setData(r?.data || r);
+    } catch (e) { setError(e.message || 'Failed to load'); }
+    finally { setLoading(false); }
+  }, [learnerId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <div className="flex justify-center py-12"><Loader2 size={22} className="animate-spin text-[#3B1FA3]" /></div>;
+  if (error)   return <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-rose-700">{error}</div>;
+  if (!data)   return <EmptyCard icon={CheckCircle2} message="No attendance records." />;
+
+  const summary  = data.summary || data;
+  const records  = (data.records || data.attendance || []).slice().reverse();
+  const total    = (summary.presentDays || 0) + (summary.absentDays || 0) + (summary.lateDays || 0) + (summary.excusedDays || 0);
+  const rate     = total > 0 ? Math.round((summary.presentDays || 0) / total * 100) : 0;
+  const STATUS   = { PRESENT: 'bg-emerald-100 text-emerald-700', ABSENT: 'bg-red-100 text-red-700', LATE: 'bg-amber-100 text-amber-700', EXCUSED: 'bg-blue-100 text-blue-700' };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-5">
+        <AttendanceDonut rate={rate} size={88} />
+        <div className="flex-1 space-y-2">
+          {[
+            { label: 'Present', value: summary.presentDays || 0, color: 'text-emerald-600' },
+            { label: 'Late',    value: summary.lateDays    || 0, color: 'text-amber-500'   },
+            { label: 'Absent',  value: summary.absentDays  || 0, color: 'text-rose-600'    },
+          ].map(s => (
+            <div key={s.label} className="flex items-center justify-between">
+              <span className="text-xs text-gray-500">{s.label}</span>
+              <span className={`text-sm font-bold ${s.color}`}>{s.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      {records.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
+          <div className="divide-y divide-gray-50">
+            {records.slice(0, 15).map((r, i) => (
+              <div key={r.id || i} className="flex items-center justify-between px-4 py-2.5">
+                <span className="text-xs text-gray-600">{fmtDate(r.date)}</span>
+                <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full', STATUS[r.status] || 'bg-gray-100 text-gray-600')}>{r.status}</span>
               </div>
             ))}
           </div>
@@ -128,103 +342,74 @@ function OverviewTab({ child }) {
   );
 }
 
-// ─── Fees Tab ────────────────────────────────────────────────────────────────
+// ─── Fees Tab ─────────────────────────────────────────────────────────────────
 
 function FeesTab({ learnerId }) {
   const [invoices, setInvoices] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState(null);
   const [expandedId, setExpandedId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
       const r = await api.fees.getLearnerInvoices(learnerId);
-      setInvoices(r.data || r.invoices || []);
-    } catch (e) {
-      setError(e.message || 'Failed to load fee statements');
-    } finally { setLoading(false); }
+      setInvoices(r?.data || r?.invoices || []);
+    } catch (e) { setError(e.message || 'Failed to load'); }
+    finally { setLoading(false); }
   }, [learnerId]);
 
   useEffect(() => { load(); }, [load]);
 
-  const totalAmount  = invoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
-  const totalPaid    = invoices.reduce((s, i) => s + Number(i.paidAmount  || 0), 0);
-  const totalBalance = invoices.reduce((s, i) => s + Number(i.balance     || 0), 0);
+  const totalBilled  = invoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0);
+  const totalPaid    = invoices.reduce((s, i) => s + Number(i.paidAmount || 0), 0);
+  const totalBalance = invoices.reduce((s, i) => s + Number(i.balance || 0), 0);
 
-  if (loading) return <div className="flex justify-center py-12"><Loader2 size={24} className="animate-spin text-brand-purple" /></div>;
-  if (error)   return <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 text-sm text-rose-700">{error}</div>;
+  if (loading) return <div className="flex justify-center py-12"><Loader2 size={22} className="animate-spin text-[#3B1FA3]" /></div>;
+  if (error)   return <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-rose-700">{error}</div>;
 
   return (
     <div className="space-y-4">
-      {/* Summary */}
       <div className="grid grid-cols-3 gap-2">
         <div className="bg-gray-50 rounded-xl p-3 text-center">
-          <p className="text-[10px] text-gray-500 uppercase font-semibold">Billed</p>
-          <p className="text-sm font-bold text-gray-900 mt-0.5">KES {fmt(totalAmount)}</p>
+          <p className="text-[10px] text-gray-500 font-semibold">Billed</p>
+          <p className="text-xs font-bold text-gray-900 mt-0.5">KES {fmt(totalBilled)}</p>
         </div>
         <div className="bg-emerald-50 rounded-xl p-3 text-center">
-          <p className="text-[10px] text-emerald-600 uppercase font-semibold">Paid</p>
-          <p className="text-sm font-bold text-emerald-700 mt-0.5">KES {fmt(totalPaid)}</p>
+          <p className="text-[10px] text-emerald-600 font-semibold">Paid</p>
+          <p className="text-xs font-bold text-emerald-700 mt-0.5">KES {fmt(totalPaid)}</p>
         </div>
         <div className={cn('rounded-xl p-3 text-center', totalBalance > 0 ? 'bg-rose-50' : 'bg-emerald-50')}>
-          <p className={cn('text-[10px] uppercase font-semibold', totalBalance > 0 ? 'text-rose-600' : 'text-emerald-600')}>Balance</p>
-          <p className={cn('text-sm font-bold mt-0.5', totalBalance > 0 ? 'text-rose-700' : 'text-emerald-700')}>KES {fmt(totalBalance)}</p>
+          <p className={cn('text-[10px] font-semibold', totalBalance > 0 ? 'text-rose-600' : 'text-emerald-600')}>Balance</p>
+          <p className={cn('text-xs font-bold mt-0.5', totalBalance > 0 ? 'text-rose-700' : 'text-emerald-700')}>KES {fmt(totalBalance)}</p>
         </div>
       </div>
-
       {invoices.length === 0
-        ? <EmptyCard icon={Receipt} message="No fee invoices found for this student." />
+        ? <EmptyCard icon={Receipt} message="No invoices found." />
         : (
           <div className="space-y-2">
-            <SectionHeader title={`${invoices.length} Invoice${invoices.length !== 1 ? 's' : ''}`} />
-            {invoices.map((inv) => (
-              <div key={inv.id} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            {invoices.map(inv => (
+              <div key={inv.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 <button
                   onClick={() => setExpandedId(expandedId === inv.id ? null : inv.id)}
                   className="w-full px-4 py-3 flex items-center justify-between text-left"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-gray-900 truncate">
-                      {inv.feeStructure?.name || `Invoice #${inv.invoiceNumber}`}
-                    </p>
+                    <p className="text-sm font-semibold text-gray-900 truncate">{inv.feeStructure?.name || `Invoice #${inv.invoiceNumber}`}</p>
                     <p className="text-xs text-gray-400">{fmtDate(inv.dueDate)} · {inv.term?.replace('_', ' ')} {inv.academicYear}</p>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0 ml-2">
+                  <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                     <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full', INVOICE_COLORS[inv.status] || 'bg-gray-100 text-gray-600')}>
                       {inv.status?.replace('_', ' ')}
                     </span>
-                    <ChevronRight size={14} className={cn('text-gray-400 transition-transform', expandedId === inv.id && 'rotate-90')} />
+                    <ChevronRight size={14} className={cn('text-gray-300 transition-transform', expandedId === inv.id && 'rotate-90')} />
                   </div>
                 </button>
-
                 {expandedId === inv.id && (
-                  <div className="border-t border-gray-50 px-4 py-3 space-y-2 bg-gray-50/50">
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div>
-                        <p className="text-[10px] text-gray-500">Total</p>
-                        <p className="text-xs font-bold text-gray-900">KES {fmt(inv.totalAmount)}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-gray-500">Paid</p>
-                        <p className="text-xs font-bold text-emerald-600">KES {fmt(inv.paidAmount)}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-gray-500">Balance</p>
-                        <p className={cn('text-xs font-bold', Number(inv.balance) > 0 ? 'text-rose-600' : 'text-emerald-600')}>KES {fmt(inv.balance)}</p>
-                      </div>
-                    </div>
-                    {inv.payments?.length > 0 && (
-                      <div>
-                        <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Payment History</p>
-                        {inv.payments.map((p) => (
-                          <div key={p.id} className="flex justify-between text-xs py-1 border-b border-gray-100 last:border-0">
-                            <span className="text-gray-600">{fmtDate(p.paymentDate)} · {p.paymentMethod?.replace('_', ' ')}</span>
-                            <span className="font-semibold text-emerald-600">KES {fmt(p.amount)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                  <div className="border-t border-gray-50 px-4 py-3 bg-gray-50/50 grid grid-cols-3 gap-2 text-center">
+                    <div><p className="text-[10px] text-gray-500">Total</p><p className="text-xs font-bold text-gray-900">KES {fmt(inv.totalAmount)}</p></div>
+                    <div><p className="text-[10px] text-gray-500">Paid</p><p className="text-xs font-bold text-emerald-600">KES {fmt(inv.paidAmount)}</p></div>
+                    <div><p className="text-[10px] text-gray-500">Balance</p><p className={cn('text-xs font-bold', Number(inv.balance) > 0 ? 'text-rose-600' : 'text-emerald-600')}>KES {fmt(inv.balance)}</p></div>
                   </div>
                 )}
               </div>
@@ -236,194 +421,92 @@ function FeesTab({ learnerId }) {
   );
 }
 
-// ─── Attendance Tab ───────────────────────────────────────────────────────────
+// ─── Info Tab ─────────────────────────────────────────────────────────────────
 
-function AttendanceTab({ learnerId }) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const load = useCallback(async () => {
-    setLoading(true); setError(null);
-    try {
-      const r = await api.attendance.getLearnerSummary(learnerId);
-      setData(r.data || r);
-    } catch (e) {
-      setError(e.message || 'Failed to load attendance');
-    } finally { setLoading(false); }
-  }, [learnerId]);
-
-  useEffect(() => { load(); }, [load]);
-
-  if (loading) return <div className="flex justify-center py-12"><Loader2 size={24} className="animate-spin text-brand-purple" /></div>;
-  if (error)   return <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 text-sm text-rose-700">{error}</div>;
-  if (!data)   return <EmptyCard icon={Calendar} message="No attendance records found." />;
-
-  const summary = data.summary || data;
-  const records = data.records || data.attendance || [];
-  const total   = (summary.presentDays || 0) + (summary.absentDays || 0) + (summary.lateDays || 0) + (summary.excusedDays || 0);
-  const rate    = total > 0 ? Math.round(((summary.presentDays || 0) / total) * 100) : 0;
+function InfoTab({ child }) {
+  const rows = [
+    { label: 'Full Name',        value: child.name              },
+    { label: 'Admission No.',    value: child.admissionNumber   },
+    { label: 'Grade',            value: child.grade             },
+    { label: 'Class',            value: child.className         },
+    { label: 'Class Teacher',    value: child.classTeacher      },
+    { label: 'Date of Birth',    value: child.dateOfBirth ? fmtDate(child.dateOfBirth) : null },
+    { label: 'Gender',           value: child.gender            },
+  ].filter(r => r.value);
 
   return (
-    <div className="space-y-4">
-      {/* Summary stats */}
-      <div className="grid grid-cols-2 gap-2">
-        <StatCard label="Attendance Rate" value={`${rate}%`} sub={`${summary.presentDays || 0} / ${total} days`} icon={CheckCircle2} tone={rate >= 90 ? 'emerald' : rate >= 75 ? 'amber' : 'rose'} />
-        <StatCard label="Absent Days"    value={summary.absentDays  || 0} sub="days missed"   icon={XCircle}  tone="rose"   />
-        <StatCard label="Late Arrivals"  value={summary.lateDays    || 0} sub="late days"     icon={Clock}    tone="amber"  />
-        <StatCard label="Excused"        value={summary.excusedDays || 0} sub="excused days"  icon={FileText} tone="blue"   />
-      </div>
-
-      {/* Record log */}
-      {records.length > 0 ? (
-        <div>
-          <SectionHeader title={`${records.length} Records`} />
-          <div className="space-y-1.5 max-h-80 overflow-y-auto">
-            {records.slice().reverse().map((r, i) => (
-              <div key={r.id || i} className="bg-white rounded-xl border border-gray-100 px-3 py-2.5 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{fmtDate(r.date)}</p>
-                  {r.remarks && <p className="text-xs text-gray-400">{r.remarks}</p>}
-                </div>
-                <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full', STATUS_COLORS[r.status] || 'bg-gray-100 text-gray-600')}>
-                  {r.status}
-                </span>
-              </div>
-            ))}
-          </div>
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      {rows.map((r, i) => (
+        <div key={i} className="flex items-center justify-between px-4 py-3 border-b border-gray-50 last:border-0">
+          <span className="text-xs text-gray-500">{r.label}</span>
+          <span className="text-xs font-semibold text-gray-900">{r.value}</span>
         </div>
-      ) : (
-        <EmptyCard icon={Calendar} message="No individual attendance records yet." />
-      )}
+      ))}
+      {rows.length === 0 && <p className="text-xs text-gray-400 text-center py-6">No information available</p>}
     </div>
   );
 }
 
-// ─── Academics Tab ────────────────────────────────────────────────────────────
-
-function AcademicsTab({ learnerId }) {
-  const [report, setReport] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]   = useState(null);
-
-  const load = useCallback(async () => {
-    setLoading(true); setError(null);
-    try {
-      const r = await api.reports.getFormativeReport(learnerId);
-      setReport(r.data || r);
-    } catch (e) {
-      // Try analytics fallback
-      try {
-        const r2 = await api.reports.getLearnerAnalytics(learnerId);
-        setReport(r2.data || r2);
-      } catch {
-        setError('Academic records unavailable for this student.');
-      }
-    } finally { setLoading(false); }
-  }, [learnerId]);
-
-  useEffect(() => { load(); }, [load]);
-
-  if (loading) return <div className="flex justify-center py-12"><Loader2 size={24} className="animate-spin text-brand-purple" /></div>;
-  if (error)   return <EmptyCard icon={BookOpen} message={error} />;
-  if (!report) return <EmptyCard icon={BookOpen} message="No academic records yet." />;
-
-  const subjects = report.subjects || report.learningAreas || report.assessments || [];
-  const overall  = report.overallGrade || report.performanceLevel || report.average;
-
-  return (
-    <div className="space-y-4">
-      {/* Overall */}
-      {overall && (
-        <div className="bg-gradient-to-r from-brand-purple to-purple-700 rounded-2xl p-4 text-white">
-          <p className="text-xs opacity-70 uppercase font-semibold">Overall Performance</p>
-          <p className="text-3xl font-bold mt-1">{overall}</p>
-          {report.term && <p className="text-xs opacity-70 mt-1">{report.term?.replace('_', ' ')} · {report.academicYear}</p>}
-        </div>
-      )}
-
-      {/* Subject breakdown */}
-      {subjects.length > 0 ? (
-        <div>
-          <SectionHeader title="Subject Results" />
-          <div className="space-y-2">
-            {subjects.map((s, i) => {
-              const grade = s.grade || s.level || s.performanceLevel;
-              const score = s.score ?? s.percentage ?? s.marks;
-              const isGood = ['EE', 'ME', 'A', 'B'].includes(String(grade).toUpperCase());
-              return (
-                <div key={s.id || i} className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex items-center justify-between">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-gray-900 truncate">{s.name || s.subject || s.learningArea || s.title}</p>
-                    {s.teacher && <p className="text-xs text-gray-400">{s.teacher}</p>}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {score != null && (
-                      <span className="text-xs text-gray-500">{Math.round(score)}%</span>
-                    )}
-                    {grade && (
-                      <span className={cn('text-xs font-bold px-2 py-0.5 rounded-lg', isGood ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700')}>
-                        {grade}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        <EmptyCard icon={GraduationCap} message="No subject results available yet. Results will appear once assessments are entered." />
-      )}
-    </div>
-  );
-}
-
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Main ─────────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'overview',   label: 'Overview',   icon: User       },
-  { id: 'fees',       label: 'Fees',       icon: CreditCard },
-  { id: 'attendance', label: 'Attendance', icon: Calendar   },
-  { id: 'academics',  label: 'Academics',  icon: BookOpen   },
+  { id: 'overview',    label: 'Overview',    icon: null          },
+  { id: 'results',     label: 'Results',     icon: null          },
+  { id: 'attendance',  label: 'Attendance',  icon: null          },
+  { id: 'fees',        label: 'Fees',        icon: null          },
+  { id: 'info',        label: 'Info',        icon: null          },
 ];
 
-export default function ParentChildProfile({ child, onBack }) {
-  const [tab, setTab] = useState('overview');
-
+export default function ParentChildProfile({ child, onBack, initialTab = 'overview' }) {
+  const [tab, setTab] = useState(initialTab);
   if (!child) return null;
 
+  const isPresent = child.todayStatus === 'PRESENT' || child.isPresent;
+
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-100 sticky top-0 z-10">
-        <div className="flex items-center gap-3 px-4 py-3">
-          <button onClick={onBack} className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 transition-colors">
-            <ArrowLeft size={18} />
+    <div className="min-h-screen bg-[#F5F5F7] pb-24">
+
+      {/* Purple header card */}
+      <div className="bg-[#3B1FA3] px-4 pt-4 pb-0">
+        {/* Back + menu row */}
+        <div className="flex items-center justify-between mb-4">
+          <button onClick={onBack} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors">
+            <ArrowLeft size={16} />
           </button>
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-gray-900 truncate">{child.name}</p>
-            <p className="text-xs text-gray-400">{child.grade} · {child.className || child.admissionNumber}</p>
-          </div>
-          <div className={cn('w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold', 'bg-brand-purple')}>
+          <h1 className="text-sm font-bold text-white">Results</h1>
+          <button className="w-8 h-8 flex items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors">
+            <MoreVertical size={16} />
+          </button>
+        </div>
+
+        {/* Child identity */}
+        <div className="flex items-center gap-4 mb-4">
+          <div className="w-16 h-16 rounded-full bg-white/20 border-2 border-white/40 flex items-center justify-center text-2xl font-bold text-white flex-shrink-0">
             {child.name?.[0] || '?'}
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-white leading-tight">{child.name}</h2>
+            <p className="text-white/70 text-xs mt-0.5">{child.grade} · {child.className || 'Class'}</p>
+            <span className={`inline-flex items-center gap-1 mt-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${isPresent ? 'bg-emerald-500/30 text-emerald-200' : 'bg-white/20 text-white/70'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${isPresent ? 'bg-emerald-400' : 'bg-gray-400'}`} />
+              {isPresent ? 'Present today' : 'Current Term'}
+            </span>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-t border-gray-100 overflow-x-auto scrollbar-none">
-          {TABS.map(({ id, label, icon: Icon }) => (
+        {/* Tabs row */}
+        <div className="flex overflow-x-auto scrollbar-none">
+          {TABS.map(({ id, label }) => (
             <button
               key={id}
               onClick={() => setTab(id)}
               className={cn(
-                'flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-colors border-b-2 min-w-0',
+                'flex-shrink-0 px-3 py-2.5 text-xs font-semibold border-b-2 whitespace-nowrap transition-colors',
                 tab === id
-                  ? 'text-brand-purple border-brand-purple'
-                  : 'text-gray-400 border-transparent hover:text-gray-600',
+                  ? 'text-white border-white'
+                  : 'text-white/50 border-transparent hover:text-white/80',
               )}
             >
-              <Icon size={14} />
               {label}
             </button>
           ))}
@@ -433,10 +516,12 @@ export default function ParentChildProfile({ child, onBack }) {
       {/* Tab content */}
       <div className="px-4 py-4">
         {tab === 'overview'   && <OverviewTab   child={child} />}
-        {tab === 'fees'       && <FeesTab       learnerId={child.id} />}
+        {tab === 'results'    && <ResultsTab    learnerId={child.id} />}
         {tab === 'attendance' && <AttendanceTab learnerId={child.id} />}
-        {tab === 'academics'  && <AcademicsTab  learnerId={child.id} />}
+        {tab === 'fees'       && <FeesTab       learnerId={child.id} />}
+        {tab === 'info'       && <InfoTab       child={child} />}
       </div>
+
     </div>
   );
 }

@@ -7,9 +7,10 @@
 import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft, Users, TrendingUp, CreditCard, Calendar,
-  Plus, Phone, Mail, MessageSquare
+  Phone, MessageSquare
 } from 'lucide-react';
 import { dashboardAPI } from '../../../../services/api';
+import MobileBottomNav from '../../dashboard/mobile/MobileBottomNav';
 
 // ─── Helper Components ──────────────────────────────────────────────
 
@@ -218,6 +219,7 @@ const ParentPortalChildren = ({ user, onNavigate }) => {
           </div>
         )}
       </div>
+      <MobileBottomNav role="PARENT" currentPath="parent-portal-children" onNavigate={onNavigate} />
     </div>
   );
 };

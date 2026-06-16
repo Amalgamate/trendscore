@@ -7,10 +7,10 @@
 import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft, MessageSquare, Search, Send, Phone, Mail,
-  ChevronRight, MoreVertical, AlertCircle, Users, Clock,
-  Paperclip, Smile
+  ChevronRight, Clock, Paperclip, Smile
 } from 'lucide-react';
 import { dashboardAPI } from '../../../../services/api';
+import MobileBottomNav from '../../dashboard/mobile/MobileBottomNav';
 
 // ─── Helper Components ──────────────────────────────────────────────
 
@@ -344,6 +344,7 @@ const ParentPortalMessages = ({ user, onNavigate }) => {
           onSendMessage={handleSendMessage}
         />
       )}
+      <MobileBottomNav role="PARENT" currentPath="parent-portal-messages" onNavigate={onNavigate} />
     </div>
   );
 };
