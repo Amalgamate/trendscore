@@ -98,7 +98,7 @@ const TeacherMobileDashboard = ({ user, onNavigate, currentPath }) => {
             Timetable
           </button>
           <button
-            onClick={() => onNavigate('learners-list')}
+            onClick={() => onNavigate('teacher-learner-analysis')}
             className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-xs font-semibold hover:bg-amber-100 transition"
           >
             Learners

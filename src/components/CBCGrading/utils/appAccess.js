@@ -7,6 +7,7 @@ const PAGE_APP_REQUIREMENTS = {
   'planner-duty-roster': 'planner',
 
   'learners-list': 'student-registry',
+  'teacher-learner-analysis': 'student-registry',
   'learners-admissions': 'student-registry',
   'learners-transfers-in': 'student-registry',
   'learners-exited': 'student-registry',

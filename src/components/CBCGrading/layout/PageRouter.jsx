@@ -13,6 +13,7 @@ import RoleDashboard from '../pages/dashboard/RoleDashboard';
 import StudentDashboardView from '../pages/student/StudentDashboard';
 import FeeCollectionPage from '../pages/FeeCollectionPage';
 const LearnersList = lazy(() => import('../pages/LearnersList'));
+const TeacherLearnerAnalysis = lazy(() => import('../pages/dashboard/TeacherLearnerAnalysis'));
 const TeachersList = lazy(() => import('../pages/TeachersList'));
 const AddEditTeacherPage = lazy(() => import('../pages/AddEditTeacherPage'));
 const ParentsList = lazy(() => import('../pages/ParentsList'));
@@ -382,6 +383,8 @@ const PageRouter = ({
               : <PlannerLayout currentPage="planner-calendar" onNavigate={handleNavigate} />;
 
           // Learners Module
+          case 'teacher-learner-analysis':
+            return <TeacherLearnerAnalysis user={user} onNavigate={handleNavigate} />;
           case 'learners-list':
             return (
               <ErrorBoundary>

@@ -150,6 +150,8 @@ const TeacherDashboard = ({ user, onNavigate }) => {
   const getSeverityTextColor = (severity) =>
     severity === 'high' ? 'text-rose-900' : 'text-amber-900';
 
+  const openMyLearners = () => onNavigate('teacher-learner-analysis');
+
   if (loading) {
     return <div className="animate-pulse space-y-6"><div className="h-96 bg-gray-200 rounded-xl" /></div>;
   }
@@ -208,7 +210,7 @@ const TeacherDashboard = ({ user, onNavigate }) => {
             subvalue: 'across classes',
             icon: <GraduationCap size={26} />,
             tone: 'green',
-            onClick: () => onNavigate('learners-list'),
+            onClick: openMyLearners,
           },
         ]}
       />
@@ -430,7 +432,7 @@ const TeacherDashboard = ({ user, onNavigate }) => {
               learnersNeedingAttention.map((learner, idx) => (
                 <button
                   key={learner.id || idx}
-                  onClick={() => onNavigate('learners-list')}
+                  onClick={openMyLearners}
                   className={`w-full p-4 rounded-lg border-l-4 transition-all hover:shadow-md ${getSeverityColor(learner.severity)}`}
                 >
                   <div className="flex items-start justify-between">
@@ -452,10 +454,10 @@ const TeacherDashboard = ({ user, onNavigate }) => {
             )}
           </div>
           <button
-            onClick={() => onNavigate('learners-list')}
+            onClick={openMyLearners}
             className="mt-4 w-full px-4 py-2 text-brand-purple text-sm font-semibold hover:bg-brand-purple/5 rounded-lg transition"
           >
-            View All Learners →
+            View My Learners →
           </button>
         </AppCard>
       </div>
@@ -486,7 +488,7 @@ const TeacherDashboard = ({ user, onNavigate }) => {
           <p className="text-xs font-semibold text-gray-900">View Timetable</p>
         </button>
         <button
-          onClick={() => onNavigate('learners-list')}
+          onClick={openMyLearners}
           className="p-4 rounded-lg border border-slate-200 hover:border-emerald-200 hover:bg-emerald-50 transition text-center"
         >
           <Users size={24} className="mx-auto text-emerald-600 mb-2" />

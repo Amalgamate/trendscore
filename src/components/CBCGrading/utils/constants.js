@@ -154,6 +154,7 @@ export const PAGE_TITLES = {
 
   // Learners
   'learners-list': 'Scholars List',
+  'teacher-learner-analysis': 'My Learners Analysis',
   'learners-admissions': 'Admissions',
   'learners-transfers-in': 'Incoming Transfers',
   'learners-exited': 'Exited Scholars',

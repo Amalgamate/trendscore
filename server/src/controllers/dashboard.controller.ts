@@ -1511,7 +1511,7 @@ export class DashboardController {
             if (!userId) throw new ApiError(400, 'User ID is required');
             const institutionType = this.getInstitutionType(req) as any;
 
-            const cacheKey = `dashboard:teacher:${userId}`;
+            const cacheKey = `dashboard:teacher:v2:${userId}`;
             const cached = await redisCacheService.get<any>(cacheKey);
             if (cached) return res.json({ success: true, data: cached, _cached: true });
 
@@ -1520,7 +1520,14 @@ export class DashboardController {
 
             const [myClasses, pendingAssessmentCount, pendingAssessmentItems, recentActivityRaw] = await Promise.all([
                 prisma.class.findMany({
-                    where: { teacherId: userId, archived: false, institutionType },
+                    where: {
+                        archived: false,
+                        institutionType,
+                        OR: [
+                            { teacherId: userId },
+                            { schedules: { some: { teacherId: userId, active: true, archived: false } } },
+                        ],
+                    },
                     include: {
                         schedules: {
                             where: { active: true, archived: false },
@@ -1531,6 +1538,7 @@ export class DashboardController {
                                 startTime: true,
                                 endTime: true,
                                 room: true,
+                                teacherId: true,
                                 notes: true,
                             },
                         },
@@ -1634,6 +1642,81 @@ export class DashboardController {
                 learners: cls._count.enrollments,
             }));
 
+            const normalizeSubject = (value?: string | null) => String(value || 'Class teacher').trim() || 'Class teacher';
+            const learnerAnalysisClasses = myClassesWithOccupancy.map((cls: any) => {
+                const teacherSchedules = (cls.schedules || []).filter((schedule: any) =>
+                    schedule.teacherId === userId || cls.teacherId === userId
+                );
+                const subjectMap = new Map<string, any>();
+
+                teacherSchedules.forEach((schedule: any) => {
+                    const subject = normalizeSubject(schedule.subject);
+                    const existing = subjectMap.get(subject) || {
+                        subject,
+                        learnerCount: cls._count.enrollments,
+                        lessonCount: 0,
+                        weeklyMinutes: 0,
+                        days: new Set<string>(),
+                        rooms: new Set<string>(),
+                        nextLesson: null,
+                    };
+                    const minutes = durationMinutes(schedule.startTime, schedule.endTime) || 0;
+                    existing.lessonCount += 1;
+                    existing.weeklyMinutes += minutes;
+                    if (schedule.day) existing.days.add(String(schedule.day));
+                    if (schedule.room || cls.room) existing.rooms.add(schedule.room || cls.room);
+                    if (!existing.nextLesson || String(schedule.startTime || '').localeCompare(String(existing.nextLesson.time || '')) < 0) {
+                        existing.nextLesson = {
+                            day: schedule.day || '',
+                            time: schedule.startTime || '',
+                            endTime: schedule.endTime || '',
+                            room: schedule.room || cls.room || 'N/A',
+                        };
+                    }
+                    subjectMap.set(subject, existing);
+                });
+
+                if (subjectMap.size === 0) {
+                    subjectMap.set('Class teacher', {
+                        subject: 'Class teacher',
+                        learnerCount: cls._count.enrollments,
+                        lessonCount: 0,
+                        weeklyMinutes: 0,
+                        days: new Set<string>(),
+                        rooms: new Set<string>(cls.room ? [cls.room] : []),
+                        nextLesson: null,
+                    });
+                }
+
+                const subjects = Array.from(subjectMap.values()).map((subject: any) => ({
+                    ...subject,
+                    days: Array.from(subject.days),
+                    rooms: Array.from(subject.rooms),
+                    pendingAssessments: pendingAssessmentItems.filter((item: any) =>
+                        normalizeSubject(item.learningArea).toLowerCase() === subject.subject.toLowerCase()
+                    ).length,
+                }));
+
+                return {
+                    classId: cls.id,
+                    className: formatClassName(cls),
+                    grade: cls.grade,
+                    stream: cls.stream || '',
+                    room: cls.room || 'N/A',
+                    learnerCount: cls._count.enrollments,
+                    subjectCount: subjects.length,
+                    attendanceMarked: attendanceCountMap.get(cls.id) || 0,
+                    subjects,
+                };
+            });
+
+            const learnerAnalysis = {
+                totalLearners: totalMyStudents,
+                totalClasses: learnerAnalysisClasses.length,
+                totalSubjects: learnerAnalysisClasses.reduce((sum, cls) => sum + cls.subjectCount, 0),
+                classes: learnerAnalysisClasses,
+            };
+
             const attendanceDue = myClassesWithOccupancy
                 .map(cls => {
                     const learners = cls._count.enrollments;
@@ -1674,6 +1757,7 @@ export class DashboardController {
                 schedule: todaysSchedule.length > 0 ? todaysSchedule : classSummary,
                 attendanceDue,
                 assessmentsToMark: assessmentItems,
+                learnerAnalysis,
                 messages,
                 learnersNeedingAttention,
                 recentActivity: recentActivityRaw.map(act => ({
