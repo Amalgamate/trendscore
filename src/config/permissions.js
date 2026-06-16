@@ -220,6 +220,26 @@ export const ROLE_HIERARCHY = {
   STUDENT: 0,
 };
 
+const ROLE_ACCESS_STORAGE_KEY = 'trendscore.roleAccessOverrides.v1';
+
+function getRoleAccessOverrides() {
+  if (typeof window === 'undefined' || !window.localStorage) return {};
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(ROLE_ACCESS_STORAGE_KEY) || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function getEffectiveRolePermissions(role) {
+  const overrides = getRoleAccessOverrides();
+  if (Array.isArray(overrides[role])) return overrides[role];
+  return Object.entries(PERMISSIONS)
+    .filter(([_, roles]) => roles.includes(role))
+    .map(([permission]) => permission);
+}
+
 /**
  * Check if a role has a specific permission
  * 
@@ -229,8 +249,7 @@ export const ROLE_HIERARCHY = {
  */
 export function hasPermission(role, permission) {
   if (!role || !permission) return false;
-  const allowedRoles = PERMISSIONS[permission];
-  return allowedRoles ? allowedRoles.includes(role) : false;
+  return getEffectiveRolePermissions(role).includes(permission);
 }
 
 /**
@@ -241,10 +260,7 @@ export function hasPermission(role, permission) {
  */
 export function getRolePermissions(role) {
   if (!role) return [];
-
-  return Object.entries(PERMISSIONS)
-    .filter(([_, roles]) => roles.includes(role))
-    .map(([permission]) => permission);
+  return getEffectiveRolePermissions(role);
 }
 
 /**

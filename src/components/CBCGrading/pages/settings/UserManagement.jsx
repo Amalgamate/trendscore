@@ -3,10 +3,13 @@ import {
   UserPlus, Edit, Trash2, X, Save, Shield, Users, Search,
   Eye, EyeOff, Mail, Archive, ArchiveRestore,
   Lock, Check, AlertCircle, Clock, Activity, BookOpen, MessageCircle, Key, RefreshCw,
-  UserX, SlidersHorizontal, ExternalLink, Download, Upload, FileText
+  ExternalLink, Upload,
+  Crown, GraduationCap, Calculator, UserCircle, MoreVertical, LayoutGrid, List,
+  Copy, Power, Plus, CheckCircle
 } from 'lucide-react';
 import { userAPI, learnerAPI } from '../../../../services/api';
 import { getStoredUser } from '../../../../services/schoolContext';
+import { PERMISSIONS } from '../../../../config/permissions';
 import ResetPasswordModal from '../../shared/ResetPasswordModal';
 
 // Real API is imported from services/api.js
@@ -149,17 +152,138 @@ const ROLES_CONFIG = [
   }
 ];
 
-const PERMISSION_MODULES = [
-  { key: 'users', label: 'User Management' },
-  { key: 'roles', label: 'Role Management' },
-  { key: 'learners', label: 'Learner Management' },
-  { key: 'assessments', label: 'Assessments' },
-  { key: 'reports', label: 'Reports' },
-  { key: 'fees', label: 'Fee Management' },
-  { key: 'settings', label: 'System Settings' }
+const ROLE_ACCESS_STORAGE_KEY = 'trendscore.roleAccessOverrides.v1';
+
+const ROLE_META = {
+  SUPER_ADMIN: {
+    title: 'Administrator',
+    description: 'Full system access and control',
+    detail: 'Full system access and control. Can manage all modules and settings.',
+    tone: 'purple',
+    icon: Crown,
+    created: 'Jan 10, 2024',
+  },
+  ADMIN: {
+    title: 'Administrator',
+    description: 'Manage users, learners, finance and reports',
+    detail: 'Operational administration access across users, students, reports and finance.',
+    tone: 'purple',
+    icon: Crown,
+    created: 'Jan 10, 2024',
+  },
+  HEAD_TEACHER: {
+    title: 'Head Teacher',
+    description: 'Manage school academics and learners',
+    detail: 'School leadership access for academic oversight, reports and learner operations.',
+    tone: 'indigo',
+    icon: Shield,
+    created: 'Jan 10, 2024',
+  },
+  HEAD_OF_CURRICULUM: {
+    title: 'Head of Curriculum',
+    description: 'Manage curriculum, assessments and learners',
+    detail: 'Curriculum leadership access for academic setup, assessments and reports.',
+    tone: 'violet',
+    icon: BookOpen,
+    created: 'Jan 10, 2024',
+  },
+  TEACHER: {
+    title: 'Teacher',
+    description: 'Manage classes, assessments and learners',
+    detail: 'Teacher access for classes, assessments, attendance and student records.',
+    tone: 'blue',
+    icon: GraduationCap,
+    created: 'Jan 10, 2024',
+  },
+  ACCOUNTANT: {
+    title: 'Accountant',
+    description: 'Manage fees, payments and financial reports',
+    detail: 'Finance access for fee collection, balances, reports and accounting workflows.',
+    tone: 'green',
+    icon: Calculator,
+    created: 'Jan 10, 2024',
+  },
+  RECEPTIONIST: {
+    title: 'Receptionist',
+    description: 'Manage enquiries and basic records',
+    detail: 'Front office access for enquiries, communication and basic student records.',
+    tone: 'amber',
+    icon: UserCircle,
+    created: 'Jan 10, 2024',
+  },
+  PARENT: {
+    title: 'Parent',
+    description: 'View own children information',
+    detail: 'Guardian portal access for linked children, balances, reports and messages.',
+    tone: 'sky',
+    icon: Users,
+    created: 'Jan 10, 2024',
+  },
+  STUDENT: {
+    title: 'Student',
+    description: 'Access own learning portal',
+    detail: 'Student portal access for courses, assignments, progress and reports.',
+    tone: 'violet',
+    icon: UserCircle,
+    created: 'Jan 10, 2024',
+  },
+  SYSTEM_VIEWER: {
+    title: 'System Viewer',
+    description: 'View reports and system information',
+    detail: 'Read-only system access for monitoring and reporting.',
+    tone: 'slate',
+    icon: Lock,
+    created: 'Jan 10, 2024',
+  },
+};
+
+const ROLE_TONE_CLASSES = {
+  purple: { bg: 'bg-purple-600', soft: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-100' },
+  indigo: { bg: 'bg-indigo-600', soft: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-100' },
+  violet: { bg: 'bg-violet-600', soft: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-100' },
+  blue: { bg: 'bg-blue-500', soft: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-100' },
+  green: { bg: 'bg-emerald-500', soft: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-100' },
+  amber: { bg: 'bg-amber-500', soft: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-100' },
+  sky: { bg: 'bg-sky-500', soft: 'bg-sky-50', text: 'text-sky-700', border: 'border-sky-100' },
+  slate: { bg: 'bg-slate-500', soft: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-100' },
+};
+
+const PERMISSION_GROUPS = [
+  { key: 'users', label: 'User Management', match: (permission) => permission.includes('USER') || permission.includes('TEACHER') || permission.includes('PARENT') || permission.includes('ACCOUNTANT') || permission.includes('RECEPTIONIST') || permission.includes('STAFF') },
+  { key: 'learners', label: 'Learner Management', match: (permission) => permission.includes('LEARNER') || permission.includes('CHILDREN') },
+  { key: 'academics', label: 'Academic Management', match: (permission) => permission.includes('ASSESSMENT') || permission.includes('REPORT') || permission.includes('GRADING') || permission.includes('LEARNING') || permission.includes('COURSE') || permission.includes('LMS') || permission.includes('TIMETABLE') },
+  { key: 'attendance', label: 'Attendance', match: (permission) => permission.includes('ATTENDANCE') },
+  { key: 'finance', label: 'Finance & Accounting', match: (permission) => permission.includes('FEE') || permission.includes('BALANCE') || permission.includes('PAYMENT') || permission.includes('FINANCIAL') || permission.includes('ACCOUNTING') || permission.includes('RECEIPT') },
+  { key: 'operations', label: 'Operations', match: (permission) => permission.includes('HR') || permission.includes('LEAVE') || permission.includes('LIBRARY') || permission.includes('TRANSPORT') || permission.includes('HOSTEL') || permission.includes('BIOMETRIC') },
+  { key: 'settings', label: 'Settings & Security', match: (permission) => permission.includes('SETTING') || permission.includes('LOG') || permission.includes('AUDIT') || permission.includes('TEMPLATE') },
+  { key: 'communication', label: 'Communication', match: (permission) => permission.includes('MESSAGE') || permission.includes('NOTICE') || permission.includes('INBOX') },
+  { key: 'tertiary', label: 'Tertiary Modules', match: (permission) => permission.includes('TERTIARY') },
 ];
 
-const PERMISSION_ACTIONS = ['view', 'create', 'edit', 'delete'];
+const permissionNames = Object.keys(PERMISSIONS);
+const formatPermissionLabel = (permission) => permission
+  .toLowerCase()
+  .split('_')
+  .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+  .join(' ');
+
+const getPermissionGroup = (permission) => (
+  PERMISSION_GROUPS.find(group => group.match(permission)) || { key: 'other', label: 'Other Permissions' }
+);
+
+const getStoredRoleOverrides = () => {
+  try {
+    return JSON.parse(localStorage.getItem(ROLE_ACCESS_STORAGE_KEY) || '{}');
+  } catch {
+    return {};
+  }
+};
+
+const getCatalogPermissionsForRole = (role, overrides = {}) => (
+  Array.isArray(overrides[role])
+    ? overrides[role]
+    : permissionNames.filter(permission => (PERMISSIONS[permission] || []).includes(role))
+);
 
 const getRoleLabel = (role) => {
   const config = ROLES_CONFIG.find(r => r.value === role);
@@ -208,6 +332,12 @@ const UserManagement = () => {
   const [verificationUserId, setVerificationUserId] = useState(null);
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [roleSearchTerm, setRoleSearchTerm] = useState('');
+  const [roleStatusFilter, setRoleStatusFilter] = useState('ALL');
+  const [selectedRoleValue, setSelectedRoleValue] = useState('ADMIN');
+  const [roleAccessOverrides, setRoleAccessOverrides] = useState(() => getStoredRoleOverrides());
+  const [editingRoleValue, setEditingRoleValue] = useState(null);
+  const [draftRolePermissions, setDraftRolePermissions] = useState([]);
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -615,10 +745,84 @@ const UserManagement = () => {
     return matchesSearch;
   });
 
-  const roleStats = ROLES_CONFIG.map(role => ({
-    ...role,
-    count: users.filter(u => u.role === role.value && !u.archived).length
-  }));
+  const roleAccessRows = useMemo(() => {
+    const systemRoles = ['ADMIN', 'TEACHER', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'ACCOUNTANT', 'RECEPTIONIST', 'PARENT', 'STUDENT'];
+    const existingRoleValues = new Set(ROLES_CONFIG.map(role => role.value));
+    const roleValues = [...new Set([...systemRoles, ...ROLES_CONFIG.map(role => role.value), 'SYSTEM_VIEWER'])]
+      .filter(role => role === 'SYSTEM_VIEWER' || existingRoleValues.has(role));
+
+    return roleValues.map((role) => {
+      const baseConfig = ROLES_CONFIG.find(item => item.value === role) || {};
+      const meta = ROLE_META[role] || {};
+      const assignedUsers = users.filter(user => user.role === role && !user.archived).length;
+      const permissions = getCatalogPermissionsForRole(role, roleAccessOverrides);
+      const isInactive = role === 'SYSTEM_VIEWER' || assignedUsers === 0;
+      const Icon = meta.icon || Shield;
+      const tone = ROLE_TONE_CLASSES[meta.tone || baseConfig.color] || ROLE_TONE_CLASSES.slate;
+
+      return {
+        value: role,
+        label: meta.title || baseConfig.label || getRoleLabel(role),
+        description: meta.description || 'Custom access role',
+        detail: meta.detail || meta.description || 'Controls what this user type can access.',
+        assignedUsers,
+        permissions,
+        permissionCount: permissions.length,
+        isInactive,
+        icon: Icon,
+        tone,
+        created: meta.created || 'Jan 10, 2024',
+      };
+    });
+  }, [users, roleAccessOverrides]);
+
+  const selectedRoleAccess = roleAccessRows.find(role => role.value === selectedRoleValue) || roleAccessRows[0];
+  const activeRoleCount = roleAccessRows.filter(role => !role.isInactive).length;
+  const totalAssignedRoleUsers = roleAccessRows.reduce((sum, role) => sum + role.assignedUsers, 0);
+  const groupedPermissions = useMemo(() => {
+    return permissionNames.reduce((groups, permission) => {
+      const group = getPermissionGroup(permission);
+      if (!groups[group.key]) groups[group.key] = { ...group, permissions: [] };
+      groups[group.key].permissions.push(permission);
+      return groups;
+    }, {});
+  }, []);
+
+  const filteredRoleRows = roleAccessRows.filter((role) => {
+    const matchesSearch = !roleSearchTerm ||
+      role.label.toLowerCase().includes(roleSearchTerm.toLowerCase()) ||
+      role.description.toLowerCase().includes(roleSearchTerm.toLowerCase());
+    const matchesStatus =
+      roleStatusFilter === 'ALL' ||
+      (roleStatusFilter === 'ACTIVE' && !role.isInactive) ||
+      (roleStatusFilter === 'INACTIVE' && role.isInactive);
+    return matchesSearch && matchesStatus;
+  });
+
+  const openRoleEditor = (roleValue) => {
+    setEditingRoleValue(roleValue);
+    setDraftRolePermissions(getCatalogPermissionsForRole(roleValue, roleAccessOverrides));
+  };
+
+  const toggleDraftRolePermission = (permission) => {
+    setDraftRolePermissions((current) => (
+      current.includes(permission)
+        ? current.filter(item => item !== permission)
+        : [...current, permission]
+    ));
+  };
+
+  const saveRolePermissions = () => {
+    if (!editingRoleValue) return;
+    const nextOverrides = {
+      ...roleAccessOverrides,
+      [editingRoleValue]: [...new Set(draftRolePermissions)].sort(),
+    };
+    setRoleAccessOverrides(nextOverrides);
+    localStorage.setItem(ROLE_ACCESS_STORAGE_KEY, JSON.stringify(nextOverrides));
+    setEditingRoleValue(null);
+    showNotification('Role permissions updated for this browser session.', 'success');
+  };
 
   // ── KPI Calculations ──
   const kpiData = useMemo(() => {
@@ -1271,133 +1475,268 @@ const UserManagement = () => {
             ROLES & PERMISSIONS VIEW
         ═══════════════════════════════════════════════════════════ */}
         {viewMode === 'config' && (
-          <div className="space-y-6">
-            {/* Role Overview Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              {roleStats.map(role => (
-                <div key={role.value} className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition">
-                  <div className={`w-12 h-12 rounded-lg bg-${role.color}-100 flex items-center justify-center mb-3`}>
-                    <Shield className={`text-${role.color}-600`} size={24} />
-                  </div>
-                  <h3 className="font-medium text-gray-900 text-sm mb-1">{role.label}</h3>
-                  <p className={`text-2xl font-medium text-${role.color}-600`}>{role.count}</p>
-                  <p className="text-xs text-gray-500 mt-1">users</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Permission Matrix */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-              <div className="bg-purple-600 px-6 py-4">
-                <h2 className="text-xl font-medium text-white flex items-center gap-2">
-                  <Lock size={24} />
-                  Permission Matrix
-                </h2>
-                <p className="text-purple-100 text-sm mt-1">Control what each role can access</p>
+          <div className="space-y-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-950">Roles & Access</h2>
+                <p className="text-xs text-slate-500 mt-1">Create and manage roles. Define what users can access and what actions they can perform.</p>
               </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="border-b border-[color:var(--table-border)]">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-semibold text-[color:var(--table-header-fg)] sticky left-0 bg-[color:var(--table-header-bg)]">Role</th>
-                      {PERMISSION_MODULES.map(module => (
-                        <th key={module.key} className="px-2 py-2 text-center" colSpan={4}>
-                          <div className="font-semibold text-[color:var(--table-header-fg)]">{module.label}</div>
-                          <div className="flex gap-1 justify-center mt-1 text-xs text-gray-500">
-                            <span>V</span>
-                            <span>C</span>
-                            <span>E</span>
-                            <span>D</span>
-                          </div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {ROLES_CONFIG.slice(0, 7).map(role => (
-                      <tr key={role.value} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 font-semibold text-gray-900 sticky left-0 bg-white">
-                          <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full bg-${role.color}-500`}></div>
-                            {role.label}
-                          </div>
-                        </td>
-                        {PERMISSION_MODULES.map(module => (
-                          <React.Fragment key={module.key}>
-                            {PERMISSION_ACTIONS.map(action => {
-                              const hasPermission = role.permissions?.[module.key]?.[action];
-                              return (
-                                <td key={action} className="px-1 py-2 text-center">
-                                  <div className="flex justify-center">
-                                    {hasPermission ? (
-                                      <Check size={14} className="text-green-600" />
-                                    ) : (
-                                      <X size={14} className="text-gray-300" />
-                                    )}
-                                  </div>
-                                </td>
-                              );
-                            })}
-                          </React.Fragment>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="flex flex-wrap gap-2">
+                <button className="inline-flex items-center gap-2 rounded-md border border-purple-200 px-4 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-50">
+                  <Users size={14} />
+                  Role Templates
+                </button>
+                <button
+                  onClick={() => showNotification('Custom role creation needs backend role storage before it can be assigned to users.', 'warning')}
+                  className="inline-flex items-center gap-2 rounded-md bg-purple-700 px-4 py-2 text-xs font-semibold text-white hover:bg-purple-800"
+                >
+                  <Plus size={14} />
+                  Create Role
+                </button>
               </div>
             </div>
 
-            {/* Role Details with Users */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {ROLES_CONFIG.slice(0, 6).map(role => {
-                const roleUsers = users.filter(u => u.role === role.value && !u.archived);
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                { label: 'Total Roles', value: roleAccessRows.length, helper: 'System roles', icon: Shield, tone: 'purple' },
+                { label: 'Active Roles', value: activeRoleCount, helper: 'Currently in use', icon: Users, tone: 'green' },
+                { label: 'Total Users Assigned', value: totalAssignedRoleUsers, helper: 'Across all roles', icon: UserCircle, tone: 'blue' },
+                { label: 'Permissions', value: permissionNames.length, helper: 'Available permissions', icon: Key, tone: 'amber' },
+              ].map((card) => {
+                const tone = ROLE_TONE_CLASSES[card.tone];
+                const CardIcon = card.icon;
                 return (
-                  <div key={role.value} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                    <div className={`bg-${role.color}-50 px-4 py-3 border-b border-${role.color}-100`}>
-                      <div className="flex items-center justify-between">
-                        <h3 className={`font-medium text-${role.color}-900`}>{role.label}</h3>
-                        <span className={`px-3 py-1 bg-${role.color}-100 text-${role.color}-800 rounded-full text-sm font-medium`}>
-                          {roleUsers.length}
-                        </span>
+                  <div key={card.label} className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+                    <div className="flex items-center gap-4">
+                      <div className={`flex h-12 w-12 items-center justify-center rounded-lg ${tone.soft}`}>
+                        <CardIcon size={22} className={tone.text} />
                       </div>
-                    </div>
-                    <div className="p-4">
-                      {roleUsers.length > 0 ? (
-                        <div className="space-y-2">
-                          {roleUsers.map(user => (
-                            <div key={user.id} className="flex items-center justify-between p-2 bg-gray-50 rounded hover:bg-gray-100">
-                              <div className="flex items-center gap-3 flex-1 min-w-0">
-                                <div className="w-8 h-8 bg-blue-400 rounded-full flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
-                                  {user.firstName[0]}{user.lastName[0]}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <div className="font-semibold text-gray-900 text-sm truncate">
-                                    {user.firstName} {user.lastName}
-                                  </div>
-                                  <div className="text-xs text-gray-500 truncate">{user.email}</div>
-                                </div>
-                              </div>
-                              <button
-                                onClick={() => handleEdit(user)}
-                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded flex-shrink-0"
-                              >
-                                <Edit size={14} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-8 text-gray-400">
-                          <Shield size={32} className="mx-auto mb-2 opacity-30" />
-                          <p className="text-sm">No users in this role</p>
-                        </div>
-                      )}
+                      <div>
+                        <p className="text-[11px] font-semibold text-slate-600">{card.label}</p>
+                        <p className="mt-1 text-2xl font-bold text-slate-950">{card.value}</p>
+                        <p className="mt-1 text-[11px] text-slate-500">{card.helper}</p>
+                      </div>
                     </div>
                   </div>
                 );
               })}
             </div>
+
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+                <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <h3 className="text-base font-bold text-slate-950">Roles</h3>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <div className="relative">
+                      <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        value={roleSearchTerm}
+                        onChange={(event) => setRoleSearchTerm(event.target.value)}
+                        className="h-9 w-full rounded-md border border-slate-200 pl-9 pr-3 text-xs outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-100 sm:w-72"
+                        placeholder="Search roles..."
+                      />
+                    </div>
+                    <select
+                      value={roleStatusFilter}
+                      onChange={(event) => setRoleStatusFilter(event.target.value)}
+                      className="h-9 rounded-md border border-slate-200 px-3 text-xs font-semibold text-slate-700 outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-100"
+                    >
+                      <option value="ALL">All Status</option>
+                      <option value="ACTIVE">Active</option>
+                      <option value="INACTIVE">Inactive</option>
+                    </select>
+                    <div className="hidden h-9 overflow-hidden rounded-md border border-slate-200 sm:flex">
+                      <button className="grid w-10 place-items-center bg-purple-50 text-purple-700" title="Grid view"><LayoutGrid size={15} /></button>
+                      <button className="grid w-10 place-items-center text-slate-500 hover:bg-slate-50" title="List view"><List size={15} /></button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="divide-y divide-slate-100 rounded-lg border border-slate-100">
+                  {filteredRoleRows.map((role) => {
+                    const RoleIcon = role.icon;
+                    const selected = selectedRoleAccess?.value === role.value;
+                    return (
+                      <button
+                        key={role.value}
+                        onClick={() => setSelectedRoleValue(role.value)}
+                        className={`flex w-full items-center gap-3 px-4 py-3 text-left transition ${selected ? 'bg-purple-50/60' : 'hover:bg-slate-50'}`}
+                      >
+                        <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-full text-white ${role.tone.bg}`}>
+                          <RoleIcon size={18} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-bold text-slate-950">{role.label}</p>
+                          <p className="truncate text-xs text-slate-500">{role.description}</p>
+                        </div>
+                        <div className="hidden w-24 text-xs text-slate-600 sm:block">
+                          <p className="font-semibold">Users</p>
+                          <p>{role.assignedUsers}</p>
+                        </div>
+                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${role.isInactive ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`}>
+                          {role.isInactive ? 'Inactive' : 'Active'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(event) => { event.stopPropagation(); openRoleEditor(role.value); }}
+                          className="grid h-8 w-8 place-items-center rounded-md border border-slate-200 text-slate-500 hover:border-purple-200 hover:text-purple-700"
+                          title="Edit role permissions"
+                        >
+                          <MoreVertical size={16} />
+                        </button>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-4 text-xs text-slate-500">Showing 1 to {filteredRoleRows.length} of {roleAccessRows.length} roles</p>
+              </div>
+
+              {selectedRoleAccess && (
+                <div className="rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
+                  <div className="mb-5 flex items-start justify-between">
+                    <h3 className="text-base font-bold text-slate-950">Role Details</h3>
+                    <button onClick={() => setSelectedRoleValue(roleAccessRows[0]?.value)} className="text-slate-400 hover:text-slate-700" title="Close details">
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className={`grid h-14 w-14 place-items-center rounded-full text-white ${selectedRoleAccess.tone.bg}`}>
+                      {React.createElement(selectedRoleAccess.icon, { size: 24 })}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-bold text-slate-950">{selectedRoleAccess.label}</h4>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${selectedRoleAccess.isInactive ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`}>
+                          {selectedRoleAccess.isInactive ? 'Inactive' : 'Active'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-500">{selectedRoleAccess.detail}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid grid-cols-3 gap-2 rounded-lg bg-slate-50 p-3 text-center">
+                    <div>
+                      <p className="text-[10px] font-semibold text-slate-500">Users Assigned</p>
+                      <p className="mt-1 text-sm font-bold text-slate-950">{selectedRoleAccess.assignedUsers}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-semibold text-slate-500">Permissions</p>
+                      <p className="mt-1 text-sm font-bold text-slate-950">{selectedRoleAccess.permissionCount}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-semibold text-slate-500">Created</p>
+                      <p className="mt-1 text-xs font-bold text-slate-950">{selectedRoleAccess.created}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    <button onClick={() => openRoleEditor(selectedRoleAccess.value)} className="flex h-9 w-full items-center justify-center gap-2 rounded-md border border-purple-300 text-xs font-semibold text-purple-700 hover:bg-purple-50">
+                      <Edit size={14} />
+                      Edit Role
+                    </button>
+                    <button onClick={() => showNotification('Role cloning needs backend role storage before it can be assigned to users.', 'warning')} className="flex h-9 w-full items-center justify-center gap-2 rounded-md border border-purple-300 text-xs font-semibold text-purple-700 hover:bg-purple-50">
+                      <Copy size={14} />
+                      Clone Role
+                    </button>
+                    <button onClick={() => showNotification('Role activation is derived from assigned users in the current system.', 'warning')} className="flex h-9 w-full items-center justify-center gap-2 rounded-md border border-red-300 text-xs font-semibold text-red-600 hover:bg-red-50">
+                      <Power size={14} />
+                      Deactivate Role
+                    </button>
+                  </div>
+
+                  <div className="mt-5">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-xs font-bold text-slate-950">Permission Summary</p>
+                      <button onClick={() => openRoleEditor(selectedRoleAccess.value)} className="text-[11px] font-semibold text-purple-700">View all</button>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-100">
+                      <div
+                        className="h-2 rounded-full bg-purple-700"
+                        style={{ width: `${Math.round((selectedRoleAccess.permissionCount / permissionNames.length) * 100)}%` }}
+                      />
+                    </div>
+                    <div className="mt-2 flex justify-between text-[11px] text-slate-500">
+                      <span>{selectedRoleAccess.permissionCount} of {permissionNames.length} permissions</span>
+                      <span>{Math.round((selectedRoleAccess.permissionCount / permissionNames.length) * 100)}%</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-5">
+                    <p className="mb-3 text-xs font-bold text-slate-950">Top Permissions</p>
+                    <div className="space-y-2">
+                      {selectedRoleAccess.permissions.slice(0, 5).map(permission => (
+                        <div key={permission} className="flex items-center gap-2 text-xs text-slate-700">
+                          <CheckCircle size={14} className="text-emerald-600" />
+                          <span>{formatPermissionLabel(permission)}</span>
+                        </div>
+                      ))}
+                      {selectedRoleAccess.permissions.length === 0 && (
+                        <p className="text-xs text-slate-500">No permissions currently allowed.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <button className="mt-5 flex h-9 w-full items-center justify-center gap-2 rounded-md border border-purple-300 text-xs font-semibold text-purple-700 hover:bg-purple-50">
+                    <Eye size={14} />
+                    Preview As Role
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {editingRoleValue && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                <div className="max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-lg bg-white shadow-xl">
+                  <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-950">Edit Role Permissions</h3>
+                      <p className="text-xs text-slate-500">{getRoleLabel(editingRoleValue)} - allow or disallow access below.</p>
+                    </div>
+                    <button onClick={() => setEditingRoleValue(null)} className="text-slate-400 hover:text-slate-700">
+                      <X size={18} />
+                    </button>
+                  </div>
+                  <div className="max-h-[65vh] overflow-y-auto p-5">
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                      {Object.values(groupedPermissions).map(group => (
+                        <div key={group.key} className="rounded-lg border border-slate-100 p-4">
+                          <div className="mb-3 flex items-center justify-between">
+                            <h4 className="text-sm font-bold text-slate-900">{group.label}</h4>
+                            <span className="text-[11px] font-semibold text-slate-500">
+                              {group.permissions.filter(permission => draftRolePermissions.includes(permission)).length}/{group.permissions.length}
+                            </span>
+                          </div>
+                          <div className="space-y-2">
+                            {group.permissions.map(permission => {
+                              const enabled = draftRolePermissions.includes(permission);
+                              return (
+                                <label key={permission} className="flex cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-2 hover:bg-slate-50">
+                                  <span className="text-xs font-medium text-slate-700">{formatPermissionLabel(permission)}</span>
+                                  <input
+                                    type="checkbox"
+                                    checked={enabled}
+                                    onChange={() => toggleDraftRolePermission(permission)}
+                                    className="h-4 w-4 rounded border-slate-300 text-purple-700 focus:ring-purple-500"
+                                  />
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
+                    <button onClick={() => setEditingRoleValue(null)} className="rounded-md border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                      Cancel
+                    </button>
+                    <button onClick={saveRolePermissions} className="rounded-md bg-purple-700 px-4 py-2 text-xs font-semibold text-white hover:bg-purple-800">
+                      Save Permissions
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
