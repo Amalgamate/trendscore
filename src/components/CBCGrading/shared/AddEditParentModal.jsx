@@ -8,6 +8,10 @@ import { X, Save, User, Phone, Briefcase } from 'lucide-react';
 
 const AddEditParentModal = ({ show, onClose, onSave, parent = null, learners = [] }) => {
   const isEdit = parent !== null;
+  const getParentLogin = (phone) => {
+    const digits = String(phone || '').replace(/\D/g, '');
+    return digits ? `${digits}@trendscore.co.ke` : '';
+  };
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -53,8 +57,6 @@ const AddEditParentModal = ({ show, onClose, onSave, parent = null, learners = [
 
     if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
     if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required';
-    if (!formData.email.trim()) newErrors.email = 'Email is required';
-    else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = 'Email is invalid';
     if (!formData.phone.trim()) newErrors.phone = 'Phone number is required';
 
     // Password is only required for new parents
@@ -77,7 +79,6 @@ const AddEditParentModal = ({ show, onClose, onSave, parent = null, learners = [
     const parentData = {
       firstName: formData.firstName,
       lastName: formData.lastName,
-      email: formData.email,
       phone: formData.phone
     };
 
@@ -178,20 +179,12 @@ const AddEditParentModal = ({ show, onClose, onSave, parent = null, learners = [
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Email Address <span className="text-red-500">*</span>
+                    Login Email
                   </label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    disabled={isEdit} // Can't change email when editing
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 ${errors.email ? 'border-red-500' : 'border-gray-300'
-                      } ${isEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                    placeholder="email@example.com"
-                  />
-                  {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
-                  {isEdit && <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>}
+                  <div className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-700">
+                    {getParentLogin(formData.phone) || 'Enter a phone number to generate the login email'}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Parent login is generated from phone number.</p>
                 </div>
               </div>
             </div>

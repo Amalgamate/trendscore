@@ -1,18 +1,19 @@
 /**
  * ParentPortalAttendance — Family Attendance
- * Shows family average + per-child breakdown using real API data
+ * Family average from dashboardAPI.getParentMetrics (child.attendanceRate, child.attendanceSummary)
+ * Per-child detail lazy-loaded from attendanceAPI.getLearnerSummary
+ *
+ * API response shape for getLearnerSummary:
+ *   { summary: { total, present, absent, late, excused, attendanceRate }, records: [...] }
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  ArrowLeft, Calendar, CheckCircle2, XCircle,
-  Clock, RefreshCw, Users, ChevronDown, ChevronUp,
+  ArrowLeft, RefreshCw, Users, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { dashboardAPI, attendanceAPI } from '../../../../services/api';
 import MobileBottomNav from '../../dashboard/mobile/MobileBottomNav';
 
-const fmt    = (n) => Number(n || 0).toLocaleString();
-const fmtPct = (n) => `${Math.round(Number(n || 0))}%`;
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '—';
 
 function Skeleton({ className = '' }) {
@@ -24,22 +25,28 @@ const STATUS_COLORS = {
   ABSENT:  'bg-rose-100 text-rose-700',
   LATE:    'bg-amber-100 text-amber-700',
   EXCUSED: 'bg-blue-100 text-blue-700',
+  SICK:    'bg-orange-100 text-orange-700',
 };
 
 function ChildAttendanceCard({ child }) {
   const [detail, setDetail]     = useState(null);
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading]   = useState(false);
+  const [fetchError, setFetchError] = useState(null);
 
   const loadDetail = useCallback(async () => {
-    if (!child?.id || detail) return;
+    if (!child?.id || detail || fetchError) return;
     setLoading(true);
     try {
       const r = await attendanceAPI.getLearnerSummary(child.id);
-      setDetail(r?.data || r);
-    } catch { /* show dashboard data only */ }
-    finally { setLoading(false); }
-  }, [child?.id, detail]);
+      // API returns { success, data: { summary, records } }
+      // fetchWithAuth returns the parsed body, so r = { success, data: { summary, records } }
+      const payload = r?.data || r;
+      setDetail(payload);
+    } catch (e) {
+      setFetchError('Could not load detailed records');
+    } finally { setLoading(false); }
+  }, [child?.id, detail, fetchError]);
 
   const toggle = () => {
     setExpanded(prev => {
@@ -48,12 +55,19 @@ function ChildAttendanceCard({ child }) {
     });
   };
 
-  const rate = Math.round(Number(child.attendanceRate || 0));
-  const barColor = rate >= 90 ? 'bg-emerald-500' : rate >= 75 ? 'bg-amber-500' : 'bg-rose-500';
+  const rate      = Math.round(Number(child.attendanceRate || 0));
+  const barColor  = rate >= 90 ? 'bg-emerald-500' : rate >= 75 ? 'bg-amber-500' : 'bg-rose-500';
   const textColor = rate >= 90 ? 'text-emerald-600' : rate >= 75 ? 'text-amber-600' : 'text-rose-600';
 
-  const summary = detail?.summary || detail || {};
-  const records = (detail?.records || detail?.attendance || []).slice().reverse();
+  // Use detail API data if available, else fall back to dashboard summary
+  const summary  = detail?.summary || {};
+  const records  = (detail?.records || []).slice(0, 15);
+  const hasSummary = detail !== null;
+
+  // Dashboard-level counts (from attendanceSummary on the child object)
+  const dashPresent = child.attendanceSummary?.presentDays ?? null;
+  const dashAbsent  = child.attendanceSummary?.absentDays  ?? null;
+  const dashTotal   = child.attendanceSummary?.totalDays   ?? null;
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -63,14 +77,17 @@ function ChildAttendanceCard({ child }) {
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-gray-900 truncate">{child.name}</p>
+          <p className="text-[10px] text-gray-400">{child.grade}</p>
           <div className="flex items-center gap-2 mt-1">
             <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
               <div className={`h-full ${barColor} rounded-full`} style={{ width: `${rate}%` }} />
             </div>
-            <span className={`text-xs font-bold flex-shrink-0 ${textColor}`}>{fmtPct(rate)}</span>
+            <span className={`text-xs font-bold flex-shrink-0 ${textColor}`}>{rate}%</span>
           </div>
         </div>
-        {expanded ? <ChevronUp size={14} className="text-gray-400 flex-shrink-0" /> : <ChevronDown size={14} className="text-gray-400 flex-shrink-0" />}
+        {expanded
+          ? <ChevronUp size={14} className="text-gray-400 flex-shrink-0" />
+          : <ChevronDown size={14} className="text-gray-400 flex-shrink-0" />}
       </button>
 
       {expanded && (
@@ -82,23 +99,41 @@ function ChildAttendanceCard({ child }) {
             </div>
           ) : (
             <>
-              {/* Summary stats */}
-              <div className="grid grid-cols-3 gap-0 border-b border-gray-100">
+              {/* Summary counts — prefer API detail, fall back to dashboard */}
+              <div className="grid grid-cols-3 border-b border-gray-100">
                 {[
-                  { label: 'Present', value: summary.presentDays || 0, color: 'text-emerald-600' },
-                  { label: 'Late',    value: summary.lateDays    || 0, color: 'text-amber-600'   },
-                  { label: 'Absent',  value: summary.absentDays  || 0, color: 'text-rose-600'    },
-                ].map((s) => (
+                  {
+                    label:  'Present',
+                    value:  hasSummary ? summary.present  : dashPresent,
+                    color:  'text-emerald-600',
+                  },
+                  {
+                    label:  'Late',
+                    value:  hasSummary ? summary.late     : null,
+                    color:  'text-amber-600',
+                  },
+                  {
+                    label:  'Absent',
+                    value:  hasSummary ? summary.absent   : dashAbsent,
+                    color:  'text-rose-600',
+                  },
+                ].map(s => (
                   <div key={s.label} className="text-center py-2.5 border-r border-gray-100 last:border-0">
-                    <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
+                    <p className={`text-lg font-bold ${s.color}`}>
+                      {s.value !== null && s.value !== undefined ? s.value : '—'}
+                    </p>
                     <p className="text-[10px] text-gray-500">{s.label}</p>
                   </div>
                 ))}
               </div>
+
               {/* Recent records */}
-              {records.length > 0 ? (
-                <div className="max-h-48 overflow-y-auto divide-y divide-gray-50">
-                  {records.slice(0, 10).map((r, i) => (
+              {fetchError && (
+                <p className="text-[10px] text-gray-400 text-center py-2 px-4">{fetchError}</p>
+              )}
+              {!fetchError && records.length > 0 ? (
+                <div className="max-h-44 overflow-y-auto divide-y divide-gray-50">
+                  {records.map((r, i) => (
                     <div key={r.id || i} className="flex items-center justify-between px-4 py-2">
                       <span className="text-xs text-gray-600">{fmtDate(r.date)}</span>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_COLORS[r.status] || 'bg-gray-100 text-gray-500'}`}>
@@ -107,8 +142,10 @@ function ChildAttendanceCard({ child }) {
                     </div>
                   ))}
                 </div>
-              ) : (
-                <p className="text-xs text-gray-400 text-center py-3">No records available</p>
+              ) : !fetchError && (
+                <p className="text-[10px] text-gray-400 text-center py-3 px-4">
+                  No individual records available
+                </p>
               )}
             </>
           )}

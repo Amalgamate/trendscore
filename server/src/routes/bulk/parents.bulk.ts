@@ -10,7 +10,7 @@ import csvParser from 'csv-parser';
 import { Parser } from 'json2csv';
 import { Readable } from 'stream';
 import { z } from 'zod';
-import { parentService } from '../../services/parent.service';
+import { buildParentLoginEmail, parentService } from '../../services/parent.service';
 
 const router = Router();
 
@@ -22,7 +22,7 @@ const upload = multer({
 const parentSchema = z.object({
   'First Name': z.string().min(1, 'First name is required'),
   'Last Name': z.string().min(1, 'Last name is required'),
-  'Email': z.string().email('Invalid email'),
+  'Email': z.string().email('Invalid email').optional().or(z.literal('')),
   'Phone': z.string().min(1, 'Phone is required'),
   'Phone 2': z.string().optional(),
   'WhatsApp Number': z.string().optional(),
@@ -82,23 +82,32 @@ router.post(
     for (const item of results) {
       try {
         const csvData = item.data;
-
-        const existing = await prisma.user.findUnique({
-          where: { email: csvData['Email'] }
-        });
-
-        if (existing) {
+        const loginEmail = buildParentLoginEmail(csvData['Phone']);
+        if (!loginEmail) {
           failed.push({
             line: item.line,
-            email: csvData['Email'],
+            email: csvData['Email'] || null,
             name: `${csvData['First Name']} ${csvData['Last Name']}`,
-            reason: 'Email already exists'
+            reason: 'Phone is required before issuing a parent login account'
+          });
+          continue;
+        }
+
+        const existing = await prisma.user.findUnique({
+          where: { email: loginEmail }
+        });
+
+        if (existing && existing.role !== 'PARENT') {
+          failed.push({
+            line: item.line,
+            email: loginEmail,
+            name: `${csvData['First Name']} ${csvData['Last Name']}`,
+            reason: 'Login email already exists for a non-parent user'
           });
           continue;
         }
 
         const parent = await parentService.getOrCreateParent({
-          email: csvData['Email'],
           name: `${csvData['First Name']} ${csvData['Last Name']}`,
           phone: csvData['Phone'],
           status: (csvData['Status'] as UserStatus) || 'ACTIVE'
@@ -135,7 +144,7 @@ router.post(
         created.push({
           line: item.line,
           id: parent.id,
-          email: csvData['Email'],
+          email: parent.email,
           name: `${csvData['First Name']} ${csvData['Last Name']}`
         });
 
@@ -143,7 +152,7 @@ router.post(
         const csvData = item.data;
         failed.push({
           line: item.line,
-          email: csvData['Email'],
+          email: csvData['Email'] || null,
           name: `${csvData['First Name']} ${csvData['Last Name']}`,
           reason: error instanceof Error ? error.message : 'Unknown error'
         });

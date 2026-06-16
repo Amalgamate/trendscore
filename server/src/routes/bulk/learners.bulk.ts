@@ -15,6 +15,7 @@ import { z } from 'zod';
 import * as XLSX from 'xlsx';
 import { ensureStudentAccountForLearner } from '../../services/studentAccount.service';
 import { generateAdmissionNumber } from '../../services/admissionNumber.service';
+import { parentService } from '../../services/parent.service';
 
 const router = Router();
 
@@ -344,28 +345,13 @@ router.post(
 
           if (existingParent) {
             parentId = existingParent.id;
-          } else if (parentName) {
-            const pNameParts = parentName.trim().split(' ');
-            const pFirstName = pNameParts[0] || 'Parent';
-            const pLastName = pNameParts.slice(1).join(' ') || 'Guardian';
-            const cleanPhone = parentPhone.replace(/\D/g, '');
-            const email = `parent.${cleanPhone || Math.random().toString(36).substring(7)}@edu-core.test`;
-
-            const bcrypt = await import('bcrypt');
-            const hashedPassword = await bcrypt.hash('Parent@123', 10);
-
-            const newParent = await prisma.user.create({
-              data: {
-                email,
-                password: hashedPassword,
-                firstName: pFirstName,
-                lastName: pLastName,
-                phone: parentPhone,
-                role: 'PARENT',
-                status: 'ACTIVE',
-              }
+          } else {
+            const newParent = await parentService.getOrCreateParent({
+              phone: parentPhone,
+              name: parentName || 'Parent',
+              skipNotifications: true
             });
-            parentId = newParent.id;
+            if (newParent) parentId = newParent.id;
           }
         }
 

@@ -6,6 +6,16 @@ import { EmailService } from './email.service';
 import { UserStatus } from '@prisma/client';
 import { PRODUCT_EMAIL_DOMAIN, PRODUCT_PARENT_PORTAL_URL } from '../config/productIdentity';
 
+export const normalizeParentPhoneForLogin = (phone?: string | null): string | null => {
+  const digits = String(phone || '').replace(/\D/g, '');
+  return digits || null;
+};
+
+export const buildParentLoginEmail = (phone?: string | null): string | null => {
+  const normalizedPhone = normalizeParentPhoneForLogin(phone);
+  return normalizedPhone ? `${normalizedPhone}@${PRODUCT_EMAIL_DOMAIN}` : null;
+};
+
 export interface CreateOrGetParentArgs {
   phone?: string;
   name?: string;
@@ -32,14 +42,21 @@ export class ParentService {
    * a brand new parent securely with generated passwords and credentials.
    */
   public async getOrCreateParent(args: CreateOrGetParentArgs) {
-    if (!args.phone && !args.email) return null;
+    const finalEmail = buildParentLoginEmail(args.phone);
+    if (!args.phone || !finalEmail) return null;
 
     // Check by phone first if provided
-    if (args.phone) {
-      const existingParent = await prisma.user.findFirst({
-        where: { phone: args.phone, role: 'PARENT' }
-      });
-      if (existingParent) return existingParent;
+    const existingParentByPhone = await prisma.user.findFirst({
+      where: { phone: args.phone, role: 'PARENT' }
+    });
+    if (existingParentByPhone) return existingParentByPhone;
+
+    const existingParentByLogin = await prisma.user.findUnique({
+      where: { email: finalEmail }
+    });
+    if (existingParentByLogin) {
+      if (existingParentByLogin.role === 'PARENT') return existingParentByLogin;
+      throw new Error(`Login email ${finalEmail} is already assigned to a non-parent user`);
     }
 
     // Prepare default values
@@ -48,19 +65,6 @@ export class ParentService {
     const nameParts = pName.split(' ');
     const firstName = nameParts[0] || 'Parent';
     const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'Guardian';
-    
-    // Deduplicate Email collisions securely
-    let finalEmail = args.email || null;
-    if (finalEmail) {
-      const existingEmail = await prisma.user.findUnique({ where: { email: finalEmail } });
-      if (existingEmail && phone) {
-        finalEmail = `${phone.replace(/\D/g, '')}-${Date.now()}@${PRODUCT_EMAIL_DOMAIN}`;
-      }
-    } else if (phone) {
-      finalEmail = `${phone.replace(/\D/g, '')}@${PRODUCT_EMAIL_DOMAIN}`;
-    } else {
-      finalEmail = `parent-${Date.now()}@${PRODUCT_EMAIL_DOMAIN}`;
-    }
 
     // Force secure temporary credentials
     const parentPassword = this.generateTemporaryPassword();

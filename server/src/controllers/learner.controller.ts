@@ -227,13 +227,11 @@ export class LearnerController {
       if (!parentId) {
         const pPhone = guardianPhone || primaryContactPhone;
         const pName  = guardianName  || primaryContactName || 'Parent';
-        const pEmail = (guardianEmail || primaryContactEmail)?.includes('@') ? (guardianEmail || primaryContactEmail) : undefined;
 
-        if (pPhone || pEmail) {
+        if (pPhone) {
           const parent = await parentService.getOrCreateParent({
             phone: pPhone,
-            name: pName,
-            email: pEmail
+            name: pName
           });
           if (parent) parentId = parent.id;
         }
@@ -447,15 +445,11 @@ export class LearnerController {
       if (!parentId) {
         const pPhone = req.body.guardianPhone || req.body.primaryContactPhone;
         const pName  = req.body.guardianName  || req.body.primaryContactName || (req.body.firstName ? 'Parent' : null);
-        const pEmail = (req.body.guardianEmail || req.body.primaryContactEmail)?.includes('@')
-          ? (req.body.guardianEmail || req.body.primaryContactEmail)
-          : undefined;
 
-        if (pPhone || pEmail) {
+        if (pPhone) {
           const parent = await parentService.getOrCreateParent({
             phone: pPhone,
-            name: pName,
-            email: pEmail
+            name: pName
           });
           if (parent) updateData.parentId = parent.id;
         }

@@ -12,6 +12,7 @@ import { EmailService } from '../services/email-resend.service';
 import { whatsappService } from '../services/whatsapp.service';
 import { redisCacheService } from '../services/redis-cache.service';
 import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
+import { buildParentLoginEmail } from '../services/parent.service';
 
 import logger from '../utils/logger';
 /**
@@ -62,9 +63,9 @@ export class AuthController {
   }
 
   async register(req: AuthRequest, res: Response) {
-    const { email, password, firstName, lastName, role, phone } = req.body;
+    let { email, password, firstName, lastName, role, phone } = req.body;
 
-    if (!email || !password || !firstName || !lastName) {
+    if (!password || !firstName || !lastName) {
       throw new ApiError(400, 'Missing required fields');
     }
 
@@ -85,6 +86,16 @@ export class AuthController {
       }
     }
 
+    if (requestedRole === 'PARENT') {
+      const parentLoginEmail = buildParentLoginEmail(phone);
+      if (!parentLoginEmail) {
+        throw new ApiError(400, 'Parent phone number is required before issuing a login account');
+      }
+      email = parentLoginEmail;
+    } else if (!email) {
+      throw new ApiError(400, 'Email is required');
+    }
+
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) throw new ApiError(400, 'User already exists');
 
@@ -96,7 +107,7 @@ export class AuthController {
 
     const user = await prisma.user.create({
       data: {
-        email, password: hashedPassword, firstName, lastName,
+        email, username: requestedRole === 'PARENT' ? email : undefined, password: hashedPassword, firstName, lastName,
         role: requestedRole, roles: [requestedRole], phone: phone || null, status: 'ACTIVE'
       },
       select: {
@@ -106,12 +117,14 @@ export class AuthController {
     });
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    EmailService.sendWelcomeEmail({
-      to: email,
-      schoolName: PRODUCT_DISPLAY_NAME,
-      adminName: `${firstName} ${lastName}`,
-      loginUrl: `${frontendUrl}/login`
-    }).catch(err => logger.error('Failed to send welcome email:', err));
+    if (requestedRole !== 'PARENT') {
+      EmailService.sendWelcomeEmail({
+        to: email,
+        schoolName: PRODUCT_DISPLAY_NAME,
+        adminName: `${firstName} ${lastName}`,
+        loginUrl: `${frontendUrl}/login`
+      }).catch(err => logger.error('Failed to send welcome email:', err));
+    }
 
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);

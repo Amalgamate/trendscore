@@ -17,6 +17,7 @@ import { SmsService } from '../services/sms.service';
 import { SMS_MESSAGES } from '../config/communication.messages';
 import { generateStaffId } from '../services/staffId.service';
 import { redisCacheService } from '../services/redis-cache.service';
+import { buildParentLoginEmail } from '../services/parent.service';
 
 const VALID_ROLES: Role[] = [
   'SUPER_ADMIN',
@@ -155,10 +156,10 @@ export class UserController {
    * Create new user
    */
   async createUser(req: AuthRequest, res: Response) {
-    const { email, password, firstName, lastName, middleName, phone, role, roles, subject, gender } = req.body;
+    let { email, password, firstName, lastName, middleName, phone, role, roles, subject, gender } = req.body;
     const currentUserRole = req.user!.role;
 
-    if (!email || !password || !firstName || !lastName || !role) {
+    if (!password || !firstName || !lastName || !role) {
       throw new ApiError(400, 'Missing required fields');
     }
 
@@ -170,6 +171,16 @@ export class UserController {
     const assignedRoles: Role[] = normalizedRoles.length > 0
       ? Array.from(new Set([role as Role, ...normalizedRoles]))
       : [role as Role];
+
+    if ((role as Role) === 'PARENT') {
+      const parentLoginEmail = buildParentLoginEmail(phone);
+      if (!parentLoginEmail) {
+        throw new ApiError(400, 'Parent phone number is required before issuing a login account');
+      }
+      email = parentLoginEmail;
+    } else if (!email) {
+      throw new ApiError(400, 'Email is required');
+    }
 
     for (const assignedRole of assignedRoles) {
       if (!canManageRole(currentUserRole, assignedRole)) {
@@ -192,6 +203,7 @@ export class UserController {
     const user = await prisma.user.create({
       data: {
         email,
+        username: (role as Role) === 'PARENT' ? email : req.body.username,
         password: hashedPassword,
         firstName,
         lastName,
@@ -338,8 +350,25 @@ export class UserController {
 
     const updateData: any = {};
 
+    const resultingRole = ((role as Role) || targetUser.role) as Role;
+    if (resultingRole === 'PARENT') {
+      const parentPhone = phone !== undefined ? phone : targetUser.phone;
+      const parentLoginEmail = buildParentLoginEmail(parentPhone);
+      if (!parentLoginEmail) {
+        throw new ApiError(400, 'Parent phone number is required before issuing a login account');
+      }
+      if (parentLoginEmail !== targetUser.email) {
+        const existingUser = await prisma.user.findUnique({ where: { email: parentLoginEmail } });
+        if (existingUser && existingUser.id !== id) {
+          throw new ApiError(400, 'A parent login account already exists for this phone number');
+        }
+        updateData.email = parentLoginEmail;
+        updateData.username = parentLoginEmail;
+      }
+    }
+
     // Only update email if it's provided and different from current
-    if (email && email !== targetUser.email) {
+    if (resultingRole !== 'PARENT' && email && email !== targetUser.email) {
       // Security: Check if new email is already taken
       const existingUser = await prisma.user.findUnique({ where: { email } });
       if (existingUser) {
@@ -359,7 +388,7 @@ export class UserController {
       if (role) updateData.role = role as Role;
       if (roles !== undefined || role) {
         const normalizedRoles = normalizeRoles(roles);
-        const baseRole = ((role as Role) || targetUser.role) as Role;
+        const baseRole = resultingRole;
         const assignedRoles: Role[] = normalizedRoles.length > 0
           ? Array.from(new Set([baseRole, ...normalizedRoles]))
           : [baseRole];

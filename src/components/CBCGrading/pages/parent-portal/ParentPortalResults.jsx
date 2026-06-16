@@ -76,8 +76,8 @@ function SubjectBarChart({ subjects }) {
           }
         />
         {data.map((d, i) => (
-          <Bar key={i} dataKey="score" fill={barFill(d.score)} radius={[3, 3, 0, 0]}>
-            <Cell fill={barFill(d.score)} />
+          <Bar key={i} dataKey="score" radius={[3, 3, 0, 0]}>
+            <Cell key={`cell-${i}`} fill={barFill(d.score)} />
           </Bar>
         ))}
       </BarChart>
@@ -264,20 +264,41 @@ function PerformanceCallouts({ children }) {
 }
 
 // ─── Insight Card ─────────────────────────────────────────────────────────────
+// Uses real subject data: counts children with avg >= 70.
 
 function InsightCard({ children }) {
-  const improved = children.filter(c => (c.scoreDelta ?? 0) > 0).length;
   if (!children?.length) return null;
+
+  const withAvg = children.map(c => {
+    const subs = c.subjects || [];
+    return subs.length > 0
+      ? Math.round(subs.reduce((s, sub) => s + Number(sub.score || 0), 0) / subs.length)
+      : null;
+  }).filter(v => v !== null);
+
+  const passing  = withAvg.filter(v => v >= 70).length;
+  const total    = withAvg.length;
+  const familyAvg = total > 0
+    ? Math.round(withAvg.reduce((s, v) => s + v, 0) / total)
+    : null;
+
+  const message = total === 0
+    ? 'Keep encouraging consistent study habits. Small efforts, big results!'
+    : passing === total
+    ? `Great job! All ${total} ${total === 1 ? 'child is' : 'children are'} performing above 70%.`
+    : passing > 0
+    ? `${passing} out of ${total} ${total === 1 ? 'child is' : 'children are'} performing well. Keep supporting the others.`
+    : 'Focus on consistent study habits. Every small effort counts!';
+
   return (
     <div className="bg-[#3B1FA3]/5 border border-[#3B1FA3]/20 rounded-xl p-3 flex items-start gap-2">
       <BarChart2 size={16} className="text-[#3B1FA3] flex-shrink-0 mt-0.5" />
       <div className="flex-1 min-w-0">
         <p className="text-xs font-bold text-[#3B1FA3] mb-0.5">Insight</p>
-        <p className="text-xs text-gray-700">
-          {improved > 0
-            ? `${improved} out of ${children.length} ${children.length === 1 ? 'child has' : 'children have'} improved compared to last term.`
-            : `Keep encouraging consistent study habits. Small efforts, big results!`}
-        </p>
+        <p className="text-xs text-gray-700">{message}</p>
+        {familyAvg !== null && (
+          <p className="text-[10px] text-gray-500 mt-1">Family average: <span className={`font-bold ${scoreColor(familyAvg)}`}>{familyAvg}%</span></p>
+        )}
       </div>
     </div>
   );

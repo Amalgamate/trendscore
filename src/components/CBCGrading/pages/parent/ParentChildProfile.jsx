@@ -188,36 +188,51 @@ function OverviewTab({ child, onNavigate }) {
 }
 
 // ─── Results Tab (child-level: subject rows with progress bars) ───────────────
+// Uses child.subjects from dashboard payload first (no extra API call needed).
+// Falls back to reportAPI.getLearnerAnalytics if subjects are empty.
 
-function ResultsTab({ learnerId }) {
-  const [report, setReport]   = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState(null);
+function ResultsTab({ learnerId, subjects: dashboardSubjects }) {
+  const [subjects, setSubjects]   = useState(dashboardSubjects || []);
+  const [overall, setOverall]     = useState(null);
+  const [classRank, setClassRank] = useState(null);
+  const [classSize, setClassSize] = useState(null);
+  const [loading, setLoading]     = useState(!dashboardSubjects?.length);
+  const [error, setError]         = useState(null);
 
   const load = useCallback(async () => {
+    if (dashboardSubjects?.length) return; // already have real data
     setLoading(true); setError(null);
     try {
-      const r = await api.reports.getFormativeReport(learnerId);
-      setReport(r?.data || r);
+      const r = await api.reports.getLearnerAnalytics(learnerId);
+      const data = r?.data || r;
+      const subs = data?.subjects || data?.learningAreas || data?.assessments || [];
+      setSubjects(subs);
+      setOverall(data?.overallGrade || data?.performanceLevel || null);
+      setClassRank(data?.classRank || null);
+      setClassSize(data?.classSize || null);
     } catch {
-      try {
-        const r2 = await api.reports.getLearnerAnalytics(learnerId);
-        setReport(r2?.data || r2);
-      } catch { setError('Academic records unavailable.'); }
+      setError('Assessment records unavailable.');
     } finally { setLoading(false); }
-  }, [learnerId]);
+  }, [learnerId, dashboardSubjects]);
 
   useEffect(() => { load(); }, [load]);
 
-  if (loading) return <div className="flex justify-center py-12"><Loader2 size={22} className="animate-spin text-[#3B1FA3]" /></div>;
-  if (error)   return <EmptyCard icon={GraduationCap} message={error} />;
-  if (!report) return <EmptyCard icon={GraduationCap} message="No academic records yet." />;
-
-  const subjects = report.subjects || report.learningAreas || report.assessments || [];
-  const overall  = report.overallGrade || report.performanceLevel;
-  const avgNum   = subjects.length
+  // Compute avg from real subject scores
+  const avgNum = subjects.length > 0
     ? Math.round(subjects.reduce((s, sub) => s + Number(sub.score ?? sub.percentage ?? sub.marks ?? 0), 0) / subjects.length)
     : null;
+
+  if (loading) return <div className="flex justify-center py-12"><Loader2 size={22} className="animate-spin text-[#3B1FA3]" /></div>;
+
+  if (error && subjects.length === 0) {
+    return (
+      <div className="bg-white border border-dashed border-gray-200 rounded-xl p-8 text-center">
+        <GraduationCap size={28} className="mx-auto mb-2 text-gray-300 opacity-40" />
+        <p className="text-sm font-semibold text-gray-600 mb-1">No results available</p>
+        <p className="text-xs text-gray-400">{error}</p>
+      </div>
+    );
+  }
 
   const BAR_COLORS = ['bg-emerald-500', 'bg-blue-500', 'bg-[#3B1FA3]', 'bg-amber-500', 'bg-rose-500', 'bg-violet-500'];
 
@@ -234,19 +249,22 @@ function ResultsTab({ learnerId }) {
             </div>
             <div className="text-right">
               <p className="text-[10px] text-gray-500 mb-0.5">Class Rank</p>
-              <p className="text-2xl font-bold text-gray-900">{report.classRank ? `${report.classRank} / ${report.classSize}` : '—'}</p>
-              {report.classSize && <p className="text-[10px] text-gray-500">Top {Math.round((report.classRank / report.classSize) * 100)}%</p>}
+              <p className="text-2xl font-bold text-gray-900">
+                {classRank && classSize ? `${classRank} / ${classSize}` : '—'}
+              </p>
+              {classRank && classSize && (
+                <p className="text-[10px] text-gray-500">Top {Math.round((classRank / classSize) * 100)}%</p>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* Subject Progress */}
-      {subjects.length > 0 && (
+      {/* Subject rows */}
+      {subjects.length > 0 ? (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           <div className="flex items-center justify-between px-4 pt-3 pb-2">
             <p className="text-sm font-bold text-gray-900">Subject Performance</p>
-            <button className="text-xs text-[#3B1FA3] font-semibold">View by Subject</button>
           </div>
           <div className="divide-y divide-gray-50">
             {subjects.map((s, i) => {
@@ -261,13 +279,17 @@ function ResultsTab({ learnerId }) {
                       {s.name || s.subject || s.learningArea || s.title}
                     </p>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {n != null && <span className={`text-sm font-bold ${color}`}>{n}%</span>}
+                      {n != null ? (
+                        <span className={`text-sm font-bold ${color}`}>{n}%</span>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
                       <ChevronRight size={14} className="text-gray-300" />
                     </div>
                   </div>
                   {n != null && (
                     <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className={`h-full ${bar} rounded-full transition-all`} style={{ width: `${n}%` }} />
+                      <div className={`h-full ${bar} rounded-full`} style={{ width: `${Math.min(n, 100)}%` }} />
                     </div>
                   )}
                 </div>
@@ -275,8 +297,13 @@ function ResultsTab({ learnerId }) {
             })}
           </div>
         </div>
+      ) : (
+        <div className="bg-white border border-dashed border-gray-200 rounded-xl p-8 text-center">
+          <GraduationCap size={28} className="mx-auto mb-2 text-gray-300 opacity-40" />
+          <p className="text-sm font-semibold text-gray-600 mb-1">No subject results yet</p>
+          <p className="text-xs text-gray-400">Results will appear once assessments are entered by the teacher.</p>
+        </div>
       )}
-      {subjects.length === 0 && <EmptyCard icon={GraduationCap} message="No subject results yet." />}
     </div>
   );
 }
@@ -516,7 +543,7 @@ export default function ParentChildProfile({ child, onBack, initialTab = 'overvi
       {/* Tab content */}
       <div className="px-4 py-4">
         {tab === 'overview'   && <OverviewTab   child={child} />}
-        {tab === 'results'    && <ResultsTab    learnerId={child.id} />}
+        {tab === 'results'    && <ResultsTab    learnerId={child.id} subjects={child.subjects} />}
         {tab === 'attendance' && <AttendanceTab learnerId={child.id} />}
         {tab === 'fees'       && <FeesTab       learnerId={child.id} />}
         {tab === 'info'       && <InfoTab       child={child} />}
