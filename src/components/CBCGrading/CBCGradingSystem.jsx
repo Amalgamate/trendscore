@@ -24,7 +24,7 @@ import { MOBILE_MEDIA_QUERY } from '../../constants/breakpoints';
 import { clearAllSchoolData } from '../../utils/schoolDataCleanup';
 import { refreshBus } from '../../utils/refreshBus';
 import axiosInstance from '../../services/api/axiosConfig';
-import { hasPageAccess } from './utils/appAccess';
+import { hasPageAccess, isParentPortalPage, resolveDashboardPage, userHasParentPortalAccess } from './utils/appAccess';
 import { resolveLearnerSaveIntent } from './utils/learnerSaveIntent';
 
 const extractApiErrorMessage = (err, fallback = 'Request failed') => {
@@ -63,9 +63,9 @@ const extractLearner403Message = (err) => {
 export default function CBCGradingSystem({ user, onLogout, brandingSettings, setBrandingSettings }) {
   const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
   const mainContentRef = useRef(null);
-  const parentPortal = user?.role === 'PARENT';
+  const parentPortal = userHasParentPortalAccess(user);
   const getAllowedPage = useCallback((page) => (
-    hasPageAccess(user, page) ? page : 'dashboard'
+    hasPageAccess(user, page) ? page : resolveDashboardPage(user)
   ), [user]);
 
   // ── UI State ─────────────────────────────────────────────────────────────
@@ -206,13 +206,14 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
         if (allowedPage === state.appPage && state.appParams?.learner) setEditingLearner(state.appParams.learner);
         useUIStore.setState({ currentPage: allowedPage, pageParams: allowedPage === state.appPage ? (state.appParams || {}) : {} });
       } else {
-        window.history.pushState({ appPage: 'dashboard', appParams: {} }, '', window.location.href);
-        useUIStore.setState({ currentPage: 'dashboard', pageParams: {} });
+        const landingPage = resolveDashboardPage(user);
+        window.history.pushState({ appPage: landingPage, appParams: {} }, '', window.location.href);
+        useUIStore.setState({ currentPage: landingPage, pageParams: {} });
       }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [getAllowedPage]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [getAllowedPage, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (user?.role === 'ACCOUNTANT' && window.location.pathname.includes('/app/accountant/dashboard')) {
@@ -223,15 +224,19 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
       setCurrentPage('finance-dashboard');
       return;
     }
-    // Redirect parents away from the generic dashboard to the parent portal home
-    if (user?.role === 'PARENT' && currentPage === 'dashboard') {
+    if (!parentPortal && isParentPortalPage(currentPage)) {
+      setCurrentPage(resolveDashboardPage(user));
+      return;
+    }
+    // Redirect parents away from the generic dashboard to the parent portal home.
+    if (parentPortal && currentPage === 'dashboard') {
       setCurrentPage('parent-portal-home');
       return;
     }
     if (!hasPageAccess(user, currentPage)) {
-      setCurrentPage('dashboard');
+      setCurrentPage(resolveDashboardPage(user));
     }
-  }, [currentPage, setCurrentPage, user]);
+  }, [currentPage, parentPortal, setCurrentPage, user]);
 
   // Lazy-load parents on first visit to a parents page
   const parentsLoaded = useRef(false);
@@ -663,7 +668,7 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
         onOpenGitDialog={() => setGitDialogOpen(true)}
       />
       <div className="flex-1 flex min-h-0 flex-col min-w-0 overflow-hidden relative">
-        {!(user?.role === 'PARENT' && currentPage.startsWith('parent-portal')) && !(user?.role === 'ACCOUNTANT' && currentPage === 'finance-dashboard') && (
+        {!(parentPortal && currentPage.startsWith('parent-portal')) && !(user?.role === 'ACCOUNTANT' && currentPage === 'finance-dashboard') && (
           <>
             <Header user={user} onLogout={handleLogout} onNavigate={handleNavigate} />
             <HorizontalSubmenu currentPage={currentPage} onNavigate={handleNavigate} />

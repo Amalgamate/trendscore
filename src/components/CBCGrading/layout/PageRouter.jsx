@@ -2,7 +2,7 @@ import React, { lazy, Suspense, useState, useEffect } from 'react';
 import ErrorBoundary from '../shared/ErrorBoundary';
 import EmptyState from '../shared/EmptyState';
 import ComingSoon from '../shared/ComingSoon';
-import { hasPageAccess } from '../utils/appAccess';
+import { hasPageAccess, isParentPortalPage, resolveDashboardPage, userHasParentPortalAccess } from '../utils/appAccess';
 import { useRolePreview } from '../../../contexts/RolePreviewContext';
 import { PRODUCT_DISPLAY_NAME } from '../../../config/productIdentity';
 
@@ -263,6 +263,7 @@ const PageRouter = ({
 }) => {
   const rolePreview = useRolePreview();
   const effectiveRole = rolePreview?.effectiveRole || user?.role;
+  const parentPortal = userHasParentPortalAccess(user);
   
   // Mobile detection for responsive routes
   const [isMobile, setIsMobile] = useState(false);
@@ -305,6 +306,7 @@ const PageRouter = ({
   } = handlers;
 
   const normalizedPage = currentPage?.split('?')[0] || 'dashboard';
+  const redirectFromParentPortal = isParentPortalPage(normalizedPage) && !parentPortal;
   const admissionLearnerId = pageParams?.learnerId || pageParams?.learner?.id || editingLearner?.id;
   const admissionLearner = editingLearner
     || pageParams?.learner
@@ -338,6 +340,14 @@ const PageRouter = ({
     );
   };
 
+  useEffect(() => {
+    if (redirectFromParentPortal) {
+      setCurrentPage(resolveDashboardPage(user));
+    }
+  }, [redirectFromParentPortal, setCurrentPage, user]);
+
+  if (redirectFromParentPortal) return null;
+
   if (!hasPageAccess(user, normalizedPage)) {
     return (
       <EmptyState
@@ -353,7 +363,7 @@ const PageRouter = ({
         switch (normalizedPage) {
           case 'dashboard':
             if (effectiveRole === 'STUDENT') return <StudentDashboardView user={user} onNavigate={handleNavigate} />;
-            if (effectiveRole === 'PARENT')  return <ParentPortalHome user={user} onNavigate={handleNavigate} />;
+            if (parentPortal) return <ParentPortalHome user={user} onNavigate={handleNavigate} />;
             return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} />;
           case 'finance-dashboard':
             return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} />;

@@ -136,6 +136,51 @@ const ROLE_PAGE_ALLOWLIST = {
   ])
 };
 
+const PARENT_PORTAL_PAGES = new Set([
+  'parent-portal-home',
+  'parent-portal-children',
+  'parent-portal-fees',
+  'parent-portal-messages',
+  'parent-portal-more',
+  'parent-portal-results',
+  'parent-portal-attendance',
+  'parent-portal-transport',
+  'parent-portal-documents',
+  'parent-portal-support',
+]);
+
+const FINANCE_ROLES = new Set(['ACCOUNTANT']);
+const STUDENT_ROLES = new Set(['STUDENT']);
+const PARENT_PORTAL_PERMISSIONS = new Set([
+  'VIEW_OWN_CHILDREN',
+  'VIEW_CHILDREN_REPORTS',
+  'VIEW_CHILDREN_ATTENDANCE',
+  'VIEW_OWN_BALANCE',
+]);
+
+export const normalizeRole = (role) => String(role || '').trim().toUpperCase();
+
+export const userHasParentPortalAccess = (user) => {
+  if (normalizeRole(user?.role) === 'PARENT') return true;
+  const roles = Array.isArray(user?.roles) ? user.roles.map(normalizeRole) : [];
+  if (roles.includes('PARENT')) return true;
+  const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+  return permissions.some(permission => PARENT_PORTAL_PERMISSIONS.has(String(permission || '').trim().toUpperCase()));
+};
+
+export const isParentPortalPage = (page) => {
+  const normalizedPage = page?.split('?')[0];
+  return PARENT_PORTAL_PAGES.has(normalizedPage);
+};
+
+export const resolveDashboardPage = (user) => {
+  const role = normalizeRole(user?.role);
+  if (userHasParentPortalAccess(user)) return 'parent-portal-home';
+  if (STUDENT_ROLES.has(role)) return 'dashboard';
+  if (FINANCE_ROLES.has(role)) return 'finance-dashboard';
+  return 'dashboard';
+};
+
 const SECONDARY_ONLY_PAGES = new Set([
   'sec-pathways',
   'sec-subjects',
@@ -207,6 +252,10 @@ export const hasPageAccess = (user, page) => {
   const normalizedPage = page?.split('?')[0];
   const role = user?.role;
   const allowlist = role ? ROLE_PAGE_ALLOWLIST[role] : null;
+
+  if (isParentPortalPage(normalizedPage) && !userHasParentPortalAccess(user)) {
+    return false;
+  }
 
   if (allowlist && !allowlist.has(normalizedPage)) {
     return false;
