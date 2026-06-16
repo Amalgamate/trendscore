@@ -965,28 +965,52 @@ const UserManagement = () => {
         {/* ═══════════════════════════════════════════════════════════
             NAVIGATION TABS
         ═══════════════════════════════════════════════════════════ */}
-        <div className="flex items-center gap-1 border-b border-gray-200">
-          {[
-            { id: 'list', label: 'User List', icon: Users },
-            { id: 'config', label: 'System Roles', icon: Shield },
-            { id: 'logs', label: 'Activity Logs', icon: Activity }
-          ].map(tab => (
+        <div className="flex flex-col gap-3 border-b border-gray-200 pb-0 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-1">
+            {[
+              { id: 'list', label: 'User List', icon: Users },
+              { id: 'config', label: 'System Roles', icon: Shield },
+              { id: 'logs', label: 'Activity Logs', icon: Activity }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setViewMode(tab.id)}
+                className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all relative ${
+                  viewMode === tab.id
+                    ? 'text-blue-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <tab.icon size={16} />
+                {tab.label}
+                {viewMode === tab.id && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full" />
+                )}
+              </button>
+            ))}
+          </div>
+
+          {canManageVerification && (
             <button
-              key={tab.id}
-              onClick={() => setViewMode(tab.id)}
-              className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all relative ${
-                viewMode === tab.id
-                  ? 'text-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
+              onClick={handleSchoolVerificationToggle}
+              disabled={verificationSaving}
+              className={`mb-2 inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-all lg:mb-0 ${
+                verificationSaving
+                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  : verificationSettings.requiresUserVerification
+                    ? 'border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                    : 'border border-emerald-200 bg-emerald-600 text-white hover:bg-emerald-700'
               }`}
+              title={verificationSettings.requiresUserVerification ? 'Disable school-wide verification' : 'Enable school-wide verification'}
             >
-              <tab.icon size={16} />
-              {tab.label}
-              {viewMode === tab.id && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full" />
-              )}
+              <Shield size={14} />
+              {verificationSaving
+                ? 'Saving...'
+                : verificationSettings.requiresUserVerification
+                  ? 'Disable Verification'
+                  : 'Enable Verification'}
             </button>
-          ))}
+          )}
         </div>
 
         {/* ═══════════════════════════════════════════════════════════
@@ -1009,53 +1033,6 @@ const UserManagement = () => {
             </div>
           ))}
         </div>
-
-        {/* ═══════════════════════════════════════════════════════════
-            VERIFICATION ALERT BANNER
-        ═══════════════════════════════════════════════════════════ */}
-        {canManageVerification && (
-          <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-xl border ${
-            verificationSettings.requiresUserVerification
-              ? 'bg-emerald-50/70 border-emerald-200/70'
-              : 'bg-amber-50/70 border-amber-200/70'
-          }`}>
-            <div className="flex items-center gap-3">
-              <Shield size={18} className={verificationSettings.requiresUserVerification ? 'text-emerald-600' : 'text-amber-600'} />
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                  verificationSettings.requiresUserVerification
-                    ? 'bg-emerald-200/80 text-emerald-800'
-                    : 'bg-amber-200/80 text-amber-800'
-                }`}>
-                  {verificationSettings.requiresUserVerification ? 'Enabled' : 'Disabled'}
-                </span>
-                <span className="text-sm text-gray-700">
-                  {verificationSettings.requiresUserVerification
-                    ? 'Verification is required for all school users. Unverified accounts will be restricted.'
-                    : 'Verification is bypassed for the whole school. Individual user settings remain saved.'}
-                </span>
-              </div>
-            </div>
-            <button
-              onClick={handleSchoolVerificationToggle}
-              disabled={verificationSaving}
-              className={`shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-                verificationSaving
-                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                  : verificationSettings.requiresUserVerification
-                    ? 'bg-amber-600 text-white hover:bg-amber-700'
-                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
-              }`}
-            >
-              <Shield size={14} />
-              {verificationSaving
-                ? 'Saving...'
-                : verificationSettings.requiresUserVerification
-                  ? 'Disable Verification'
-                  : 'Enable Verification'}
-            </button>
-          </div>
-        )}
 
         {/* ═══════════════════════════════════════════════════════════
             USER LIST VIEW — TWO-COLUMN LAYOUT
