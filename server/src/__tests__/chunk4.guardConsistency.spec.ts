@@ -135,7 +135,7 @@ describe('requireRole middleware – next(ApiError) contract', () => {
 
 // ── requirePermission middleware — next(ApiError) contract ───────────────────
 
-import { requirePermission } from '../middleware/permissions.middleware';
+import { requirePermission, ResourceAccessControl } from '../middleware/permissions.middleware';
 
 describe('requirePermission middleware – next(ApiError) contract', () => {
   test('calls next() when user has the required permission', () => {
@@ -176,6 +176,26 @@ describe('requirePermission middleware – next(ApiError) contract', () => {
     expect(err).toBeInstanceOf(ApiError);
     expect(err.statusCode).toBe(401);
     expect(err.code).toBe('AUTH_REQUIRED');
+  });
+});
+
+// ── Learner resource access — teacher edit contract ─────────────────────────
+
+describe('ResourceAccessControl.canAccessLearner – teacher edit contract', () => {
+  test('allows teachers through for learner updates after EDIT_LEARNER permission passes', async () => {
+    const req = {
+      method: 'PUT',
+      params: { id: 'learner-1' },
+      user: { userId: 'teacher-1', role: 'TEACHER', roles: ['TEACHER'] },
+    } as unknown as AuthRequest;
+    const res = makeMockRes();
+    const next: NextFunction = jest.fn();
+
+    await ResourceAccessControl.canAccessLearner()(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next).toHaveBeenCalledWith();
+    expect(res.status).not.toHaveBeenCalled();
   });
 });
 

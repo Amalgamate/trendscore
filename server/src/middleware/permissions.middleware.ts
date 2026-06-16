@@ -161,7 +161,7 @@ export class ResourceAccessControl {
   /**
    * Check if user can access a specific learner.
    * - SUPER_ADMIN, ADMIN, HEAD_TEACHER: all learners
-   * - TEACHER: learners in assigned classes or records they created
+   * - TEACHER: learner edits allowed by EDIT_LEARNER permission
    * - PARENT: only own children
    */
   static canAccessLearner() {
@@ -188,33 +188,7 @@ export class ResourceAccessControl {
         }
 
         if (hasAnyRole(req.user, ['TEACHER'])) {
-          if (req.method === 'GET') return next();
-
-          const learnerId = req.params.learnerId || req.params.id || req.body.learnerId || req.query.learnerId;
-          if (!learnerId) return next();
-
-          const learner = await prisma.learner.findUnique({
-            where: { id: learnerId as string },
-            select: {
-              createdBy: true,
-              enrollments: {
-                where: { active: true },
-                select: { class: { select: { teacherId: true } } }
-              }
-            }
-          });
-
-          if (!learner) return next();
-
-          const isCreator      = learner.createdBy === userId;
-          const isClassTeacher = learner.enrollments.some(e => e.class?.teacherId === userId);
-
-          if (isCreator || isClassTeacher) return next();
-
-          return next(
-            new ApiError(403, 'You can only modify learners in your assigned classes or records you created')
-              .withCode('ROLE_FORBIDDEN')
-          );
+          return next();
         }
 
         if (hasAnyRole(req.user, ['PARENT'])) {
