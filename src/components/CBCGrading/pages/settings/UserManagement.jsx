@@ -824,38 +824,10 @@ const UserManagement = () => {
     showNotification('Role permissions updated for this browser session.', 'success');
   };
 
-  // ── KPI Calculations ──
-  const kpiData = useMemo(() => {
-    const now = new Date();
-    const todayStr = now.toDateString();
-    const nonArchived = users.filter(u => !u.archived);
-
-    return {
-      totalUsers: nonArchived.length,
-      activeToday: nonArchived.filter(u => u.lastLogin && new Date(u.lastLogin).toDateString() === todayStr).length,
-      neverLoggedIn: nonArchived.filter(u => !u.lastLogin).length,
-      pendingVerification: nonArchived.filter(u => u.verificationRequired && !u.emailVerified).length,
-      disabledAccounts: nonArchived.filter(u => u.status === 'INACTIVE' || u.status === 'SUSPENDED').length,
-      lockedAccounts: nonArchived.filter(u => u.lockedUntil && new Date(u.lockedUntil) > now).length
-    };
-  }, [users]);
-
-  // ── KPI Card Config ──
   const activeUsers = users.filter(u => !u.archived);
   const staffRoles = ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN', 'NURSE', 'SECURITY', 'DRIVER', 'COOK', 'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT'];
   const selectedDetailUser = users.find(u => u.id === selectedDetailUserId) || filteredUsers[0] || null;
   const staffCount = activeUsers.filter(u => staffRoles.includes(u.role)).length;
-  const parentCount = activeUsers.filter(u => u.role === 'PARENT').length;
-  const studentCount = learnerStats.total > 0 ? learnerStats.total : activeUsers.filter(u => u.role === 'STUDENT').length;
-
-  const kpiCards = [
-    { label: 'Total Users', value: kpiData.totalUsers, icon: Users, bgClass: 'bg-indigo-50', iconClass: 'text-indigo-600', valueClass: 'text-gray-950', helper: 'All system users' },
-    { label: 'Staff', value: staffCount, icon: Shield, bgClass: 'bg-blue-50', iconClass: 'text-blue-600', valueClass: 'text-gray-950', helper: 'Teachers, admins, etc.' },
-    { label: 'Parents', value: parentCount, icon: Users, bgClass: 'bg-emerald-50', iconClass: 'text-emerald-600', valueClass: 'text-gray-950', helper: 'With active accounts' },
-    { label: 'Students', value: studentCount, icon: BookOpen, bgClass: 'bg-orange-50', iconClass: 'text-orange-600', valueClass: 'text-gray-950', helper: 'Active learners' },
-    { label: 'Pending Setup', value: kpiData.neverLoggedIn, icon: Mail, bgClass: 'bg-amber-50', iconClass: 'text-amber-600', valueClass: 'text-gray-950', helper: 'Invited, not yet active' },
-    { label: 'Locked Accounts', value: kpiData.lockedAccounts, icon: Lock, bgClass: 'bg-rose-50', iconClass: 'text-rose-600', valueClass: 'text-gray-950', helper: 'Locked by admin' }
-  ];
 
   // ── Activity Log Helpers ──
   const getActionColor = (action) => {
@@ -1011,27 +983,6 @@ const UserManagement = () => {
                   : 'Enable Verification'}
             </button>
           )}
-        </div>
-
-        {/* ═══════════════════════════════════════════════════════════
-            KPI CARDS
-        ═══════════════════════════════════════════════════════════ */}
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-          {kpiCards.map((kpi, i) => (
-            <div
-              key={i}
-              className={`${kpi.bgClass} rounded-xl p-4 border border-white/60 hover:shadow-md transition-all duration-200 cursor-default group`}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className={`w-9 h-9 rounded-lg ${kpi.bgClass} flex items-center justify-center group-hover:scale-110 transition-transform`}>
-                  <kpi.icon size={18} className={kpi.iconClass} />
-                </div>
-              </div>
-              <div className={`text-2xl font-bold ${kpi.valueClass} tracking-tight`}>{kpi.value}</div>
-              <div className="text-xs font-medium text-gray-600 mt-0.5">{kpi.label}</div>
-              <div className="text-[10px] text-gray-400 mt-1">{kpi.helper}</div>
-            </div>
-          ))}
         </div>
 
         {/* ═══════════════════════════════════════════════════════════
