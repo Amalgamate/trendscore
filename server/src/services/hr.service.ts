@@ -1061,7 +1061,7 @@ export class HRService {
             throw this.buildIpDeniedError(ipResult);
         }
 
-        // ── Geofence (disabled — kept for future use, always OFF) ────────────
+        // ── Geofence enforcement ────────────────────────────────────────────
         const geofenceDecision = this.evaluateAttendanceGeofence('clock-in', school, payload);
         await this.recordAttendanceAttempt({
             userId,
@@ -1071,6 +1071,9 @@ export class HRService {
             geofenceDecision,
             context
         });
+        if (!geofenceDecision.allowed) {
+            throw this.buildGeofenceError(geofenceDecision);
+        }
         const metadata = this.buildAttendanceMetadata(payload, geofenceDecision);
 
         const attendance = await prisma.staffAttendanceLog.upsert({
