@@ -14,6 +14,16 @@ services:
     networks:
       - zawadi-network
 
+  redis:
+    image: redis:7-alpine
+    container_name: zawadi-redis
+    restart: always
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - zawadi-network
+
   backend:
     image: ${BACKEND_IMAGE:-ghcr.io/amalgamate/zawadi-backend:latest}
     container_name: zawadi-backend
@@ -31,8 +41,11 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       HTTPS_ONLY: ${HTTPS_ONLY:-false}
       NODE_ENV: production
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     depends_on:
       - db
+      - redis
     networks:
       - zawadi-network
 
@@ -53,3 +66,4 @@ networks:
 
 volumes:
   postgres_data:
+  redis_data:

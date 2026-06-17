@@ -1,6 +1,7 @@
 import express, { Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import 'express-async-errors';
 import routes from './routes';
 import { errorHandler, notFoundHandler } from './middleware/error.middleware';
@@ -47,6 +48,12 @@ app.set('trust proxy', 1);
 
 // Security middleware
 app.use(helmet());
+
+// Compress JSON/text API responses so slow links and small servers spend less
+// time pushing repeated dashboard/list payloads over the network.
+app.use(compression({
+  threshold: 1024,
+}));
 
 // CORS - allow configured origins and local development
 const allowedOrigins = [
