@@ -527,6 +527,14 @@ restart_services() {
 
   log "━━ Restart containers ━━"
 
+  # Redis is optional in older compose files, but when present it must be
+  # started before backend/frontend because backend uses it for distributed
+  # cache and rate-limit state.
+  if compose_with_pinned_images "${kind}" "${project}" "${env_file}" config --services \
+    | grep -qx 'redis'; then
+    compose_with_pinned_images "${kind}" "${project}" "${env_file}" up -d redis || return 1
+  fi
+
   if [[ "${kind}" == "main" ]]; then
     compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
       up -d --no-deps --force-recreate backend frontend || return 1
