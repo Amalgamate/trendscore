@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { hrAPI } from '../../../../../services/api/hr.api';
-import { Wifi, WifiOff, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Wifi, WifiOff, Clock, CheckCircle, XCircle, Loader2, Minimize2 } from 'lucide-react';
 
 interface WidgetProps {
   user?: any;
@@ -58,6 +58,7 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
   const [attendance, setAttendance] = useState<AttendanceRecord | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [reasonCode, setReasonCode] = useState<string | null>(null);
+  const [minimized, setMinimized] = useState(false);
 
   const isClockedIn = useMemo(() => {
     if (!attendance?.clockInAt) return false;
@@ -70,6 +71,7 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
       const response = await hrAPI.getTodayClockIn();
       const record = response?.data as AttendanceRecord | null;
       setAttendance(record || null);
+      if (!record?.clockInAt || record?.clockOutAt) setMinimized(false);
       setMode('idle');
     } catch (error: any) {
       setMessage(error?.message || 'Failed to load clock-in status.');
@@ -146,6 +148,7 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
     if (response?.success) {
       const record = response?.data?.attendance as AttendanceRecord | undefined;
       if (record) setAttendance(record);
+      setMinimized(false);
       setMode(action === 'clock-in' ? 'clock_in_success' : 'clock_out_success');
       return;
     }
@@ -184,6 +187,25 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
   }, [isClockedIn, mode, performAction]);
 
   const isIpDenied = reasonCode === 'IP_DENIED';
+  const busy = mode === 'submitting_clock_in' || mode === 'submitting_clock_out';
+
+  if (isClockedIn && minimized) {
+    return (
+      <button
+        type="button"
+        onClick={() => performAction('clock-out')}
+        disabled={busy}
+        className={`w-full px-4 py-2 rounded-lg font-semibold text-sm transition flex items-center justify-center gap-2 ${
+          busy
+            ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+            : 'bg-rose-600 text-white hover:bg-rose-700'
+        }`}
+      >
+        {busy ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />}
+        {busy ? 'Clocking out…' : 'Clock Out'}
+      </button>
+    );
+  }
 
   return (
     <div className="p-4 bg-white border border-gray-200 rounded-lg">
@@ -244,29 +266,52 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
       )}
 
       <div className="mt-4 flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={primaryButton.onClick}
-          disabled={primaryButton.disabled}
-          className={`w-full px-4 py-2 rounded-lg font-semibold text-sm transition flex items-center justify-center gap-2 ${
-            primaryButton.disabled
-              ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-              : isClockedIn
-                ? 'bg-rose-600 text-white hover:bg-rose-700'
+        {isClockedIn ? (
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setMinimized(true)}
+              disabled={primaryButton.disabled}
+              className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-white font-semibold text-sm text-gray-700 transition flex items-center justify-center gap-2 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Minimize2 size={14} />
+              Minimize
+            </button>
+            <button
+              type="button"
+              onClick={primaryButton.onClick}
+              disabled={primaryButton.disabled}
+              className={`w-full px-4 py-2 rounded-lg font-semibold text-sm transition flex items-center justify-center gap-2 ${
+                primaryButton.disabled
+                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  : 'bg-rose-600 text-white hover:bg-rose-700'
+              }`}
+            >
+              {primaryButton.disabled ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />}
+              {primaryButton.label}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={primaryButton.onClick}
+            disabled={primaryButton.disabled}
+            className={`w-full px-4 py-2 rounded-lg font-semibold text-sm transition flex items-center justify-center gap-2 ${
+              primaryButton.disabled
+                ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
                 : 'bg-emerald-600 text-white hover:bg-emerald-700'
-          }`}
-        >
-          {primaryButton.disabled
-            ? <Loader2 size={14} className="animate-spin" />
-            : isClockedIn
-              ? <Clock size={14} />
-              : <CheckCircle size={14} />}
-          {primaryButton.label}
-        </button>
+            }`}
+          >
+            {primaryButton.disabled ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+            {primaryButton.label}
+          </button>
+        )}
 
-        <p className="text-xs text-gray-500">
-          Your clock-in is verified by the server via network IP. {user?.role ? `Role: ${user.role}.` : ''}
-        </p>
+        {!minimized && (
+          <p className="text-xs text-gray-500">
+            Your clock-in is verified by the server via network IP. {user?.role ? `Role: ${user.role}.` : ''}
+          </p>
+        )}
       </div>
     </div>
   );
