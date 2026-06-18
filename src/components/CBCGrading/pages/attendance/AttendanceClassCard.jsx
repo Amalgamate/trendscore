@@ -29,7 +29,7 @@ const STATUS_CONFIG = {
   },
 };
 
-export function AttendanceClassCard({ classItem, onTake, presentCount, totalCount }) {
+export function AttendanceClassCard({ classItem, onTake, presentCount, totalCount, completedAt }) {
   const pct = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
   const isCompleted = presentCount === totalCount && totalCount > 0;
   const isPartial = presentCount > 0 && !isCompleted;
@@ -109,7 +109,7 @@ export function AttendanceClassCard({ classItem, onTake, presentCount, totalCoun
       {/* CTA arrow */}
       <div className="flex items-center justify-end mt-2">
         <span className="text-xs text-brand-purple font-semibold flex items-center gap-1">
-          {isCompleted ? 'View register' : 'Take attendance'}
+          {isCompleted ? `Completed${completedAt ? ` at ${completedAt}` : ''}` : 'Take attendance'}
           <ChevronRight size={13} />
         </span>
       </div>

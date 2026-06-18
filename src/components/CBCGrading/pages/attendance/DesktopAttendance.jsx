@@ -27,6 +27,12 @@ import { AttendanceInsightsPanel } from './AttendanceInsightsPanel';
 import { AttendanceMarkAllButton, AttendanceMarkAllCompact } from './AttendanceQuickActions';
 import { EXCEPTION_STATUSES, AttendanceStatusBadge } from './AttendanceStatusChip';
 import LoadingSpinner from '../../shared/LoadingSpinner';
+import {
+  formatCompletionTime,
+  getAttendancePolicyState,
+  getCompletionTimeFromLearners,
+  LOCKED_ATTENDANCE_STATUSES,
+} from './attendancePolicy';
 
 export function DesktopAttendance() {
   const { user } = useAuth();
@@ -47,6 +53,7 @@ export function DesktopAttendance() {
   const [notifyAbsent, setNotifyAbsent] = useState(true);
   const [showAllLearners, setShowAllLearners] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [unlockRequested, setUnlockRequested] = useState(false);
 
   const {
     classes,
@@ -73,6 +80,7 @@ export function DesktopAttendance() {
     setPendingChanges({});
     setSearchTerm('');
     setExceptionFilter('all');
+    setUnlockRequested(false);
     try {
       const report = await getDailyClassReport(getClassId(classItem), date);
       if (report) {
@@ -120,6 +128,13 @@ export function DesktopAttendance() {
     return { present, absent, late, sick, excused, marked, total, rate };
   }, [pendingChanges, dailyReport]);
 
+  const policy = useMemo(() => getAttendancePolicyState(activeDate), [activeDate]);
+
+  const completedAt = useMemo(
+    () => getCompletionTimeFromLearners(dailyReport?.learners || []),
+    [dailyReport]
+  );
+
   const exceptions = useMemo(() => {
     if (!dailyReport?.learners) return [];
     return dailyReport.learners.filter(l => {
@@ -149,6 +164,10 @@ export function DesktopAttendance() {
 
   // ── actions ───────────────────────────────────────────────────────────────
   const handleMarkAllPresent = useCallback(() => {
+    if (policy.isLocked) {
+      showError(`Mark all present is locked after ${policy.lockLabel}. Mark late learners individually or request unlock.`);
+      return;
+    }
     if (!dailyReport?.learners) return;
     const allPresent = {};
     dailyReport.learners.forEach(l => {
@@ -156,14 +175,31 @@ export function DesktopAttendance() {
     });
     setPendingChanges(allPresent);
     setAllMarkedPresent(true);
-  }, [dailyReport]);
+    setShowAllLearners(true);
+  }, [dailyReport, policy.isLocked, policy.lockLabel, showError]);
 
   const handleStatusChange = useCallback((learnerId, status) => {
+    if (policy.isLocked && LOCKED_ATTENDANCE_STATUSES.has(status)) {
+      showError(`Present marking is locked after ${policy.lockLabel}. Use Late or another exception status.`);
+      return;
+    }
     setPendingChanges(prev => ({
       ...prev,
       [learnerId]: { status, remarks: prev[learnerId]?.remarks || '' },
     }));
+  }, [policy.isLocked, policy.lockLabel, showError]);
+
+  const handleRemarksChange = useCallback((learnerId, remarks) => {
+    setPendingChanges(prev => ({
+      ...prev,
+      [learnerId]: { status: prev[learnerId]?.status || 'LATE', remarks },
+    }));
   }, []);
+
+  const handleRequestUnlock = useCallback(() => {
+    setUnlockRequested(true);
+    showSuccess('Unlock request noted. An administrator can approve attendance edits.');
+  }, [showSuccess]);
 
   const handleSave = useCallback(async () => {
     if (!activeClass) return;
@@ -173,6 +209,14 @@ export function DesktopAttendance() {
       status: data.status,
       remarks: data.remarks || undefined,
     }));
+    const missingRemarks = records.filter(record =>
+      ['LATE', 'EXCUSED'].includes(record.status) && !String(record.remarks || '').trim()
+    );
+    if (missingRemarks.length > 0) {
+      showError('Add a lateness or excuse note before saving.');
+      setIsSaving(false);
+      return;
+    }
     if (records.length === 0) {
       showError('No attendance records to save');
       setIsSaving(false);
@@ -336,9 +380,13 @@ export function DesktopAttendance() {
                 <AttendanceMarkAllButton
                   onClick={handleMarkAllPresent}
                   count={stats.total}
+                  disabled={policy.isLocked}
+                  label={policy.isLocked ? `Locked after ${policy.lockLabel}` : 'Mark All Present'}
                 />
                 <p className="text-center text-xs text-gray-400 mt-2">
-                  Marks all {stats.total} learners present. Then edit any exceptions below.
+                  {policy.isLocked
+                    ? 'Late and exception marking remain available.'
+                    : `Marks all ${stats.total} learners present. Then edit any exceptions below.`}
                 </p>
               </div>
             </div>
@@ -356,8 +404,11 @@ export function DesktopAttendance() {
                       <div className="bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-xl text-sm font-semibold flex items-center gap-2">
                         <CheckCheck size={15} />
                         All {stats.total} marked present
+                        {completedAt && (
+                          <span className="font-medium text-emerald-600">at {formatCompletionTime(completedAt)}</span>
+                        )}
                       </div>
-                      <AttendanceMarkAllCompact onClick={handleMarkAllPresent} />
+                      <AttendanceMarkAllCompact onClick={handleMarkAllPresent} disabled={policy.isLocked} />
                     </div>
                   </>
                 ) : (
@@ -394,6 +445,25 @@ export function DesktopAttendance() {
                   </button>
                 </div>
               </div>
+
+              {policy.isLocked && (
+                <div className="flex-shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <p className="text-xs font-bold text-amber-900">All-present marking locked after {policy.lockLabel}</p>
+                      <p className="text-xs text-amber-700">Mark late learners individually and add the lateness excuse.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRequestUnlock}
+                      disabled={unlockRequested}
+                      className="h-8 rounded-lg border border-amber-300 bg-white px-3 text-xs font-bold text-amber-800 disabled:opacity-60"
+                    >
+                      {unlockRequested ? 'Unlock requested' : 'Request Unlock'}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Search + filter bar */}
               <div className="flex items-center gap-2 flex-shrink-0">
@@ -483,7 +553,10 @@ export function DesktopAttendance() {
                         key={learner.id}
                         learner={learner}
                         currentStatus={pendingChanges[learner.id]?.status}
+                        currentRemarks={pendingChanges[learner.id]?.remarks || ''}
                         onChange={status => handleStatusChange(learner.id, status)}
+                        onRemarksChange={remarks => handleRemarksChange(learner.id, remarks)}
+                        disabledStatuses={policy.isLocked ? LOCKED_ATTENDANCE_STATUSES : undefined}
                       />
                     ))}
                   </div>

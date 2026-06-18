@@ -75,7 +75,7 @@ const COLOR_CLASSES = {
  * @param {function} onClick - Called with status when clicked
  * @param {boolean} compact - Smaller form factor for tight layouts
  */
-export function AttendanceStatusChip({ status, isSelected, onClick, compact = false }) {
+export function AttendanceStatusChip({ status, isSelected, onClick, compact = false, disabled = false }) {
   const config = ATTENDANCE_STATUSES[status];
   if (!config) return null;
   const colors = COLOR_CLASSES[config.color];
@@ -84,12 +84,14 @@ export function AttendanceStatusChip({ status, isSelected, onClick, compact = fa
     <button
       type="button"
       onClick={() => onClick(status)}
+      disabled={disabled}
       className={cn(
         'inline-flex items-center gap-1.5 rounded-full border font-semibold transition-all duration-150 select-none active:scale-95',
         compact
           ? 'h-7 px-2.5 text-[11px]'
           : 'h-9 px-3.5 text-xs',
-        isSelected ? colors.active : colors.inactive
+        isSelected ? colors.active : colors.inactive,
+        disabled && 'opacity-40 cursor-not-allowed active:scale-100 hover:bg-white'
       )}
       aria-pressed={isSelected}
     >

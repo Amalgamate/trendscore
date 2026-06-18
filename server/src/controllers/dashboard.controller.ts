@@ -1389,7 +1389,8 @@ export class DashboardController {
 
             const attendanceMap: Record<string, number> = { PRESENT: 0, ABSENT: 0, LATE: 0 };
             attendanceSummary.forEach((item: any) => { attendanceMap[item.status] = item._count; });
-            const avgAttendance = studentCount > 0 ? (attendanceMap.PRESENT / studentCount) * 100 : 0;
+            const displayedStudentCount = activeStudents || studentCount;
+            const avgAttendance = displayedStudentCount > 0 ? (attendanceMap.PRESENT / displayedStudentCount) * 100 : 0;
             const attendanceTrendStart = new Date();
             attendanceTrendStart.setDate(attendanceTrendStart.getDate() - 35);
             attendanceTrendStart.setHours(0, 0, 0, 0);
@@ -1412,7 +1413,7 @@ export class DashboardController {
                     institutionType,
                 },
                 stats: {
-                    totalStudents: studentCount, activeStudents,
+                    totalStudents: displayedStudentCount, activeStudents,
                     totalTeachers: teacherCount, activeTeachers,
                     totalClasses: classCount,
                     totalAssessedClasses: assessedClassCount,
@@ -1422,7 +1423,7 @@ export class DashboardController {
                     feeCollected: scopedFeeCollected,
                     feePending:   scopedFeePending,
                     staffOnLeave: staffOnLeaveCount,
-                    studentTrend: this.calculateTrend(studentCount,  prevStudentCount),
+                    studentTrend: this.calculateTrend(displayedStudentCount,  prevStudentCount),
                     teacherTrend: this.calculateTrend(teacherCount,  prevTeacherCount),
                     males:   genderDistribution.find((g: any) => g.gender === 'MALE')  ?._count || 0,
                     females: genderDistribution.find((g: any) => g.gender === 'FEMALE')?._count || 0,

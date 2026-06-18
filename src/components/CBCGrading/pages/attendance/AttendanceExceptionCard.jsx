@@ -8,8 +8,17 @@ import React from 'react';
 import { cn } from '../../../../utils/cn';
 import { AttendanceStatusBadge, QUICK_STATUSES, AttendanceStatusChip } from './AttendanceStatusChip';
 
-export function AttendanceExceptionCard({ learner, currentStatus, onChange, compact = false }) {
+export function AttendanceExceptionCard({
+  learner,
+  currentStatus,
+  currentRemarks = '',
+  onChange,
+  onRemarksChange,
+  compact = false,
+  disabledStatuses = new Set(),
+}) {
   const initials = `${learner.firstName?.[0] || ''}${learner.lastName?.[0] || ''}`.toUpperCase();
+  const needsRemarks = ['LATE', 'EXCUSED'].includes(currentStatus);
 
   return (
     <div className={cn(
@@ -55,10 +64,23 @@ export function AttendanceExceptionCard({ learner, currentStatus, onChange, comp
             status={status}
             isSelected={currentStatus === status}
             onClick={onChange}
+            disabled={disabledStatuses.has(status)}
             compact
           />
         ))}
       </div>
+
+      {needsRemarks && (
+        <div className="mt-3">
+          <input
+            type="text"
+            value={currentRemarks}
+            onChange={(event) => onRemarksChange?.(event.target.value)}
+            placeholder={currentStatus === 'LATE' ? 'Note lateness reason...' : 'Note excuse...'}
+            className="w-full h-9 rounded-lg border border-amber-200 bg-amber-50/50 px-3 text-xs text-gray-800 outline-none focus:border-amber-400 focus:bg-white"
+          />
+        </div>
+      )}
     </div>
   );
 }

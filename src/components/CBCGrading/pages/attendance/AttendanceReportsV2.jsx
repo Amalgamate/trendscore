@@ -125,7 +125,21 @@ export function AttendanceReportsV2({ learners: propLearners }) {
     const sick = filteredRecords.filter(r => r.status === 'SICK').length;
     const days = new Set(filteredRecords.map(r => r.date?.split?.('T')[0] || r.date)).size;
     const rate = total > 0 ? Math.round((present / total) * 100) : 0;
-    return { total, present, absent, late, sick, days, rate };
+    const divisor = Math.max(days, 1);
+    return {
+      total,
+      present,
+      absent,
+      late,
+      sick,
+      days,
+      rate,
+      averageDailyTotal: Math.round(total / divisor),
+      averagePresent: Math.round(present / divisor),
+      averageAbsent: Math.round(absent / divisor),
+      averageLate: Math.round(late / divisor),
+      averageSick: Math.round(sick / divisor),
+    };
   }, [filteredRecords]);
 
   // ── at-risk learners ──────────────────────────────────────────────────────
@@ -276,10 +290,10 @@ export function AttendanceReportsV2({ learners: propLearners }) {
       {/* ── KPI Summary ── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <AttendanceSummaryCard label="Attendance Rate" value={reportStats.rate} variant="rate" />
-        <AttendanceSummaryCard label="Present"         value={reportStats.present} variant="present" total={reportStats.total} />
-        <AttendanceSummaryCard label="Absent"          value={reportStats.absent}  variant="absent"  total={reportStats.total} />
-        <AttendanceSummaryCard label="Late"            value={reportStats.late}    variant="late"    total={reportStats.total} />
-        <AttendanceSummaryCard label="Sick"            value={reportStats.sick}    variant="sick"    total={reportStats.total} />
+        <AttendanceSummaryCard label="Avg Present / Day" value={reportStats.averagePresent} variant="present" total={reportStats.averageDailyTotal} />
+        <AttendanceSummaryCard label="Avg Absent / Day"  value={reportStats.averageAbsent}  variant="absent"  total={reportStats.averageDailyTotal} />
+        <AttendanceSummaryCard label="Avg Late / Day"    value={reportStats.averageLate}    variant="late"    total={reportStats.averageDailyTotal} />
+        <AttendanceSummaryCard label="Avg Sick / Day"    value={reportStats.averageSick}    variant="sick"    total={reportStats.averageDailyTotal} />
         <AttendanceSummaryCard label="Days Tracked"    value={reportStats.days}    variant="total"   />
       </div>
 

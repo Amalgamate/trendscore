@@ -8,7 +8,7 @@ import React from 'react';
 import { CheckCheck, Loader2 } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
 
-export function AttendanceMarkAllButton({ onClick, disabled, loading, count, className }) {
+export function AttendanceMarkAllButton({ onClick, disabled, loading, count, className, label = 'Mark All Present' }) {
   return (
     <button
       type="button"
@@ -31,7 +31,7 @@ export function AttendanceMarkAllButton({ onClick, disabled, loading, count, cla
       ) : (
         <CheckCheck size={22} />
       )}
-      <span>Mark All Present</span>
+      <span>{label}</span>
       {count > 0 && (
         <span className="ml-1 bg-white/20 text-white text-sm font-semibold px-2.5 py-0.5 rounded-full">
           {count}
@@ -54,7 +54,7 @@ export function AttendanceMarkAllCompact({ onClick, disabled, className }) {
         'flex items-center gap-2 px-3 py-2 rounded-xl',
         'bg-emerald-50 text-emerald-700 border border-emerald-200',
         'hover:bg-emerald-100 transition-colors text-sm font-semibold',
-        'disabled:opacity-50',
+        'disabled:opacity-50 disabled:cursor-not-allowed',
         className
       )}
     >
