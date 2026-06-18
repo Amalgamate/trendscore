@@ -109,7 +109,6 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
     balance: true,
     overpaid: true,
     status: true,
-    paymentMode: true,
     actions: true
   });
   const [showColumnFilter, setShowColumnFilter] = useState(false);
@@ -1891,7 +1890,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                             className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
                           />
                           <span className="capitalize text-gray-700 font-medium group-hover:text-blue-700">
-                            {colKey === 'paymentMode' ? 'Mode / Quick Pay' : colKey.replace(/([A-Z])/g, ' $1').trim()}
+                            {colKey.replace(/([A-Z])/g, ' $1').trim()}
                           </span>
                         </label>
                       ))}
@@ -1933,7 +1932,6 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
             // ******************** MOBILE CARDS VIEW ********************
             <div className="grid grid-cols-1 gap-4 pb-20">
               {invoices.map((invoice) => {
-                const recentMode = (invoice.payments && invoice.payments.length > 0) ? invoice.payments[0].paymentMethod : 'MPESA';
                 return (
                   <DataCard
                     key={invoice.id}
@@ -1951,21 +1949,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                       "Current Balance": `KES ${Number(invoice.balance).toLocaleString()}`
                     }}
                     actions={
-                      <div className="flex items-center gap-2 w-full justify-between mt-2">
-                        <div className="flex gap-2">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); navigateTo('fees-record-payment', { invoice, initialMode: 'MPESA' }); }}
-                            className="px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-100 active:scale-95 transition-transform"
-                          >
-                            MPESA
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); navigateTo('fees-record-payment', { invoice, initialMode: 'CASH' }); }}
-                            className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-blue-100 active:scale-95 transition-transform"
-                          >
-                            CASH
-                          </button>
-                        </div>
+                      <div className="flex items-center gap-2 w-full justify-end mt-2">
                         <div className="flex gap-1">
                           {invoice.status !== 'PAID' && (
                             <button
@@ -2028,10 +2012,10 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                         onClick={() => handleSort('invoiceNumber')}
                       >
                         <div className="flex items-center gap-1">
-                          Invoice #
                           {sortConfig.key === 'invoiceNumber' ? (
                             sortConfig.direction === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />
                           ) : <ArrowUpDown size={10} className="text-gray-300" />}
+                          Invoice #
                         </div>
                       </th>
                     )}
@@ -2041,10 +2025,10 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                         onClick={() => handleSort('studentName')}
                       >
                         <div className="flex items-center gap-1">
-                          Student
                           {sortConfig.key === 'studentName' ? (
                             sortConfig.direction === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />
                           ) : <ArrowUpDown size={10} className="text-gray-300" />}
+                          Student
                         </div>
                       </th>
                     )}
@@ -2054,10 +2038,10 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                         onClick={() => handleSort('grade')}
                       >
                         <div className="flex items-center gap-1">
-                          Grade
                           {sortConfig.key === 'grade' ? (
                             sortConfig.direction === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />
                           ) : <ArrowUpDown size={10} className="text-gray-300" />}
+                          Grade
                         </div>
                       </th>
                     )}
@@ -2070,10 +2054,10 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                         onClick={() => handleSort('createdAt')}
                       >
                         <div className="flex items-center gap-1">
-                          Date Issue
                           {sortConfig.key === 'createdAt' ? (
                             sortConfig.direction === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />
                           ) : <ArrowUpDown size={10} className="text-gray-300" />}
+                          Date Issue
                         </div>
                       </th>
                     )}
@@ -2083,10 +2067,10 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                         onClick={() => handleSort('totalAmount')}
                       >
                         <div className="flex items-center gap-1">
-                          Billed
                           {sortConfig.key === 'totalAmount' ? (
                             sortConfig.direction === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />
                           ) : <ArrowUpDown size={10} className="text-gray-300" />}
+                          Billed
                         </div>
                       </th>
                     )}
@@ -2096,10 +2080,10 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                         onClick={() => handleSort('paidAmount')}
                       >
                         <div className="flex items-center gap-1">
-                          Paid
                           {sortConfig.key === 'paidAmount' ? (
                             sortConfig.direction === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />
                           ) : <ArrowUpDown size={10} className="text-gray-300" />}
+                          Paid
                         </div>
                       </th>
                     )}
@@ -2112,10 +2096,10 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                         onClick={() => handleSort('balance')}
                       >
                         <div className="flex items-center gap-1">
-                          <span>Balance</span>
                           {sortConfig.key === 'balance' ? (
                             sortConfig.direction === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />
                           ) : <ArrowUpDown size={10} className="text-gray-300" />}
+                          <span>Balance</span>
                         </div>
                       </th>
                     )}
@@ -2129,9 +2113,6 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
 
                     {visibleColumns.status && (
                       <th className="px-3 py-1.5 text-left text-[11px] font-medium text-[color:var(--table-header-fg)] uppercase border-r border-gray-300 sticky top-0 z-20 bg-gray-50/95 backdrop-blur-sm">Status</th>
-                    )}
-                    {visibleColumns.paymentMode && (
-                      <th className="px-3 py-1.5 text-left text-[11px] font-medium text-[color:var(--table-header-fg)] uppercase border-r border-gray-300 sticky top-0 z-20 bg-gray-50/95 backdrop-blur-sm">Mode / Quick Pay</th>
                     )}
                     {visibleColumns.actions && (
                       <th className="px-3 py-1.5 text-right text-[11px] font-medium text-[color:var(--table-header-fg)] uppercase sticky top-0 z-20 bg-gray-50/95 backdrop-blur-sm">Actions</th>
@@ -2189,12 +2170,10 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                     )}
 
                     {visibleColumns.status && <td className="px-3 py-2 border-r border-gray-300"></td>}
-                    {visibleColumns.paymentMode && <td className="px-3 py-2 border-r border-gray-300"></td>}
                     {visibleColumns.actions && <td className="px-2 py-2"></td>}
                   </tr>
                   {invoices
                     .map((invoice) => {
-                      const recentMode = (invoice.payments && invoice.payments.length > 0) ? invoice.payments[0].paymentMethod : 'MPESA';
                       return (
                         <tr
                           key={invoice.id}
@@ -2287,39 +2266,6 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                           {visibleColumns.status && (
                             <td className="px-3 py-1.5 border-r border-gray-300 whitespace-nowrap">
                               <div className="scale-90 origin-left">{getStatusBadge(invoice.status)}</div>
-                            </td>
-                          )}
-                          {visibleColumns.paymentMode && (
-                            <td className="px-3 py-1.5 border-r border-gray-300 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                              {Number(getInvoiceCashPaid(invoice)) > 0 ? (
-                                <div className={`flex items-center gap-1.5 text-[9px] font-semibold uppercase px-2 py-1 rounded-md border w-fit shadow-inner-sm ${recentMode === 'MPESA' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-blue-50 text-blue-700 border-blue-100'
-                                  }`}>
-                                  <span className={`w-1.5 h-1.5 rounded-full ${recentMode === 'MPESA' ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500'}`} />
-                                  {recentMode.replace('_', ' ')}
-                                  {invoice.status !== 'PAID' && <span className="ml-1 text-[8px] opacity-60">(Partial)</span>}
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-1">
-                                  <button
-                                    onClick={() => navigateTo('fees-record-payment', { invoice, initialMode: 'MPESA' })}
-                                    className={`px-2 py-0.5 text-[9px] font-semibold rounded transition-all border ${recentMode === 'MPESA' ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-white text-emerald-600 border-emerald-100 hover:bg-emerald-50'}`}
-                                  >
-                                    MPESA
-                                  </button>
-                                  <button
-                                    onClick={() => navigateTo('fees-record-payment', { invoice, initialMode: 'CASH' })}
-                                    className={`px-2 py-0.5 text-[9px] font-semibold rounded transition-all border ${recentMode === 'CASH' ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-blue-600 border-blue-100 hover:bg-blue-50'}`}
-                                  >
-                                    CASH
-                                  </button>
-                                  <button
-                                    onClick={() => navigateTo('fees-record-payment', { invoice, initialMode: 'BANK_TRANSFER' })}
-                                    className="px-2 py-0.5 text-[9px] font-semibold rounded border border-gray-100 text-gray-400 hover:bg-gray-50 hover:text-gray-700 transition-all"
-                                  >
-                                    BANK
-                                  </button>
-                                </div>
-                              )}
                             </td>
                           )}
                           {visibleColumns.actions && (
@@ -2434,7 +2380,6 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
 
 
                     {visibleColumns.status && <td className="px-3 py-3 border-r border-gray-300"></td>}
-                    {visibleColumns.paymentMode && <td className="px-3 py-3 border-r border-gray-300"></td>}
                     {visibleColumns.actions && <td className="px-2 py-3"></td>}
                   </tr>
                   {/* Footnote Message */}

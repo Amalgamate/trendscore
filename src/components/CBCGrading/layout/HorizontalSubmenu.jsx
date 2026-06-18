@@ -2,8 +2,7 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { useNavigation } from '../hooks/useNavigation';
 import { useFeeActions } from '../../../contexts/FeeActionsContext';
-import { Plus, Upload, Download, Search, ChevronDown, BarChart3, Users } from 'lucide-react';
-import SmartLearnerSearch from '../shared/SmartLearnerSearch';
+import { Plus, Upload, Download, ChevronDown, BarChart3, Users } from 'lucide-react';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const flattenLeafItems = (items = []) =>
@@ -122,8 +121,8 @@ const GroupDropdown = ({ group, currentPage, onNavigate, color }) => {
   const dropdownMenu = open ? (
     <div
       ref={menuRef}
-      style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 9999 }}
-      className="bg-white border border-gray-200 shadow-sm min-w-[250px] py-1"
+      style={{ position: 'fixed', top: menuPos.top + 4, left: menuPos.left, zIndex: 9999 }}
+      className="min-w-[190px] rounded-md border border-gray-200 bg-white p-1 shadow-lg"
     >
       {items.map((item, i) => {
         const isActive = currentPage === item.path;
@@ -133,16 +132,16 @@ const GroupDropdown = ({ group, currentPage, onNavigate, color }) => {
             type="button"
             onClick={() => { if (!item.comingSoon) { onNavigate(item.path, item.params); setOpen(false); } }}
             disabled={!!item.comingSoon}
-            className={`w-full text-left px-5 py-2.5 text-sm font-semibold transition-colors flex items-center gap-3 ${
+            className={`flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs font-medium transition-colors ${
               isActive
-                ? `${color.trigger} bg-gray-50`
+                ? `${color.trigger} ${color.activeBg}`
                 : item.comingSoon
                   ? 'text-gray-300 cursor-not-allowed'
-                  : 'text-black hover:bg-gray-50'
+                  : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
             }`}
           >
-            {isActive && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${color.dot}`} />}
-            <span className={isActive ? '' : 'ml-5'}>{item.label}</span>
+            <span className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${isActive ? color.dot : 'bg-transparent'}`} />
+            <span>{item.label}</span>
           </button>
         );
       })}
@@ -155,14 +154,13 @@ const GroupDropdown = ({ group, currentPage, onNavigate, color }) => {
         ref={btnRef}
         type="button"
         onClick={handleToggle}
-        className={`flex items-center gap-2 text-sm font-medium px-3 py-2 border transition-all ${
+        className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-all ${
           isAnyActive
-            ? `${color.trigger} ${color.activeBg} border-gray-900`
-            : `text-black hover:text-gray-900 border-transparent ${color.hover}`
+            ? `${color.trigger} ${color.activeBg}`
+            : `text-gray-700 hover:text-gray-900 ${color.hover}`
         }`}
       >
         {group.label}
-        {isAnyActive && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${color.dot}`} />}
         <svg
           className={`w-3 h-3 flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
           fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
@@ -275,19 +273,6 @@ const HorizontalSubmenu = ({ currentPage, onNavigate }) => {
                   className={`transition-transform duration-200 ${feeActions.metricsProps.show ? 'rotate-180' : ''}`} 
                 />
               </button>
-            )}
-
-            {/* Student Search Integration */}
-            {feeActions.searchProps && (
-              <div className="mx-4 min-w-[320px] flex-1 relative z-50">
-                <SmartLearnerSearch
-                  learners={feeActions.searchProps.learners}
-                  selectedLearnerId={feeActions.searchProps.selectedLearnerId}
-                  onSelect={feeActions.searchProps.onSelect}
-                  placeholder="Student search..."
-                  compact={true}
-                />
-              </div>
             )}
 
             <span className="h-4 w-px bg-gray-200 ml-auto mr-1" />
