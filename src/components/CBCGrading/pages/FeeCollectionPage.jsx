@@ -206,15 +206,19 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
       .reduce((acc, w) => acc + Number(w.amountWaived || 0), 0)
   ), []);
 
+  const getPaymentFeeAmount = React.useCallback((payment) => (
+    Math.max(0, Number(payment?.amount || 0) - Number(payment?.transportAmount || 0))
+  ), []);
+
   const getInvoiceCashPaid = React.useCallback((invoice) => {
     if (Array.isArray(invoice?.payments)) {
-      return invoice.payments.reduce((acc, p) => acc + Number(p.amount || 0), 0);
+      return invoice.payments.reduce((acc, p) => acc + getPaymentFeeAmount(p), 0);
     }
 
     const rawPaid = Number(invoice?.paidAmount || 0);
     const waived = getApprovedWaiverAmount(invoice);
     return Math.max(0, rawPaid - waived);
-  }, [getApprovedWaiverAmount]);
+  }, [getApprovedWaiverAmount, getPaymentFeeAmount]);
 
   const getInvoiceSettledAmount = React.useCallback((invoice) => (
     getInvoiceCashPaid(invoice) + getApprovedWaiverAmount(invoice)
@@ -1271,25 +1275,25 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
       transport: getMetrics(src.filter(i => i.learner?.isTransportStudent)),
 
       mpesaTotal: fmt(src.reduce((s, i) => {
-        const detail = (i.payments || []).filter(p => p.paymentMethod === 'MPESA').reduce((ss, p) => ss + Number(p.amount), 0);
+        const detail = (i.payments || []).filter(p => p.paymentMethod === 'MPESA').reduce((ss, p) => ss + getPaymentFeeAmount(p), 0);
         if (Array.isArray(i.payments)) return s + detail;
         const recentMode = i.payments?.[0]?.paymentMethod || 'MPESA';
         return recentMode === 'MPESA' ? s + getInvoiceCashPaid(i) : s;
       }, 0)),
       cashTotal: fmt(src.reduce((s, i) => {
-        const detail = (i.payments || []).filter(p => p.paymentMethod === 'CASH').reduce((ss, p) => ss + Number(p.amount), 0);
+        const detail = (i.payments || []).filter(p => p.paymentMethod === 'CASH').reduce((ss, p) => ss + getPaymentFeeAmount(p), 0);
         if (Array.isArray(i.payments)) return s + detail;
         const recentMode = i.payments?.[0]?.paymentMethod || 'MPESA';
         return recentMode === 'CASH' ? s + getInvoiceCashPaid(i) : s;
       }, 0)),
       bankTotal: fmt(src.reduce((s, i) => {
-        const detail = (i.payments || []).filter(p => ['BANK_TRANSFER', 'CHEQUE'].includes(p.paymentMethod)).reduce((ss, p) => ss + Number(p.amount), 0);
+        const detail = (i.payments || []).filter(p => ['BANK_TRANSFER', 'CHEQUE'].includes(p.paymentMethod)).reduce((ss, p) => ss + getPaymentFeeAmount(p), 0);
         if (Array.isArray(i.payments)) return s + detail;
         const recentMode = i.payments?.[0]?.paymentMethod || 'MPESA';
         return recentMode === 'BANK_TRANSFER' ? s + getInvoiceCashPaid(i) : s;
       }, 0))
     };
-  }, [currentCycleStatsInvoices, metricsStructureExpectedMap, getInvoiceCarryFwd, normalizeGradeKey, termFilter, getApprovedWaiverAmount, getInvoiceCashPaid, getInvoiceCurrentDue, getInvoiceNetOverpaid, getInvoiceSettledAmount]);
+  }, [currentCycleStatsInvoices, metricsStructureExpectedMap, getInvoiceCarryFwd, normalizeGradeKey, termFilter, getApprovedWaiverAmount, getInvoiceCashPaid, getInvoiceCurrentDue, getInvoiceNetOverpaid, getInvoiceSettledAmount, getPaymentFeeAmount]);
 
 
   if (loading && !showCreateModal) return <LoadingSpinner />;

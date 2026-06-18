@@ -346,6 +346,7 @@ export class FeeController {
               id: true, 
               paymentDate: true, 
               amount: true, 
+              transportAmount: true,
               paymentMethod: true, 
               referenceNumber: true, 
               receiptNumber: true 
@@ -897,6 +898,11 @@ export class FeeController {
           // Calculate Explicit Allocation. Default: Tuition First
           let tuitionChunk = 0;
           let transportChunk = 0;
+          const invoiceDetails = isSponsorPayment
+            ? null
+            : await tx.feeInvoice.findUnique({ where: { id: actualInvoiceId }});
+          const currentTuitionBal = Math.max(0, Number(invoiceDetails?.balance || 0));
+          const currentTransportBal = Math.max(0, Number(invoiceDetails?.transportBalance || 0));
 
           if (isSponsorPayment) {
             tuitionChunk = 0;
@@ -904,22 +910,24 @@ export class FeeController {
           } else if (allocatedTuition !== undefined || allocatedTransport !== undefined) {
              tuitionChunk = Number(allocatedTuition || 0);
              transportChunk = Number(allocatedTransport || 0);
-             // Safety check: ensure manually allocated chunks do not exceed total payment
-             if (tuitionChunk + transportChunk > amount) {
-                 throw new ApiError(400, "Allocated amounts exceed total payment amount");
+             if (tuitionChunk < 0 || transportChunk < 0) {
+                 throw new ApiError(400, "Allocated amounts cannot be negative");
+             }
+             if (Math.abs((tuitionChunk + transportChunk) - amount) > 0.01) {
+                 throw new ApiError(400, "Allocated amounts must match the total payment amount");
+             }
+             if (transportChunk > currentTransportBal + 0.01) {
+                 throw new ApiError(400, "Transport allocation cannot exceed the outstanding transport balance");
              }
           } else {
              // Default Intelligent Allocation: Tuition first, then Transport
-             const invoiceDetails = await tx.feeInvoice.findUnique({ where: { id: actualInvoiceId }});
-             const currentTuitionBal = Number(invoiceDetails?.balance || 0);
-             const currentTransportBal = Number(invoiceDetails?.transportBalance || 0);
-
              if (amount <= currentTuitionBal) {
                  tuitionChunk = amount;
              } else {
                  tuitionChunk = currentTuitionBal;
                  const remainder = amount - currentTuitionBal;
-                 transportChunk = remainder; // Pay transport with the rest, or just let it overpay transport
+                 transportChunk = Math.min(remainder, currentTransportBal);
+                 tuitionChunk += Math.max(0, remainder - transportChunk);
              }
           }
 
