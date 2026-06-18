@@ -12,12 +12,13 @@ TrendScore is a CBE-ready School ERP for modern African schools. It helps school
 
 ## Current Status
 
-TrendScore is in active v1.0 development. The core School ERP is functional and under continuous refinement, with the current focus on product identity cleanup, CBE/KJSEA grading correctness, reporting reliability, deployment hygiene, and preparing the public project for cleaner GitHub review.
+TrendScore is in active v1.0 development. The core School ERP is functional and under continuous refinement, with the current focus on product identity cleanup, CBE/KJSEA grading correctness, approvals and governance workflows, reporting reliability, deployment hygiene, and preparing the public project for cleaner GitHub review.
 
 Current working areas:
 
 - Core School ERP modules are implemented across frontend and backend.
 - CBE assessment, achievement levels, report cards, and administrative status-code handling are actively maintained.
+- Centralized approvals, workflow configuration, score unlock governance, and audit history are implemented.
 - M-Pesa payment workflows are integrated through payment service layers.
 - Deployment is managed through GitHub Actions, Docker builds, and a school-instance manifest.
 - Public positioning is now aligned around TrendScore at https://www.trendscore.co.ke/.
@@ -33,6 +34,21 @@ TrendScore is organized around four product areas:
 | School ERP | Active | The main school management system for academics, finance, people, operations, and reports. |
 | Digital Campus | Upcoming | Online learning, learner workspaces, digital classes, assignments, content, and remote engagement. |
 | Creators Hub | Upcoming | A resource and content ecosystem for educators, content creators, templates, lessons, and assessments. |
+
+## Module Coverage Snapshot
+
+| Module Area | Current Coverage |
+| --- | --- |
+| Administration and settings | School profile, branding, academic years, terms, roles, permissions, module gating, system settings, logs, backups, restore/reset, and system control. |
+| Learner and parent records | Admissions, learner profiles, parent and guardian links, student-user sync, class and stream placement, progression, exits, documents, and profile history. |
+| Academics and assessment | Formative, summative, CBE grading, administrative status codes, mark entry, score locking, unlock requests, reports, analytics, and report cards. |
+| Finance and accounting | Fee structures, invoices, balances, receipts, waivers, statements, M-Pesa reconciliation, expenses, journals, ledger hooks, and financial reports. |
+| HR and staff operations | Staff records, teacher assignments, staff documents, leave, attendance, payroll generation, and payroll payment tracking. |
+| Communication and engagement | Notices, messages, SMS, email, WhatsApp, push notifications, fee reminders, attendance alerts, support, and report distribution. |
+| Operations | Attendance, timetable, calendar, transport, hostel, movement tracking, inventory, assets, uniforms, library, and resource circulation. |
+| Approvals and governance | Central approval engine, workflow builder, approval dashboard, request history, role/user approvers, score unlock workflow, notifications, and audit trail. |
+| Learning and pathways | Learning Hub, LMS foundations, assignments/content foundations, secondary routes, senior school pathways, and institution-aware module behavior. |
+| Platform operations | Multi-school manifest, Docker publishing, Promote Release deployments, school-scoped environments, migrations, backups, and health checks. |
 
 ## Core School ERP Modules
 
@@ -70,6 +86,7 @@ Key capabilities:
 - Learning area management.
 - Formative observations and rubric-based scoring.
 - Summative tests and mark entry.
+- Score locking and controlled score unlock requests.
 - CBE achievement codes such as EE, ME, AE, and BE with detailed bands.
 - Administrative assessment status codes such as absent, transferred, withdrawn, or exempt cases.
 - Status-only results excluded from averages, ranking, analytics, and report calculations.
@@ -223,6 +240,73 @@ Key capabilities:
 - Senior school report foundations.
 - Institution-aware module behavior.
 
+### 15. Approvals, Workflows, and Score Unlock Governance
+
+TrendScore includes a centralized approval engine for actions that should not happen silently. Schools can configure approval workflows, assign approvers, review pending requests, track approval history, and keep an audit trail for sensitive academic and administrative actions.
+
+Key capabilities:
+
+- Approval dashboard for pending, assigned, submitted, approved, and rejected requests.
+- Workflow builder for module-specific approval rules.
+- Role-based and user-based approver steps.
+- Approval history with requester, module, status, dates, and decision trail.
+- Score unlock approval workflow for controlled mark edits after lock.
+- Notifications and deep links for approval actions.
+- School-scoped audit records for governance and accountability.
+
+### 16. User Management, Identity, and Self-Service
+
+TrendScore includes user management and identity workflows for staff, administrators, parents, and learners. These tools connect role permissions, account status, profile details, and school-scoped access into one operating layer.
+
+Key capabilities:
+
+- User creation, editing, activation, and deactivation.
+- Role and permission assignment.
+- Parent and learner account synchronization.
+- Shared self-service profile editing for authenticated users.
+- Read-only identity fields where system ownership must be preserved.
+- Superadmin bootstrap and first-login support.
+- Account-level audit and security controls.
+
+### 17. Documents, ID Cards, and Operational Records
+
+TrendScore includes document and operational record tools that help schools keep learner, staff, and institutional records organized.
+
+Key capabilities:
+
+- Document Center for school records and shared documents.
+- Learner and staff document attachments.
+- ID card generation and printing foundations.
+- Academic, financial, HR, and operational record links.
+- System logs for administrative traceability.
+- Backup, restore, and reset workflows for school operations.
+
+### 18. Tertiary and Student Affairs Foundations
+
+TrendScore is also prepared for institution types beyond junior and senior school. Tertiary and student-affairs foundations give the platform room to support higher-learning workflows without splitting from the core school operating layer.
+
+Key capabilities:
+
+- Institution-aware module behavior.
+- Tertiary navigation and student-affairs foundations.
+- Student profile and enrollment foundations.
+- Facilities, clearance, and operational workflow foundations.
+- LMS and learning-resource integration paths.
+
+### 19. Platform Deployment and School Operations
+
+TrendScore is deployed as a multi-school platform with controlled promotion workflows. Each school instance can be promoted independently using the same release pipeline and Docker image source.
+
+Key capabilities:
+
+- GitHub Actions CI and Docker image publishing.
+- Promote Release workflow for demo and production schools.
+- School-instance manifest for deployment targets.
+- School-scoped environment configuration.
+- Migration deployment as part of release promotion.
+- Health checks and deployment verification.
+- Backup-aware operating model for production schools.
+
 ## Upcoming Product Tracks
 
 ### Digital Campus
@@ -267,9 +351,10 @@ TrendScore follows a structured CBE workflow:
 1. Configure academic year, terms, classes, streams, learning areas, and grading scales.
 2. Create formative and summative assessment structures.
 3. Record learner observations, marks, rubric levels, or valid administrative status codes.
-4. Exclude status-only records from calculations where no academic score should be counted.
-5. Generate summaries, rankings, analytics, and report cards.
-6. Share reports through downloadable files or communication channels.
+4. Lock completed scores and route unlock requests through approvals where school governance requires it.
+5. Exclude status-only records from calculations where no academic score should be counted.
+6. Generate summaries, rankings, analytics, and report cards.
+7. Share reports through downloadable files or communication channels.
 
 ## Formative vs Summative Assessment
 
