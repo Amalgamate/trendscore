@@ -346,10 +346,16 @@ export const useSummativeTestForm = ({ initialTestType = null, initialData = nul
         createdBy: userId,
         published: true,
         active: true,
-        status: 'PUBLISHED',
-        scaleId: selectedScale?.id || null,
-        scaleName: selectedScale?.name || null
+        status: 'PUBLISHED'
       };
+
+      if (selectedScale?.id) {
+        testData.scaleId = selectedScale.id;
+      }
+
+      if (selectedScale?.name) {
+        testData.scaleName = selectedScale.name;
+      }
 
       console.log('📤 Submitting test:', testData);
       console.log('📊 Selected scale:', selectedScale);

@@ -110,7 +110,7 @@ const createSummativeTestSchema = z.object({
 
   // Extra fields the hooks may pass through — accepted and forwarded
   createdBy:  z.string().optional(),
-  scaleName:  z.string().optional(),
+  scaleName:  z.string().nullable().optional(),
 });
 
 const recordSummativeResultSchema = z.object({
