@@ -5,7 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useInstitutionLabels } from '../../hooks/useInstitutionLabels';
 import { cn } from '../../utils/cn';
 
-const SummativeTestFormMobile = ({ onBack, onSuccess, initialTestType = null }) => {
+const SummativeTestFormMobile = ({ onBack, onSuccess, initialTestType = null, initialData = null }) => {
   const { user } = useAuth();
   const labels = useInstitutionLabels();
   const {
@@ -23,7 +23,7 @@ const SummativeTestFormMobile = ({ onBack, onSuccess, initialTestType = null }) 
     handleInputChange,
     handleSubmit: originalHandleSubmit,
     getSelectedScale
-  } = useSummativeTestForm({ initialTestType });
+  } = useSummativeTestForm({ initialTestType, initialData });
 
   const handleSubmit = async (e) => {
     e.preventDefault();

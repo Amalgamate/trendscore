@@ -1191,16 +1191,49 @@ export const updateSummativeTest = async (req: AuthRequest, res: Response) => {
       updateData.passMarks != null ? updateData.passMarks : test.passMarks
     );
 
+    const nextGrade = updateData.grade != null ? String(updateData.grade) : test.grade;
+    const nextLearningArea = updateData.learningArea != null ? String(updateData.learningArea) : test.learningArea;
+    const institutionType = (req.resolvedInstitutionType as any) || (req.school?.institutionType as any) || 'PRIMARY_CBC';
+    const resolvedArea = updateData.learningArea != null || updateData.learningAreaId != null
+      ? await resolveLearningAreaWithContext({
+          learningAreaId: updateData.learningAreaId,
+          learningArea: nextLearningArea,
+          grade: nextGrade,
+          institutionType,
+        })
+      : null;
+
+    const updatePayload: Prisma.SummativeTestUpdateInput = {
+      title: updateData.title ?? undefined,
+      learningArea: resolvedArea ? (resolvedArea.name || nextLearningArea) : updateData.learningArea,
+      learningAreaRef: resolvedArea?.id
+        ? { connect: { id: resolvedArea.id } }
+        : updateData.learningAreaId === null
+          ? { disconnect: true }
+          : undefined,
+      term: updateData.term ?? undefined,
+      academicYear: updateData.academicYear ? parseInt(updateData.academicYear) : undefined,
+      grade: updateData.grade ?? undefined,
+      testDate: updateData.testDate ? new Date(updateData.testDate) : undefined,
+      totalMarks: normalizedMarks.totalMarks,
+      passMarks: normalizedMarks.passMarks,
+      duration: updateData.duration != null ? parseInt(String(updateData.duration)) : undefined,
+      description: updateData.description ?? undefined,
+      instructions: updateData.instructions ?? undefined,
+      curriculum: updateData.curriculum ?? undefined,
+      weight: updateData.weight != null ? parseFloat(String(updateData.weight)) : undefined,
+      scale: updateData.scaleId ? { connect: { id: updateData.scaleId } } : updateData.scaleId === null ? { disconnect: true } : undefined,
+      testType: updateData.testType != null || updateData.type != null
+        ? normalizeSummativeTestType(updateData.testType || updateData.type)
+        : undefined,
+      published: updateData.published ?? undefined,
+      active: updateData.active ?? undefined,
+      status: updateData.status ?? undefined,
+    };
+
     const updatedTest = await prisma.summativeTest.update({
       where: { id },
-      data: {
-        ...updateData,
-        academicYear: updateData.academicYear ? parseInt(updateData.academicYear) : undefined,
-        totalMarks: normalizedMarks.totalMarks,
-        passMarks: normalizedMarks.passMarks,
-        duration: updateData.duration != null ? parseInt(String(updateData.duration)) : undefined,
-        testDate: updateData.testDate ? new Date(updateData.testDate) : undefined
-      }
+      data: updatePayload
     });
 
     // FIX: bust all parameterised list keys + this specific test's individual key

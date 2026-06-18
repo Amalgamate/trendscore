@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { assessmentAPI, gradingAPI, configAPI, classAPI, seniorPathwayAPI } from '../services/api';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { assessmentAPI, gradingAPI, configAPI, seniorPathwayAPI } from '../services/api';
 import { getLearningAreasByGrade } from '../constants/learningAreas';
 import { useSchoolData } from '../contexts/SchoolDataContext';
 import { normalizeTestType } from '../components/CBCGrading/utils/testType';
@@ -46,8 +46,27 @@ const DEFAULT_FORM_DATA = {
 
 const SENIOR_SECONDARY_GRADES = new Set(['GRADE_10', 'GRADE_11', 'GRADE_12']);
 
-export const useSummativeTestForm = ({ initialTestType = null } = {}) => {
+const toDateInputValue = (value) => {
+  if (!value) return new Date().toISOString().split('T')[0];
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? new Date().toISOString().split('T')[0] : date.toISOString().split('T')[0];
+};
+
+const buildInitialFormData = (initialData, initialTestType) => ({
+  ...DEFAULT_FORM_DATA,
+  ...initialData,
+  type: normalizeTestType(initialData?.testType || initialData?.type || initialTestType) || DEFAULT_FORM_DATA.type,
+  learningArea: initialData?.learningArea || '',
+  testDate: toDateInputValue(initialData?.testDate || initialData?.date),
+  totalMarks: initialData?.totalMarks ?? DEFAULT_FORM_DATA.totalMarks,
+  passMarks: initialData?.passMarks ?? DEFAULT_FORM_DATA.passMarks,
+  duration: initialData?.duration ?? DEFAULT_FORM_DATA.duration,
+  weight: initialData?.weight ?? DEFAULT_FORM_DATA.weight,
+});
+
+export const useSummativeTestForm = ({ initialTestType = null, initialData = null } = {}) => {
   const { grades, classes, loading: schoolDataLoading } = useSchoolData();
+  const isEditMode = Boolean(initialData?.id);
   const [fallbackGrades, setFallbackGrades] = useState([]);
   const [scales, setScales] = useState([]);
   const [terms, setTerms] = useState([]);
@@ -56,12 +75,19 @@ export const useSummativeTestForm = ({ initialTestType = null } = {}) => {
   const [availableLearningAreas, setAvailableLearningAreas] = useState([]);
   const [loadingScales, setLoadingScales] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [formData, setFormData] = useState(() => ({
-    ...DEFAULT_FORM_DATA,
-    type: normalizeTestType(initialTestType) || DEFAULT_FORM_DATA.type
-  }));
+  const [formData, setFormData] = useState(() => buildInitialFormData(initialData, initialTestType));
   const [errors, setErrors] = useState({});
   const [saveStatus, setSaveStatus] = useState('');
+  const initialDataKey = useMemo(
+    () => `${initialData?.id || 'new'}:${initialData?.title || ''}:${initialData?.grade || ''}:${initialData?.term || ''}:${initialData?.learningArea || ''}:${initialTestType || ''}`,
+    [initialData, initialTestType]
+  );
+
+  useEffect(() => {
+    setFormData(buildInitialFormData(initialData, initialTestType));
+    setErrors({});
+    setSaveStatus('');
+  }, [initialDataKey, initialData, initialTestType]);
 
   // Effect to set terms from classes
   useEffect(() => {
@@ -188,9 +214,14 @@ export const useSummativeTestForm = ({ initialTestType = null } = {}) => {
             )
           : rows;
 
+        const officialFallbackRows = isSeniorGrade
+          ? []
+          : getLearningAreasByGrade(formData.grade).map(name => ({ id: name, name, gradeLevel: formData.grade }));
+        const rowsWithFallbacks = [...filteredRows, ...officialFallbackRows];
+
         // Deduplicate by name (keep first occurrence)
         const seen = new Set();
-        const dedupe = filteredRows.filter((a) => {
+        const dedupe = rowsWithFallbacks.filter((a) => {
           const n = String(a?.name || '');
           if (!n || seen.has(n)) return false;
           seen.add(n);
@@ -210,8 +241,6 @@ export const useSummativeTestForm = ({ initialTestType = null } = {}) => {
     };
     loadGradeAreas();
 
-    // Reset learning area and scale when grade changes
-    setFormData(prev => ({ ...prev, learningArea: '', scaleId: '' }));
   }, [formData.grade, allLearningAreas, schoolOfferings]);
 
 
@@ -219,6 +248,11 @@ export const useSummativeTestForm = ({ initialTestType = null } = {}) => {
   const handleInputChange = (field, value) => {
     setFormData(prev => {
       const next = { ...prev, [field]: value };
+
+      if (field === 'grade') {
+        next.learningArea = '';
+        next.scaleId = '';
+      }
 
       // When learning area changes, auto-match the corresponding scale
       if (field === 'learningArea' && value && next.grade) {
@@ -275,7 +309,7 @@ export const useSummativeTestForm = ({ initialTestType = null } = {}) => {
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to ${formData.title ? 'update' : 'create'} this test?`)) {
+    if (!window.confirm(`Are you sure you want to ${isEditMode ? 'update' : 'create'} this test?`)) {
       return;
     }
 
@@ -293,11 +327,22 @@ export const useSummativeTestForm = ({ initialTestType = null } = {}) => {
       const selectedScale = getSelectedScale();
 
       const testData = {
-        ...formData,
+        title: formData.title,
+        name: formData.title,
+        type: formData.type,
         testType: formData.type,
+        grade: formData.grade,
+        term: formData.term,
+        learningArea: formData.learningArea,
+        academicYear: formData.academicYear,
+        testDate: formData.testDate,
         totalMarks: parseInt(formData.totalMarks),
         passMarks: parseInt(formData.passMarks),
         duration: parseInt(formData.duration) || null,
+        description: formData.description,
+        instructions: formData.instructions,
+        curriculum: formData.curriculum,
+        weight: Number(formData.weight) || 1.0,
         createdBy: userId,
         published: true,
         active: true,
@@ -309,10 +354,12 @@ export const useSummativeTestForm = ({ initialTestType = null } = {}) => {
       console.log('📤 Submitting test:', testData);
       console.log('📊 Selected scale:', selectedScale);
 
-      const response = await assessmentAPI.createTest({ ...testData });
+      const response = isEditMode
+        ? await assessmentAPI.updateTest(initialData.id, { ...testData })
+        : await assessmentAPI.createTest({ ...testData });
       const createdTest = response?.data || response;
 
-      console.log('✅ Test created successfully:', createdTest);
+      console.log(`✅ Test ${isEditMode ? 'updated' : 'created'} successfully:`, createdTest);
       setSaveStatus('success');
 
       return createdTest;
@@ -330,10 +377,7 @@ export const useSummativeTestForm = ({ initialTestType = null } = {}) => {
   };
 
   const resetForm = () => {
-    setFormData({
-      ...DEFAULT_FORM_DATA,
-      type: normalizeTestType(initialTestType) || DEFAULT_FORM_DATA.type
-    });
+    setFormData(buildInitialFormData(initialData, initialTestType));
     setErrors({});
   };
 

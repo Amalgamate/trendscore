@@ -85,6 +85,31 @@ const getSeriesTestTypeLabel = (tests = [], displayName = '') => {
   return formatTestTypeLabel(firstType).toUpperCase();
 };
 
+const buildSeriesSubjectSeed = (tests = [], displayType = '') => {
+  const source = tests[0] || {};
+  const type = normalizeTestType(source.testType) || 'ASSESSMENT';
+
+  return {
+    title: displayType || getSeriesDisplayName(source, type),
+    type,
+    testType: type,
+    grade: source.grade || '',
+    term: source.term || 'TERM_1',
+    academicYear: source.academicYear || new Date().getFullYear(),
+    testDate: source.testDate || source.createdAt || new Date().toISOString(),
+    totalMarks: source.totalMarks || 100,
+    passMarks: source.passMarks ?? 40,
+    duration: source.duration || 60,
+    description: source.description || '',
+    instructions: source.instructions || '',
+    curriculum: source.curriculum || 'CBC_AND_EXAM',
+    weight: source.weight ?? 1.0,
+    status: 'PUBLISHED',
+    learningArea: '',
+    scaleId: '',
+  };
+};
+
 const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
   const { showSuccess, showError } = useNotifications();
   const { user } = useAuth();
@@ -165,6 +190,11 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
 
   const handleAddSingleTest = () => {
     setViewMode('create');
+  };
+
+  const handleAddSubjectToSeries = (seriesData) => {
+    setSelectedTest(buildSeriesSubjectSeed(seriesData.tests, seriesData.displayType));
+    setViewMode('add_subject');
   };
 
   const handleDelete = async (id) => {
@@ -391,15 +421,20 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
 
 
 
-  if (viewMode === 'create' || viewMode === 'edit') {
+  if (viewMode === 'create' || viewMode === 'edit' || viewMode === 'add_subject') {
     return (
       <SummativeTestForm
-        initialTestType={viewMode === 'create' ? (filterTestType || normalizedDefaultTestType) : null}
-        onBack={() => setViewMode('list')}
+        initialTestType={viewMode === 'create' || viewMode === 'add_subject' ? (selectedTest?.testType || filterTestType || normalizedDefaultTestType) : null}
+        initialData={viewMode === 'edit' || viewMode === 'add_subject' ? selectedTest : null}
+        onBack={() => {
+          setSelectedTest(null);
+          setViewMode('list');
+        }}
         onSuccess={(createdTest, selectedLearners) => {
           fetchTests(); // Refresh the tests list
+          setSelectedTest(null);
           setViewMode('list');
-          showSuccess('Test created successfully!');
+          showSuccess(viewMode === 'edit' ? 'Test updated successfully!' : 'Test created successfully!');
         }}
       />
     );
@@ -662,14 +697,26 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
                                 </div>
                               </td>
                               <td className="px-6 py-5 text-right">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => toggleGrade(groupKey)}
-                                  className="h-9 px-4 text-[9px] font-semibold uppercase tracking-widest text-slate-500 hover:text-brand-purple rounded-xl border border-transparent hover:border-slate-100 hover:bg-slate-50 transition-all"
-                                >
-                                  {isExpanded ? 'Hide Subjects' : 'View Subjects'}
-                                </Button>
+                                <div className="flex justify-end gap-2">
+                                  {(user?.role !== 'TEACHER') && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleAddSubjectToSeries(data)}
+                                      className="h-9 px-4 text-[9px] font-semibold uppercase tracking-widest text-brand-teal hover:text-brand-teal rounded-xl border border-brand-teal/10 hover:bg-brand-teal/5 transition-all"
+                                    >
+                                      <Plus size={13} className="mr-1.5" /> Add Subject
+                                    </Button>
+                                  )}
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => toggleGrade(groupKey)}
+                                    className="h-9 px-4 text-[9px] font-semibold uppercase tracking-widest text-slate-500 hover:text-brand-purple rounded-xl border border-transparent hover:border-slate-100 hover:bg-slate-50 transition-all"
+                                  >
+                                    {isExpanded ? 'Hide Subjects' : 'View Subjects'}
+                                  </Button>
+                                </div>
                               </td>
                             </tr>
                             {isExpanded && (
