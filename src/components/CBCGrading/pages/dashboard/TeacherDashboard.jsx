@@ -10,9 +10,8 @@ import {
   AppCard,
   EmptyState
 } from '@/design-system/components';
-import DashboardSummary, { DashboardGreetingBanner } from './DashboardSummary';
+import DashboardSummary from './DashboardSummary';
 import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
-import AdminOverviewTabs from './AdminOverviewTabs';
 
 import {
   Clock,
@@ -172,8 +171,6 @@ const TeacherDashboard = ({ user, onNavigate }) => {
 
   return (
     <div className="space-y-6">
-
-      <DashboardGreetingBanner user={user} fallbackName="Teacher" />
 
       <DashboardSection id="executive-summary" controls={sectionControls}>
       <DashboardSummary

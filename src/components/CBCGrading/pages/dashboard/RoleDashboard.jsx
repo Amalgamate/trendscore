@@ -22,7 +22,7 @@ import ComingSoon from '../../shared/ComingSoon';
 import useMediaQuery from '../../hooks/useMediaQuery';
 import { MOBILE_MEDIA_QUERY } from '../../../../constants/breakpoints';
 
-const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brandingSettings }) => {
+const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brandingSettings, currentPage = 'dashboard' }) => {
   const { role } = usePermissions();
   const { institutionType } = useAuth();
   const selectedInstitutionType = String(getSelectedInstitutionType() || '').toUpperCase();
@@ -45,7 +45,7 @@ const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brand
   // Also checked before the mobile branch so mobile secondary users get MobileDashboard.
   if (resolvedInstitutionType === 'SECONDARY') {
     if (isMobile) {
-      return <MobileDashboard user={user} onNavigate={onNavigate} brandingSettings={brandingSettings} />;
+      return <MobileDashboard user={user} onNavigate={onNavigate} currentPath={currentPage} brandingSettings={brandingSettings} />;
     }
     // All admin-level roles get the rich secondary dashboard.
     // Non-admin roles fall through to their own dashboards below (same as primary).
@@ -76,7 +76,7 @@ const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brand
 
   // Primary CBC — mobile shell or role-based dashboard
   if (isMobile) {
-    return <MobileDashboard user={user} onNavigate={onNavigate} brandingSettings={brandingSettings} />;
+    return <MobileDashboard user={user} onNavigate={onNavigate} currentPath={currentPage} brandingSettings={brandingSettings} />;
   }
 
   // Render dashboard based on user role

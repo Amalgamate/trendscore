@@ -10,7 +10,7 @@ import {
   AppCard,
   EmptyState
 } from '@/design-system/components';
-import DashboardSummary, { DashboardGreetingBanner } from './DashboardSummary';
+import DashboardSummary from './DashboardSummary';
 import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
 
 import {
@@ -209,8 +209,6 @@ const ParentDashboard = ({ user, onNavigate }) => {
 
   return (
     <div className="space-y-6">
-      <DashboardGreetingBanner user={user} fallbackName="Parent" />
-
       <DashboardSection id="executive-summary" controls={sectionControls}>
       <DashboardSummary
         title="Executive Summary"

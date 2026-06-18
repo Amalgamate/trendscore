@@ -23,6 +23,7 @@ export interface MobileNavItem {
   label: string;
   icon: React.ComponentType<any>;
   path: string;
+  activePaths?: string[];
   color?: string; // Tailwind color class
 }
 
@@ -57,7 +58,8 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         id: 'finance',
         label: 'Finance',
         icon: Wallet,
-        path: 'finance-management',
+        path: 'fees-overview',
+        activePaths: ['finance-dashboard', 'fees-overview', 'fees-collection', 'fees-invoices', 'fees-reports', 'fees-statements'],
         color: 'text-amber-600'
       },
       {
@@ -72,6 +74,7 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         label: 'Settings',
         icon: Settings,
         path: 'settings',
+        activePaths: ['settings', 'settings-users', 'settings-school', 'settings-profile'],
         color: 'text-gray-600'
       }
     ]
@@ -99,7 +102,8 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         id: 'finance',
         label: 'Finance',
         icon: Wallet,
-        path: 'finance-management',
+        path: 'fees-overview',
+        activePaths: ['finance-dashboard', 'fees-overview', 'fees-collection', 'fees-invoices', 'fees-reports', 'fees-statements'],
         color: 'text-amber-600'
       },
       {
@@ -114,6 +118,7 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         label: 'Settings',
         icon: Settings,
         path: 'settings',
+        activePaths: ['settings', 'settings-users', 'settings-school', 'settings-profile'],
         color: 'text-gray-600'
       }
     ]
@@ -141,7 +146,8 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         id: 'finance',
         label: 'Finance',
         icon: Wallet,
-        path: 'finance-management',
+        path: 'fees-overview',
+        activePaths: ['finance-dashboard', 'fees-overview', 'fees-collection', 'fees-invoices', 'fees-reports', 'fees-statements'],
         color: 'text-amber-600'
       },
       {
@@ -156,6 +162,7 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         label: 'Settings',
         icon: Settings,
         path: 'settings',
+        activePaths: ['settings', 'settings-users', 'settings-school', 'settings-profile'],
         color: 'text-gray-600'
       }
     ]
@@ -169,28 +176,32 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         id: 'dashboard',
         label: 'Dashboard',
         icon: Home,
-        path: 'dashboard',
+        path: 'finance-dashboard',
+        activePaths: ['dashboard', 'finance-dashboard'],
         color: 'text-brand-purple'
       },
       {
         id: 'collections',
         label: 'Collections',
         icon: Wallet,
-        path: 'finance-management',
+        path: 'fees-overview',
+        activePaths: ['fees-overview', 'fees-collection', 'fees-invoices', 'fees-record-payment', 'fees-statements', 'fees-unmatched'],
         color: 'text-emerald-600'
       },
       {
         id: 'bank',
         label: 'Bank',
         icon: Zap,
-        path: 'bank-reconciliation',
+        path: 'accounting-dashboard',
+        activePaths: ['accounting-dashboard'],
         color: 'text-blue-600'
       },
       {
         id: 'reports',
         label: 'Reports',
         icon: FileText,
-        path: 'financial-reports',
+        path: 'fees-reports',
+        activePaths: ['fees-reports', 'fees-statements'],
         color: 'text-amber-600'
       },
       {
@@ -198,6 +209,7 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         label: 'Settings',
         icon: Settings,
         path: 'settings',
+        activePaths: ['settings', 'settings-payment', 'settings-profile'],
         color: 'text-gray-600'
       }
     ]
@@ -223,9 +235,10 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
       },
       {
         id: 'grades',
-        label: 'Grades',
+        label: 'Assess',
         icon: FileText,
-        path: 'assess-summative-assessment',
+        path: 'assess-mobile-dashboard',
+        activePaths: ['assess-mobile-dashboard', 'assess-summative-assessment', 'assess-summative-tests', 'assess-summary-report', 'assess-termly-report'],
         color: 'text-blue-600'
       },
       {
@@ -233,13 +246,15 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         label: 'Learners',
         icon: Users,
         path: 'learners-list',
+        activePaths: ['learners-list', 'teacher-learner-analysis'],
         color: 'text-violet-600'
       },
       {
         id: 'settings',
         label: 'Settings',
         icon: Settings,
-        path: 'settings',
+        path: 'settings-profile',
+        activePaths: ['settings', 'settings-profile'],
         color: 'text-gray-600'
       }
     ]
@@ -265,23 +280,26 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
       },
       {
         id: 'grades',
-        label: 'Grades',
+        label: 'Assess',
         icon: FileText,
-        path: 'assess-summative-assessment',
+        path: 'assess-mobile-dashboard',
+        activePaths: ['assess-mobile-dashboard', 'assess-summative-assessment', 'assess-summative-tests', 'assess-summary-report', 'assess-termly-report'],
         color: 'text-blue-600'
       },
       {
         id: 'learners',
         label: 'Learners',
         icon: Users,
-        path: 'learners-list',
+        path: 'teacher-learner-analysis',
+        activePaths: ['teacher-learner-analysis', 'learners-list'],
         color: 'text-violet-600'
       },
       {
         id: 'settings',
         label: 'Settings',
         icon: Settings,
-        path: 'settings',
+        path: 'settings-profile',
+        activePaths: ['settings', 'settings-profile'],
         color: 'text-gray-600'
       }
     ]
@@ -365,7 +383,8 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         id: 'settings',
         label: 'Settings',
         icon: Settings,
-        path: 'settings',
+        path: 'settings-profile',
+        activePaths: ['settings', 'settings-profile'],
         color: 'text-gray-600'
       }
     ]
@@ -377,6 +396,8 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
  */
 export function getMobileNavConfig(role?: string): MobileNavConfig | null {
   if (!role) return null;
+  if (role === 'HEAD_OF_CURRICULUM') return MOBILE_NAV_CONFIGS.HEAD_TEACHER;
+  if (role === 'RECEPTIONIST') return MOBILE_NAV_CONFIGS.ADMIN;
   return MOBILE_NAV_CONFIGS[role as RoleType] || null;
 }
 

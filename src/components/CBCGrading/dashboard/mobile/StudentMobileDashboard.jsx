@@ -5,9 +5,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { dashboardAPI } from '../../../../services/api';
-import { BookOpen, FileText, TrendingUp, AlertTriangle, Trophy } from 'lucide-react';
+import { BookOpen, TrendingUp, AlertTriangle, Trophy } from 'lucide-react';
 import { GreetingToast } from '../../pages/dashboard/DashboardSummary';
-import MobileBottomNav from './MobileBottomNav';
 
 /**
  * Student Mobile Dashboard
@@ -17,7 +16,7 @@ import MobileBottomNav from './MobileBottomNav';
  * @param {Function} props.onNavigate - Navigation callback
  * @param {string} props.currentPath - Current page path
  */
-const StudentMobileDashboard = ({ user, onNavigate, currentPath }) => {
+const StudentMobileDashboard = ({ user, onNavigate }) => {
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -103,9 +102,6 @@ const StudentMobileDashboard = ({ user, onNavigate, currentPath }) => {
           </button>
         </div>
       </div>
-
-      {/* Bottom Navigation */}
-      <MobileBottomNav role={user?.role} currentPath={currentPath} onNavigate={onNavigate} />
     </div>
   );
 };

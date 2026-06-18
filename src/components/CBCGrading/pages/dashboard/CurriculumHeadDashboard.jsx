@@ -7,9 +7,8 @@ import React, { useEffect, useState } from 'react';
 import { ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar } from 'recharts';
 import { dashboardAPI } from '../../../../services/api';
 import { AppCard, EmptyState } from '@/design-system/components';
-import DashboardSummary, { DashboardGreetingBanner } from './DashboardSummary';
+import DashboardSummary from './DashboardSummary';
 import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
-import AdminOverviewTabs from './AdminOverviewTabs';
 import {
   AlertTriangle,
   BarChart3,
@@ -103,8 +102,6 @@ const CurriculumHeadDashboard = ({ learners = [], teachers = [], user, onNavigat
           <p className="text-[11px] font-semibold text-blue-700 uppercase tracking-widest">Syncing curriculum data...</p>
         </div>
       )}
-
-      <DashboardGreetingBanner user={user} />
 
       <DashboardSection id="executive-summary" controls={sectionControls}>
         <DashboardSummary

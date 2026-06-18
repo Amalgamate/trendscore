@@ -7,7 +7,6 @@ import React, { useEffect, useState } from 'react';
 import { dashboardAPI } from '../../../../services/api';
 import { Clock, FileText, Users, AlertTriangle } from 'lucide-react';
 import { GreetingToast } from '../../pages/dashboard/DashboardSummary';
-import MobileBottomNav from './MobileBottomNav';
 import ClockInStatusWidget from '../widgets/teacher/ClockInStatusWidget';
 
 /**
@@ -18,7 +17,7 @@ import ClockInStatusWidget from '../widgets/teacher/ClockInStatusWidget';
  * @param {Function} props.onNavigate - Navigation callback
  * @param {string} props.currentPath - Current page path
  */
-const TeacherMobileDashboard = ({ user, onNavigate, currentPath }) => {
+const TeacherMobileDashboard = ({ user, onNavigate }) => {
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -105,9 +104,6 @@ const TeacherMobileDashboard = ({ user, onNavigate, currentPath }) => {
           </button>
         </div>
       </div>
-
-      {/* Bottom Navigation */}
-      <MobileBottomNav role={user?.role} currentPath={currentPath} onNavigate={onNavigate} />
     </div>
   );
 };

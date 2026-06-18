@@ -22,7 +22,7 @@ import {
   AreaChart, Area,
 } from 'recharts';
 import { hasPageAccess } from '../../utils/appAccess';
-import DashboardSummary, { DashboardGreetingBanner } from './DashboardSummary';
+import DashboardSummary from './DashboardSummary';
 import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
 import {
   Users, GraduationCap, BookOpen, UserCheck, Calendar, Award,
@@ -963,8 +963,6 @@ const SecondaryAdminDashboard = ({ learners = [], pagination, teachers = [], use
           <p className="text-[11px] font-bold text-violet-700 uppercase tracking-widest">Syncing Senior School analytics…</p>
         </div>
       )}
-
-      <DashboardGreetingBanner user={user} />
 
       {/* ── 1. Quick-action icon row ───────────────────────────────────────── */}
       <DashboardSection id="quick-actions" controls={sectionControls}>

@@ -1,25 +1,11 @@
 import React from 'react';
-import { usePermissions } from '../../../hooks/usePermissions';
 import {
-  Home,
-  ClipboardCheck,
-  Mail,
-  User,
   Search,
   Bell,
 } from 'lucide-react';
-import { cn } from '../../../utils/cn';
+import MobileBottomNav from '../dashboard/mobile/MobileBottomNav';
 
 const MobileAppShell = ({ children, user, onNavigate, currentPage, brandingSettings }) => {
-  const { role } = usePermissions();
-
-  const navItems = [
-    { id: 'dashboard', label: 'Home', icon: Home },
-    { id: 'attendance-daily', label: 'Attend', icon: ClipboardCheck },
-    { id: 'comm-messages', label: 'Inbox', icon: Mail },
-    { id: 'settings-users', label: 'Profile', icon: User },
-  ];
-
   return (
     <div className="h-[100dvh] w-full bg-white flex flex-col overflow-hidden relative">
       <div className="h-16 flex items-center justify-between px-5 border-b border-[#f4f4f0] bg-white">
@@ -50,27 +36,9 @@ const MobileAppShell = ({ children, user, onNavigate, currentPage, brandingSetti
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-[#fafaf8] pb-4">{children}</div>
+      <div className="flex-1 overflow-y-auto bg-[#fafaf8] pb-24">{children}</div>
 
-      <div className="h-[72px] border-t border-[#f0f0ec] bg-white flex items-center px-2 pb-[env(safe-area-inset-bottom)]">
-        {navItems.map((item, idx) => {
-          const isActive = currentPage === item.id || (item.id === 'dashboard' && currentPage === 'learners-list');
-          return (
-            <button
-              key={item.id}
-              onClick={() => onNavigate(item.id)}
-              className={cn("flex-1 flex flex-col items-center gap-1 py-1")}
-            >
-              <div className={cn("w-9 h-7 rounded-[10px] flex items-center justify-center", isActive ? 'bg-[#f0f0ec]' : '')}>
-                <item.icon size={19} className={isActive ? 'text-[#1a1a18]' : 'text-[#bbb]'} />
-              </div>
-              <span className={cn("text-[9px] uppercase tracking-[0.04em] font-medium", isActive ? 'text-[#1a1a18]' : 'text-[#bbb]')}>
-                {item.label}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      <MobileBottomNav role={user?.role} currentPath={currentPage} onNavigate={onNavigate} />
     </div>
   );
 };

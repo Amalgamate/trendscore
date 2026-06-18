@@ -21,11 +21,15 @@ const MobileBottomNav = ({ role, currentPath = 'dashboard', onNavigate }) => {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg">
+    <div className="fixed bottom-0 left-0 right-0 z-[80] border-t border-gray-200 bg-white/95 shadow-lg backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
       <div className="grid grid-cols-5 gap-0 max-w-md mx-auto h-16">
         {navConfig.items.map((item) => {
           const Icon = item.icon;
-          const isActive = currentPath === item.path || (currentPath === 'dashboard' && item.id === 'dashboard');
+          const activePaths = item.activePaths || [];
+          const isActive =
+            currentPath === item.path ||
+            activePaths.includes(currentPath) ||
+            (currentPath === 'dashboard' && item.id === 'dashboard');
 
           return (
             <button

@@ -2,14 +2,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   ArrowLeft,
-  BarChart3,
   BookOpen,
   Check,
   ChevronRight,
   ClipboardList,
-  Home,
   Loader,
-  MoreHorizontal,
   Save,
   Search,
   Send,
@@ -24,6 +21,7 @@ import EmptyState from '../shared/EmptyState';
 import { cn } from '../../../utils/cn';
 import { getCurrentTerm } from '../utils/academicYear';
 import { normalizeTestType } from '../utils/testType';
+import MobileBottomNav from '../dashboard/mobile/MobileBottomNav';
 
 const TEST_TYPE_OPTIONS = [
   { value: 'all', label: 'All Types' },
@@ -106,41 +104,6 @@ const statusClass = (status) => {
     default:
       return 'bg-slate-50 text-slate-500 border-slate-100';
   }
-};
-
-const MobileAssessmentBottomNav = ({ active = 'assessments', onNavigate }) => {
-  const items = [
-    { id: 'dashboard', label: 'Dashboard', path: 'dashboard', icon: Home },
-    { id: 'learners', label: 'Learners', path: 'learners-list', icon: Users },
-    { id: 'assessments', label: 'Assessments', path: 'assess-mobile-dashboard', icon: ClipboardList },
-    { id: 'reports', label: 'Reports', path: 'assess-summary-report', icon: BarChart3 },
-    { id: 'more', label: 'More', path: 'settings', icon: MoreHorizontal },
-  ];
-
-  return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-[80] border-t border-slate-200 bg-white/95 backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
-      <div className="mx-auto grid h-16 max-w-md grid-cols-5">
-        {items.map((item) => {
-          const Icon = item.icon;
-          const isActive = active === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onNavigate?.(item.path)}
-              className={cn(
-                'flex min-w-0 flex-col items-center justify-center gap-1 text-[10px] font-bold transition',
-                isActive ? 'bg-brand-purple/10 text-brand-purple' : 'text-slate-500 active:bg-slate-50'
-              )}
-            >
-              <Icon size={20} />
-              <span className="truncate">{item.label}</span>
-            </button>
-          );
-        })}
-      </div>
-    </nav>
-  );
 };
 
 const ProgressBar = ({ value }) => (
@@ -682,7 +645,7 @@ const SummativeAssessmentMobile = ({
           description="Your account is not assigned to any classes or subjects for mark entry."
           icon={BookOpen}
         />
-        <MobileAssessmentBottomNav active="assessments" onNavigate={onNavigate} />
+        <MobileBottomNav role={user?.role} currentPath="assess-mobile-dashboard" onNavigate={onNavigate} />
       </div>
     );
   }
@@ -967,7 +930,7 @@ const SummativeAssessmentMobile = ({
         </main>
       )}
 
-      <MobileAssessmentBottomNav active="assessments" onNavigate={onNavigate} />
+      <MobileBottomNav role={user?.role} currentPath="assess-mobile-dashboard" onNavigate={onNavigate} />
     </div>
   );
 };

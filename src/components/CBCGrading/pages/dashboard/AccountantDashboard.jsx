@@ -8,9 +8,8 @@ import { accountingAPI, dashboardAPI } from '../../../../services/api';
 import { useAuth } from '../../../../hooks/useAuth';
 import { AppCard } from '@/design-system/components';
 import { TOKENS } from '@/design-system/tokens';
-import DashboardSummary, { DashboardGreetingBanner } from './DashboardSummary';
+import DashboardSummary from './DashboardSummary';
 import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
-import AdminOverviewTabs from './AdminOverviewTabs';
 import { ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, BarChart, Bar } from 'recharts';
 import {
   AlertTriangle,
@@ -279,8 +278,6 @@ const AccountantDashboard = ({ user, onNavigate, brandingSettings }) => {
             <p className="text-[11px] font-semibold text-blue-700 uppercase tracking-widest">Syncing finance data...</p>
           </div>
         )}
-
-        <DashboardGreetingBanner user={user} fallbackName="Accountant" />
 
         <DashboardSection id="executive-summary" controls={sectionControls}>
         <DashboardSummary

@@ -7,7 +7,7 @@
  * Staff must be connected to the school Wi-Fi to clock in.
  */
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Users, GraduationCap, UserCheck, Wifi, WifiOff, Clock, Loader2 } from 'lucide-react';
 import { dashboardAPI } from '../../../../services/api';
 import { GreetingToast } from '../../pages/dashboard/DashboardSummary';
@@ -16,7 +16,6 @@ import {
   clockOutTeacher,
   syncCurrentUserClockInStatus,
 } from '../../../../utils/teacherClockIn';
-import MobileBottomNav from './MobileBottomNav';
 
 // ── GPS / Geofence (DISABLED — replaced by IP/Wi-Fi check) ───────────────────
 // Location-based clock-in is paused because indoor GPS accuracy (5–50 m) causes
@@ -213,7 +212,7 @@ const ClockInButton = ({ user }) => {
 };
 
 // ─── Main Dashboard ────────────────────────────────────────────────────────────
-const OwnerMobileDashboard = ({ user, onNavigate, currentPath, brandingSettings }) => {
+const OwnerMobileDashboard = ({ user, onNavigate, brandingSettings }) => {
   const [metrics, setMetrics] = useState(null);
   const [loadingMetrics, setLoadingMetrics] = useState(true);
 
@@ -314,8 +313,6 @@ const OwnerMobileDashboard = ({ user, onNavigate, currentPath, brandingSettings 
           </button>
         </div>
       </div>
-
-      <MobileBottomNav role={user?.role} currentPath={currentPath} onNavigate={onNavigate} />
     </div>
   );
 };

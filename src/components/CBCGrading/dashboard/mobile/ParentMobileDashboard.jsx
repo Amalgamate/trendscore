@@ -5,12 +5,11 @@
 
 import React, { useEffect, useState } from 'react';
 import { dashboardAPI } from '../../../../services/api';
-import { Users, CheckCircle2, AlertTriangle, CreditCard, MessageSquare, ChevronRight } from 'lucide-react';
+import { Users, CheckCircle2, AlertTriangle, MessageSquare, ChevronRight } from 'lucide-react';
 import { GreetingToast } from '../../pages/dashboard/DashboardSummary';
-import MobileBottomNav from './MobileBottomNav';
 import ParentChildProfile from '../../pages/parent/ParentChildProfile';
 
-const ParentMobileDashboard = ({ user, onNavigate, currentPath }) => {
+const ParentMobileDashboard = ({ user, onNavigate }) => {
   const [metrics, setMetrics]       = useState(null);
   const [loading, setLoading]       = useState(true);
   const [selectedChild, setSelectedChild] = useState(null);
@@ -149,9 +148,6 @@ const ParentMobileDashboard = ({ user, onNavigate, currentPath }) => {
           </button>
         </div>
       </div>
-
-      {/* Bottom Navigation */}
-      <MobileBottomNav role={user?.role} currentPath={currentPath} onNavigate={onNavigate} />
     </div>
   );
 };

@@ -367,9 +367,9 @@ const PageRouter = ({
           case 'dashboard':
             if (effectiveRole === 'STUDENT') return <StudentDashboardView user={user} onNavigate={handleNavigate} />;
             if (parentPortal) return <ParentPortalHome user={user} onNavigate={handleNavigate} />;
-            return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} />;
+            return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} currentPage={currentPage} />;
           case 'finance-dashboard':
-            return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} />;
+            return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} currentPage={currentPage} />;
 
           // Planner Module
           case 'planner-calendar':

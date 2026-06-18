@@ -5,9 +5,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { dashboardAPI } from '../../../../services/api';
-import { Wallet, TrendingUp, AlertTriangle, CreditCard, PieChart } from 'lucide-react';
+import { Wallet, TrendingUp, AlertTriangle, PieChart } from 'lucide-react';
 import { GreetingToast } from '../../pages/dashboard/DashboardSummary';
-import MobileBottomNav from './MobileBottomNav';
 
 /**
  * Accountant Mobile Dashboard
@@ -17,7 +16,7 @@ import MobileBottomNav from './MobileBottomNav';
  * @param {Function} props.onNavigate - Navigation callback
  * @param {string} props.currentPath - Current page path
  */
-const AccountantMobileDashboard = ({ user, onNavigate, currentPath }) => {
+const AccountantMobileDashboard = ({ user, onNavigate }) => {
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -79,19 +78,19 @@ const AccountantMobileDashboard = ({ user, onNavigate, currentPath }) => {
         <p className="text-xs font-semibold text-gray-600 uppercase px-2">Quick Actions</p>
         <div className="grid grid-cols-2 gap-2">
           <button
-            onClick={() => onNavigate('finance-management')}
+            onClick={() => onNavigate('fees-overview')}
             className="p-3 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 transition"
           >
             Collections
           </button>
           <button
-            onClick={() => onNavigate('bank-reconciliation')}
+            onClick={() => onNavigate('accounting-dashboard')}
             className="p-3 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 transition"
           >
             Bank
           </button>
           <button
-            onClick={() => onNavigate('financial-reports')}
+            onClick={() => onNavigate('fees-reports')}
             className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-xs font-semibold hover:bg-amber-100 transition"
           >
             Reports
@@ -104,9 +103,6 @@ const AccountantMobileDashboard = ({ user, onNavigate, currentPath }) => {
           </button>
         </div>
       </div>
-
-      {/* Bottom Navigation */}
-      <MobileBottomNav role={user?.role} currentPath={currentPath} onNavigate={onNavigate} />
     </div>
   );
 };

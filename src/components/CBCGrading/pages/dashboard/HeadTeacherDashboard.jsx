@@ -10,7 +10,7 @@ import {
   AppCard,
   EmptyState
 } from '@/design-system/components';
-import DashboardSummary, { DashboardGreetingBanner } from './DashboardSummary';
+import DashboardSummary from './DashboardSummary';
 import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
 import AdminOverviewTabs from './AdminOverviewTabs';
 
@@ -151,8 +151,6 @@ const HeadTeacherDashboard = ({ learners = [], teachers = [], user, onNavigate }
       <div className="space-y-6">
         {activeOverviewTab === 'general' && (
         <>
-        <DashboardGreetingBanner user={user} />
-
       <DashboardSection id="executive-summary" controls={sectionControls}>
       <DashboardSummary
         title="Executive Summary"
