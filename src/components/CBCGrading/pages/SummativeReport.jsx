@@ -50,6 +50,7 @@ const LEARNING_AREA_ABBREVIATIONS = {
   'MATHEMATICS': 'MAT',
   'ENGLISH': 'ENG',
   'KISWAHILI': 'KIS',
+  'KISWAHILI ACTIVITIES': 'KIS',
   'SCIENCE AND TECHNOLOGY': 'SCITECH',
   'SOCIAL STUDIES': 'SST',
   'CHRISTIAN RELIGIOUS EDUCATION': 'CRE',
@@ -74,14 +75,37 @@ const LEARNING_AREA_ABBREVIATIONS = {
   'ENVIRONMENTAL STUDIES': 'ENV'
 };
 
+const LEARNING_AREA_CANONICAL_KEYS = {
+  'MATHEMATICAL ACTIVITIES': 'MATHEMATICS',
+  'MATHEMATICS ACTIVITIES': 'MATHEMATICS',
+  'ENGLISH LANGUAGE ACTIVITIES': 'ENGLISH',
+  'ENGLISH ACTIVITIES': 'ENGLISH',
+  'KISWAHILI LANGUAGE ACTIVITIES': 'KISWAHILI',
+  'KISWAHILI ACTIVITIES': 'KISWAHILI',
+  'SHUGHULI ZA KISWAHILI': 'KISWAHILI',
+  'MOVEMENT AND CREATIVE ACTIVITIES': 'CREATIVE ACTIVITIES'
+};
+
+const getCanonicalLearningAreaKey = (name) => {
+  const upper = String(name || '').trim().replace(/\s+/g, ' ').toUpperCase();
+  return LEARNING_AREA_CANONICAL_KEYS[upper] || upper;
+};
+
+const getCanonicalLearningAreaName = (name) => {
+  const key = getCanonicalLearningAreaKey(name);
+  if (!key) return '';
+  if (key === 'MATHEMATICS') return 'Mathematics';
+  if (key === 'ENGLISH') return 'English';
+  if (key === 'KISWAHILI') return 'Kiswahili';
+  if (key === 'CREATIVE ACTIVITIES') return 'Creative Activities';
+  if (key === 'ENVIRONMENTAL ACTIVITIES') return 'Environmental Activities';
+  return String(name || key).trim();
+};
+
 const formatSubjectName = (name) => {
   if (!name) return name;
-  const upper = name.toUpperCase().trim();
-  if (upper === 'MATHEMATICAL ACTIVITIES' || upper === 'MATHEMATICS') return 'Mathematics';
-  if (upper === 'ENGLISH LANGUAGE ACTIVITIES' || upper === 'ENGLISH') return 'English';
-  if (upper === 'KISWAHILI LANGUAGE ACTIVITIES' || upper === 'KISWAHILI') return 'Kiswahili';
-  if (upper === 'ENVIRONMENTAL ACTIVITIES') return 'Environmental Activities';
-  if (upper === 'MOVEMENT AND CREATIVE ACTIVITIES' || upper === 'CREATIVE ACTIVITIES') return 'Creative Activities';
+  const canonical = getCanonicalLearningAreaName(name);
+  if (canonical && canonical !== name) return canonical;
   return name.charAt(0) + name.slice(1).toLowerCase();
 };
 
@@ -89,7 +113,7 @@ const formatSubjectName = (name) => {
 
 const getAbbreviatedName = (name) => {
   if (!name) return '';
-  const upper = name.toUpperCase().trim();
+  const upper = getCanonicalLearningAreaKey(name);
   return LEARNING_AREA_ABBREVIATIONS[upper] || (name.length > 8 ? name.substring(0, 8).toUpperCase() : name.toUpperCase());
 };
 
@@ -2725,7 +2749,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
               const selections = resp?.data?.subjectSelections || [];
               const names = new Set(
                 selections
-                  .map((s) => String(s?.learningArea?.name || '').trim().toUpperCase())
+                  .map((s) => getCanonicalLearningAreaKey(s?.learningArea?.name))
                   .filter(Boolean)
               );
               return [learner.id, names];
@@ -2784,7 +2808,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           if (allowedSubjects && allowedSubjects.size > 0) {
             processedResults = processedResults.filter((r) => {
               const test = r.test || currentTests.find((t) => t.id === r.testId) || {};
-              const areaName = String(r.learningArea || test.learningArea || '').trim().toUpperCase();
+              const areaName = getCanonicalLearningAreaKey(r.learningArea || test.learningArea);
               return areaName ? allowedSubjects.has(areaName) : true;
             });
           }
@@ -2914,10 +2938,11 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
             if (res.success && res.data) {
               res.data.forEach(result => {
                 if (allResultsMap[result.learnerId]) {
+                  const learningArea = getCanonicalLearningAreaName(test.learningArea);
                   allResultsMap[result.learnerId].push({
                     ...result,
                     test: test,
-                    learningArea: test.learningArea,
+                    learningArea,
                     score: result.marksObtained, // Normalize to .score for aggregation logic below
                     maxScore: test.totalMarks || 100
                   });
@@ -2944,7 +2969,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           const learnerAllowedSubjects = allowedSubjectsByLearner.get(learner.id);
           const learnerResults = (allResultsMap[learner.id] || []).filter((r) => {
             if (!learnerAllowedSubjects || learnerAllowedSubjects.size === 0) return true;
-            const areaName = String(r.learningArea || r.test?.learningArea || '').trim().toUpperCase();
+            const areaName = getCanonicalLearningAreaKey(r.learningArea || r.test?.learningArea);
             return areaName ? learnerAllowedSubjects.has(areaName) : true;
           });
 
@@ -2953,7 +2978,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           const totalMax = (!learnerAllowedSubjects || learnerAllowedSubjects.size === 0)
             ? expectedTotalMax
             : targetTests
-                .filter((t) => learnerAllowedSubjects.has(String(t.learningArea || '').trim().toUpperCase()))
+                .filter((t) => learnerAllowedSubjects.has(getCanonicalLearningAreaKey(t.learningArea)))
                 .reduce((sum, t) => sum + (Number(t?.totalMarks) || 100), 0);
           const averagePct = totalMax > 0 ? (totalScore / totalMax) * 100 : 0;
           const { grade, remark } = getCBCGrade(averagePct);
@@ -2961,7 +2986,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           // Subject Breakdown
           const subjectScores = {};
           learnerResults.forEach(r => {
-            const area = r.learningArea || 'General';
+            const area = getCanonicalLearningAreaName(r.learningArea || 'General');
             if (!subjectScores[area]) subjectScores[area] = 0;
             subjectScores[area] += (r.score || 0);
           });
@@ -2978,10 +3003,10 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           };
         });
 
-        const subjectsRaw = Array.from(new Set(targetTests.map(t => t.learningArea))).sort();
+        const subjectsRaw = Array.from(new Set(targetTests.map(t => getCanonicalLearningAreaName(t.learningArea)).filter(Boolean))).sort();
         const subjectMaxScores = subjectsRaw.reduce((acc, subject) => {
           acc[subject] = targetTests
-            .filter((test) => test.learningArea === subject)
+            .filter((test) => getCanonicalLearningAreaName(test.learningArea) === subject)
             .reduce((sum, test) => sum + (Number(test?.totalMarks) || 100), 0);
           return acc;
         }, {});
