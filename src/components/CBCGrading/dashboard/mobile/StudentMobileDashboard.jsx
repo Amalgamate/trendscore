@@ -50,12 +50,6 @@ const StudentMobileDashboard = ({ user, onNavigate }) => {
       {/* Greeting banner */}
       <GreetingToast user={user} fallbackName="Student" description="Learning Dashboard · Your Progress" />
 
-      {/* Header */}
-      <div className="px-4 py-4 bg-brand-purple text-white">
-        <h1 className="text-xl font-bold">Learning Dashboard</h1>
-        <p className="text-xs text-white/70 mt-0.5 uppercase tracking-wider font-semibold">Your Progress</p>
-      </div>
-
       {/* Student Metrics */}
       <div className="px-3 py-4 space-y-3">
         {studentMetrics.map((metric, idx) => {

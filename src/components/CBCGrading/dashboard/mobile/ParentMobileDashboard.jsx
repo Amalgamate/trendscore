@@ -60,12 +60,6 @@ const ParentMobileDashboard = ({ user, onNavigate }) => {
       {/* Greeting banner */}
       <GreetingToast user={user} fallbackName="Parent" description="Family Dashboard · Children's Overview" />
 
-      {/* Header */}
-      <div className="px-4 py-4 bg-brand-purple text-white">
-        <h1 className="text-xl font-bold">Family Dashboard</h1>
-        <p className="text-xs text-white/70 mt-0.5 uppercase tracking-wider font-semibold">Children's Overview</p>
-      </div>
-
       {/* Parent Metrics */}
       <div className="px-3 py-4 space-y-3">
         {parentMetrics.map((metric, idx) => {

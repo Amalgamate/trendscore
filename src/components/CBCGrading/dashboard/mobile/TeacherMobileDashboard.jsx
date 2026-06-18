@@ -51,12 +51,6 @@ const TeacherMobileDashboard = ({ user, onNavigate }) => {
       {/* Greeting banner */}
       <GreetingToast user={user} fallbackName="Teacher" description="Teaching Dashboard · Daily Workflow" />
 
-      {/* Header */}
-      <div className="px-4 py-4 bg-brand-purple text-white">
-        <h1 className="text-xl font-bold">Teaching Dashboard</h1>
-        <p className="text-xs text-white/70 mt-0.5 uppercase tracking-wider font-semibold">Daily Workflow</p>
-      </div>
-
       {/* Teaching Metrics */}
       <div className="px-3 py-4 space-y-3">
         <ClockInStatusWidget user={user} onNavigate={onNavigate} />
