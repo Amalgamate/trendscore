@@ -9,13 +9,13 @@ import { Users, CheckCircle, Clock, ChevronRight } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
 
 const STATUS_CONFIG = {
-  completed: {
-    label:   'Done',
+  submitted: {
+    label:   'Submitted',
     classes: 'bg-emerald-100 text-emerald-700',
     icon:    CheckCircle,
     ring:    'ring-emerald-200',
   },
-  partial: {
+  inProgress: {
     label:   'In Progress',
     classes: 'bg-amber-100 text-amber-700',
     icon:    Clock,
@@ -29,11 +29,18 @@ const STATUS_CONFIG = {
   },
 };
 
-export function AttendanceClassCard({ classItem, onTake, presentCount, totalCount, completedAt }) {
+export function AttendanceClassCard({
+  classItem,
+  onTake,
+  presentCount,
+  markedCount = 0,
+  totalCount,
+  completedAt,
+  isTakingAttendance = false,
+}) {
   const pct = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
-  const isCompleted = presentCount === totalCount && totalCount > 0;
-  const isPartial = presentCount > 0 && !isCompleted;
-  const statusKey = isCompleted ? 'completed' : isPartial ? 'partial' : 'pending';
+  const isSubmitted = markedCount > 0 || Boolean(completedAt);
+  const statusKey = isTakingAttendance ? 'inProgress' : isSubmitted ? 'submitted' : 'pending';
   const statusCfg = STATUS_CONFIG[statusKey];
   const StatusIcon = statusCfg.icon;
 
@@ -44,7 +51,7 @@ export function AttendanceClassCard({ classItem, onTake, presentCount, totalCoun
       className={cn(
         'w-full text-left bg-white border-2 rounded-2xl p-4 transition-all duration-150',
         'hover:border-brand-purple/30 hover:shadow-md active:scale-[0.99]',
-        isCompleted ? 'border-emerald-200' : 'border-gray-200',
+        isSubmitted ? 'border-emerald-200' : 'border-gray-200',
       )}
     >
       {/* Header row */}
@@ -53,7 +60,7 @@ export function AttendanceClassCard({ classItem, onTake, presentCount, totalCoun
         <div className="flex items-center gap-3">
           <div className={cn(
             'w-11 h-11 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0 ring-2',
-            isCompleted
+            isSubmitted
               ? 'bg-emerald-500 text-white ring-emerald-200'
               : 'bg-brand-purple/10 text-brand-purple ring-brand-purple/20'
           )}>
@@ -98,7 +105,7 @@ export function AttendanceClassCard({ classItem, onTake, presentCount, totalCoun
             <div
               className={cn(
                 'h-full rounded-full transition-all duration-500',
-                isCompleted ? 'bg-emerald-500' : 'bg-brand-purple'
+                isSubmitted ? 'bg-emerald-500' : 'bg-brand-purple'
               )}
               style={{ width: `${pct}%` }}
             />
@@ -109,7 +116,11 @@ export function AttendanceClassCard({ classItem, onTake, presentCount, totalCoun
       {/* CTA arrow */}
       <div className="flex items-center justify-end mt-2">
         <span className="text-xs text-brand-purple font-semibold flex items-center gap-1">
-          {isCompleted ? `Completed${completedAt ? ` at ${completedAt}` : ''}` : 'Take attendance'}
+          {isTakingAttendance
+            ? 'Continue attendance'
+            : isSubmitted
+              ? `Submitted${completedAt ? ` at ${completedAt}` : ''}`
+              : 'Take attendance'}
           <ChevronRight size={13} />
         </span>
       </div>

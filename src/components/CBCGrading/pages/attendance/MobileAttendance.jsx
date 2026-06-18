@@ -290,7 +290,7 @@ export function MobileAttendance() {
       showError(result?.error || 'Failed to save attendance');
     }
     setIsSaving(false);
-  }, [activeClass, activeDate, pendingChanges, markBulkAttendance, showSuccess, showError]);
+  }, [activeClass, activeDate, pendingChanges, markBulkAttendance, showSuccess, showError, stats.present, stats.total]);
 
   // ── today's greeting ──────────────────────────────────────────────────────
   const greeting = useMemo(() => {
@@ -358,8 +358,9 @@ export function MobileAttendance() {
                   classItem={classItem}
                   onTake={handleSelectClass}
                   presentCount={getClassPresentCount(classItem)}
+                  markedCount={summary?.marked || 0}
                   totalCount={summary?.total || getClassLearnerCount(classItem)}
-                  completedAt={summary?.marked >= summary?.total ? summary?.completedAt : ''}
+                  completedAt={summary?.marked > 0 ? summary?.completedAt : ''}
                 />
               );
             })}
