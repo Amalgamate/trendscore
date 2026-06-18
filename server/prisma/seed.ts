@@ -2,6 +2,7 @@ import { PrismaClient, UserRole, UserStatus, AdmissionFormatType } from '@prisma
 import * as bcrypt from 'bcrypt';
 import { seedFeeTypes } from './seed-fee-types';
 import { seedLMSCourses } from './seeders/seed-lms-courses';
+import { seedApprovalWorkflows } from './seeders/approvalWorkflows.seed';
 
 const prisma = new PrismaClient();
 
@@ -252,6 +253,10 @@ async function main() {
 
   // Seed LMS courses
   await seedLMSCourses();
+
+  // Seed approval workflows
+  console.log('\n✅ Seeding approval workflows...');
+  await seedApprovalWorkflows();
 
   console.log('\n✨ Database seed completed!');
   console.log('\n📋 Development User Credentials:');

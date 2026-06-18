@@ -118,6 +118,8 @@ model User {
   appAuditLogs              AppAuditLog[]            @relation("AppAuditor")
   dutyRosterAssignments     DutyRosterAssignment[]   @relation("DutyTeacher")
   dutyRostersCreated        DutyRoster[]
+  approvalRequests          ApprovalRequest[]        @relation("ApprovalRequestor")
+  approvalActions           ApprovalAction[]         @relation("ApprovalActioner")
 
 
   @@map("users")
@@ -3198,6 +3200,7 @@ enum NotificationType {
   ERROR
   WAIVER
   GIT_UPDATE
+  APPROVAL
 }
 
 model UserNotification {
@@ -3660,4 +3663,135 @@ model ChatMessageReaction {
   @@unique([messageId, userId, emoji])
   @@index([messageId])
   @@map("chat_message_reactions")
+}
+
+// ── Approval Engine ────────────────────────────────────────────────────────
+
+enum ApprovalModule {
+  ACADEMICS
+  FEES
+  ACCOUNTING
+  HR
+  INVENTORY
+  USERS
+  GENERAL
+}
+
+enum ApprovalRequestType {
+  SCORE_UNLOCK
+  FEE_ADJUSTMENT
+  FEE_WAIVER
+  EXPENSE_APPROVAL
+  BUDGET_APPROVAL
+  PAYMENT_REVERSAL
+  ROLE_CHANGE
+  LEAVE_APPROVAL
+  REPORT_PUBLISHING
+  STOCK_ADJUSTMENT
+}
+
+enum ApprovalMode {
+  SINGLE
+  SEQUENTIAL
+  PARALLEL
+}
+
+enum ApprovalStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED
+  COMPLETED
+}
+
+enum ApprovalActionType {
+  APPROVE
+  REJECT
+  OVERRIDE
+  CANCEL
+}
+
+model ApprovalWorkflow {
+  id                   String              @id @default(uuid())
+  name                 String
+  module               ApprovalModule
+  requestType          ApprovalRequestType
+  description          String?
+  active               Boolean             @default(true)
+  approvalMode         ApprovalMode        @default(SINGLE)
+  minApprovals         Int                 @default(1)
+  relockAfterMinutes   Int?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  steps                ApprovalStep[]
+  requests             ApprovalRequest[]
+
+  @@unique([module, requestType])
+  @@index([module, active])
+  @@map("approval_workflows")
+}
+
+model ApprovalStep {
+  id               String           @id @default(uuid())
+  workflowId       String
+  stepNumber       Int
+  approverType     String
+  approverRoles    String[]         @default([])
+  approverUserIds  String[]         @default([])
+  minApprovals     Int              @default(1)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  workflow         ApprovalWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, stepNumber])
+  @@index([workflowId])
+  @@map("approval_steps")
+}
+
+model ApprovalRequest {
+  id                  String              @id @default(uuid())
+  workflowId          String
+  module              ApprovalModule
+  requestType         ApprovalRequestType
+  requestedById       String
+  schoolId            String?
+  status              ApprovalStatus      @default(PENDING)
+  currentStepNumber   Int                 @default(1)
+  resolvedApproverIds String[]            @default([])
+  comments            String?
+  metadata            Json
+  expiresAt           DateTime?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  workflow            ApprovalWorkflow    @relation(fields: [workflowId], references: [id])
+  requestedBy         User                @relation("ApprovalRequestor", fields: [requestedById], references: [id])
+  actions             ApprovalAction[]
+
+  @@index([status, schoolId])
+  @@index([requestedById])
+  @@index([module, requestType])
+  @@index([expiresAt, status])
+  @@map("approval_requests")
+}
+
+model ApprovalAction {
+  id          String             @id @default(uuid())
+  requestId   String
+  stepNumber  Int
+  approverId  String
+  action      ApprovalActionType
+  comment     String?
+  actedAt     DateTime           @default(now())
+
+  request     ApprovalRequest    @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  approver    User               @relation("ApprovalActioner", fields: [approverId], references: [id])
+
+  @@index([requestId])
+  @@index([approverId])
+  @@map("approval_actions")
 }

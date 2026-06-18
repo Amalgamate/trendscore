@@ -68,10 +68,11 @@ const resetWholeInstitutionSchema = z.object({
   confirmToken: z.literal('RESET_WHOLE_INSTITUTION')
 });
 
-// Public branding route (no auth)
-router.get('/public/branding', rateLimit({ windowMs: 60_000, maxRequests: 100 }), asyncHandler(getPublicBranding));
-router.get('/public/assets/:assetType', rateLimit({ windowMs: 60_000, maxRequests: 200 }), asyncHandler(getPublicBrandingAsset));
-router.get('/public/manifest', rateLimit({ windowMs: 60_000, maxRequests: 100 }), asyncHandler(getPublicManifest));
+// Public branding route (no auth) — generous limits; these are polled by the
+// frontend on every page load and during dev hot-reloads / crash-recovery loops.
+router.get('/public/branding', rateLimit({ windowMs: 60_000, maxRequests: 600 }), asyncHandler(getPublicBranding));
+router.get('/public/assets/:assetType', rateLimit({ windowMs: 60_000, maxRequests: 600 }), asyncHandler(getPublicBrandingAsset));
+router.get('/public/manifest', rateLimit({ windowMs: 60_000, maxRequests: 600 }), asyncHandler(getPublicManifest));
 
 // Protect all routes below
 router.use(authenticate);

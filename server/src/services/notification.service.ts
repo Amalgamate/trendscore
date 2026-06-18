@@ -23,7 +23,8 @@ export enum NotificationType {
   WARNING = 'WARNING',
   ERROR = 'ERROR',
   WAIVER = 'WAIVER',
-  GIT_UPDATE = 'GIT_UPDATE'
+  GIT_UPDATE = 'GIT_UPDATE',
+  APPROVAL = 'APPROVAL'
 }
 
 interface CreateNotificationParams {

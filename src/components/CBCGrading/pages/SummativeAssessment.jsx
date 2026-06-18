@@ -23,6 +23,7 @@ import { useSchoolData } from '../../../contexts/SchoolDataContext';
 import { getLearningAreasByGrade } from '../../../constants/learningAreas';
 import { getAcademicYearOptions, getCurrentAcademicYear } from '../utils/academicYear';
 import { CANONICAL_TEST_TYPE_OPTIONS, normalizeTestType, resolveTestType, formatTestTypeLabel } from '../utils/testType';
+import { ScoreUnlockPrompt } from '../../shared/ScoreUnlockPrompt';
 
 const SECONDARY_GRADES = ['GRADE10', 'GRADE11', 'GRADE12'];
 const JUNIOR_GRADE_ORDER = ['PLAYGROUP', 'PP1', 'PP2', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9'];
@@ -1076,6 +1077,39 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     return result.sort((a, b) => a.firstName.localeCompare(b.firstName));
   }, [fetchedLearners, searchQuery]);
 
+  // ── Score Unlock (Approval Engine integration) ─────────────────────────────
+  // When a test is LOCKED, intercept score edits and show ScoreUnlockPrompt.
+  // After approval the teacher can edit for the duration of the unlock window.
+  const [showUnlockPrompt, setShowUnlockPrompt] = useState(false);
+  const [isTemporarilyUnlocked, setIsTemporarilyUnlocked] = useState(false);
+
+  // Reset temporary unlock when the selected test changes
+  useEffect(() => {
+    setIsTemporarilyUnlocked(false);
+    setShowUnlockPrompt(false);
+  }, [selectedTestId]);
+
+  const isTestLocked =
+    selectedTest?.workflowStatus === 'LOCKED' &&
+    !isTemporarilyUnlocked;
+
+  const handleScoreInputClick = () => {
+    if (isTestLocked) {
+      setShowUnlockPrompt(true);
+    }
+  };
+
+  // Context passed to ScoreUnlockPrompt
+  const unlockContext = {
+    assessmentId: selectedTestId,
+    assessmentType: 'summative',
+    classId: selectedTest?.classId || setup?.selectedStream || '',
+    subjectId: selectedTest?.learningAreaId || selectedLearningArea || '',
+    term: selectedTest?.term || setup?.selectedTerm || '',
+    academicYear: selectedTest?.academicYear || setup?.selectedAcademicYear || '',
+    teacherId: user?.id || '',
+  };
+
   // Helpers
   const handleMarkChange = (learnerId, value) => {
     const numValue = parseFloat(value);
@@ -1889,10 +1923,19 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
                           type="number"
                           min="0"
                           value={marks[learner.id]?.mark ?? ''}
-                          onChange={(e) => handleMarkChange(learner.id, e.target.value)}
-                          disabled={Boolean(selectedStatus)}
-                          className="w-full px-2 py-1 border border-gray-300 bg-white rounded focus:ring-2 focus:ring-brand-purple outline-none transition text-center font-semibold text-xs disabled:bg-slate-100 disabled:text-slate-400"
-                          placeholder="-"
+                          onClick={isTestLocked ? handleScoreInputClick : undefined}
+                          onChange={(e) => {
+                            if (isTestLocked) {
+                              handleScoreInputClick();
+                              return;
+                            }
+                            handleMarkChange(learner.id, e.target.value);
+                          }}
+                          disabled={Boolean(selectedStatus) || isTestLocked}
+                          readOnly={isTestLocked}
+                          className={`w-full px-2 py-1 border border-gray-300 bg-white rounded focus:ring-2 focus:ring-brand-purple outline-none transition text-center font-semibold text-xs disabled:bg-slate-100 disabled:text-slate-400 ${isTestLocked ? 'cursor-not-allowed border-amber-300 bg-amber-50' : ''}`}
+                          placeholder={isTestLocked ? '🔒' : '-'}
+                          title={isTestLocked ? 'Assessment is locked — click to request unlock' : undefined}
                         />
                       </td>
                       <td className="px-3 py-1.5 text-center border-r border-gray-200">
@@ -1958,6 +2001,17 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
             onGenerate={handlePrintReport}
             contentElementId="assessment-report-content"
             title={`${selectedTest?.learningArea || 'Assessment'} Results - ${selectedTest?.grade?.replace('_', ' ') || ''}`}
+          />
+
+          {/* Score Unlock Prompt (R4.1–R4.4) — shown when teacher clicks a locked score cell */}
+          <ScoreUnlockPrompt
+            open={showUnlockPrompt}
+            onDismiss={() => setShowUnlockPrompt(false)}
+            onUnlockGranted={() => {
+              setShowUnlockPrompt(false);
+              setIsTemporarilyUnlocked(true);
+            }}
+            context={unlockContext}
           />
         </div>
       )}

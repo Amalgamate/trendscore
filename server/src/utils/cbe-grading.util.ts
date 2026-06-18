@@ -96,5 +96,9 @@ export function assertValidAssessmentEntry(input: {
     return { ok: false as const, reason: `Score ${score} cannot be negative` };
   }
 
+  if (score > input.totalMarks) {
+    return { ok: false as const, reason: `Score ${score} cannot exceed total marks ${input.totalMarks}` };
+  }
+
   return { ok: true as const, kind: 'score' as const, score };
 }

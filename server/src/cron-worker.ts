@@ -11,6 +11,7 @@ import { libraryAutomationService } from './services/libraryAutomation.service';
 import messageService from './services/message.service';
 import logger from './utils/logger';
 import { DutyRosterService } from './services/dutyRoster.service';
+import { approvalEngineService } from './services/approvalEngine.service';
 
 async function startCronWorker() {
     try {
@@ -89,6 +90,14 @@ async function startCronWorker() {
         });
 
         logger.info('🚀 Background jobs successfully scheduled');
+
+        // ── Approval Engine ───────────────────────────────────────────────────
+        // Every 5 minutes — check for expired approval windows (score unlock, etc.)
+        cron.schedule('*/5 * * * *', () => {
+            approvalEngineService.processExpiredRequests().catch(err => {
+                logger.error('[CRON] Approval expiry processing error:', err);
+            });
+        });
 
     } catch (error) {
         logger.error('❌ Failed to start cron worker:', error);

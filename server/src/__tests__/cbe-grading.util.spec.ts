@@ -33,6 +33,13 @@ describe('CBE grading and assessment status helpers', () => {
     });
   });
 
+  it('rejects scores above the configured test total', () => {
+    expect(assertValidAssessmentEntry({ marksObtained: 85, totalMarks: 60 })).toMatchObject({
+      ok: false,
+      reason: 'Score 85 cannot exceed total marks 60',
+    });
+  });
+
   it('accepts a status-only assessment entry', () => {
     expect(assertValidAssessmentEntry({ assessmentStatusCode: 'X', totalMarks: 100 })).toMatchObject({
       ok: true,

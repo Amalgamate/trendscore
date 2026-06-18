@@ -58,6 +58,7 @@ const SelfProfilePage = lazy(() => import('../pages/settings/SelfProfilePage'));
 const IDCardTemplatesDesigner = lazy(() => import('../pages/settings/IDCardTemplatesDesigner'));
 const SystemLogsPage = lazy(() => import('../pages/settings/SystemLogsPage'));
 const SystemControlPage = lazy(() => import('../pages/settings/SystemControlPage'));
+const ApprovalsPage = lazy(() => import('../pages/ApprovalsPage'));
 const InvoiceDetailPage = lazy(() => import('../pages/InvoiceDetailPage'));
 const RecordPaymentPage = lazy(() => import('../pages/RecordPaymentPage'));
 const FeeTypesPage = lazy(() => import('../pages/FeeTypesPage'));
@@ -712,6 +713,7 @@ const PageRouter = ({
           case 'settings-system-logs': return <ErrorBoundary><SystemLogsPage /></ErrorBoundary>;
           case 'settings-system-control': return <ErrorBoundary><SystemControlPage /></ErrorBoundary>;
           case 'settings-id-templates': return <ErrorBoundary><IDCardTemplatesDesigner /></ErrorBoundary>;
+          case 'settings-approvals': return <ErrorBoundary><ApprovalsPage /></ErrorBoundary>;
 
           case 'system-maintenance': return <SystemMaintenancePage />;
 
