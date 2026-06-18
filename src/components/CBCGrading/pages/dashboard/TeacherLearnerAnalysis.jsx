@@ -12,6 +12,10 @@ const formatMinutes = (minutes) => {
   return remainder ? `${hours}h ${remainder}m/week` : `${hours}h/week`;
 };
 
+const formatNextLesson = (lesson) => (
+  lesson ? [lesson.day, lesson.time].filter(Boolean).join(' at ') || 'Scheduled' : 'No timetable slot'
+);
+
 const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState(null);
@@ -55,7 +59,7 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
 
   if (loading) {
     return (
-      <div className="min-h-[420px] bg-white border border-slate-200 p-10 text-center">
+      <div className="min-h-[360px] bg-white px-4 py-12 text-center md:min-h-[420px] md:border md:border-slate-200 md:p-10">
         <Loader2 className="mx-auto mb-3 animate-spin text-orange-600" size={28} />
         <p className="text-sm font-semibold text-slate-600">Loading your learner analysis...</p>
       </div>
@@ -74,41 +78,83 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="border-b border-slate-200 pb-4">
+    <div className="space-y-4 px-3 pb-24 pt-3 md:space-y-5 md:px-0 md:pb-0 md:pt-0">
+      <div className="border-b border-slate-200 pb-3 md:pb-4">
         <p className="text-xs font-black uppercase tracking-[0.18em] text-orange-600">Teacher Learner Analysis</p>
-        <h1 className="mt-1 text-2xl font-black text-slate-950">My Learners</h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <h1 className="mt-1 text-xl font-black text-slate-950 md:text-2xl">My Learners</h1>
+        <p className="mt-1 text-xs leading-5 text-slate-600 md:text-sm">
           Scoped to classes and subjects assigned to {user?.firstName || user?.name || 'this teacher'}.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <div className="border border-slate-200 bg-white p-4">
-          <Users className="mb-3 text-emerald-700" size={22} />
-          <p className="text-2xl font-black text-slate-950">{analysis.totalLearners || 0}</p>
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Assigned learners</p>
+      <div className="grid grid-cols-3 gap-2 md:gap-3">
+        <div className="border border-slate-200 bg-white p-3 md:p-4">
+          <Users className="mb-2 text-emerald-700 md:mb-3" size={20} />
+          <p className="text-xl font-black text-slate-950 md:text-2xl">{analysis.totalLearners || 0}</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 md:text-xs">Learners</p>
         </div>
-        <div className="border border-slate-200 bg-white p-4">
-          <GraduationCap className="mb-3 text-blue-700" size={22} />
-          <p className="text-2xl font-black text-slate-950">{analysis.totalClasses || 0}</p>
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Assigned classes</p>
+        <div className="border border-slate-200 bg-white p-3 md:p-4">
+          <GraduationCap className="mb-2 text-blue-700 md:mb-3" size={20} />
+          <p className="text-xl font-black text-slate-950 md:text-2xl">{analysis.totalClasses || 0}</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 md:text-xs">Classes</p>
         </div>
-        <div className="border border-slate-200 bg-white p-4">
-          <BookOpen className="mb-3 text-orange-700" size={22} />
-          <p className="text-2xl font-black text-slate-950">{analysis.totalSubjects || 0}</p>
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Subject groups</p>
+        <div className="border border-slate-200 bg-white p-3 md:p-4">
+          <BookOpen className="mb-2 text-orange-700 md:mb-3" size={20} />
+          <p className="text-xl font-black text-slate-950 md:text-2xl">{analysis.totalSubjects || 0}</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 md:text-xs">Subjects</p>
         </div>
       </div>
 
       <div className="border border-slate-200 bg-white">
-        <div className="border-b border-slate-200 p-4">
-          <h2 className="text-base font-black text-slate-950">Class and Subject Breakdown</h2>
-          <p className="text-sm text-slate-500">Each row is limited to the teacher's assigned class and subject scope.</p>
+        <div className="border-b border-slate-200 p-3 md:p-4">
+          <h2 className="text-sm font-black text-slate-950 md:text-base">Class and Subject Breakdown</h2>
+          <p className="mt-1 text-xs leading-5 text-slate-500 md:text-sm">Limited to the teacher's assigned class and subject scope.</p>
         </div>
 
         {subjectRows.length > 0 ? (
-          <div className="overflow-x-auto">
+          <>
+          <div className="block divide-y divide-slate-100 md:hidden">
+            {subjectRows.map((row) => (
+              <div key={`${row.classId}-${row.subject}`} className="p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-slate-950">{row.className}</p>
+                    <p className="mt-0.5 truncate text-xs font-semibold text-slate-600">{row.subject}</p>
+                  </div>
+                  <span className="shrink-0 rounded bg-slate-100 px-2 py-1 text-xs font-black text-slate-700">
+                    {row.learnerCount || 0}
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-slate-50 p-2">
+                    <p className="font-bold uppercase tracking-wider text-slate-400">Lessons</p>
+                    <p className="mt-1 font-black text-slate-900">{row.lessonCount || 0}</p>
+                  </div>
+                  <div className="bg-slate-50 p-2">
+                    <p className="font-bold uppercase tracking-wider text-slate-400">Weekly</p>
+                    <p className="mt-1 font-black text-slate-900">{formatMinutes(row.weeklyMinutes)}</p>
+                  </div>
+                  <div className="bg-slate-50 p-2">
+                    <p className="font-bold uppercase tracking-wider text-slate-400">Attendance</p>
+                    <p className="mt-1 inline-flex items-center gap-1 font-black text-emerald-700">
+                      <CheckCircle2 size={13} />
+                      {row.attendanceMarked || 0}/{row.classLearners || row.learnerCount || 0}
+                    </p>
+                  </div>
+                  <div className="bg-amber-50 p-2">
+                    <p className="font-bold uppercase tracking-wider text-amber-500">Pending</p>
+                    <p className="mt-1 font-black text-amber-700">{row.pendingAssessments || 0}</p>
+                  </div>
+                </div>
+                <p className="mt-3 inline-flex max-w-full items-center gap-2 text-xs font-semibold text-slate-600">
+                  <CalendarDays size={14} className="shrink-0" />
+                  <span className="truncate">{formatNextLesson(row.nextLesson)}</span>
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden overflow-x-auto md:block">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50">
                 <tr className="text-left text-[11px] font-black uppercase tracking-wider text-slate-500">
@@ -137,7 +183,7 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
                       {row.nextLesson ? (
                         <span className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
                           <CalendarDays size={14} />
-                          {[row.nextLesson.day, row.nextLesson.time].filter(Boolean).join(' at ') || 'Scheduled'}
+                          {formatNextLesson(row.nextLesson)}
                         </span>
                       ) : (
                         <span className="text-xs text-slate-400">No timetable slot</span>
@@ -159,8 +205,9 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
               </tbody>
             </table>
           </div>
+          </>
         ) : (
-          <div className="p-10">
+          <div className="p-6 md:p-10">
             <EmptyState
               icon={<Users size={44} />}
               title="No assigned learners found"
@@ -170,17 +217,19 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         {classes.map((classItem) => (
-          <div key={classItem.classId} className="border border-slate-200 bg-white p-4">
+          <div key={classItem.classId} className="border border-slate-200 bg-white p-3 md:p-4">
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-base font-black text-slate-950">{classItem.className}</h3>
-                <p className="text-xs font-semibold text-slate-500">{classItem.learnerCount} learners • {classItem.subjectCount} subjects</p>
+              <div className="min-w-0">
+                <h3 className="truncate text-sm font-black text-slate-950 md:text-base">{classItem.className}</h3>
+                <p className="text-xs font-semibold text-slate-500">{classItem.learnerCount} learners - {classItem.subjectCount} subjects</p>
               </div>
-              <span className="rounded bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600">{classItem.room}</span>
+              {classItem.room && (
+                <span className="shrink-0 rounded bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600">{classItem.room}</span>
+              )}
             </div>
-            <div className="mt-4 space-y-2">
+            <div className="mt-3 space-y-2 md:mt-4">
               {(classItem.subjects || []).map((subject) => (
                 <div key={subject.subject} className="border border-slate-100 bg-slate-50 p-3">
                   <div className="flex items-center justify-between gap-3">
