@@ -83,8 +83,8 @@ export function MobileAttendance() {
     });
   }, [dailyReport, pendingChanges]);
 
-  const filteredExceptions = useMemo(() => {
-    let list = exceptions;
+  const filteredLearners = useMemo(() => {
+    let list = dailyReport?.learners || [];
     if (exceptionFilter !== 'all') {
       list = list.filter(l => pendingChanges[l.id]?.status === exceptionFilter);
     }
@@ -96,7 +96,7 @@ export function MobileAttendance() {
       );
     }
     return list;
-  }, [exceptions, exceptionFilter, searchTerm, pendingChanges]);
+  }, [dailyReport, exceptionFilter, searchTerm, pendingChanges]);
 
   const allLearners = useMemo(() => {
     if (!dailyReport?.learners) return [];
@@ -109,6 +109,26 @@ export function MobileAttendance() {
   }, [dailyReport, searchTerm]);
 
   // ── actions ───────────────────────────────────────────────────────────────
+  const getClassLearnerCount = useCallback((classItem) => (
+    Number(
+      classItem?.learnerCount ??
+      classItem?.studentCount ??
+      classItem?._count?.learners ??
+      classItem?._count?.students ??
+      classItem?._count?.enrollments ??
+      0
+    ) || 0
+  ), []);
+
+  const getClassPresentCount = useCallback((classItem) => (
+    Number(
+      classItem?.presentCount ??
+      classItem?.attendancePresent ??
+      classItem?.attendanceSummary?.present ??
+      0
+    ) || 0
+  ), []);
+
   const handleSelectClass = useCallback(async (classItem) => {
     setIsLoading(true);
     setActiveClass(classItem);
@@ -249,8 +269,8 @@ export function MobileAttendance() {
                 key={getClassId(classItem)}
                 classItem={classItem}
                 onTake={handleSelectClass}
-                presentCount={0}
-                totalCount={classItem.learnerCount || classItem._count?.learners || 0}
+                presentCount={getClassPresentCount(classItem)}
+                totalCount={getClassLearnerCount(classItem)}
               />
             ))}
           </div>
@@ -330,19 +350,22 @@ export function MobileAttendance() {
               </div>
             )}
 
-            {/* ── Exceptions section (only when mark-all is done) ── */}
+            {/* ── Editable learner register after mark-all ── */}
             {allMarkedPresent && (
               <div className="px-4 pb-4">
                 <div className="flex items-center gap-2 mb-3">
                   <h2 className="text-base font-bold text-gray-900 flex-1">
-                    Exceptions
+                    Learners
                   </h2>
                   {exceptions.length > 0 && (
                     <span className="bg-rose-100 text-rose-700 text-xs font-bold px-2 py-0.5 rounded-full">
-                      {exceptions.length}
+                      {exceptions.length} exceptions
                     </span>
                   )}
                 </div>
+                <p className="text-xs text-gray-500 -mt-2 mb-3">
+                  Review the register and tap the few learners who are absent, late, sick, or excused.
+                </p>
 
                 {/* Search */}
                 <div className="relative mb-3">
@@ -368,9 +391,15 @@ export function MobileAttendance() {
                 <div className="flex gap-2 overflow-x-auto pb-1 mb-3 hide-scrollbar-completely">
                   <FilterChip
                     label="All"
-                    count={exceptions.length}
+                    count={stats.total}
                     isActive={exceptionFilter === 'all'}
                     onClick={() => setExceptionFilter('all')}
+                  />
+                  <FilterChip
+                    label="Present"
+                    count={stats.present}
+                    isActive={exceptionFilter === 'PRESENT'}
+                    onClick={() => setExceptionFilter('PRESENT')}
                   />
                   {EXCEPTION_STATUSES.map(s => {
                     const count = exceptions.filter(l => pendingChanges[l.id]?.status === s).length;
@@ -387,19 +416,19 @@ export function MobileAttendance() {
                   })}
                 </div>
 
-                {/* Exception list */}
-                {filteredExceptions.length === 0 ? (
+                {/* Learner list */}
+                {filteredLearners.length === 0 ? (
                   <div className="text-center py-8">
-                    <div className="w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-3">
-                      <CheckCheck size={22} className="text-emerald-500" />
+                    <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <Search size={20} className="text-gray-400" />
                     </div>
                     <p className="text-sm font-semibold text-gray-600">
-                      {searchTerm ? 'No results' : 'No exceptions — all present!'}
+                      No learners match this filter
                     </p>
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {filteredExceptions.map(learner => (
+                    {filteredLearners.map(learner => (
                       <AttendanceExceptionCard
                         key={learner.id}
                         learner={learner}

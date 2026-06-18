@@ -614,7 +614,7 @@ export class AttendanceController {
     const attendanceRecords = await prisma.attendance.findMany({
       where: {
         classId: classId as string,
-        date: queryDate,
+        date: utcQueryDate,
       },
     });
 
@@ -633,7 +633,7 @@ export class AttendanceController {
     res.json({
       success: true,
       data: {
-        date: queryDate,
+        date: utcQueryDate,
         classId,
         totalLearners: learners.length,
         marked: attendanceRecords.length,
