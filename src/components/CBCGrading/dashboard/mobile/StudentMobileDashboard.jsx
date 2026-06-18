@@ -48,7 +48,7 @@ const StudentMobileDashboard = ({ user, onNavigate }) => {
   return (
     <div className="pb-20">
       {/* Greeting banner */}
-      <GreetingToast user={user} fallbackName="Student" description="Learning Dashboard · Your Progress" />
+      <GreetingToast user={user} fallbackName="Student" description="Learning Dashboard · Your Progress" onNavigate={onNavigate} />
 
       {/* Student Metrics */}
       <div className="px-3 py-4 space-y-3">

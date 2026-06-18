@@ -49,7 +49,7 @@ const TeacherMobileDashboard = ({ user, onNavigate }) => {
   return (
     <div className="pb-20">
       {/* Greeting banner */}
-      <GreetingToast user={user} fallbackName="Teacher" description="Teaching Dashboard · Daily Workflow" />
+      <GreetingToast user={user} fallbackName="Teacher" description="Teaching Dashboard · Daily Workflow" onNavigate={onNavigate} />
 
       {/* Teaching Metrics */}
       <div className="px-3 py-4 space-y-3">

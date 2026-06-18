@@ -69,7 +69,7 @@ const Dashboard = ({ learners, teachers, user, onNavigate }) => {
       }}
     >
       <div className="space-y-6">
-        <DashboardGreetingBanner user={user} />
+        <DashboardGreetingBanner user={user} onNavigate={onNavigate} />
 
         <DashboardSection id="onboarding-hint" controls={sectionControls}>
         {showEmptyHint && (

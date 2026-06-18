@@ -58,7 +58,7 @@ const ParentMobileDashboard = ({ user, onNavigate }) => {
   return (
     <div className="pb-20">
       {/* Greeting banner */}
-      <GreetingToast user={user} fallbackName="Parent" description="Family Dashboard · Children's Overview" />
+      <GreetingToast user={user} fallbackName="Parent" description="Family Dashboard · Children's Overview" onNavigate={onNavigate} />
 
       {/* Parent Metrics */}
       <div className="px-3 py-4 space-y-3">

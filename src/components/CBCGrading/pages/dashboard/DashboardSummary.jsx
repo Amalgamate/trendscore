@@ -1,7 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowUp, ArrowDown, Clock, Loader2, Wifi, WifiOff, X } from 'lucide-react';
-import { hrAPI } from '../../../../services/api';
-import { syncCurrentUserClockInStatus } from '../../../../utils/teacherClockIn';
+import React, { useState } from 'react';
+import { ArrowUp, ArrowDown, CheckCircle2, Sparkles, UserCircle, X } from 'lucide-react';
 
 /**
  * Flat solid-color palette — exact colors from the receptionist dashboard screenshot.
@@ -54,110 +52,44 @@ const getDisplayName = (user, fallback = 'SYSTEM') => {
   return String(raw).trim().split(' ')[0] || fallback;
 };
 
-const CLOCK_IN_EXCLUDED_ROLES = new Set(['PARENT', 'STUDENT']);
+const formatRoleName = (role) => String(role || 'USER')
+  .split('_')
+  .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+  .join(' ');
 
-const canUseClockIn = (user) => {
-  const role = String(user?.role || '').toUpperCase();
-  return !!user && !!role && !CLOCK_IN_EXCLUDED_ROLES.has(role);
-};
+const resolveProfileAssistant = (user) => {
+  const checks = [
+    {
+      key: 'firstName',
+      label: 'First name',
+      missing: !user?.firstName && !user?.name,
+      suggestion: 'Add your first name so greetings, approvals, and messages address you correctly.',
+    },
+    {
+      key: 'lastName',
+      label: 'Last name',
+      missing: !user?.lastName && !String(user?.name || '').trim().includes(' '),
+      suggestion: 'Add your surname so records and staff communication identify you clearly.',
+    },
+    {
+      key: 'phone',
+      label: 'Phone number',
+      missing: !user?.phone,
+      suggestion: 'Add a reachable phone number for urgent school follow-ups and account support.',
+    },
+    {
+      key: 'profilePicture',
+      label: 'Profile image',
+      missing: !user?.profilePicture && !user?.profileImage,
+      suggestion: 'Add a profile photo or image URL so other users can recognize the account faster.',
+    },
+  ];
 
-const DesktopClockInButton = ({ user }) => {
-  const [status, setStatus] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
-  const [statusLoaded, setStatusLoaded] = useState(false);
+  const missingItems = checks.filter((item) => item.missing);
+  const completed = checks.length - missingItems.length;
+  const score = Math.round((completed / checks.length) * 100);
 
-  useEffect(() => {
-    let active = true;
-    const refresh = async () => {
-      const nextStatus = await syncCurrentUserClockInStatus(user);
-      if (active) {
-        setStatus(nextStatus);
-        setStatusLoaded(true);
-      }
-    };
-    refresh();
-    const handleClockChange = () => refresh();
-    window.addEventListener('teacherClockInChanged', handleClockChange);
-    window.addEventListener('storage', handleClockChange);
-    return () => {
-      active = false;
-      window.removeEventListener('teacherClockInChanged', handleClockChange);
-      window.removeEventListener('storage', handleClockChange);
-    };
-  }, [user]);
-
-  const handleClockAction = async () => {
-    if (submitting || !statusLoaded) return;
-    setSubmitting(true);
-    setError(null);
-
-    const clockedIn = !!status?.clockedIn;
-    const payload = {
-      timestamp: new Date().toISOString(),
-      source: 'desktop-dashboard',
-      metadata: { role: user?.role }
-    };
-    const response = clockedIn
-      ? await hrAPI.clockOutStaff(payload)
-      : await hrAPI.clockInStaff(payload);
-
-    if (!response?.success) {
-      setError({
-        message: response?.message || (clockedIn ? 'Failed to clock out.' : 'Failed to clock in.'),
-        reasonCode: response?.reasonCode,
-        ipCheckResult: response?.ipCheckResult
-      });
-      setSubmitting(false);
-      return;
-    }
-
-    const nextStatus = await syncCurrentUserClockInStatus(user);
-    setStatus(nextStatus);
-    window.dispatchEvent(new CustomEvent('teacherClockInChanged', { detail: nextStatus?.record || null }));
-    setSubmitting(false);
-  };
-
-  const clockedIn = !!status?.clockedIn;
-  const ipDenied = error?.reasonCode === 'IP_DENIED' || error?.message?.toLowerCase?.().includes('wi-fi');
-  const statusMessage = !statusLoaded
-    ? 'Checking attendance status'
-    : ipDenied
-      ? error?.message || 'Not on school Wi-Fi'
-      : error
-        ? error.message
-        : clockedIn
-          ? 'Clocked in successfully'
-          : 'Network verified when you clock in';
-
-  return (
-    <div className="flex max-w-72 flex-col items-end gap-1">
-      <button
-        type="button"
-        onClick={handleClockAction}
-        disabled={submitting || !statusLoaded}
-        className={`h-9 px-4 border text-[11px] font-black uppercase tracking-wider transition flex items-center gap-2 ${
-          submitting || !statusLoaded
-            ? 'bg-white/20 border-white/20 text-white/60 cursor-not-allowed'
-            : clockedIn
-              ? 'bg-white text-rose-700 border-white hover:bg-white/90'
-              : 'bg-white text-orange-700 border-white hover:bg-white/90'
-        }`}
-      >
-        {submitting || !statusLoaded ? <Loader2 size={13} className="animate-spin" /> : <Clock size={13} />}
-        {submitting ? 'Saving' : !statusLoaded ? 'Checking' : clockedIn ? 'Clock Out' : 'Clock In'}
-      </button>
-      <span
-        title={statusMessage}
-        className={`max-w-full truncate text-[10px] font-semibold flex items-center gap-1 ${
-          ipDenied || error ? 'text-red-200' : clockedIn ? 'text-emerald-100' : 'text-white/70'
-        }`}
-      >
-        {ipDenied ? <WifiOff size={10} /> : <Wifi size={10} />}
-        {statusMessage}
-      </span>
-    </div>
-  );
+  return { missingItems, score, completed, total: checks.length };
 };
 
 /**
@@ -171,26 +103,28 @@ const DesktopClockInButton = ({ user }) => {
  *   user          — user object
  *   fallbackName  — name to show if user has no name
  *   description   — optional subtitle text
- *   clockInSlot   — optional ReactNode rendered on the right side (clock-in button)
+ *   onNavigate    — optional navigation callback for profile completion
  */
 export const GreetingToast = ({
   user,
   fallbackName = 'SYSTEM',
   description,
-  clockInSlot,
-  showClockIn,
+  onNavigate,
 }) => {
-  const clockInEnabled = showClockIn ?? canUseClockIn(user);
-  const hasClockInAction = Boolean(clockInSlot) || clockInEnabled;
-
   // Version suffix forces the banner to re-show after a code update.
   // Bump this string whenever you want all users to see it again.
-  const storageKey = `greeting_dismissed_v2_${new Date().toDateString()}`;
+  const storageKey = `greeting_dismissed_v3_${new Date().toDateString()}`;
+  const profileStorageKey = `profile_assistant_dismissed_v1_${user?.id || user?.email || 'user'}`;
+  const profileAssistant = resolveProfileAssistant(user);
 
   // Read synchronously so there's no flash-of-hidden-banner on mount.
   const [visible, setVisible] = useState(() => {
-    if (hasClockInAction) return true;
     try { return !sessionStorage.getItem(storageKey); }
+    catch { return true; }
+  });
+  const [profilePromptOpen, setProfilePromptOpen] = useState(() => {
+    if (!profileAssistant.missingItems.length) return false;
+    try { return !sessionStorage.getItem(profileStorageKey); }
     catch { return true; }
   });
 
@@ -199,48 +133,140 @@ export const GreetingToast = ({
     try { sessionStorage.setItem(storageKey, '1'); } catch { /* ignore */ }
   };
 
-  if (!visible) return null;
-
   const greeting = getGreeting();
   const name = getDisplayName(user, fallbackName);
   const subtitle = description ?? 'Here is your institutional summary for today.';
-  const resolvedClockInSlot = clockInSlot || (clockInEnabled ? <DesktopClockInButton user={user} /> : null);
+  const roleLabel = formatRoleName(user?.role);
+  const completionLabel = `${profileAssistant.score}% profile`;
+
+  const dismissProfilePrompt = () => {
+    setProfilePromptOpen(false);
+    try { sessionStorage.setItem(profileStorageKey, '1'); } catch { /* ignore */ }
+  };
+
+  const openProfile = () => {
+    dismissProfilePrompt();
+    if (typeof onNavigate === 'function') {
+      onNavigate('settings-profile');
+      return;
+    }
+    window.location.hash = '#settings-profile';
+  };
 
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      style={{ backgroundColor: '#ea580c' }}
-      className="w-full flex items-center gap-3 px-5 py-4 shadow-sm"
-    >
-      {/* ── Greeting text ── */}
-      <div className="flex-1 min-w-0">
-        <p className="text-base font-black text-white leading-tight tracking-tight">
-          {greeting}, {name}
-        </p>
-        <p className="mt-0.5 text-[11px] font-semibold text-white/75 leading-snug uppercase tracking-wider">
-          {subtitle}
-        </p>
-      </div>
+    <>
+      {visible && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="w-full border-b border-orange-200 bg-white px-4 py-4 shadow-sm sm:px-6"
+        >
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 text-orange-700">
+                  <Sparkles size={16} />
+                </span>
+                <p className="text-lg font-black leading-tight tracking-tight text-slate-950 sm:text-xl">
+                  {greeting}, {name}
+                </p>
+              </div>
+              <p className="mt-2 max-w-2xl text-xs font-semibold uppercase tracking-wider text-slate-500 sm:text-sm">
+                {subtitle}
+              </p>
+            </div>
 
-      {/* ── Optional clock-in slot ── */}
-      {resolvedClockInSlot && (
-        <div className="shrink-0">
-          {resolvedClockInSlot}
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <span className="inline-flex items-center gap-2 border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-slate-700">
+                <UserCircle size={14} />
+                {roleLabel}
+              </span>
+              {profileAssistant.missingItems.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setProfilePromptOpen(true)}
+                  className="inline-flex items-center gap-2 border border-orange-200 bg-orange-50 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-orange-700 hover:bg-orange-100"
+                >
+                  <Sparkles size={14} />
+                  {completionLabel}
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-2 border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-emerald-700">
+                  <CheckCircle2 size={14} />
+                  Complete profile
+                </span>
+              )}
+              <button
+                onClick={dismiss}
+                aria-label="Dismiss greeting"
+                className="flex h-9 w-9 shrink-0 items-center justify-center border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800"
+              >
+                <X size={14} strokeWidth={2.5} />
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Clock-in controls must remain available throughout the session. */}
-      {!hasClockInAction && (
-        <button
-          onClick={dismiss}
-          aria-label="Dismiss greeting"
-          className="shrink-0 flex items-center justify-center w-7 h-7 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
-        >
-          <X size={14} strokeWidth={2.5} />
-        </button>
+      {profilePromptOpen && profileAssistant.missingItems.length > 0 && (
+        <div className="fixed inset-0 z-[70] flex items-end bg-slate-950/45 p-3 sm:items-center sm:justify-center">
+          <div className="w-full max-w-lg border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-orange-600">Profile Assistant</p>
+                <h2 className="mt-1 text-lg font-black text-slate-950">Complete your profile</h2>
+                <p className="mt-1 text-sm leading-5 text-slate-600">
+                  TrendScore AI can help better when your account details are complete.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={dismissProfilePrompt}
+                className="flex h-9 w-9 shrink-0 items-center justify-center border border-slate-200 text-slate-500 hover:bg-slate-50"
+                aria-label="Close profile assistant"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="px-5 py-4">
+              <div className="mb-4 border border-orange-100 bg-orange-50 px-3 py-2">
+                <p className="text-sm font-black text-orange-800">{profileAssistant.score}% complete</p>
+                <p className="mt-1 text-xs font-semibold text-orange-700">
+                  {profileAssistant.missingItems.length} item{profileAssistant.missingItems.length === 1 ? '' : 's'} need attention.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                {profileAssistant.missingItems.map((item) => (
+                  <div key={item.key} className="border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-black text-slate-900">{item.label}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">{item.suggestion}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-200 px-5 py-4 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={dismissProfilePrompt}
+                className="h-10 border border-slate-300 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"
+              >
+                Later
+              </button>
+              <button
+                type="button"
+                onClick={openProfile}
+                className="h-10 bg-orange-600 px-4 text-sm font-black text-white hover:bg-orange-700"
+              >
+                Complete Profile
+              </button>
+            </div>
+          </div>
+        </div>
       )}
-    </div>
+    </>
   );
 };
 

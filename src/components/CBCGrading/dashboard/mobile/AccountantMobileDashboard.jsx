@@ -49,7 +49,7 @@ const AccountantMobileDashboard = ({ user, onNavigate }) => {
   return (
     <div className="pb-20">
       {/* Greeting banner */}
-      <GreetingToast user={user} fallbackName="Accountant" description="Finance Dashboard · Collection Overview" />
+      <GreetingToast user={user} fallbackName="Accountant" description="Finance Dashboard · Collection Overview" onNavigate={onNavigate} />
 
       {/* Financial Metrics */}
       <div className="px-3 py-4 space-y-3">
