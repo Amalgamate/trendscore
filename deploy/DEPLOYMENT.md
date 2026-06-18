@@ -33,7 +33,7 @@ Configure these in **Settings → Environments** with required reviewers where n
 
 | Environment | Used for |
 |-------------|----------|
-| `deploy-demo` | Manual demo/canary deployment |
+| `deploy-demo` | Demo/canary deployment through Promote Release (`school_slug=demo`, `environment=demo`) |
 | `deploy-pilot` | Pilot schools (`tier: "pilot"` in manifest) |
 | `deploy-production-school` | Single school promote |
 

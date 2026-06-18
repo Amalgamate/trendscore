@@ -291,7 +291,7 @@ TrendScore is maintained as a monorepo.
 | `/public` | Public assets, app metadata, service worker, and web manifest. |
 | `/server` | Express API, Prisma models, services, controllers, routes, and backend jobs. |
 | `/deploy` | Deployment documentation and instance manifest. |
-| `.github/workflows` | CI, image publishing, demo deployment, and promotion workflows. |
+| `.github/workflows` | CI, image publishing, and school-instance promotion workflows. |
 
 ## Tech Stack
 
@@ -355,8 +355,8 @@ npm run dev
 
 Deployment is designed around safe promotion rather than pushing every instance at once.
 
-- Pushes to `main` build the application and deploy the demo/canary path.
-- Production, pilot, or individual school deployments use the Promote Release workflow.
+- Pushes to `main` build and publish Docker images; they do not deploy schools automatically.
+- Demo, production, pilot, or individual school deployments use the Promote Release workflow.
 - School instances are tracked in `deploy/instances.manifest.json`.
 - Deployment details live in `deploy/DEPLOYMENT.md` and `deploy/WORKFLOW.md`.
 
