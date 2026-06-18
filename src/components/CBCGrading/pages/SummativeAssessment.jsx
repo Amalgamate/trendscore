@@ -210,6 +210,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
   const [stagedGradeAreas, setStagedGradeAreas] = useState([]);
   const [availableTerms, setAvailableTerms] = useState([]);
   const [availableStreams, setAvailableStreams] = useState([]);
+  const [contextualStreams, setContextualStreams] = useState([]);
 
   // Staged Filter State - Only apply when green button clicked
   const [stagedGrade, setStagedGrade] = useState(() => localStorage.getItem('cbc_summative_stagedGrade') || '');
@@ -427,6 +428,38 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     loadOptions();
   }, [loadOptions]);
 
+  useEffect(() => {
+    const loadContextualStreams = async () => {
+      if (!stagedGrade || !stagedTerm || !stagedAcademicYear) {
+        setContextualStreams([]);
+        return;
+      }
+
+      try {
+        const response = await classAPI.getAll({
+          grade: toCanonicalGrade(stagedGrade),
+          academicYear: stagedAcademicYear,
+          term: stagedTerm,
+          active: true,
+        });
+        const rows = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response)
+            ? response
+            : [];
+        const streams = rows
+          .map(cls => String(cls?.stream || '').trim())
+          .filter(Boolean);
+        setContextualStreams([...new Set(streams)]);
+      } catch (error) {
+        console.error('Error loading contextual streams:', error);
+        setContextualStreams([]);
+      }
+    };
+
+    loadContextualStreams();
+  }, [stagedGrade, stagedTerm, stagedAcademicYear]);
+
   // Alert teacher if they have no assignments
   useEffect(() => {
     if (!teacherWorkload.loading && teacherWorkload.isTeacher && !teacherWorkload.hasAnyAssignments) {
@@ -569,16 +602,32 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     });
   }, [stagedFilteredTestsBySelection, stagedLearningArea]);
 
+  const streamOptions = useMemo(() => {
+    const options = contextualStreams.length > 0 ? contextualStreams : availableStreams;
+    return [...new Set(options.map(stream => String(stream || '').trim()).filter(Boolean))];
+  }, [availableStreams, contextualStreams]);
+
+  useEffect(() => {
+    if (!stagedStream || streamOptions.length === 0) return;
+    if (streamOptions.includes(stagedStream)) return;
+
+    setStagedStream('');
+    setup.updateStream('');
+    appliedStreamRef.current = '';
+    localStorage.removeItem('cbc_summative_appliedStream');
+    resetStagedLearningAreaAndTest();
+  }, [stagedStream, streamOptions, setup, resetStagedLearningAreaAndTest]);
+
   const loadDisabledReason = useMemo(() => {
     if (!stagedGrade) return 'Select grade first';
-    if (availableStreams.length > 0 && !stagedStream) return 'Select stream first';
+    if (streamOptions.length > 0 && !stagedStream) return 'Select stream first';
     if (!stagedTerm) return 'Select term first';
     if (!stagedAcademicYear) return 'Select academic year first';
     if (!stagedTestType) return 'Select exam name first';
     if (!stagedLearningArea) return 'Select learning area first';
     if (!stagedTestId) return 'Select test first';
     return '';
-  }, [availableStreams.length, stagedAcademicYear, stagedGrade, stagedLearningArea, stagedStream, stagedTerm, stagedTestId, stagedTestType]);
+  }, [streamOptions.length, stagedAcademicYear, stagedGrade, stagedLearningArea, stagedStream, stagedTerm, stagedTestId, stagedTestType]);
 
   const canLoadAssessment = !loadDisabledReason;
 
@@ -1521,12 +1570,12 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
             <select
               value={stagedStream}
               onChange={(e) => setStagedStream(e.target.value)}
-              disabled={!stagedGrade || availableStreams.length === 0}
+              disabled={!stagedGrade || streamOptions.length === 0}
               className="h-9 px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-purple appearance-none cursor-pointer hover:border-slate-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-50 w-24"
               title="Select Stream"
             >
-              <option value="">{availableStreams.length === 0 ? 'No Streams' : '— Stream —'}</option>
-              {availableStreams.map(s => (
+              <option value="">{streamOptions.length === 0 ? 'No Streams' : '— Stream —'}</option>
+              {streamOptions.map(s => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
