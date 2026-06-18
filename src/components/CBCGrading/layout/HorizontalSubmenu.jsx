@@ -1,8 +1,6 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { useNavigation } from '../hooks/useNavigation';
-import { useFeeActions } from '../../../contexts/FeeActionsContext';
-import { Plus, Upload, Download, ChevronDown, BarChart3, Users } from 'lucide-react';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const flattenLeafItems = (items = []) =>
@@ -176,17 +174,6 @@ const GroupDropdown = ({ group, currentPage, onNavigate, color }) => {
 
 const HorizontalSubmenu = ({ currentPage, onNavigate }) => {
   const { navSections } = useNavigation();
-  const { feeActions } = useFeeActions();
-
-  // Show fee action links only while on the fee collection page
-  const showFeeActions = [
-    'fees-overview',
-    'fees-structure',
-    'fees-types',
-    'fees-waivers',
-    'fees-statements',
-    'fees-unmatched'
-  ].includes(currentPage) && feeActions;
 
   const activeSection = useMemo(() => {
     const byPage = (navSections || []).find((section) => {
@@ -253,118 +240,6 @@ const HorizontalSubmenu = ({ currentPage, onNavigate }) => {
               </React.Fragment>
             ))}
 
-        {/* ── Fee collection action links — right-aligned ─────────────── */}
-        {showFeeActions && (
-          <>
-            {/* Metrics Toggle */}
-            {feeActions.metricsProps && (
-              <button
-                onClick={feeActions.metricsProps.toggle}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
-                  feeActions.metricsProps.show 
-                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm' 
-                  : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                }`}
-              >
-                <BarChart3 size={14} />
-                Metrics
-                <ChevronDown 
-                  size={14} 
-                  className={`transition-transform duration-200 ${feeActions.metricsProps.show ? 'rotate-180' : ''}`} 
-                />
-              </button>
-            )}
-
-            <span className="h-4 w-px bg-gray-200 ml-auto mr-1" />
-
-            {/* Create Invoice */}
-            <button
-              type="button"
-              onClick={feeActions.onCreate}
-              className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-md text-blue-600 hover:bg-blue-50 transition-colors"
-              title="Create Invoice"
-            >
-              <Plus size={13} strokeWidth={2.5} />
-              New Invoice
-            </button>
-
-            {feeActions.onBulkCreate && (
-              <>
-                <span className="h-4 w-px bg-gray-200" />
-                <button
-                  type="button"
-                  onClick={feeActions.onBulkCreate}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-md text-indigo-600 hover:bg-indigo-50 transition-colors"
-                  title="Bulk Create Invoices"
-                >
-                  <Users size={13} strokeWidth={2.5} />
-                  Bulk Invoices
-                </button>
-              </>
-            )}
-
-            <span className="h-4 w-px bg-gray-200" />
-
-            {feeActions.onImport && (
-              <>
-                {/* Import Fees */}
-                <button
-                  type="button"
-                  onClick={feeActions.onImport}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-md text-emerald-600 hover:bg-emerald-50 transition-colors"
-                  title="Import Fees"
-                >
-                  <Upload size={13} strokeWidth={2.5} />
-                  Import
-                </button>
-                <span className="h-4 w-px bg-gray-200" />
-              </>
-            )}
-
-            {/* Export Data */}
-            {feeActions.onExport && (
-              <button
-                type="button"
-                onClick={feeActions.onExport}
-                className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-md text-blue-600 hover:bg-blue-50 transition-colors"
-                title="Export Data to Excel"
-              >
-                <Download size={13} strokeWidth={2.5} />
-                Export
-              </button>
-            )}
-
-            {feeActions.onExportPdf && (
-              <>
-                <span className="h-4 w-px bg-gray-200" />
-                <button
-                  type="button"
-                  onClick={feeActions.onExportPdf}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-md text-gray-700 hover:bg-gray-100 transition-colors"
-                  title="Download PDF"
-                >
-                  <Download size={13} strokeWidth={2.5} />
-                  PDF
-                </button>
-              </>
-            )}
-
-            {feeActions.onExportExcel && (
-              <>
-                <span className="h-4 w-px bg-gray-200" />
-                <button
-                  type="button"
-                  onClick={feeActions.onExportExcel}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-md text-emerald-700 hover:bg-emerald-50 transition-colors"
-                  title="Download Excel"
-                >
-                  <Download size={13} strokeWidth={2.5} />
-                  Excel
-                </button>
-              </>
-            )}
-          </>
-        )}
       </div>
     </div>
   );
