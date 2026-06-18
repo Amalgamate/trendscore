@@ -67,6 +67,7 @@ export function AttendanceSummaryCard({
   icon: Icon,
   compact = false,
   className,
+  percentageLabel = 'of class',
 }) {
   const styles = VARIANT_STYLES[variant] || VARIANT_STYLES.total;
   const percentage = total && total > 0 ? Math.round((Number(value) / total) * 100) : null;
@@ -107,7 +108,7 @@ export function AttendanceSummaryCard({
       {percentage !== null && (
         <div className="mt-2 space-y-1">
           <div className="flex justify-between text-xs text-gray-400">
-            <span>{percentage}% of class</span>
+            <span>{percentage}% {percentageLabel}</span>
           </div>
           <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
             <div
