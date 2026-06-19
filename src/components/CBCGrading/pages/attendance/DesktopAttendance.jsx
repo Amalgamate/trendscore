@@ -295,21 +295,43 @@ export function DesktopAttendance() {
   }, [activeClass, activeDate, policy.lockLabel, showError, showSuccess, user?.id, user?.userId]);
 
   const handleApproveUnlock = useCallback(async () => {
-    if (!unlockRequest?.id) return;
+    if (!activeClass) return;
     setIsApprovingUnlock(true);
     try {
-      const response = await approvalAPI.approve(unlockRequest.id, {
+      let requestToApprove = unlockRequest;
+      if (!requestToApprove?.id) {
+        const submitResponse = await approvalAPI.submit({
+          module: 'ATTENDANCE',
+          requestType: 'ATTENDANCE_UNLOCK',
+          metadata: {
+            classId: getClassId(activeClass),
+            className: activeClass.name,
+            date: activeDate,
+            lockLabel: policy.lockLabel,
+            teacherId: user?.id || user?.userId,
+          },
+          comments: `Direct unlock attendance for ${activeClass.name} on ${activeDate}`,
+        });
+        requestToApprove = submitResponse?.data || submitResponse;
+        setUnlockRequested(true);
+      }
+
+      if (!requestToApprove?.id) {
+        throw new Error('Invalid unlock request response.');
+      }
+
+      const response = await approvalAPI.approve(requestToApprove.id, {
         comment: 'Approved from attendance register.',
       });
       const request = response?.data || response;
-      setUnlockRequest(request || { ...unlockRequest, status: 'APPROVED' });
+      setUnlockRequest(request || { ...requestToApprove, status: 'APPROVED' });
       showSuccess('Attendance unlock approved.');
     } catch (err) {
       showError(err?.message || 'Failed to approve attendance unlock.');
     } finally {
       setIsApprovingUnlock(false);
     }
-  }, [showError, showSuccess, unlockRequest]);
+  }, [activeClass, activeDate, policy.lockLabel, showError, showSuccess, unlockRequest, user?.id, user?.userId]);
 
   const handleSave = useCallback(async () => {
     if (!activeClass) return;
@@ -569,14 +591,20 @@ export function DesktopAttendance() {
                           : 'Mark late learners individually and add the lateness excuse.'}
                       </p>
                     </div>
-                    {canApproveAttendanceUnlock && unlockRequest?.status === 'PENDING' ? (
+                    {canApproveAttendanceUnlock ? (
                       <button
                         type="button"
                         onClick={handleApproveUnlock}
-                        disabled={isApprovingUnlock}
+                        disabled={isApprovingUnlock || isLoadingUnlockRequest || isAttendanceUnlocked}
                         className="h-8 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white disabled:opacity-60"
                       >
-                        {isApprovingUnlock ? 'Approving...' : 'Approve Unlock'}
+                        {isAttendanceUnlocked
+                          ? 'Unlock active'
+                          : isApprovingUnlock
+                            ? 'Unlocking...'
+                            : unlockRequest?.status === 'PENDING'
+                              ? 'Approve Unlock'
+                              : 'Unlock Attendance'}
                       </button>
                     ) : (
                       <button
