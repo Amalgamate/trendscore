@@ -4,6 +4,7 @@ import { verifyAccessToken } from '../utils/jwt.util';
 import { ApiError } from '../utils/error.util';
 import { Role } from '../config/permissions';
 import { normalizeRole, getCanonicalRoles } from '../utils/roleNormalizer';
+import { isTokenGloballyInvalidated } from '../services/auth-session.service';
 
 export type { AuthRequest };
 
@@ -27,6 +28,9 @@ export const authenticate = async (
     }
 
     const decoded = verifyAccessToken(token);
+    if (await isTokenGloballyInvalidated(decoded)) {
+      throw new ApiError(401, 'Session invalidated by administrator').withCode('FORCE_LOGOUT');
+    }
 
     // Normalize roles exactly once at the auth boundary.
     // From this point req.user.role and req.user.roles are always canonical —
@@ -78,6 +82,9 @@ export const optionalAuthenticate = async (
     }
 
     const decoded = verifyAccessToken(token);
+    if (await isTokenGloballyInvalidated(decoded)) {
+      return next();
+    }
 
     // Mirror authenticate(): normalize at the boundary so all downstream
     // code sees canonical roles whether or not auth was required.

@@ -10,6 +10,7 @@ interface JWTPayload {
   role: Role;
   roles?: Role[];
   institutionType: InstitutionType;
+  iat?: number;
 }
 
 interface User {
@@ -50,6 +51,6 @@ export const verifyAccessToken = (token: string): JWTPayload => {
   return jwt.verify(token, process.env.JWT_SECRET!) as JWTPayload;
 };
 
-export const verifyRefreshToken = (token: string): { userId: string } => {
-  return jwt.verify(token, process.env.JWT_REFRESH_SECRET!) as { userId: string };
+export const verifyRefreshToken = (token: string): { userId: string; iat?: number } => {
+  return jwt.verify(token, process.env.JWT_REFRESH_SECRET!) as { userId: string; iat?: number };
 };

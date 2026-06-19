@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -168,12 +168,12 @@ function PolicyModal({ onClose }) {
 
 function OnboardingContent({ screen }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col px-6 pb-5 pt-4">
-      <div className="flex flex-1 items-center justify-center">
+    <div className="flex min-h-0 flex-1 flex-col px-6 pb-5 pt-3">
+      <div className="flex min-h-[260px] flex-1 items-center justify-center">
         <img
           src={screen.image}
           alt=""
-          className="max-h-[38vh] w-full max-w-sm object-contain"
+          className="h-full max-h-[40dvh] w-full max-w-sm object-contain"
           draggable="false"
         />
       </div>
@@ -201,7 +201,7 @@ function OnboardingContent({ screen }) {
 
 function ConsentContent({ accepted, setAccepted, onViewPolicy }) {
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-5">
+    <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-4">
       <div className="mx-auto flex max-w-md flex-col items-center text-center">
         <img src="/splash/trendscore-logo.png" alt="TrendSCORE" className="h-16 w-16 object-contain" />
         <div className="mt-5 space-y-3">
@@ -270,6 +270,33 @@ function MobileOnboardingFlow({ onComplete }) {
   const currentScreen = onboardingScreens[step];
   const progressItems = useMemo(() => [...onboardingScreens, { headline: 'Consent' }], []);
 
+  useEffect(() => {
+    let meta = document.querySelector('meta[name="theme-color"]');
+    const createdThemeMeta = !meta;
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.setAttribute('name', 'theme-color');
+      document.head.appendChild(meta);
+    }
+
+    const previousThemeColor = meta?.getAttribute('content');
+    const previousBodyBackground = document.body.style.backgroundColor;
+
+    if (meta) {
+      meta.setAttribute('content', '#ffffff');
+    }
+    document.body.style.backgroundColor = '#ffffff';
+
+    return () => {
+      if (meta && previousThemeColor) {
+        meta.setAttribute('content', previousThemeColor);
+      } else if (meta && createdThemeMeta) {
+        meta.remove();
+      }
+      document.body.style.backgroundColor = previousBodyBackground;
+    };
+  }, []);
+
   const handleNext = () => {
     if (!isConsentStep) {
       setStep((current) => current + 1);
@@ -282,9 +309,12 @@ function MobileOnboardingFlow({ onComplete }) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-950">
-      <div className="mx-auto flex min-h-screen w-full max-w-lg flex-col bg-white shadow-2xl shadow-slate-200/60">
-        <header className="flex shrink-0 items-center justify-between px-5 pb-3 pt-5">
+    <div className="min-h-[100dvh] w-full overflow-hidden bg-white text-slate-950">
+      <div className="flex min-h-[100dvh] w-full flex-col bg-white">
+        <header
+          className="flex shrink-0 items-center justify-between px-5 pb-3"
+          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.25rem)' }}
+        >
           <button
             type="button"
             onClick={() => setStep((current) => Math.max(0, current - 1))}
@@ -315,7 +345,10 @@ function MobileOnboardingFlow({ onComplete }) {
           )}
         </main>
 
-        <footer className="shrink-0 border-t border-slate-100 bg-white px-5 py-4">
+        <footer
+          className="shrink-0 border-t border-slate-100 bg-white px-5 pt-4"
+          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}
+        >
           <div className="mb-4 flex items-center justify-center gap-2">
             {progressItems.map((item, index) => (
               <span

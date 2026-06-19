@@ -106,8 +106,13 @@ function Auth({ onAuthSuccess, brandingSettings, basePath = '/auth' }) {
     return null;
   }
 
+  const isMobileOnboardingActive = view === 'login' && isMobile && showMobileOnboarding;
   const layoutClass = showBlobBackground(view) ? 'bg-brand-purple/5 flex items-center justify-center p-4' : '';
-  const contentClass = FULL_VIEWS.includes(view) ? 'w-full h-screen' : 'relative z-10 w-full flex items-center justify-center';
+  const contentClass = isMobileOnboardingActive
+    ? 'w-full min-h-[100dvh]'
+    : FULL_VIEWS.includes(view)
+      ? 'w-full h-screen'
+      : 'relative z-10 w-full flex items-center justify-center';
 
   return (
     <div className={`min-h-screen ${layoutClass}`}>
@@ -119,11 +124,11 @@ function Auth({ onAuthSuccess, brandingSettings, basePath = '/auth' }) {
         </div>
       )}
       <div className={contentClass}>
-        {view === 'login' && isMobile && showMobileOnboarding && (
+        {isMobileOnboardingActive && (
           <MobileOnboardingFlow onComplete={() => setShowMobileOnboarding(false)} />
         )}
         {view === 'login' && (
-          isMobile && showMobileOnboarding ? null : (
+          isMobileOnboardingActive ? null : (
             <LoginForm
               onSwitchToRegister={toRegister}
               onSwitchToForgotPassword={toForgotPassword}

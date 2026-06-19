@@ -10,7 +10,13 @@
  * Cache names are versioned so old caches are automatically purged on SW update.
  */
 
-const CACHE_VERSION = 'v1';
+try {
+  importScripts('/sw-version.js');
+} catch {
+  self.__TS_SW_VERSION__ = 'dev';
+}
+
+const CACHE_VERSION = self.__TS_SW_VERSION__ || 'dev';
 const SHELL_CACHE = `ts-shell-${CACHE_VERSION}`;
 const ASSET_CACHE = `ts-assets-${CACHE_VERSION}`;
 const API_CACHE  = `ts-api-${CACHE_VERSION}`;

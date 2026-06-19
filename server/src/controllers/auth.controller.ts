@@ -11,6 +11,7 @@ import { validatePassword, DEFAULT_PASSWORD_POLICY, PARENT_PASSWORD_POLICY } fro
 import { EmailService } from '../services/email-resend.service';
 import { whatsappService } from '../services/whatsapp.service';
 import { redisCacheService } from '../services/redis-cache.service';
+import { isTokenGloballyInvalidated, markGlobalForceLogout } from '../services/auth-session.service';
 import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 import { buildParentLoginEmail } from '../services/parent.service';
 
@@ -303,6 +304,12 @@ export class AuthController {
 
     try {
       const decoded = verifyRefreshToken(refreshToken);
+      if (await isTokenGloballyInvalidated(decoded)) {
+        await revokeRefreshToken(refreshToken);
+        this.clearTokenCookies(res);
+        throw new ApiError(401, 'Session invalidated by administrator');
+      }
+
       const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
       if (!user || user.status !== 'ACTIVE') throw new ApiError(401, 'Invalid user or account inactive');
 
@@ -395,15 +402,21 @@ export class AuthController {
    * Only SUPER_ADMIN and ADMIN may call this.
    */
   async logoutAll(req: AuthRequest, res: Response) {
+    let forcedAfter: number | null = null;
     try {
-      await redisCacheService.deleteByPrefix('revoked_rt:');
+      forcedAfter = await markGlobalForceLogout();
       await redisCacheService.deleteByPrefix('auth:user:');
-      await redisCacheService.set('global:force_logout', Date.now().toString(), 60 * 60);
-    } catch {
-      // Non-fatal — best-effort Redis flush
+    } catch (error) {
+      logger.error('[AUTH] Force-logout-all failed:', error);
+      throw new ApiError(500, 'Failed to invalidate active sessions. Please try again.');
     }
     logger.info(`[AUTH] Force-logout-all triggered by user ${req.user?.userId}`);
-    res.json({ success: true, message: 'All user sessions have been invalidated.' });
+    this.clearTokenCookies(res);
+    res.json({
+      success: true,
+      forcedAfter,
+      message: 'All user sessions have been invalidated.',
+    });
   }
 
   /**

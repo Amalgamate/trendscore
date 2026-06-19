@@ -11,8 +11,6 @@
 
 import React, { useState } from 'react';
 import {
-  LogOut,
-  RefreshCw,
   ShieldAlert,
   CheckCircle2,
   Loader2,
@@ -21,6 +19,19 @@ import {
   Database,
 } from 'lucide-react';
 import { authAPI } from '../../../../services/api';
+
+function clearLocalSessionAndRedirect() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('selectedInstitutionType');
+
+  document.cookie = 'accessToken=; Max-Age=0; path=/; SameSite=Lax';
+  document.cookie = 'refreshToken=; Max-Age=0; path=/; SameSite=Lax';
+  sessionStorage.setItem('session_expired', '1');
+  window.location.href = '/';
+}
 
 // ─── Confirmation modal ────────────────────────────────────────────────────────
 const ConfirmModal = ({ title, description, confirmLabel, confirmClass, onConfirm, onCancel }) => (
@@ -130,6 +141,7 @@ const SystemControlPage = () => {
     try {
       const res = await authAPI.logoutAll();
       setLogoutResult({ ok: true, message: res?.message || 'All sessions invalidated successfully.' });
+      setTimeout(clearLocalSessionAndRedirect, 800);
     } catch (err) {
       const msg = err?.response?.data?.message || err?.message || 'Failed to invalidate sessions.';
       setLogoutResult({ ok: false, message: msg });

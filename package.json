@@ -43,7 +43,7 @@
     "dev:backend:fast": "cross-env SKIP_SUPERADMIN_BOOTSTRAP=true CREATE_EXTRA_DEMO_USERS=false npm --prefix server run dev",
     "dev:frontend": "vite",
     "dev:frontend:flex": "cross-env VITE_STRICT_PORT=false vite --port 3000",
-    "build": "vite build --base=/",
+    "build": "node scripts/write-build-version.mjs && vite build --base=/",
     "preview": "vite preview",
     "backend": "npm run dev:backend",
     "frontend": "npm run dev:frontend",
