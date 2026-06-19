@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import LoginForm from '../components/auth/LoginForm';
 import RegisterForm from '../components/auth/RegisterForm';
@@ -7,6 +7,8 @@ import ResetPasswordForm from '../components/auth/ResetPasswordForm';
 import EmailVerificationForm from '../components/auth/EmailVerificationForm';
 import WelcomeScreen from '../components/auth/WelcomeScreen';
 import InstitutionSetupWizard from '../components/auth/InstitutionSetupWizard';
+import MobileOnboardingFlow, { isMobileOnboardingComplete } from '../components/auth/MobileOnboardingFlow';
+import { useMobile } from '../hooks/useMobileDetection';
 
 const AUTH_VIEWS = ['login', 'register', 'forgot-password', 'reset-password', 'verify-email', 'welcome', 'setup-institution'];
 const FULL_VIEWS = ['login', 'register', 'verify-email', 'welcome', 'forgot-password', 'setup-institution'];
@@ -18,6 +20,7 @@ function showBlobBackground(view) {
 function Auth({ onAuthSuccess, brandingSettings, basePath = '/auth' }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const isMobile = useMobile();
   const pathname = location.pathname;
   const state = location.state || {};
 
@@ -30,6 +33,16 @@ function Auth({ onAuthSuccess, brandingSettings, basePath = '/auth' }) {
   }, [pathname, basePath]);
 
   const userData = state.userData || null;
+  const [showMobileOnboarding, setShowMobileOnboarding] = useState(() => !isMobileOnboardingComplete());
+
+  useEffect(() => {
+    if (view !== 'login' || !isMobile) {
+      setShowMobileOnboarding(false);
+      return;
+    }
+
+    setShowMobileOnboarding(!isMobileOnboardingComplete());
+  }, [isMobile, view]);
 
   const toLogin = () => navigate(`${basePath}/login`);
   const toRegister = () => navigate(`${basePath}/register`);
@@ -106,13 +119,18 @@ function Auth({ onAuthSuccess, brandingSettings, basePath = '/auth' }) {
         </div>
       )}
       <div className={contentClass}>
+        {view === 'login' && isMobile && showMobileOnboarding && (
+          <MobileOnboardingFlow onComplete={() => setShowMobileOnboarding(false)} />
+        )}
         {view === 'login' && (
-          <LoginForm
-            onSwitchToRegister={toRegister}
-            onSwitchToForgotPassword={toForgotPassword}
-            onLoginSuccess={handleLoginSuccess}
-            brandingSettings={brandingSettings}
-          />
+          isMobile && showMobileOnboarding ? null : (
+            <LoginForm
+              onSwitchToRegister={toRegister}
+              onSwitchToForgotPassword={toForgotPassword}
+              onLoginSuccess={handleLoginSuccess}
+              brandingSettings={brandingSettings}
+            />
+          )
         )}
         {view === 'register' && (
           <RegisterForm
