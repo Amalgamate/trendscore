@@ -94,6 +94,18 @@
       "compose_project": "mertics",
       "env_file": "/srv/zawadi/apps/.env.merti-cs",
       "public_domain": "merti-cs.trendscore.co.ke"
+    },
+    {
+      "id": "waso-cs",
+      "aliases": ["waso"],
+      "label": "Waso CS",
+      "tier": "production",
+      "active": true,
+      "deployment_allowed": true,
+      "kind": "stack",
+      "compose_project": "zawadi-waso-cs",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-waso-cs.env",
+      "public_domain": "waso-cs.trendscore.co.ke"
     }
   ],
   "discovery": {
