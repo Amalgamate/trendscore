@@ -38,6 +38,7 @@ const STATUS_OPTIONS = [
 const MODULE_OPTIONS = [
   { value: '',           label: 'All Modules'  },
   { value: 'ACADEMICS',  label: 'Academics'    },
+  { value: 'ATTENDANCE', label: 'Attendance'   },
   { value: 'FEES',       label: 'Fees'         },
   { value: 'ACCOUNTING', label: 'Accounting'   },
   { value: 'HR',         label: 'HR'           },

@@ -30,6 +30,7 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN'];
 
 const MODULE_LABELS = {
   ACADEMICS:  'Academics',
+  ATTENDANCE: 'Attendance',
   FEES:       'Fees',
   ACCOUNTING: 'Accounting',
   HR:         'HR',
@@ -40,6 +41,7 @@ const MODULE_LABELS = {
 
 const REQUEST_TYPE_LABELS = {
   SCORE_UNLOCK:      'Score Unlock',
+  ATTENDANCE_UNLOCK: 'Attendance Unlock',
   FEE_ADJUSTMENT:    'Fee Adjustment',
   FEE_WAIVER:        'Fee Waiver',
   EXPENSE_APPROVAL:  'Expense Approval',
@@ -82,7 +84,6 @@ function ActiveBadge({ active }) {
 export function WorkflowsManager({ currentUserId, currentUserRoles = [] }) {
   // R9.1 — guard: only ADMIN / SUPER_ADMIN may access this view
   const isAdmin = currentUserRoles.some((r) => ADMIN_ROLES.includes(r));
-  if (!isAdmin) return null;
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [workflows, setWorkflows]   = useState([]);
@@ -96,6 +97,7 @@ export function WorkflowsManager({ currentUserId, currentUserRoles = [] }) {
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchWorkflows = useCallback(async () => {
+    if (!isAdmin) return;
     setLoading(true);
     setError('');
     try {
@@ -107,11 +109,11 @@ export function WorkflowsManager({ currentUserId, currentUserRoles = [] }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
-    fetchWorkflows();
-  }, [fetchWorkflows]);
+    if (isAdmin) fetchWorkflows();
+  }, [fetchWorkflows, isAdmin]);
 
   // ── Toggle active ──────────────────────────────────────────────────────────
   const handleToggle = useCallback(
@@ -152,6 +154,8 @@ export function WorkflowsManager({ currentUserId, currentUserRoles = [] }) {
     setFormOpen(false);
     setEditingWorkflow(null);
   };
+
+  if (!isAdmin) return null;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (

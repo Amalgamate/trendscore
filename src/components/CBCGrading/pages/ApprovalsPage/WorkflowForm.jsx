@@ -18,6 +18,7 @@ import { approvalAPI } from '../../../../services/api/approval.api';
 
 const MODULE_OPTIONS = [
   { value: 'ACADEMICS',  label: 'Academics' },
+  { value: 'ATTENDANCE', label: 'Attendance' },
   { value: 'FEES',       label: 'Fees' },
   { value: 'ACCOUNTING', label: 'Accounting' },
   { value: 'HR',         label: 'HR' },
@@ -28,6 +29,7 @@ const MODULE_OPTIONS = [
 
 const REQUEST_TYPE_OPTIONS = [
   { value: 'SCORE_UNLOCK',      label: 'Score Unlock' },
+  { value: 'ATTENDANCE_UNLOCK', label: 'Attendance Unlock' },
   { value: 'FEE_ADJUSTMENT',    label: 'Fee Adjustment' },
   { value: 'FEE_WAIVER',        label: 'Fee Waiver' },
   { value: 'EXPENSE_APPROVAL',  label: 'Expense Approval' },

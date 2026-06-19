@@ -58,6 +58,11 @@ interface ScoreUnlockMetadata {
   teacherId: string;
 }
 
+interface AttendanceUnlockMetadata {
+  classId: string;
+  date: string;
+}
+
 // ─── Terminal states ─────────────────────────────────────────────────────────
 const TERMINAL_STATUSES: ApprovalStatus[] = [
   'APPROVED',
@@ -96,6 +101,7 @@ const noopHandler = async (_request: ApprovalRequest): Promise<void> => {};
 
 export const APPROVAL_HOOKS: Record<ApprovalRequestType, (request: ApprovalRequest) => Promise<void>> = {
   SCORE_UNLOCK: scoreUnlockApprovalHandler,
+  ATTENDANCE_UNLOCK: noopHandler,
   FEE_ADJUSTMENT: noopHandler,
   FEE_WAIVER: noopHandler,
   EXPENSE_APPROVAL: noopHandler,
@@ -109,6 +115,7 @@ export const APPROVAL_HOOKS: Record<ApprovalRequestType, (request: ApprovalReque
 
 export const EXPIRY_HOOKS: Record<ApprovalRequestType, (request: ApprovalRequest) => Promise<void>> = {
   SCORE_UNLOCK: scoreRelockHandler,
+  ATTENDANCE_UNLOCK: noopHandler,
   FEE_ADJUSTMENT: noopHandler,
   FEE_WAIVER: noopHandler,
   EXPENSE_APPROVAL: noopHandler,
@@ -165,6 +172,29 @@ export class ApprovalEngineService {
           if (existingMeta?.assessmentId === assessmentId) {
             throw new Error('An open unlock request already exists for this assessment');
           }
+        }
+      }
+    }
+
+    if (requestType === 'ATTENDANCE_UNLOCK') {
+      const attendanceMeta = metadata as AttendanceUnlockMetadata;
+      if (attendanceMeta?.classId && attendanceMeta?.date) {
+        const existingRequests = await prisma.approvalRequest.findMany({
+          where: {
+            schoolId,
+            requestType: 'ATTENDANCE_UNLOCK',
+            status: { in: ['PENDING', 'APPROVED'] },
+          },
+        });
+        const existing = existingRequests.find((request) => {
+          const existingMeta = request.metadata as unknown as AttendanceUnlockMetadata;
+          return (
+            existingMeta?.classId === attendanceMeta.classId &&
+            existingMeta?.date === attendanceMeta.date
+          );
+        });
+        if (existing) {
+          throw new Error('An open unlock request already exists for this attendance register');
         }
       }
     }

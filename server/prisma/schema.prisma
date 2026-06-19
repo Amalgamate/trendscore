@@ -3669,6 +3669,7 @@ model ChatMessageReaction {
 
 enum ApprovalModule {
   ACADEMICS
+  ATTENDANCE
   FEES
   ACCOUNTING
   HR
@@ -3679,6 +3680,7 @@ enum ApprovalModule {
 
 enum ApprovalRequestType {
   SCORE_UNLOCK
+  ATTENDANCE_UNLOCK
   FEE_ADJUSTMENT
   FEE_WAIVER
   EXPENSE_APPROVAL

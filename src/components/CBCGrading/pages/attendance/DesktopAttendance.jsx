@@ -20,6 +20,7 @@ import { useAttendance } from '../../hooks/useAttendanceAPI';
 import { useAuth } from '../../../../hooks/useAuth';
 import { useNotifications } from '../../hooks/useNotifications';
 import { useInstitutionLabels } from '../../../../hooks/useInstitutionLabels';
+import { approvalAPI } from '../../../../services/api/approval.api';
 
 import { AttendanceSummaryCard } from './AttendanceSummaryCard';
 import { AttendanceExceptionCard } from './AttendanceExceptionCard';
@@ -34,11 +35,42 @@ import {
   LOCKED_ATTENDANCE_STATUSES,
 } from './attendancePolicy';
 
+const ATTENDANCE_UNLOCK_APPROVER_ROLES = new Set([
+  'SUPER_ADMIN',
+  'ADMIN',
+  'HEAD_TEACHER',
+  'HEAD_OF_CURRICULUM',
+]);
+
+const getApprovalRequests = (response) => {
+  const data = response?.data;
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.requests)) return data.requests;
+  return [];
+};
+
+const matchesAttendanceUnlock = (request, classId, date) => {
+  const metadata = request?.metadata || {};
+  return (
+    request?.requestType === 'ATTENDANCE_UNLOCK' &&
+    metadata?.classId === classId &&
+    metadata?.date === date
+  );
+};
+
+const isApprovedUnlockActive = (request) => {
+  if (request?.status !== 'APPROVED') return false;
+  if (!request?.expiresAt) return true;
+  return new Date(request.expiresAt).getTime() > Date.now();
+};
+
 export function DesktopAttendance() {
   const { user } = useAuth();
   const labels = useInstitutionLabels();
   const { showSuccess, showError } = useNotifications();
   const isTeacher = user?.role === 'TEACHER';
+  const userRole = String(user?.role || '').toUpperCase();
+  const canApproveAttendanceUnlock = ATTENDANCE_UNLOCK_APPROVER_ROLES.has(userRole);
 
   // Context state
   const [activeClass, setActiveClass] = useState(null);
@@ -54,6 +86,9 @@ export function DesktopAttendance() {
   const [showAllLearners, setShowAllLearners] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [unlockRequested, setUnlockRequested] = useState(false);
+  const [unlockRequest, setUnlockRequest] = useState(null);
+  const [isLoadingUnlockRequest, setIsLoadingUnlockRequest] = useState(false);
+  const [isApprovingUnlock, setIsApprovingUnlock] = useState(false);
 
   const {
     classes,
@@ -63,6 +98,37 @@ export function DesktopAttendance() {
   } = useAttendance();
 
   const getClassId = (c) => c?.id || c?._id || '';
+
+  const loadAttendanceUnlockRequest = useCallback(async (classItem, date) => {
+    const classId = getClassId(classItem);
+    if (!classId || !date) return;
+    setIsLoadingUnlockRequest(true);
+    try {
+      const params = {
+        module: 'ATTENDANCE',
+        requestType: 'ATTENDANCE_UNLOCK',
+        status: 'PENDING',
+      };
+      const [pendingResponse, approvedResponse] = await Promise.all([
+        canApproveAttendanceUnlock ? approvalAPI.list(params) : approvalAPI.myRequests(params),
+        canApproveAttendanceUnlock
+          ? approvalAPI.list({ ...params, status: 'APPROVED' })
+          : approvalAPI.myRequests({ ...params, status: 'APPROVED' }),
+      ]);
+      const requests = [
+        ...getApprovalRequests(pendingResponse),
+        ...getApprovalRequests(approvedResponse),
+      ];
+      const match = requests.find(request => matchesAttendanceUnlock(request, classId, date));
+      setUnlockRequest(match || null);
+      setUnlockRequested(Boolean(match && ['PENDING', 'APPROVED'].includes(match.status)));
+    } catch (err) {
+      console.warn('[Attendance] Failed to load unlock request:', err);
+      setUnlockRequest(null);
+    } finally {
+      setIsLoadingUnlockRequest(false);
+    }
+  }, [canApproveAttendanceUnlock]);
 
   // ── auto-select first class for teachers ────────────────────────────────
   useEffect(() => {
@@ -81,6 +147,7 @@ export function DesktopAttendance() {
     setSearchTerm('');
     setExceptionFilter('all');
     setUnlockRequested(false);
+    setUnlockRequest(null);
     try {
       const report = await getDailyClassReport(getClassId(classItem), date);
       if (report) {
@@ -101,12 +168,13 @@ export function DesktopAttendance() {
         }
         setHasLoaded(true);
       }
+      await loadAttendanceUnlockRequest(classItem, date);
     } catch {
       showError('Failed to load attendance register');
     } finally {
       setIsLoadingReport(false);
     }
-  }, [getDailyClassReport, showError]);
+  }, [getDailyClassReport, loadAttendanceUnlockRequest, showError]);
 
   useEffect(() => {
     if (activeClass) {
@@ -129,6 +197,11 @@ export function DesktopAttendance() {
   }, [pendingChanges, dailyReport]);
 
   const policy = useMemo(() => getAttendancePolicyState(activeDate), [activeDate]);
+  const isAttendanceUnlocked = useMemo(() => isApprovedUnlockActive(unlockRequest), [unlockRequest]);
+  const effectivePolicy = useMemo(
+    () => ({ ...policy, isLocked: policy.isLocked && !isAttendanceUnlocked }),
+    [isAttendanceUnlocked, policy]
+  );
 
   const completedAt = useMemo(
     () => getCompletionTimeFromLearners(dailyReport?.learners || []),
@@ -164,7 +237,7 @@ export function DesktopAttendance() {
 
   // ── actions ───────────────────────────────────────────────────────────────
   const handleMarkAllPresent = useCallback(() => {
-    if (policy.isLocked) {
+    if (effectivePolicy.isLocked) {
       showError(`Mark all present is locked after ${policy.lockLabel}. Mark late learners individually or request unlock.`);
       return;
     }
@@ -176,10 +249,10 @@ export function DesktopAttendance() {
     setPendingChanges(allPresent);
     setAllMarkedPresent(true);
     setShowAllLearners(true);
-  }, [dailyReport, policy.isLocked, policy.lockLabel, showError]);
+  }, [dailyReport, effectivePolicy.isLocked, policy.lockLabel, showError]);
 
   const handleStatusChange = useCallback((learnerId, status) => {
-    if (policy.isLocked && LOCKED_ATTENDANCE_STATUSES.has(status)) {
+    if (effectivePolicy.isLocked && LOCKED_ATTENDANCE_STATUSES.has(status)) {
       showError(`Present marking is locked after ${policy.lockLabel}. Use Late or another exception status.`);
       return;
     }
@@ -187,7 +260,7 @@ export function DesktopAttendance() {
       ...prev,
       [learnerId]: { status, remarks: prev[learnerId]?.remarks || '' },
     }));
-  }, [policy.isLocked, policy.lockLabel, showError]);
+  }, [effectivePolicy.isLocked, policy.lockLabel, showError]);
 
   const handleRemarksChange = useCallback((learnerId, remarks) => {
     setPendingChanges(prev => ({
@@ -196,10 +269,47 @@ export function DesktopAttendance() {
     }));
   }, []);
 
-  const handleRequestUnlock = useCallback(() => {
+  const handleRequestUnlock = useCallback(async () => {
+    if (!activeClass) return;
     setUnlockRequested(true);
-    showSuccess('Unlock request noted. An administrator can approve attendance edits.');
-  }, [showSuccess]);
+    try {
+      const response = await approvalAPI.submit({
+        module: 'ATTENDANCE',
+        requestType: 'ATTENDANCE_UNLOCK',
+        metadata: {
+          classId: getClassId(activeClass),
+          className: activeClass.name,
+          date: activeDate,
+          lockLabel: policy.lockLabel,
+          teacherId: user?.id || user?.userId,
+        },
+        comments: `Unlock attendance for ${activeClass.name} on ${activeDate}`,
+      });
+      const request = response?.data || response;
+      setUnlockRequest(request || null);
+      showSuccess('Unlock request sent. An administrator can approve attendance edits.');
+    } catch (err) {
+      setUnlockRequested(false);
+      showError(err?.message || 'Failed to request attendance unlock.');
+    }
+  }, [activeClass, activeDate, policy.lockLabel, showError, showSuccess, user?.id, user?.userId]);
+
+  const handleApproveUnlock = useCallback(async () => {
+    if (!unlockRequest?.id) return;
+    setIsApprovingUnlock(true);
+    try {
+      const response = await approvalAPI.approve(unlockRequest.id, {
+        comment: 'Approved from attendance register.',
+      });
+      const request = response?.data || response;
+      setUnlockRequest(request || { ...unlockRequest, status: 'APPROVED' });
+      showSuccess('Attendance unlock approved.');
+    } catch (err) {
+      showError(err?.message || 'Failed to approve attendance unlock.');
+    } finally {
+      setIsApprovingUnlock(false);
+    }
+  }, [showError, showSuccess, unlockRequest]);
 
   const handleSave = useCallback(async () => {
     if (!activeClass) return;
@@ -380,11 +490,11 @@ export function DesktopAttendance() {
                 <AttendanceMarkAllButton
                   onClick={handleMarkAllPresent}
                   count={stats.total}
-                  disabled={policy.isLocked}
-                  label={policy.isLocked ? `Locked after ${policy.lockLabel}` : 'Mark All Present'}
+                  disabled={effectivePolicy.isLocked}
+                  label={effectivePolicy.isLocked ? `Locked after ${policy.lockLabel}` : 'Mark All Present'}
                 />
                 <p className="text-center text-xs text-gray-400 mt-2">
-                  {policy.isLocked
+                  {effectivePolicy.isLocked
                     ? 'Late and exception marking remain available.'
                     : `Marks all ${stats.total} learners present. Then edit any exceptions below.`}
                 </p>
@@ -408,7 +518,7 @@ export function DesktopAttendance() {
                           <span className="font-medium text-emerald-600">at {formatCompletionTime(completedAt)}</span>
                         )}
                       </div>
-                      <AttendanceMarkAllCompact onClick={handleMarkAllPresent} disabled={policy.isLocked} />
+                      <AttendanceMarkAllCompact onClick={handleMarkAllPresent} disabled={effectivePolicy.isLocked} />
                     </div>
                   </>
                 ) : (
@@ -450,17 +560,34 @@ export function DesktopAttendance() {
                 <div className="flex-shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
                   <div className="flex items-center gap-3">
                     <div className="flex-1">
-                      <p className="text-xs font-bold text-amber-900">All-present marking locked after {policy.lockLabel}</p>
-                      <p className="text-xs text-amber-700">Mark late learners individually and add the lateness excuse.</p>
+                      <p className="text-xs font-bold text-amber-900">
+                        {isAttendanceUnlocked ? 'Attendance temporarily unlocked' : `All-present marking locked after ${policy.lockLabel}`}
+                      </p>
+                      <p className="text-xs text-amber-700">
+                        {isAttendanceUnlocked
+                          ? 'Approved unlock is active. Make the correction and save before it expires.'
+                          : 'Mark late learners individually and add the lateness excuse.'}
+                      </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleRequestUnlock}
-                      disabled={unlockRequested}
-                      className="h-8 rounded-lg border border-amber-300 bg-white px-3 text-xs font-bold text-amber-800 disabled:opacity-60"
-                    >
-                      {unlockRequested ? 'Unlock requested' : 'Request Unlock'}
-                    </button>
+                    {canApproveAttendanceUnlock && unlockRequest?.status === 'PENDING' ? (
+                      <button
+                        type="button"
+                        onClick={handleApproveUnlock}
+                        disabled={isApprovingUnlock}
+                        className="h-8 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white disabled:opacity-60"
+                      >
+                        {isApprovingUnlock ? 'Approving...' : 'Approve Unlock'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleRequestUnlock}
+                        disabled={unlockRequested || isLoadingUnlockRequest || isAttendanceUnlocked}
+                        className="h-8 rounded-lg border border-amber-300 bg-white px-3 text-xs font-bold text-amber-800 disabled:opacity-60"
+                      >
+                        {isAttendanceUnlocked ? 'Unlock active' : unlockRequested ? 'Unlock requested' : 'Request Unlock'}
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -556,7 +683,7 @@ export function DesktopAttendance() {
                         currentRemarks={pendingChanges[learner.id]?.remarks || ''}
                         onChange={status => handleStatusChange(learner.id, status)}
                         onRemarksChange={remarks => handleRemarksChange(learner.id, remarks)}
-                        disabledStatuses={policy.isLocked ? LOCKED_ATTENDANCE_STATUSES : undefined}
+                        disabledStatuses={effectivePolicy.isLocked ? LOCKED_ATTENDANCE_STATUSES : undefined}
                       />
                     ))}
                   </div>
