@@ -48,6 +48,12 @@ const updateSchoolSchema = z.object({
   geofenceRadiusMeters: z.number().int().min(1).max(100000).optional(),
   geofenceEnforcementMode: z.enum(['STRICT', 'SOFT', 'OFF']).optional(),
   allowedClockInIps: z.string().max(2000).optional().nullable(),
+  attendanceLockEnabled: z.boolean().optional(),
+  attendanceLockTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+  attendanceUnlockWindowMinutes: z.number().int().min(5).max(1440).optional(),
+  attendanceAllowLateAfterLock: z.boolean().optional(),
+  attendanceRequireRemarksForLateExcused: z.boolean().optional(),
+  attendanceNotifyAbsentDefault: z.boolean().optional(),
   welcomeTitle: z.string().max(255).optional().nullable(),
   welcomeMessage: z.string().max(2000).optional().nullable(),
   onboardingTitle: z.string().max(255).optional().nullable(),
@@ -161,5 +167,4 @@ router.post('/reset-sequence',
 );
 
 export default router;
-
 

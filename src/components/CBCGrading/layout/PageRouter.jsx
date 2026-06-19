@@ -22,6 +22,7 @@ const PromotionPage = lazy(() => import('../pages/PromotionPage'));
 const TransferOutPage = lazy(() => import('../pages/TransferOutPage'));
 const DailyAttendance = lazy(() => import('../pages/attendance/AttendanceModule'));
 const AttendanceReports = lazy(() => import('../pages/attendance/AttendanceReportsV2'));
+const AttendanceSettingsPage = lazy(() => import('../pages/attendance/AttendanceSettingsPage'));
 const AdmissionsPage = lazy(() => import('../pages/AdmissionsPage'));
 const TransfersInPage = lazy(() => import('../pages/TransfersInPage'));
 const ExitedLearnersPage = lazy(() => import('../pages/ExitedLearnersPage'));
@@ -502,6 +503,7 @@ const PageRouter = ({
           case 'coding-playground': return <CodingPlayground />;
           case 'attendance-daily': return <DailyAttendance />;
           case 'attendance-reports': return <AttendanceReports learners={learners} />;
+          case 'attendance-configuration': return <AttendanceSettingsPage />;
 
           // Assessment Module
           case 'assess-mobile-dashboard':

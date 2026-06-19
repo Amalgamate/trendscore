@@ -1,0 +1,7 @@
+ALTER TABLE "schools"
+  ADD COLUMN IF NOT EXISTS "attendanceLockEnabled" BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS "attendanceLockTime" TEXT NOT NULL DEFAULT '07:30',
+  ADD COLUMN IF NOT EXISTS "attendanceUnlockWindowMinutes" INTEGER NOT NULL DEFAULT 60,
+  ADD COLUMN IF NOT EXISTS "attendanceAllowLateAfterLock" BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS "attendanceRequireRemarksForLateExcused" BOOLEAN NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS "attendanceNotifyAbsentDefault" BOOLEAN NOT NULL DEFAULT true;

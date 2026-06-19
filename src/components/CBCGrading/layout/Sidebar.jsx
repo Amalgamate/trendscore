@@ -120,6 +120,7 @@ const PREFETCH_MAP = {
   'parents-list':         () => import('../pages/ParentsList'),
   'attendance-daily':     () => import('../pages/attendance/AttendanceModule'),
   'attendance-reports':   () => import('../pages/attendance/AttendanceReportsV2'),
+  'attendance-configuration': () => import('../pages/attendance/AttendanceSettingsPage'),
   'assess-formative':     () => import('../pages/FormativeAssessment'),
   'assess-summative-tests':() => import('../pages/SummativeTestsRouter'),
   'fees-overview':        () => import('../pages/FeeCollectionPage'),

@@ -176,6 +176,12 @@ model School {
   geofenceRadiusMeters Int               @default(30)
   geofenceEnforcementMode GeofenceEnforcementMode @default(OFF)
   allowedClockInIps   String?
+  attendanceLockEnabled Boolean          @default(true)
+  attendanceLockTime String              @default("07:30")
+  attendanceUnlockWindowMinutes Int      @default(60)
+  attendanceAllowLateAfterLock Boolean   @default(true)
+  attendanceRequireRemarksForLateExcused Boolean @default(true)
+  attendanceNotifyAbsentDefault Boolean  @default(true)
   brandColor          String?
   welcomeMessage      String?
   welcomeTitle        String?

@@ -109,6 +109,7 @@ export const tertiaryNavSections = [
     items: [
       { id: 'attendance-daily',   label: 'Lecture Attendance', path: 'attendance-daily',   permission: 'MARK_ATTENDANCE' },
       { id: 'attendance-reports', label: 'Attendance Reports', path: 'attendance-reports', permission: 'GENERATE_ATTENDANCE_REPORTS' },
+      { id: 'attendance-configuration', label: 'Configuration', path: 'attendance-configuration', permission: 'VIEW_ALL_ATTENDANCE' },
     ],
   },
 

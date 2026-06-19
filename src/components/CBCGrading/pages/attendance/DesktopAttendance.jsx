@@ -32,8 +32,9 @@ import {
   formatCompletionTime,
   getAttendancePolicyState,
   getCompletionTimeFromLearners,
-  LOCKED_ATTENDANCE_STATUSES,
+  getLockedAttendanceStatuses,
 } from './attendancePolicy';
+import { DEFAULT_ATTENDANCE_SETTINGS, loadAttendanceSettings } from './attendanceSettings';
 
 const ATTENDANCE_UNLOCK_APPROVER_ROLES = new Set([
   'SUPER_ADMIN',
@@ -82,7 +83,8 @@ export function DesktopAttendance() {
   const [isLoadingReport, setIsLoadingReport] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [exceptionFilter, setExceptionFilter] = useState('all');
-  const [notifyAbsent, setNotifyAbsent] = useState(true);
+  const [attendanceSettings, setAttendanceSettings] = useState(DEFAULT_ATTENDANCE_SETTINGS);
+  const [notifyAbsent, setNotifyAbsent] = useState(DEFAULT_ATTENDANCE_SETTINGS.notifyAbsentDefault);
   const [showAllLearners, setShowAllLearners] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [unlockRequested, setUnlockRequested] = useState(false);
@@ -196,11 +198,32 @@ export function DesktopAttendance() {
     return { present, absent, late, sick, excused, marked, total, rate };
   }, [pendingChanges, dailyReport]);
 
-  const policy = useMemo(() => getAttendancePolicyState(activeDate), [activeDate]);
+  useEffect(() => {
+    let cancelled = false;
+    loadAttendanceSettings()
+      .then((settings) => {
+        if (cancelled) return;
+        setAttendanceSettings(settings);
+        setNotifyAbsent(settings.notifyAbsentDefault);
+      })
+      .catch((err) => {
+        console.warn('[Attendance] Failed to load attendance settings:', err);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const policy = useMemo(
+    () => getAttendancePolicyState(activeDate, new Date(), attendanceSettings),
+    [activeDate, attendanceSettings]
+  );
   const isAttendanceUnlocked = useMemo(() => isApprovedUnlockActive(unlockRequest), [unlockRequest]);
   const effectivePolicy = useMemo(
     () => ({ ...policy, isLocked: policy.isLocked && !isAttendanceUnlocked }),
     [isAttendanceUnlocked, policy]
+  );
+  const lockedStatuses = useMemo(
+    () => getLockedAttendanceStatuses(attendanceSettings),
+    [attendanceSettings]
   );
 
   const completedAt = useMemo(
@@ -252,15 +275,17 @@ export function DesktopAttendance() {
   }, [dailyReport, effectivePolicy.isLocked, policy.lockLabel, showError]);
 
   const handleStatusChange = useCallback((learnerId, status) => {
-    if (effectivePolicy.isLocked && LOCKED_ATTENDANCE_STATUSES.has(status)) {
-      showError(`Present marking is locked after ${policy.lockLabel}. Use Late or another exception status.`);
+    if (effectivePolicy.isLocked && lockedStatuses.has(status)) {
+      showError(attendanceSettings.allowLateAfterLock
+        ? `Present marking is locked after ${policy.lockLabel}. Use Late or another exception status.`
+        : `Attendance marking is locked after ${policy.lockLabel}. Request unlock to make changes.`);
       return;
     }
     setPendingChanges(prev => ({
       ...prev,
       [learnerId]: { status, remarks: prev[learnerId]?.remarks || '' },
     }));
-  }, [effectivePolicy.isLocked, policy.lockLabel, showError]);
+  }, [attendanceSettings.allowLateAfterLock, effectivePolicy.isLocked, lockedStatuses, policy.lockLabel, showError]);
 
   const handleRemarksChange = useCallback((learnerId, remarks) => {
     setPendingChanges(prev => ({
@@ -341,9 +366,11 @@ export function DesktopAttendance() {
       status: data.status,
       remarks: data.remarks || undefined,
     }));
-    const missingRemarks = records.filter(record =>
-      ['LATE', 'EXCUSED'].includes(record.status) && !String(record.remarks || '').trim()
-    );
+    const missingRemarks = attendanceSettings.requireRemarksForLateExcused
+      ? records.filter(record =>
+          ['LATE', 'EXCUSED'].includes(record.status) && !String(record.remarks || '').trim()
+        )
+      : [];
     if (missingRemarks.length > 0) {
       showError('Add a lateness or excuse note before saving.');
       setIsSaving(false);
@@ -361,7 +388,7 @@ export function DesktopAttendance() {
       showError(result?.error || 'Failed to save attendance');
     }
     setIsSaving(false);
-  }, [activeClass, activeDate, pendingChanges, markBulkAttendance, showSuccess, showError, stats]);
+  }, [activeClass, activeDate, attendanceSettings.requireRemarksForLateExcused, pendingChanges, markBulkAttendance, showSuccess, showError, stats]);
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
@@ -517,7 +544,7 @@ export function DesktopAttendance() {
                 />
                 <p className="text-center text-xs text-gray-400 mt-2">
                   {effectivePolicy.isLocked
-                    ? 'Late and exception marking remain available.'
+                    ? (attendanceSettings.allowLateAfterLock ? 'Late and exception marking remain available.' : 'All attendance changes require unlock.')
                     : `Marks all ${stats.total} learners present. Then edit any exceptions below.`}
                 </p>
               </div>
@@ -711,7 +738,7 @@ export function DesktopAttendance() {
                         currentRemarks={pendingChanges[learner.id]?.remarks || ''}
                         onChange={status => handleStatusChange(learner.id, status)}
                         onRemarksChange={remarks => handleRemarksChange(learner.id, remarks)}
-                        disabledStatuses={effectivePolicy.isLocked ? LOCKED_ATTENDANCE_STATUSES : undefined}
+                        disabledStatuses={effectivePolicy.isLocked ? lockedStatuses : undefined}
                       />
                     ))}
                   </div>
