@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, BadgeCheck, Camera, Loader2, Mail, Phone, Save, Shield, User } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, Camera, Loader2, LogOut, Mail, Phone, Save, Shield, User } from 'lucide-react';
 import { authAPI } from '../../../../services/api/auth.api';
 import { userAPI } from '../../../../services/api/user.api';
 import { useAuth } from '../../../../hooks/useAuth';
@@ -59,10 +59,11 @@ function ReadOnlyItem({ icon: Icon, label, value }) {
   );
 }
 
-const SelfProfilePage = ({ user: initialUser, onNavigate }) => {
+const SelfProfilePage = ({ user: initialUser, onNavigate, onLogout, backTarget = 'settings' }) => {
   const { user: authUser, updateUser } = useAuth();
   const { showSuccess, showError } = useNotifications();
   const profileSourceUser = initialUser || authUser;
+  const backLabel = backTarget === 'dashboard' ? 'Back to dashboard' : 'Back to settings';
   const profileSourceUserId = profileSourceUser?.id;
   const profileSourceUserRef = useRef(profileSourceUser);
   const [profileUser, setProfileUser] = useState(initialUser || authUser);
@@ -150,9 +151,9 @@ const SelfProfilePage = ({ user: initialUser, onNavigate }) => {
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
-            onClick={() => onNavigate?.('dashboard')}
+            onClick={() => onNavigate?.(backTarget)}
             className="inline-flex h-10 w-10 items-center justify-center border border-gray-200 bg-white text-gray-700 hover:bg-gray-100"
-            aria-label="Back to dashboard"
+            aria-label={backLabel}
           >
             <ArrowLeft size={18} />
           </button>
@@ -192,6 +193,17 @@ const SelfProfilePage = ({ user: initialUser, onNavigate }) => {
               <ReadOnlyItem icon={Shield} label="Role" value={formatRoleName(profileUser?.role)} />
               {profileUser?.staffId && <ReadOnlyItem icon={BadgeCheck} label="Staff ID" value={profileUser.staffId} />}
             </div>
+
+            {onLogout && (
+              <button
+                type="button"
+                onClick={onLogout}
+                className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 border border-red-200 bg-red-50 px-4 text-sm font-bold text-red-700 hover:bg-red-100"
+              >
+                <LogOut size={16} />
+                Sign Out
+              </button>
+            )}
           </aside>
 
           <form onSubmit={handleSubmit} className="border border-gray-200 bg-white p-5 sm:p-6">
