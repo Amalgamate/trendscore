@@ -1382,93 +1382,117 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
             )}
             <div className={`overflow-hidden space-y-6 ${statsLoading ? 'hidden' : ''}`}>
               {/* Stats Cards */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-0 sm:gap-4">
 
                 {/* Total Invoices — Indigo */}
                 <div
                   onClick={() => setStatusFilter(statusFilter === 'all' ? 'all' : 'all')}
-                  className={`relative overflow-hidden rounded-2xl bg-indigo-600 p-5 shadow-lg shadow-indigo-500/20 text-white cursor-pointer transition-all duration-200 hover:scale-[1.03] hover:shadow-xl ${statusFilter === 'all' ? 'ring-4 ring-white/50 scale-[1.03]' : 'opacity-80 hover:opacity-100'
+                  className={`relative overflow-hidden rounded-none bg-emerald-50 p-4 text-slate-950 cursor-pointer transition-all duration-200 md:rounded-2xl md:bg-indigo-600 md:p-5 md:shadow-lg md:shadow-indigo-500/20 md:text-white md:hover:scale-[1.03] md:hover:shadow-xl ${statusFilter === 'all' ? 'ring-2 ring-emerald-300 md:ring-4 md:ring-white/50 md:scale-[1.03]' : 'md:opacity-80 md:hover:opacity-100'
                     }`}
                 >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-widest text-indigo-200 mb-1">Expected Income</p>
-                      <p className="text-2xl font-medium">{stats.totalBilled}</p>
-                      <div className="mt-1.5 space-y-0.5 text-xs leading-tight text-indigo-100/95">
+                  <div className="flex items-center gap-4 md:items-start md:justify-between md:gap-0">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-emerald-500 text-white md:hidden">
+                      <FileText size={20} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-600 md:block md:text-xs md:font-medium md:tracking-widest md:text-indigo-200">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 md:hidden" />
+                        Expected Income
+                      </p>
+                      <p className="text-xl font-semibold leading-none text-slate-950 md:text-2xl md:font-medium md:text-white">{stats.totalBilled} <span className="text-[10px] font-bold uppercase text-slate-600 md:hidden">KES</span></p>
+                      <div className="mt-1.5 hidden space-y-0.5 text-xs leading-tight text-indigo-100/95 md:block">
                         <p>Balance B/F: <span className="font-medium">{stats.bfAmount}</span></p>
                         <p>This Term Fee: <span className="font-medium">{stats.thisTermFee}</span></p>
                       </div>
-                      <p className="text-lg font-semibold text-indigo-300 mt-1.5">{stats.totalCount} Students</p>
+                      <p className="mt-1.5 hidden text-lg font-semibold text-indigo-300 md:block">{stats.totalCount} Students</p>
                     </div>
-                    <div className="p-2.5 bg-white/15 rounded-xl">
+                    <div className="hidden p-2.5 bg-white/15 rounded-xl md:block">
                       <FileText size={22} className="text-white" />
                     </div>
                   </div>
-                  <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/5 rounded-full" />
-                  <div className="absolute -bottom-6 -right-6 w-28 h-28 bg-white/5 rounded-full" />
+                  <div className="absolute -bottom-3 -right-3 hidden w-20 h-20 bg-white/5 rounded-full md:block" />
+                  <div className="absolute -bottom-6 -right-6 hidden w-28 h-28 bg-white/5 rounded-full md:block" />
                 </div>
 
                 {/* Pending — Amber */}
                 <div
                   onClick={() => { setStatusFilter(prev => prev === 'pending' ? 'all' : 'pending'); setCurrentPage(1); }}
-                  className={`relative overflow-hidden rounded-2xl bg-red-600 p-5 shadow-lg shadow-red-500/20 text-white cursor-pointer transition-all duration-200 hover:scale-[1.03] hover:shadow-xl ${statusFilter === 'pending' ? 'ring-4 ring-white/50 scale-[1.03]' : 'opacity-80 hover:opacity-100'
+                  className={`relative overflow-hidden rounded-none bg-red-50 p-4 text-slate-950 cursor-pointer transition-all duration-200 md:rounded-2xl md:bg-red-600 md:p-5 md:shadow-lg md:shadow-red-500/20 md:text-white md:hover:scale-[1.03] md:hover:shadow-xl ${statusFilter === 'pending' ? 'ring-2 ring-red-300 md:ring-4 md:ring-white/50 md:scale-[1.03]' : 'md:opacity-80 md:hover:opacity-100'
                     }`}
                 >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-widest text-red-100 mb-1">Not Paid Anything</p>
-                      <p className="text-2xl font-medium">{stats.pendingAmt}</p>
-                      <p className="text-lg font-semibold text-red-200 mt-1.5">{stats.pendingCount} Students</p>
+                  <div className="flex items-center gap-4 md:items-start md:justify-between md:gap-0">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-red-500 text-white md:hidden">
+                      <AlertCircle size={20} />
                     </div>
-                    <div className="p-2.5 bg-white/15 rounded-xl">
+                    <div className="min-w-0 flex-1">
+                      <p className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-red-500 md:block md:text-xs md:font-medium md:tracking-widest md:text-red-100">
+                        <span className="h-1.5 w-1.5 rounded-full bg-red-500 md:hidden" />
+                        Not Paid Anything
+                      </p>
+                      <p className="text-xl font-semibold leading-none text-slate-950 md:text-2xl md:font-medium md:text-white">{stats.pendingAmt} <span className="text-[10px] font-bold uppercase text-slate-600 md:hidden">KES</span></p>
+                      <p className="mt-1.5 hidden text-lg font-semibold text-red-200 md:block">{stats.pendingCount} Students</p>
+                    </div>
+                    <div className="hidden p-2.5 bg-white/15 rounded-xl md:block">
                       <Clock size={22} className="text-white" />
                     </div>
                   </div>
-                  <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/5 rounded-full" />
-                  <div className="absolute -bottom-6 -right-6 w-28 h-28 bg-white/5 rounded-full" />
+                  <div className="absolute -bottom-3 -right-3 hidden w-20 h-20 bg-white/5 rounded-full md:block" />
+                  <div className="absolute -bottom-6 -right-6 hidden w-28 h-28 bg-white/5 rounded-full md:block" />
                 </div>
 
                 {/* Partial — Sky Blue (Now Orange) */}
                 <div
                   onClick={() => { setStatusFilter(prev => prev === 'partial' ? 'all' : 'partial'); setCurrentPage(1); }}
-                  className={`relative overflow-hidden rounded-2xl bg-orange-500 p-5 shadow-lg shadow-orange-500/20 text-white cursor-pointer transition-all duration-200 hover:scale-[1.03] hover:shadow-xl ${statusFilter === 'partial' ? 'ring-4 ring-white/50 scale-[1.03]' : 'opacity-80 hover:opacity-100'
+                  className={`relative overflow-hidden rounded-none bg-orange-50 p-4 text-slate-950 cursor-pointer transition-all duration-200 md:rounded-2xl md:bg-orange-500 md:p-5 md:shadow-lg md:shadow-orange-500/20 md:text-white md:hover:scale-[1.03] md:hover:shadow-xl ${statusFilter === 'partial' ? 'ring-2 ring-orange-300 md:ring-4 md:ring-white/50 md:scale-[1.03]' : 'md:opacity-80 md:hover:opacity-100'
                     }`}
                 >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-widest text-orange-100 mb-1">Partial Payments</p>
-                      <p className="text-2xl font-medium mb-2">{stats.partialAmt}</p>
-                      <div className="flex flex-col items-start gap-1">
+                  <div className="flex items-center gap-4 md:items-start md:justify-between md:gap-0">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-orange-500 text-white md:hidden">
+                      <AlertCircle size={20} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-orange-500 md:block md:text-xs md:font-medium md:tracking-widest md:text-orange-100">
+                        <span className="h-1.5 w-1.5 rounded-full bg-orange-500 md:hidden" />
+                        Partial Payments
+                      </p>
+                      <p className="text-xl font-semibold leading-none text-slate-950 md:mb-2 md:text-2xl md:font-medium md:text-white">{stats.partialAmt} <span className="text-[10px] font-bold uppercase text-slate-600 md:hidden">KES</span></p>
+                      <div className="hidden flex-col items-start gap-1 md:flex">
                         <p className="text-base font-medium text-orange-100 uppercase tracking-tight leading-none">BAL: {stats.partialBalanceAmt}</p>
                         <p className="text-lg font-semibold text-orange-200">{stats.partialCount} Students</p>
                       </div>
                     </div>
-                    <div className="p-2.5 bg-white/15 rounded-xl">
+                    <div className="hidden p-2.5 bg-white/15 rounded-xl md:block">
                       <AlertCircle size={22} className="text-white" />
                     </div>
                   </div>
-                  <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/5 rounded-full" />
-                  <div className="absolute -bottom-6 -right-6 w-28 h-28 bg-white/5 rounded-full" />
+                  <div className="absolute -bottom-3 -right-3 hidden w-20 h-20 bg-white/5 rounded-full md:block" />
+                  <div className="absolute -bottom-6 -right-6 hidden w-28 h-28 bg-white/5 rounded-full md:block" />
                 </div>
 
                 {/* Fully Paid — Emerald */}
                 <div
                   onClick={() => { setStatusFilter(prev => prev === 'paid' ? 'all' : 'paid'); setCurrentPage(1); }}
-                  className={`relative overflow-hidden rounded-2xl bg-emerald-600 p-5 shadow-lg shadow-emerald-500/20 text-white cursor-pointer transition-all duration-200 hover:scale-[1.03] hover:shadow-xl ${statusFilter === 'paid' ? 'ring-4 ring-white/50 scale-[1.03]' : 'opacity-80 hover:opacity-100'
+                  className={`relative overflow-hidden rounded-none bg-teal-50 p-4 text-slate-950 cursor-pointer transition-all duration-200 md:rounded-2xl md:bg-emerald-600 md:p-5 md:shadow-lg md:shadow-emerald-500/20 md:text-white md:hover:scale-[1.03] md:hover:shadow-xl ${statusFilter === 'paid' ? 'ring-2 ring-teal-300 md:ring-4 md:ring-white/50 md:scale-[1.03]' : 'md:opacity-80 md:hover:opacity-100'
                     }`}
                 >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-widest text-emerald-100 mb-1">Completely Cleared</p>
-                      <p className="text-2xl font-medium">{stats.paidAmt}</p>
-                      <p className="text-lg font-semibold text-emerald-200 mt-1.5">{stats.paidCount} Students</p>
+                  <div className="flex items-center gap-4 md:items-start md:justify-between md:gap-0">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-teal-500 text-white md:hidden">
+                      <CheckCircle size={20} />
                     </div>
-                    <div className="p-2.5 bg-white/15 rounded-xl">
+                    <div className="min-w-0 flex-1">
+                      <p className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-teal-600 md:block md:text-xs md:font-medium md:tracking-widest md:text-emerald-100">
+                        <span className="h-1.5 w-1.5 rounded-full bg-teal-500 md:hidden" />
+                        Completely Cleared
+                      </p>
+                      <p className="text-xl font-semibold leading-none text-slate-950 md:text-2xl md:font-medium md:text-white">{stats.paidAmt} <span className="text-[10px] font-bold uppercase text-slate-600 md:hidden">KES</span></p>
+                      <p className="mt-1.5 hidden text-lg font-semibold text-emerald-200 md:block">{stats.paidCount} Students</p>
+                    </div>
+                    <div className="hidden p-2.5 bg-white/15 rounded-xl md:block">
                       <CheckCircle size={22} className="text-white" />
                     </div>
                   </div>
-                  <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/5 rounded-full" />
-                  <div className="absolute -bottom-6 -right-6 w-28 h-28 bg-white/5 rounded-full" />
+                  <div className="absolute -bottom-3 -right-3 hidden w-20 h-20 bg-white/5 rounded-full md:block" />
+                  <div className="absolute -bottom-6 -right-6 hidden w-28 h-28 bg-white/5 rounded-full md:block" />
                 </div>
 
               </div>

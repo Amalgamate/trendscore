@@ -95,11 +95,7 @@ function DonutChart({ collected, outstanding, waived, total }) {
 
 /* ─── Payment by Grade widget ────────────────────────────────────────────── */
 function PaymentByGrade({ invoices }) {
-  const [selectedGrade, setSelectedGrade] = useState('ALL');
-  const [hoveredBar, setHoveredBar] = useState(null);
-
-  // Build per-grade totals
-  const { gradeMap, allGrades } = useMemo(() => {
+  const gradeRows = useMemo(() => {
     const map = {};
     (invoices || []).forEach(inv => {
       const g = inv?.learner?.grade || 'Unknown';
@@ -114,144 +110,74 @@ function PaymentByGrade({ invoices }) {
       else if (balance <= 0) map[g].paid++;
       else                   map[g].partial++;
     });
-    const grades = Object.keys(map).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-    return { gradeMap: map, allGrades: grades };
+
+    return Object.entries(map)
+      .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+      .map(([grade, counts]) => ({
+        grade,
+        ...counts,
+        paidRate: counts.total > 0 ? Math.round((counts.paid / counts.total) * 100) : 0,
+      }));
   }, [invoices]);
 
-  // Active dataset — either all grades summed, or one grade
-  const counts = useMemo(() => {
-    if (selectedGrade === 'ALL') {
-      return Object.values(gradeMap).reduce(
-        (acc, g) => ({ paid: acc.paid + g.paid, partial: acc.partial + g.partial, unpaid: acc.unpaid + g.unpaid, total: acc.total + g.total }),
-        { paid: 0, partial: 0, unpaid: 0, total: 0 }
-      );
-    }
-    return gradeMap[selectedGrade] || { paid: 0, partial: 0, unpaid: 0, total: 0 };
-  }, [gradeMap, selectedGrade]);
-
-  const BARS = [
-    { key: 'paid',    label: 'Paid',    fill: 'linear-gradient(to top,#15803d,#4ade80)', dot: '#22c55e', shadow: 'rgba(34,197,94,0.25)'  },
-    { key: 'partial', label: 'Partial', fill: 'linear-gradient(to top,#92400e,#fcd34d)', dot: '#f59e0b', shadow: 'rgba(245,158,11,0.25)' },
-    { key: 'unpaid',  label: 'Unpaid',  fill: 'linear-gradient(to top,#991b1b,#f87171)', dot: '#ef4444', shadow: 'rgba(239,68,68,0.25)'  },
-  ];
-
-  const CHART_H  = 130;
-  const maxCount = Math.max(counts.paid, counts.partial, counts.unpaid, 1);
-
-  // Nice Y-axis ticks
-  const yMax   = Math.ceil(maxCount / 5) * 5 || 5;
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(f * yMax));
+  const totals = gradeRows.reduce(
+    (acc, row) => ({
+      paid: acc.paid + row.paid,
+      partial: acc.partial + row.partial,
+      unpaid: acc.unpaid + row.unpaid,
+      total: acc.total + row.total,
+    }),
+    { paid: 0, partial: 0, unpaid: 0, total: 0 }
+  );
 
   return (
-    <div className="w-full flex flex-col gap-3">
-
-      {/* Dropdown */}
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] text-gray-500 font-medium">
-          {selectedGrade === 'ALL'
-            ? `All grades · ${counts.total} students`
-            : `${selectedGrade} · ${counts.total} students`}
-        </p>
-        <select
-          value={selectedGrade}
-          onChange={e => setSelectedGrade(e.target.value)}
-          className="text-[11px] font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1 cursor-pointer hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all"
-        >
-          <option value="ALL">All Grades</option>
-          {allGrades.map(g => <option key={g} value={g}>{g}</option>)}
-        </select>
+    <div className="w-full">
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-gray-600">
+        <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">{totals.paid} paid</span>
+        <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">{totals.partial} partial</span>
+        <span className="rounded-full bg-red-50 px-2 py-1 text-red-700">{totals.unpaid} unpaid</span>
+        <span className="ml-auto text-gray-400">{totals.total} students</span>
       </div>
-
-      {/* Chart */}
-      <div className="flex gap-2 w-full">
-
-        {/* Y-axis */}
-        <div className="flex flex-col justify-between items-end pr-1 shrink-0 pb-7" style={{ height: CHART_H + 28 }}>
-          {[...yTicks].reverse().map(tick => (
-            <span key={tick} className="text-[10px] text-gray-400 font-medium leading-none tabular-nums">
-              {tick}
-            </span>
-          ))}
-        </div>
-
-        {/* Plot + X-axis */}
-        <div className="flex-1 flex flex-col">
-
-          {/* Bar area */}
-          <div className="relative border-l-2 border-b-2 border-gray-200 rounded-bl" style={{ height: CHART_H }}>
-
-            {/* Grid lines */}
-            {[0.25, 0.5, 0.75, 1].map(f => (
-              <div
-                key={f}
-                className="absolute left-0 right-0 pointer-events-none"
-                style={{ top: `${(1 - f) * 100}%`, borderTop: f === 1 ? '1px dashed #e2e8f0' : '1px dashed #f1f5f9' }}
-              />
-            ))}
-
-            {/* 3 bars — evenly spaced */}
-            <div className="absolute inset-0 flex items-end justify-around px-6 pb-0">
-              {BARS.map(bar => {
-                const val  = counts[bar.key] || 0;
-                const pct  = counts.total > 0 ? Math.round((val / counts.total) * 100) : 0;
-                const h    = Math.max(val > 0 ? 6 : 0, (val / yMax) * (CHART_H - 4));
-                const isHov = hoveredBar === bar.key;
-
-                return (
-                  <div key={bar.key} className="flex flex-col items-center gap-1 w-16">
-                    {/* Value label above bar */}
-                    <span
-                      className="text-[11px] font-bold transition-opacity duration-200"
-                      style={{ color: bar.dot, opacity: val > 0 ? 1 : 0.3 }}
-                    >
-                      {val}
-                    </span>
-
-                    {/* Bar */}
-                    <div className="relative w-full flex justify-center">
-                      {/* Tooltip */}
-                      {isHov && (
-                        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] rounded-lg px-2.5 py-1.5 whitespace-nowrap z-30 shadow-xl pointer-events-none">
-                          <div className="font-bold" style={{ color: bar.dot }}>{bar.label}</div>
-                          <div>{val} students &nbsp;·&nbsp; <span className="font-semibold">{pct}%</span></div>
-                        </div>
-                      )}
+      <div className="overflow-x-auto rounded-xl border border-gray-100">
+        <table className="min-w-full divide-y divide-gray-100 text-left">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">Grade</th>
+              <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-emerald-600">Paid</th>
+              <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-amber-600">Partial</th>
+              <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-red-600">Unpaid</th>
+              <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">Rate</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50 bg-white">
+            {gradeRows.length > 0 ? gradeRows.map(row => (
+              <tr key={row.grade} className="hover:bg-gray-50/70">
+                <td className="whitespace-nowrap px-3 py-2 text-xs font-bold text-gray-900">{row.grade}</td>
+                <td className="px-3 py-2 text-xs font-semibold text-emerald-700">{row.paid}</td>
+                <td className="px-3 py-2 text-xs font-semibold text-amber-700">{row.partial}</td>
+                <td className="px-3 py-2 text-xs font-semibold text-red-700">{row.unpaid}</td>
+                <td className="min-w-[110px] px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100">
                       <div
-                        className="rounded-t-md transition-all duration-600 cursor-default w-12"
-                        style={{
-                          height: h,
-                          background: bar.fill,
-                          boxShadow: isHov ? `0 -4px 16px 0 ${bar.shadow}` : 'none',
-                          transform: isHov ? 'scaleY(1.03) scaleX(1.05)' : 'scaleY(1)',
-                          transformOrigin: 'bottom',
-                          transition: 'all 0.25s ease',
-                        }}
-                        onMouseEnter={() => setHoveredBar(bar.key)}
-                        onMouseLeave={() => setHoveredBar(null)}
+                        className="h-full rounded-full bg-emerald-500"
+                        style={{ width: `${row.paidRate}%` }}
                       />
                     </div>
+                    <span className="w-9 text-right text-[11px] font-bold text-gray-700">{row.paidRate}%</span>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* X-axis labels */}
-          <div className="flex justify-around px-6 mt-1.5">
-            {BARS.map(bar => (
-              <div key={bar.key} className="w-16 flex flex-col items-center gap-0.5">
-                <span className="text-[11px] font-bold" style={{ color: bar.dot }}>{bar.label}</span>
-                <span className="text-[9px] text-gray-400 font-medium">
-                  {counts.total > 0 ? `${Math.round((counts[bar.key] / counts.total) * 100)}%` : '—'}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+                </td>
+              </tr>
+            )) : (
+              <tr>
+                <td className="px-3 py-6 text-center text-xs font-medium text-gray-400" colSpan={5}>
+                  No grade payment data available.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
-
-      {/* Y-axis label */}
-      <p className="text-[9px] text-gray-400 pl-8">Y = No. of students &nbsp;·&nbsp; Use dropdown to filter by grade</p>
     </div>
   );
 }
