@@ -8,6 +8,7 @@
 import React, { createContext, useState, useEffect, useRef, useCallback } from 'react';
 import { setInstitutionType } from '../services/api/institutionContext';
 import { useBootstrapStore } from '../store/useBootstrapStore';
+import { resetMobileOnboardingForLogout } from '../utils/mobileOnboardingStorage';
 
 export const AuthContext = createContext({
   isAuthenticated: false,
@@ -106,6 +107,8 @@ export const AuthProvider = ({ children }) => {
   }, [normalizeUser]);
 
   const logout = useCallback(() => {
+    resetMobileOnboardingForLogout();
+
     // Clear localStorage
     localStorage.removeItem('token');
     localStorage.removeItem('user');
