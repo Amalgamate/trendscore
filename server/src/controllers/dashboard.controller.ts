@@ -1512,7 +1512,7 @@ export class DashboardController {
             if (!userId) throw new ApiError(400, 'User ID is required');
             const institutionType = this.getInstitutionType(req) as any;
 
-            const cacheKey = `dashboard:teacher:v2:${userId}`;
+            const cacheKey = `dashboard:teacher:v3:${userId}`;
             const cached = await redisCacheService.get<any>(cacheKey);
             if (cached) return res.json({ success: true, data: cached, _cached: true });
 
@@ -1745,6 +1745,35 @@ export class DashboardController {
                 type: item.type,
             }));
 
+            const learnerScope = myClassesWithOccupancy.map((cls: any) => ({
+                grade: cls.grade,
+                ...(cls.stream ? { stream: cls.stream } : {}),
+                institutionType,
+                status: 'ACTIVE' as any,
+                archived: false,
+            }));
+
+            const feeWhere: any = learnerScope.length > 0
+                ? {
+                    archived: false,
+                    balance: { gt: 0 },
+                    status: { not: 'CANCELLED' as any },
+                    learner: { OR: learnerScope },
+                }
+                : { id: '__none__' };
+
+            const [feeBalanceAgg, feeBalanceLearners] = await Promise.all([
+                prisma.feeInvoice.aggregate({
+                    where: feeWhere,
+                    _sum: { balance: true },
+                }),
+                prisma.feeInvoice.findMany({
+                    where: feeWhere,
+                    distinct: ['learnerId'],
+                    select: { learnerId: true },
+                }),
+            ]);
+
             const payload = {
                 stats: {
                     myStudents: totalMyStudents, myClasses: myClassesWithOccupancy.length,
@@ -1758,6 +1787,10 @@ export class DashboardController {
                 schedule: todaysSchedule.length > 0 ? todaysSchedule : classSummary,
                 attendanceDue,
                 assessmentsToMark: assessmentItems,
+                feeSummary: {
+                    learnersWithBalance: feeBalanceLearners.length,
+                    totalOutstanding: Number(feeBalanceAgg._sum.balance || 0),
+                },
                 learnerAnalysis,
                 messages,
                 learnersNeedingAttention,
