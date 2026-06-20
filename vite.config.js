@@ -17,7 +17,7 @@ export default defineConfig({
   server: {
     port: Number(process.env.VITE_PORT || 3000),
     open: true,
-    strictPort: process.env.VITE_STRICT_PORT === 'true',
+    strictPort: true,
     // Proxy /api calls to the local Express server so the HTTPS frontend
     // never makes mixed-content requests to http://localhost:5000.
     proxy: {
