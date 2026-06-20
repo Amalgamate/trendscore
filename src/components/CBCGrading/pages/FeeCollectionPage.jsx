@@ -1017,13 +1017,14 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
 
 
 
-  const handleBulkReminders = async (channel) => {
-    if (selectedInvoiceIds.length === 0 && !selectAllMatching) return;
+  const handleBulkReminders = async (channel, explicitInvoiceIds = null, filterLabel = '') => {
+    const hasExplicitSelection = Array.isArray(explicitInvoiceIds) && explicitInvoiceIds.length > 0;
+    if (!hasExplicitSelection && selectedInvoiceIds.length === 0 && !selectAllMatching) return;
     try {
       setLoading(true);
-      let invoiceIds = selectedInvoiceIds;
+      let invoiceIds = hasExplicitSelection ? explicitInvoiceIds : selectedInvoiceIds;
 
-      if (selectAllMatching) {
+      if (!hasExplicitSelection && selectAllMatching) {
         if (searchLearnerId) {
           const learnerRes = await api.fees.getLearnerInvoices(searchLearnerId);
           const learnerRows = Array.isArray(learnerRes?.data) ? learnerRes.data : [];
@@ -1046,9 +1047,12 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
       }
 
       await api.fees.bulkSendReminders({ invoiceIds, channel });
-      showSuccess(`Bulk reminder process started via ${channel} for ${invoiceIds.length} invoices`);
-      setSelectedInvoiceIds([]);
-      setSelectAllMatching(false);
+      const scope = filterLabel ? ` for ${filterLabel}` : '';
+      showSuccess(`Bulk reminder process started via ${channel}${scope} for ${invoiceIds.length} invoices`);
+      if (!hasExplicitSelection) {
+        setSelectedInvoiceIds([]);
+        setSelectAllMatching(false);
+      }
     } catch (error) {
       showError(error.message || 'Failed to send bulk reminders');
     } finally {
@@ -1313,7 +1317,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
         </button>
         <button
           onClick={() => setActiveTab('invoices')}
-          className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === 'invoices'
+          className={`hidden md:block px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === 'invoices'
               ? 'border-brand-teal text-brand-teal'
               : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
@@ -1322,7 +1326,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
         </button>
         <button
           onClick={() => setActiveTab('types')}
-          className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === 'types'
+          className={`hidden md:block px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === 'types'
               ? 'border-brand-teal text-brand-teal'
               : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
@@ -1331,7 +1335,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
         </button>
         <button
           onClick={() => setActiveTab('structure')}
-          className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === 'structure'
+          className={`hidden md:block px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === 'structure'
               ? 'border-brand-teal text-brand-teal'
               : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
@@ -1340,7 +1344,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
         </button>
         <button
           onClick={() => setActiveTab('unmatched')}
-          className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center gap-2 ${activeTab === 'unmatched'
+          className={`hidden md:flex px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px items-center gap-2 ${activeTab === 'unmatched'
               ? 'border-amber-500 text-amber-700'
               : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
@@ -1381,8 +1385,96 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
               </div>
             )}
             <div className={`overflow-hidden space-y-6 ${statsLoading ? 'hidden' : ''}`}>
+              <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm md:hidden">
+                <div className="border-b border-gray-100 bg-gray-50 px-4 py-3">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-gray-500">School Fee Summary</p>
+                  <p className="mt-0.5 text-xs font-medium text-gray-600">A quick owner view of collections and balances.</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left">
+                    <thead className="bg-white">
+                      <tr className="border-b border-gray-100">
+                        <th className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">Item</th>
+                        <th className="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider text-gray-400">Amount</th>
+                        <th className="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider text-gray-400">Count</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      <tr
+                        onClick={() => setStatusFilter('all')}
+                        className="cursor-pointer bg-emerald-50/70"
+                      >
+                        <td className="px-4 py-3">
+                          <p className="text-xs font-bold text-gray-900">Expected income</p>
+                          <p className="text-[11px] font-medium text-gray-500">Total fees billed for this period</p>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-gray-900">{stats.totalBilled}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold text-gray-600">{stats.totalCount}</td>
+                      </tr>
+                      <tr className="bg-white">
+                        <td className="px-4 py-3">
+                          <p className="text-xs font-bold text-gray-900">Total collected</p>
+                          <p className="text-[11px] font-medium text-gray-500">Cash already received</p>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-emerald-700">{stats.actualCollected}</td>
+                        <td className="px-4 py-3 text-right text-xs font-semibold text-gray-400">-</td>
+                      </tr>
+                      <tr
+                        onClick={() => { setStatusFilter('pending'); setCurrentPage(1); }}
+                        className="cursor-pointer bg-red-50/70"
+                      >
+                        <td className="px-4 py-3">
+                          <p className="text-xs font-bold text-gray-900">Not paid anything</p>
+                          <p className="text-[11px] font-medium text-gray-500">Learners with no payment recorded</p>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-red-700">{stats.pendingAmt}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold text-gray-600">{stats.pendingCount}</td>
+                      </tr>
+                      <tr
+                        onClick={() => { setStatusFilter('partial'); setCurrentPage(1); }}
+                        className="cursor-pointer bg-amber-50/70"
+                      >
+                        <td className="px-4 py-3">
+                          <p className="text-xs font-bold text-gray-900">Partial payments</p>
+                          <p className="text-[11px] font-medium text-gray-500">Paid something, still owing</p>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-amber-700">{stats.partialBalanceAmt}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold text-gray-600">{stats.partialCount}</td>
+                      </tr>
+                      <tr
+                        onClick={() => { setStatusFilter('paid'); setCurrentPage(1); }}
+                        className="cursor-pointer bg-teal-50/70"
+                      >
+                        <td className="px-4 py-3">
+                          <p className="text-xs font-bold text-gray-900">Completely cleared</p>
+                          <p className="text-[11px] font-medium text-gray-500">Accounts with zero balance</p>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-teal-700">{stats.paidAmt}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold text-gray-600">{stats.paidCount}</td>
+                      </tr>
+                      <tr className="bg-purple-50/70">
+                        <td className="px-4 py-3">
+                          <p className="text-xs font-bold text-gray-900">Overpaid / credit</p>
+                          <p className="text-[11px] font-medium text-gray-500">Advance payments or credit balances</p>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-purple-700">{stats.overpaidAmt}</td>
+                        <td className="px-4 py-3 text-right text-xs font-semibold text-gray-400">-</td>
+                      </tr>
+                      <tr className="bg-blue-50/70">
+                        <td className="px-4 py-3">
+                          <p className="text-xs font-bold text-gray-900">Waived / discounted</p>
+                          <p className="text-[11px] font-medium text-gray-500">Approved fee reductions</p>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-blue-700">- {stats.waivedTotal}</td>
+                        <td className="px-4 py-3 text-right text-xs font-semibold text-gray-400">-</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
               {/* Stats Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-0 sm:gap-4">
+              <div className="hidden md:grid md:grid-cols-4 md:gap-4">
 
                 {/* Total Invoices — Indigo */}
                 <div
@@ -1498,7 +1590,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
               </div>
 
               {/* Financial Reconciliation Strip — Redesigned for Premium Look */}
-              <div className="relative overflow-hidden bg-white border-[0.5px] border-gray-300 rounded-2xl p-0 shadow-sm flex flex-col lg:flex-row items-stretch gap-0">
+              <div className="relative hidden overflow-hidden bg-white border-[0.5px] border-gray-300 rounded-2xl p-0 shadow-sm md:flex flex-col lg:flex-row items-stretch gap-0">
 
                 {/* Total Collections - Emerald */}
                 <div className="flex-1 flex items-center gap-4 p-4 bg-emerald-50/80 border-r-[0.5px] border-emerald-200/80 hover:bg-emerald-50 transition-colors">
@@ -1651,6 +1743,8 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
               onStatusFilter={(s) => { setStatusFilter(s); setActiveTab('invoices'); }}
               lastUpdated={new Date().toISOString()}
               onRefresh={() => { fetchStatsInvoices(); fetchInvoices(); }}
+              onSendReminders={(invoiceIds, channel, filterLabel) => handleBulkReminders(channel, invoiceIds, filterLabel)}
+              reminderLoading={loading}
             />
           )}
 

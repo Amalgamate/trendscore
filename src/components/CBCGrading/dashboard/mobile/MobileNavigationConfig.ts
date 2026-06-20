@@ -57,7 +57,7 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
       },
       {
         id: 'finance',
-        label: 'Finance',
+        label: 'Fees',
         icon: Wallet,
         path: 'fees-overview',
         activePaths: ['finance-dashboard', 'fees-overview', 'fees-collection', 'fees-invoices', 'fees-reports', 'fees-statements'],
@@ -101,7 +101,7 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
       },
       {
         id: 'finance',
-        label: 'Finance',
+        label: 'Fees',
         icon: Wallet,
         path: 'fees-overview',
         activePaths: ['finance-dashboard', 'fees-overview', 'fees-collection', 'fees-invoices', 'fees-reports', 'fees-statements'],
@@ -145,7 +145,7 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
       },
       {
         id: 'finance',
-        label: 'Finance',
+        label: 'Fees',
         icon: Wallet,
         path: 'fees-overview',
         activePaths: ['finance-dashboard', 'fees-overview', 'fees-collection', 'fees-invoices', 'fees-reports', 'fees-statements'],

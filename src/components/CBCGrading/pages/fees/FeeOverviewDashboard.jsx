@@ -2,16 +2,16 @@
  * FeeOverviewDashboard
  * A rich analytics dashboard for the Fee Overview tab.
  * Displays: collection progress donut, weekly trend chart, attention alerts,
- * payment channel breakdown, and top insights.
+ * top insights.
  */
 
 import React, { useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import {
-  TrendingDown, AlertTriangle, AlertCircle, Clock,
+  TrendingDown, AlertCircle, Clock,
   Users, ChevronRight, RefreshCw, Trophy, Award, Frown,
-  Calendar, MessageSquare, Smartphone, Banknote, Building2,
-  CreditCard, CheckCircle, ArrowRight, Target, Zap, Star
+  Calendar, MessageSquare,
+  CheckCircle, ArrowRight, Target, Zap, Star
 } from 'lucide-react';
 
 /* ─── helpers ─────────────────────────────────────────────────────────── */
@@ -94,84 +94,112 @@ function DonutChart({ collected, outstanding, waived, total }) {
 }
 
 /* ─── Payment by Grade widget ────────────────────────────────────────────── */
-function PaymentByGrade({ invoices }) {
-  const gradeRows = useMemo(() => {
+function PaymentByGrade({ invoices, onSendReminders, reminderLoading }) {
+  const [selectedCategory, setSelectedCategory] = useState('outstanding');
+
+  const categoryOptions = [
+    { value: 'outstanding', label: 'All Balances' },
+    { value: 'unpaid', label: 'Not Paid Anything' },
+    { value: 'partial', label: 'Partial Payments' },
+  ];
+
+  const selectedLabel = categoryOptions.find(option => option.value === selectedCategory)?.label || 'All Balances';
+
+  const { gradeRows, totals, invoiceIds } = useMemo(() => {
     const map = {};
+    const ids = [];
+    const summary = { students: 0, balance: 0 };
+
     (invoices || []).forEach(inv => {
-      const g = inv?.learner?.grade || 'Unknown';
-      if (!map[g]) map[g] = { paid: 0, partial: 0, unpaid: 0, total: 0 };
       const billed  = Number(inv.totalAmount || 0);
       const paidAmt = inv.payments?.length
         ? inv.payments.reduce((s, p) => s + Number(p.amount || 0), 0)
         : Number(inv.paidAmount || 0);
-      const balance = Math.max(0, billed - paidAmt);
-      map[g].total++;
-      if (paidAmt <= 0)      map[g].unpaid++;
-      else if (balance <= 0) map[g].paid++;
-      else                   map[g].partial++;
+      const balance = Math.max(0, Number(inv.balance ?? (billed - paidAmt)));
+      if (balance <= 0) return;
+
+      const category =
+        paidAmt <= 0 ? 'unpaid' :
+        balance > 0 ? 'partial' :
+        'paid';
+
+      if (selectedCategory !== 'outstanding' && category !== selectedCategory) return;
+
+      const g = inv?.learner?.grade || 'Unknown';
+      if (!map[g]) map[g] = { students: 0, balance: 0 };
+      map[g].students++;
+      map[g].balance += balance;
+      summary.students++;
+      summary.balance += balance;
+      if (inv.id) ids.push(inv.id);
     });
 
-    return Object.entries(map)
+    const rows = Object.entries(map)
       .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
       .map(([grade, counts]) => ({
         grade,
         ...counts,
-        paidRate: counts.total > 0 ? Math.round((counts.paid / counts.total) * 100) : 0,
       }));
-  }, [invoices]);
 
-  const totals = gradeRows.reduce(
-    (acc, row) => ({
-      paid: acc.paid + row.paid,
-      partial: acc.partial + row.partial,
-      unpaid: acc.unpaid + row.unpaid,
-      total: acc.total + row.total,
-    }),
-    { paid: 0, partial: 0, unpaid: 0, total: 0 }
-  );
+    return { gradeRows: rows, totals: summary, invoiceIds: ids };
+  }, [invoices, selectedCategory]);
+
+  const handleSendReminderClick = () => {
+    if (!invoiceIds.length || !onSendReminders) return;
+    onSendReminders(invoiceIds, 'SMS', selectedLabel);
+  };
 
   return (
-    <div className="w-full">
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-gray-600">
-        <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">{totals.paid} paid</span>
-        <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">{totals.partial} partial</span>
-        <span className="rounded-full bg-red-50 px-2 py-1 text-red-700">{totals.unpaid} unpaid</span>
-        <span className="ml-auto text-gray-400">{totals.total} students</span>
+    <div className="w-full space-y-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <select
+          value={selectedCategory}
+          onChange={e => setSelectedCategory(e.target.value)}
+          className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700 outline-none transition-all focus:border-blue-400 focus:ring-2 focus:ring-blue-100 sm:w-44"
+        >
+          {categoryOptions.map(option => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={handleSendReminderClick}
+          disabled={!invoiceIds.length || reminderLoading}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-300"
+        >
+          <MessageSquare size={14} />
+          {reminderLoading ? 'Sending...' : 'Send Reminder'}
+        </button>
       </div>
+
+      <div className="rounded-xl bg-amber-50 px-3 py-2">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">{selectedLabel}</p>
+        <div className="mt-1 flex items-end justify-between gap-3">
+          <p className="text-lg font-black text-gray-900">{fmt(totals.balance)}</p>
+          <p className="text-xs font-semibold text-gray-600">{totals.students} students</p>
+        </div>
+      </div>
+
       <div className="overflow-x-auto rounded-xl border border-gray-100">
         <table className="min-w-full divide-y divide-gray-100 text-left">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">Grade</th>
-              <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-emerald-600">Paid</th>
-              <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-amber-600">Partial</th>
-              <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-red-600">Unpaid</th>
-              <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">Rate</th>
+              <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-gray-500">Students</th>
+              <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-amber-600">Balance</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50 bg-white">
             {gradeRows.length > 0 ? gradeRows.map(row => (
               <tr key={row.grade} className="hover:bg-gray-50/70">
                 <td className="whitespace-nowrap px-3 py-2 text-xs font-bold text-gray-900">{row.grade}</td>
-                <td className="px-3 py-2 text-xs font-semibold text-emerald-700">{row.paid}</td>
-                <td className="px-3 py-2 text-xs font-semibold text-amber-700">{row.partial}</td>
-                <td className="px-3 py-2 text-xs font-semibold text-red-700">{row.unpaid}</td>
-                <td className="min-w-[110px] px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100">
-                      <div
-                        className="h-full rounded-full bg-emerald-500"
-                        style={{ width: `${row.paidRate}%` }}
-                      />
-                    </div>
-                    <span className="w-9 text-right text-[11px] font-bold text-gray-700">{row.paidRate}%</span>
-                  </div>
-                </td>
+                <td className="px-3 py-2 text-xs font-semibold text-gray-700">{row.students}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-xs font-bold text-amber-700">{fmt(row.balance)}</td>
               </tr>
             )) : (
               <tr>
-                <td className="px-3 py-6 text-center text-xs font-medium text-gray-400" colSpan={5}>
-                  No grade payment data available.
+                <td className="px-3 py-6 text-center text-xs font-medium text-gray-400" colSpan={3}>
+                  No balances found for this filter.
                 </td>
               </tr>
             )}
@@ -219,22 +247,45 @@ function InsightCard({ icon: Icon, iconBg, label, value, sub, valueColor = 'text
   );
 }
 
-/* ─── Payment channel bar ─────────────────────────────────────────────── */
-function ChannelBar({ label, pct, color, icon: Icon }) {
+function CollapsibleSection({ title, description, summary, tone = 'gray', children }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const tones = {
+    gray: 'border-gray-100 text-gray-700 bg-gray-50',
+    green: 'border-emerald-100 text-emerald-700 bg-emerald-50',
+    amber: 'border-amber-100 text-amber-700 bg-amber-50',
+    red: 'border-red-100 text-red-700 bg-red-50',
+    blue: 'border-blue-100 text-blue-700 bg-blue-50',
+  };
+
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex items-center gap-1.5 w-28 shrink-0">
-        <Icon size={12} className="text-gray-400" />
-        <span className="text-xs text-gray-600 font-medium">{label}</span>
-      </div>
-      <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-700"
-          style={{ width: `${pct}%`, background: color }}
-        />
-      </div>
-      <span className="text-xs font-semibold text-gray-700 w-8 text-right">{Math.round(pct)}%</span>
-    </div>
+    <section className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <button
+        type="button"
+        onClick={() => setIsOpen(open => !open)}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 sm:px-5"
+      >
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-widest text-gray-600">{title}</p>
+          {description && <p className="mt-0.5 text-[11px] font-medium text-gray-400">{description}</p>}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {summary && (
+            <span className={`hidden rounded-full border px-2 py-1 text-[10px] font-bold sm:inline-flex ${tones[tone] || tones.gray}`}>
+              {summary}
+            </span>
+          )}
+          <ChevronRight
+            size={16}
+            className={`text-gray-400 transition-transform ${isOpen ? 'rotate-90' : ''}`}
+          />
+        </div>
+      </button>
+      {isOpen && (
+        <div className="border-t border-gray-100 p-4 sm:p-5">
+          {children}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -248,6 +299,8 @@ export default function FeeOverviewDashboard({
   onStatusFilter,
   lastUpdated,
   onRefresh,
+  onSendReminders,
+  reminderLoading = false,
 }) {
   /* ── Derived analytics ── */
   const analytics = useMemo(() => {
@@ -326,30 +379,6 @@ export default function FeeOverviewDashboard({
       return hasBalance && (!lastPay || lastPay < twoWeeksAgo);
     });
 
-    // Payment channel totals (raw)
-    let mpesaRaw = 0, cashRaw = 0, bankRaw = 0, chequeRaw = 0;
-    src.forEach(inv => {
-      if (inv.payments?.length) {
-        inv.payments.forEach(p => {
-          const amt = Number(p.amount || 0);
-          const m = String(p.paymentMethod || '').toUpperCase();
-          if (m === 'MPESA') mpesaRaw += amt;
-          else if (m === 'CASH') cashRaw += amt;
-          else if (m === 'BANK_TRANSFER') bankRaw += amt;
-          else if (m === 'CHEQUE') chequeRaw += amt;
-        });
-      } else {
-        const amt = Number(inv.paidAmount || 0);
-        const m = String(inv.paymentMethod || '').toUpperCase();
-        if (m === 'MPESA') mpesaRaw += amt;
-        else if (m === 'CASH') cashRaw += amt;
-        else if (m === 'BANK_TRANSFER') bankRaw += amt;
-        else if (m === 'CHEQUE') chequeRaw += amt;
-        else mpesaRaw += amt; // default
-      }
-    });
-    const channelTotal = mpesaRaw + cashRaw + bankRaw + chequeRaw || 1;
-
     return {
       bestGrade,
       worstGrade,
@@ -360,12 +389,6 @@ export default function FeeOverviewDashboard({
       pledgeAmount,
       dueSoonPledges,
       needReminders,
-      channels: {
-        mpesa: { raw: mpesaRaw, pct: (mpesaRaw / channelTotal) * 100 },
-        cash: { raw: cashRaw, pct: (cashRaw / channelTotal) * 100 },
-        bank: { raw: bankRaw, pct: (bankRaw / channelTotal) * 100 },
-        cheque: { raw: chequeRaw, pct: (chequeRaw / channelTotal) * 100 },
-      },
     };
   }, [invoices]);
 
@@ -397,201 +420,175 @@ export default function FeeOverviewDashboard({
   const timeStr = now.toLocaleString('en-KE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
   return (
-    <div className="space-y-4">
-
-      {/* ── ROW 1: Donut | Trend | Alerts ─────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-        {/* Collection Progress donut */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Collection Progress</h3>
-            <span className="text-[10px] text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">{termLabel}</span>
-          </div>
-          <div className="flex flex-col sm:flex-row items-center gap-5">
-            <DonutChart collected={collected} outstanding={outstanding} waived={waived} total={total} />
-            <div className="flex-1 min-w-0 w-full">
-              <div className="space-y-2.5">
-                {/* Collected */}
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-gray-600">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#22C55E] shrink-0" />
-                    <span>Collected</span>
-                  </div>
-                  <div className="text-xs font-bold text-gray-900" style={{ paddingLeft: '18px' }}>
-                    {fmt(collected)}
-                  </div>
-                </div>
-
-                {/* Outstanding */}
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-gray-600">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B] shrink-0" />
-                    <span>Outstanding</span>
-                  </div>
-                  <div className="text-xs font-bold text-gray-900" style={{ paddingLeft: '18px' }}>
-                    {fmt(outstanding)}
-                  </div>
-                </div>
-
-                {/* Waived / Discounted */}
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-gray-600">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#3B82F6] shrink-0" />
-                    <span>Waived / Discounted</span>
-                  </div>
-                  <div className="text-xs font-bold text-gray-900" style={{ paddingLeft: '18px' }}>
-                    {fmt(waived)}
-                  </div>
-                </div>
+    <div className="space-y-3">
+      <CollapsibleSection
+        title="Collection Summary"
+        description="Expected, collected, outstanding and waived amounts."
+        summary={`${termLabel} • ${fmt(collected)} collected`}
+        tone="green"
+      >
+        <div className="flex flex-col items-center gap-5 sm:flex-row">
+          <DonutChart collected={collected} outstanding={outstanding} waived={waived} total={total} />
+          <div className="w-full min-w-0 flex-1">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl bg-emerald-50 p-3">
+                <p className="flex items-center gap-2 text-xs font-semibold text-emerald-700">
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#22C55E]" />
+                  Collected
+                </p>
+                <p className="mt-1 text-sm font-black text-gray-900">{fmt(collected)}</p>
               </div>
-              <div className="pt-2 border-t border-gray-100 mt-3">
-                <p className="text-[11px] text-gray-500 font-medium">Total Expected: <span className="font-semibold text-gray-750">{fmt(total)}</span></p>
+              <div className="rounded-xl bg-amber-50 p-3">
+                <p className="flex items-center gap-2 text-xs font-semibold text-amber-700">
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#F59E0B]" />
+                  Outstanding
+                </p>
+                <p className="mt-1 text-sm font-black text-gray-900">{fmt(outstanding)}</p>
               </div>
+              <div className="rounded-xl bg-blue-50 p-3">
+                <p className="flex items-center gap-2 text-xs font-semibold text-blue-700">
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#3B82F6]" />
+                  Waived / Discounted
+                </p>
+                <p className="mt-1 text-sm font-black text-gray-900">{fmt(waived)}</p>
+              </div>
+            </div>
+            <div className="mt-3 border-t border-gray-100 pt-3">
+              <p className="text-[11px] font-medium text-gray-500">
+                Total Expected: <span className="font-semibold text-gray-750">{fmt(total)}</span>
+              </p>
             </div>
           </div>
         </div>
+      </CollapsibleSection>
 
-        {/* Payment by Grade */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Payment by Grade</h3>
-            <span className="text-[10px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full font-medium">
-              {termLabel}
-            </span>
-          </div>
-          <PaymentByGrade invoices={invoices} />
-        </div>
+      <CollapsibleSection
+        title="Balances & Reminders"
+        description="Filter unpaid and partial balances, then send payment reminders."
+        summary={`${fmt(outstanding)} balance`}
+        tone="amber"
+      >
+        <PaymentByGrade
+          invoices={invoices}
+          onSendReminders={onSendReminders}
+          reminderLoading={reminderLoading}
+        />
+      </CollapsibleSection>
 
-        {/* Attention Required alerts */}
-        <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-bold text-red-600 uppercase tracking-widest flex items-center gap-1.5">
-              <AlertTriangle size={13} className="text-red-500" /> Attention Required
-            </h3>
-          </div>
-          <div className="divide-y divide-gray-50">
-            {analytics?.nothingPaid?.length > 0 && (
-              <AlertItem
-                icon={Users}
-                iconBg="bg-red-500"
-                text={`${analytics.nothingPaid.length} students have not paid anything`}
-                sub={`Total balance: ${fmt(analytics.nothingPaid.reduce((s, i) => s + Number(i.totalAmount || 0), 0))}`}
-                onClick={() => onStatusFilter?.('pending')}
-              />
-            )}
-            {analytics?.overdue30?.length > 0 && (
-              <AlertItem
-                icon={Clock}
-                iconBg="bg-orange-500"
-                text={`${fmt(analytics.overdue30.reduce((s, i) => s + Number(i.balance || 0), 0))} overdue by 30+ days`}
-                sub={`From ${analytics.overdue30.length} students`}
-                onClick={() => onNavigateToInvoices?.()}
-              />
-            )}
-            {analytics?.bestGrade && analytics?.worstGrade && analytics.bestGrade.grade !== analytics.worstGrade.grade && (
-              <AlertItem
-                icon={TrendingDown}
-                iconBg="bg-amber-500"
-                text={`${analytics.worstGrade.grade} collection rate only ${analytics.worstGrade.rate}%`}
-                sub="Below school average"
-                onClick={() => onNavigateToInvoices?.()}
-              />
-            )}
-            {analytics?.withPledges?.length > 0 && (
-              <AlertItem
-                icon={Calendar}
-                iconBg="bg-blue-500"
-                text={`${analytics.withPledges.length} fee promises due this week`}
-                sub={`Total amount: ${fmt(analytics.dueSoonPledges)}`}
-                onClick={() => onNavigateToInvoices?.()}
-              />
-            )}
-            {analytics?.needReminders?.length > 0 && (
-              <AlertItem
-                icon={MessageSquare}
-                iconBg="bg-violet-500"
-                text={`${analytics.needReminders.length} parents need reminders`}
-                sub="SMS not sent"
-                onClick={() => onNavigateToInvoices?.()}
-              />
-            )}
-            {!analytics?.nothingPaid?.length && !analytics?.overdue30?.length && (
-              <div className="py-6 text-center">
-                <CheckCircle size={32} className="text-emerald-400 mx-auto mb-2" />
-                <p className="text-xs text-gray-500 font-medium">All clear! No urgent actions.</p>
-              </div>
-            )}
-          </div>
-          <button
-            onClick={() => onNavigateToInvoices?.()}
-            className="mt-3 w-full text-center text-xs font-semibold text-red-600 hover:text-red-700 flex items-center justify-center gap-1 transition-colors"
-          >
-            View All Alerts <ChevronRight size={12} />
-          </button>
-        </div>
-      </div>
-
-      {/* ── ROW 2: Payment Channels | Top Insights ─────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
-        {/* Payment channels */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Payment Channels</h3>
-          <div className="space-y-3">
-            <ChannelBar label="M-Pesa" pct={analytics?.channels.mpesa.pct || 0} color="linear-gradient(to right,#16a34a,#4ade80)" icon={Smartphone} />
-            <ChannelBar label="Cash" pct={analytics?.channels.cash.pct || 0} color="linear-gradient(to right,#2563eb,#60a5fa)" icon={Banknote} />
-            <ChannelBar label="Bank Transfer" pct={analytics?.channels.bank.pct || 0} color="linear-gradient(to right,#7c3aed,#a78bfa)" icon={Building2} />
-            <ChannelBar label="Cheque" pct={analytics?.channels.cheque.pct || 0} color="linear-gradient(to right,#0891b2,#67e8f9)" icon={CreditCard} />
-          </div>
-          <p className="text-[10px] text-gray-400 mt-4">Based on collections {termLabel.toLowerCase()}</p>
-        </div>
-
-        {/* Top insights */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Top Insights</h3>
-          <div className="flex flex-wrap gap-3">
-            {analytics?.bestGrade && (
-              <InsightCard
-                icon={Trophy}
-                iconBg="bg-emerald-500"
-                label="Best Collecting Class"
-                value={analytics.bestGrade.grade}
-                sub={`${analytics.bestGrade.rate}% Collection Rate`}
-                valueColor="text-emerald-600"
-              />
-            )}
-            {analytics?.worstGrade && analytics.worstGrade.grade !== analytics?.bestGrade?.grade && (
-              <InsightCard
-                icon={Frown}
-                iconBg="bg-red-500"
-                label="Lowest Collecting Class"
-                value={analytics.worstGrade.grade}
-                sub={`${analytics.worstGrade.rate}% Collection Rate`}
-                valueColor="text-red-600"
-              />
-            )}
-            {analytics?.largestOutstanding && (
-              <InsightCard
-                icon={AlertCircle}
-                iconBg="bg-amber-500"
-                label="Largest Outstanding"
-                value={fmt(analytics.largestOutstanding.balance)}
-                sub={`${analytics.largestOutstanding.name} (${analytics.largestOutstanding.grade})`}
-                valueColor="text-amber-600"
-              />
-            )}
-            <InsightCard
-              icon={Target}
-              iconBg="bg-blue-500"
-              label="Expected This Week"
-              value={fmt(analytics?.dueSoonPledges || 0)}
-              sub="From promises & history"
-              valueColor="text-blue-600"
+      <CollapsibleSection
+        title="Follow-up Actions"
+        description="Accounts that need fee collection attention."
+        summary={`${(analytics?.nothingPaid?.length || 0) + (analytics?.overdue30?.length || 0)} flagged`}
+        tone="red"
+      >
+        <div className="divide-y divide-gray-50">
+          {analytics?.nothingPaid?.length > 0 && (
+            <AlertItem
+              icon={Users}
+              iconBg="bg-red-500"
+              text={`${analytics.nothingPaid.length} students have not paid anything`}
+              sub={`Total balance: ${fmt(analytics.nothingPaid.reduce((s, i) => s + Number(i.totalAmount || 0), 0))}`}
+              onClick={() => onStatusFilter?.('pending')}
             />
-          </div>
+          )}
+          {analytics?.overdue30?.length > 0 && (
+            <AlertItem
+              icon={Clock}
+              iconBg="bg-orange-500"
+              text={`${fmt(analytics.overdue30.reduce((s, i) => s + Number(i.balance || 0), 0))} overdue by 30+ days`}
+              sub={`From ${analytics.overdue30.length} students`}
+              onClick={() => onNavigateToInvoices?.()}
+            />
+          )}
+          {analytics?.bestGrade && analytics?.worstGrade && analytics.bestGrade.grade !== analytics.worstGrade.grade && (
+            <AlertItem
+              icon={TrendingDown}
+              iconBg="bg-amber-500"
+              text={`${analytics.worstGrade.grade} collection rate only ${analytics.worstGrade.rate}%`}
+              sub="Below school average"
+              onClick={() => onNavigateToInvoices?.()}
+            />
+          )}
+          {analytics?.withPledges?.length > 0 && (
+            <AlertItem
+              icon={Calendar}
+              iconBg="bg-blue-500"
+              text={`${analytics.withPledges.length} fee promises due this week`}
+              sub={`Total amount: ${fmt(analytics.dueSoonPledges)}`}
+              onClick={() => onNavigateToInvoices?.()}
+            />
+          )}
+          {analytics?.needReminders?.length > 0 && (
+            <AlertItem
+              icon={MessageSquare}
+              iconBg="bg-violet-500"
+              text={`${analytics.needReminders.length} parents need reminders`}
+              sub="SMS not sent"
+              onClick={() => onNavigateToInvoices?.()}
+            />
+          )}
+          {!analytics?.nothingPaid?.length && !analytics?.overdue30?.length && (
+            <div className="py-6 text-center">
+              <CheckCircle size={32} className="mx-auto mb-2 text-emerald-400" />
+              <p className="text-xs font-medium text-gray-500">All clear! No urgent actions.</p>
+            </div>
+          )}
         </div>
-      </div>
+        <button
+          onClick={() => onNavigateToInvoices?.()}
+          className="mt-3 flex w-full items-center justify-center gap-1 text-center text-xs font-semibold text-red-600 transition-colors hover:text-red-700"
+        >
+          View All Alerts <ChevronRight size={12} />
+        </button>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title="Performance Insights"
+        description="Collection trends and high-priority fee signals."
+        summary={analytics?.bestGrade ? `${analytics.bestGrade.grade} leading` : 'No insights'}
+        tone="blue"
+      >
+        <div className="flex flex-wrap gap-3">
+          {analytics?.bestGrade && (
+            <InsightCard
+              icon={Trophy}
+              iconBg="bg-emerald-500"
+              label="Best Collecting Class"
+              value={analytics.bestGrade.grade}
+              sub={`${analytics.bestGrade.rate}% Collection Rate`}
+              valueColor="text-emerald-600"
+            />
+          )}
+          {analytics?.worstGrade && analytics.worstGrade.grade !== analytics?.bestGrade?.grade && (
+            <InsightCard
+              icon={Frown}
+              iconBg="bg-red-500"
+              label="Lowest Collecting Class"
+              value={analytics.worstGrade.grade}
+              sub={`${analytics.worstGrade.rate}% Collection Rate`}
+              valueColor="text-red-600"
+            />
+          )}
+          {analytics?.largestOutstanding && (
+            <InsightCard
+              icon={AlertCircle}
+              iconBg="bg-amber-500"
+              label="Largest Outstanding"
+              value={fmt(analytics.largestOutstanding.balance)}
+              sub={`${analytics.largestOutstanding.name} (${analytics.largestOutstanding.grade})`}
+              valueColor="text-amber-600"
+            />
+          )}
+          <InsightCard
+            icon={Target}
+            iconBg="bg-blue-500"
+            label="Expected This Week"
+            value={fmt(analytics?.dueSoonPledges || 0)}
+            sub="From promises & history"
+            valueColor="text-blue-600"
+          />
+        </div>
+      </CollapsibleSection>
 
       {/* ── Footer bar ─────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between text-[11px] text-gray-400 px-1">
