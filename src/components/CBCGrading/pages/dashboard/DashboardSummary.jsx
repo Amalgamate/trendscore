@@ -209,28 +209,28 @@ export const GreetingToast = ({
       )}
 
       {profilePromptOpen && profileAssistant.missingItems.length > 0 && (
-        <div className="fixed inset-0 z-[70] flex items-end bg-slate-950/45 p-3 sm:items-center sm:justify-center">
-          <div className="w-full max-w-lg border border-slate-200 bg-white shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+        <div className="fixed inset-0 z-[70] flex items-end bg-slate-950/45 p-2 sm:items-center sm:justify-center sm:p-3">
+          <div className="w-full max-w-[21.5rem] border border-slate-200 bg-white shadow-2xl sm:max-w-lg">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:gap-4 sm:px-5 sm:py-4">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-orange-600">Profile Assistant</p>
-                <h2 className="mt-1 text-lg font-black text-slate-950">Complete your profile</h2>
-                <p className="mt-1 text-sm leading-5 text-slate-600">
+                <h2 className="mt-1 text-base font-black text-slate-950 sm:text-lg">Complete your profile</h2>
+                <p className="mt-1 text-xs leading-5 text-slate-600 sm:text-sm">
                   TrendScore AI can help better when your account details are complete.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={dismissProfilePrompt}
-                className="flex h-9 w-9 shrink-0 items-center justify-center border border-slate-200 text-slate-500 hover:bg-slate-50"
+                className="flex h-8 w-8 shrink-0 items-center justify-center border border-slate-200 text-slate-500 hover:bg-slate-50 sm:h-9 sm:w-9"
                 aria-label="Close profile assistant"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="px-5 py-4">
-              <div className="mb-4 border border-orange-100 bg-orange-50 px-3 py-2">
+            <div className="px-4 py-3 sm:px-5 sm:py-4">
+              <div className="mb-3 border border-orange-100 bg-orange-50 px-3 py-2 sm:mb-4">
                 <p className="text-sm font-black text-orange-800">{profileAssistant.score}% complete</p>
                 <p className="mt-1 text-xs font-semibold text-orange-700">
                   {profileAssistant.missingItems.length} item{profileAssistant.missingItems.length === 1 ? '' : 's'} need attention.
@@ -247,7 +247,7 @@ export const GreetingToast = ({
               </div>
             </div>
 
-            <div className="flex flex-col-reverse gap-2 border-t border-slate-200 px-5 py-4 sm:flex-row sm:justify-end">
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-200 px-4 py-3 sm:flex-row sm:justify-end sm:px-5 sm:py-4">
               <button
                 type="button"
                 onClick={dismissProfilePrompt}

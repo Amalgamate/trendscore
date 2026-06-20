@@ -771,7 +771,7 @@ code {
 .ts-mobile-action {
   border: 1.5px solid var(--ts-mobile-orange) !important;
   background: transparent !important;
-  color: #ffffff !important;
+  color: var(--ts-mobile-blue) !important;
 }
 
 .ts-mobile-action-solid {

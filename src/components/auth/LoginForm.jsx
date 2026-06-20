@@ -395,7 +395,7 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
     >
 
       {sessionExpiredReason && (
-        <div className="w-full max-w-sm mb-3 flex items-start gap-2 px-4 py-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-800 text-sm font-medium relative z-10">
+        <div className="w-full max-w-[20.5rem] sm:max-w-sm mb-2 sm:mb-3 flex items-start gap-2 px-3 py-2.5 sm:px-4 sm:py-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-800 text-xs sm:text-sm font-medium relative z-10">
           <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
           {sessionExpiredReason === 'forced_logout'
             ? 'You were signed out by an administrator. Please complete the required onboarding and sign in again.'
@@ -405,8 +405,8 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
         </div>
       )}
 
-      <Card className="w-full max-w-sm border-white/20 bg-white/95 backdrop-blur-xl shadow-2xl relative z-10 animate-fade-up">
-        <CardHeader className="pt-6 pb-2">
+      <Card className="w-full max-w-[20.5rem] sm:max-w-sm border-white/20 bg-white/95 backdrop-blur-xl shadow-2xl relative z-10 animate-fade-up">
+        <CardHeader className="pt-4 pb-1 sm:pt-6 sm:pb-2">
           <div className="text-center group">
             {brandingSettings?.logoUrl && (
               <img
@@ -448,7 +448,7 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
                   </p>
                 )}
               </div>
-              <form onSubmit={handleSubmit} className="space-y-5">
+              <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-5">
               {/* Demo pills commented out as requested 
               <div className="flex flex-wrap gap-2 justify-center mb-2 pb-4 border-b border-gray-100">
                 {DEMO_ACCOUNTS.map(acc => (
@@ -531,7 +531,7 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
                 {errors.password && <p className="text-red-600 text-[10px] font-medium uppercase ml-1">{errors.password}</p>}
               </div>
 
-              <div className="pt-2">
+              <div className="pt-1 sm:pt-2">
                 <label className="flex items-center gap-3 group cursor-pointer">
                   <input
                     type="checkbox"
@@ -547,7 +547,7 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
               <Button
                 type="submit"
                 disabled={isLoading}
-                className="w-full h-12 text-sm font-medium shadow-xl transition-all duration-300 transform active:scale-95 bg-brand-purple hover:bg-brand-purple/90"
+                className="w-full h-10 sm:h-12 text-sm font-medium shadow-xl transition-all duration-300 transform active:scale-95 bg-brand-purple hover:bg-brand-purple/90"
               >
                 {isLoading ? (
                   <div className="flex items-center gap-2">
@@ -559,7 +559,7 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
                 )}
               </Button>
 
-              <div className="pt-6 border-t border-gray-100 text-center">
+              <div className="pt-4 sm:pt-6 border-t border-gray-100 text-center">
                 <p className="text-xs text-gray-500 font-medium">
                   New?{' '}
                   <button

@@ -7,7 +7,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { Users, GraduationCap, UserCheck } from 'lucide-react';
+import { Users, GraduationCap, UserCheck, Wallet, Receipt, BarChart3 } from 'lucide-react';
 import { dashboardAPI } from '../../../../services/api';
 import { GreetingToast } from '../../pages/dashboard/DashboardSummary';
 
@@ -39,6 +39,8 @@ const CARD_TONES = {
   red:  { bg: 'ts-mobile-card', iconBg: 'bg-[#06285a]', icon: 'text-white', label: 'text-[#06285a]/70', value: 'text-[#06285a]', sub: 'text-[#06285a]/60', chip: 'bg-[#06285a]/10 text-[#06285a]' },
 };
 
+const formatKes = (value) => `KES ${Number(value || 0).toLocaleString()}`;
+
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 const StatCard = ({ tone = 'navy', icon: Icon, label, value, subvalue, chips = [], loading }) => {
   const t = CARD_TONES[tone] || CARD_TONES.navy;
@@ -68,6 +70,72 @@ const StatCard = ({ tone = 'navy', icon: Icon, label, value, subvalue, chips = [
         </div>
       )}
     </div>
+  );
+};
+
+const FeeSummaryCard = ({ stats, onNavigate }) => {
+  const collected = Number(stats?.feeCollected || 0);
+  const pending = Number(stats?.feePending || 0);
+  const total = collected + pending;
+  const collectionRate = total > 0 ? Math.round((collected / total) * 100) : 0;
+
+  return (
+    <section className="px-4 pt-4">
+      <div className="ts-mobile-card rounded-2xl p-4 text-[#06285a]">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-[#06285a]/70">Fee Module</p>
+            <h2 className="mt-1 text-lg font-black leading-tight text-[#06285a]">Collection overview</h2>
+          </div>
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#ff7900] text-[#06285a]">
+            <Wallet size={20} />
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-[auto_1fr] items-center gap-4">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[#ff7900] bg-orange-50">
+            <span className="text-lg font-black text-[#06285a]">{collectionRate}%</span>
+          </div>
+          <div className="min-w-0">
+            <div className="h-2.5 overflow-hidden rounded-full bg-[#06285a]/10">
+              <div
+                className="h-full rounded-full bg-[#ff7900]"
+                style={{ width: `${Math.min(collectionRate, 100)}%` }}
+              />
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <p className="font-semibold text-[#06285a]/60">Collected</p>
+                <p className="truncate font-black text-[#06285a]">{formatKes(collected)}</p>
+              </div>
+              <div>
+                <p className="font-semibold text-[#06285a]/60">Pending</p>
+                <p className="truncate font-black text-[#06285a]">{formatKes(pending)}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => onNavigate('fees-overview')}
+            className="ts-mobile-action-solid inline-flex items-center justify-center gap-2 rounded-xl p-3 text-xs font-black active:scale-95 transition"
+          >
+            <Receipt size={15} />
+            Open Fees
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate('fees-reports')}
+            className="ts-mobile-action inline-flex items-center justify-center gap-2 rounded-xl p-3 text-xs font-black active:scale-95 transition"
+          >
+            <BarChart3 size={15} />
+            Reports
+          </button>
+        </div>
+      </div>
+    </section>
   );
 };
 
@@ -151,6 +219,8 @@ const OwnerMobileDashboard = ({ user, onNavigate, brandingSettings }) => {
         />
       </div>
 
+      <FeeSummaryCard stats={s} onNavigate={onNavigate} />
+
       {/* ── Quick Actions ── */}
       <div className="px-4 pt-5">
         <p className="ts-mobile-section-title text-[10px] font-bold uppercase tracking-widest mb-2">Quick Actions</p>
@@ -167,7 +237,7 @@ const OwnerMobileDashboard = ({ user, onNavigate, brandingSettings }) => {
             className="ts-mobile-action p-3 rounded-xl text-xs font-semibold active:scale-95 transition">
             Users
           </button>
-          <button onClick={() => onNavigate('finance-fees')}
+          <button onClick={() => onNavigate('fees-overview')}
             className="ts-mobile-action-solid p-3 rounded-xl text-xs font-semibold active:scale-95 transition">
             Fees
           </button>
