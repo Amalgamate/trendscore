@@ -24,6 +24,8 @@
     "seed:learners:demo": "ts-node prisma/seed-learners-demo.ts",
     "seed:parent-dashboard-demo": "ts-node prisma/seed-parent-dashboard-demo.ts",
     "seed:backfill-streams-classes": "ts-node prisma/seeders/seed-streams-classes.ts",
+    "seed:timetable": "tsx prisma/seed-timetable.ts",
+    "seed:timetable:verify": "tsx prisma/verify-timetable.ts",
     "backfill:fee-journal": "ts-node scripts/backfill-fee-payments-to-journal.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
