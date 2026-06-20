@@ -41,7 +41,7 @@ const MobileSection = ({ title, actionLabel, onAction, children }) => (
 );
 
 const GlanceCard = ({ icon: Icon, value, label, detail, cardClass, iconClass, textClass = 'text-[#06285a]' }) => (
-  <div className={`min-h-[92px] rounded-lg border p-3 shadow-sm ${cardClass}`}>
+  <div className={`min-h-[92px] rounded-lg border p-3 ${cardClass}`}>
     <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-full ${iconClass}`}>
       <Icon size={17} />
     </div>
@@ -100,7 +100,7 @@ const ClassCard = ({ classItem, onOpen }) => {
 };
 
 const ActionButton = ({ icon: Icon, title, subtitle, tone, onClick }) => (
-  <button type="button" onClick={onClick} className={`flex min-h-[62px] items-center gap-3 rounded-lg p-3 text-left shadow-sm ${tone}`}>
+  <button type="button" onClick={onClick} className={`flex min-h-[62px] items-center gap-3 rounded-lg p-3 text-left ${tone}`}>
     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/80">
       <Icon size={18} />
     </div>
