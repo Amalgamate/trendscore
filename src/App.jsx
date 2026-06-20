@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { lazy, Suspense } from 'react';
 import { HashRouter, Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
@@ -13,9 +13,14 @@ import FeeApprovalReminder from './components/CBCGrading/layout/FeeApprovalRemin
 import axiosInstance from './services/api/axiosConfig';
 import { useBootstrapStore } from './store/useBootstrapStore';
 
-import useSubjectStore from './store/useSubjectStore';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import { LEGACY_BRAND_NAMES, PRODUCT_DISPLAY_NAME } from './config/productIdentity';
+import {
+  clearAuthAndRedirect,
+  getAuthErrorCode,
+  INACTIVITY_LOGOUT_MS,
+  SESSION_POLL_INTERVAL_MS,
+} from './utils/sessionLifecycle';
 
 const Auth = lazy(() => import('./pages/Auth'));
 const CBCGradingSystem = lazy(() => import('./components/CBCGrading/CBCGradingSystem'));
@@ -76,7 +81,6 @@ const DEFAULT_BRANDING = {
 
 function AppContent() {
   const { isAuthenticated, user, loading, login, logout } = useAuth();
-  const fetchSubjects = useSubjectStore(state => state.fetchSubjects);
   const clearBootstrap = useBootstrapStore(state => state.clear);
   const navigate = useNavigate();
   const location = useLocation();
@@ -85,6 +89,7 @@ function AppContent() {
   // splashDone: true once the splash screen calls onReady (data pre-loaded)
   const [splashDone, setSplashDone] = useState(false);
   const [brandingSettings, setBrandingSettings] = useState(DEFAULT_BRANDING);
+  const sessionEndedRef = useRef(false);
 
   const handleSplashReady = useCallback(() => setSplashDone(true), []);
 
@@ -209,6 +214,66 @@ function AppContent() {
       : brandingSettings.schoolName || 'School Management';
   }, [isAuthenticated, user, brandingSettings.schoolName]);
 
+  // Session lifecycle guard:
+  // - Polls the backend so force-logout takes effect even on idle open tabs.
+  // - Logs out locally after 30 minutes of inactivity.
+  useEffect(() => {
+    if (!isAuthenticated || loading) return undefined;
+
+    sessionEndedRef.current = false;
+    let inactivityTimer = null;
+
+    const endSession = (reason) => {
+      if (sessionEndedRef.current) return;
+      sessionEndedRef.current = true;
+      clearBootstrap();
+      clearAuthAndRedirect(reason);
+    };
+
+    const resetInactivityTimer = () => {
+      if (sessionEndedRef.current) return;
+      window.clearTimeout(inactivityTimer);
+      inactivityTimer = window.setTimeout(() => endSession('inactivity'), INACTIVITY_LOGOUT_MS);
+    };
+
+    const handleActivity = () => resetInactivityTimer();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') resetInactivityTimer();
+    };
+
+    const activityEvents = ['click', 'keydown', 'mousemove', 'pointerdown', 'scroll', 'touchstart'];
+    activityEvents.forEach((eventName) => {
+      window.addEventListener(eventName, handleActivity, { passive: true });
+    });
+    document.addEventListener('visibilitychange', handleVisibility);
+    resetInactivityTimer();
+
+    const pollSession = async () => {
+      if (sessionEndedRef.current || document.visibilityState === 'hidden') return;
+
+      try {
+        await axiosInstance.get('/auth/me', {
+          headers: { 'x-session-check': '1' },
+        });
+      } catch (error) {
+        if (getAuthErrorCode(error) === 'FORCE_LOGOUT') {
+          endSession('forced');
+        }
+      }
+    };
+
+    const pollTimer = window.setInterval(pollSession, SESSION_POLL_INTERVAL_MS);
+
+    return () => {
+      window.clearTimeout(inactivityTimer);
+      window.clearInterval(pollTimer);
+      activityEvents.forEach((eventName) => {
+        window.removeEventListener(eventName, handleActivity);
+      });
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [isAuthenticated, loading, clearBootstrap]);
+
   // Navigation guards
   useEffect(() => {
     if (loading) return;
@@ -225,7 +290,7 @@ function AppContent() {
     } else {
       if (pathname.startsWith('/app')) navigate('/auth/login', { replace: true });
     }
-  }, [isAuthenticated, loading, pathname, navigate, user?.requiresInstitutionSetup]);
+  }, [isAuthenticated, loading, pathname, navigate, user?.requiresInstitutionSetup, user?.role]);
 
   const handleAuthSuccess = (userData, token, refreshToken) => {
     // Always clear bootstrap and UI state on login. The incoming user may

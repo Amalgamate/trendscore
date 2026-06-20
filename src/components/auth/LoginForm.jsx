@@ -113,10 +113,10 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
   };
 
   // Show a banner if the user was redirected here because their session expired.
-  const [sessionExpired] = useState(() => {
+  const [sessionExpiredReason] = useState(() => {
     const flag = sessionStorage.getItem('session_expired');
     if (flag) sessionStorage.removeItem('session_expired');
-    return !!flag;
+    return flag || '';
   });
 
   useEffect(() => {
@@ -394,10 +394,14 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
       }}
     >
 
-      {sessionExpired && (
+      {sessionExpiredReason && (
         <div className="w-full max-w-sm mb-3 flex items-start gap-2 px-4 py-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-800 text-sm font-medium relative z-10">
           <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
-          Your session has expired. Please sign in again.
+          {sessionExpiredReason === 'forced_logout'
+            ? 'You were signed out by an administrator. Please complete the required onboarding and sign in again.'
+            : sessionExpiredReason === 'inactivity'
+              ? 'You were signed out after 30 minutes of inactivity. Please sign in again.'
+              : 'Your session has expired. Please sign in again.'}
         </div>
       )}
 

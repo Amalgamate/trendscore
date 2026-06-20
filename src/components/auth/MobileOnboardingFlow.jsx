@@ -10,11 +10,11 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
-
-export const MOBILE_ONBOARDING_POLICY_VERSION = 'v1.0';
-
-const ONBOARDING_STORAGE_KEY = 'trendscore_mobile_onboarding_v1';
-const CONSENT_STORAGE_KEY = 'trendscore_mobile_policy_consent';
+import {
+  MOBILE_CONSENT_STORAGE_KEY,
+  MOBILE_ONBOARDING_POLICY_VERSION,
+  MOBILE_ONBOARDING_STORAGE_KEY,
+} from '../../utils/mobileOnboardingStorage';
 
 const onboardingScreens = [
   {
@@ -74,8 +74,8 @@ function readJsonStorage(key) {
 }
 
 export function isMobileOnboardingComplete() {
-  const onboarding = readJsonStorage(ONBOARDING_STORAGE_KEY);
-  const consent = readJsonStorage(CONSENT_STORAGE_KEY);
+  const onboarding = readJsonStorage(MOBILE_ONBOARDING_STORAGE_KEY);
+  const consent = readJsonStorage(MOBILE_CONSENT_STORAGE_KEY);
 
   return (
     onboarding?.completed === true &&
@@ -95,9 +95,9 @@ function saveConsent() {
     consentAccepted: true,
   };
 
-  window.localStorage.setItem(CONSENT_STORAGE_KEY, JSON.stringify(consent));
+  window.localStorage.setItem(MOBILE_CONSENT_STORAGE_KEY, JSON.stringify(consent));
   window.localStorage.setItem(
-    ONBOARDING_STORAGE_KEY,
+    MOBILE_ONBOARDING_STORAGE_KEY,
     JSON.stringify({
       completed: true,
       completedAt: acceptedAt,

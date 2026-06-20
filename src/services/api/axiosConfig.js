@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getInstitutionType } from './institutionContext';
+import { clearAuthAndRedirect, getAuthErrorCode } from '../../utils/sessionLifecycle';
 
 // Use environment variable for API URL or fall back to automatic discovery for production stability
 const getApiBaseUrl = () => {
@@ -70,10 +71,17 @@ axiosInstance.interceptors.response.use(
     (response) => response,
     async (error) => {
         const originalRequest = error.config;
+        const errorCode = getAuthErrorCode(error);
 
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+            if (errorCode === 'FORCE_LOGOUT') {
+                _clearAuth('forced');
+                return Promise.reject(error);
+            }
+
             // If the failure was on the refresh or login endpoint itself, don't attempt refresh
-            if (originalRequest.url.includes('/auth/refresh') || originalRequest.url.includes('/auth/login')) {
+            const requestUrl = originalRequest.url || '';
+            if (requestUrl.includes('/auth/refresh') || requestUrl.includes('/auth/login')) {
                 _clearAuth();
                 return Promise.reject(error);
             }
@@ -114,24 +122,15 @@ axiosInstance.interceptors.response.use(
             } catch (_refreshError) {
                 processQueue(_refreshError, null);
                 isRefreshing = false;
-                _clearAuth();
+                _clearAuth(getAuthErrorCode(_refreshError) === 'FORCE_LOGOUT' ? 'forced' : 'expired');
             }
         }
         return Promise.reject(error);
     }
 );
 
-function _clearAuth() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('user');
-    if (!window.location.pathname.includes('/login')) {
-        // Signal the login page to show a session-expired message.
-        // sessionStorage is cleared when the tab closes, so this won't
-        // linger across future intentional logins.
-        sessionStorage.setItem('session_expired', '1');
-        window.location.href = '/';
-    }
+function _clearAuth(reason = 'expired') {
+    clearAuthAndRedirect(reason);
 }
 
 export default axiosInstance;
