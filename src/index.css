@@ -730,7 +730,7 @@ code {
   --ts-mobile-orange: #ff7900;
   --ts-mobile-blue: #06285a;
   min-height: 100dvh;
-  background: var(--ts-mobile-navy);
+  background: #ffffff;
 }
 
 .ts-mobile-header {
@@ -739,12 +739,12 @@ code {
 }
 
 .ts-mobile-scroll {
-  background: var(--ts-mobile-navy);
+  background: #ffffff;
   scrollbar-color: var(--ts-mobile-orange) transparent;
 }
 
 .ts-mobile-section-title {
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--ts-mobile-navy);
 }
 
 .ts-mobile-card {
