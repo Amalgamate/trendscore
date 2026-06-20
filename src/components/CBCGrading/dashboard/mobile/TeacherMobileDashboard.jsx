@@ -13,9 +13,7 @@ import {
   CheckCircle2,
   ClipboardCheck,
   ClipboardList,
-  Clock,
   DollarSign,
-  MessageCircle,
   Users,
   Wallet,
 } from 'lucide-react';
@@ -31,7 +29,7 @@ const percent = (value) => `${Math.max(0, Math.min(100, Number(value || 0)))}%`;
 const MobileSection = ({ title, actionLabel, onAction, children }) => (
   <section className="space-y-2">
     <div className="flex items-center justify-between px-1">
-      <h2 className="text-sm font-black text-gray-950">{title}</h2>
+      <h2 className="ts-mobile-section-title text-sm font-black">{title}</h2>
       {actionLabel && (
         <button type="button" onClick={onAction} className="text-[11px] font-black text-blue-700">
           {actionLabel}
@@ -42,14 +40,14 @@ const MobileSection = ({ title, actionLabel, onAction, children }) => (
   </section>
 );
 
-const GlanceCard = ({ icon: Icon, value, label, detail, tone }) => (
-  <div className="min-h-[84px] rounded-lg border border-gray-100 bg-white p-3 shadow-sm">
-    <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-full ${tone}`}>
+const GlanceCard = ({ icon: Icon, value, label, detail, cardClass, iconClass, textClass = 'text-[#06285a]' }) => (
+  <div className={`min-h-[92px] rounded-lg border p-3 shadow-sm ${cardClass}`}>
+    <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-full ${iconClass}`}>
       <Icon size={17} />
     </div>
-    <div className="text-xl font-black text-gray-950">{value}</div>
-    <div className="text-[11px] font-bold leading-tight text-gray-800">{label}</div>
-    {detail && <div className="mt-1 text-[10px] font-semibold text-gray-400">{detail}</div>}
+    <div className={`text-xl font-black ${textClass}`}>{value}</div>
+    <div className={`text-[11px] font-bold leading-tight ${textClass}`}>{label}</div>
+    {detail && <div className={`mt-1 text-[10px] font-semibold ${textClass} opacity-70`}>{detail}</div>}
   </div>
 );
 
@@ -63,7 +61,7 @@ const ClassCard = ({ classItem, onOpen }) => {
       : 'bg-orange-50 text-orange-700';
 
   return (
-    <button type="button" onClick={onOpen} className="rounded-lg border border-gray-100 bg-white p-3 text-left shadow-sm">
+    <button type="button" onClick={onOpen} className="ts-mobile-card rounded-lg p-3 text-left">
       <div className="mb-3 flex items-start gap-2">
         <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${tone}`}>
           <BookOpen size={17} />
@@ -102,7 +100,7 @@ const ClassCard = ({ classItem, onOpen }) => {
 };
 
 const ActionButton = ({ icon: Icon, title, subtitle, tone, onClick }) => (
-  <button type="button" onClick={onClick} className={`flex min-h-[62px] items-center gap-3 rounded-lg border p-3 text-left shadow-sm ${tone}`}>
+  <button type="button" onClick={onClick} className={`flex min-h-[62px] items-center gap-3 rounded-lg p-3 text-left shadow-sm ${tone}`}>
     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/80">
       <Icon size={18} />
     </div>
@@ -184,7 +182,6 @@ const TeacherMobileDashboard = ({ user, onNavigate }) => {
   const schedule = useMemo(() => metrics?.schedule || [], [metrics?.schedule]);
   const attendanceDue = useMemo(() => metrics?.attendanceDue || [], [metrics?.attendanceDue]);
   const assessmentsToMark = useMemo(() => metrics?.assessmentsToMark || [], [metrics?.assessmentsToMark]);
-  const messages = useMemo(() => metrics?.messages || [], [metrics?.messages]);
   const learnersNeedingAttention = useMemo(() => metrics?.learnersNeedingAttention || [], [metrics?.learnersNeedingAttention]);
   const feeSummary = metrics?.feeSummary || {};
   const learnerAnalysis = metrics?.learnerAnalysis || {};
@@ -217,33 +214,21 @@ const TeacherMobileDashboard = ({ user, onNavigate }) => {
       value: formatNumber(Math.max(0, Number(stats.myStudents || 0) - attendanceDueLearners)),
       detail: `of ${formatNumber(stats.myStudents)} learners`,
       icon: Users,
-      tone: 'bg-emerald-100 text-emerald-700',
-    },
-    {
-      label: 'Pending attendance',
-      value: formatNumber(attendanceDue.length),
-      detail: 'classes',
-      icon: Clock,
-      tone: 'bg-orange-100 text-orange-700',
+      cardClass: 'ts-mobile-card',
+      iconClass: 'bg-[#06285a] text-white',
     },
     {
       label: 'Assessment due today',
       value: formatNumber(assessmentsToMark.length),
       detail: `${formatNumber(stats.pendingTasks)} drafts`,
       icon: ClipboardCheck,
-      tone: 'bg-violet-100 text-violet-700',
-    },
-    {
-      label: 'Unread messages',
-      value: formatNumber(messages.filter((message) => message.priority === 'unread').length || stats.messages || 0),
-      detail: 'messages',
-      icon: MessageCircle,
-      tone: 'bg-blue-100 text-blue-700',
+      cardClass: 'ts-mobile-card-orange',
+      iconClass: 'bg-[#06285a] text-white',
     },
   ];
 
   return (
-    <div className="pb-20">
+    <div className="min-h-full pb-20 text-white">
       {/* Greeting banner */}
       <GreetingToast user={user} fallbackName="Teacher" description="Teaching Dashboard · Daily Workflow" onNavigate={onNavigate} />
 
@@ -266,7 +251,7 @@ const TeacherMobileDashboard = ({ user, onNavigate }) => {
               ))}
             </div>
           ) : (
-            <div className="rounded-lg border border-gray-100 bg-white p-4 text-sm font-semibold text-gray-500 shadow-sm">
+            <div className="ts-mobile-card-soft rounded-lg p-4 text-sm font-semibold text-[#06285a]/70">
               Assigned classes will appear here.
             </div>
           )}
@@ -278,14 +263,14 @@ const TeacherMobileDashboard = ({ user, onNavigate }) => {
               icon={CalendarCheck}
               title="Take Attendance"
               subtitle="Mark attendance for today"
-              tone="border-orange-100 bg-orange-50 text-orange-600"
+              tone="ts-mobile-action-solid"
               onClick={() => onNavigate('attendance-daily')}
             />
             <ActionButton
               icon={ClipboardCheck}
               title="Enter Assessment Scores"
               subtitle="Add scores for assessments"
-              tone="border-emerald-100 bg-emerald-50 text-emerald-600"
+              tone="ts-mobile-action"
               onClick={() => onNavigate('assess-summative-assessment')}
             />
           </div>
@@ -293,7 +278,7 @@ const TeacherMobileDashboard = ({ user, onNavigate }) => {
 
         <MobileSection title="Overview">
           <div className="grid grid-cols-1 gap-2 min-[390px]:grid-cols-2">
-            <button type="button" onClick={() => onNavigate('assess-summative-assessment')} className="rounded-lg border border-gray-100 bg-white p-3 text-left shadow-sm">
+            <button type="button" onClick={() => onNavigate('assess-summative-assessment')} className="ts-mobile-card rounded-lg p-3 text-left">
               <div className="mb-3 text-xs font-black text-gray-950">Assessment Progress</div>
               <div className="flex items-center gap-3">
                 <Donut value={assessmentCompletion} />
@@ -308,7 +293,7 @@ const TeacherMobileDashboard = ({ user, onNavigate }) => {
               </div>
             </button>
 
-            <button type="button" onClick={() => onNavigate('fees-overview')} className="rounded-lg border border-gray-100 bg-white p-3 text-left shadow-sm">
+            <button type="button" onClick={() => onNavigate('fees-overview')} className="ts-mobile-card rounded-lg p-3 text-left">
               <div className="mb-3 flex items-center justify-between">
                 <div className="text-xs font-black text-gray-950">Fee Balances</div>
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
@@ -330,7 +315,7 @@ const TeacherMobileDashboard = ({ user, onNavigate }) => {
         </MobileSection>
 
         <MobileSection title="Needs Your Attention" actionLabel="View all" onAction={() => onNavigate('teacher-learner-analysis')}>
-          <div className="rounded-lg border border-gray-100 bg-white px-3 shadow-sm">
+          <div className="ts-mobile-card rounded-lg px-3">
             {learnersNeedingAttention.length > 0 ? (
               learnersNeedingAttention.slice(0, 4).map((item) => (
                 <AttentionItem key={item.id} item={item} onClick={() => onNavigate(item.actionPage || 'teacher-learner-analysis')} />
@@ -350,7 +335,7 @@ const TeacherMobileDashboard = ({ user, onNavigate }) => {
         </MobileSection>
 
         {metrics === null && !loading && (
-          <div className="flex items-center gap-2 rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
+          <div className="ts-mobile-card-orange flex items-center gap-2 rounded-lg p-3 text-xs font-semibold">
             <AlertCircle size={16} />
             Dashboard data could not be loaded. Try refreshing the page.
           </div>

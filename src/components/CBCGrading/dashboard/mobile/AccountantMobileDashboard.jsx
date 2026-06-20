@@ -47,7 +47,7 @@ const AccountantMobileDashboard = ({ user, onNavigate }) => {
   ];
 
   return (
-    <div className="pb-20">
+    <div className="min-h-full pb-20 text-white">
       {/* Greeting banner */}
       <GreetingToast user={user} fallbackName="Accountant" description="Finance Dashboard · Collection Overview" onNavigate={onNavigate} />
 
@@ -56,7 +56,7 @@ const AccountantMobileDashboard = ({ user, onNavigate }) => {
         {financialMetrics.map((metric, idx) => {
           const Icon = metric.icon;
           return (
-            <div key={idx} className={`${metric.color} p-3 rounded-lg flex items-center gap-3`}>
+            <div key={idx} className={`${idx % 2 ? 'ts-mobile-card-orange' : 'ts-mobile-card'} p-3 rounded-lg flex items-center gap-3`}>
               <Icon size={20} />
               <div className="flex-1 min-w-0">
                 <p className="text-xs opacity-75 font-medium">{metric.label}</p>
@@ -69,29 +69,29 @@ const AccountantMobileDashboard = ({ user, onNavigate }) => {
 
       {/* Quick Actions */}
       <div className="px-3 py-3 space-y-2">
-        <p className="text-xs font-semibold text-gray-600 uppercase px-2">Quick Actions</p>
+        <p className="ts-mobile-section-title text-xs font-semibold uppercase px-2">Quick Actions</p>
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => onNavigate('fees-overview')}
-            className="p-3 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 transition"
+            className="ts-mobile-action-solid p-3 rounded-lg text-xs font-semibold transition"
           >
             Collections
           </button>
           <button
             onClick={() => onNavigate('accounting-dashboard')}
-            className="p-3 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 transition"
+            className="ts-mobile-action p-3 rounded-lg text-xs font-semibold transition"
           >
             Bank
           </button>
           <button
             onClick={() => onNavigate('fees-reports')}
-            className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-xs font-semibold hover:bg-amber-100 transition"
+            className="ts-mobile-action-solid p-3 rounded-lg text-xs font-semibold transition"
           >
             Reports
           </button>
           <button
             onClick={() => onNavigate('settings')}
-            className="p-3 rounded-lg border border-gray-200 bg-gray-50 text-gray-700 text-xs font-semibold hover:bg-gray-100 transition"
+            className="ts-mobile-action p-3 rounded-lg text-xs font-semibold transition"
           >
             Settings
           </button>

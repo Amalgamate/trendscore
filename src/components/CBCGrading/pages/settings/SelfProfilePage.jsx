@@ -4,6 +4,7 @@ import { authAPI } from '../../../../services/api/auth.api';
 import { userAPI } from '../../../../services/api/user.api';
 import { useAuth } from '../../../../hooks/useAuth';
 import { useNotifications } from '../../hooks/useNotifications';
+import ProfilePhotoModal from '../../shared/ProfilePhotoModal';
 
 const emptyProfile = {
   firstName: '',
@@ -70,6 +71,8 @@ const SelfProfilePage = ({ user: initialUser, onNavigate, onLogout, backTarget =
   const [form, setForm] = useState(() => buildFormState(initialUser || authUser || emptyProfile));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [photoModalOpen, setPhotoModalOpen] = useState(false);
+  const [savingPhoto, setSavingPhoto] = useState(false);
 
   const displayName = useMemo(() => buildDisplayName(profileUser, form), [profileUser, form]);
   const initials = useMemo(() => (
@@ -124,7 +127,6 @@ const SelfProfilePage = ({ user: initialUser, onNavigate, onLogout, backTarget =
         middleName: form.middleName.trim() || null,
         lastName: form.lastName.trim(),
         phone: form.phone.trim() || null,
-        profilePicture: form.profilePicture.trim() || null,
       };
       const response = await userAPI.updateOwnProfile(payload);
       const updated = response?.data;
@@ -142,6 +144,36 @@ const SelfProfilePage = ({ user: initialUser, onNavigate, onLogout, backTarget =
       showError(error.message || 'Failed to update profile');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSavePhoto = async (photoData) => {
+    const userId = profileUser?.id || profileSourceUserId;
+    if (!userId) {
+      showError('Profile is still loading. Try again in a moment.');
+      return false;
+    }
+
+    setSavingPhoto(true);
+    try {
+      const response = await userAPI.uploadPhoto(userId, photoData);
+      const updated = response?.data;
+      const nextUser = {
+        ...profileUser,
+        ...updated,
+        name: updated?.name || buildDisplayName(updated || profileUser, form),
+      };
+
+      setProfileUser(nextUser);
+      setForm(buildFormState(nextUser));
+      updateUser(nextUser);
+      showSuccess('Profile photo updated successfully');
+      return true;
+    } catch (error) {
+      showError(error.message || 'Failed to update profile photo');
+      return false;
+    } finally {
+      setSavingPhoto(false);
     }
   };
 
@@ -178,9 +210,15 @@ const SelfProfilePage = ({ user: initialUser, onNavigate, onLogout, backTarget =
                     {initials}
                   </div>
                 )}
-                <div className="absolute -bottom-1 -right-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-emerald-600 text-white">
-                  <Camera size={16} />
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setPhotoModalOpen(true)}
+                  className="absolute -bottom-1 -right-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+                  aria-label="Update profile photo"
+                  disabled={loading || savingPhoto}
+                >
+                  {savingPhoto ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+                </button>
               </div>
               <h2 className="mt-4 text-xl font-bold text-gray-950">{displayName}</h2>
               <p className="mt-1 text-sm font-semibold uppercase tracking-wider text-gray-500">
@@ -261,17 +299,6 @@ const SelfProfilePage = ({ user: initialUser, onNavigate, onLogout, backTarget =
               </Field>
             </div>
 
-            <div className="mt-4">
-              <Field label="Profile Image URL" icon={Camera}>
-                <input
-                  value={form.profilePicture}
-                  onChange={(event) => handleChange('profilePicture', event.target.value)}
-                  className="h-11 w-full border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-900 outline-none focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/20"
-                  placeholder="https://..."
-                />
-              </Field>
-            </div>
-
             <div className="mt-6 flex flex-col-reverse gap-3 border-t border-gray-100 pt-5 sm:flex-row sm:justify-end">
               <button
                 type="button"
@@ -293,6 +320,12 @@ const SelfProfilePage = ({ user: initialUser, onNavigate, onLogout, backTarget =
           </form>
         </div>
       </div>
+      <ProfilePhotoModal
+        isOpen={photoModalOpen}
+        onClose={() => setPhotoModalOpen(false)}
+        onSave={handleSavePhoto}
+        currentPhoto={form.profilePicture}
+      />
     </div>
   );
 };

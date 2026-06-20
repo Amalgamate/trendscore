@@ -64,13 +64,13 @@ const MobileUserManagement = ({ onNavigate }) => {
   };
 
   return (
-    <div className="px-4 py-6 pb-20">
+    <div className="min-h-full px-4 py-6 pb-20 text-white">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-bold text-gray-900">Users</h1>
+        <h1 className="text-xl font-bold text-white">Users</h1>
         <button
           onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 px-3 py-2 bg-brand-purple text-white rounded-lg text-sm font-medium"
+          className="ts-mobile-action-solid flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold"
         >
           <Plus size={16} />
           Add User
@@ -79,15 +79,15 @@ const MobileUserManagement = ({ onNavigate }) => {
 
       {/* Users List */}
       {loading ? (
-        <div className="text-center py-8 text-gray-500">Loading users...</div>
+        <div className="text-center py-8 text-white/65">Loading users...</div>
       ) : users.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">No users yet</div>
+        <div className="text-center py-8 text-white/65">No users yet</div>
       ) : (
         <div className="space-y-3">
           {users.map((user) => (
             <div
               key={user.id}
-              className="bg-white rounded-lg border border-gray-200 p-4 flex items-center justify-between"
+              className="ts-mobile-card rounded-lg p-4 flex items-center justify-between"
             >
               <div className="flex-1">
                 <div className="font-semibold text-gray-900 text-sm">{user.name}</div>
@@ -118,7 +118,7 @@ const MobileUserManagement = ({ onNavigate }) => {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-end z-50">
-          <div className="w-full bg-white rounded-t-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+          <div className="w-full bg-white rounded-t-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
             <h2 className="text-lg font-bold text-gray-900">
               {editingUser ? 'Edit User' : 'Create User'}
             </h2>

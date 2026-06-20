@@ -647,11 +647,21 @@ export class UserController {
       throw new ApiError(403, 'Permission denied');
     }
 
+    if (typeof photoData !== 'string' || !photoData.trim()) {
+      throw new ApiError(400, 'Profile photo data is required');
+    }
+
+    if (!photoData.startsWith('data:image/')) {
+      throw new ApiError(400, 'Profile photo must be an image');
+    }
+
     const user = await prisma.user.update({
       where: { id },
       data: { profilePicture: photoData },
       select: userProfileSelect
     });
+
+    await redisCacheService.delete(`auth:user:${user.email}`);
 
     res.json({ success: true, data: user });
   }

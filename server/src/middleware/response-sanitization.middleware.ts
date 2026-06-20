@@ -232,7 +232,7 @@ export const securityHeaders = (
   }
 
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=()');
 
   next();
 };

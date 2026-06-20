@@ -56,7 +56,7 @@ const ParentMobileDashboard = ({ user, onNavigate }) => {
   ];
 
   return (
-    <div className="pb-20">
+    <div className="min-h-full pb-20 text-white">
       {/* Greeting banner */}
       <GreetingToast user={user} fallbackName="Parent" description="Family Dashboard · Children's Overview" onNavigate={onNavigate} />
 
@@ -65,7 +65,7 @@ const ParentMobileDashboard = ({ user, onNavigate }) => {
         {parentMetrics.map((metric, idx) => {
           const Icon = metric.icon;
           return (
-            <div key={idx} className={`${metric.color} p-3 rounded-lg flex items-center gap-3`}>
+            <div key={idx} className={`${idx % 2 ? 'ts-mobile-card-orange' : 'ts-mobile-card'} p-3 rounded-lg flex items-center gap-3`}>
               <Icon size={20} />
               <div className="flex-1 min-w-0">
                 <p className="text-xs opacity-75 font-medium">{metric.label}</p>
@@ -79,12 +79,12 @@ const ParentMobileDashboard = ({ user, onNavigate }) => {
       {/* Children Cards — tap to open full child profile */}
       {!loading && children.length > 0 && (
         <div className="px-3 pb-2 space-y-2">
-          <p className="text-xs font-semibold text-gray-600 uppercase px-2 tracking-wider">My Children</p>
+          <p className="ts-mobile-section-title text-xs font-semibold uppercase px-2 tracking-wider">My Children</p>
           {children.map((child) => (
             <button
               key={child.id}
               onClick={() => setSelectedChild(child)}
-              className="w-full bg-white rounded-xl border border-gray-200 p-3 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left"
+              className="ts-mobile-card w-full rounded-xl p-3 flex items-center gap-3 transition-colors text-left"
             >
               <div className="w-11 h-11 rounded-full bg-brand-purple/10 flex items-center justify-center shrink-0 text-brand-purple font-bold text-base">
                 {child.name?.[0] || '?'}
@@ -106,7 +106,7 @@ const ParentMobileDashboard = ({ user, onNavigate }) => {
       )}
 
       {!loading && children.length === 0 && (
-        <div className="mx-3 bg-white rounded-xl border border-dashed border-gray-200 p-6 text-center text-gray-400">
+        <div className="ts-mobile-card-soft mx-3 rounded-xl border-dashed p-6 text-center">
           <Users size={28} className="mx-auto mb-2 opacity-30" />
           <p className="text-xs font-medium">No children linked to this account</p>
         </div>
@@ -114,29 +114,29 @@ const ParentMobileDashboard = ({ user, onNavigate }) => {
 
       {/* Quick Actions */}
       <div className="px-3 py-3 space-y-2">
-        <p className="text-xs font-semibold text-gray-600 uppercase px-2">Quick Actions</p>
+        <p className="ts-mobile-section-title text-xs font-semibold uppercase px-2">Quick Actions</p>
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => onNavigate('parent-portal-children')}
-            className="p-3 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100 transition"
+            className="ts-mobile-action p-3 rounded-lg text-xs font-semibold transition"
           >
             View Children
           </button>
           <button
             onClick={() => onNavigate('parent-portal-fees')}
-            className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-xs font-semibold hover:bg-amber-100 transition"
+            className="ts-mobile-action-solid p-3 rounded-lg text-xs font-semibold transition"
           >
             Fees
           </button>
           <button
             onClick={() => onNavigate('parent-portal-attendance')}
-            className="p-3 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 transition"
+            className="ts-mobile-action-solid p-3 rounded-lg text-xs font-semibold transition"
           >
             Attendance
           </button>
           <button
             onClick={() => onNavigate('parent-portal-messages')}
-            className="p-3 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 text-xs font-semibold hover:bg-violet-100 transition"
+            className="ts-mobile-action p-3 rounded-lg text-xs font-semibold transition"
           >
             Messages
           </button>

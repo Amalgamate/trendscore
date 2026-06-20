@@ -42,13 +42,13 @@ const MobileGeneralSettings = ({ user, onLogout, brandingSettings, onNavigate })
   ];
 
   return (
-    <div className="px-4 py-6 pb-20">
+    <div className="min-h-full px-4 py-6 pb-20 text-white">
       {/* School Info */}
-      <div className="mb-6 p-4 bg-brand-purple/10 rounded-lg border border-brand-purple/20">
-        <div className="text-xs uppercase tracking-wider text-gray-600 font-semibold">
+      <div className="ts-mobile-card mb-6 p-4 rounded-lg">
+        <div className="text-xs uppercase tracking-wider text-[#06285a]/70 font-semibold">
           School
         </div>
-        <div className="text-lg font-bold text-gray-900 mt-2">
+        <div className="text-lg font-bold text-[#06285a] mt-2">
           {brandingSettings?.schoolName || 'School Name'}
         </div>
       </div>
@@ -63,8 +63,8 @@ const MobileGeneralSettings = ({ user, onLogout, brandingSettings, onNavigate })
               onClick={item.onChange || item.onClick}
               className={`w-full flex items-center justify-between p-4 rounded-lg border ${
                 item.action === 'destructive'
-                  ? 'bg-red-50 border-red-200 hover:bg-red-100'
-                  : 'bg-white border-gray-200 hover:bg-gray-50'
+                  ? 'ts-mobile-card-orange'
+                  : 'ts-mobile-card'
               }`}
             >
               <div className="flex items-center gap-3">
@@ -98,7 +98,7 @@ const MobileGeneralSettings = ({ user, onLogout, brandingSettings, onNavigate })
                   />
                 </div>
               ) : (
-                <ChevronRight size={20} className="text-gray-400" />
+                <ChevronRight size={20} className="text-[#06285a]/50" />
               )}
             </button>
           );
@@ -107,7 +107,7 @@ const MobileGeneralSettings = ({ user, onLogout, brandingSettings, onNavigate })
 
       {/* About & Version */}
       <div className="mt-8 text-center">
-        <div className="text-xs text-gray-500">
+        <div className="text-xs text-white/65">
           <p>{PRODUCT_DISPLAY_NAME}</p>
           <p className="mt-1">© {new Date().getFullYear()} All Rights Reserved</p>
         </div>

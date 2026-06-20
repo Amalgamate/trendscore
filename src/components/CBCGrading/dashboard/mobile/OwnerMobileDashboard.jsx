@@ -34,19 +34,19 @@ import { GreetingToast } from '../../pages/dashboard/DashboardSummary';
 
 // ─── Tone helpers ─────────────────────────────────────────────────────────────
 const CARD_TONES = {
-  navy: { bg: 'bg-[#0f2355]', iconBg: 'bg-white/10', label: 'text-white/70', value: 'text-white', sub: 'text-white/60', chip: 'bg-white/10 text-white/80' },
-  teal: { bg: 'bg-[#0d7369]', iconBg: 'bg-white/10', label: 'text-white/70', value: 'text-white', sub: 'text-white/60', chip: 'bg-white/10 text-white/80' },
-  red:  { bg: 'bg-[#b91c1c]', iconBg: 'bg-white/10', label: 'text-white/70', value: 'text-white', sub: 'text-white/60', chip: 'bg-white/10 text-white/80' },
+  navy: { bg: 'ts-mobile-card', iconBg: 'bg-[#06285a]', icon: 'text-white', label: 'text-[#06285a]/70', value: 'text-[#06285a]', sub: 'text-[#06285a]/60', chip: 'bg-[#06285a]/10 text-[#06285a]' },
+  teal: { bg: 'ts-mobile-card-orange', iconBg: 'bg-[#06285a]', icon: 'text-white', label: 'text-[#06285a]/70', value: 'text-[#06285a]', sub: 'text-[#06285a]/60', chip: 'bg-[#06285a]/10 text-[#06285a]' },
+  red:  { bg: 'ts-mobile-card', iconBg: 'bg-[#06285a]', icon: 'text-white', label: 'text-[#06285a]/70', value: 'text-[#06285a]', sub: 'text-[#06285a]/60', chip: 'bg-[#06285a]/10 text-[#06285a]' },
 };
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 const StatCard = ({ tone = 'navy', icon: Icon, label, value, subvalue, chips = [], loading }) => {
   const t = CARD_TONES[tone] || CARD_TONES.navy;
   return (
-    <div className={`${t.bg} rounded-2xl p-4 flex flex-col gap-3 shadow-sm`}>
+    <div className={`${t.bg} rounded-2xl p-4 flex flex-col gap-3`}>
       <div className="flex items-start justify-between">
         <div className={`${t.iconBg} rounded-xl p-2`}>
-          <Icon size={22} className="text-white" />
+          <Icon size={22} className={t.icon} />
         </div>
         <span className={`text-[10px] font-semibold uppercase tracking-widest ${t.label}`}>{label}</span>
       </div>
@@ -93,7 +93,7 @@ const OwnerMobileDashboard = ({ user, onNavigate, brandingSettings }) => {
   const staffAttendanceRate   = s.staffAttendanceRate   ?? null;
 
   return (
-    <div className="pb-24 bg-gray-50 min-h-screen">
+    <div className="min-h-full pb-24 text-white">
 
       {/* ── Top bar: logo only ── */}
       {brandingSettings?.logoUrl && (
@@ -153,22 +153,22 @@ const OwnerMobileDashboard = ({ user, onNavigate, brandingSettings }) => {
 
       {/* ── Quick Actions ── */}
       <div className="px-4 pt-5">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Quick Actions</p>
+        <p className="ts-mobile-section-title text-[10px] font-bold uppercase tracking-widest mb-2">Quick Actions</p>
         <div className="grid grid-cols-2 gap-2">
           <button onClick={() => onNavigate('attendance-daily')}
-            className="p-3 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-semibold active:scale-95 transition">
+            className="ts-mobile-action-solid p-3 rounded-xl text-xs font-semibold active:scale-95 transition">
             Daily Attendance
           </button>
           <button onClick={() => onNavigate('learners-list')}
-            className="p-3 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold active:scale-95 transition">
+            className="ts-mobile-action p-3 rounded-xl text-xs font-semibold active:scale-95 transition">
             Learners
           </button>
           <button onClick={() => onNavigate('settings-users')}
-            className="p-3 rounded-xl border border-violet-200 bg-violet-50 text-violet-700 text-xs font-semibold active:scale-95 transition">
+            className="ts-mobile-action p-3 rounded-xl text-xs font-semibold active:scale-95 transition">
             Users
           </button>
           <button onClick={() => onNavigate('finance-fees')}
-            className="p-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 text-xs font-semibold active:scale-95 transition">
+            className="ts-mobile-action-solid p-3 rounded-xl text-xs font-semibold active:scale-95 transition">
             Fees
           </button>
         </div>

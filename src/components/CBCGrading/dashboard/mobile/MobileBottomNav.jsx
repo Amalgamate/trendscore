@@ -21,7 +21,7 @@ const MobileBottomNav = ({ role, currentPath = 'dashboard', onNavigate }) => {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-[80] border-t border-gray-200 bg-white/95 shadow-lg backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
+    <div className="fixed bottom-0 left-0 right-0 z-[80] border-t border-[#ff7900]/45 bg-[#06285a]/95 shadow-lg backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
       <div className="grid grid-cols-5 gap-0 max-w-md mx-auto h-16">
         {navConfig.items.map((item) => {
           const Icon = item.icon;
@@ -37,12 +37,12 @@ const MobileBottomNav = ({ role, currentPath = 'dashboard', onNavigate }) => {
               onClick={() => onNavigate(item.path)}
               className={`flex flex-col items-center justify-center gap-1 transition-colors ${
                 isActive
-                  ? 'bg-brand-purple/10 text-brand-purple'
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-[#ff7900] text-[#06285a]'
+                  : 'text-white/70 hover:text-white'
               }`}
             >
-              <Icon size={20} className={isActive ? 'text-brand-purple' : 'text-gray-600'} />
-              <span className="text-[10px] font-medium">{item.label}</span>
+              <Icon size={20} className={isActive ? 'text-[#06285a]' : 'text-white/70'} />
+              <span className="text-[10px] font-bold">{item.label}</span>
             </button>
           );
         })}
