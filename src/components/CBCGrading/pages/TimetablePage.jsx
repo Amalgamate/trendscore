@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, BookOpen, MapPin, Download, Plus, Edit, Trash2, X, Loader2, AlertTriangle, Share2 } from 'lucide-react';
-import EmptyState from '../shared/EmptyState';
+import { ChevronLeft, ChevronRight, Clock, Download, Filter, Loader2, Share2, X } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 import Toast from '../shared/Toast';
 import api from '../../../services/api';
 import { getCurrentWeekday, isTeacherClockedIn } from '../../../utils/teacherClockIn';
 import { generateHighFidelityPDF } from '../../../utils/simplePdfGenerator';
+import TimetablePDFWrapper from '../shared/TimetablePDFWrapper';
+import { usePermissions } from '../../../hooks/usePermissions';
+import { useAuth } from '../../../hooks/useAuth';
+import { useMediaQuery } from '../hooks/useMediaQuery';
+import { MOBILE_MEDIA_QUERY } from '../../../constants/breakpoints';
 
 const DEFAULT_TIME_SLOTS = [
   { startTime: '08:00', endTime: '08:45' },
@@ -67,10 +71,45 @@ const buildSlotKey = (startTime, endTime) => `${normalizeSlotKeyPart(startTime)}
 
 const buildTimeLine = (startTime, endTime) => `${toDisplayTime(startTime)} - ${toDisplayTime(endTime)}`;
 
+const sortTimeLabels = (timeLabels) => {
+  return [...timeLabels].sort((a, b) => {
+    const aStart = String(a || '').split('-')[0]?.trim() || a;
+    const bStart = String(b || '').split('-')[0]?.trim() || b;
+    const aMinutes = parseTimeToMinutes(aStart);
+    const bMinutes = parseTimeToMinutes(bStart);
+    if (Number.isNaN(aMinutes) || Number.isNaN(bMinutes)) return String(a).localeCompare(String(b));
+    return aMinutes - bMinutes;
+  });
+};
+
+const getStartOfWeek = (date) => {
+  const copy = new Date(date);
+  const day = copy.getDay();
+  const diff = copy.getDate() - day + (day === 0 ? -6 : 1);
+  copy.setDate(diff);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+};
+
+const formatWeekRange = (weekStart) => {
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 4);
+  const startText = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const endText = weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return `${startText} - ${endText}`;
+};
+
+const TIMETABLE_PDF_OPTIONS = {
+  includeLetterhead: true,
+  orientation: 'landscape',
+  fitToPage: true,
+};
+
 const TimetablePage = () => {
   const [selectedDay, setSelectedDay] = useState(() => {
     return localStorage.getItem('cbc_timetable_selected_day') || 'Monday';
   });
+  const [weekStart, setWeekStart] = useState(() => getStartOfWeek(new Date()));
 
   useEffect(() => {
     localStorage.setItem('cbc_timetable_selected_day', selectedDay);
@@ -107,6 +146,10 @@ const TimetablePage = () => {
   const [lessonDay, setLessonDay] = useState('Monday');
   const [isDownloadingWeekPdf, setIsDownloadingWeekPdf] = useState(false);
   const [isSharingWeekPdf, setIsSharingWeekPdf] = useState(false);
+  const { can } = usePermissions();
+  const { user } = useAuth();
+  const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
+  const canEditTimetable = can('EDIT_TIMETABLE');
 
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
@@ -227,9 +270,9 @@ const TimetablePage = () => {
   useEffect(() => {
     if (selectedClassId !== 'all') {
       fetchClassSchedule(selectedClassId);
+    } else if (classes.length > 0) {
+      fetchMasterSchedule();
     } else {
-      // If all, maybe we don't show a master one easily without a dedicated endpoint
-      // but let's assume we fetch for all active classes if needed
       setScheduleData({});
     }
   }, [selectedClassId, classes]);
@@ -242,27 +285,63 @@ const TimetablePage = () => {
     }
   }, [isModalOpen, editingLesson, subjectId, teacherId, selectedClassId, assignments, classes]);
 
+  const toLessonRow = (schedule, classInfo) => {
+    const classLabel = classInfo?.name || [classInfo?.grade, classInfo?.stream].filter(Boolean).join(' ') || 'N/A';
+    return {
+      id: schedule.id,
+      classId: classInfo?.id,
+      className: classLabel,
+      time: buildTimeLine(schedule.startTime || '', schedule.endTime || ''),
+      subject: schedule.learningArea?.name || schedule.subject,
+      subjectId: schedule.learningAreaId,
+      teacherId: schedule.teacherId,
+      teacherName: schedule.teacher ? `${schedule.teacher.firstName} ${schedule.teacher.lastName}` : 'Unassigned',
+      grade: classLabel,
+      room: schedule.room || 'N/A'
+    };
+  };
+
+  const fetchMasterSchedule = async () => {
+    try {
+      const responses = await Promise.all(
+        classes.map(async (classInfo) => {
+          try {
+            const response = await api.classes.getSchedules(classInfo.id);
+            return { classInfo, schedules: response.data || [] };
+          } catch (error) {
+            console.error(`Failed to fetch timetable for ${classInfo.name || classInfo.id}`, error);
+            return { classInfo, schedules: [] };
+          }
+        })
+      );
+
+      const grouped = responses.reduce((acc, { classInfo, schedules }) => {
+        schedules.forEach((schedule) => {
+          const day = schedule.day || 'Monday';
+          if (!acc[day]) acc[day] = [];
+          acc[day].push(toLessonRow(schedule, classInfo));
+        });
+        return acc;
+      }, {});
+
+      setScheduleData(grouped);
+    } catch (error) {
+      showError(`Failed to fetch master timetable: ${error.message || String(error)}`);
+      console.error(error);
+    }
+  };
+
   const fetchClassSchedule = async (classId) => {
     try {
       const resp = await api.classes.getSchedules(classId);
       const schedules = resp.data || [];
       const selectedClass = classes.find((c) => c.id === classId);
-      const classLabel = selectedClass?.name || [selectedClass?.grade, selectedClass?.stream].filter(Boolean).join(' ') || 'N/A';
 
       // Group by day
       const grouped = schedules.reduce((acc, s) => {
         const day = s.day || 'Monday';
         if (!acc[day]) acc[day] = [];
-        acc[day].push({
-          id: s.id,
-          time: buildTimeLine(s.startTime || '', s.endTime || ''),
-          subject: s.learningArea?.name || s.subject,
-          subjectId: s.learningAreaId,
-          teacherId: s.teacherId,
-          teacherName: s.teacher ? `${s.teacher.firstName} ${s.teacher.lastName}` : 'Unassigned',
-          grade: classLabel,
-          room: s.room || 'N/A'
-        });
+        acc[day].push(toLessonRow(s, selectedClass));
         return acc;
       }, {});
 
@@ -273,21 +352,11 @@ const TimetablePage = () => {
     }
   };
 
-  const openAddModal = () => {
-    setEditingLesson(null);
-    const nextSlot = getNextAvailableSlot(selectedDay);
-    setTimeLine(nextSlot?.label || '');
-    setSubjectId('');
-    setTeacherId('');
-    setRoom('');
-    setLessonDay(selectedDay);
-    if (!nextSlot) {
-      showError(`All configured time slots are used for ${selectedDay}. Please choose another day.`);
-    }
-    setIsModalOpen(true);
-  };
-
   const openEditModal = (lesson, day) => {
+    if (!canEditTimetable) {
+      showError('You do not have permission to edit the timetable.');
+      return;
+    }
     setEditingLesson(lesson);
     setTimeLine(lesson.time);
     setSubjectId(lesson.subjectId || '');
@@ -297,21 +366,12 @@ const TimetablePage = () => {
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (id, day) => {
-    if (!selectedClassId || selectedClassId === 'all') return;
-    if (window.confirm("Are you sure you want to delete this lesson?")) {
-      try {
-        await api.classes.deleteSchedule(selectedClassId, id);
-        showSuccess("Lesson deleted successfully");
-        fetchClassSchedule(selectedClassId);
-      } catch (error) {
-        showError("Failed to delete lesson");
-      }
-    }
-  };
-
   const handleSave = async (e) => {
     e.preventDefault();
+    if (!canEditTimetable) {
+      showError('You do not have permission to edit the timetable.');
+      return;
+    }
     if (!timeLine || !subjectId || !selectedClassId || selectedClassId === 'all') {
       showError("Please select a Class, Subject and Time");
       return;
@@ -400,7 +460,7 @@ const TimetablePage = () => {
       setIsDownloadingWeekPdf(true);
       const result = await generateHighFidelityPDF('week-at-a-glance-content', getWeekPdfFilename(), {
         action: 'download',
-        includeLetterhead: false
+        ...TIMETABLE_PDF_OPTIONS
       });
 
       if (result?.success) showSuccess('Week at a Glance downloaded as PDF.');
@@ -429,7 +489,7 @@ const TimetablePage = () => {
       const fileName = getWeekPdfFilename();
       const result = await generateHighFidelityPDF('week-at-a-glance-content', fileName, {
         action: 'blob',
-        includeLetterhead: false
+        ...TIMETABLE_PDF_OPTIONS
       });
 
       if (!result?.success || !result?.blob) {
@@ -455,15 +515,23 @@ const TimetablePage = () => {
         return;
       }
 
-      await generateHighFidelityPDF('week-at-a-glance-content', fileName, { action: 'download', includeLetterhead: false });
+      await generateHighFidelityPDF('week-at-a-glance-content', fileName, { action: 'download', ...TIMETABLE_PDF_OPTIONS });
       showSuccess('Sharing is not supported on this browser. PDF downloaded instead.');
     } finally {
       setIsSharingWeekPdf(false);
     }
   };
 
-  const scheduleForSelectedDay = scheduleData[selectedDay] || [];
-  const isTodaySelected = selectedDay === getCurrentWeekday();
+  const weeklyTimeSlots = sortTimeLabels(new Set(Object.values(scheduleData).flat().map((lesson) => lesson.time).filter(Boolean)));
+  const mobileLessons = (scheduleData[selectedDay] || [])
+    .slice()
+    .sort((a, b) => {
+      const aStart = String(a.time || '').split('-')[0]?.trim();
+      const bStart = String(b.time || '').split('-')[0]?.trim();
+      return parseTimeToMinutes(aStart) - parseTimeToMinutes(bStart);
+    });
+  const schoolName = user?.school?.name || user?.schoolName || 'School Timetable';
+  const schoolLogoUrl = user?.school?.logoUrl || user?.school?.logo || user?.schoolLogo || '/branding/logo.png';
   const daySlotOptions = getTimeSlotOptions(lessonDay);
   const usedSlotKeys = getUsedSlotKeysForDay(lessonDay);
   const editingSlotKey = editingLesson ? (() => {
@@ -482,26 +550,161 @@ const TimetablePage = () => {
 
   return (
     <div className="space-y-6 relative">
-      {/* Page Header */}
-      <div className="flex justify-end mb-4">
-        <div className="flex items-center gap-2">
-          <button
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
-          >
-            <Download size={18} />
-            Export Config
-          </button>
-          <button
-            onClick={openAddModal}
-            className="flex items-center gap-2 px-4 py-2 bg-brand-teal text-white rounded-lg hover:bg-brand-teal/90 transition shadow-sm font-medium"
-          >
-            <Plus size={18} />
-            Add Lesson
-          </button>
-        </div>
-      </div>
+      <style>{`
+        /* Timetable Matrix Styling - compact weekly grid */
+        #week-at-a-glance-content {
+          padding: 0;
+          background: white;
+          border-radius: 8px;
+        }
+        
+        #week-at-a-glance-content table {
+          width: 100%;
+          border-collapse: collapse;
+          border: 1px solid #e5e7eb;
+          table-layout: fixed;
+        }
+        
+        #week-at-a-glance-content thead th {
+          border: 1px solid #e5e7eb;
+          padding: 13px 12px;
+          min-width: 132px;
+          text-align: center;
+          font-weight: 800;
+          color: #111827;
+          background-color: #ffffff;
+          font-size: 12px;
+          line-height: 1.1;
+          text-transform: uppercase;
+        }
+        
+        #week-at-a-glance-content tbody td {
+          border: 1px solid #e5e7eb;
+          height: 58px;
+          padding: 9px 10px;
+          text-align: left;
+          vertical-align: middle;
+          background-color: #fff;
+          font-size: 11px;
+        }
+        
+        #week-at-a-glance-content tbody td:first-child {
+          background-color: #ffffff;
+          color: #111827;
+          width: 128px;
+          padding: 8px 10px;
+        }
+        
+        #week-at-a-glance-content .time-block-cell {
+          display: flex;
+          align-items: flex-start;
+          justify-content: flex-start;
+          gap: 8px;
+          min-width: 108px;
+        }
 
+        #week-at-a-glance-content .time-block-icon {
+          width: 14px;
+          height: 14px;
+          color: #7c89a6;
+          flex: 0 0 auto;
+          margin-top: 1px;
+        }
+
+        #week-at-a-glance-content .time-block-text {
+          color: #111827;
+          font-size: 11px;
+          font-weight: 800;
+          line-height: 1.25;
+          text-align: left;
+          white-space: normal;
+        }
+
+        #week-at-a-glance-content .lesson-card {
+          background: none;
+          color: #17213d;
+          border: none;
+          border-radius: 0;
+          padding: 0;
+          margin: 0;
+          border-left: none;
+          box-shadow: none;
+          page-break-inside: avoid;
+          display: block;
+          width: 100%;
+          text-align: left;
+          cursor: default;
+          transition: background-color 0.15s ease;
+          font-size: 11px;
+          line-height: 1.25;
+        }
+        
+        #week-at-a-glance-content .lesson-card:hover {
+          opacity: 1;
+          transform: none;
+          background-color: #f8fafc;
+        }
+        
+        #week-at-a-glance-content .lesson-card-subject {
+          font-weight: 800;
+          font-size: 11px;
+          margin-bottom: 6px;
+          letter-spacing: 0;
+          line-height: 1.2;
+          color: #17213d;
+        }
+        
+        #week-at-a-glance-content .lesson-card-details {
+          font-size: 10px;
+          opacity: 1;
+          display: block;
+          line-height: 1.25;
+          margin-top: 2px;
+          color: #56627d;
+        }
+        
+        #week-at-a-glance-content .lesson-card-detail-item {
+          display: inline;
+          font-size: 10px;
+          color: #56627d;
+        }
+        
+        #week-at-a-glance-content .lesson-card-detail-item:not(:last-child)::after {
+          content: " • ";
+          margin: 0 6px;
+          color: #17213d;
+        }
+        
+        #week-at-a-glance-content .empty-slot {
+          color: #cbd5e1;
+          text-align: center;
+          font-size: 11px;
+          padding: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 100%;
+          min-height: 40px;
+        }
+
+        /* Hide interactive UI elements in PDF */
+        @media print {
+          .no-print,
+          .screen-only,
+          button,
+          .flex.justify-end {
+            display: none !important;
+          }
+
+          #week-at-a-glance-content {
+            padding: 0;
+            margin: 0;
+            overflow: visible;
+          }
+        }
+      `}</style>
       {/* Actions Toolbar */}
+      {!isMobile && (
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center">
         <div>
           <h2 className="text-xl font-medium text-gray-800">Class Timetable</h2>
@@ -534,113 +737,135 @@ const TimetablePage = () => {
           </div>
         </div>
       </div>
+      )}
 
-      {/* Daily View - Details */}
-      <div className="bg-white rounded-xl shadow-md border border-gray-200">
-        <div className="p-4 border-b border-gray-200">
-          <h3 className="font-semibold text-gray-900">Manage Schedule</h3>
-          <p className="text-sm text-gray-600">Click Add Lesson or Edit to modify the timetable</p>
-        </div>
-
-        {/* Day Selector */}
-        <div className="flex border-b border-gray-200 overflow-x-auto">
-          {days.map((day) => (
+      {isMobile && (
+        <div className="px-3 pt-3 pb-4 space-y-3">
+          <div className="grid grid-cols-[52px_minmax(0,1fr)_52px] items-center gap-2">
             <button
-              key={day}
-              onClick={() => setSelectedDay(day)}
-              className={`flex-1 px-6 py-4 text-sm font-semibold uppercase tracking-widest transition-all ${selectedDay === day
-                ? 'bg-brand-purple/5 text-brand-purple border-b-2 border-brand-purple'
-                : 'text-gray-500 hover:bg-gray-50'
-                }`}
+              type="button"
+              onClick={() => setWeekStart((current) => {
+                const next = new Date(current);
+                next.setDate(current.getDate() - 7);
+                return next;
+              })}
+              className="h-12 rounded-lg border border-gray-200 bg-white text-[#17213d] flex items-center justify-center shadow-sm"
+              aria-label="Previous week"
             >
-              {day}
+              <ChevronLeft size={20} />
             </button>
-          ))}
-        </div>
-
-        {/* Schedule for Selected Day */}
-        <div className="p-6">
-          {scheduleForSelectedDay.length === 0 ? (
-            <EmptyState
-              icon={Calendar}
-              title="No Classes Scheduled"
-              message={`No classes scheduled for ${selectedDay}`}
-            />
-          ) : (
-            <div className="space-y-3">
-              {scheduleForSelectedDay.map((lesson) => (
-                <div
-                  key={lesson.id}
-                  className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-brand-purple/30 hover:bg-brand-purple/5 transition-colors"
-                >
-                  <div className="flex items-center gap-4 flex-1">
-                    {/* Time */}
-                    <div className="flex items-center gap-2 min-w-[200px]">
-                      <div className="p-2 bg-brand-teal/10 rounded-lg">
-                        <Clock className="w-5 h-5 text-brand-teal" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900">{lesson.time}</p>
-                        <p className="text-xs text-gray-500">Scheduled Time</p>
-                      </div>
-                    </div>
-
-                    {/* Subject & Grade */}
-                    <div className="flex items-center gap-2 min-w-[200px]">
-                      <div className="p-2 bg-brand-purple/10 rounded-lg">
-                        <BookOpen className="w-5 h-5 text-brand-purple" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900">{lesson.subject}</p>
-                        <p className="text-xs text-brand-purple font-medium">{lesson.grade}</p>
-                      </div>
-                    </div>
-
-                    {/* Room */}
-                    <div className="flex items-center gap-2">
-                      <div className="p-2 bg-brand-teal/10 rounded-lg">
-                        <MapPin className="w-5 h-5 text-brand-teal" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900">{lesson.room}</p>
-                        <p className="text-xs text-gray-500">Location</p>
-                      </div>
-                    </div>
-
-                    {isTodaySelected && lesson.teacherId && !isTeacherClockedIn(lesson.teacherId) && (
-                      <div className="flex items-center gap-2 px-2 py-1 rounded-md border border-amber-200 bg-amber-50 text-amber-700">
-                        <AlertTriangle className="w-4 h-4" />
-                        <span className="text-xs font-semibold">Tutor not clocked in</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => openEditModal(lesson, selectedDay)}
-                      className="p-2 text-brand-purple hover:bg-brand-purple/10 rounded-lg transition"
-                      title="Edit Lesson"
-                    >
-                      <Edit size={18} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(lesson.id, selectedDay)}
-                      className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition"
-                      title="Remove Lesson"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="h-12 rounded-lg border border-gray-200 bg-white text-[#17213d] flex items-center justify-center gap-3 px-3 shadow-sm">
+              <Clock size={17} className="text-brand-purple" />
+              <span className="text-sm font-semibold">{formatWeekRange(weekStart)}</span>
             </div>
-          )}
+            <button
+              type="button"
+              onClick={() => setWeekStart((current) => {
+                const next = new Date(current);
+                next.setDate(current.getDate() + 7);
+                return next;
+              })}
+              className="h-12 rounded-lg border border-gray-200 bg-white text-[#17213d] flex items-center justify-center shadow-sm"
+              aria-label="Next week"
+            >
+              <ChevronRight size={20} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-[minmax(0,1fr)_112px] gap-2">
+            <select
+              value={selectedClassId}
+              onChange={(e) => setSelectedClassId(e.target.value)}
+              className="h-12 w-full rounded-lg border border-gray-200 bg-white px-4 text-sm font-semibold text-[#17213d] shadow-sm focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/20"
+            >
+              <option value="all">All Classes</option>
+              {classes.map(c => (
+                <option key={c.id} value={c.id}>{c.name || `${c.grade} ${c.stream}`}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => {
+                const currentWeekday = getCurrentWeekday();
+                setSelectedDay(days.includes(currentWeekday) ? currentWeekday : 'Monday');
+              }}
+              className="h-12 rounded-lg border border-gray-200 bg-white px-3 text-sm font-semibold text-[#17213d] shadow-sm flex items-center justify-center gap-2"
+            >
+              <Filter size={17} />
+              Today
+            </button>
+          </div>
+
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {days.map((day) => (
+              <button
+                key={day}
+                type="button"
+                onClick={() => setSelectedDay(day)}
+                className={`h-9 shrink-0 rounded-full px-4 text-xs font-semibold transition ${
+                  selectedDay === day
+                    ? 'bg-brand-purple text-white'
+                    : 'bg-white text-[#17213d] border border-gray-200'
+                }`}
+              >
+                {day.slice(0, 3)}
+              </button>
+            ))}
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+            {mobileLessons.length > 0 ? (
+              mobileLessons.map((lesson) => {
+                const canOpenLesson = canEditTimetable && selectedClassId !== 'all';
+                return (
+                  <button
+                    key={`${lesson.classId || selectedClassId}-${lesson.id}`}
+                    type="button"
+                    onClick={() => {
+                      if (canOpenLesson) openEditModal(lesson, selectedDay);
+                    }}
+                    className={`grid w-full grid-cols-[112px_minmax(0,1fr)_28px] border-b border-gray-100 text-left last:border-b-0 ${canOpenLesson ? 'active:bg-gray-50' : 'cursor-default'}`}
+                  >
+                    <div className="flex gap-3 border-r border-gray-100 px-3 py-3 text-[#17213d]">
+                      <Clock size={18} className="mt-0.5 shrink-0 text-brand-purple" />
+                      <div className="text-xs font-bold leading-5">
+                        {String(lesson.time || '').split('-').map((part) => (
+                          <div key={part.trim()}>{part.trim()}</div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="min-w-0 px-4 py-3">
+                      <div className="truncate text-sm font-bold text-[#17213d]">{lesson.subject || 'Untitled Lesson'}</div>
+                      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-[#56627d]">
+                        <span className="truncate">{lesson.teacherName || 'Unassigned'}</span>
+                        <span aria-hidden="true">•</span>
+                        <span className="truncate">{lesson.room || 'Room N/A'}</span>
+                        {selectedClassId === 'all' && lesson.className && (
+                          <>
+                            <span aria-hidden="true">•</span>
+                            <span className="truncate">{lesson.className}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-center text-[#17213d]">
+                      {canOpenLesson && <ChevronRight size={20} />}
+                    </div>
+                  </button>
+                );
+              })
+            ) : (
+              <div className="px-4 py-10 text-center">
+                <div className="text-sm font-semibold text-[#17213d]">No lessons for {selectedDay}</div>
+                <div className="mt-1 text-xs text-[#56627d]">Choose another day or class to view the timetable.</div>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Weekly Overview Grid */}
-      {viewMode === 'weekly' && (
+      {!isMobile && viewMode === 'weekly' && (
         <div className="bg-white rounded-xl shadow-md border border-gray-200">
           <div className="p-4 border-b border-gray-200 flex items-center justify-between gap-3">
             <div>
@@ -667,48 +892,67 @@ const TimetablePage = () => {
             </div>
           </div>
 
-          <div id="week-at-a-glance-content" className="p-6 overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="border border-gray-200 px-4 py-2 text-left text-xs font-semibold text-gray-700 w-32">Time Block</th>
-                  {days.map((day) => (
-                    <th key={day} className="border border-gray-200 px-4 py-2 text-left text-xs font-semibold text-gray-700 min-w-[150px]">
-                      {day}
+          <div id="week-at-a-glance-content" className="overflow-x-auto">
+            <TimetablePDFWrapper 
+              schoolName={schoolName}
+              selectedClass={getSelectedClass()?.name || `${getSelectedClass()?.grade} ${getSelectedClass()?.stream}`.trim() || 'All Classes'}
+              weekInfo={new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}
+              logoUrl={schoolLogoUrl}
+            >
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <th className="w-32">
+                      TIME BLOCK
                     </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {/* Generate time slots based on existing times across all days */}
-                {Array.from(new Set(Object.values(scheduleData).flat().map(l => l.time))).sort().map(timeSlot => (
-                  <tr key={timeSlot}>
-                    <td className="border border-gray-200 px-4 py-3 text-xs font-medium text-gray-700 bg-gray-50">
-                      {timeSlot}
-                    </td>
-                    {days.map((day) => {
-                      const lessons = scheduleData[day]?.filter(l => l.time === timeSlot) || [];
-                      return (
-                        <td key={day} className="border border-gray-200 px-2 py-2">
-                          {lessons.length > 0 ? (
-                            <div className="space-y-2">
-                              {lessons.map(lesson => (
-                                <div key={lesson.id} className="bg-brand-purple/5 border border-brand-purple/10 rounded p-2 hover:bg-brand-purple/10 cursor-pointer" onClick={() => { setSelectedDay(day); openEditModal(lesson, day); }}>
-                                  <p className="text-xs font-medium text-brand-purple">{lesson.subject}</p>
-                                  <p className="text-[10px] text-brand-purple/80">{lesson.teacherName} • {lesson.room}</p>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="text-center text-gray-300 text-xs italic">Open</div>
-                          )}
-                        </td>
-                      );
-                    })}
+                    {days.map((day) => (
+                      <th key={day}>
+                        {day.toUpperCase()}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {/* Generate time slots based on existing times across all days */}
+                  {weeklyTimeSlots.map(timeSlot => (
+                    <tr key={timeSlot}>
+                      <td>
+                        <div className="time-block-cell">
+                          <Clock className="time-block-icon" />
+                          <span className="time-block-text">{timeSlot}</span>
+                        </div>
+                      </td>
+                      {days.map((day) => {
+                        const lessons = scheduleData[day]?.filter(l => l.time === timeSlot) || [];
+                        return (
+                          <td key={day}>
+                            {lessons.length > 0 ? (
+                              <div className="flex flex-col gap-0 w-full">
+                                {lessons.map(lesson => (
+                                  <div 
+                                    key={lesson.id} 
+                                    className={`lesson-card ${canEditTimetable ? 'cursor-pointer' : ''}`}
+                                    onClick={() => { if (canEditTimetable) { setSelectedDay(day); openEditModal(lesson, day); } }}
+                                  >
+                                    <div className="lesson-card-subject">{lesson.subject}</div>
+                                    <div className="lesson-card-details">
+                                      <span className="lesson-card-detail-item">{lesson.teacherName}</span>
+                                      <span className="lesson-card-detail-item">{lesson.room}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="empty-slot"></div>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TimetablePDFWrapper>
           </div>
         </div>
       )}

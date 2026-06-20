@@ -188,34 +188,34 @@ router.get(
 
 /**
  * @route   POST /api/classes/:id/schedules
- * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM
+ * @access  EDIT_TIMETABLE
  */
 router.post(
   '/:id/schedules',
   requireSchoolContext,
-  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM']),
+  requirePermission('EDIT_TIMETABLE'),
   asyncHandler(classController.createClassSchedule.bind(classController))
 );
 
 /**
  * @route   PUT /api/classes/:id/schedules/:scheduleId
- * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM
+ * @access  EDIT_TIMETABLE
  */
 router.put(
   '/:id/schedules/:scheduleId',
   requireSchoolContext,
-  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM']),
+  requirePermission('EDIT_TIMETABLE'),
   asyncHandler(classController.updateClassSchedule.bind(classController))
 );
 
 /**
  * @route   DELETE /api/classes/:id/schedules/:scheduleId
- * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM
+ * @access  EDIT_TIMETABLE
  */
 router.delete(
   '/:id/schedules/:scheduleId',
   requireSchoolContext,
-  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM']),
+  requirePermission('EDIT_TIMETABLE'),
   asyncHandler(classController.deleteClassSchedule.bind(classController))
 );
 

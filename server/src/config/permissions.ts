@@ -135,6 +135,7 @@ export const PERMISSIONS = {
   // TIMETABLE
   // ============================================
   ACCESS_TIMETABLE: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER'],
+  EDIT_TIMETABLE: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'],
 } as const;
 
 /**

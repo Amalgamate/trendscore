@@ -10,6 +10,7 @@ import {
   FileText,
   Users,
   Zap,
+  CalendarDays,
   Settings,
   MessageSquare,
   Award,
@@ -70,12 +71,12 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         color: 'text-blue-600'
       },
       {
-        id: 'settings',
-        label: 'Settings',
-        icon: Settings,
-        path: 'settings',
-        activePaths: ['settings', 'settings-users', 'settings-school', 'settings-profile'],
-        color: 'text-gray-600'
+        id: 'timetable',
+        label: 'Timetable',
+        icon: CalendarDays,
+        path: 'planner-timetable',
+        activePaths: ['planner-timetable', 'timetable'],
+        color: 'text-indigo-600'
       }
     ]
   },
@@ -114,12 +115,12 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         color: 'text-blue-600'
       },
       {
-        id: 'settings',
-        label: 'Settings',
-        icon: Settings,
-        path: 'settings',
-        activePaths: ['settings', 'settings-users', 'settings-school', 'settings-profile'],
-        color: 'text-gray-600'
+        id: 'timetable',
+        label: 'Timetable',
+        icon: CalendarDays,
+        path: 'planner-timetable',
+        activePaths: ['planner-timetable', 'timetable'],
+        color: 'text-indigo-600'
       }
     ]
   },
@@ -158,12 +159,12 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         color: 'text-blue-600'
       },
       {
-        id: 'settings',
-        label: 'Settings',
-        icon: Settings,
-        path: 'settings',
-        activePaths: ['settings', 'settings-users', 'settings-school', 'settings-profile'],
-        color: 'text-gray-600'
+        id: 'timetable',
+        label: 'Timetable',
+        icon: CalendarDays,
+        path: 'planner-timetable',
+        activePaths: ['planner-timetable', 'timetable'],
+        color: 'text-indigo-600'
       }
     ]
   },
@@ -205,12 +206,12 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         color: 'text-amber-600'
       },
       {
-        id: 'settings',
-        label: 'Settings',
-        icon: Settings,
-        path: 'settings',
-        activePaths: ['settings', 'settings-payment', 'settings-profile'],
-        color: 'text-gray-600'
+        id: 'timetable',
+        label: 'Timetable',
+        icon: CalendarDays,
+        path: 'planner-timetable',
+        activePaths: ['planner-timetable', 'timetable'],
+        color: 'text-indigo-600'
       }
     ]
   },
@@ -250,12 +251,12 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         color: 'text-violet-600'
       },
       {
-        id: 'settings',
-        label: 'Settings',
-        icon: Settings,
-        path: 'settings-profile',
-        activePaths: ['settings', 'settings-profile'],
-        color: 'text-gray-600'
+        id: 'timetable',
+        label: 'Timetable',
+        icon: CalendarDays,
+        path: 'planner-timetable',
+        activePaths: ['planner-timetable', 'timetable'],
+        color: 'text-indigo-600'
       }
     ]
   },
@@ -295,12 +296,12 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         color: 'text-violet-600'
       },
       {
-        id: 'settings',
-        label: 'Settings',
-        icon: Settings,
-        path: 'settings-profile',
-        activePaths: ['settings', 'settings-profile'],
-        color: 'text-gray-600'
+        id: 'timetable',
+        label: 'Timetable',
+        icon: CalendarDays,
+        path: 'planner-timetable',
+        activePaths: ['planner-timetable', 'timetable'],
+        color: 'text-indigo-600'
       }
     ]
   },
@@ -380,12 +381,12 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         color: 'text-violet-600'
       },
       {
-        id: 'settings',
-        label: 'Settings',
-        icon: Settings,
-        path: 'settings-profile',
-        activePaths: ['settings', 'settings-profile'],
-        color: 'text-gray-600'
+        id: 'timetable',
+        label: 'Timetable',
+        icon: CalendarDays,
+        path: 'planner-timetable',
+        activePaths: ['planner-timetable', 'timetable'],
+        color: 'text-indigo-600'
       }
     ]
   }

@@ -26,12 +26,27 @@ import jsPDF from 'jspdf';
 const A4_W_MM = 210;
 const A4_H_MM = 297;
 const A4_MARGIN_MM = 10;
-const A4_CONTENT_W_MM = A4_W_MM - A4_MARGIN_MM * 2;
-const A4_CONTENT_H_MM = A4_H_MM - A4_MARGIN_MM * 2;
 
 /** Pixel dimensions at 96 DPI (browser default) */
 const A4_W_PX = 794;
 const A4_H_PX = 1123;
+
+const getPageSpec = (orientation = 'portrait') => {
+  const isLandscape = orientation === 'landscape';
+  const widthMm = isLandscape ? A4_H_MM : A4_W_MM;
+  const heightMm = isLandscape ? A4_W_MM : A4_H_MM;
+  const widthPx = isLandscape ? A4_H_PX : A4_W_PX;
+  const heightPx = isLandscape ? A4_W_PX : A4_H_PX;
+  return {
+    orientation: isLandscape ? 'landscape' : 'portrait',
+    widthMm,
+    heightMm,
+    contentWidthMm: widthMm - A4_MARGIN_MM * 2,
+    contentHeightMm: heightMm - A4_MARGIN_MM * 2,
+    widthPx,
+    heightPx,
+  };
+};
 
 /**
  * Scale factor for capture.
@@ -66,7 +81,10 @@ const nextPaint = () =>
  *  • Ensures SVGs (bar chart, pathway bars) render correctly
  *  • Strips scripts to prevent MIME errors in the clone
  */
-const buildOnclone = () => (_clonedDoc, clonedEl) => {
+const buildOnclone = (opts = {}) => (_clonedDoc, clonedEl) => {
+  const pageSpec = getPageSpec(opts.orientation);
+  const includeLetterhead = opts.includeLetterhead === true;
+
   // 0. Reset the cloned document body to prevent any ancestral shifting
   _clonedDoc.documentElement.style.cssText = 'margin: 0 !important; padding: 0 !important; width: 100%; height: 100%;';
   _clonedDoc.body.style.cssText = 'margin: 0 !important; padding: 0 !important; width: 100%; height: 100%; overflow: visible !important;';
@@ -80,9 +98,9 @@ const buildOnclone = () => (_clonedDoc, clonedEl) => {
     top: 0 !important;
     margin: 0 !important;
     padding: 0 !important;
-    width: ${A4_W_PX}px !important;
-    min-height: ${A4_H_PX}px !important;
-    max-width: ${A4_W_PX}px !important;
+    width: ${pageSpec.widthPx}px !important;
+    min-height: ${pageSpec.heightPx}px !important;
+    max-width: ${pageSpec.widthPx}px !important;
     display: flex !important;
     flex-direction: column !important;
     visibility: visible !important;
@@ -98,7 +116,7 @@ const buildOnclone = () => (_clonedDoc, clonedEl) => {
   // 2. Fix the inner .report-card for fidelity
   const card = clonedEl.querySelector('.report-card');
   if (card) {
-    card.style.minHeight = `${A4_H_PX}px`;
+    card.style.minHeight = `${pageSpec.heightPx}px`;
     card.style.height = 'auto';
     card.style.overflow = 'visible';
     card.style.margin = '0'; // reset any auto centering
@@ -141,6 +159,15 @@ const buildOnclone = () => (_clonedDoc, clonedEl) => {
 
   // 5. Strip scripts & hidden UI elements (prevents MIME errors and clutter)
   _clonedDoc.querySelectorAll('script, .no-print, .screen-only').forEach(s => s.remove());
+  if (includeLetterhead) {
+    clonedEl.querySelectorAll('.print-only').forEach(node => {
+      node.style.display = 'block';
+      node.style.visibility = 'visible';
+      node.style.opacity = '1';
+    });
+  } else {
+    clonedEl.querySelectorAll('.print-only').forEach(s => s.remove());
+  }
 };
 
 /**
@@ -153,20 +180,23 @@ const buildOnclone = () => (_clonedDoc, clonedEl) => {
  * The jsPDF page is always written at A4_H_MM — the extra canvas pixels
  * are scaled down to fit, which is the correct behaviour.
  */
-const captureOptions = () => ({
+const captureOptions = (opts = {}) => {
+  const pageSpec = getPageSpec(opts.orientation);
+  return {
   scale: CAPTURE_SCALE,
   useCORS: true,
   allowTaint: false,
   logging: false,
   backgroundColor: '#ffffff',
-  width: A4_W_PX,
-  windowWidth: A4_W_PX, // Force layout engine to A4 width
+  width: pageSpec.widthPx,
+  windowWidth: pageSpec.widthPx, // Force layout engine to A4 width
   x: 0,
   y: 0,
   scrollX: 0,
   scrollY: 0,
-  onclone: buildOnclone(),
-});
+  onclone: buildOnclone(opts),
+  };
+};
 
 const createAbortError = (message = 'Bulk PDF generation cancelled') => {
   const error = new Error(message);
@@ -188,15 +218,15 @@ export const captureElement = async (el, opts = {}) => {
   if (signal?.aborted) throw createAbortError();
   await nextPaint();
   if (signal?.aborted) throw createAbortError();
-  return html2canvas(el, captureOptions());
+  return html2canvas(el, captureOptions(opts));
 };
 
 /**
  * Add a canvas to a jsPDF page as a full-bleed A4 PNG image.
  * Uses 'Best Fit' logic: Scales width to fit A4_W_MM exactly.
  */
-const sliceCanvasToPages = (canvas) => {
-  const pageHeightPx = A4_H_PX;
+const sliceCanvasToPages = (canvas, pageSpec = getPageSpec()) => {
+  const pageHeightPx = pageSpec.heightPx;
   const pages = [];
   let yOffset = 0;
 
@@ -216,22 +246,22 @@ const sliceCanvasToPages = (canvas) => {
   return pages;
 };
 
-const fitCanvasToA4 = (canvas) => {
-  const rawWidth = A4_CONTENT_W_MM;
+const fitCanvasToPage = (canvas, pageSpec = getPageSpec()) => {
+  const rawWidth = pageSpec.contentWidthMm;
   const rawHeight = (canvas.height * rawWidth) / canvas.width;
-  const scale = rawHeight > A4_CONTENT_H_MM ? A4_CONTENT_H_MM / rawHeight : 1;
+  const scale = rawHeight > pageSpec.contentHeightMm ? pageSpec.contentHeightMm / rawHeight : 1;
   return { width: rawWidth * scale, height: rawHeight * scale };
 };
 
-const addCanvasToPdfSinglePage = (pdf, canvas, addPage = false) => {
+const addCanvasToPdfSinglePage = (pdf, canvas, addPage = false, pageSpec = getPageSpec()) => {
   if (addPage) pdf.addPage();
   const imgData = canvas.toDataURL('image/png');
-  const { width, height } = fitCanvasToA4(canvas);
+  const { width, height } = fitCanvasToPage(canvas, pageSpec);
   pdf.addImage(imgData, 'PNG', A4_MARGIN_MM, A4_MARGIN_MM, width, height);
 };
 
-const addCanvasToPdf = (pdf, canvas, addPage = false) => {
-  const pageCanvases = sliceCanvasToPages(canvas);
+const addCanvasToPdf = (pdf, canvas, addPage = false, pageSpec = getPageSpec()) => {
+  const pageCanvases = sliceCanvasToPages(canvas, pageSpec);
 
   pageCanvases.forEach((pageCanvas, index) => {
     if (index > 0 || (index === 0 && addPage)) {
@@ -239,15 +269,24 @@ const addCanvasToPdf = (pdf, canvas, addPage = false) => {
     }
 
     const imgData = pageCanvas.toDataURL('image/png');
-    const imgW = A4_W_MM;
-    const imgH = (pageCanvas.height * A4_W_MM) / pageCanvas.width;
+    const imgW = pageSpec.widthMm;
+    const imgH = (pageCanvas.height * pageSpec.widthMm) / pageCanvas.width;
     pdf.addImage(imgData, 'PNG', 0, 0, imgW, imgH);
   });
 };
 
-/** Create a jsPDF instance configured for A4 portrait. */
-const newA4Pdf = () =>
-  new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+/** Create a jsPDF instance configured for A4. */
+const newA4Pdf = (orientation = 'portrait') =>
+  new jsPDF({ orientation, unit: 'mm', format: 'a4', compress: true });
+
+const finishPdf = (pdf, filename, action = 'download') => {
+  if (action === 'blob') {
+    return { success: true, blob: pdf.output('blob') };
+  }
+
+  pdf.save(filename);
+  return { success: true };
+};
 
 // ─── Concurrency helper ───────────────────────────────────────────────────────
 
@@ -291,7 +330,8 @@ const runWithConcurrency = async (tasks, concurrency, signal) => {
  * @returns {Promise<{ success: boolean, error?: string }>}
  */
 export const captureSingleReport = async (elementId, filename, opts = {}) => {
-  const { onProgress, signal, fitToPage = false } = opts;
+  const { onProgress, signal, fitToPage = false, action = 'download', orientation = 'portrait' } = opts;
+  const pageSpec = getPageSpec(orientation);
   const el = document.getElementById(elementId);
   if (!el) return { success: false, error: `Element #${elementId} not found` };
 
@@ -303,22 +343,21 @@ export const captureSingleReport = async (elementId, filename, opts = {}) => {
     if (signal?.aborted) return { success: false, error: 'Bulk PDF generation cancelled' };
 
     if (onProgress) onProgress('Capturing report…');
-    const canvas = await html2canvas(el, captureOptions());
+    const canvas = await html2canvas(el, captureOptions(opts));
     if (signal?.aborted) return { success: false, error: 'Bulk PDF generation cancelled' };
 
     if (onProgress) onProgress('Building PDF…');
-    const pdf = newA4Pdf();
+    const pdf = newA4Pdf(pageSpec.orientation);
     if (fitToPage) {
-      addCanvasToPdfSinglePage(pdf, canvas, false);
+      addCanvasToPdfSinglePage(pdf, canvas, false, pageSpec);
     } else {
-      addCanvasToPdf(pdf, canvas, false);
+      addCanvasToPdf(pdf, canvas, false, pageSpec);
     }
 
     if (onProgress) onProgress('Saving…');
-    pdf.save(filename);
-
+    const result = finishPdf(pdf, filename, action);
     if (onProgress) onProgress('Done!');
-    return { success: true };
+    return result;
   } catch (err) {
     console.error('[captureSingleReport]', err);
     return { success: false, error: err.name === 'AbortError' ? 'Bulk PDF generation cancelled' : err.message };
@@ -339,7 +378,8 @@ export const captureSingleReport = async (elementId, filename, opts = {}) => {
  * @returns {Promise<{ success: boolean, error?: string }>}
  */
 export const captureBulkReports = async (elementId, filename, opts = {}) => {
-  const { onProgress, signal } = opts;
+  const { onProgress, signal, action = 'download', orientation = 'portrait' } = opts;
+  const pageSpec = getPageSpec(orientation);
   const container = document.getElementById(elementId);
   if (!container) return { success: false, error: `Element #${elementId} not found` };
 
@@ -363,7 +403,7 @@ export const captureBulkReports = async (elementId, filename, opts = {}) => {
 
     const tasks = pages.map((pageEl) => async () => {
       if (signal?.aborted) throw createAbortError();
-      const canvas = await html2canvas(pageEl, captureOptions());
+      const canvas = await html2canvas(pageEl, captureOptions(opts));
       if (signal?.aborted) throw createAbortError();
       completed++;
       if (onProgress) onProgress(`Captured ${completed} of ${pages.length} pages…`);
@@ -379,14 +419,13 @@ export const captureBulkReports = async (elementId, filename, opts = {}) => {
 
     if (signal?.aborted) return { success: false, error: 'Bulk PDF generation cancelled' };
     if (onProgress) onProgress('Building PDF…');
-    const pdf = newA4Pdf();
-    canvases.forEach((canvas, i) => addCanvasToPdf(pdf, canvas, i > 0));
+    const pdf = newA4Pdf(pageSpec.orientation);
+    canvases.forEach((canvas, i) => addCanvasToPdf(pdf, canvas, i > 0, pageSpec));
 
     if (onProgress) onProgress('Saving…');
-    pdf.save(filename);
-
+    const result = finishPdf(pdf, filename, action);
     if (onProgress) onProgress('Done!');
-    return { success: true };
+    return result;
   } catch (err) {
     console.error('[captureBulkReports]', err);
     return { success: false, error: err.name === 'AbortError' ? 'Bulk PDF generation cancelled' : err.message };
