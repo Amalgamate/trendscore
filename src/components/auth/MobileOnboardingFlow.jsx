@@ -168,19 +168,20 @@ function PolicyModal({ onClose }) {
 
 function OnboardingContent({ screen }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col px-6 pb-5 pt-3">
-      <div className="flex min-h-[260px] flex-1 items-center justify-center">
-        <img
-          src={screen.image}
-          alt=""
-          className="h-full max-h-[40dvh] w-full max-w-sm object-contain"
-          draggable="false"
-        />
-      </div>
-      <div className="space-y-4">
+    <div className="relative flex min-h-0 flex-1 flex-col justify-end overflow-hidden px-6 pb-7 pt-3">
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: `url(${screen.image})` }}
+      />
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 bg-gradient-to-b from-white/15 via-white/55 to-white"
+      />
+      <div className="relative z-10 space-y-4 pt-[46dvh]">
         <div className="space-y-3 text-center">
           <h1 className="text-3xl font-black leading-tight text-slate-950">{screen.headline}</h1>
-          <p className="mx-auto max-w-sm text-sm font-medium leading-6 text-slate-600">
+          <p className="mx-auto max-w-sm text-sm font-medium leading-6 text-slate-700">
             {screen.description}
           </p>
         </div>
@@ -188,7 +189,7 @@ function OnboardingContent({ screen }) {
           {screen.chips.map((chip) => (
             <span
               key={chip}
-              className="rounded-full border border-brand-purple/10 bg-brand-purple/5 px-3 py-1.5 text-xs font-bold text-brand-purple"
+              className="rounded-full border border-orange-200 bg-white/80 px-3 py-1.5 text-xs font-bold text-orange-600 shadow-sm backdrop-blur"
             >
               {chip}
             </span>
@@ -346,7 +347,7 @@ function MobileOnboardingFlow({ onComplete }) {
         </main>
 
         <footer
-          className="shrink-0 border-t border-slate-100 bg-white px-5 pt-4"
+          className="relative z-10 shrink-0 bg-white/95 px-5 pt-4 backdrop-blur"
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}
         >
           <div className="mb-4 flex items-center justify-center gap-2">
