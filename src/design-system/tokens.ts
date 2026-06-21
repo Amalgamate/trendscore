@@ -230,7 +230,20 @@ export const COMPONENT_PRESETS = {
     headerPadding: SPACING.table.headerPadding,
     borderColor: COLORS.border.table,
     headerBgColor: COLORS.border.tableHeader,
+    bgColor: COLORS.surface.bg,
     hoverBgColor: '#f8fbff',
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    className: 'data-table',
+    cssVars: {
+      border: '--table-border',
+      headerBg: '--table-header-bg',
+      headerFg: '--table-header-fg',
+      bg: '--table-bg',
+      hoverBg: '--table-row-hover-bg',
+      cellPadding: '--table-cell-padding',
+      headerPadding: '--table-header-padding',
+    },
   },
 
   // Modal presets

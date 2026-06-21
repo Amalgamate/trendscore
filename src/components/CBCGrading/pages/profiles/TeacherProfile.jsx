@@ -46,7 +46,24 @@ const TeacherProfile = ({ teacher, onBack, onEdit }) => {
                 api.classes.getTeacherWorkload(teacher.id),
                 api.classes.getTeacherSchedules(teacher.id)
             ]);
-            if (workloadResp.success) setWorkload(workloadResp.data);
+            if (workloadResp.success) {
+                const workloadData = workloadResp.data || {};
+                const classes = (workloadData.classes || []).map((classData) => {
+                    const studentCount = classData.studentCount ?? classData._count?.enrollments ?? 0;
+                    const capacity = Number(classData.capacity) || 0;
+                    return {
+                        ...classData,
+                        studentCount,
+                        utilization: classData.utilization ?? (capacity > 0 ? Math.round((studentCount / capacity) * 100) : 0)
+                    };
+                });
+                setWorkload({
+                    ...workloadData,
+                    classes,
+                    classCount: workloadData.classCount ?? classes.length,
+                    totalStudents: workloadData.totalStudents ?? classes.reduce((sum, classData) => sum + classData.studentCount, 0)
+                });
+            }
             if (schedulesResp.success) setSchedules(schedulesResp.data);
         } catch (err) {
             console.error('Failed to fetch teacher workload/schedules:', err);
@@ -177,6 +194,10 @@ const TeacherProfile = ({ teacher, onBack, onEdit }) => {
 
     if (!teacher) return null;
 
+    const assignedClassNames = workload?.classes?.length > 0
+        ? workload.classes.map((classData) => classData.name).filter(Boolean)
+        : teacher.assignedClasses || [];
+
     const tabs = [
         { id: 'overview', label: 'Overview', icon: User },
         { id: 'classes', label: 'Classes & Subjects', icon: BookOpen },
@@ -207,7 +228,7 @@ const TeacherProfile = ({ teacher, onBack, onEdit }) => {
                 bannerColor="brand-teal"
                 badges={[
                     { text: teacher.role?.replace(/_/g, ' ') || 'Teacher', icon: Briefcase, className: "bg-brand-teal/5 text-brand-teal px-2.5 py-1 rounded-full border border-brand-teal/10 font-medium text-xs" },
-                    { text: teacher.assignedClasses?.length > 0 ? teacher.assignedClasses.join(', ') : 'No Classes', icon: BookOpen },
+                    { text: assignedClassNames.length > 0 ? assignedClassNames.join(', ') : 'No Classes', icon: BookOpen },
                     { text: `ID: ${teacher.staffId || teacher.employeeNo || 'N/A'}`, className: "text-gray-400 font-medium" }
                 ]}
                 tabs={tabs}
@@ -334,7 +355,7 @@ const TeacherProfile = ({ teacher, onBack, onEdit }) => {
                         {/* === WORKLOAD SUMMARY STATS === */}
                         <div className="grid grid-cols-3 gap-4">
                             {[
-                                { label: 'Classes Assigned', value: workload?.classCount ?? teacher.assignedClasses?.length ?? 0, icon: GraduationCap, color: 'purple' },
+                                { label: 'Classes Assigned', value: workload?.classCount ?? workload?.classes?.length ?? teacher.assignedClasses?.length ?? 0, icon: GraduationCap, color: 'purple' },
                                 { label: 'Total Students', value: workload?.totalStudents ?? 0, icon: BookOpen, color: 'blue' },
                                 { label: 'Subject Schedules', value: schedules.length, icon: Briefcase, color: 'teal' }
                             ].map(stat => (

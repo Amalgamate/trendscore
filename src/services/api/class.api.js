@@ -1,4 +1,4 @@
-import { fetchWithAuth, cachedFetch, TTL } from './core';
+import { fetchWithAuth, cachedFetch, cacheDelPrefix, TTL } from './core';
 
 export const classAPI = {
   getAll: async (params = {}) => {
@@ -6,19 +6,37 @@ export const classAPI = {
     return fetchWithAuth(`/classes${queryString ? `?${queryString}` : ''}`);
   },
   getById: async (id) => fetchWithAuth(`/classes/${id}`),
-  create: async (classData) =>
-    fetchWithAuth('/classes', { method: 'POST', body: JSON.stringify(classData) }),
-  update: async (id, classData) =>
-    fetchWithAuth(`/classes/${id}`, { method: 'PUT', body: JSON.stringify(classData) }),
-  enrollLearner: async (classId, learnerId) =>
-    fetchWithAuth('/classes/enroll', { method: 'POST', body: JSON.stringify({ classId, learnerId }) }),
-  unenrollLearner: async (classId, learnerId) =>
-    fetchWithAuth('/classes/unenroll', { method: 'POST', body: JSON.stringify({ classId, learnerId }) }),
+  create: async (classData) => {
+    const result = await fetchWithAuth('/classes', { method: 'POST', body: JSON.stringify(classData) });
+    cacheDelPrefix('teacher-workload:');
+    return result;
+  },
+  update: async (id, classData) => {
+    const result = await fetchWithAuth(`/classes/${id}`, { method: 'PUT', body: JSON.stringify(classData) });
+    cacheDelPrefix('teacher-workload:');
+    return result;
+  },
+  enrollLearner: async (classId, learnerId) => {
+    const result = await fetchWithAuth('/classes/enroll', { method: 'POST', body: JSON.stringify({ classId, learnerId }) });
+    cacheDelPrefix('teacher-workload:');
+    return result;
+  },
+  unenrollLearner: async (classId, learnerId) => {
+    const result = await fetchWithAuth('/classes/unenroll', { method: 'POST', body: JSON.stringify({ classId, learnerId }) });
+    cacheDelPrefix('teacher-workload:');
+    return result;
+  },
   getLearnerClass: async (learnerId) => fetchWithAuth(`/classes/learner/${learnerId}`),
-  assignTeacher: async (classId, teacherId) =>
-    fetchWithAuth('/classes/assign-teacher', { method: 'POST', body: JSON.stringify({ classId, teacherId }) }),
-  unassignTeacher: async (classId) =>
-    fetchWithAuth('/classes/unassign-teacher', { method: 'POST', body: JSON.stringify({ classId }) }),
+  assignTeacher: async (classId, teacherId) => {
+    const result = await fetchWithAuth('/classes/assign-teacher', { method: 'POST', body: JSON.stringify({ classId, teacherId }) });
+    cacheDelPrefix('teacher-workload:');
+    return result;
+  },
+  unassignTeacher: async (classId) => {
+    const result = await fetchWithAuth('/classes/unassign-teacher', { method: 'POST', body: JSON.stringify({ classId }) });
+    cacheDelPrefix('teacher-workload:');
+    return result;
+  },
   getTeacherWorkload: async (teacherId, params = {}) => {
     const queryString = new URLSearchParams(params).toString();
     const key = `teacher-workload:${teacherId}:${queryString}`;

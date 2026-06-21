@@ -44,6 +44,10 @@
   --table-border: #d1d5db;
   --table-header-bg: #f9fafb;
   --table-header-fg: var(--brand-purple-dark);
+  --table-bg: #ffffff;
+  --table-row-hover-bg: #f8fbff;
+  --table-cell-padding: 0.625rem 0.75rem;
+  --table-header-padding: 0.75rem;
   --bg-primary: #ffffff;
   --bg-secondary: #f8fafc;
   --text-primary: #000000;
@@ -199,47 +203,59 @@
     @apply flex h-11 w-11 items-center justify-center rounded-lg border border-brand-purple/10 bg-brand-purple/5;
   }
 
-  body table {
+  body table,
+  .data-table {
     border-collapse: separate;
     border-spacing: 0;
     width: 100%;
     border: 1px solid var(--table-border);
-    background-color: #fff;
+    background-color: var(--table-bg);
   }
 
   /* Single-line grid system (Excel-like): draw only right/bottom edges per cell */
   body table th,
-  body table td {
+  body table td,
+  .data-table th,
+  .data-table td {
     border: 0 !important;
-    border-right: 1px solid var(--table-border);
-    border-bottom: 1px solid var(--table-border);
-    padding: 0.625rem 0.75rem;
+    border-right: 1px solid var(--table-border) !important;
+    border-bottom: 1px solid var(--table-border) !important;
+    padding: var(--table-cell-padding);
     vertical-align: middle;
   }
 
   body table th:last-child,
-  body table td:last-child {
+  body table td:last-child,
+  .data-table th:last-child,
+  .data-table td:last-child {
     border-right: 0 !important;
   }
 
   body table tbody tr:last-child td,
   body table tfoot tr:last-child td,
-  body table tfoot tr:last-child th {
+  body table tfoot tr:last-child th,
+  .data-table tbody tr:last-child td,
+  .data-table tfoot tr:last-child td,
+  .data-table tfoot tr:last-child th {
     border-bottom: 0 !important;
   }
 
   /* VirtualizedTable spacer rows: no grid lines on height-padding cells */
   body table td.v-table-spacer,
-  body table th.v-table-spacer {
+  body table th.v-table-spacer,
+  .data-table td.v-table-spacer,
+  .data-table th.v-table-spacer {
     border: none !important;
   }
 
   /* Real header row: thead is a proper column-header group; th reads as header vs tbody td */
-  body table thead {
+  body table thead,
+  .data-table thead {
     display: table-header-group;
   }
 
-  body table thead th {
+  body table thead th,
+  .data-table thead th {
     background-color: var(--table-header-bg);
     font-weight: 600;
     color: var(--table-header-fg);
@@ -247,10 +263,12 @@
     letter-spacing: 0.04em;
     text-transform: uppercase;
     vertical-align: middle;
+    padding: var(--table-header-padding);
   }
 
-  body table tbody tr:hover td {
-    background-color: #f8fbff;
+  body table tbody tr:hover td,
+  .data-table tbody tr:hover td {
+    background-color: var(--table-row-hover-bg);
   }
 
   /* Solid bar headers (white text on brand) — e.g. summative marks grid */

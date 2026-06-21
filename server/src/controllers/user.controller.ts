@@ -607,6 +607,11 @@ export class UserController {
           staffId: true,
           subject: true,
           gender: true,
+          classesAsTeacher: {
+            where: { active: true, archived: false },
+            select: { id: true, name: true, grade: true, stream: true, academicYear: true, term: true },
+            orderBy: [{ academicYear: 'desc' }, { term: 'desc' }]
+          },
         },
         orderBy: { createdAt: 'desc' },
         skip,

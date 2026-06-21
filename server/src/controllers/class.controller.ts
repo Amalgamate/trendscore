@@ -274,10 +274,29 @@ export class ClassController {
         active: true,
         archived: false,
       },
-      include: { _count: { select: { enrollments: true } } }
+      include: {
+        _count: { select: { enrollments: { where: { active: true } } } }
+      }
     });
 
-    res.json({ success: true, data: { classes, totalStudents: classes.reduce((sum, c) => sum + c._count.enrollments, 0) } });
+    const workloadClasses = classes.map(({ _count, ...classData }) => {
+      const studentCount = _count.enrollments;
+      const capacity = classData.capacity || 0;
+      return {
+        ...classData,
+        studentCount,
+        utilization: capacity > 0 ? Math.round((studentCount / capacity) * 100) : 0,
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        classes: workloadClasses,
+        classCount: workloadClasses.length,
+        totalStudents: workloadClasses.reduce((sum, classData) => sum + classData.studentCount, 0),
+      }
+    });
   }
 
   async assignTeacher(req: AuthRequest, res: Response) {
@@ -315,17 +334,23 @@ export class ClassController {
 
   async getTeacherSchedules(req: AuthRequest, res: Response) {
     const { teacherId } = req.params;
-    const { academicYear, term } = req.query;
+    let { academicYear, term } = req.query;
 
-    const parsedYear = academicYear ? parseInt(academicYear as string) : undefined;
-    const parsedTerm = term as Term | undefined;
+    if (!academicYear || !term) {
+      const context = await this.getActiveContext();
+      academicYear = academicYear || context.academicYear.toString();
+      term = term || context.term;
+    }
+
+    const parsedYear = parseInt(academicYear as string);
+    const parsedTerm = term as Term;
 
     const schedules = await prisma.classSchedule.findMany({
       where: {
         teacherId,
         active: true,
-        ...(parsedYear ? { academicYear: parsedYear } : {}),
-        ...(parsedTerm ? { class: { term: parsedTerm } } : {}),
+        academicYear: parsedYear,
+        class: { term: parsedTerm, active: true, archived: false },
       },
       include: {
         class: {
