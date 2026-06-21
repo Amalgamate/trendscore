@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Clock, Download, Filter, Loader2, Share2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Download, Filter, Loader2, Plus, Share2, X } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 import Toast from '../shared/Toast';
 import api from '../../../services/api';
@@ -357,12 +357,39 @@ const TimetablePage = () => {
       showError('You do not have permission to edit the timetable.');
       return;
     }
+    if (selectedClassId === 'all') {
+      if (!lesson.classId) {
+        showError('Select a specific class before editing this lesson.');
+        return;
+      }
+      setSelectedClassId(lesson.classId);
+    }
     setEditingLesson(lesson);
     setTimeLine(lesson.time);
     setSubjectId(lesson.subjectId || '');
     setTeacherId(lesson.teacherId || '');
     setRoom(lesson.room || '');
     setLessonDay(day);
+    setIsModalOpen(true);
+  };
+
+  const openAddModal = (day, timeSlot) => {
+    if (!canEditTimetable) {
+      showError('You do not have permission to edit the timetable.');
+      return;
+    }
+    if (selectedClassId === 'all') {
+      showError('Select a specific class before adding a lesson.');
+      return;
+    }
+
+    setEditingLesson(null);
+    setTimeLine(timeSlot);
+    setSubjectId('');
+    setTeacherId('');
+    setRoom('');
+    setLessonDay(day);
+    setSelectedDay(day);
     setIsModalOpen(true);
   };
 
@@ -564,12 +591,12 @@ const TimetablePage = () => {
         #week-at-a-glance-content table {
           width: 100%;
           border-collapse: collapse;
-          border: 1px solid #e5e7eb;
+          border: 1px solid #cbd5e1;
           table-layout: fixed;
         }
         
         #week-at-a-glance-content thead th {
-          border: 1px solid #e5e7eb;
+          border: 1px solid #cbd5e1;
           padding: 13px 10px;
           min-width: 132px;
           text-align: left;
@@ -582,7 +609,7 @@ const TimetablePage = () => {
         }
         
         #week-at-a-glance-content tbody td {
-          border: 1px solid #e5e7eb;
+          border: 1px solid #cbd5e1;
           height: 58px;
           padding: 9px 10px;
           text-align: left;
@@ -688,6 +715,21 @@ const TimetablePage = () => {
           justify-content: center;
           height: 100%;
           min-height: 40px;
+        }
+
+        #week-at-a-glance-content button.empty-slot {
+          width: 100%;
+          border: 0;
+          background: transparent;
+          cursor: pointer;
+          transition: color 0.15s ease, background-color 0.15s ease;
+        }
+
+        #week-at-a-glance-content button.empty-slot:hover,
+        #week-at-a-glance-content button.empty-slot:focus-visible {
+          color: var(--color-brand-purple, #4f46e5);
+          background-color: #f8fafc;
+          outline: none;
         }
 
         /* Hide interactive UI elements in PDF */
@@ -946,7 +988,19 @@ const TimetablePage = () => {
                                 ))}
                               </div>
                             ) : (
-                              <div className="empty-slot"></div>
+                              canEditTimetable ? (
+                                <button
+                                  type="button"
+                                  className="empty-slot"
+                                  onClick={() => openAddModal(day, timeSlot)}
+                                  aria-label={`Add lesson on ${day} at ${timeSlot}`}
+                                  title="Add lesson"
+                                >
+                                  <Plus size={16} aria-hidden="true" />
+                                </button>
+                              ) : (
+                                <div className="empty-slot" />
+                              )
                             )}
                           </td>
                         );

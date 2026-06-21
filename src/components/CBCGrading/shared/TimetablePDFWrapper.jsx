@@ -42,7 +42,7 @@ const TimetablePDFWrapper = ({
           margin-top: 0;
           background: white;
           box-sizing: border-box;
-          border: 1px solid #e5e7eb;
+          border: 1px solid #cbd5e1;
           table-layout: fixed;
         }
         
@@ -51,7 +51,7 @@ const TimetablePDFWrapper = ({
         }
         
         .timetable-pdf-wrapper thead tr {
-          border-bottom: 1px solid #e5e7eb;
+          border-bottom: 1px solid #cbd5e1;
         }
         
         .timetable-pdf-wrapper thead th {
@@ -63,7 +63,7 @@ const TimetablePDFWrapper = ({
           letter-spacing: 0;
           white-space: normal;
           word-wrap: break-word;
-          border-right: 1px solid #e5e7eb;
+          border: 1px solid #cbd5e1;
           vertical-align: middle;
           text-transform: uppercase;
         }
@@ -75,16 +75,16 @@ const TimetablePDFWrapper = ({
         .timetable-pdf-wrapper thead th:first-child {
           width: 128px;
           background: #ffffff;
-          border-right: 1px solid #e5e7eb;
+          border: 1px solid #cbd5e1;
         }
         
         .timetable-pdf-wrapper tbody tr {
-          border-bottom: 1px solid #e5e7eb;
+          border-bottom: 1px solid #cbd5e1;
           page-break-inside: avoid;
         }
         
         .timetable-pdf-wrapper tbody tr:last-child {
-          border-bottom: 1px solid #e5e7eb;
+          border-bottom: 1px solid #cbd5e1;
         }
         
         .timetable-pdf-wrapper tbody tr:hover {
@@ -96,7 +96,7 @@ const TimetablePDFWrapper = ({
           font-size: 11px;
           color: #17213d;
           vertical-align: middle;
-          border-right: 1px solid #e5e7eb;
+          border: 1px solid #cbd5e1;
           height: 58px;
           text-align: left;
         }
@@ -109,7 +109,7 @@ const TimetablePDFWrapper = ({
           background: #ffffff;
           width: 128px;
           color: #111827;
-          border-right: 1px solid #e5e7eb;
+          border: 1px solid #cbd5e1;
           padding: 8px 10px;
           vertical-align: middle;
         }
@@ -227,7 +227,7 @@ const TimetablePDFWrapper = ({
           .timetable-pdf-wrapper table {
             width: 100%;
             font-size: 10px;
-            border: 1px solid #e5e7eb !important;
+            border: 1px solid #cbd5e1 !important;
           }
           
           .timetable-pdf-wrapper thead {
@@ -239,20 +239,20 @@ const TimetablePDFWrapper = ({
             font-size: 12px;
             color: #111827 !important;
             background: #ffffff !important;
-            border: 1px solid #e5e7eb !important;
+            border: 1px solid #cbd5e1 !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
           
           .timetable-pdf-wrapper thead th:first-child {
             background: #ffffff !important;
-            border: 1px solid #e5e7eb !important;
+            border: 1px solid #cbd5e1 !important;
           }
           
           .timetable-pdf-wrapper tbody td {
             padding: 8px 9px;
             font-size: 10px;
-            border: 1px solid #e5e7eb !important;
+            border: 1px solid #cbd5e1 !important;
             height: 54px;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
@@ -260,14 +260,14 @@ const TimetablePDFWrapper = ({
           
           .timetable-pdf-wrapper tbody td:first-child {
             background: #ffffff !important;
-            border: 1px solid #e5e7eb !important;
+            border: 1px solid #cbd5e1 !important;
             color: #111827 !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
           
           .timetable-pdf-wrapper tbody tr {
-            border-bottom: 1px solid #e5e7eb !important;
+            border-bottom: 1px solid #cbd5e1 !important;
           }
           
           .timetable-pdf-wrapper .lesson-card {
