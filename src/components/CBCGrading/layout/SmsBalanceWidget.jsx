@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Loader2, RefreshCw, Smartphone, Wallet, MessageSquare, AlertCircle } from 'lucide-react';
+import { CheckCircle2, Loader2, RefreshCw, Smartphone, Wallet, MessageSquare, AlertCircle, Globe2 } from 'lucide-react';
 import api from '../../../services/api';
 import {
   Dialog,
@@ -12,6 +12,24 @@ import { Popover, PopoverContent, PopoverTrigger } from '../../ui/popover';
 
 const formatNumber = (value, maximumFractionDigits = 2) =>
   Number(value || 0).toLocaleString('en-KE', { maximumFractionDigits });
+
+const normalizeProvider = (provider) => String(provider || '').toLowerCase();
+
+const formatAfricasTalkingBalance = (balance) => {
+  if (balance === null || balance === undefined || balance === '') return 'Unavailable';
+  if (typeof balance === 'number') return `KES ${formatNumber(balance)}`;
+
+  const raw = String(balance).trim();
+  const numericMatch = raw.match(/-?\d+(?:,\d{3})*(?:\.\d+)?/);
+  if (!numericMatch) return raw;
+
+  const amount = Number(numericMatch[0].replace(/,/g, ''));
+  if (!Number.isFinite(amount)) return raw;
+
+  const currencyMatch = raw.match(/[A-Z]{3}/i);
+  const currency = currencyMatch ? currencyMatch[0].toUpperCase() : 'KES';
+  return `${currency} ${formatNumber(amount)}`;
+};
 
 const SmsBalanceWidget = () => {
   const [summary, setSummary] = useState(null);
@@ -47,8 +65,20 @@ const SmsBalanceWidget = () => {
     return () => clearInterval(interval);
   }, [fetchBalance]);
 
+  const provider = normalizeProvider(summary?.provider);
+  const isAfricasTalking = provider === 'africastalking';
+  const isMobileSasa = provider === 'mobilesasa';
   const currency = summary?.currency || 'KES';
   const smsBalance = Number(summary?.balance || 0);
+  const displayBalance = isAfricasTalking
+    ? formatAfricasTalkingBalance(summary?.balance)
+    : `${formatNumber(smsBalance, 0)} SMS`;
+  const providerLabel = isAfricasTalking
+    ? "Africa's Talking"
+    : isMobileSasa
+      ? 'MobileSasa'
+      : 'SMS Provider';
+  const ProviderIcon = isAfricasTalking ? Globe2 : Wallet;
   const accountOptions = useMemo(() => [
     { label: 'SMS', value: summary?.localAccountNumber },
     { label: 'Wallet', value: summary?.walletAccountNumber },
@@ -105,17 +135,18 @@ const SmsBalanceWidget = () => {
             aria-label="View SMS account balance"
           >
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-purple text-white shadow-sm">
-              <Wallet size={13} />
+              <ProviderIcon size={13} />
             </div>
             <span className="text-[10px] font-bold uppercase tracking-widest text-slate-600">
-              {loading && !summary ? 'SMS Balance' : `${formatNumber(smsBalance, 0)} SMS`}
+              {loading && !summary ? 'SMS Balance' : displayBalance}
             </span>
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[300px] p-0 overflow-hidden bg-white border border-slate-100 rounded-xl shadow-lg shadow-slate-200/40" align="end">
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
             <div>
-              <h3 className="text-xs font-bold text-slate-800 tracking-tight">Billing Accounts</h3>
+              <h3 className="text-xs font-bold text-slate-800 tracking-tight">{providerLabel}</h3>
+              <p className="text-[10px] font-medium text-slate-400">SMS billing balance</p>
             </div>
             <button
               type="button"
@@ -135,6 +166,29 @@ const SmsBalanceWidget = () => {
               </div>
               <p className="text-xs font-semibold text-rose-600">Balance unavailable</p>
               <p className="text-[10px] text-slate-400 mt-1 max-w-[220px] mx-auto leading-relaxed">{error}</p>
+            </div>
+          ) : isAfricasTalking ? (
+            <div className="bg-white">
+              <div className="flex items-center justify-between px-4 py-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-orange-50 text-orange-600">
+                    <Globe2 size={14} />
+                  </div>
+                  <div>
+                    <span className="block text-xs font-semibold text-slate-700">Africa's Talking Balance</span>
+                    <span className="block text-[10px] font-medium text-slate-400">Current provider selected in Communication Settings</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm font-bold text-slate-900">{displayBalance}</span>
+                </div>
+              </div>
+
+              {summary?.available === false && (
+                <div className="mx-4 mb-4 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[10px] font-medium text-amber-800">
+                  {summary?.reason || "Africa's Talking balance is unavailable."}
+                </div>
+              )}
             </div>
           ) : (
             <div className="divide-y divide-slate-100 bg-white">
@@ -177,25 +231,27 @@ const SmsBalanceWidget = () => {
             </div>
           )}
 
-          <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-col gap-2">
-            <Button
-              type="button"
-              onClick={() => {
-                setTopUpError('');
-                setTopUpSuccess('');
-                setShowTopUp(true);
-              }}
-              disabled={!summary?.localAccountNumber}
-              className="h-9 w-full bg-brand-purple text-white hover:bg-brand-purple/90 transition-all duration-200 shadow-sm shadow-brand-purple/10 font-semibold text-xs rounded-lg transform active:scale-[0.98]"
-            >
-              Top Up Account
-            </Button>
-            {summary?.paymentDetails?.mpesa && (
-              <div className="text-center bg-white border border-slate-100 rounded-lg p-2 text-[9px] text-slate-400 font-medium leading-relaxed shadow-sm">
-                {summary.paymentDetails.mpesa}
-              </div>
-            )}
-          </div>
+          {isMobileSasa && (
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-col gap-2">
+              <Button
+                type="button"
+                onClick={() => {
+                  setTopUpError('');
+                  setTopUpSuccess('');
+                  setShowTopUp(true);
+                }}
+                disabled={!summary?.localAccountNumber}
+                className="h-9 w-full bg-brand-purple text-white hover:bg-brand-purple/90 transition-all duration-200 shadow-sm shadow-brand-purple/10 font-semibold text-xs rounded-lg transform active:scale-[0.98]"
+              >
+                Top Up Account
+              </Button>
+              {summary?.paymentDetails?.mpesa && (
+                <div className="text-center bg-white border border-slate-100 rounded-lg p-2 text-[9px] text-slate-400 font-medium leading-relaxed shadow-sm">
+                  {summary.paymentDetails.mpesa}
+                </div>
+              )}
+            </div>
+          )}
         </PopoverContent>
       </Popover>
 
