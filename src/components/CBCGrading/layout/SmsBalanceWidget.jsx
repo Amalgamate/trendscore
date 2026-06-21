@@ -47,11 +47,12 @@ const SmsBalanceWidget = () => {
     try {
       setLoading(true);
       const response = await api.communication.getSmsBalance();
-      if (!response?.success || response?.data?.available === false) {
-        throw new Error(response?.data?.reason || 'SMS balance is unavailable');
+      if (!response?.success) {
+        throw new Error(response?.message || 'SMS balance is unavailable');
       }
+
       setSummary(response.data || null);
-      setError('');
+      setError(response?.data?.available === false ? response?.data?.reason || 'SMS balance is unavailable' : '');
     } catch (fetchError) {
       setError(fetchError?.message || 'Unable to load SMS balance');
     } finally {
