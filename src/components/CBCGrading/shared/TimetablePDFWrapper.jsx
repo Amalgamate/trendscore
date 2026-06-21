@@ -55,8 +55,8 @@ const TimetablePDFWrapper = ({
         }
         
         .timetable-pdf-wrapper thead th {
-          padding: 13px 12px;
-          text-align: center;
+          padding: 13px 10px;
+          text-align: left;
           font-size: 12px;
           font-weight: 800;
           color: #111827;

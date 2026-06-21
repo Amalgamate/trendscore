@@ -522,7 +522,10 @@ const TimetablePage = () => {
     }
   };
 
-  const weeklyTimeSlots = sortTimeLabels(new Set(Object.values(scheduleData).flat().map((lesson) => lesson.time).filter(Boolean)));
+  const weeklyTimeSlots = sortTimeLabels(new Set([
+    ...DEFAULT_TIME_SLOTS.map((slot) => buildTimeLine(slot.startTime, slot.endTime)),
+    ...Object.values(scheduleData).flat().map((lesson) => lesson.time).filter(Boolean)
+  ]));
   const mobileLessons = (scheduleData[selectedDay] || [])
     .slice()
     .sort((a, b) => {
@@ -567,9 +570,9 @@ const TimetablePage = () => {
         
         #week-at-a-glance-content thead th {
           border: 1px solid #e5e7eb;
-          padding: 13px 12px;
+          padding: 13px 10px;
           min-width: 132px;
-          text-align: center;
+          text-align: left;
           font-weight: 800;
           color: #111827;
           background-color: #ffffff;
@@ -913,7 +916,7 @@ const TimetablePage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Generate time slots based on existing times across all days */}
+                  {/* Keep the full timetable structure visible, including before lessons are added. */}
                   {weeklyTimeSlots.map(timeSlot => (
                     <tr key={timeSlot}>
                       <td>
