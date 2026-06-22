@@ -939,7 +939,7 @@ const CommunicationSettings = () => {
                       <input
                         type="text"
                         value={smsSettings.senderId}
-                        onChange={(e) => setSmsSettings({ ...smsSettings, senderId: e.target.value.toUpperCase() })}
+                        onChange={(e) => setSmsSettings({ ...smsSettings, senderId: e.target.value })}
                         className="w-full px-4 py-2 border rounded-lg"
                         placeholder="Your registered AT Sender ID"
                       />
@@ -980,7 +980,7 @@ const CommunicationSettings = () => {
                       <input
                         type="text"
                         value={smsSettings.senderId}
-                        onChange={(e) => setSmsSettings({ ...smsSettings, senderId: e.target.value.toUpperCase() })}
+                        onChange={(e) => setSmsSettings({ ...smsSettings, senderId: e.target.value })}
                         className="w-full px-4 py-2 border rounded-lg"
                         placeholder="Your registered MobileSasa Sender ID"
                       />
