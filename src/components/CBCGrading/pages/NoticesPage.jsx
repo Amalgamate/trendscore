@@ -127,15 +127,13 @@ const NoticesPage = ({ initialTab }) => {
     }
     setSchoolId(sid);
 
-    if (sid) {
-      loadBirthdayConfig(sid);
-    }
+    loadBirthdayConfig(sid);
 
     if (activeTab === 'notices') {
       fetchNotices();
     } else if (activeTab === 'birthdays') {
       fetchBirthdays();
-      if (sid) fetchBirthdaysToday(sid);
+      fetchBirthdaysToday(sid);
     } else if (activeTab === 'changelog') {
       fetchSystemAlerts();
       fetchChangelogs();
@@ -324,7 +322,6 @@ const NoticesPage = ({ initialTab }) => {
   };
 
   const handleSaveBirthdaySettings = async () => {
-    if (!schoolId) return;
     setSavingSettings(true);
     try {
       await communicationAPI.saveConfig({
@@ -343,8 +340,6 @@ const NoticesPage = ({ initialTab }) => {
   };
 
   const handleSendWish = async (learnerId, isBulk = false) => {
-    if (!schoolId) return;
-
     try {
       if (isBulk) {
         setIsBulkSending(true);
@@ -376,8 +371,6 @@ const NoticesPage = ({ initialTab }) => {
   };
 
   const handleSendWhatsApp = async (learner, isBulk = false) => {
-    if (!schoolId) return;
-
     if (isBulk) {
       // Server-side bulk WhatsApp
       try {
