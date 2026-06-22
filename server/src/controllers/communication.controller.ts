@@ -40,7 +40,18 @@ const getTemplateConfig = (templates: unknown): Record<string, any> =>
 const getPublicEmailTemplates = (templates: unknown) => {
     const publicTemplates = getTemplateConfig(templates);
     delete publicTemplates.__ai;
+    delete publicTemplates.__birthday;
     return publicTemplates;
+};
+
+const getPublicBirthdayConfig = (templates: unknown) => {
+    const b = getTemplateConfig(templates).__birthday || {};
+    return {
+        enabled: b.enabled !== undefined ? !!b.enabled : false,
+        persona: b.persona || 'Enthusiastic Principal',
+        customInstructions: b.customInstructions || '',
+        channelStrategy: b.channelStrategy || 'Smart Fallback'
+    };
 };
 
 const getPublicAiConfig = (templates: unknown) => {
@@ -61,10 +72,14 @@ const getPublicAiConfig = (templates: unknown) => {
 const mergeEmailTemplatePatch = (base: Record<string, any>, patch: Record<string, any>) => {
     const cleanedPatch = { ...patch };
     delete cleanedPatch.__ai;
+    // Carry through __birthday from patch if provided, otherwise preserve existing
+    const birthdayFromPatch = patch.__birthday;
+    delete cleanedPatch.__birthday;
     return {
         ...base,
         ...cleanedPatch,
-        ...(base.__ai ? { __ai: base.__ai } : {})
+        ...(base.__ai ? { __ai: base.__ai } : {}),
+        ...(birthdayFromPatch ? { __birthday: birthdayFromPatch } : (base.__birthday ? { __birthday: base.__birthday } : {}))
     };
 };
 
@@ -207,6 +222,7 @@ export const getCommunicationConfig = async (req: AuthRequest, res: Response) =>
                 enabled: otpEnabled
             },
             ai: getPublicAiConfig(config.emailTemplates),
+            birthdayAi: getPublicBirthdayConfig(config.emailTemplates),
             createdAt: config.createdAt,
             updatedAt: config.updatedAt
         }

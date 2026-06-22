@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Mail, MessageSquare, Send, Save,
   TestTube, CheckCircle, XCircle, Loader,
-  Phone, QrCode, RefreshCw, LogOut, Key, Sparkles
+  Phone, QrCode, RefreshCw, LogOut, Key, Sparkles, Gift
 } from 'lucide-react';
 import ModuleTabNav from '../../shared/ModuleTabNav';
 import { useNotifications } from '../../hooks/useNotifications';
@@ -110,6 +110,13 @@ const CommunicationSettings = () => {
   const [editingTemplate, setEditingTemplate] = useState('welcome');
   const [templates, setTemplates] = useState(DEFAULT_EMAIL_TEMPLATES);
 
+  const [aiBirthdaySettings, setAiBirthdaySettings] = useState({
+    enabled: false,
+    persona: 'Enthusiastic Principal',
+    customInstructions: '',
+    channelStrategy: 'Smart Fallback'
+  });
+
   const [emailSettings, setEmailSettings] = useState({
     provider: COMMUNICATION_DEFAULTS.email.provider,
     apiKey: '',
@@ -199,6 +206,17 @@ const CommunicationSettings = () => {
             }
           }
 
+          // Load birthday AI settings from dedicated config field
+          if (data && data.birthdayAi) {
+            setAiBirthdaySettings(prev => ({
+              ...prev,
+              enabled: !!data.birthdayAi.enabled,
+              persona: data.birthdayAi.persona || 'Enthusiastic Principal',
+              customInstructions: data.birthdayAi.customInstructions || '',
+              channelStrategy: data.birthdayAi.channelStrategy || 'Smart Fallback'
+            }));
+          }
+
           if (data && data.ai) {
             setAiSettings(prev => ({
               ...prev,
@@ -260,7 +278,16 @@ const CommunicationSettings = () => {
           fromName: emailSettings.fromName,
           // Only send API key if it's changed (not empty)
           apiKey: emailSettings.apiKey || undefined,
-          emailTemplates: templates // Persist templates
+          emailTemplates: templates // Templates only, no birthday settings here
+        };
+      }
+
+      if (type === 'Birthdays') {
+        // Save birthday AI settings as __birthday in emailTemplates
+        payload.email = {
+          emailTemplates: {
+            __birthday: aiBirthdaySettings
+          }
         };
       }
 
@@ -525,6 +552,7 @@ const CommunicationSettings = () => {
     { id: 'whatsapp', label: 'WhatsApp', icon: <Phone size={13} /> },
     { id: 'voip',     label: 'VoIP',     icon: <Phone size={13} /> },
     { id: 'ai',       label: 'AI',       icon: <Sparkles size={13} /> },
+    { id: 'birthdays',label: 'Birthdays',icon: <Gift size={13} /> },
   ];
 
   // Render Logic
@@ -559,6 +587,93 @@ const CommunicationSettings = () => {
       />
 
       {activeTab === 'ai' && renderAiSettingsPanel()}
+
+      {/* BIRTHDAYS TAB */}
+      {activeTab === 'birthdays' && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 transition-colors duration-300">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-pink-50 text-pink-600">
+                  <Gift size={22} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-medium">Magic AI Birthdays</h3>
+                  <p className="text-sm text-gray-500">
+                    Automatically generate and send highly personalized birthday wishes to students.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 space-y-6">
+              <label className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={aiBirthdaySettings.enabled}
+                  onChange={(e) => setAiBirthdaySettings({ ...aiBirthdaySettings, enabled: e.target.checked })}
+                  className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                />
+                <span className="text-sm font-semibold text-gray-700">Enable Automated Magic Birthdays</span>
+              </label>
+
+              <div className="grid gap-6 md:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-semibold mb-2">AI Persona</label>
+                  <select
+                    value={aiBirthdaySettings.persona}
+                    onChange={(e) => setAiBirthdaySettings({ ...aiBirthdaySettings, persona: e.target.value })}
+                    className="w-full px-4 py-2 border rounded-lg"
+                  >
+                    <option value="Enthusiastic Principal">Enthusiastic Principal (Warm & Professional)</option>
+                    <option value="Fun Mascot">Fun Mascot (Playful & Energetic)</option>
+                    <option value="Wise Mentor">Wise Mentor (Inspirational & Encouraging)</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Select the tone of voice for the generated messages.</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Channel Delivery Strategy</label>
+                  <select
+                    value={aiBirthdaySettings.channelStrategy}
+                    onChange={(e) => setAiBirthdaySettings({ ...aiBirthdaySettings, channelStrategy: e.target.value })}
+                    className="w-full px-4 py-2 border rounded-lg"
+                  >
+                    <option value="Smart Fallback">Smart Fallback (WhatsApp first, SMS if fail)</option>
+                    <option value="Both Channels">Both Channels (Send via WhatsApp and SMS)</option>
+                    <option value="WhatsApp Only">WhatsApp Only</option>
+                    <option value="SMS Only">SMS Only</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Determine how messages are routed to parents.</p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-2">Custom Instructions (Optional)</label>
+                <textarea
+                  value={aiBirthdaySettings.customInstructions}
+                  onChange={(e) => setAiBirthdaySettings({ ...aiBirthdaySettings, customInstructions: e.target.value })}
+                  className="w-full px-4 py-3 border rounded-lg font-mono text-sm"
+                  rows={4}
+                  placeholder="e.g., Mention our school motto 'Striving for Excellence'. Keep it under 2 sentences."
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 pt-4 border-t">
+              <button
+                type="button"
+                onClick={() => handleSave('Birthdays')}
+                disabled={loading}
+                className="flex items-center gap-2 px-6 py-3 bg-pink-600 text-white rounded-lg hover:bg-pink-700 font-semibold disabled:opacity-50"
+              >
+                {loading ? <Loader size={20} className="animate-spin" /> : <Save size={20} />}
+                {loading ? 'Saving...' : 'Save Birthday Settings'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* EMAIL TAB */}
       {activeTab === 'email' && (
