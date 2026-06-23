@@ -780,6 +780,55 @@ export class UserController {
       results 
     });
   }
+
+  async searchParents(req: AuthRequest, res: Response) {
+    const { search } = req.query;
+    const whereClause: any = {
+      role: 'PARENT',
+      archived: false,
+    };
+
+    if (search) {
+      const terms = String(search)
+        .split(/\s+/)
+        .map((term) => term.trim())
+        .filter(Boolean);
+
+      if (terms.length > 0) {
+        whereClause.AND = terms.map((term) => ({
+          OR: [
+            { firstName: { contains: term, mode: 'insensitive' } },
+            { lastName: { contains: term, mode: 'insensitive' } },
+            { email: { contains: term, mode: 'insensitive' } },
+            { phone: { contains: term } },
+          ],
+        }));
+      }
+    }
+
+    const parents = await prisma.user.findMany({
+      where: whereClause,
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        middleName: true,
+        lastName: true,
+        phone: true,
+        role: true,
+        status: true,
+        profilePicture: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+
+    res.json({
+      success: true,
+      data: parents,
+    });
+  }
 }
 
 export const userController = new UserController();

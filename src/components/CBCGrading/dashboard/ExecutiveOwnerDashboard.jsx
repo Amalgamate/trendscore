@@ -200,38 +200,6 @@ const ExecutiveModuleCard = ({
               </div>
             ))}
           </div>
-        ) : module.id === 'fees' ? (
-          <div className="space-y-4 w-full">
-            {/* 3 Summary Pills */}
-            <div className="flex items-start justify-between divide-x divide-slate-100 w-full">
-              {module.summary.map((item) => (
-                <div key={item.label} className="flex-1 px-2 flex flex-col items-center text-center">
-                  <p className="text-[10px] font-semibold text-slate-500 mb-1 uppercase tracking-wider">{item.label}</p>
-                  <p className="text-sm font-bold text-slate-800">{item.value.replace('KES', 'KSh')}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Grades Balance List */}
-            <div className="border-t border-slate-100 pt-3.5 space-y-2 max-h-44 overflow-y-auto pr-1">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Outstanding Balances</p>
-              {outstandingByGrade.length > 0 ? (
-                outstandingByGrade.map((row) => {
-                  const bal = Number(row.bal || 0);
-                  return (
-                    <div key={row.grade || row.name} className="flex items-center justify-between text-xs py-0.5">
-                      <span className="font-semibold text-slate-700">{row.name || row.grade}</span>
-                      <span className={`font-bold ${bal > 0 ? 'text-rose-600 font-semibold' : 'text-emerald-600 font-medium'}`}>
-                        {bal > 0 ? currency(bal).replace('KES', 'KSh') : '✓ Cleared'}
-                      </span>
-                    </div>
-                  );
-                })
-              ) : (
-                <p className="text-[11px] text-slate-400 italic text-center py-2">No outstanding grade balances.</p>
-              )}
-            </div>
-          </div>
         ) : (
           <div className="flex items-start justify-between divide-x divide-slate-100 w-full">
             {module.summary.map((item, idx) => (
@@ -632,43 +600,6 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
                 </tr>
               </tfoot>
             )}
-          </table>
-        </div>
-      </div>
-
-      {/* Recent Payments */}
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="border-b border-slate-100 bg-slate-50 px-5 py-3">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-slate-700">Recent Payments</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-slate-100 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-                <th className="px-5 py-3">Learner</th>
-                <th className="px-5 py-3">Grade</th>
-                <th className="px-5 py-3">Method</th>
-                <th className="px-5 py-3 text-right">Amount</th>
-                <th className="px-5 py-3 text-right">Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {recentPayments.length > 0 ? recentPayments.slice(0, 8).map((item) => (
-                <tr key={item.id || item.receiptNumber} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-5 py-3 text-sm font-semibold text-slate-900">{item.learnerName || item.receiptNumber}</td>
-                  <td className="px-5 py-3 text-sm text-slate-500">{item.grade ? String(item.grade).replace(/_/g, ' ') : '–'}</td>
-                  <td className="px-5 py-3">
-                    <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600">{item.paymentMethod}</span>
-                  </td>
-                  <td className="px-5 py-3 text-right text-sm font-bold text-emerald-700">{currency(item.amount)}</td>
-                  <td className="px-5 py-3 text-right text-[11px] text-slate-500">{new Date(item.paymentDate).toLocaleDateString()}</td>
-                </tr>
-              )) : (
-                <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-sm italic text-slate-400">No recent payments found.</td>
-                </tr>
-              )}
-            </tbody>
           </table>
         </div>
       </div>
