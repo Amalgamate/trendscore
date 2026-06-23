@@ -161,8 +161,10 @@ function Step2EnterAmount({ mode, amount, setAmount, children }) {
 // ─── Step 3 — Choose distribution ────────────────────────────────────────────
 
 function Step3Distribution({ mode, amount, strategy, setStrategy, custom, setCustom, children }) {
+  // Must be declared unconditionally (Rules of Hooks)
+  const [selected, setSelected] = useState(null);
+
   if (mode === 'one') {
-    const [selected, setSelected] = useState(null);
     // (Step 3 for 'one' is child selector)
     return (
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">

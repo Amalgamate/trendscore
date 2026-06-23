@@ -499,14 +499,6 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
 
   const feesExpanded = (
     <div className="space-y-5">
-      {/* Summary pills */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <SummaryValue label="Daily Collections"   value={currency(stats.feeCollectionsToday)} />
-        <SummaryValue label="Weekly Collections"  value={currency(stats.feeCollectionsThisWeek)} />
-        <SummaryValue label="Monthly Collections" value={currency(stats.feeCollectionsThisMonth)} />
-        <SummaryValue label="Collection Rate"     value={percent(collectionRate)} />
-      </div>
-
       {/* Per-grade table */}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-3">
@@ -1016,7 +1008,8 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
       {/* Full-width Quick Actions matching the original white strip */}
       <QuickActions onNavigate={onNavigate} />
 
-      {/* Hero Metric Cards — flush, no outer padding, gap between them */}
+      {/* Hero Metric Cards — temporarily hidden */}
+      {false && (
       <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-px bg-slate-200">
         {heroCards.map((item) => (
           <DashboardMetric
@@ -1030,6 +1023,7 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
           />
         ))}
       </section>
+      )}
 
       <div className={`${isMobile ? 'px-4 pt-5' : 'px-6 lg:px-10 pt-8'} space-y-8 pb-10`}>
         {/* Module Section */}
