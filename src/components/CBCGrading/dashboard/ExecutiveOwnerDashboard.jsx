@@ -394,6 +394,9 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
   const teacherAttendanceByDept = safeArray(dashboard?.teacherAttendanceByDept);
   const upcomingEvents = safeArray(dashboard?.upcomingEvents);
 
+  const totalExpenses = Number(financials.totalExpenses || 0);
+  const feeCollected = Number(stats.feeCollected || 0);
+  const budgetUsagePct = feeCollected > 0 ? (totalExpenses / feeCollected) * 100 : 0;
 
   const collectionRate = useMemo(() => {
     const total = Number(stats.feeCollected || 0) + Number(stats.feePending || 0);
@@ -409,8 +412,6 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
 
   const attendanceRate = Number(stats.avgAttendance || 0);
   const averageAssessmentScore = Number(stats.averageAssessmentScore || 0);
-  const totalExpenses = Number(financials.totalExpenses || 0);
-  const feeCollected = Number(stats.feeCollected || 0);
   const profitPosition = Number(financials.profitPosition ?? (feeCollected - totalExpenses));
   const profitMargin = feeCollected > 0 ? (profitPosition / feeCollected) * 100 : 0;
   const operationsScore = clampScore(((Number(stats.teacherAttendanceRate || 0) + Number(stats.staffAttendanceRate || 0)) / 2) || 0);
@@ -437,11 +438,10 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
 
   // Derive live trend labels
   const assessmentTrendDir = String(stats.assessmentTrend || '').startsWith('+') ? 'up' : String(stats.assessmentTrend || '').startsWith('-') ? 'down' : 'neutral';
-  const budgetUsagePct = feeCollected > 0 ? (totalExpenses / feeCollected) * 100 : 0;
   const totalTransportStudents = Number(transportFleet.totalStudents || transportSummary?.transportStudentCount || 0);
   const totalRoutes = Number(transportFleet.totalRoutes || transportSummary?.routeCount || 0);
 
-  const collapsedModules = [
+  const collapsedModules = useMemo(() => [
     {
       id: 'fees',
       title: 'Fees',
@@ -500,7 +500,26 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
         { text: `Attendance today is ${Math.round(attendanceRate)}% (${integer(stats.presentToday)} present, ${integer(stats.absentToday)} absent). Teacher rate: ${Math.round(Number(stats.teacherAttendanceRate || 0))}%.` },
       ],
     },
-  ];
+  ], [
+    feeCollected,
+    stats.feePending,
+    collectionRate,
+    averageAssessmentScore,
+    stats.assessmentTrend,
+    assessmentTrendDir,
+    assessmentCoverage,
+    stats.totalAssessedClasses,
+    attendanceRate,
+    stats.presentToday,
+    stats.absentToday,
+    stats.lateToday,
+    expensesSummary.thisMonth,
+    budgetUsagePct,
+    profitPosition,
+    totalRoutes,
+    totalTransportStudents,
+    stats.teacherAttendanceRate,
+  ]);
 
   // Float the active/open module to the top of the list so it always renders first (full-width)
   const sortedModules = useMemo(() => {
@@ -508,8 +527,7 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
     const active = collapsedModules.find((m) => m.id === activeModule);
     const rest = collapsedModules.filter((m) => m.id !== activeModule);
     return active ? [active, ...rest] : collapsedModules;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeModule, feeCollected, stats, assessmentCoverage, attendanceRate, totalExpenses, expensesSummary, totalTransportStudents, totalRoutes, profitPosition]);
+  }, [activeModule, collapsedModules]);
 
   const feesExpanded = (
     <div className="space-y-5">

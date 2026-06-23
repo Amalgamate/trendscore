@@ -1,12 +1,12 @@
 import axiosInstance, { API_BASE_URL } from './axiosConfig';
 import { cachedFetch, cacheDel, cacheDelPrefix, dedupe, TTL } from './apiCache';
 
-export { API_BASE_URL, fetchWithAuth, cachedFetch, cacheDel, cacheDelPrefix, dedupe, TTL };
+export { API_BASE_URL, cachedFetch, cacheDel, cacheDelPrefix, dedupe, TTL };
 
 /**
  * Helper function to make authenticated requests using Axios
  */
-const fetchWithAuth = async (url, options = {}) => {
+export const fetchWithAuth = async (url, options = {}) => {
   try {
     let requestData = options.data;
     if (options.body) {
