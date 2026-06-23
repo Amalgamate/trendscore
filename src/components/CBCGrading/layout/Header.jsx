@@ -410,7 +410,7 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
 
   return (
     <>
-    <header className="h-20 bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm sticky top-0 z-50">
+    <header className="h-20 bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm sticky top-0 z-50 app-header-loading">
       <div className="app-layout-row h-full flex items-center justify-between">
       <div className="flex items-center gap-4 group cursor-pointer" onClick={() => onNavigate?.('dashboard')}>
         <div className="relative">

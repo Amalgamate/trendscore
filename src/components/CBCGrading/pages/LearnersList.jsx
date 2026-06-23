@@ -206,6 +206,14 @@ const LearnersList = ({
     return isCreator || isClassTeacher;
   };
 
+  const getRelationshipLabel = (type) => {
+    const normalizedType = String(type || '').toUpperCase();
+    if (normalizedType === 'FATHER') return 'Father';
+    if (normalizedType === 'MOTHER') return 'Mother';
+    if (normalizedType === 'GUARDIAN') return 'Guardian';
+    return type || 'Parent';
+  };
+
   const handleReset = () => {
     setSearchTerm('');
     setFilterGrade('all');
@@ -354,7 +362,7 @@ const LearnersList = ({
   return (
     <div className="space-y-4">
       {/* Compact Quick Actions Toolbar */}
-      <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+      <div className="toolbar-card">
         <div className="flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center">
 
           <div className="flex flex-row gap-2 w-full xl:w-auto flex-1 items-center">
@@ -366,67 +374,58 @@ const LearnersList = ({
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search by name or admission number..."
-                className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm shadow-sm"
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-purple/30 focus:border-brand-purple text-sm text-gray-700 placeholder-gray-400"
               />
             </div>
 
-            {/* Unified Filter Popover */}
+            {/* Grade Filter Dropdown */}
             <div className="relative flex-shrink-0">
               <button
                 onClick={() => setShowGlobalFilters(!showGlobalFilters)}
-                className={`h-11 w-11 md:w-auto md:px-5 md:py-2.5 border rounded-xl font-medium flex items-center justify-center md:justify-start gap-2 transition-all ${activeFilterCount > 0 ? 'bg-blue-50 border-blue-200 text-blue-700' : 'hover:bg-gray-50 text-gray-700 bg-white shadow-sm'}`}
-                aria-label="Open filters"
+                className={`h-11 px-4 border rounded-xl font-medium flex items-center gap-2 transition-all ${filterGrade !== 'all' ? 'bg-brand-purple/5 border-brand-purple text-brand-purple' : 'bg-white border-gray-200 text-gray-700 hover:border-brand-purple hover:text-brand-purple'}`}
+                aria-label="Filter by grade"
               >
-                <Filter size={16} className={activeFilterCount > 0 ? 'text-blue-600' : 'text-gray-500'} />
-                {!isMobile && 'Filters'}
-                {activeFilterCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex items-center justify-center w-5 h-5 rounded-full bg-blue-600 text-white text-[10px]">{activeFilterCount}</span>
+                <Filter size={16} className={filterGrade !== 'all' ? 'text-brand-purple' : 'text-gray-400'} />
+                <span className="text-sm">
+                  {filterGrade !== 'all' ? formatGradeLabel(filterGrade) : 'Grade'}
+                </span>
+                {filterGrade !== 'all' && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Clear grade filter"
+                    onClick={(e) => { e.stopPropagation(); setFilterGrade('all'); }}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.stopPropagation(), setFilterGrade('all'))}
+                    className="ml-0.5 text-brand-purple/50 hover:text-brand-purple"
+                  >
+                    <X size={13} />
+                  </span>
                 )}
               </button>
 
               {showGlobalFilters && (
                 <>
-                  {isMobile && (
-                    <div
-                      className="fixed inset-0 bg-black/35 z-40"
-                      onClick={() => setShowGlobalFilters(false)}
-                    />
-                  )}
-                  <div className={`${isMobile ? 'fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92vw] max-w-[360px] max-h-[80vh] z-50' : 'absolute right-0 top-full mt-2 w-[320px] z-50'} bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden animate-fade-in origin-top-right`}>
-                    <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-                      <h3 className="font-medium text-gray-800 flex items-center gap-2"><Filter size={16} className="text-blue-600" /> Student Filters</h3>
-                      {activeFilterCount > 0 && <button onClick={clearAllFiltersLearners} className="text-[11px] font-medium text-red-600 bg-red-50 hover:bg-red-100 px-2 py-1 rounded-md">Clear All</button>}
-                    </div>
-                    <div className="p-5 space-y-5 max-h-[60vh] overflow-y-auto custom-scrollbar">
-                      {/* Grade */}
-                      <div>
-                        <h4 className="text-[11px] font-semibold text-blue-500 uppercase tracking-widest mb-2">Grade</h4>
-                        <select value={filterGrade} onChange={(e) => setFilterGrade(e.target.value)} className="p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm w-full outline-blue-500">
-                          <option value="all">All Grades</option>
-                          {gradeOptions.map(g => <option key={g} value={g}>{formatGradeLabel(g)}</option>)}
-                        </select>
-                      </div>
-                      {/* Stream */}
-                      <div>
-                        <h4 className="text-[11px] font-semibold text-blue-500 uppercase tracking-widest mb-2">Stream</h4>
-                        <select value={filterStream} onChange={(e) => setFilterStream(e.target.value)} className="p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm w-full outline-blue-500">
-                          <option value="all">All Streams</option>
-                          {availableStreams.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                        </select>
-                      </div>
-                      {/* Status */}
-                      <div>
-                        <h4 className="text-[11px] font-semibold text-blue-500 uppercase tracking-widest mb-2">Enrolment Status</h4>
-                        <div className="flex flex-col gap-1.5">
-                          {[['all','All Status'],['ACTIVE','Active'],['DROPPED_OUT','Archived'],['TRANSFERRED_OUT','Transferred Out'],['GRADUATED','Graduated'],['SUSPENDED','Suspended']].map(([val, label]) => (
-                            <button key={val} onClick={() => setFilterStatus(val)} className={`text-left text-sm px-3 py-1.5 rounded-lg font-semibold transition-all ${filterStatus === val ? 'bg-blue-600 text-white' : 'hover:bg-gray-50 text-gray-700'}`}>{label}</button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="p-4 bg-gray-50 border-t flex justify-end">
-                      <button onClick={() => setShowGlobalFilters(false)} className="px-5 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm">Apply & Close</button>
-                    </div>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowGlobalFilters(false)}
+                  />
+                  <div className="absolute right-0 top-full mt-1.5 z-50 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 min-w-[160px] animate-fade-in origin-top-right">
+                    <button
+                      onClick={() => { setFilterGrade('all'); setShowGlobalFilters(false); }}
+                      className={`w-full text-left px-4 py-2 text-sm font-medium transition-colors ${filterGrade === 'all' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      All Grades
+                    </button>
+                    <div className="my-1 border-t border-gray-100" />
+                    {gradeOptions.map(g => (
+                      <button
+                        key={g}
+                        onClick={() => { setFilterGrade(g); setShowGlobalFilters(false); }}
+                        className={`w-full text-left px-4 py-2 text-sm font-medium transition-colors ${filterGrade === g ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'}`}
+                      >
+                        {formatGradeLabel(g)}
+                      </button>
+                    ))}
                   </div>
                 </>
               )}
@@ -439,7 +438,9 @@ const LearnersList = ({
             <div className="hidden lg:flex items-center gap-4 mr-2 border-r pr-4 border-gray-200 h-10">
               <div className="text-right">
                 <p className="text-[10px] text-gray-500 uppercase font-medium tracking-wider">Total Students</p>
-                <p className="text-xl font-medium text-gray-800 leading-none">{visibleStudentsCount}</p>
+                <p className="text-xl font-semibold text-gray-800 leading-none">
+                  {totalStudentsCount ?? pagination?.total ?? visibleStudentsCount}
+                </p>
               </div>
             </div>
 
@@ -448,7 +449,7 @@ const LearnersList = ({
                 <div className="relative">
                   <button
                     onClick={() => setShowQuickActions(!showQuickActions)}
-                    className="p-2 bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100 rounded-lg transition"
+                    className="p-2 bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 rounded-lg transition"
                     title="Quick Actions"
                   >
                     <MoreVertical size={20} />
@@ -456,10 +457,10 @@ const LearnersList = ({
                   {showQuickActions && (
                     <>
                       <div
-                        className="fixed inset-0 z-10"
+                        className="fixed inset-0 z-40"
                         onClick={() => setShowQuickActions(false)}
                       />
-                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 z-20 py-1">
+                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 z-50 py-1">
                         <button
                           onClick={() => {
                             setShowQuickActions(false);
@@ -477,7 +478,7 @@ const LearnersList = ({
 
                 <button
                   onClick={onAddLearner}
-                  className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-brand-teal text-white rounded-lg hover:bg-brand-teal/90 transition shadow-sm font-medium"
+                  className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition shadow-sm font-medium"
                 >
                   <Plus size={18} />
                   <span className="inline">Add Student</span>
@@ -623,11 +624,8 @@ const LearnersList = ({
                   {/* Guardian Info Compact */}
                   <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-50">
                     {learner.primaryContactType && (
-                      <span className={`text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ${learner.primaryContactType === 'FATHER' ? 'bg-blue-100 text-blue-800' :
-                        learner.primaryContactType === 'MOTHER' ? 'bg-amber-100 text-amber-800' :
-                          'bg-rose-100 text-rose-800'
-                        }`}>
-                        {learner.primaryContactType.substring(0, 1)}
+                      <span className="text-[10px] font-semibold text-gray-500 flex-shrink-0">
+                        {getRelationshipLabel(learner.primaryContactType)}
                       </span>
                     )}
                     <span className="text-xs font-semibold truncate text-gray-700">
@@ -740,8 +738,7 @@ const LearnersList = ({
                 <th className="px-3 py-1.5 text-left text-[11px] font-medium text-[color:var(--table-header-fg)] uppercase border-r border-gray-100">Student</th>
                 <th className="px-3 py-1.5 text-left text-[11px] font-medium text-[color:var(--table-header-fg)] uppercase border-r border-gray-100">Admission No</th>
                 <th className="px-3 py-1.5 text-left text-[11px] font-medium text-[color:var(--table-header-fg)] uppercase border-r border-gray-100">Grade</th>
-                <th className="px-3 py-1.5 text-left text-[11px] font-medium text-[color:var(--table-header-fg)] uppercase border-r border-gray-100">Status</th>
-                <th className="px-3 py-1.5 text-left text-[11px] font-medium text-[color:var(--table-header-fg)] uppercase border-r border-gray-100">Parent/Guardian</th>
+                <th className="px-3 py-1.5 text-left text-[11px] font-medium text-[color:var(--table-header-fg)] uppercase border-r border-gray-100">Parent</th>
                 <th className="px-3 py-1.5 text-left text-[11px] font-medium text-[color:var(--table-header-fg)] uppercase">Actions</th>
               </tr>
             }
@@ -775,18 +772,13 @@ const LearnersList = ({
                 <td className="px-3 py-1.5 border-r border-gray-100 font-semibold">{learner.grade} {learner.stream}</td>
                 <td className="px-3 py-1.5 border-r border-gray-100">
                   <div className="flex items-center gap-2">
-                    {learner.primaryContactType && (
-                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${learner.primaryContactType === 'FATHER' ? 'bg-blue-100 text-blue-800' :
-                        learner.primaryContactType === 'MOTHER' ? 'bg-amber-100 text-amber-800' :
-                          'bg-rose-100 text-rose-800'
-                        }`}>
-                        {learner.primaryContactType === 'FATHER' ? '👨 Father' :
-                          learner.primaryContactType === 'MOTHER' ? '👩 Mother' :
-                            '👤 Guardian'}
-                      </span>
-                    )}
                     <div className="flex-1">
-                      <p className="text-sm font-semibold">{learner.primaryContactName || learner.guardianName || (learner.parent ? `${learner.parent.firstName} ${learner.parent.lastName}` : '-')}</p>
+                      <div className="flex items-center gap-1.5">
+                        {learner.primaryContactType && (
+                          <span className="text-[10px] font-semibold text-gray-400 uppercase">{getRelationshipLabel(learner.primaryContactType)}:</span>
+                        )}
+                        <p className="text-sm font-semibold">{learner.primaryContactName || learner.guardianName || (learner.parent ? `${learner.parent.firstName} ${learner.parent.lastName}` : '-')}</p>
+                      </div>
                       <div className="flex items-center gap-2 mt-1">
                         <p className="text-xs text-gray-500">{learner.primaryContactPhone || learner.guardianPhone || (learner.parent ? learner.parent.phone : '-')}</p>
                         {(learner.primaryContactPhone || learner.guardianPhone || (learner.parent && learner.parent.phone)) && (
@@ -822,10 +814,7 @@ const LearnersList = ({
                     </div>
                   </div>
                 </td>
-                <td className="px-3 py-1.5 border-r border-gray-100">
-                  <StatusBadge status={learner.status} size="sm" />
-                </td>
-                <td className="px-3 py-1.5 border-r border-gray-100">
+                <td className="px-3 py-1.5">
                   <div className="flex items-center gap-1">
                     <button
                       onClick={(e) => { e.stopPropagation(); onViewLearner(learner); }}

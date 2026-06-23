@@ -170,7 +170,7 @@ const CoreCompetenciesFormMobile = ({ onBack, onSuccess }) => {
               <label className={labelClass}>Assessment Date</label>
               <DatePicker
                 value={formData.assessmentDate}
-                onChange={(date) => handleInputChange('assessmentDate', date ? new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().split('T')[0] : '')}
+                onChange={(val) => handleInputChange('assessmentDate', val)}
                 className="w-full"
               />
             </div>

@@ -140,7 +140,7 @@ const BackupSettings = () => {
     <div className="space-y-6">
 
       {/* Action Toolbar */}
-      <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100 flex justify-end">
+      <div className="toolbar-card flex justify-end">
         <button
           onClick={handleCreateBackup}
           disabled={creating}

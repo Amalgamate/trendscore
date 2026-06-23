@@ -2,16 +2,17 @@
  * ParentPortalHome — Family Dashboard
  * Matches design reference: purple family overview card, child summary strip,
  * 6-item quick actions, compact header with hamburger + greeting + bell badge.
+ *
+ * NOTE: MobileBottomNav is NOT rendered here — MobileAppShell already renders it.
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Menu, Bell, CreditCard, BarChart2, Users, MessageSquare,
-  MapPin, FolderOpen, ChevronRight, TrendingUp, Eye,
+  MapPin, FolderOpen, ChevronRight, Eye,
   AlertCircle, FileText, RefreshCw,
 } from 'lucide-react';
 import { dashboardAPI } from '../../../../services/api';
-import MobileBottomNav from '../../dashboard/mobile/MobileBottomNav';
 import ParentChildProfile from '../parent/ParentChildProfile';
 
 const fmt    = (n) => Number(n || 0).toLocaleString();
@@ -246,24 +247,24 @@ const ParentPortalHome = ({ user, onNavigate }) => {
 
   const hour      = new Date().getHours();
   const greeting  = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const firstName = user?.name?.split(' ')[0] || 'Parent';
+  const firstName = user?.firstName || user?.name?.split(' ')[0] || 'Parent';
 
   const children = metrics?.children || [];
   const messages = metrics?.messages || [];
   const unread   = messages.filter(m => m.unread || m.isUnread).length;
 
-  // Child profile overlay
+  // Child profile overlay — renders full-screen within the shell scroll area
   if (selectedChild) {
     return (
-      <>
-        <ParentChildProfile child={selectedChild} onBack={() => setSelectedChild(null)} />
-        <MobileBottomNav role="PARENT" currentPath="parent-portal-home" onNavigate={onNavigate} />
-      </>
+      <ParentChildProfile
+        child={selectedChild}
+        onBack={() => setSelectedChild(null)}
+      />
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F5F7] pb-20">
+    <div className="min-h-screen bg-[#F5F5F7] pb-24">
 
       {/* ── Header ── */}
       <div className="bg-white sticky top-0 z-10 border-b border-gray-100">
@@ -275,17 +276,26 @@ const ParentPortalHome = ({ user, onNavigate }) => {
             <p className="text-xs text-gray-500 leading-none">{greeting},</p>
             <p className="text-sm font-bold text-gray-900 leading-tight">{firstName} 👋</p>
           </div>
-          <button
-            onClick={() => onNavigate('parent-portal-messages')}
-            className="w-8 h-8 flex items-center justify-center relative"
-          >
-            <Bell size={20} className="text-gray-600" />
-            {unread > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
-                {unread > 9 ? '9+' : unread}
-              </span>
-            )}
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={loadMetrics}
+              className="w-8 h-8 flex items-center justify-center text-gray-400 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw size={15} />
+            </button>
+            <button
+              onClick={() => onNavigate('parent-portal-messages')}
+              className="w-8 h-8 flex items-center justify-center relative"
+            >
+              <Bell size={20} className="text-gray-600" />
+              {unread > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
+                  {unread > 9 ? '9+' : unread}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -326,8 +336,6 @@ const ParentPortalHome = ({ user, onNavigate }) => {
         </div>
 
       </div>
-
-      <MobileBottomNav role="PARENT" currentPath="parent-portal-home" onNavigate={onNavigate} />
     </div>
   );
 };

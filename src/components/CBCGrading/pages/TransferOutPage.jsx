@@ -135,7 +135,7 @@ const TransferOutPage = ({ learners = [], onTransferOut, showNotification }) => 
                 </label>
                 <DatePicker
                   value={formData.transferDate}
-                  onChange={(date) => handleChange('transferDate', date ? new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().split('T')[0] : '')}
+                  onChange={(val) => handleChange('transferDate', val)}
                   className="w-full"
                 />
                 {errors.transferDate && (

@@ -161,6 +161,7 @@ const MyProgress = lazy(() => import('../pages/student/MyProgress'));
 // Mobile Components
 const MobileUserManagement = lazy(() => import('../dashboard/mobile/MobileUserManagement'));
 const MobileGeneralSettings = lazy(() => import('../dashboard/mobile/MobileGeneralSettings'));
+const MobileFeesPage = lazy(() => import('../pages/MobileFeesPage'));
 
 const ACADEMIC_INTELLIGENCE_PAGE_COPY = {
   'academic-intelligence': {
@@ -415,6 +416,7 @@ const PageRouter = ({
                   setEditingLearner(null);
                 }}
                 onDelete={admissionLearner ? () => handleDeleteLearner(admissionLearner.id) : null}
+                onNavigateToFees={() => setCurrentPage('fees-structure')}
                 learner={admissionLearner}
                 learnerId={admissionLearnerId}
               />
@@ -672,7 +674,9 @@ const PageRouter = ({
 
           case 'fees-structure': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="structure" />;
           case 'fees-types': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="types" />;
-          case 'fees-overview': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="overview" />;
+          case 'fees-overview': return isMobile
+            ? <MobileFeesPage onNavigate={handleNavigate} />
+            : <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="overview" />;
           case 'fees-invoices':
           case 'fees-collection': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="invoices" />;
           case 'fees-invoice-detail': return <InvoiceDetailPage invoice={pageParams.invoice} />;

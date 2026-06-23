@@ -369,7 +369,7 @@ const ParentsList = ({ parents = [], pagination, onFetchParents, onAddParent, on
   return (
     <div className="space-y-4">
       {/* Compact Quick Actions Toolbar */}
-      <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+      <div className="toolbar-card">
         <div className="flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center">
 
           {/* Search */}

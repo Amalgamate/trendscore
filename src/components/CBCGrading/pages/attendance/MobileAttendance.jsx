@@ -412,10 +412,13 @@ export function MobileAttendance() {
   const handleSave = useCallback(async () => {
     if (!activeClass) return;
     setIsSaving(true);
+    // SCHOOL_ACTIVITY and SUSPENDED are UI-only labels not in the DB enum.
+    // Map them to EXCUSED so the server validation passes; remarks carry the context.
+    const STATUS_MAP = { SCHOOL_ACTIVITY: 'EXCUSED', SUSPENDED: 'EXCUSED' };
     const records = Object.entries(pendingChanges).map(([learnerId, data]) => ({
       learnerId,
-      status: data.status,
-      remarks: data.remarks || undefined,
+      status: STATUS_MAP[data.status] || data.status,
+      remarks: data.remarks || (data.status === 'SCHOOL_ACTIVITY' ? 'School activity' : data.status === 'SUSPENDED' ? 'Suspended' : undefined),
     }));
     const missingRemarks = attendanceSettings.requireRemarksForLateExcused
       ? records.filter(record =>

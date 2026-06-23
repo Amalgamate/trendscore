@@ -472,10 +472,8 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+      <div className="toolbar-card">
         <div className="flex flex-col md:flex-row gap-4 justify-between items-start">
-
-          {/* Left: Stats + Bulk actions */}
           {selectedIds.length > 0 ? (
             <div className="flex items-center gap-4 bg-brand-purple/5 px-4 py-2 rounded-lg border border-brand-purple/10">
               <span className="text-sm font-medium text-brand-purple">{selectedIds.length} Selected</span>

@@ -173,6 +173,9 @@ function AppContent() {
     root.style.setProperty('--brand-purple', primary);
     setRgbVar('--brand-primary-rgb', primary);
     setRgbVar('--brand-purple-rgb', primary);
+    // Toolbar always uses a fixed deep navy — independent of school brand colour
+    root.style.setProperty('--toolbar-bg', '#030b82');
+    root.style.setProperty('--toolbar-border', '#02075e');
     if (brandingSettings?.secondaryColor) {
       root.style.setProperty('--brand-secondary', brandingSettings.secondaryColor);
       root.style.setProperty('--brand-teal', brandingSettings.secondaryColor);

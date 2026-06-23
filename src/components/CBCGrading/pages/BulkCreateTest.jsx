@@ -254,10 +254,7 @@ const BulkCreateTest = ({ onBack, onSuccess }) => {
                             <label className="block text-xs font-medium text-slate-500 uppercase tracking-widest">Test Date</label>
                             <DatePicker
                                 value={formData.testDate}
-                                onChange={(date) => setFormData({
-                                    ...formData,
-                                    testDate: date ? new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split('T')[0] : ''
-                                })}
+                                onChange={(val) => setFormData({ ...formData, testDate: val })}
                                 className="w-full border-slate-200"
                             />
                         </div>

@@ -23,14 +23,14 @@ const markAttendanceSchema = z.object({
     z.string().datetime(),
     z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   ]).optional(),
-  status: z.enum(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED']),
+  status: z.enum(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'SICK']),
   classId: z.string().min(1).optional(),
   remarks: z.string().max(255).optional()
 });
 
 const attendanceItemSchema = z.object({
   learnerId: z.string().min(1),
-  status: z.enum(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED']),
+  status: z.enum(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'SICK']),
   remarks: z.string().max(255).optional(),
 });
 

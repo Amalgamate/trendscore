@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Save, X, ArrowRight, ArrowLeft, CheckCircle, User, Users as UsersIcon, Trash2, Loader } from 'lucide-react';
+import { Save, X, ArrowRight, ArrowLeft, CheckCircle, User, Users as UsersIcon, Trash2, Loader, Settings } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 import { useAuth } from '../../../hooks/useAuth';
 import { configAPI, learnerAPI } from '../../../services/api';
@@ -13,6 +13,7 @@ import ParentGuardianStep from './steps/ParentGuardianStep';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { MOBILE_MEDIA_QUERY } from '../../../constants/breakpoints';
 import { sanitizeLearnerPayload } from '../contracts/learnerPayload.contract';
+import { DatePicker } from '../../../components/ui/date-picker';
 
 // Helper: Compute primary contact based on parent hierarchy.
 const computePrimaryContact = (data) => {
@@ -73,7 +74,7 @@ const computePrimaryContact = (data) => {
   };
 };
 
-const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null, learnerId = null }) => {
+const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner = null, learnerId = null }) => {
   const { showSuccess, showError } = useNotifications();
   const { user } = useAuth();
   const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
@@ -90,8 +91,8 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null, learnerId 
   const [changeReason, setChangeReason] = useState('');
   const [lastSaved, setLastSaved] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
-  const [stepErrors, setStepErrors] = useState({}); // Track validation errors per step
-  const [generateInvoice, setGenerateInvoice] = useState(true); // Default to true
+  const [stepErrors, setStepErrors] = useState({});
+  const [showFeesPrompt, setShowFeesPrompt] = useState(false);
   const [editBaseline, setEditBaseline] = useState(null);
   const [hasShownEditNotice, setHasShownEditNotice] = useState(false);
   const formId = 'learner-admissions-form';
@@ -210,13 +211,9 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null, learnerId 
 
   const buildSubmissionPayload = React.useCallback((data) => {
     const primaryContact = computePrimaryContact(data);
-    const finalFormData = {
-      ...data,
-      ...primaryContact,
-      generateInvoice
-    };
+    const finalFormData = { ...data, ...primaryContact };
     return sanitizeLearnerPayload(finalFormData);
-  }, [generateInvoice]);
+  }, []);
 
   const hasUnsavedEdits = React.useMemo(() => {
     if (!isEdit || !editBaseline) return false;
@@ -506,15 +503,6 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null, learnerId 
       showError('Please fill in all required fields'); setCurrentStep(1); return;
     }
 
-    if (formData.isScholarshipStudent && formData.scholarshipType === 'PARTIAL') {
-      const amount = Number(formData.scholarshipAmount);
-      if (!formData.scholarshipAmount || Number.isNaN(amount) || amount <= 0) {
-        showError('Enter a valid fee-to-pay amount for partial scholarship');
-        setCurrentStep(1);
-        return;
-      }
-    }
-
     // Validate that at least one parent/guardian is provided with phone
     const primaryContact = computePrimaryContact(formData);
     if (!primaryContact.primaryContactPhone) {
@@ -524,7 +512,6 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null, learnerId 
     const finalFormData = {
       ...formData,
       ...primaryContact,
-      generateInvoice,
       changeReason: hasSensitiveFieldChanges ? changeReason.trim() : undefined
     };
 
@@ -560,14 +547,15 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null, learnerId 
             setIsDraft(false);
             setLastSaved(null);
             setCurrentStep(1);
+            // Ask if user wants to configure fees
+            setShowFeesPrompt(true);
           }
           if (isEdit) {
-            // Stay on edit page after save so user can continue updates
-            // such as uploading/replacing photo without leaving this screen.
             setEditBaseline(sanitizedPayload);
             setHasShownEditNotice(false);
-          } else if (onCancel) {
-            onCancel(); // New admission flow returns to list
+          } else if (!onNavigateToFees) {
+            // No fee navigation available — fall back to list
+            if (onCancel) onCancel();
           }
         } else {
           console.log('❌ Save failed:', result?.error);
@@ -748,12 +736,17 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null, learnerId 
                     {stepErrors.gender && <p className="text-xs text-red-500 font-semibold mt-1">{stepErrors.gender}</p>}
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 uppercase tracking-tight mb-1">Date of Birth <span className="text-red-500">*</span></label>
-                    <input type="date" name="dateOfBirth" value={formData.dateOfBirth} onChange={handleInputChange} className={`w-full px-3 py-2 bg-white border rounded-md text-sm transition-all focus:ring-1 focus:ring-brand-purple ${stepErrors.dateOfBirth
-                      ? 'border-red-500 bg-red-50 focus:border-red-500'
-                      : 'border-gray-200 focus:border-brand-purple'
-                      }`} required />
-                    {stepErrors.dateOfBirth && <p className="text-xs text-red-500 font-semibold mt-1">{stepErrors.dateOfBirth}</p>}
+                    <DatePicker
+                      label="Date of Birth"
+                      required
+                      value={formData.dateOfBirth}
+                      onChange={(val) => setFormData({ ...formData, dateOfBirth: val })}
+                      disableFuture
+                      fromYear={1950}
+                      toYear={new Date().getFullYear()}
+                      error={stepErrors.dateOfBirth}
+                      placeholder="Select date of birth"
+                    />
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -843,90 +836,7 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null, learnerId 
                         )}
                       </select>
                     </div>
-                    {/* [NEW] Transport Service Toggle */}
-                    <div className="md:col-span-3">
-                      <div className="flex items-center gap-3 p-3 bg-brand-purple/5 border border-brand-purple/10 rounded-md transition-all hover:bg-brand-purple/10">
-                        <input
-                          type="checkbox"
-                          id="isTransportStudent"
-                          name="isTransportStudent"
-                          checked={formData.isTransportStudent}
-                          onChange={(e) => setFormData({ ...formData, isTransportStudent: e.target.checked })}
-                          className="w-4 h-4 text-brand-purple border-gray-300 rounded focus:ring-brand-purple cursor-pointer"
-                        />
-                        <label htmlFor="isTransportStudent" className="flex flex-col cursor-pointer">
-                          <span className="text-sm font-medium text-brand-purple">Transport Service</span>
-                          <span className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold font-mono">Check this if the learner will be using school transport</span>
-                        </label>
-                      </div>
-                    </div>
-                    <div className="md:col-span-3">
-                      <div className="space-y-3 p-3 bg-amber-50/70 border border-amber-200 rounded-md transition-all hover:bg-amber-50">
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="checkbox"
-                            id="isScholarshipStudent"
-                            name="isScholarshipStudent"
-                            checked={!!formData.isScholarshipStudent}
-                                onChange={(e) => {
-                                  const checked = e.target.checked;
-                                  setFormData({
-                                    ...formData,
-                                    isScholarshipStudent: checked,
-                                    scholarshipType: checked ? (formData.scholarshipType || 'FULL') : '',
-                                    scholarshipAmount: checked ? formData.scholarshipAmount : ''
-                                  });
-                                }}
-                            className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500 cursor-pointer"
-                          />
-                          <label htmlFor="isScholarshipStudent" className="flex flex-col cursor-pointer">
-                            <span className="text-sm font-medium text-amber-800">Scholarship Student</span>
-                            <span className="text-[10px] text-amber-700 uppercase tracking-widest font-semibold font-mono">Scholarship terms are applied to the generated invoice for a complete audit trail.</span>
-                          </label>
-                        </div>
-                        {formData.isScholarshipStudent && (
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 pl-7">
-                            <label className="inline-flex items-center gap-2 text-sm text-amber-900">
-                              <input
-                                type="radio"
-                                name="scholarshipType"
-                                value="FULL"
-                                checked={formData.scholarshipType === 'FULL'}
-                                onChange={handleInputChange}
-                                className="text-amber-600 focus:ring-amber-500"
-                              />
-                              Fully Scholarship
-                            </label>
-                            <label className="inline-flex items-center gap-2 text-sm text-amber-900">
-                              <input
-                                type="radio"
-                                name="scholarshipType"
-                                value="PARTIAL"
-                                checked={formData.scholarshipType === 'PARTIAL'}
-                                onChange={handleInputChange}
-                                className="text-amber-600 focus:ring-amber-500"
-                              />
-                              Partial Scholarship
-                            </label>
-                            {formData.scholarshipType === 'PARTIAL' && (
-                              <div className="w-full sm:w-72">
-                                <label className="block text-xs font-medium text-amber-800 mb-1 uppercase tracking-wide">Fee To Pay</label>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  name="scholarshipAmount"
-                                  value={formData.scholarshipAmount || ''}
-                                  onChange={handleInputChange}
-                                  placeholder="e.g. 15000"
-                                  className="w-full px-3 py-2 bg-white border border-amber-300 rounded-md text-sm focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
-                                />
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    {/* end of Academic Information grid */}
                   </div>
                 </div>
               </div>
@@ -990,10 +900,6 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null, learnerId 
                     <div className="space-y-2 text-sm">
                       <p className="flex justify-between"><span className="text-gray-500">Adm No:</span> <span className="font-semibold text-gray-800">{formData.admissionNumber || 'Auto-generated'}</span></p>
                       <p className="flex justify-between"><span className="text-gray-500">Assessment number:</span> <span className="font-semibold text-emerald-600 font-mono">{formData.upiNumber || 'N/A'}</span></p>
-                      <p className="flex justify-between"><span className="text-gray-500">Scholarship:</span> <span className="font-semibold text-gray-800">{formData.isScholarshipStudent ? (formData.scholarshipType === 'PARTIAL' ? 'Partial' : 'Full') : 'No'}</span></p>
-                      {formData.isScholarshipStudent && formData.scholarshipType === 'PARTIAL' && (
-                        <p className="flex justify-between"><span className="text-gray-500">Fee To Pay:</span> <span className="font-semibold text-gray-800">{formData.scholarshipAmount || 'N/A'}</span></p>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -1021,23 +927,6 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null, learnerId 
                   </div>
                 )}
 
-                <div className="mt-6 flex items-center gap-3 p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                  <input
-                    id="generateInvoice"
-                    type="checkbox"
-                    checked={generateInvoice}
-                    onChange={(e) => setGenerateInvoice(e.target.checked)}
-                    className="w-5 h-5 text-brand-purple rounded focus:ring-brand-purple border-gray-300"
-                  />
-                  <div>
-                    <label htmlFor="generateInvoice" className="block text-sm font-medium text-gray-800 cursor-pointer">
-                      Generate Automatic Invoice
-                    </label>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Create an invoice for the current term immediately upon admission.
-                    </p>
-                  </div>
-                </div>
               </div>
             )}
 
@@ -1081,6 +970,50 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, learner = null, learnerId 
           </form>
         </div>
       </div>
+
+      {/* ── Configure Fees Prompt ── */}
+      {showFeesPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="px-6 pt-6 pb-4">
+              <div className="flex items-center justify-center w-12 h-12 rounded-full bg-brand-purple/10 mx-auto mb-4">
+                <Settings size={22} className="text-brand-purple" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 text-center">Set Up Fee Structure</h3>
+              <p className="text-sm text-gray-500 text-center mt-1.5 leading-relaxed">
+                Would you like to configure fees for this student's grade now? You can always do this later from the Fees section.
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="px-6 pb-6 flex flex-col gap-2">
+              {onNavigateToFees && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowFeesPrompt(false);
+                    onNavigateToFees();
+                  }}
+                  className="w-full py-2.5 bg-brand-purple text-white rounded-xl font-medium text-sm hover:bg-brand-purple/90 transition-colors shadow-sm"
+                >
+                  Yes, configure fees
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowFeesPrompt(false);
+                  if (onCancel) onCancel();
+                }}
+                className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm hover:bg-gray-200 transition-colors"
+              >
+                Not now — go to student list
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

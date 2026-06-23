@@ -457,7 +457,7 @@ const UniformAllocationPage = () => {
       )}
 
       {/* Toolbar */}
-      <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+      <div className="toolbar-card">
         <div className="flex flex-col md:flex-row gap-3 justify-between items-start md:items-center">
 
           {/* Search + filters */}

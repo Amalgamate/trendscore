@@ -22,7 +22,7 @@
   --input: 214.3 31.8% 91.4%;
   --ring: 236 95% 26%;
   /* 0 = flat panels; bump if you want subtle rounding app-wide */
-  --radius: 0;
+  --radius: 0.25rem;
 
   --brand-primary: #030b82;
   --brand-primary-dark: #02075e;
@@ -53,6 +53,11 @@
   --text-primary: #000000;
   --text-secondary: #4b5563;
   --border-color: #e5e7eb;
+  /* ── Toolbar / action-bar widget background ───────────────────────────────
+     A single token controls the accent tint on all list-page toolbars.
+     Change this one value to retheme every search + filter bar at once.   */
+  --toolbar-bg: #030b82;
+  --toolbar-border: #02075e;
   --app-max-width: 100%;
   --app-header-height: 5rem;
   --app-gutter-x: 1.5rem;
@@ -109,8 +114,7 @@
 /*
  * Global flat UI (clean rendering surfaces)
  * - :root --radius + tailwind.config borderRadius/boxShadow
- * - Fallbacks below for arbitrary shadow-[…] / rounded-[…] and legacy specificity
- * - rounded-full kept for avatars/pills
+ * - rounded-full kept for avatars/pills; all other rounded-* respect --radius
  */
 @layer utilities {
   .shadow,
@@ -124,45 +128,6 @@
     --tw-shadow: 0 0 #0000;
     --tw-shadow-colored: 0 0 #0000;
     box-shadow: none;
-  }
-
-  .rounded,
-  .rounded-sm,
-  .rounded-md,
-  .rounded-lg,
-  .rounded-xl,
-  .rounded-2xl,
-  .rounded-3xl,
-  .rounded-l,
-  .rounded-r,
-  .rounded-t,
-  .rounded-b,
-  .rounded-l-sm,
-  .rounded-r-sm,
-  .rounded-t-sm,
-  .rounded-b-sm,
-  .rounded-l-md,
-  .rounded-r-md,
-  .rounded-t-md,
-  .rounded-b-md,
-  .rounded-l-lg,
-  .rounded-r-lg,
-  .rounded-t-lg,
-  .rounded-b-lg,
-  .rounded-l-xl,
-  .rounded-r-xl,
-  .rounded-t-xl,
-  .rounded-b-xl,
-  .rounded-l-2xl,
-  .rounded-r-2xl,
-  .rounded-t-2xl,
-  .rounded-b-2xl,
-  .rounded-l-3xl,
-  .rounded-r-3xl,
-  .rounded-t-3xl,
-  .rounded-b-3xl,
-  [class*="rounded-["] {
-    border-radius: 0;
   }
 }
 
@@ -573,6 +538,38 @@ code {
     @apply w-full px-4 py-3 bg-white border border-gray-200 rounded-lg text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--brand-purple)]/20 focus:border-[var(--brand-purple)] transition-all duration-200 shadow-sm hover:border-gray-300;
   }
 
+  /* ── app-header-loading ───────────────────────────────────────────────────
+     Sweeping shimmer across the top toolbar to indicate background activity.
+     Applied to <header> in Header.jsx. The gradient uses the brand primary
+     colour so it re-themes automatically with the school's branding.        */
+  .app-header-loading {
+    position: relative;
+    overflow: hidden;
+  }
+  .app-header-loading::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      105deg,
+      transparent 30%,
+      rgba(var(--brand-primary-rgb), 0.08) 50%,
+      transparent 70%
+    );
+    background-size: 200% 100%;
+    animation: header-shimmer 1.8s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  /* ── toolbar-card ──────────────────────────────────────────────────────────
+     White background with blue outline. No fill — clean outlined style.
+     Change --toolbar-border to retheme all list-page toolbars at once.    */
+  .toolbar-card {
+    background-color: #ffffff;
+    border: 1.5px solid var(--toolbar-border);
+    @apply rounded-xl p-4;
+  }
+
   /* Custom Select with SVG Arrow */
   .premium-select {
     @apply w-full px-4 py-3 pr-10 bg-white border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-[var(--brand-purple)]/20 focus:border-[var(--brand-purple)] transition-all duration-200 shadow-sm hover:border-gray-300 appearance-none cursor-pointer;
@@ -604,6 +601,11 @@ code {
 
 .delay-300 {
   animation-delay: 300ms;
+}
+
+@keyframes header-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 @keyframes fadeUp {

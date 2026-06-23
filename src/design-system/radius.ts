@@ -1,80 +1,81 @@
 /**
- * TreadSCORE Border Radius System
- * Standardized border radius values for consistent rounded corners
- *
- * Current design philosophy: sharp-edged panels by default.
- * Rounding is reserved for intentional circles/pills such as avatars and badges.
+ * TrendSCORE Border Radius System
+ * Base unit: 0.5rem (8px) — matches --radius in index.css and tailwind.config.
+ * All component-specific values are derived from this scale.
+ * To retheme globally, update --radius in :root (index.css) AND the base values here.
  */
 
 export const RADIUS = {
-  // Base radius values
-  none: '0px',          // Flat, no rounding - for most panels
-  xs: '2px',            // Minimal rounding - for subtle elevation
-  sm: '4px',            // Small rounding - for buttons, badges
-  md: '6px',            // Medium rounding - for inputs, small cards
-  lg: '8px',            // Large rounding - for standard cards
-  xl: '12px',           // Extra large rounding - for modals, large cards
-  '2xl': '16px',        // 2x extra large rounding
-  '3xl': '20px',        // 3x extra large rounding
-  full: '9999px',       // Full circle - for avatars, pills
+  // Base radius scale
+  none: '0px',
+  xs:   '2px',    // Minimal — icon accents, chart bars
+  sm:   '4px',    // Small — badge labels, tab triggers
+  md:   '6px',    // Medium — selects, dropdowns, small buttons
+  lg:   '8px',    // Standard — cards, inputs, default buttons (= --radius)
+  xl:   '12px',   // Large — modals, drawers, large cards
+  '2xl': '16px',  // Extra large — mobile sheets, hero panels
+  '3xl': '20px',  // Maximum panel rounding
+  full: '9999px', // Pill — avatars, badges, status chips
 
-  // Component-specific radius
+  // Component-specific (aligned to base scale above)
   button: {
-    default: '4px',     // Default button corners
-    pill: '9999px',     // Pill-shaped buttons
-    icon: '6px',        // Icon buttons
+    default: '8px',     // Matches rounded-lg → --radius
+    pill:    '9999px',  // Pill variant
+    icon:    '8px',     // Icon buttons
   },
 
   input: {
-    default: '4px',     // Standard input fields
-    focused: '4px',     // Same on focus
+    default: '8px',     // Matches rounded-lg → --radius
+    focused: '8px',
   },
 
   card: {
-    default: '0px',     // Standard cards
-    elevated: '0px',    // Elevated/modal cards
-    flat: '0px',        // Flat panel cards
+    default:  '8px',    // Standard content cards
+    elevated: '12px',   // Modal/drawer cards
+    flat:     '8px',    // Flat surface panels
   },
 
   badge: {
-    default: '2px',     // Standard badges
-    pill: '9999px',     // Pill badges
+    default: '4px',     // Rectangular badge
+    pill:    '9999px',  // Pill badge (StatusBadge, RubricBadge)
   },
 
   modal: {
-    default: '8px',     // Modal dialog corners
+    default: '12px',    // Dialogs / bottom sheets
   },
 
   avatar: {
-    default: '9999px',  // Circular avatars
-    square: '0px',      // Square avatars
-    rounded: '6px',     // Slightly rounded avatars
+    default: '9999px',  // Circular
+    square:  '0px',
+    rounded: '8px',     // Slightly rounded square avatar
   },
 
   dropdown: {
-    default: '4px',     // Dropdown menu
+    default: '8px',     // Dropdown / popover menus
   },
 
   tooltip: {
-    default: '4px',     // Tooltip boxes
+    default: '6px',
   },
 
   table: {
-    cell: '0px',        // No rounding for table cells
+    cell:      '0px',   // Table cells stay sharp
+    container: '8px',   // Outer table wrapper
   },
 
   section: {
-    default: '0px',     // Sections are flat
+    default: '8px',
   },
 
   image: {
-    default: '6px',     // Rounded images
-    thumbnail: '4px',   // Thumbnail images
+    default:   '8px',
+    thumbnail: '6px',
   },
 
   chart: {
-    default: '0px',     // Chart container
-    bar: '2px',         // Bar chart bars
+    default: '8px',     // Chart container
+    bar:     '4px',     // Bar chart top corners
+    tooltip: '8px',     // Recharts tooltip (matches hardcoded 8px in Dashboard)
   },
 } as const;
 
@@ -82,17 +83,10 @@ export const RADIUS = {
  * Utilities for applying radius consistently
  */
 export const radiusUtils = {
-  /**
-   * Get the radius for a component type
-   */
   forComponent: (component: 'button' | 'input' | 'card' | 'badge' | 'modal' | 'avatar') => {
     return RADIUS[component].default;
   },
 
-  /**
-   * Generate Tailwind class names for responsive radius
-   * @example responsiveRadius('sm', 'md', 'lg') => 'rounded-sm sm:rounded-md lg:rounded-lg'
-   */
   responsive: (mobile: keyof typeof RADIUS, tablet?: keyof typeof RADIUS, desktop?: keyof typeof RADIUS) => {
     let classes = '';
     if (mobile) classes += `rounded-${mobile}`;
@@ -103,17 +97,16 @@ export const radiusUtils = {
 };
 
 /**
- * Tailwind radius configuration
+ * Tailwind radius config export (mirrors tailwind.config.js borderRadius values)
  */
 export const tailwindRadiusConfig = {
-  none: '0px',
-  sm: '2px',
-  xs: '2px',
-  base: '4px',
-  md: '6px',
-  lg: '8px',
-  xl: '12px',
+  none:  '0px',
+  xs:    '2px',
+  sm:    '4px',
+  md:    '6px',
+  lg:    '8px',    // = --radius base
+  xl:    '12px',
   '2xl': '16px',
   '3xl': '20px',
-  full: '9999px',
+  full:  '9999px',
 } as const;
