@@ -1,12 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
   Check,
-  Database,
   FileText,
-  Lock,
-  MessageSquare,
   ShieldCheck,
   X,
 } from 'lucide-react';
@@ -40,28 +37,6 @@ const onboardingScreens = [
   },
 ];
 
-const policyCards = [
-  {
-    title: 'Privacy',
-    body: 'We protect school, parent, teacher and learner information using industry-standard safeguards.',
-    icon: ShieldCheck,
-  },
-  {
-    title: 'Data Usage',
-    body: 'Data may be used to generate reports, analytics and educational insights.',
-    icon: Database,
-  },
-  {
-    title: 'Communication Consent',
-    body: 'Schools may send SMS, WhatsApp, Email and system notifications through TrendSCORE.',
-    icon: MessageSquare,
-  },
-  {
-    title: 'Security',
-    body: 'TrendSCORE implements measures to prevent unauthorized access and protect institutional data.',
-    icon: Lock,
-  },
-];
 
 function readJsonStorage(key) {
   if (typeof window === 'undefined') return null;
@@ -168,28 +143,31 @@ function PolicyModal({ onClose }) {
 
 function OnboardingContent({ screen }) {
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col justify-end overflow-hidden px-6 pb-7 pt-3">
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* Background image — top 58% of the available space */}
       <div
         aria-hidden="true"
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
         style={{ backgroundImage: `url(${screen.image})` }}
       />
+      {/* Gradient fade from transparent at top to solid white from ~50% down */}
       <div
         aria-hidden="true"
-        className="absolute inset-0 bg-gradient-to-b from-white/15 via-white/55 to-white"
+        className="absolute inset-0 bg-gradient-to-b from-transparent from-35% via-white/80 via-55% to-white to-70%"
       />
-      <div className="relative z-10 space-y-4 pt-[46dvh]">
+      {/* Text content anchored to the bottom of the flex area */}
+      <div className="relative z-10 mt-auto px-6 pb-4 pt-2">
         <div className="space-y-3 text-center">
-          <h1 className="text-3xl font-black leading-tight text-slate-950">{screen.headline}</h1>
+          <h1 className="text-2xl font-black leading-tight text-slate-950">{screen.headline}</h1>
           <p className="mx-auto max-w-sm text-sm font-medium leading-6 text-slate-700">
             {screen.description}
           </p>
         </div>
-        <div className="flex flex-wrap justify-center gap-2">
+        <div className="mt-3 flex flex-wrap justify-center gap-2">
           {screen.chips.map((chip) => (
             <span
               key={chip}
-              className="rounded-full border border-orange-200 bg-white/80 px-3 py-1.5 text-xs font-bold text-orange-600 shadow-sm backdrop-blur"
+              className="rounded-full border border-orange-200 bg-white/90 px-3 py-1.5 text-xs font-bold text-orange-600 shadow-sm backdrop-blur"
             >
               {chip}
             </span>
@@ -202,62 +180,44 @@ function OnboardingContent({ screen }) {
 
 function ConsentContent({ accepted, setAccepted, onViewPolicy }) {
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-4">
-      <div className="mx-auto flex max-w-md flex-col items-center text-center">
-        <img src="/splash/trendscore-logo.png" alt="TrendSCORE" className="h-16 w-16 object-contain" />
-        <div className="mt-5 space-y-3">
-          <h1 className="text-3xl font-black text-slate-950">Your Data Matters</h1>
-          <div className="space-y-2 text-sm font-medium leading-6 text-slate-600">
-            <p>
-              TrendSCORE helps schools manage learner, assessment, attendance, communication and
-              finance records securely.
-            </p>
-            <p>
-              Before continuing, please review and accept the Terms of Use, Privacy Policy and Data
-              Protection Policy.
-            </p>
-          </div>
-        </div>
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6">
+      {/* Icon */}
+      <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-orange-50 text-orange-500 shadow-sm">
+        <ShieldCheck size={32} />
       </div>
 
-      <div className="mx-auto mt-6 grid max-w-md grid-cols-1 gap-3">
-        {policyCards.map(({ title, body, icon: Icon }) => (
-          <div key={title} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-50 text-orange-600">
-                <Icon size={19} />
-              </div>
-              <div className="text-left">
-                <h2 className="text-sm font-black text-slate-950">{title}</h2>
-                <p className="mt-1 text-xs font-medium leading-5 text-slate-600">{body}</p>
-              </div>
-            </div>
-          </div>
-        ))}
+      {/* Heading + statement */}
+      <div className="mt-5 space-y-2 text-center">
+        <h1 className="text-2xl font-black text-slate-950">Before you continue</h1>
+        <p className="text-sm font-medium leading-6 text-slate-500">
+          TrendSCORE collects and processes school data to power attendance, assessments,
+          fees and communication — securely and responsibly.
+        </p>
       </div>
 
-      <div className="mx-auto mt-5 max-w-md rounded-2xl border border-brand-purple/15 bg-brand-purple/5 p-4">
-        <label className="flex cursor-pointer items-start gap-3 text-left">
-          <input
-            type="checkbox"
-            checked={accepted}
-            required
-            onChange={(event) => setAccepted(event.target.checked)}
-            className="mt-1 h-5 w-5 shrink-0 rounded border-slate-300 text-brand-purple accent-brand-purple focus:ring-brand-purple"
-          />
-          <span className="text-sm font-bold leading-6 text-slate-800">
-            I have read and agree to the Terms of Use, Privacy Policy and Data Protection Policy.
-          </span>
-        </label>
-        <button
-          type="button"
-          onClick={onViewPolicy}
-          className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-sm font-bold text-brand-purple"
-        >
-          <FileText size={16} />
-          View Full Policy
-        </button>
-      </div>
+      {/* Policy link */}
+      <button
+        type="button"
+        onClick={onViewPolicy}
+        className="mt-6 inline-flex items-center gap-1.5 text-sm font-bold text-brand-purple underline underline-offset-2"
+      >
+        <FileText size={15} />
+        Read our Terms, Privacy &amp; Data Policy
+      </button>
+
+      {/* Checkbox */}
+      <label className="mt-8 flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left shadow-sm">
+        <input
+          type="checkbox"
+          checked={accepted}
+          required
+          onChange={(e) => setAccepted(e.target.checked)}
+          className="mt-0.5 h-5 w-5 shrink-0 rounded border-slate-300 accent-orange-500 focus:ring-orange-400"
+        />
+        <span className="text-sm font-semibold leading-6 text-slate-700">
+          I agree to the Terms of Use, Privacy Policy and Data Protection Policy.
+        </span>
+      </label>
     </div>
   );
 }
@@ -267,9 +227,45 @@ function MobileOnboardingFlow({ onComplete }) {
   const [accepted, setAccepted] = useState(false);
   const [showPolicy, setShowPolicy] = useState(false);
   const isConsentStep = step === onboardingScreens.length;
+  const autoSlideRef = useRef(null);
 
   const currentScreen = onboardingScreens[step];
   const progressItems = useMemo(() => [...onboardingScreens, { headline: 'Consent' }], []);
+
+  // ── Auto-slide every 3.5 s on onboarding screens only ────────────────
+  const startAutoSlide = () => {
+    clearInterval(autoSlideRef.current);
+    autoSlideRef.current = setInterval(() => {
+      setStep((current) => {
+        // stop auto-slide once we reach the consent step
+        if (current >= onboardingScreens.length - 1) {
+          clearInterval(autoSlideRef.current);
+          return current + 1;
+        }
+        return current + 1;
+      });
+    }, 3500);
+  };
+
+  useEffect(() => {
+    if (!isConsentStep) {
+      startAutoSlide();
+    } else {
+      clearInterval(autoSlideRef.current);
+    }
+    return () => clearInterval(autoSlideRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConsentStep]);
+
+  // Reset timer on manual navigation
+  const goToStep = (next) => {
+    setStep(next);
+    if (next < onboardingScreens.length) {
+      startAutoSlide();
+    } else {
+      clearInterval(autoSlideRef.current);
+    }
+  };
 
   useEffect(() => {
     let meta = document.querySelector('meta[name="theme-color"]');
@@ -298,9 +294,15 @@ function MobileOnboardingFlow({ onComplete }) {
     };
   }, []);
 
+  const handleSkip = () => {
+    clearInterval(autoSlideRef.current);
+    saveConsent();
+    onComplete?.();
+  };
+
   const handleNext = () => {
     if (!isConsentStep) {
-      setStep((current) => current + 1);
+      goToStep(step + 1);
       return;
     }
 
@@ -311,14 +313,14 @@ function MobileOnboardingFlow({ onComplete }) {
 
   return (
     <div className="min-h-[100dvh] w-full overflow-hidden bg-white text-slate-950">
-      <div className="flex min-h-[100dvh] w-full flex-col bg-white">
+      <div className="flex h-[100dvh] w-full flex-col bg-white">
         <header
           className="flex shrink-0 items-center justify-between px-5 pb-3"
           style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.25rem)' }}
         >
           <button
             type="button"
-            onClick={() => setStep((current) => Math.max(0, current - 1))}
+            onClick={() => goToStep(Math.max(0, step - 1))}
             disabled={step === 0}
             className="flex h-10 w-10 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 disabled:opacity-0"
             aria-label="Go back"
@@ -331,7 +333,19 @@ function MobileOnboardingFlow({ onComplete }) {
               TrendSCORE
             </span>
           </div>
-          <div className="h-10 w-10" />
+          {/* Skip button — only visible on onboarding slides, not the consent step */}
+          {!isConsentStep ? (
+            <button
+              type="button"
+              onClick={handleSkip}
+              className="flex h-10 items-center justify-center rounded-full px-3 text-xs font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+              aria-label="Skip onboarding"
+            >
+              Skip
+            </button>
+          ) : (
+            <div className="h-10 w-10" />
+          )}
         </header>
 
         <main className="flex min-h-0 flex-1 flex-col transition-opacity duration-200">
@@ -352,9 +366,12 @@ function MobileOnboardingFlow({ onComplete }) {
         >
           <div className="mb-4 flex items-center justify-center gap-2">
             {progressItems.map((item, index) => (
-              <span
+              <button
                 key={item.headline}
-                className={`h-2 rounded-full transition-all duration-200 ${
+                type="button"
+                aria-label={`Go to slide ${index + 1}`}
+                onClick={() => !isConsentStep && goToStep(index)}
+                className={`h-2 rounded-full transition-all duration-300 ${
                   index === step ? 'w-8 bg-orange-500' : 'w-2 bg-slate-200'
                 }`}
               />

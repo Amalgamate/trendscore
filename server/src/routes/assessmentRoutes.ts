@@ -185,7 +185,7 @@ router.delete(
 router.post(
   '/tests',
   authenticate,
-  requireRole(['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER']),
+  requireRole(['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER']),
   rateLimit({ windowMs: 60_000, maxRequests: 20 }),
   validate(createSummativeTestSchema),
   auditLog('CREATE_SUMMATIVE_TEST'),
@@ -196,7 +196,7 @@ router.post(
 router.post(
   '/tests/bulk',
   authenticate,
-  requireRole(['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER']),
+  requireRole(['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER']),
   rateLimit({ windowMs: 60_000, maxRequests: 50 }),
   auditLog('GENERATE_TESTS_BULK'),
   assessmentController.generateTestsBulk
