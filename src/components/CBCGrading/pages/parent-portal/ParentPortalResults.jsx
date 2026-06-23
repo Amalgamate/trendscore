@@ -21,7 +21,6 @@ import {
   ResponsiveContainer, Cell,
 } from 'recharts';
 import { dashboardAPI } from '../../../../services/api';
-import MobileBottomNav from '../../dashboard/mobile/MobileBottomNav';
 import ParentChildProfile from '../parent/ParentChildProfile';
 
 const fmtPct = (n) => `${Math.round(Number(n || 0))}%`;
@@ -368,10 +367,7 @@ const ParentPortalResults = ({ onNavigate }) => {
   // ── Child detail view ──
   if (selectedChild) {
     return (
-      <>
-        <ParentChildProfile child={selectedChild} onBack={() => setSelectedChild(null)} initialTab="results" />
-        <MobileBottomNav role="PARENT" currentPath="parent-portal-results" onNavigate={onNavigate} />
-      </>
+      <ParentChildProfile child={selectedChild} onBack={() => setSelectedChild(null)} initialTab="results" />
     );
   }
 
@@ -428,7 +424,6 @@ const ParentPortalResults = ({ onNavigate }) => {
         )}
       </div>
 
-      <MobileBottomNav role="PARENT" currentPath="parent-portal-results" onNavigate={onNavigate} />
     </div>
   );
 };

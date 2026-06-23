@@ -932,6 +932,8 @@ export class DashboardController {
             const staffEndOfToday = new Date(staffStartOfToday);
             staffEndOfToday.setHours(23, 59, 59, 999);
             const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+            const startOfWeek = new Date(startOfToday);
+            startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
             const startOfTerm = activeTermConfig?.startDate ? new Date(activeTermConfig.startDate) : new Date(now.getFullYear(), 0, 1);
 
             const dateFilter     = this.getDateFilter(filter as string);
@@ -1053,7 +1055,72 @@ export class DashboardController {
                     take: 5,
                     include: { account: true }
                 }),
-                // [28] teacher/tutor clock-in records for today
+                // [28-35] fee collection pulse + executive drilldowns
+                prisma.feePayment.aggregate({
+                    where: { archived: false, paymentDate: { gte: startOfToday } },
+                    _sum: { amount: true }
+                }),
+                prisma.feePayment.aggregate({
+                    where: { archived: false, paymentDate: { gte: startOfWeek } },
+                    _sum: { amount: true }
+                }),
+                prisma.feePayment.aggregate({
+                    where: { archived: false, paymentDate: { gte: startOfMonth } },
+                    _sum: { amount: true }
+                }),
+                prisma.feePayment.findMany({
+                    where: { archived: false, paymentDate: { gte: startOfTerm } },
+                    orderBy: { paymentDate: 'desc' },
+                    take: 5,
+                    select: {
+                        id: true,
+                        receiptNumber: true,
+                        amount: true,
+                        paymentDate: true,
+                        paymentMethod: true,
+                        invoice: {
+                            select: {
+                                invoiceNumber: true,
+                                learner: {
+                                    select: {
+                                        firstName: true,
+                                        lastName: true,
+                                        grade: true,
+                                        stream: true,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }),
+                prisma.feeInvoice.findMany({
+                    where: { archived: false, academicYear: activeAcademicYear, balance: { gt: 0 } },
+                    orderBy: { balance: 'desc' },
+                    take: 120,
+                    select: {
+                        balance: true,
+                        learner: {
+                            select: {
+                                grade: true,
+                                stream: true,
+                            }
+                        }
+                    }
+                }),
+                prisma.summativeResult.aggregate({
+                    where: { archived: false, createdAt: dateFilter },
+                    _avg: { percentage: true },
+                }),
+                prisma.summativeResult.aggregate({
+                    where: { archived: false, createdAt: prevDateFilter },
+                    _avg: { percentage: true },
+                }),
+                prisma.expense.aggregate({
+                    where: { status: { not: 'PAID' } },
+                    _sum: { amount: true },
+                    _count: true,
+                }),
+                // [36] teacher/tutor clock-in records for today
                 prisma.staffAttendanceLog.findMany({
                     where: {
                         date: { gte: staffStartOfToday, lte: staffEndOfToday },
@@ -1061,14 +1128,14 @@ export class DashboardController {
                     },
                     select: { userId: true },
                 }),
-                // [29] subordinate staff user count (non-teacher, non-parent roles)
+                // [37] subordinate staff user count (non-teacher, non-parent roles)
                 prisma.user.count({
                     where: {
                         role: { in: ['ACCOUNTANT', 'RECEPTIONIST', 'ADMIN', 'HEAD_TEACHER'] as any },
                         archived: false,
                     },
                 }),
-                // [30] subordinate staff clock-in records for today
+                // [38] subordinate staff clock-in records for today
                 prisma.staffAttendanceLog.findMany({
                     where: {
                         date: { gte: staffStartOfToday, lte: staffEndOfToday },
@@ -1090,6 +1157,8 @@ export class DashboardController {
                 subjectRatings, assessedClassCount, staffOnLeaveCount,
                 expensesToday, expensesThisMonth, expensesThisTerm, expensesByCategory,
                 recentExpenses,
+                feeCollectionsToday, feeCollectionsThisWeek, feeCollectionsThisMonth, recentFeePayments,
+                topDebtorInvoices, currentAssessmentAverage, previousAssessmentAverage, pendingBills,
                 teacherClockInsToday, subordinateStaffCount, subordinateClockInsToday,
             ] = resultStage1 as any[];
 
@@ -1300,6 +1369,36 @@ export class DashboardController {
             });
             const scopedFeeCollected = scopedFeeByGrade.reduce((sum: number, row: any) => sum + Number(row._sum.paidAmount || 0), 0);
             const scopedFeePending = scopedFeeByGrade.reduce((sum: number, row: any) => sum + Number(row._sum.balance || 0), 0);
+            const averageAssessmentScore = Number(currentAssessmentAverage?._avg?.percentage || 0);
+            const previousAssessmentScore = Number(previousAssessmentAverage?._avg?.percentage || 0);
+            const assessmentTrend = this.calculateTrend(averageAssessmentScore, previousAssessmentScore);
+
+            const debtorClassMap = new Map<string, { className: string; outstanding: number; learners: number }>();
+            (topDebtorInvoices || []).forEach((invoice: any) => {
+                const learner = invoice?.learner;
+                const grade = String(learner?.grade || 'UNASSIGNED').replace(/_/g, ' ');
+                const stream = String(learner?.stream || '').trim();
+                const className = stream ? `${grade} · ${stream}` : grade;
+                const current = debtorClassMap.get(className) || { className, outstanding: 0, learners: 0 };
+                current.outstanding += Number(invoice?.balance || 0);
+                current.learners += 1;
+                debtorClassMap.set(className, current);
+            });
+            const topDebtorClasses = Array.from(debtorClassMap.values())
+                .sort((a, b) => b.outstanding - a.outstanding)
+                .slice(0, 5);
+
+            const recentPayments = (recentFeePayments || []).map((payment: any) => ({
+                id: payment.id,
+                receiptNumber: payment.receiptNumber,
+                amount: Number(payment.amount || 0),
+                paymentDate: payment.paymentDate,
+                paymentMethod: payment.paymentMethod,
+                invoiceNumber: payment.invoice?.invoiceNumber || null,
+                learnerName: `${payment.invoice?.learner?.firstName || ''} ${payment.invoice?.learner?.lastName || ''}`.trim(),
+                grade: payment.invoice?.learner?.grade || null,
+                stream: payment.invoice?.learner?.stream || null,
+            }));
 
             // Calculate category-wise revenue breakdown
             let totalTuitionPaid = 0;
@@ -1422,9 +1521,14 @@ export class DashboardController {
                     avgAttendance: parseFloat(avgAttendance.toFixed(1)),
                     feeCollected: scopedFeeCollected,
                     feePending:   scopedFeePending,
+                    feeCollectionsToday: Number(feeCollectionsToday?._sum?.amount || 0),
+                    feeCollectionsThisWeek: Number(feeCollectionsThisWeek?._sum?.amount || 0),
+                    feeCollectionsThisMonth: Number(feeCollectionsThisMonth?._sum?.amount || 0),
                     staffOnLeave: staffOnLeaveCount,
                     studentTrend: this.calculateTrend(displayedStudentCount,  prevStudentCount),
                     teacherTrend: this.calculateTrend(teacherCount,  prevTeacherCount),
+                    averageAssessmentScore: parseFloat(averageAssessmentScore.toFixed(1)),
+                    assessmentTrend,
                     males:   genderDistribution.find((g: any) => g.gender === 'MALE')  ?._count || 0,
                     females: genderDistribution.find((g: any) => g.gender === 'FEMALE')?._count || 0,
                     totalPendingAssessments: pendingDraftCount,
@@ -1465,10 +1569,22 @@ export class DashboardController {
                     })),
                     revenueSources,
                     totalExpenses: Number(expensesThisTerm._sum.amount || 0),
+                    profitPosition: scopedFeeCollected - Number(expensesThisTerm._sum.amount || 0),
+                    collectionWindows: {
+                        today: Number(feeCollectionsToday?._sum?.amount || 0),
+                        week: Number(feeCollectionsThisWeek?._sum?.amount || 0),
+                        month: Number(feeCollectionsThisMonth?._sum?.amount || 0),
+                    },
+                    recentPayments,
+                    topDebtorClasses,
                     expensesSummary: {
                         today: Number(expensesToday._sum.amount || 0),
                         thisMonth: Number(expensesThisMonth._sum.amount || 0),
                         thisTerm: Number(expensesThisTerm._sum.amount || 0),
+                        pendingBills: {
+                            count: Number(pendingBills?._count || 0),
+                            amount: Number(pendingBills?._sum?.amount || 0),
+                        },
                         byCategory: expensesByCategory.map((item: any) => ({
                             category: item.category,
                             amount: Number(item._sum.amount || 0)

@@ -15,7 +15,6 @@ import {
   ChevronRight, RefreshCw, X, Users,
 } from 'lucide-react';
 import { dashboardAPI, feeAPI } from '../../../../services/api';
-import MobileBottomNav from '../../dashboard/mobile/MobileBottomNav';
 
 const fmt    = (n) => Number(n || 0).toLocaleString();
 const fmtPct = (n) => `${Math.round(Number(n || 0))}%`;
@@ -342,8 +341,6 @@ const ParentPortalFees = ({ user, onNavigate }) => {
           </div>
         )}
       </div>
-
-      <MobileBottomNav role="PARENT" currentPath="parent-portal-fees" onNavigate={onNavigate} />
     </div>
   );
 };

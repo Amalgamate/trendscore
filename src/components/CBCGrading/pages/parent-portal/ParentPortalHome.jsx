@@ -1,19 +1,18 @@
 /**
  * ParentPortalHome — Family Dashboard
- * Matches design reference: purple family overview card, child summary strip,
- * 6-item quick actions, compact header with hamburger + greeting + bell badge.
- *
- * NOTE: MobileBottomNav is NOT rendered here — MobileAppShell already renders it.
+ * Purple family overview card · child summary strip · quick actions
+ * Header is now the shared MobilePortalAppBar (white, logo, real bell count, avatar dropdown).
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Menu, Bell, CreditCard, BarChart2, Users, MessageSquare,
+  CreditCard, BarChart2, Users, MessageSquare,
   MapPin, FolderOpen, ChevronRight, Eye,
-  AlertCircle, FileText, RefreshCw,
+  AlertCircle, FileText,
 } from 'lucide-react';
 import { dashboardAPI } from '../../../../services/api';
 import ParentChildProfile from '../parent/ParentChildProfile';
+import MobilePortalAppBar from '../../layout/MobilePortalAppBar';
 
 const fmt    = (n) => Number(n || 0).toLocaleString();
 const fmtPct = (n) => `${Math.round(Number(n || 0))}%`;
@@ -22,19 +21,18 @@ function Skeleton({ className = '' }) {
   return <div className={`animate-pulse rounded-lg bg-gray-200 ${className}`} />;
 }
 
-// ─── Family Overview Card (solid purple) ─────────────────────────────────────
+// ─── Family Overview Card ──────────────────────────────────────────────────
 
 function FamilyOverviewCard({ metrics, loading, onNavigate }) {
-  const children       = metrics?.children || [];
-  const stats          = metrics?.stats    || {};
-  const messages       = metrics?.messages || [];
-  const unread         = messages.filter(m => m.unread || m.isUnread).length;
-  const totalBalance   = Number(stats.totalBalance || 0);
+  const children     = metrics?.children || [];
+  const stats        = metrics?.stats    || {};
+  const messages     = metrics?.messages || [];
+  const unread       = messages.filter((m) => m.unread || m.isUnread).length;
+  const totalBalance = Number(stats.totalBalance || 0);
   const [balVisible, setBalVisible] = useState(true);
 
   return (
     <div className="bg-[#3B1FA3] rounded-2xl p-5 text-white">
-      {/* Top row */}
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-white/60 mb-1">
@@ -48,7 +46,8 @@ function FamilyOverviewCard({ metrics, loading, onNavigate }) {
                 {balVisible ? `KES ${fmt(totalBalance)}` : 'KES ••••••'}
               </p>
               <button
-                onClick={() => setBalVisible(v => !v)}
+                type="button"
+                onClick={() => setBalVisible((v) => !v)}
                 className="opacity-60 hover:opacity-100 transition-opacity"
               >
                 <Eye size={16} />
@@ -58,59 +57,46 @@ function FamilyOverviewCard({ metrics, loading, onNavigate }) {
         </div>
         <div className="text-right ml-4 flex-shrink-0">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-white/60 mb-1">Children</p>
-          {loading ? <Skeleton className="h-6 w-8 bg-white/20" /> : (
-            <p className="text-2xl font-bold">{children.length}</p>
-          )}
+          {loading
+            ? <Skeleton className="h-6 w-8 bg-white/20" />
+            : <p className="text-2xl font-bold">{children.length}</p>}
         </div>
       </div>
 
-      {/* Stats row */}
       <div className="grid grid-cols-3 gap-3 mb-5">
         {[
-          {
-            label: 'Attendance (Avg)',
-            value: loading ? null : fmtPct(stats.avgAttendance),
-            good: Number(stats.avgAttendance) >= 90,
-            delta: stats.attendanceDelta,
-          },
-          {
-            label: 'Avg Performance',
-            value: loading ? null : fmtPct(stats.avgPerformance || stats.avgScore),
-            good: true,
-            delta: stats.performanceDelta,
-          },
-          {
-            label: 'Unread Messages',
-            value: loading ? null : String(unread || messages.length),
-            good: unread === 0,
-            delta: null,
-          },
+          { label: 'Attendance (Avg)', value: loading ? null : fmtPct(stats.avgAttendance), delta: stats.attendanceDelta },
+          { label: 'Avg Performance',  value: loading ? null : fmtPct(stats.avgPerformance || stats.avgScore), delta: stats.performanceDelta },
+          { label: 'Unread Messages',  value: loading ? null : String(unread || messages.length), delta: null },
         ].map((s) => (
           <div key={s.label}>
-            {loading ? <Skeleton className="h-5 w-12 bg-white/20 mb-1" /> : (
-              <p className="text-xl font-bold flex items-center gap-1">
-                {s.value}
-                {s.delta != null && (
-                  <span className={`text-[10px] font-semibold ${s.delta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
-                    {s.delta >= 0 ? '↑' : '↓'}
-                  </span>
-                )}
-              </p>
-            )}
+            {loading
+              ? <Skeleton className="h-5 w-12 bg-white/20 mb-1" />
+              : (
+                <p className="text-xl font-bold flex items-center gap-1">
+                  {s.value}
+                  {s.delta != null && (
+                    <span className={`text-[10px] font-semibold ${s.delta >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                      {s.delta >= 0 ? '↑' : '↓'}
+                    </span>
+                  )}
+                </p>
+              )}
             <p className="text-[10px] text-white/60 leading-tight">{s.label}</p>
           </div>
         ))}
       </div>
 
-      {/* Action buttons */}
       <div className="grid grid-cols-2 gap-3">
         <button
+          type="button"
           onClick={() => onNavigate('parent-portal-fees')}
           className="flex items-center justify-center gap-2 py-2.5 bg-white text-[#3B1FA3] text-sm font-bold rounded-xl hover:bg-white/90 transition-colors"
         >
           <CreditCard size={15} /> Pay All Fees
         </button>
         <button
+          type="button"
           onClick={() => onNavigate('parent-portal-fees')}
           className="flex items-center justify-center gap-2 py-2.5 border border-white/40 text-white text-sm font-bold rounded-xl hover:bg-white/10 transition-colors"
         >
@@ -123,11 +109,11 @@ function FamilyOverviewCard({ metrics, loading, onNavigate }) {
 
 // ─── Children Summary Strip ───────────────────────────────────────────────────
 
-function ChildrenSummary({ children, loading, onSelectChild, onNavigate }) {
+function ChildrenSummary({ children, loading, onSelectChild }) {
   if (loading) {
     return (
       <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
-        {[1, 2, 3].map(i => (
+        {[1, 2, 3].map((i) => (
           <div key={i} className="flex-shrink-0 w-36 bg-white border border-gray-200 rounded-xl p-3">
             <Skeleton className="h-10 w-10 rounded-full mb-2" />
             <Skeleton className="h-3 w-20 mb-1" />
@@ -151,32 +137,26 @@ function ChildrenSummary({ children, loading, onSelectChild, onNavigate }) {
   return (
     <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
       {children.map((child) => {
-        const bal         = Number(child.feeBalance || 0);
-        const attendance  = Math.round(Number(child.attendanceRate || 0));
-        const barColor    = attendance >= 90 ? 'bg-emerald-500' : attendance >= 75 ? 'bg-amber-400' : 'bg-rose-500';
+        const bal        = Number(child.feeBalance || 0);
+        const attendance = Math.round(Number(child.attendanceRate || 0));
+        const barColor   = attendance >= 90 ? 'bg-emerald-500' : attendance >= 75 ? 'bg-amber-400' : 'bg-rose-500';
 
         return (
           <button
             key={child.id}
+            type="button"
             onClick={() => onSelectChild(child)}
             className="flex-shrink-0 w-36 bg-white border border-gray-200 rounded-xl p-3 text-left hover:border-[#3B1FA3]/40 hover:shadow-sm transition-all active:scale-95"
           >
-            {/* Avatar */}
             <div className="w-10 h-10 rounded-full bg-[#3B1FA3]/10 text-[#3B1FA3] font-bold text-sm flex items-center justify-center mb-2">
               {child.name?.[0] || '?'}
             </div>
-
-            {/* Name */}
             <p className="text-xs font-bold text-gray-900 truncate leading-tight">{child.name?.split(' ')[0]}</p>
             <p className="text-[10px] text-gray-500 truncate mb-2">{child.grade} · {child.className || 'Class'}</p>
-
-            {/* Balance */}
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Balance</p>
             <p className={`text-xs font-bold mb-2 ${bal > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
               {bal > 0 ? `KES ${fmt(bal)}` : 'Cleared'}
             </p>
-
-            {/* Attendance bar */}
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Attendance</p>
             <div className="flex items-center gap-1.5">
               <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
@@ -191,16 +171,16 @@ function ChildrenSummary({ children, loading, onSelectChild, onNavigate }) {
   );
 }
 
-// ─── Quick Actions (6 items) ──────────────────────────────────────────────────
+// ─── Quick Actions ────────────────────────────────────────────────────────────
 
 function QuickActions({ onNavigate }) {
   const actions = [
-    { label: 'Fees',        icon: CreditCard,    path: 'parent-portal-fees',       color: 'text-[#3B1FA3]', bg: 'bg-[#3B1FA3]/10' },
-    { label: 'Results',     icon: BarChart2,      path: 'parent-portal-results',    color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Attendance',  icon: Users,          path: 'parent-portal-attendance', color: 'text-blue-600',   bg: 'bg-blue-50'     },
-    { label: 'Messages',    icon: MessageSquare,  path: 'parent-portal-messages',   color: 'text-amber-600',  bg: 'bg-amber-50'    },
-    { label: 'Transport',   icon: MapPin,         path: 'parent-portal-transport',  color: 'text-rose-600',   bg: 'bg-rose-50'     },
-    { label: 'Documents',   icon: FolderOpen,     path: 'parent-portal-documents',  color: 'text-violet-600', bg: 'bg-violet-50'   },
+    { label: 'Fees',       icon: CreditCard,   path: 'parent-portal-fees',       color: 'text-[#3B1FA3]',    bg: 'bg-[#3B1FA3]/10' },
+    { label: 'Results',    icon: BarChart2,     path: 'parent-portal-results',    color: 'text-emerald-600',  bg: 'bg-emerald-50'   },
+    { label: 'Attendance', icon: Users,         path: 'parent-portal-attendance', color: 'text-blue-600',     bg: 'bg-blue-50'      },
+    { label: 'Messages',   icon: MessageSquare, path: 'parent-portal-messages',   color: 'text-amber-600',    bg: 'bg-amber-50'     },
+    { label: 'Transport',  icon: MapPin,        path: 'parent-portal-transport',  color: 'text-rose-600',     bg: 'bg-rose-50'      },
+    { label: 'Documents',  icon: FolderOpen,    path: 'parent-portal-documents',  color: 'text-violet-600',   bg: 'bg-violet-50'    },
   ];
 
   return (
@@ -210,6 +190,7 @@ function QuickActions({ onNavigate }) {
         return (
           <button
             key={a.label}
+            type="button"
             onClick={() => onNavigate(a.path)}
             className="bg-white border border-gray-200 rounded-xl py-3.5 flex flex-col items-center gap-2 hover:bg-gray-50 active:scale-95 transition-all"
           >
@@ -224,9 +205,9 @@ function QuickActions({ onNavigate }) {
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Main ─────────────────────────────────────────────────────────────────────
 
-const ParentPortalHome = ({ user, onNavigate }) => {
+const ParentPortalHome = ({ user, onNavigate, brandingSettings }) => {
   const [metrics, setMetrics]             = useState(null);
   const [loading, setLoading]             = useState(true);
   const [error, setError]                 = useState(null);
@@ -240,20 +221,18 @@ const ParentPortalHome = ({ user, onNavigate }) => {
       else setError(res?.message || 'Failed to load dashboard');
     } catch (e) {
       setError(e?.message || 'Failed to load dashboard');
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadMetrics(); }, [loadMetrics]);
 
-  const hour      = new Date().getHours();
-  const greeting  = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const firstName = user?.firstName || user?.name?.split(' ')[0] || 'Parent';
+  const hour     = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
   const children = metrics?.children || [];
-  const messages = metrics?.messages || [];
-  const unread   = messages.filter(m => m.unread || m.isUnread).length;
 
-  // Child profile overlay — renders full-screen within the shell scroll area
   if (selectedChild) {
     return (
       <ParentChildProfile
@@ -266,58 +245,37 @@ const ParentPortalHome = ({ user, onNavigate }) => {
   return (
     <div className="min-h-screen bg-[#F5F5F7] pb-24">
 
-      {/* ── Header ── */}
-      <div className="bg-white sticky top-0 z-10 border-b border-gray-100">
-        <div className="flex items-center justify-between px-4 py-3">
-          <button className="w-8 h-8 flex items-center justify-center text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-            <Menu size={20} />
-          </button>
-          <div className="text-center">
-            <p className="text-xs text-gray-500 leading-none">{greeting},</p>
-            <p className="text-sm font-bold text-gray-900 leading-tight">{firstName} 👋</p>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={loadMetrics}
-              className="w-8 h-8 flex items-center justify-center text-gray-400 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Refresh"
-            >
-              <RefreshCw size={15} />
-            </button>
-            <button
-              onClick={() => onNavigate('parent-portal-messages')}
-              className="w-8 h-8 flex items-center justify-center relative"
-            >
-              <Bell size={20} className="text-gray-600" />
-              {unread > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5">
-                  {unread > 9 ? '9+' : unread}
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
+      {/* Shared white app bar */}
+      <MobilePortalAppBar
+        user={user}
+        onNavigate={onNavigate}
+        onRefresh={loadMetrics}
+        brandingSettings={brandingSettings}
+        greeting={greeting}
+        accentColor="#3B1FA3"
+        bellTarget="parent-portal-messages"
+      />
 
-      {/* ── Content ── */}
       <div className="px-4 pt-4 space-y-5">
 
         {error && !loading && (
           <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 flex items-center gap-2">
             <AlertCircle size={14} className="text-rose-600 flex-shrink-0" />
             <p className="text-xs text-rose-700 flex-1">{error}</p>
-            <button onClick={loadMetrics} className="text-[10px] text-rose-600 font-bold underline">Retry</button>
+            <button type="button" onClick={loadMetrics} className="text-[10px] text-rose-600 font-bold underline">Retry</button>
           </div>
         )}
 
-        {/* 1. Family Overview Card */}
         <FamilyOverviewCard metrics={metrics} loading={loading} onNavigate={onNavigate} />
 
-        {/* 2. Children Summary */}
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-bold text-gray-900">Children Summary</h2>
-            <button onClick={() => onNavigate('parent-portal-children')} className="text-xs text-[#3B1FA3] font-semibold flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => onNavigate('parent-portal-children')}
+              className="text-xs text-[#3B1FA3] font-semibold flex items-center gap-0.5"
+            >
               View all <ChevronRight size={12} />
             </button>
           </div>
@@ -325,11 +283,9 @@ const ParentPortalHome = ({ user, onNavigate }) => {
             children={children}
             loading={loading}
             onSelectChild={setSelectedChild}
-            onNavigate={onNavigate}
           />
         </div>
 
-        {/* 3. Quick Actions */}
         <div>
           <h2 className="text-sm font-bold text-gray-900 mb-3">Quick Actions</h2>
           <QuickActions onNavigate={onNavigate} />

@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import { supportAPI } from '../../../../services/supportApi';
 import { PRODUCT_SUPPORT_EMAIL } from '../../../../config/productIdentity';
-import MobileBottomNav from '../../dashboard/mobile/MobileBottomNav';
 
 // ─── Parent FAQ content ─────────────────────────────────────────────────────
 
@@ -475,7 +474,6 @@ const ParentPortalSupport = ({ onNavigate }) => {
         />
       )}
 
-      <MobileBottomNav role="PARENT" currentPath="parent-portal-support" onNavigate={onNavigate} />
     </div>
   );
 };

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     User, Mail, Phone, Users, MapPin,
-    Briefcase, FileText, Printer, Download, GraduationCap, Camera, Key
+    Briefcase, FileText, Download, GraduationCap, Key
 } from 'lucide-react';
 import api from '../../../../services/api';
 import ProfileHeader from '../../shared/ProfileHeader';
@@ -9,17 +9,66 @@ import ProfileLayout from '../../shared/ProfileLayout';
 import { useNotifications } from '../../hooks/useNotifications';
 import ProfilePhotoModal from '../../shared/ProfilePhotoModal';
 
+const normalizeParentProfile = (parent = {}) => {
+    const derivedName = [parent.firstName, parent.middleName, parent.lastName].filter(Boolean).join(' ').trim();
+    const fullName = derivedName || parent.name;
+    const learners = Array.isArray(parent.learners) ? parent.learners : [];
+
+    return {
+        ...parent,
+        name: fullName || parent.email || parent.phone || 'Parent/Guardian',
+        relationship: parent.relationship || 'Parent/Guardian',
+        occupation: parent.occupation || 'N/A',
+        county: parent.county || 'N/A',
+        learners,
+        learnerIds: Array.isArray(parent.learnerIds)
+            ? parent.learnerIds
+            : learners.map((learner) => learner.admissionNumber).filter(Boolean)
+    };
+};
+
 const ParentProfile = ({ parent, onBack }) => {
     const [activeTab, setActiveTab] = useState('overview');
     const { showSuccess, showError } = useNotifications();
     const [showPhotoModal, setShowPhotoModal] = useState(false);
+    const [resolvedParent, setResolvedParent] = useState(() => normalizeParentProfile(parent));
+
+    useEffect(() => {
+        let isMounted = true;
+        const initialParent = normalizeParentProfile(parent);
+        setResolvedParent(initialParent);
+
+        if (!parent?.id) return () => { isMounted = false; };
+
+        const fetchLatestParent = async () => {
+            try {
+                const response = await api.users.getById(parent.id);
+                if (!isMounted || !response?.success) return;
+                setResolvedParent(normalizeParentProfile({
+                    ...initialParent,
+                    ...response.data
+                }));
+            } catch (error) {
+                console.error('Failed to refresh parent profile:', error);
+            }
+        };
+
+        fetchLatestParent();
+        return () => { isMounted = false; };
+    }, [parent]);
+
+    const displayParent = useMemo(() => normalizeParentProfile(resolvedParent), [resolvedParent]);
+    const displayName = displayParent.name;
 
     const handleSavePhoto = async (photoData) => {
         try {
-            const response = await api.users.uploadPhoto(parent.id, photoData);
+            const response = await api.users.uploadPhoto(displayParent.id, photoData);
             if (response?.success) {
+                setResolvedParent((prev) => normalizeParentProfile({
+                    ...prev,
+                    profilePicture: photoData
+                }));
                 showSuccess('Profile photo updated successfully');
-                window.location.reload();
                 return true;
             }
             showError(response?.error || 'Failed to update profile photo');
@@ -32,17 +81,17 @@ const ParentProfile = ({ parent, onBack }) => {
     };
 
     const handleSendCredentials = async () => {
-        if (!parent.phone && !parent.email) {
+        if (!displayParent.phone && !displayParent.email) {
             showError('Parent needs a phone or email to receive credentials.');
             return;
         }
 
-        if (!window.confirm(`Send login credentials to ${parent.name}? This will reset their password and notify them.`)) {
+        if (!window.confirm(`Send login credentials to ${displayName}? This will reset their password and notify them.`)) {
             return;
         }
 
         try {
-            const response = await api.users.sendCredentials(parent.id);
+            const response = await api.users.sendCredentials(displayParent.id);
             if (response.success) {
                 showSuccess('Credentials dispatched via SMS and WhatsApp!');
             } else {
@@ -58,7 +107,7 @@ const ParentProfile = ({ parent, onBack }) => {
         { id: 2, name: 'Communication_Consent.pdf', date: '2021-01-20', size: '150 KB' },
     ];
 
-    if (!parent) return null;
+    if (!displayParent) return null;
 
     const tabs = [
         { id: 'overview', label: 'Overview', icon: User },
@@ -83,14 +132,14 @@ const ParentProfile = ({ parent, onBack }) => {
             }}
         >
             <ProfileHeader
-                name={parent.name}
-                avatar={parent.profilePicture || parent.avatar}
-                avatarFallback={parent.name?.substring(0, 2).toUpperCase()}
+                name={displayName}
+                avatar={displayParent.profilePicture || displayParent.avatar}
+                avatarFallback={displayName.substring(0, 2).toUpperCase()}
                 bannerPattern="pattern-grid-lg"
                 bannerColor="brand-purple"
                 badges={[
-                    { text: parent.relationship, className: "px-2.5 py-0.5 rounded-md bg-purple-50 text-brand-purple text-xs font-medium uppercase tracking-wider border border-purple-100" },
-                    { text: parent.county || 'N/A', icon: MapPin }
+                    { text: displayParent.relationship, className: "px-2.5 py-0.5 rounded-md bg-purple-50 text-brand-purple text-xs font-medium uppercase tracking-wider border border-purple-100" },
+                    { text: displayParent.county || 'N/A', icon: MapPin }
                 ]}
                 tabs={tabs}
                 activeTab={activeTab}
@@ -115,25 +164,25 @@ const ParentProfile = ({ parent, onBack }) => {
                                         <label className="premium-label flex items-center gap-2">
                                             <Phone size={14} className="text-gray-400" /> Phone Number
                                         </label>
-                                        <p className="text-gray-800 font-medium text-lg">{parent.phone || 'N/A'}</p>
+                                        <p className="text-gray-800 font-medium text-lg">{displayParent.phone || 'N/A'}</p>
                                     </div>
                                     <div>
                                         <label className="premium-label flex items-center gap-2">
                                             <Mail size={14} className="text-gray-400" /> Email Address
                                         </label>
-                                        <p className="text-gray-800 font-medium">{parent.email || 'N/A'}</p>
+                                        <p className="text-gray-800 font-medium">{displayParent.email || 'N/A'}</p>
                                     </div>
                                     <div>
                                         <label className="premium-label flex items-center gap-2">
                                             <Briefcase size={14} className="text-gray-400" /> Occupation
                                         </label>
-                                        <p className="text-gray-800 font-medium">{parent.occupation || 'N/A'}</p>
+                                        <p className="text-gray-800 font-medium">{displayParent.occupation || 'N/A'}</p>
                                     </div>
                                     <div>
                                         <label className="premium-label flex items-center gap-2">
                                             <MapPin size={14} className="text-gray-400" /> ID Number
                                         </label>
-                                        <p className="text-gray-800 font-medium">{parent.idNumber || 'N/A'}</p>
+                                        <p className="text-gray-800 font-medium">{displayParent.idNumber || 'N/A'}</p>
                                     </div>
                                 </div>
                             </div>
@@ -149,22 +198,24 @@ const ParentProfile = ({ parent, onBack }) => {
                             <h3 className="text-lg font-medium text-gray-800">Linked Students</h3>
                         </div>
 
-                        {(parent.learners && parent.learners.length > 0) || (parent.learnerIds && parent.learnerIds.length > 0) ? (
+                        {(displayParent.learners && displayParent.learners.length > 0) || (displayParent.learnerIds && displayParent.learnerIds.length > 0) ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {parent.learners && parent.learners.length > 0 ? (
-                                    parent.learners.map((learner, index) => (
+                                {displayParent.learners && displayParent.learners.length > 0 ? (
+                                    displayParent.learners.map((learner, index) => (
                                         <div key={index} className="p-4 bg-gray-50 rounded-lg border border-gray-200 flex items-center gap-4">
                                             <div className="p-3 bg-white rounded-full border border-gray-200 text-brand-purple">
                                                 <GraduationCap size={24} />
                                             </div>
                                             <div>
                                                 <p className="font-medium text-gray-800 text-lg">{learner.firstName} {learner.lastName}</p>
-                                                <p className="text-sm text-gray-500">{learner.admissionNumber}</p>
+                                                <p className="text-sm text-gray-500">
+                                                    {learner.admissionNumber}{learner.grade ? ` • ${learner.grade}` : ''}
+                                                </p>
                                             </div>
                                         </div>
                                     ))
                                 ) : (
-                                    parent.learnerIds.map((id, index) => (
+                                    displayParent.learnerIds.map((id, index) => (
                                         <div key={index} className="p-4 bg-gray-50 rounded-lg border border-gray-200 flex items-center gap-4">
                                             <div className="p-3 bg-white rounded-full border border-gray-200 text-brand-purple">
                                                 <GraduationCap size={24} />
@@ -221,7 +272,7 @@ const ParentProfile = ({ parent, onBack }) => {
                 isOpen={showPhotoModal}
                 onClose={() => setShowPhotoModal(false)}
                 onSave={handleSavePhoto}
-                currentPhoto={parent.profilePicture || parent.avatar}
+                currentPhoto={displayParent.profilePicture || displayParent.avatar}
             />
         </ProfileLayout>
     );

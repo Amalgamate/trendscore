@@ -156,6 +156,7 @@ export class UserController {
         role: true,
         roles: true,
         status: true,
+        profilePicture: true,
         emailVerified: true,
         verificationRequired: true,
         createdAt: true,
@@ -164,6 +165,16 @@ export class UserController {
         staffId: true,
         subject: true,
         gender: true,
+        learners: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            admissionNumber: true,
+            grade: true,
+            stream: true
+          }
+        },
         classesAsTeacher: {
           select: { id: true, name: true, grade: true, stream: true }
         }
@@ -585,11 +596,21 @@ export class UserController {
     }
 
     if (search) {
-      whereClause.OR = [
-        { firstName: { contains: search as string, mode: 'insensitive' } },
-        { lastName: { contains: search as string, mode: 'insensitive' } },
-        { email: { contains: search as string, mode: 'insensitive' } },
-      ];
+      const terms = String(search)
+        .split(/\s+/)
+        .map((term) => term.trim())
+        .filter(Boolean);
+
+      if (terms.length > 0) {
+        whereClause.AND = terms.map((term) => ({
+          OR: [
+            { firstName: { contains: term, mode: 'insensitive' } },
+            { lastName: { contains: term, mode: 'insensitive' } },
+            { email: { contains: term, mode: 'insensitive' } },
+            { phone: { contains: term } },
+          ]
+        }));
+      }
     }
 
     const [users, total] = await Promise.all([
@@ -599,6 +620,7 @@ export class UserController {
           id: true,
           email: true,
           firstName: true,
+          middleName: true,
           lastName: true,
           phone: true,
           role: true,
@@ -607,6 +629,18 @@ export class UserController {
           staffId: true,
           subject: true,
           gender: true,
+          profilePicture: true,
+          createdAt: true,
+          learners: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              admissionNumber: true,
+              grade: true,
+              stream: true
+            }
+          },
           classesAsTeacher: {
             where: { active: true, archived: false },
             select: { id: true, name: true, grade: true, stream: true, academicYear: true, term: true },

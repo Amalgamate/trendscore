@@ -12,7 +12,6 @@ import {
   ArrowLeft, RefreshCw, Users, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { dashboardAPI, attendanceAPI } from '../../../../services/api';
-import MobileBottomNav from '../../dashboard/mobile/MobileBottomNav';
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '—';
 
@@ -220,8 +219,6 @@ const ParentPortalAttendance = ({ onNavigate }) => {
           </div>
         )}
       </div>
-
-      <MobileBottomNav role="PARENT" currentPath="parent-portal-attendance" onNavigate={onNavigate} />
     </div>
   );
 };

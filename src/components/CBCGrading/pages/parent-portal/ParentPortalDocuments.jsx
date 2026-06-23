@@ -10,7 +10,6 @@ import {
   File, FileSpreadsheet, Image as ImageIcon, X,
 } from 'lucide-react';
 import { documentsAPI } from '../../../../services/api';
-import MobileBottomNav from '../../dashboard/mobile/MobileBottomNav';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -243,8 +242,6 @@ const ParentPortalDocuments = ({ onNavigate }) => {
           </div>
         )}
       </div>
-
-      <MobileBottomNav role="PARENT" currentPath="parent-portal-documents" onNavigate={onNavigate} />
     </div>
   );
 };

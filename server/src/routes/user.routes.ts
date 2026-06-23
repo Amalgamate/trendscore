@@ -67,6 +67,17 @@ router.put(
 );
 
 /**
+ * @route   GET /api/users/search-parents
+ * @access  Staff roles — used during learner registration to find/link existing parents
+ */
+router.get(
+  '/search-parents',
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER']),
+  rateLimit({ windowMs: 60_000, maxRequests: 100 }),
+  asyncHandler(userController.searchParents)
+);
+
+/**
  * @route   GET /api/users/role/:role
  * @access  VIEW_ALL_USERS permission
  */

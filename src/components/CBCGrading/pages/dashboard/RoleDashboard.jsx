@@ -52,7 +52,7 @@ const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brand
     switch (role) {
       case 'OWNER':
       case 'ADMIN':
-        return <AdminDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
+        return <AdminDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} brandingSettings={brandingSettings} />;
       case 'SUPER_ADMIN':
         return <SuperAdminDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
       case 'HEAD_TEACHER':
@@ -83,7 +83,7 @@ const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brand
   switch (role) {
     case 'OWNER':
     case 'ADMIN':
-      return <AdminDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
+      return <AdminDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} brandingSettings={brandingSettings} />;
     case 'SUPER_ADMIN':
       return <SuperAdminDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
 

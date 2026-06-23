@@ -1,5 +1,6 @@
-import React from 'react';
-import { AlertCircle } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, CheckCircle2, Loader2, Search } from 'lucide-react';
+import { parentAPI } from '../../../../services/api/parent.api';
 
 const CONTACTS = [
   {
@@ -28,8 +29,42 @@ const CONTACTS = [
   }
 ];
 
+const buildLookupDefaults = () =>
+  CONTACTS.reduce((acc, contact) => {
+    acc[contact.key] = {
+      query: '',
+      loading: false,
+      open: false,
+      results: [],
+      selectedParent: null
+    };
+    return acc;
+  }, {});
+
+const normalizeSearchValue = (value = '') => String(value || '').trim().toLowerCase();
+
+const parentMatchesQuery = (parent, query) => {
+  const normalizedQuery = normalizeSearchValue(query);
+  if (!normalizedQuery) return true;
+
+  const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
+  const fullName = normalizeSearchValue([parent.firstName, parent.lastName].filter(Boolean).join(' '));
+  const email = normalizeSearchValue(parent.email);
+  const phone = normalizeSearchValue(parent.phone);
+
+  return tokens.every(
+    (token) => fullName.includes(token) || email.includes(token) || phone.includes(token)
+  );
+};
+
 const ParentGuardianStep = ({ formData = {}, onChange }) => {
+  const [lookups, setLookups] = useState(buildLookupDefaults);
   const update = (patch) => onChange({ ...formData, ...patch });
+
+  const selectedParentId = formData.parentId || '';
+  const fatherLookupQuery = lookups.FATHER?.query || '';
+  const motherLookupQuery = lookups.MOTHER?.query || '';
+  const guardianLookupQuery = lookups.GUARDIAN?.query || '';
 
   const splitNameParts = (fullName = '') => {
     const tokens = String(fullName || '').trim().split(/\s+/).filter(Boolean);
@@ -44,6 +79,51 @@ const ParentGuardianStep = ({ formData = {}, onChange }) => {
   };
 
   const composeName = (first = '', middle = '', last = '') => [first, middle, last].filter(Boolean).join(' ').trim();
+
+  const buildLinkedParentPatch = (contact, parent) => {
+    const parentName = composeName(parent.firstName, '', parent.lastName);
+    const patch = {
+      [contact.nameField]: parentName,
+      [contact.phoneField]: parent.phone || '',
+      [contact.emailField]: parent.email || '',
+      parentId: parent.id
+    };
+
+    if (contact.relationField && !formData[contact.relationField]) {
+      patch[contact.relationField] = 'Parent';
+    }
+
+    if (formData.primaryContactType === contact.key) {
+      patch.primaryContactName = parentName;
+      patch.primaryContactPhone = parent.phone || '';
+      patch.primaryContactEmail = parent.email || '';
+    }
+
+    return patch;
+  };
+
+  const clearSelectedParentIfNeeded = (contact, nextValue, field) => {
+    const linkedParent = lookups[contact.key]?.selectedParent;
+    if (!linkedParent || selectedParentId !== linkedParent.id) return {};
+
+    const linkedValues = {
+      [contact.nameField]: composeName(linkedParent.firstName, '', linkedParent.lastName),
+      [contact.phoneField]: linkedParent.phone || '',
+      [contact.emailField]: linkedParent.email || ''
+    };
+
+    if ((linkedValues[field] || '') === (nextValue || '')) return {};
+
+    setLookups((prev) => ({
+      ...prev,
+      [contact.key]: {
+        ...prev[contact.key],
+        selectedParent: null
+      }
+    }));
+
+    return { parentId: '' };
+  };
 
   const setPrimaryContact = (contact) => {
     const name = formData[contact.nameField] || '';
@@ -67,7 +147,14 @@ const ParentGuardianStep = ({ formData = {}, onChange }) => {
   };
 
   const handleFieldChange = (field, value) => {
-    const next = { ...formData, [field]: value };
+    const contact = CONTACTS.find(
+      (entry) =>
+        field === entry.nameField ||
+        field === entry.phoneField ||
+        field === entry.emailField
+    );
+    const unlinkPatch = contact ? clearSelectedParentIfNeeded(contact, value, field) : {};
+    const next = { ...formData, ...unlinkPatch, [field]: value };
     const selected = CONTACTS.find((c) => c.key === formData.primaryContactType);
     if (selected && (field === selected.nameField || field === selected.phoneField || field === selected.emailField)) {
       onChange({
@@ -80,6 +167,141 @@ const ParentGuardianStep = ({ formData = {}, onChange }) => {
     }
     onChange(next);
   };
+
+  const handleLookupInputChange = (contactKey, value) => {
+    setLookups((prev) => ({
+      ...prev,
+      [contactKey]: {
+        ...prev[contactKey],
+        query: value,
+        open: true
+      }
+    }));
+  };
+
+  const handleLookupFocus = (contactKey) => {
+    setLookups((prev) => ({
+      ...prev,
+      [contactKey]: {
+        ...prev[contactKey],
+        open: true
+      }
+    }));
+  };
+
+  const handleLookupBlur = (contactKey) => {
+    window.setTimeout(() => {
+      setLookups((prev) => ({
+        ...prev,
+        [contactKey]: {
+          ...prev[contactKey],
+          open: false
+        }
+      }));
+    }, 120);
+  };
+
+  const applyParentSelection = (contact, parent) => {
+    const patch = buildLinkedParentPatch(contact, parent);
+    onChange({ ...formData, ...patch });
+    setLookups((prev) => ({
+      ...prev,
+      [contact.key]: {
+        ...prev[contact.key],
+        query: composeName(parent.firstName, '', parent.lastName),
+        open: false,
+        results: [],
+        loading: false,
+        selectedParent: parent
+      }
+    }));
+  };
+
+  useEffect(() => {
+    const timeoutIds = [];
+    const queryByContact = {
+      FATHER: fatherLookupQuery,
+      MOTHER: motherLookupQuery,
+      GUARDIAN: guardianLookupQuery
+    };
+
+    CONTACTS.forEach((contact) => {
+      const query = queryByContact[contact.key]?.trim() || '';
+
+      if (query.length < 2) {
+        setLookups((prev) => {
+          if (!prev[contact.key]?.loading && !prev[contact.key]?.results?.length) return prev;
+          return {
+            ...prev,
+            [contact.key]: {
+              ...prev[contact.key],
+              loading: false,
+              results: []
+            }
+          };
+        });
+        return;
+      }
+
+      const timeoutId = window.setTimeout(async () => {
+        setLookups((prev) => ({
+          ...prev,
+          [contact.key]: {
+            ...prev[contact.key],
+            loading: true
+          }
+        }));
+
+        try {
+          const fallbackSearch = query.split(/\s+/).filter(Boolean)[0] || query;
+          const response = await parentAPI.getAll({
+            search: fallbackSearch,
+            page: 1,
+            limit: 25
+          });
+          const parents = Array.isArray(response?.data) ? response.data : [];
+          const filteredParents = parents.filter((parent) => parentMatchesQuery(parent, query)).slice(0, 8);
+
+          setLookups((prev) => ({
+            ...prev,
+            [contact.key]: {
+              ...prev[contact.key],
+              loading: false,
+              results: filteredParents,
+              open: true
+            }
+          }));
+        } catch (error) {
+          console.error(`Failed to search ${contact.label.toLowerCase()} records:`, error);
+          setLookups((prev) => ({
+            ...prev,
+            [contact.key]: {
+              ...prev[contact.key],
+              loading: false,
+              results: []
+            }
+          }));
+        }
+      }, 250);
+      timeoutIds.push(timeoutId);
+    });
+
+    return () => {
+      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    };
+  }, [fatherLookupQuery, motherLookupQuery, guardianLookupQuery]);
+
+  const linkedParentSummary = useMemo(() => {
+    const currentLookup = CONTACTS.map((contact) => lookups[contact.key]?.selectedParent).find(
+      (parent) => parent && parent.id === selectedParentId
+    );
+
+    if (!currentLookup) return null;
+    return {
+      id: currentLookup.id,
+      label: composeName(currentLookup.firstName, '', currentLookup.lastName)
+    };
+  }, [lookups, selectedParentId]);
 
   const handlePrimaryToggle = (contact, checked) => {
     if (!checked) {
@@ -122,6 +344,64 @@ const ParentGuardianStep = ({ formData = {}, onChange }) => {
                   />
                   Primary Contact
                 </label>
+              </div>
+
+              <div className="relative">
+                <label className="block text-xs font-medium text-gray-600 uppercase tracking-tight mb-1">
+                  Search Existing Parent
+                </label>
+                <div className="relative">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={lookups[contact.key]?.query || ''}
+                    onChange={(e) => handleLookupInputChange(contact.key, e.target.value)}
+                    onFocus={() => handleLookupFocus(contact.key)}
+                    onBlur={() => handleLookupBlur(contact.key)}
+                    className="w-full rounded-md border border-gray-300 py-2 pl-9 pr-10 text-sm focus:border-brand-purple focus:ring-1 focus:ring-brand-purple"
+                    placeholder={`Type ${contact.label.toLowerCase()} name to find an existing record`}
+                  />
+                  {lookups[contact.key]?.loading && (
+                    <Loader2 size={16} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-brand-purple" />
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Search as you type, then select a saved parent to auto-fill these editable fields.
+                </p>
+
+                {lookups[contact.key]?.open && (lookups[contact.key]?.results?.length > 0 || lookups[contact.key]?.query?.trim().length >= 2) && (
+                  <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
+                    {lookups[contact.key]?.results?.length > 0 ? (
+                      lookups[contact.key].results.map((parent) => {
+                        const parentName = composeName(parent.firstName, '', parent.lastName);
+                        return (
+                          <button
+                            key={parent.id}
+                            type="button"
+                            onMouseDown={() => applyParentSelection(contact, parent)}
+                            className="flex w-full items-start justify-between gap-3 border-b border-gray-100 px-3 py-2 text-left last:border-b-0 hover:bg-brand-purple/5"
+                          >
+                            <span>
+                              <span className="block text-sm font-medium text-gray-900">{parentName || 'Unnamed parent'}</span>
+                              <span className="block text-xs text-gray-500">
+                                {parent.phone || 'No phone'}{parent.email ? ` • ${parent.email}` : ''}
+                              </span>
+                            </span>
+                            {selectedParentId === parent.id && (
+                              <CheckCircle2 size={16} className="mt-0.5 text-green-600" />
+                            )}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      !lookups[contact.key]?.loading && (
+                        <div className="px-3 py-2 text-sm text-gray-500">
+                          No existing parent matched that name. Continue typing below to add a new one.
+                        </div>
+                      )
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -207,6 +487,15 @@ const ParentGuardianStep = ({ formData = {}, onChange }) => {
           );
         })}
       </div>
+
+      {linkedParentSummary && (
+        <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2">
+          <CheckCircle2 size={16} className="text-green-600 flex-shrink-0" />
+          <p className="text-xs font-medium text-green-800">
+            Linked to existing parent account: {linkedParentSummary.label}
+          </p>
+        </div>
+      )}
 
       {!formData.primaryContactType && (
         <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">

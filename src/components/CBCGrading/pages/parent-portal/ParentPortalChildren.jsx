@@ -1,7 +1,7 @@
 /**
  * Parent Portal Children Screen
  * Multi-child card list. Tapping a child card opens the full ParentChildProfile.
- * No MobileBottomNav here — MobileAppShell renders it.
+ * Bottom navigation is provided globally by CBCGradingSystem's parent portal shell.
  */
 
 import React, { useState, useEffect, useCallback } from 'react';

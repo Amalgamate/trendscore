@@ -87,6 +87,7 @@ export { schemeOfWorkAPI };
 export { lmsAPI };
 export { plannerAPI as planner };
 export { idTemplateAPI };
+export { transportAPI };
 export { mpesaAPI };
 export { systemLogsAPI };
 export { pathwayAPI };

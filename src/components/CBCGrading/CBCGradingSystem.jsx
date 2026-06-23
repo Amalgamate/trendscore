@@ -3,6 +3,7 @@ import Sidebar from './layout/Sidebar';
 import Header from './layout/Header';
 import HorizontalSubmenu from './layout/HorizontalSubmenu';
 import MobileAppShell from './layout/MobileAppShell';
+import MobileBottomNav from './dashboard/mobile/MobileBottomNav';
 import PageRouter from './layout/PageRouter';
 import GlobalModals from './layout/GlobalModals';
 import ErrorBoundary from './shared/ErrorBoundary';
@@ -153,13 +154,27 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
     }
   }, [teachers, storeRefreshTeachers]);
 
-  const fetchParentsFromApi = useCallback(async () => {
+  const fetchParentsFromApi = useCallback(async (params = {}) => {
     try {
-      const res = await axiosInstance.get('/users?role=PARENT&limit=200');
+      const qs = new URLSearchParams({ limit: 200, ...params }).toString();
+      const res = await axiosInstance.get(`/users/role/PARENT?${qs}`);
       const data = res.data?.data ?? [];
-      setParents(data);
+      const normalizedParents = data.map((parent) => {
+        const fullName = [parent.firstName, parent.middleName, parent.lastName].filter(Boolean).join(' ').trim();
+        const learners = Array.isArray(parent.learners) ? parent.learners : [];
+        return {
+          ...parent,
+          name: fullName || parent.email || parent.phone || 'Parent/Guardian',
+          relationship: 'Parent/Guardian',
+          occupation: parent.occupation || 'N/A',
+          county: parent.county || 'Nairobi',
+          learners,
+          learnerIds: learners.map((learner) => learner.admissionNumber).filter(Boolean)
+        };
+      });
+      setParents(normalizedParents);
       if (res.data?.pagination) setParentPagination(res.data.pagination);
-      return data;
+      return normalizedParents;
     } catch (err) {
       console.error('fetchParents error:', err);
       return parents;
@@ -562,29 +577,41 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
 
   // ── Layout ────────────────────────────────────────────────────────────────
   if (isMobile) {
-    // Parents get their own shell-free layout — the parent portal pages
-    // manage their own headers and bottom navigation (ParentBottomNav).
+    // Parents get their own shell — white-background portal pages with a
+    // shared MobileBottomNav rendered once here so every current and future
+    // parent-portal page automatically gets it without per-page wiring.
     if (parentPortal) {
       return (
         <>
-          <ErrorBoundary>
-            <PageRouter
-              currentPage={currentPage}
-              pageParams={pageParams}
-              user={user}
-              learners={learners}
-              teachers={teachers}
-              parents={parents}
-              pagination={pagination}
-              teacherPagination={teacherPagination}
-              parentPagination={parentPagination}
-              learnersLoading={learnersLoading}
-              brandingSettings={brandingSettings}
-              editingLearner={editingLearner}
-              editingTeacher={editingTeacher}
-              handlers={handlers}
+          <div className="h-[100dvh] w-full flex flex-col overflow-hidden bg-[#F5F5F7]">
+            {/* Scrollable content — pb-24 ensures content clears the bottom nav */}
+            <div className="flex-1 overflow-y-auto pb-24">
+              <ErrorBoundary>
+                <PageRouter
+                  currentPage={currentPage}
+                  pageParams={pageParams}
+                  user={user}
+                  learners={learners}
+                  teachers={teachers}
+                  parents={parents}
+                  pagination={pagination}
+                  teacherPagination={teacherPagination}
+                  parentPagination={parentPagination}
+                  learnersLoading={learnersLoading}
+                  brandingSettings={brandingSettings}
+                  editingLearner={editingLearner}
+                  editingTeacher={editingTeacher}
+                  handlers={handlers}
+                />
+              </ErrorBoundary>
+            </div>
+            {/* Single global bottom nav for all parent portal pages */}
+            <MobileBottomNav
+              role={user?.role}
+              currentPath={currentPage}
+              onNavigate={handleNavigate}
             />
-          </ErrorBoundary>
+          </div>
           <GlobalModals
             showConfirmDialog={showConfirmDialog} setShowConfirmDialog={setShowConfirmDialog}
             confirmAction={confirmAction}

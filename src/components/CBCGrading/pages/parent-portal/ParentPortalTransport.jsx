@@ -10,7 +10,6 @@ import {
   ArrowLeft, MapPin, Bus, Phone, RefreshCw, AlertCircle, Navigation, Users,
 } from 'lucide-react';
 import api, { dashboardAPI } from '../../../../services/api';
-import MobileBottomNav from '../../dashboard/mobile/MobileBottomNav';
 
 function Skeleton({ className = '' }) {
   return <div className={`animate-pulse rounded-lg bg-gray-100 ${className}`} />;
@@ -212,8 +211,6 @@ const ParentPortalTransport = ({ onNavigate }) => {
           </div>
         )}
       </div>
-
-      <MobileBottomNav role="PARENT" currentPath="parent-portal-transport" onNavigate={onNavigate} />
     </div>
   );
 };

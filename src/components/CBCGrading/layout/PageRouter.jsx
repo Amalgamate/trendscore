@@ -162,6 +162,8 @@ const MyProgress = lazy(() => import('../pages/student/MyProgress'));
 const MobileUserManagement = lazy(() => import('../dashboard/mobile/MobileUserManagement'));
 const MobileGeneralSettings = lazy(() => import('../dashboard/mobile/MobileGeneralSettings'));
 const MobileFeesPage = lazy(() => import('../pages/MobileFeesPage'));
+// Teacher-specific mobile assess landing — classes-first view
+const TeacherMobileAssessView = lazy(() => import('../dashboard/mobile/TeacherMobileAssessView'));
 
 const ACADEMIC_INTELLIGENCE_PAGE_COPY = {
   'academic-intelligence': {
@@ -228,20 +230,16 @@ const ACADEMIC_INTELLIGENCE_PAGE_COPY = {
 
 const LoadingOverlay = () => (
   <div className="flex-1 flex flex-col gap-4 p-6 animate-pulse">
-    {/* Page title skeleton */}
     <div className="h-8 w-48 bg-gray-200 rounded-lg" />
-    {/* Metric cards row */}
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       {[...Array(4)].map((_, i) => (
         <div key={i} className="h-24 bg-gray-200 rounded-xl" />
       ))}
     </div>
-    {/* Content block */}
     <div className="flex gap-4 flex-1">
       <div className="flex-1 bg-gray-200 rounded-xl min-h-[200px]" />
       <div className="w-64 bg-gray-200 rounded-xl hidden lg:block" />
     </div>
-    {/* Table skeleton */}
     <div className="space-y-2">
       {[...Array(5)].map((_, i) => (
         <div key={i} className="h-10 bg-gray-100 rounded-lg" />
@@ -270,7 +268,7 @@ const PageRouter = ({
   const effectiveRole = rolePreview?.effectiveRole || user?.role;
   const parentPortal = userHasParentPortalAccess(user);
   
-  // Mobile detection for responsive routes
+  // Single mobile detection — source of truth for all role-based mobile routing
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     const mediaQuery = window.matchMedia('(max-width: 767px)');
@@ -279,6 +277,8 @@ const PageRouter = ({
     mediaQuery.addEventListener('change', handleMediaChange);
     return () => mediaQuery.removeEventListener('change', handleMediaChange);
   }, []);
+
+  const isTeacherRole = ['TEACHER', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].includes(effectiveRole);
   
   const {
     handleNavigate,
@@ -316,6 +316,7 @@ const PageRouter = ({
   const admissionLearner = editingLearner
     || pageParams?.learner
     || (admissionLearnerId ? learners?.find((learner) => learner.id === admissionLearnerId) : null);
+
   const renderAcademicIntelligencePage = (activePage, content, fallbackCopy = {}) => {
     const copy = ACADEMIC_INTELLIGENCE_PAGE_COPY[activePage] || fallbackCopy;
     return (
@@ -369,9 +370,9 @@ const PageRouter = ({
           case 'dashboard':
             if (effectiveRole === 'STUDENT') return <StudentDashboardView user={user} onNavigate={handleNavigate} />;
             if (parentPortal) return <ParentPortalHome user={user} onNavigate={handleNavigate} />;
-            return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} currentPage={currentPage} />;
+            return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} currentPage={currentPage} brandingSettings={brandingSettings} />;
           case 'finance-dashboard':
-            return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} currentPage={currentPage} />;
+            return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} currentPage={currentPage} brandingSettings={brandingSettings} />;
 
           // Planner Module
           case 'planner-calendar':
@@ -507,9 +508,14 @@ const PageRouter = ({
           case 'attendance-reports': return <AttendanceReports learners={learners} />;
           case 'attendance-configuration': return <AttendanceSettingsPage />;
 
-          // Assessment Module
+          // ── Assessment Module ─────────────────────────────────────────────
+          // On mobile, teachers get their own classes-first landing page.
+          // All other roles (admin, owner, head teacher) keep the operations dashboard.
           case 'assess-mobile-dashboard':
-            return <MobileAssessmentsDashboard learners={learners} brandingSettings={brandingSettings} onNavigate={handleNavigate} />;
+            return (isMobile && isTeacherRole)
+              ? <TeacherMobileAssessView user={user} onNavigate={handleNavigate} />
+              : <MobileAssessmentsDashboard learners={learners} brandingSettings={brandingSettings} onNavigate={handleNavigate} />;
+
           case 'assess-formative': return <ErrorBoundary><FormativeAssessment learners={learners} /></ErrorBoundary>;
           case 'assess-formative-report': return <ErrorBoundary><FormativeReport learners={learners} brandingSettings={brandingSettings} user={user} /></ErrorBoundary>;
           case 'assess-summative-tests': return <ErrorBoundary><SummativeTestsRouter onNavigate={handleNavigate} onBack={() => handleNavigate('assess-mobile-dashboard')} defaultTestType={pageParams.defaultTestType} /></ErrorBoundary>;
@@ -633,11 +639,11 @@ const PageRouter = ({
           case 'library-members':
             return <LibraryManager currentPage={currentPage} />;
 
-          // ── Transport Module ───────────────────────────────────────────────
+          // Transport Module
           case 'transport-routes':    return <TransportManager />;
           case 'transport-tracking':  return <GPSTracking />;
           case 'transport-drivers':   return <DriverManagement />;
-          case 'transport-students':  return <TransportManager />; // opens TransportManager on students tab via deep-link
+          case 'transport-students':  return <TransportManager />;
           case 'hostel-fees':         return <TransportFeeManager onEditLearner={handleEditLearner} onViewLearner={handleViewLearner} />;
           case 'transport-reports':   return <TransportReports />;
 
@@ -698,13 +704,13 @@ const PageRouter = ({
 
           case 'settings-school': return <SchoolSettings brandingSettings={brandingSettings} setBrandingSettings={handlers.setBrandingSettings} />;
           case 'settings-academic': return <AcademicSettings />;
-          case 'settings-users': 
+          case 'settings-users':
             return isMobile ? (
               <MobileUserManagement onNavigate={handleNavigate} />
             ) : (
               <UserManagement />
             );
-          case 'settings': 
+          case 'settings':
             return isMobile ? (
               <MobileGeneralSettings user={user} onLogout={handlers.onLogout} brandingSettings={brandingSettings} onNavigate={handleNavigate} />
             ) : (
@@ -723,7 +729,7 @@ const PageRouter = ({
 
           case 'system-maintenance': return <SystemMaintenancePage />;
 
-          // ── Secondary School modules ──────────────────────────────────────
+          // Secondary School modules
           case 'sec-pathways':        return <PathwaysHub />;
           case 'sec-subjects':        return <SubjectManagement />;
           case 'sec-form-groups':     return <FormGroups />;
@@ -739,7 +745,7 @@ const PageRouter = ({
           case 'sec-report-cards':    return <ReportsHub onNavigate={handleNavigate} />;
           case 'sec-kcse-prediction': return <ResultsWorkbench variant="forecast" pageParams={pageParams} onNavigate={handleNavigate} />;
 
-          // ── Tertiary Institution modules ──────────────────────────────────
+          // Tertiary Institution modules
           case 'tert-departments':    return <ComingSoon badge="Tertiary" title="Departments"          description="Department setup for tertiary institutions is coming soon." />;
           case 'tert-programs':       return <ComingSoon badge="Tertiary" title="Programs"             description="Program management for tertiary institutions is coming soon." />;
           case 'tert-units':          return <ComingSoon badge="Tertiary" title="Unit Management"      description="Unit setup and unit catalog management is coming soon." />;
