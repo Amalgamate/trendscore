@@ -1448,5 +1448,7 @@ export default function AnnualPlannerPage({ onNavigate, user }) {
       </Dialog>
 
     </div>
+  </div>
   );
 }
+
