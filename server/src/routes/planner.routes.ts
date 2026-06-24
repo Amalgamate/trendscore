@@ -13,16 +13,38 @@ const controller = new PlannerController();
 // Align with PlannerController + Prisma Event model
 const createEventSchema = z.object({
   title: z.string().min(2).max(200),
-  description: z.string().max(1000).optional(),
-  startDate: z.string().datetime({ offset: true }),
-  endDate: z.string().datetime({ offset: true }),
+  description: z.string().max(1000).optional().nullable(),
+  startDate: z.string(),
+  endDate: z.string(),
   type: z.nativeEnum(EventType).optional(),
   allDay: z.boolean().optional(),
-  location: z.string().max(500).optional(),
-  meetingLink: z.string().max(2000).optional(),
+  location: z.string().max(500).optional().nullable(),
+  meetingLink: z.string().max(2000).optional().nullable(),
+  isParentVisible: z.boolean().optional(),
+  academicYear: z.number().int().optional().nullable(),
+  term: z.string().optional().nullable(),
 });
 
 const updateEventSchema = createEventSchema.partial();
+
+const bulkCreateEventSchema = z.object({
+  events: z.array(
+    z.object({
+      id: z.string().optional(),
+      title: z.string().min(2).max(200),
+      description: z.string().max(1000).optional().nullable(),
+      startDate: z.string(),
+      endDate: z.string(),
+      type: z.nativeEnum(EventType).optional(),
+      allDay: z.boolean().optional(),
+      location: z.string().max(500).optional().nullable(),
+      meetingLink: z.string().max(2000).optional().nullable(),
+      isParentVisible: z.boolean().optional(),
+      academicYear: z.number().int().optional().nullable(),
+      term: z.string().optional().nullable(),
+    })
+  )
+});
 
 // Apply auth middleware to all routes
 router.use(authenticate);
@@ -39,6 +61,17 @@ router.get(
 );
 
 /**
+ * @route   GET /api/planner/events/annual-summary
+ * @desc    Get annual summary of events grouped by term
+ * @access  Authenticated
+ */
+router.get(
+  '/events/annual-summary',
+  rateLimit({ windowMs: 60_000, maxRequests: 100 }),
+  controller.getAnnualSummary
+);
+
+/**
  * @route   POST /api/planner/events
  * @desc    Create event (Admin, Head Teacher, Teacher)
  * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER, TEACHER
@@ -50,6 +83,20 @@ router.post(
   validate(createEventSchema),
   auditLog('CREATE_PLANNER_EVENT'),
   controller.createEvent
+);
+
+/**
+ * @route   POST /api/planner/events/bulk-annual
+ * @desc    Bulk create/update events
+ * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER
+ */
+router.post(
+  '/events/bulk-annual',
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
+  rateLimit({ windowMs: 60_000, maxRequests: 50 }),
+  validate(bulkCreateEventSchema),
+  auditLog('BULK_CREATE_PLANNER_EVENTS'),
+  controller.bulkCreateAnnualPlan
 );
 
 /**

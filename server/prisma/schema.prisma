@@ -1788,24 +1788,27 @@ model Fine {
 }
 
 model Event {
-  id            String    @id @default(uuid())
-  title         String
-  description   String?
-  startDate     DateTime
-  endDate       DateTime
-  location      String?
-  creatorId     String
-  allDay        Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  googleEventId String?
-  meetingLink   String?
-  type          EventType @default(GENERAL)
-  creator       User      @relation("EventCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  id               String    @id @default(uuid())
+  title            String
+  description      String?
+  startDate        DateTime
+  endDate          DateTime
+  location         String?
+  creatorId        String
+  allDay           Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  googleEventId    String?
+  meetingLink      String?
+  type             EventType @default(GENERAL)
+  isParentVisible  Boolean   @default(true)   // controls parent portal visibility
+  academicYear     Int?                        // e.g. 2025
+  term             String?                     // TERM_1 | TERM_2 | TERM_3
+  creator          User      @relation("EventCreator", fields: [creatorId], references: [id], onDelete: Cascade)
 
   @@map("events")
-  // Dashboard: findMany({ startDate:{ gte:now } })
   @@index([startDate])
+  @@index([academicYear, term])
 }
 
 model ContactGroup {
@@ -3008,6 +3011,10 @@ enum EventType {
   MEETING
   HOLIDAY
   EXAM
+  TERM_OPENING
+  TERM_CLOSING
+  MIDTERM_BREAK
+  EXAM_WEEK
 }
 
 enum LeaveStatus {

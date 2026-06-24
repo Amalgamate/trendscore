@@ -1,12 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Activity,
   AlertTriangle,
   BarChart2,
+  Bookmark,
   BookOpen,
+  Briefcase,
   Bus,
+  Calendar,
   ChevronRight,
   CircleDollarSign,
   ClipboardList,
+  Clock,
+  GraduationCap,
+  Home,
   Lightbulb,
   Package,
   Settings,
@@ -28,6 +35,8 @@ import {
   YAxis,
 } from 'recharts';
 import { dashboardAPI, transportAPI } from '../../../services/api';
+import { QuickActions } from '../shared';
+
 
 const moduleToneMap = {
   fees: {
@@ -79,6 +88,22 @@ const integer = (value) => Math.round(Number(value || 0)).toLocaleString();
 const percent = (value) => `${Math.round(Number(value || 0))}%`;
 const decimal = (value) => Number(value || 0).toFixed(1);
 const safeArray = (value) => (Array.isArray(value) ? value : []);
+
+const getGreeting = () => {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 9)   return { salutation: '🌅 Rise & shine', subtitle: 'A fresh day is here — your school is ready for you.' };
+  if (h >= 9 && h < 12)  return { salutation: '☀️ Good morning', subtitle: 'Hope your morning is off to a great start. Here\'s your school at a glance.' };
+  if (h >= 12 && h < 14) return { salutation: '🌞 Good afternoon', subtitle: 'Hope lunch is treating you well. Here\'s where things stand today.' };
+  if (h >= 14 && h < 17) return { salutation: '🌤 Good afternoon', subtitle: 'The day is in full swing — check in on how things are going.' };
+  if (h >= 17 && h < 20) return { salutation: '🌆 Good evening', subtitle: 'The school day is winding down. Here\'s your end-of-day overview.' };
+  if (h >= 20 && h < 23) return { salutation: '🌙 Good evening', subtitle: 'Burning the midnight oil? Here\'s a quick look before you sign off.' };
+  return { salutation: '🌟 Hello', subtitle: 'Working late? Your school data is always here for you.' };
+};
+
+const getDisplayName = (user, fallback = 'Administrator') => {
+  const raw = user?.name || user?.firstName || user?.email?.split('@')[0] || fallback;
+  return String(raw).trim().split(' ')[0] || fallback;
+};
 
 const clampScore = (value) => Math.max(0, Math.min(100, Math.round(Number(value || 0))));
 
@@ -265,37 +290,6 @@ const ExecutiveModuleCard = ({
   );
 };
 
-const QuickActions = ({ onNavigate }) => {
-  const actions = [
-    { label: 'Admissions', icon: UserPlus, path: 'admin-admissions', bg: 'bg-[#3b82f6]' },
-    { label: 'Collect Fees', icon: CircleDollarSign, path: 'admin-fees', bg: 'bg-[#10b981]' },
-    { label: 'Attendance', icon: ClipboardList, path: 'admin-attendance', bg: 'bg-[#f59e0b]' },
-    { label: 'Assessments', icon: BookOpen, path: 'admin-results', bg: 'bg-[#1e1b4b]' },
-    { label: 'Inventory', icon: Package, path: 'admin-inventory', bg: 'bg-[#f43f5e]' },
-    { label: 'Settings', icon: Settings, path: 'admin-settings', bg: 'bg-[#334155]' },
-  ];
-
-  return (
-    <div className="flex justify-center gap-10 md:gap-16 pb-8 pt-7 bg-white border-b border-slate-200 overflow-x-auto scrollbar-none px-6">
-      {actions.map((a) => {
-        const Icon = a.icon;
-        return (
-          <button
-            key={a.label}
-            type="button"
-            onClick={() => onNavigate && onNavigate(a.path)}
-            className="group flex shrink-0 flex-col items-center gap-3 transition-transform active:scale-95"
-          >
-            <div className={`flex h-16 w-16 items-center justify-center rounded-full ${a.bg} shadow-md group-hover:shadow-lg group-hover:opacity-90 transition-all duration-200`}>
-              <Icon size={26} className="text-white" />
-            </div>
-            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-700">{a.label}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-};
 
 const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'desktop' }) => {
   const [dashboard, setDashboard] = useState(null);
@@ -303,9 +297,12 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
   const [transportReports, setTransportReports] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeModule, setActiveModule] = useState('fees');
+  const [activeModule, setActiveModule] = useState('');
   const moduleSectionRef = useRef(null);
   const isMobile = mode === 'mobile';
+
+  const { salutation, subtitle: greetingSubtitle } = getGreeting();
+  const displayName = getDisplayName(user);
 
   useEffect(() => {
     let cancelled = false;
@@ -1006,7 +1003,7 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
   return (
     <div className="min-h-screen bg-[#F5F5F7] pb-24">
       {/* Full-width Quick Actions matching the original white strip */}
-      <QuickActions onNavigate={onNavigate} />
+      <QuickActions onNavigate={onNavigate} currentPage="dashboard" />
 
       {/* Hero Metric Cards — temporarily hidden */}
       {false && (
@@ -1030,8 +1027,10 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
         <section ref={moduleSectionRef} className="space-y-5">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-base font-bold text-slate-900">Module Analytics</p>
-              <p className="mt-0.5 text-sm text-slate-500">Click any module to expand. The active module rises to the top and spans full width.</p>
+              <p className="text-lg font-black text-slate-900">{salutation}, {displayName}!</p>
+              <p className="mt-0.5 text-sm text-slate-500">
+                Today is <span className="font-bold text-slate-800">{new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date())}</span> · {greetingSubtitle} Click any module below to expand for details.
+              </p>
             </div>
             {loading ? <span className="animate-pulse text-xs font-medium text-slate-400">Refreshing data...</span> : null}
           </div>

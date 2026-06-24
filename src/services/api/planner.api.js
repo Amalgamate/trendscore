@@ -11,4 +11,8 @@ export const plannerAPI = {
       fetchWithAuth(`/planner/events/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     deleteEvent: async (id) =>
       fetchWithAuth(`/planner/events/${id}`, { method: 'DELETE' }),
+    getAnnualSummary: async (academicYear) =>
+      fetchWithAuth(`/planner/events/annual-summary?academicYear=${academicYear}`),
+    bulkCreateAnnualPlan: async (events) =>
+      fetchWithAuth('/planner/events/bulk-annual', { method: 'POST', body: JSON.stringify({ events }) }),
 };

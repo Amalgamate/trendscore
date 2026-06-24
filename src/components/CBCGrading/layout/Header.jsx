@@ -429,34 +429,6 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
             <h1 className="text-base lg:text-lg font-semibold text-gray-900 leading-none tracking-tight uppercase">
               {brandingSettings?.schoolName || PRODUCT_DISPLAY_NAME}
             </h1>
-            <span
-              className={cn(
-                "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest leading-none shadow-sm",
-                isSecondaryPortal
-                  ? "bg-indigo-50 text-indigo-800 border-indigo-200"
-                  : isTertiaryPortal
-                    ? "bg-amber-50 text-amber-800 border-amber-200"
-                    : "bg-emerald-50 text-emerald-800 border-emerald-200"
-              )}
-              title={isSecondaryPortal ? 'Senior School portal' : isTertiaryPortal ? 'Tertiary portal' : 'Junior School portal'}
-            >
-              {institutionLabel}
-            </span>
-            <span className="hidden md:inline-block h-4 w-px bg-gray-200 mx-1" aria-hidden="true" />
-            <span className="hidden md:inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-gray-500">
-              <span className="text-gray-800 font-bold">{formatToday()}</span>
-              {activeTermLabel && (
-                <span
-                  className={cn(
-                    "text-gray-800 font-bold",
-                    activeTermMeta.isFallback && "text-gray-600"
-                  )}
-                  title={activeTermMeta.isFallback ? 'Using system fallback (no active term set)' : 'Active academic term'}
-                >
-                  {activeTermLabel}
-                </span>
-              )}
-            </span>
           </div>
           <p className="text-[9px] text-gray-400 font-medium uppercase tracking-[0.2em] mt-1">
             School Portal

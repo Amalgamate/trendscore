@@ -168,7 +168,7 @@ export const GreetingToast = ({
                   <Sparkles size={16} />
                 </span>
                 <p className="text-lg font-black leading-tight tracking-tight text-slate-950 sm:text-xl">
-                  {greeting}, {name}
+                  {greeting}, {name}! <span className="text-sm font-semibold text-slate-500 ml-2">Today is {new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date())}</span>
                 </p>
               </div>
               <p className="mt-2 max-w-2xl text-xs font-semibold uppercase tracking-wider text-slate-500 sm:text-sm">

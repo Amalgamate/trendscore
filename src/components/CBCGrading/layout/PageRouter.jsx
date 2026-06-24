@@ -74,6 +74,7 @@ const LearnerProfile = lazy(() => import('../pages/profiles/LearnerProfile'));
 const TeacherProfile = lazy(() => import('../pages/profiles/TeacherProfile'));
 const ParentProfile = lazy(() => import('../pages/profiles/ParentProfile'));
 const PlannerLayout = lazy(() => import('../pages/planner/PlannerLayout'));
+const AnnualPlannerPage = lazy(() => import('../pages/planner/AnnualPlannerPage'));
 const DutyRosterPage = lazy(() => import('../pages/planner/DutyRosterPage'));
 const ParentEventsPage = lazy(() => import('../pages/parent/ParentEventsPage'));
 
@@ -373,6 +374,10 @@ const PageRouter = ({
             return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} currentPage={currentPage} brandingSettings={brandingSettings} />;
           case 'finance-dashboard':
             return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} currentPage={currentPage} brandingSettings={brandingSettings} />;
+
+          // Annual Planner
+          case 'annual-planner':
+            return <AnnualPlannerPage onNavigate={handleNavigate} user={user} />;
 
           // Planner Module
           case 'planner-calendar':

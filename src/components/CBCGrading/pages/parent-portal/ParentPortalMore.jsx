@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import {
   ArrowLeft, User, Bell, Truck, FileText, HelpCircle,
   Settings, LogOut, Shield, Eye, Languages, Lock,
-  ChevronRight, ExternalLink, AlertCircle, MessageSquare
+  ChevronRight, ExternalLink, AlertCircle, MessageSquare, Calendar
 } from 'lucide-react';
 
 // ─── Helper Components ──────────────────────────────────────────────
@@ -189,6 +189,12 @@ const ParentPortalMore = ({ user, onNavigate, onLogout }) => {
 
         {/* School Services Section */}
         <MenuSection title="School Services">
+          <MenuItem
+            icon={Calendar}
+            label="School Calendar"
+            subtitle="Term dates and school events"
+            action={() => onNavigate('events-calendar')}
+          />
           <MenuItem
             icon={Truck}
             label="Transport Details"

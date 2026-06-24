@@ -1,5 +1,6 @@
 const PAGE_APP_REQUIREMENTS = {
   'planner-calendar': 'planner',
+  'annual-planner': 'planner',
   'events-calendar': 'planner',
   'planner-agenda': 'planner',
   'planner-timetable': 'timetable',
@@ -150,6 +151,7 @@ const PARENT_PORTAL_PAGES = new Set([
   'parent-portal-transport',
   'parent-portal-documents',
   'parent-portal-support',
+  'events-calendar',
 ]);
 
 const FINANCE_ROLES = new Set(['ACCOUNTANT']);
