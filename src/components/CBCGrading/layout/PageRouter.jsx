@@ -1,8 +1,11 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import ErrorBoundary from '../shared/ErrorBoundary';
 import EmptyState from '../shared/EmptyState';
 import ComingSoon from '../shared/ComingSoon';
+import MobilePortalAppBar from './MobilePortalAppBar';
 import { hasPageAccess, isParentPortalPage, resolveDashboardPage, userHasParentPortalAccess } from '../utils/appAccess';
+import { PAGE_TITLES } from '../utils/constants';
 import { useRolePreview } from '../../../contexts/RolePreviewContext';
 import { PRODUCT_DISPLAY_NAME } from '../../../config/productIdentity';
 
@@ -78,8 +81,8 @@ const AnnualPlannerPage = lazy(() => import('../pages/planner/AnnualPlannerPage'
 const DutyRosterPage = lazy(() => import('../pages/planner/DutyRosterPage'));
 const ParentEventsPage = lazy(() => import('../pages/parent/ParentEventsPage'));
 
-// Parent Portal - Mobile-first redesign
-const ParentPortalHome = lazy(() => import('../pages/parent-portal/ParentPortalHome'));
+// Parent Portal
+const ParentDashboard  = lazy(() => import('../pages/dashboard/ParentDashboard'));
 const ParentPortalChildren = lazy(() => import('../pages/parent-portal/ParentPortalChildren'));
 const ParentPortalFees = lazy(() => import('../pages/parent-portal/ParentPortalFees'));
 const ParentPortalMessages = lazy(() => import('../pages/parent-portal/ParentPortalMessages'));
@@ -249,6 +252,19 @@ const LoadingOverlay = () => (
   </div>
 );
 
+const PARENT_PORTAL_TITLES = {
+  'parent-portal-children': 'My Children',
+  'parent-portal-fees': 'School Fees',
+  'parent-portal-messages': 'Messages',
+  'parent-portal-more': 'Menu',
+  'parent-portal-results': 'Results',
+  'parent-portal-attendance': 'Attendance',
+  'parent-portal-transport': 'Transport',
+  'parent-portal-documents': 'Documents',
+  'parent-portal-support': 'Support',
+  'fees-statements': 'Student Statements',
+};
+
 const PageRouter = ({
   currentPage,
   pageParams,
@@ -311,6 +327,39 @@ const PageRouter = ({
     showSuccess
   } = handlers;
 
+  const renderParentPortalShell = (content, options = {}) => (
+    <div className="px-4 md:px-0">
+      <div className="block md:hidden -mx-4 -mt-4 mb-4">
+        <MobilePortalAppBar
+          user={user}
+          onNavigate={handleNavigate}
+          onLogout={handlers?.onLogout}
+          brandingSettings={brandingSettings}
+          accentColor="#4F46E5"
+          bellTarget="parent-portal-messages"
+        />
+      </div>
+      {!options.hideBack && <div className="md:hidden mb-3 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => handleNavigate('parent-portal-home')}
+          className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm active:scale-[0.98] flex-shrink-0"
+        >
+          <ArrowLeft size={16} />
+          Back
+        </button>
+        <div className="min-w-0">
+          <h1 className="text-base font-bold text-gray-900 truncate">
+            {PARENT_PORTAL_TITLES[normalizedPage] || PAGE_TITLES[normalizedPage] || 'Overview'}
+          </h1>
+        </div>
+      </div>}
+      <div className="min-w-0">
+        {content}
+      </div>
+    </div>
+  );
+
   const normalizedPage = currentPage?.split('?')[0] || 'dashboard';
   const redirectFromParentPortal = isParentPortalPage(normalizedPage) && !parentPortal;
   const admissionLearnerId = pageParams?.learnerId || pageParams?.learner?.id || editingLearner?.id;
@@ -370,7 +419,7 @@ const PageRouter = ({
         switch (normalizedPage) {
           case 'dashboard':
             if (effectiveRole === 'STUDENT') return <StudentDashboardView user={user} onNavigate={handleNavigate} />;
-            if (parentPortal) return <ParentPortalHome user={user} onNavigate={handleNavigate} />;
+            if (parentPortal) return <ParentDashboard user={user} onNavigate={handleNavigate} brandingSettings={brandingSettings} onLogout={handlers?.onLogout} />;
             return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} currentPage={currentPage} brandingSettings={brandingSettings} />;
           case 'finance-dashboard':
             return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} currentPage={currentPage} brandingSettings={brandingSettings} />;
@@ -437,7 +486,14 @@ const PageRouter = ({
           case 'learners-id-print': return <IDPrintingPage />;
 
           case 'learner-profile':
-            return <LearnerProfile learner={pageParams.learner} onBack={() => handleNavigate('learners-list')} brandingSettings={brandingSettings} onNavigate={handleNavigate} />;
+            return (
+              <LearnerProfile
+                learner={pageParams.learner}
+                onBack={() => handleNavigate(effectiveRole === 'PARENT' ? 'dashboard' : 'learners-list')}
+                brandingSettings={brandingSettings}
+                onNavigate={handleNavigate}
+              />
+            );
 
           // Teachers Module
           case 'teachers-list':
@@ -486,25 +542,25 @@ const PageRouter = ({
 
           // Parent Portal - Mobile-first redesign
           case 'parent-portal-home':
-            return <ParentPortalHome user={user} onNavigate={handleNavigate} />;
+            return <ParentDashboard user={user} onNavigate={handleNavigate} brandingSettings={brandingSettings} onLogout={handlers?.onLogout} />;
           case 'parent-portal-children':
-            return <ParentPortalChildren user={user} onNavigate={handleNavigate} />;
+            return renderParentPortalShell(<ParentPortalChildren user={user} onNavigate={handleNavigate} />);
           case 'parent-portal-fees':
-            return <ParentPortalFees user={user} onNavigate={handleNavigate} />;
+            return renderParentPortalShell(<ParentPortalFees user={user} onNavigate={handleNavigate} />);
           case 'parent-portal-messages':
-            return <ParentPortalMessages user={user} onNavigate={handleNavigate} />;
+            return renderParentPortalShell(<ParentPortalMessages user={user} onNavigate={handleNavigate} />);
           case 'parent-portal-more':
-            return <ParentPortalMore user={user} onNavigate={handleNavigate} onLogout={handlers?.onLogout} />;
+            return renderParentPortalShell(<ParentPortalMore user={user} onNavigate={handleNavigate} onLogout={handlers?.onLogout} />);
           case 'parent-portal-results':
-            return <ParentPortalResults onNavigate={handleNavigate} />;
+            return renderParentPortalShell(<ParentPortalResults onNavigate={handleNavigate} />);
           case 'parent-portal-attendance':
-            return <ParentPortalAttendance onNavigate={handleNavigate} />;
+            return renderParentPortalShell(<ParentPortalAttendance onNavigate={handleNavigate} />);
           case 'parent-portal-transport':
-            return <ParentPortalTransport onNavigate={handleNavigate} />;
+            return renderParentPortalShell(<ParentPortalTransport onNavigate={handleNavigate} />);
           case 'parent-portal-documents':
-            return <ParentPortalDocuments onNavigate={handleNavigate} />;
+            return renderParentPortalShell(<ParentPortalDocuments onNavigate={handleNavigate} />);
           case 'parent-portal-support':
-            return <ParentPortalSupport onNavigate={handleNavigate} />;
+            return renderParentPortalShell(<ParentPortalSupport onNavigate={handleNavigate} />);
 
           // Others
           case 'timetable': return <TimetablePage />;
@@ -694,7 +750,9 @@ const PageRouter = ({
           case 'fees-record-payment': return <RecordPaymentPage invoice={pageParams.invoice} initialMode={pageParams.initialMode} />;
           case 'fees-waivers': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="waivers" />;
           case 'fees-reports': return <FeeReportsPage />;
-          case 'fees-statements': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="statements" />;
+          case 'fees-statements': return user?.role === 'PARENT'
+            ? renderParentPortalShell(<StudentStatementsPage parentMode initialLearner={pageParams.learner} onNavigate={handleNavigate} />, { hideBack: true })
+            : <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="statements" />;
           case 'fees-unmatched': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="unmatched" />;
 
           case 'help': return <SupportHub />;

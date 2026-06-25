@@ -565,8 +565,18 @@ export const useNavigation = () => {
 
     const buildNav = (sourceSections) => {
         const isItemVisible = (item) => {
+            // Teachers may access their own class admissions only (special override).
             if (item.path === 'learners-admissions' && isRole('TEACHER')) return true;
-             
+
+            // Teachers must NOT see admin-only learner management tabs.
+            // These items are only relevant to staff who run the registry.
+            if (isRole('TEACHER') && [
+                'learners-promotion',
+                'learners-uniform',
+                'learners-id-print',
+                'parents-list',
+            ].includes(item.id)) return false;
+
             if (item.permission && !can(item.permission)) return false;
             
             return true;
@@ -687,6 +697,15 @@ export const useNavigation = () => {
     const navSections = useMemo(() => {
         const isItemVisible = (item) => {
             if (item.path === 'learners-admissions' && isRole('TEACHER')) return true;
+
+            // Teachers must NOT see admin-only learner management tabs.
+            if (isRole('TEACHER') && [
+                'learners-promotion',
+                'learners-uniform',
+                'learners-id-print',
+                'parents-list',
+            ].includes(item.id)) return false;
+
             if (item.permission && !can(item.permission)) return false;
             return true;
         };
@@ -761,7 +780,22 @@ export const useNavigation = () => {
 
     const schoolSections = useMemo(() => {
         if (role === 'PARENT') {
-            return parentSchoolSectionsFromNav(navSections);
+            // Build the standard parent nav sections, then inject the Academics portal section
+            const existing = parentSchoolSectionsFromNav(navSections);
+            const academicsSection = {
+                id: 'parent-portal-academics',
+                label: 'Academics',
+                icon: GraduationCap,
+                portalSection: true,
+                items: [
+                    { id: 'portal-results',    label: 'Results',    path: 'parent-portal-results'    },
+                    { id: 'portal-attendance', label: 'Attendance', path: 'parent-portal-attendance' },
+                    { id: 'portal-children',   label: 'Children',   path: 'parent-portal-children'   },
+                ],
+            };
+            // Avoid duplicating if already present (hot-reload safety)
+            const hasAcademics = existing.some(s => s.id === 'parent-portal-academics');
+            return hasAcademics ? existing : [...existing, academicsSection];
         }
         if (role === 'ACCOUNTANT') {
             return navSections.filter(s => ['learners', 'assessment', 'academic-intelligence', 'attendance'].includes(s.id));
@@ -772,7 +806,22 @@ export const useNavigation = () => {
     }, [navSections, role]);
 
     const backOfficeSections = useMemo(() => {
-        if (role === 'TEACHER' || role === 'PARENT') return [];
+        if (role === 'TEACHER') return [];
+        if (role === 'PARENT') {
+            // Inject a parent-specific "School Fees" section into the Finance group
+            return [
+                {
+                    id: 'parent-portal-finance',
+                    label: 'School Fees',
+                    icon: Receipt,
+                    portalSection: true,
+                    items: [
+                        { id: 'portal-fees', label: 'School Fees', path: 'parent-portal-fees' },
+                        { id: 'portal-fees-statement', label: 'Fee Statement', path: 'parent-portal-fees' },
+                    ],
+                },
+            ];
+        }
         return navSections.filter(s => 
             ['hr', 'finance', 'inventory', 'library', 'transport', 'biometric'].includes(s.id)
         );
@@ -894,7 +943,7 @@ export const groupNavigationByCategory = (nav) => {
     }
 
     // Populate Finance
-    const financeSection = nav.backOfficeSections?.find(s => s.id === 'finance');
+    const financeSection = nav.backOfficeSections?.find(s => s.id === 'finance' || s.id === 'parent-portal-finance');
     if (financeSection) {
         groups.finance.items.push(financeSection);
     }

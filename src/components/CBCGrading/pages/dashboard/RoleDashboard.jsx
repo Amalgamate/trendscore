@@ -29,8 +29,7 @@ const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brand
   const resolvedInstitutionType = selectedInstitutionType || String(institutionType || '').toUpperCase();
   const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
 
-  // Tertiary: whole module is Coming Soon — must check before mobile branch
-  // so mobile tertiary users also see ComingSoon instead of MobileDashboard.
+  // Tertiary: whole module is Coming Soon
   if (resolvedInstitutionType === 'TERTIARY') {
     return (
       <ComingSoon
@@ -41,14 +40,11 @@ const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brand
     );
   }
 
-  // Secondary: full dashboard matching the junior layout but with senior colour palette.
-  // Also checked before the mobile branch so mobile secondary users get MobileDashboard.
+  // Secondary institution
   if (resolvedInstitutionType === 'SECONDARY') {
     if (isMobile) {
       return <MobileDashboard user={user} onNavigate={onNavigate} currentPath={currentPage} brandingSettings={brandingSettings} />;
     }
-    // All admin-level roles get the rich secondary dashboard.
-    // Non-admin roles fall through to their own dashboards below (same as primary).
     switch (role) {
       case 'OWNER':
       case 'ADMIN':
@@ -62,7 +58,7 @@ const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brand
       case 'TEACHER':
         return <TeacherDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
       case 'PARENT':
-        return <ParentDashboard user={user} onNavigate={onNavigate} />;
+        return <ParentDashboard user={user} onNavigate={onNavigate} brandingSettings={brandingSettings} />;
       case 'STUDENT':
         return <StudentDashboard user={user} onNavigate={onNavigate} />;
       case 'ACCOUNTANT':
@@ -79,34 +75,27 @@ const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brand
     return <MobileDashboard user={user} onNavigate={onNavigate} currentPath={currentPage} brandingSettings={brandingSettings} />;
   }
 
-  // Render dashboard based on user role
+  // Primary CBC desktop — role-based dashboard
   switch (role) {
     case 'OWNER':
     case 'ADMIN':
       return <AdminDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} brandingSettings={brandingSettings} />;
     case 'SUPER_ADMIN':
       return <SuperAdminDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
-
     case 'HEAD_TEACHER':
       return <HeadTeacherDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
     case 'HEAD_OF_CURRICULUM':
       return <CurriculumHeadDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
-
     case 'TEACHER':
       return <TeacherDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
-
     case 'PARENT':
-      return <ParentDashboard user={user} onNavigate={onNavigate} />;
-
+      return <ParentDashboard user={user} onNavigate={onNavigate} brandingSettings={brandingSettings} />;
     case 'STUDENT':
       return <StudentDashboard user={user} onNavigate={onNavigate} />;
-
     case 'ACCOUNTANT':
       return <AccountantDashboard learners={learners} pagination={pagination} user={user} onNavigate={onNavigate} />;
-
     case 'RECEPTIONIST':
       return <ReceptionistDashboard learners={learners} pagination={pagination} user={user} onNavigate={onNavigate} />;
-
     default:
       return (
         <div className="text-center py-12">

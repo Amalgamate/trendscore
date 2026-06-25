@@ -6,8 +6,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  ArrowLeft, Users, TrendingUp, CreditCard, Calendar,
-  ChevronRight, RefreshCw, AlertCircle,
+  Users, TrendingUp, CreditCard, Calendar,
+  ChevronRight, AlertCircle,
 } from 'lucide-react';
 import { dashboardAPI } from '../../../../services/api';
 import ParentChildProfile from '../parent/ParentChildProfile';
@@ -18,11 +18,13 @@ function Skeleton({ className = '' }) {
   return <div className={`animate-pulse rounded-lg bg-gray-100 ${className}`} />;
 }
 
+const getChildPhoto = (child) => child?.photoUrl || child?.profilePicture || child?.photo || child?.imageUrl || null;
+
 // ─── Stat pill ────────────────────────────────────────────────────────────────
 
-function StatPill({ label, value, icon: Icon, colorClass }) {
+function StatPill({ label, value, icon: Icon, colorClass, borderClass }) {
   return (
-    <div className={`${colorClass} rounded-xl p-2.5 flex flex-col items-center gap-0.5`}>
+    <div className={`${colorClass} ${borderClass} border rounded-xl p-2.5 flex flex-col items-center gap-0.5`}>
       <Icon size={13} className="mx-auto" />
       <p className="text-[10px] font-bold leading-none">{value}</p>
       <p className="text-[9px] opacity-70 leading-none">{label}</p>
@@ -36,63 +38,97 @@ function ChildCard({ child, onSelect }) {
   const bal            = Number(child.feeBalance || 0);
   const attendance     = Math.round(Number(child.attendanceRate || 0));
   const avgScore       = Math.round(Number(child.averageScore || 0));
-  const attendanceColor = attendance >= 90 ? 'text-emerald-600' : attendance >= 75 ? 'text-amber-600' : 'text-rose-600';
-  const balColor        = bal > 0 ? 'text-rose-600' : 'text-emerald-600';
+  const photoSrc        = getChildPhoto(child);
+  const statusLabel     = child.status === 'ACTIVE' ? 'Active' : child.status || 'Enrolled';
 
   return (
     <button
       type="button"
       onClick={() => onSelect(child)}
-      className="w-full bg-white border border-gray-200 rounded-2xl overflow-hidden text-left hover:border-[#3B1FA3]/40 active:scale-[0.99] transition-all"
+      className="relative w-full overflow-hidden rounded-2xl bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-700 p-[1px] text-left active:scale-[0.99] transition-all"
     >
-      {/* Hero strip */}
-      <div className="h-2 w-full" style={{ background: 'linear-gradient(90deg, #3B1FA3, #7c3aed)' }} />
+      <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/12" />
+      <div className="absolute -left-8 bottom-10 h-20 w-20 rounded-full bg-sky-300/20" />
 
-      <div className="p-4">
-        {/* Top row: avatar + name + chevron */}
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-12 h-12 rounded-full bg-[#3B1FA3]/10 text-[#3B1FA3] font-bold text-lg flex items-center justify-center flex-shrink-0">
-            {child.name?.[0] || '?'}
+      <div className="relative rounded-2xl bg-white/96 p-4">
+        <div className="flex items-start gap-3">
+          <div className="relative flex-shrink-0">
+            {photoSrc ? (
+              <img
+                src={photoSrc}
+                alt={child.name}
+                className="w-16 h-16 rounded-full object-cover border-2 border-blue-500 shadow-sm"
+                onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'flex'; }}
+              />
+            ) : null}
+            <div
+              style={{ display: photoSrc ? 'none' : 'flex' }}
+              className="w-16 h-16 rounded-full bg-blue-50 text-blue-700 font-black text-xl items-center justify-center border-2 border-blue-500 shadow-sm"
+            >
+              {child.name?.[0] || '?'}
+            </div>
+            <span className="absolute -right-1 -bottom-1 h-5 w-5 rounded-full bg-blue-600 border-2 border-white flex items-center justify-center">
+              <Users size={10} className="text-white" />
+            </span>
           </div>
+
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-gray-900 truncate">{child.name}</p>
-            <p className="text-xs text-gray-500 truncate">
-              {child.grade}
-              {child.className ? ` · ${child.className}` : ''}
-            </p>
-            {child.admissionNumber && (
-              <p className="text-[10px] text-gray-400 mt-0.5">Adm #{child.admissionNumber}</p>
-            )}
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-base font-black text-gray-950 truncate">{child.name}</p>
+                <p className="text-xs font-semibold text-blue-700 truncate">
+                  {child.grade}{child.className ? ` · ${child.className}` : ''}
+                </p>
+              </div>
+              <ChevronRight size={17} className="text-blue-500 flex-shrink-0 mt-1" />
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <span className="rounded-full bg-blue-50 border border-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                {statusLabel}
+              </span>
+              {child.admissionNumber && (
+                <span className="rounded-full bg-gray-50 border border-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-500">
+                  Adm {child.admissionNumber}
+                </span>
+              )}
+            </div>
           </div>
-          <ChevronRight size={16} className="text-gray-300 flex-shrink-0" />
         </div>
 
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="mt-4 grid grid-cols-3 gap-2">
           <StatPill
             label="Attendance"
             value={`${attendance}%`}
             icon={Calendar}
-            colorClass={`${attendance >= 90 ? 'bg-emerald-50 text-emerald-700' : attendance >= 75 ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'}`}
+            colorClass={attendance >= 90 ? 'bg-emerald-50 text-emerald-700' : attendance >= 75 ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'}
+            borderClass={attendance >= 90 ? 'border-emerald-200' : attendance >= 75 ? 'border-amber-200' : 'border-rose-200'}
           />
           <StatPill
             label="Avg Score"
             value={avgScore > 0 ? `${avgScore}%` : '—'}
             icon={TrendingUp}
             colorClass="bg-blue-50 text-blue-700"
+            borderClass="border-blue-200"
           />
           <StatPill
             label="Fee Bal"
             value={bal > 0 ? `KES ${bal >= 1000 ? Math.round(bal / 1000) + 'K' : bal}` : 'Cleared'}
             icon={CreditCard}
             colorClass={bal > 0 ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}
+            borderClass={bal > 0 ? 'border-rose-200' : 'border-emerald-200'}
           />
         </div>
 
-        {/* Class teacher */}
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 px-3 py-2">
+          <p className="text-[10px] font-semibold text-blue-800">
+            Tap to open profile, attendance, results, invoices and more.
+          </p>
+          <span className="text-[10px] font-black text-blue-700 flex-shrink-0">Open</span>
+        </div>
+
         {child.classTeacher && (
           <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-gray-100 text-gray-500 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+            <div className="w-6 h-6 rounded-full bg-blue-50 border border-blue-500 text-blue-700 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
               {child.classTeacher?.[0]}
             </div>
             <div>
@@ -144,36 +180,8 @@ const ParentPortalChildren = ({ user, onNavigate }) => {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-100 sticky top-0 z-10">
-        <div className="flex items-center gap-3 px-4 py-3">
-          <button
-            type="button"
-            onClick={() => onNavigate('parent-portal-home')}
-            className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-600 transition-colors"
-          >
-            <ArrowLeft size={18} />
-          </button>
-          <div className="flex-1">
-            <h1 className="text-base font-bold text-gray-900">My Children</h1>
-            {!loading && (
-              <p className="text-[10px] text-gray-500">
-                {children.length} child{children.length !== 1 ? 'ren' : ''} linked
-              </p>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={load}
-            className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400 transition-colors"
-          >
-            <RefreshCw size={14} />
-          </button>
-        </div>
-      </div>
-
       {/* Content */}
-      <div className="px-4 py-4 space-y-3">
+      <div className="py-1 space-y-3">
 
         {error && (
           <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 flex items-center gap-2">

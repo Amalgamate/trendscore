@@ -131,22 +131,22 @@ const MobilePortalAppBar = ({
   };
 
   return (
-    <div className="bg-white sticky top-0 z-30 border-b border-gray-100 shadow-sm">
-      <div className="flex items-center justify-between px-4 py-3">
+    <div className="bg-white sticky top-0 z-30 border-b border-gray-200 shadow-sm">
+      <div className="flex items-center justify-between px-4 pt-6 pb-4 min-h-[86px]">
 
         {/* ── Left: school logo ── */}
         <div className="flex items-center gap-2 min-w-0">
           <div
-            className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center bg-gray-50 border border-gray-200 flex-shrink-0"
+            className="w-11 h-11 rounded-xl overflow-hidden flex items-center justify-center bg-gray-50 border border-gray-200 flex-shrink-0"
           >
             <img
               src={schoolLogo}
               alt={schoolName}
-              className="w-7 h-7 object-contain"
+              className="w-10 h-10 object-contain"
               onError={(e) => { e.currentTarget.style.display = 'none'; }}
             />
           </div>
-          <span className="text-[11px] font-semibold text-gray-500 truncate max-w-[90px] leading-tight">
+          <span className="text-sm font-semibold text-gray-700 truncate max-w-[150px] leading-tight">
             {schoolName}
           </span>
         </div>
@@ -154,15 +154,15 @@ const MobilePortalAppBar = ({
         <div className="flex-1" />
 
         {/* ── Right: bell · avatar ── */}
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-shrink-0">
           {/* Bell — real unread count from UserNotificationContext */}
           <button
             type="button"
             onClick={() => onNavigate?.(bellTarget || 'comm-messages')}
-            className="w-8 h-8 flex items-center justify-center relative"
+            className="w-11 h-11 flex items-center justify-center relative rounded-xl hover:bg-gray-50"
             aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
           >
-            <Bell size={19} className="text-gray-600" />
+            <Bell size={22} className="text-gray-600" />
             {unreadCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center px-0.5">
                 {unreadCount > 9 ? '9+' : unreadCount}
@@ -177,13 +177,13 @@ const MobilePortalAppBar = ({
               onClick={() => setAvatarOpen((v) => !v)}
               aria-label="Account menu"
               aria-expanded={avatarOpen}
-              className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ring-2"
-              style={{ background: accentColor, ringColor: accentColor }}
+              className="w-11 h-11 rounded-full overflow-hidden flex items-center justify-center text-white text-sm font-bold flex-shrink-0 border-2 border-blue-500 shadow-sm"
+              style={{ background: accentColor }}
             >
               {avatarUrl ? (
                 <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
               ) : (
-                <span style={{ color: '#fff', fontSize: 12, fontWeight: 900 }}>{initials}</span>
+                <span style={{ color: '#fff', fontSize: 14, fontWeight: 900 }}>{initials}</span>
               )}
             </button>
 

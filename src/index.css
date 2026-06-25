@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+@import './design-system/typography.css';
 
 :root {
   --background: 0 0% 100%;
@@ -94,12 +94,17 @@
   body {
     @apply antialiased leading-relaxed;
     color: #000000;
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-body);
+    line-height: var(--line-height-body);
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
   }
 
   h1, h2, h3, h4, h5, h6 {
     @apply leading-tight font-semibold tracking-tight;
     color: #000000;
+    font-family: var(--font-family-sans);
   }
 
   p {
@@ -108,6 +113,7 @@
 
   button, input, label, select, textarea {
     @apply font-medium;
+    font-family: var(--font-family-sans);
   }
 }
 

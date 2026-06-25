@@ -91,6 +91,8 @@ const getCollapsedIconColor = (id, isActive) => {
   if (isActive) return 'text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.7)]';
   switch (id) {
     case 'finance':         return 'text-red-500    drop-shadow-[0_0_6px_rgba(239,68,68,0.7)]   group-hover:text-red-400    group-hover:drop-shadow-[0_0_10px_rgba(239,68,68,0.9)]';
+    case 'parent-portal-finance': return 'text-rose-500  drop-shadow-[0_0_6px_rgba(244,63,94,0.7)]   group-hover:text-rose-400   group-hover:drop-shadow-[0_0_10px_rgba(244,63,94,0.9)]';
+    case 'parent-portal-academics': return 'text-amber-400 drop-shadow-[0_0_6px_rgba(245,158,11,0.7)] group-hover:text-amber-300  group-hover:drop-shadow-[0_0_10px_rgba(245,158,11,0.9)]';
     case 'learners':        return 'text-blue-500   drop-shadow-[0_0_6px_rgba(59,130,246,0.7)]  group-hover:text-blue-400   group-hover:drop-shadow-[0_0_10px_rgba(59,130,246,0.9)]';
     case 'teachers':        return 'text-emerald-500 drop-shadow-[0_0_6px_rgba(16,185,129,0.7)] group-hover:text-emerald-400 group-hover:drop-shadow-[0_0_10px_rgba(16,185,129,0.9)]';
     case 'parents':         return 'text-fuchsia-500 drop-shadow-[0_0_6px_rgba(217,70,239,0.7)] group-hover:text-fuchsia-400 group-hover:drop-shadow-[0_0_10px_rgba(217,70,239,0.9)]';

@@ -86,6 +86,14 @@ router.put('/:id',
   asyncHandler(learnerController.updateLearner.bind(learnerController))
 );
 
+router.patch('/:id/parent-update',
+  requireRole(['PARENT']),
+  rateLimit({ windowMs: 60_000, maxRequests: 20 }),
+  express.json({ limit: '10mb' }),
+  auditLog('PARENT_UPDATE_LEARNER_PROFILE'),
+  asyncHandler(learnerController.parentUpdateLearner.bind(learnerController))
+);
+
 router.delete('/:id', 
   requirePermission('DELETE_LEARNER'), 
   ResourceAccessControl.canAccessLearner(),

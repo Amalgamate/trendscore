@@ -137,6 +137,23 @@ const ROLE_PAGE_ALLOWLIST = {
     'student-course-view',
     'student-profile',
     'settings-profile'
+  ]),
+  PARENT: new Set([
+    'dashboard',
+    'parent-portal-home',
+    'parent-portal-children',
+    'parent-portal-fees',
+    'parent-portal-messages',
+    'parent-portal-more',
+    'parent-portal-results',
+    'parent-portal-attendance',
+    'parent-portal-transport',
+    'parent-portal-documents',
+    'parent-portal-support',
+    'fees-statements',
+    'events-calendar',
+    'learner-profile',
+    'settings-profile'
   ])
 };
 
@@ -180,7 +197,7 @@ export const isParentPortalPage = (page) => {
 
 export const resolveDashboardPage = (user) => {
   const role = normalizeRole(user?.role);
-  if (userHasParentPortalAccess(user)) return 'parent-portal-home';
+  if (userHasParentPortalAccess(user)) return 'dashboard';
   if (STUDENT_ROLES.has(role)) return 'dashboard';
   if (FINANCE_ROLES.has(role)) return 'finance-dashboard';
   return 'dashboard';

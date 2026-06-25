@@ -8,7 +8,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
+        sans: ['var(--font-family-sans)'],
+        mono: ['var(--font-family-mono)'],
       },
       colors: {
         border: "hsl(var(--border))",

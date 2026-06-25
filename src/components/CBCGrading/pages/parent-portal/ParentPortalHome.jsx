@@ -6,13 +6,14 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  CreditCard, BarChart2, Users, MessageSquare,
-  MapPin, FolderOpen, ChevronRight, Eye,
-  AlertCircle, FileText,
+  CreditCard, BarChart2, Users,
+  MapPin, ChevronRight, ChevronDown, Eye,
+  AlertCircle, FileText, Pencil,
 } from 'lucide-react';
 import { dashboardAPI } from '../../../../services/api';
 import ParentChildProfile from '../parent/ParentChildProfile';
 import MobilePortalAppBar from '../../layout/MobilePortalAppBar';
+import EditStudentModal from '../parent/EditStudentModal';
 
 const fmt    = (n) => Number(n || 0).toLocaleString();
 const fmtPct = (n) => `${Math.round(Number(n || 0))}%`;
@@ -20,6 +21,8 @@ const fmtPct = (n) => `${Math.round(Number(n || 0))}%`;
 function Skeleton({ className = '' }) {
   return <div className={`animate-pulse rounded-lg bg-gray-200 ${className}`} />;
 }
+
+const getChildPhoto = (child) => child?.photoUrl || child?.profilePicture || child?.photo || child?.imageUrl || null;
 
 // ─── Family Overview Card ──────────────────────────────────────────────────
 
@@ -97,7 +100,7 @@ function FamilyOverviewCard({ metrics, loading, onNavigate }) {
         </button>
         <button
           type="button"
-          onClick={() => onNavigate('parent-portal-fees')}
+          onClick={() => onNavigate('fees-statements')}
           className="flex items-center justify-center gap-2 py-2.5 border border-white/40 text-white text-sm font-bold rounded-xl hover:bg-white/10 transition-colors"
         >
           <FileText size={15} /> View Statement
@@ -109,7 +112,7 @@ function FamilyOverviewCard({ metrics, loading, onNavigate }) {
 
 // ─── Children Summary Strip ───────────────────────────────────────────────────
 
-function ChildrenSummary({ children, loading, onSelectChild }) {
+function ChildrenSummary({ children, loading, onSelectChild, onEditChild }) {
   if (loading) {
     return (
       <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
@@ -140,6 +143,7 @@ function ChildrenSummary({ children, loading, onSelectChild }) {
         const bal        = Number(child.feeBalance || 0);
         const attendance = Math.round(Number(child.attendanceRate || 0));
         const barColor   = attendance >= 90 ? 'bg-emerald-500' : attendance >= 75 ? 'bg-amber-400' : 'bg-rose-500';
+        const photoSrc   = getChildPhoto(child);
 
         return (
           <button
@@ -148,8 +152,30 @@ function ChildrenSummary({ children, loading, onSelectChild }) {
             onClick={() => onSelectChild(child)}
             className="flex-shrink-0 w-36 bg-white border border-gray-200 rounded-xl p-3 text-left hover:border-[#3B1FA3]/40 hover:shadow-sm transition-all active:scale-95"
           >
-            <div className="w-10 h-10 rounded-full bg-[#3B1FA3]/10 text-[#3B1FA3] font-bold text-sm flex items-center justify-center mb-2">
-              {child.name?.[0] || '?'}
+            <div className="relative">
+              {photoSrc ? (
+                <img
+                  src={photoSrc}
+                  alt={child.name}
+                  className="w-10 h-10 rounded-full object-cover border-2 border-blue-500 shadow-sm mb-2"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'flex'; }}
+                />
+              ) : null}
+              <div
+                style={{ display: photoSrc ? 'none' : 'flex' }}
+                className="w-10 h-10 rounded-full bg-[#3B1FA3]/10 border-2 border-blue-500 text-[#3B1FA3] font-bold text-sm items-center justify-center mb-2"
+              >
+                {child.name?.[0] || '?'}
+              </div>
+              {/* Edit button */}
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); onEditChild(child); }}
+                className="absolute top-0 right-0 w-5 h-5 rounded-full bg-[#3B1FA3] flex items-center justify-center shadow"
+                title="Edit student"
+              >
+                <Pencil size={10} className="text-white" />
+              </button>
             </div>
             <p className="text-xs font-bold text-gray-900 truncate leading-tight">{child.name?.split(' ')[0]}</p>
             <p className="text-[10px] text-gray-500 truncate mb-2">{child.grade} · {child.className || 'Class'}</p>
@@ -174,33 +200,56 @@ function ChildrenSummary({ children, loading, onSelectChild }) {
 // ─── Quick Actions ────────────────────────────────────────────────────────────
 
 function QuickActions({ onNavigate }) {
+  const [expanded, setExpanded] = useState(false);
   const actions = [
+    { label: 'Academic Reports', icon: BarChart2, path: 'parent-portal-results', color: 'text-emerald-600', bg: 'bg-emerald-50' },
     { label: 'Fees',       icon: CreditCard,   path: 'parent-portal-fees',       color: 'text-[#3B1FA3]',    bg: 'bg-[#3B1FA3]/10' },
-    { label: 'Results',    icon: BarChart2,     path: 'parent-portal-results',    color: 'text-emerald-600',  bg: 'bg-emerald-50'   },
     { label: 'Attendance', icon: Users,         path: 'parent-portal-attendance', color: 'text-blue-600',     bg: 'bg-blue-50'      },
-    { label: 'Messages',   icon: MessageSquare, path: 'parent-portal-messages',   color: 'text-amber-600',    bg: 'bg-amber-50'     },
-    { label: 'Transport',  icon: MapPin,        path: 'parent-portal-transport',  color: 'text-rose-600',     bg: 'bg-rose-50'      },
-    { label: 'Documents',  icon: FolderOpen,    path: 'parent-portal-documents',  color: 'text-violet-600',   bg: 'bg-violet-50'    },
+    { label: 'Trips',      icon: MapPin,        path: 'parent-portal-transport',  color: 'text-rose-600',     bg: 'bg-rose-50', beta: 'bg-rose-100 text-rose-700 border-rose-200' },
   ];
 
   return (
-    <div className="grid grid-cols-3 gap-3">
-      {actions.map((a) => {
-        const Icon = a.icon;
-        return (
-          <button
-            key={a.label}
-            type="button"
-            onClick={() => onNavigate(a.path)}
-            className="bg-white border border-gray-200 rounded-xl py-3.5 flex flex-col items-center gap-2 hover:bg-gray-50 active:scale-95 transition-all"
-          >
-            <div className={`w-9 h-9 rounded-xl ${a.bg} flex items-center justify-center`}>
-              <Icon size={17} className={a.color} />
-            </div>
-            <span className="text-[10px] font-semibold text-gray-600">{a.label}</span>
-          </button>
-        );
-      })}
+    <div className="bg-white border border-gray-200 rounded-2xl p-4">
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className="w-full flex items-center justify-between gap-3 text-left"
+      >
+        <div>
+          <h2 className="text-sm font-bold text-gray-900">Quick Actions</h2>
+          <p className="text-xs text-gray-500 mt-1">{actions.length} shortcuts available</p>
+        </div>
+        <ChevronDown
+          size={18}
+          className={`text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {expanded && (
+        <div className="grid grid-cols-3 gap-3 mt-4">
+          {actions.map((a) => {
+            const Icon = a.icon;
+            return (
+              <button
+                key={a.label}
+                type="button"
+                onClick={() => onNavigate(a.path)}
+                className="bg-white border border-gray-200 rounded-xl py-3.5 flex flex-col items-center gap-2 hover:bg-gray-50 active:scale-95 transition-all"
+              >
+                <div className={`w-9 h-9 rounded-xl ${a.bg} flex items-center justify-center`}>
+                  <Icon size={17} className={a.color} />
+                </div>
+                <span className="text-[10px] font-semibold text-gray-600">{a.label}</span>
+                {a.beta && (
+                  <span className={`rounded-full border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide ${a.beta}`}>
+                    Beta
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -212,6 +261,7 @@ const ParentPortalHome = ({ user, onNavigate, brandingSettings }) => {
   const [loading, setLoading]             = useState(true);
   const [error, setError]                 = useState(null);
   const [selectedChild, setSelectedChild] = useState(null);
+  const [editingChild, setEditingChild]   = useState(null);
 
   const loadMetrics = useCallback(async () => {
     setLoading(true); setError(null);
@@ -227,6 +277,26 @@ const ParentPortalHome = ({ user, onNavigate, brandingSettings }) => {
   }, []);
 
   useEffect(() => { loadMetrics(); }, [loadMetrics]);
+
+  const handleChildSaved = useCallback((updatedChild) => {
+    setMetrics(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        children: (prev.children || []).map(c => {
+          if (c.id !== updatedChild.id) return c;
+          const nextPhoto = updatedChild.photoUrl || updatedChild.profilePicture || updatedChild.photo;
+          return {
+            ...c,
+            name: updatedChild.name,
+            photo: nextPhoto || c.photo,
+            photoUrl: nextPhoto || c.photoUrl,
+            profilePicture: nextPhoto || c.profilePicture,
+          };
+        }),
+      };
+    });
+  }, []);
 
   const hour     = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -244,6 +314,16 @@ const ParentPortalHome = ({ user, onNavigate, brandingSettings }) => {
 
   return (
     <div className="min-h-screen bg-[#F5F5F7] pb-24">
+
+      {/* Edit Student Modal */}
+      {editingChild && (
+        <EditStudentModal
+          child={editingChild}
+          brandingSettings={brandingSettings}
+          onClose={() => setEditingChild(null)}
+          onSaved={handleChildSaved}
+        />
+      )}
 
       {/* Shared white app bar */}
       <MobilePortalAppBar
@@ -283,13 +363,11 @@ const ParentPortalHome = ({ user, onNavigate, brandingSettings }) => {
             children={children}
             loading={loading}
             onSelectChild={setSelectedChild}
+            onEditChild={setEditingChild}
           />
         </div>
 
-        <div>
-          <h2 className="text-sm font-bold text-gray-900 mb-3">Quick Actions</h2>
-          <QuickActions onNavigate={onNavigate} />
-        </div>
+        <QuickActions onNavigate={onNavigate} />
 
       </div>
     </div>

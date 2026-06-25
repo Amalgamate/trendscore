@@ -143,6 +143,16 @@ const TeacherDashboard = ({ user, onNavigate }) => {
   const totalLearners = metrics?.stats?.myStudents ?? todaysClasses.reduce((sum, c) => sum + c.learners, 0);
   const totalPapers   = metrics?.stats?.pendingTasks ?? assessmentsToMark.reduce((sum, a) => sum + a.count, 0);
 
+  // Class-teacher context from backend
+  const isClassTeacher   = metrics?.stats?.isClassTeacher ?? false;
+  const classTeacherOf   = metrics?.stats?.classTeacherOf ?? null;
+  // Subvalue for the "My Learners" KPI card:
+  //   - Class teacher  → show class name (e.g. "Grade 4A")
+  //   - Subject teacher → "across classes"
+  const learnersSubvalue = isClassTeacher && classTeacherOf?.name
+    ? classTeacherOf.name
+    : 'across classes';
+
   const getSeverityColor = (severity) =>
     severity === 'high' ? 'border-l-rose-500 bg-rose-50' : 'border-l-amber-500 bg-amber-50';
 
@@ -204,7 +214,7 @@ const TeacherDashboard = ({ user, onNavigate }) => {
           {
             label: 'My Learners',
             value: totalLearners,
-            subvalue: 'across classes',
+            subvalue: learnersSubvalue,
             icon: <GraduationCap size={26} />,
             tone: 'green',
             onClick: openMyLearners,

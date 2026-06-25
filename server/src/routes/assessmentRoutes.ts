@@ -13,6 +13,7 @@ import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
 import { validate } from '../middleware/validation.middleware';
 import { auditLog, ResourceAccessControl, requireRole } from '../middleware/permissions.middleware';
 import { checkNotLocked } from '../middleware/workflow.authorization';
+import { checkSubjectOwnership } from '../middleware/subjectOwnership.middleware';
 
 const router = express.Router();
 
@@ -252,16 +253,27 @@ router.post(
   '/summative/results',
   authenticate,
   ResourceAccessControl.canAccessAssessment(),
+  checkSubjectOwnership({ required: true }),
   rateLimit({ windowMs: 60_000, maxRequests: 50 }),
   validate(recordSummativeResultSchema),
   checkNotLocked,
   auditLog('RECORD_SUMMATIVE_RESULT'),
+  (req, res, next) => {
+    // Signal to the frontend when a class teacher enters marks for a subject
+    // they are not the named subject teacher for.
+    if (req.subjectOwnership?.isClassTeacherOverride) {
+      res.setHeader('x-class-teacher-override', 'true');
+      res.setHeader('x-override-subject', req.subjectOwnership.subjectName ?? '');
+    }
+    next();
+  },
   assessmentController.recordSummativeResult
 );
 
 router.post(
   '/summative/results/bulk',
   authenticate,
+  checkSubjectOwnership({ required: false }),
   rateLimit({ windowMs: 60_000, maxRequests: 10 }),
   // NOTE: checkNotLocked is NOT applied here because the testId comes from
   // the request body, not params, and checkNotLocked only reads req.params.

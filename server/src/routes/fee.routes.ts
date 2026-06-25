@@ -29,7 +29,7 @@ import { feeWaiverController } from '../controllers/feeWaiver.controller';
 import { feeCommentsController } from '../controllers/feeComments.controller';
 import { learnerFeeConfigurationController } from '../controllers/learnerFeeConfiguration.controller';
 import { authenticate } from '../middleware/auth.middleware';
-import { requirePermission, requireRole, auditLog } from '../middleware/permissions.middleware';
+import { requireAnyPermission, requirePermission, requireRole, ResourceAccessControl, auditLog } from '../middleware/permissions.middleware';
 import { requireSchoolContext } from '../middleware/school.middleware';
 import { asyncHandler } from '../utils/async.util';
 import { validate } from '../middleware/validation.middleware';
@@ -271,7 +271,8 @@ router.get(
 
 router.get(
   '/invoices/learner/:learnerId',
-  requirePermission('FEE_MANAGEMENT'),
+  requireAnyPermission(['FEE_MANAGEMENT', 'VIEW_OWN_BALANCE']),
+  ResourceAccessControl.canAccessLearner(),
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   asyncHandler(feeController.getLearnerInvoices.bind(feeController))
 );

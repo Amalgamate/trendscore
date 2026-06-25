@@ -20,12 +20,15 @@ function fmtMoney(n) {
   return `KES ${v.toLocaleString()}`;
 }
 
+const getChildPhoto = (child) => child?.photoUrl || child?.profilePicture || child?.photo || child?.imageUrl || null;
+
 // ─── Child transport card ───────────────────────────────────────────────────
 
 function ChildTransportCard({ child }) {
   const assignment = child.transport;
   const route = assignment?.route;
   const vehicle = route?.vehicle;
+  const photoSrc = getChildPhoto(child);
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
@@ -33,7 +36,18 @@ function ChildTransportCard({ child }) {
       <div className="p-4">
         {/* Child header */}
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 rounded-full bg-purple-50 text-purple-700 font-bold text-sm flex items-center justify-center flex-shrink-0">
+          {photoSrc ? (
+            <img
+              src={photoSrc}
+              alt={child.name}
+              className="w-10 h-10 rounded-full object-cover border border-blue-500 shadow-sm flex-shrink-0"
+              onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'flex'; }}
+            />
+          ) : null}
+          <div
+            style={{ display: photoSrc ? 'none' : 'flex' }}
+            className="w-10 h-10 rounded-full bg-purple-50 border border-blue-500 text-purple-700 font-bold text-sm items-center justify-center flex-shrink-0"
+          >
             {child.name?.[0] || '?'}
           </div>
           <div className="flex-1 min-w-0">

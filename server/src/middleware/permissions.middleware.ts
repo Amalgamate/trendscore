@@ -192,7 +192,7 @@ export class ResourceAccessControl {
         }
 
         if (hasAnyRole(req.user, ['PARENT'])) {
-          const learnerId = req.params.learnerId || req.body.learnerId || req.query.learnerId;
+          const learnerId = req.params.learnerId || req.params.id || req.body.learnerId || req.query.learnerId;
           if (!learnerId) return next();
 
           const learner = await prisma.learner.findUnique({

@@ -6,8 +6,8 @@
 export const TYPOGRAPHY = {
   // Font family definitions
   fontFamily: {
-    sans: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif",
-    mono: "'Fira Code', 'Monaco', monospace",
+    sans: "var(--font-family-sans)",
+    mono: "var(--font-family-mono)",
   },
 
   // Font weights
@@ -18,6 +18,7 @@ export const TYPOGRAPHY = {
     semibold: 600,
     bold: 700,
     extrabold: 800,
+    black: 900,
   },
 
   // Font sizes with line heights
@@ -258,6 +259,7 @@ export const typographyUtils = {
       600: 'font-semibold',
       700: 'font-bold',
       800: 'font-extrabold',
+      900: 'font-black',
     };
 
     let classes = sizeMap[style.size] || '';

@@ -1890,10 +1890,25 @@ export class DashboardController {
                 }),
             ]);
 
+            // Determine if this teacher is a class (homeroom) teacher
+            const classTeacherRecord = myClassesWithOccupancy.find(cls => cls.teacherId === userId);
+            const isClassTeacher = !!classTeacherRecord;
+            const classTeacherOf = classTeacherRecord
+                ? {
+                    id: classTeacherRecord.id,
+                    name: formatClassName(classTeacherRecord),
+                    grade: classTeacherRecord.grade,
+                    stream: classTeacherRecord.stream ?? null,
+                    learnerCount: classTeacherRecord._count.enrollments,
+                }
+                : null;
+
             const payload = {
                 stats: {
                     myStudents: totalMyStudents, myClasses: myClassesWithOccupancy.length,
                     pendingTasks: pendingAssessmentCount, messages: messages.length,
+                    isClassTeacher,
+                    classTeacherOf,
                     analytics: {
                         attendance: totalMyStudents > 0 ? Math.round(((totalMyStudents - attendanceDue.reduce((sum, item) => sum + Math.max(0, item.learners - item.marked), 0)) / totalMyStudents) * 100) : 0,
                         graded: pendingAssessmentCount === 0 ? 100 : Math.max(0, Math.round(((totalMyStudents - pendingAssessmentCount) / (totalMyStudents || 1)) * 100)),
@@ -2022,6 +2037,8 @@ export class DashboardController {
                 return {
                     id: child.id, 
                     name: `${child.firstName} ${child.lastName}`,
+                    photoUrl: child.photoUrl,
+                    profilePicture: child.photoUrl,
                     grade: child.grade.replace('_', ' '), 
                     className: child.stream ? `Class ${child.stream}` : 'Class',
                     admissionNumber: child.admissionNumber,
@@ -2067,6 +2084,7 @@ export class DashboardController {
                     id: notice.id,
                     title: notice.title,
                     description: notice.content,
+                    publishedAt: notice.publishedAt,
                     timeLabel: this.formatRelativeDate(notice.publishedAt),
                 })),
                 stats: {

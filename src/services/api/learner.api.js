@@ -1,5 +1,4 @@
-import { fetchWithAuth, cachedFetch, cacheDel, cacheDelPrefix, TTL } from './core';
-import axiosInstance from './axiosConfig';
+import { fetchWithAuth, cachedFetch, cacheDelPrefix, TTL } from './core';
 import { communicationAPI } from './communication.api';
 
 const institutionCacheKeySuffix = () => {
@@ -42,6 +41,11 @@ export const learnerAPI = {
   update: async (id, learnerData) => {
     cacheDelPrefix('learners:');
     return fetchWithAuth(`/learners/${id}`, { method: 'PUT', body: JSON.stringify(learnerData) });
+  },
+  parentUpdate: async (id, data) => {
+    // Scoped parent-safe update — only firstName, lastName, photo allowed
+    // No EDIT_LEARNER permission required; server verifies parentId ownership
+    return fetchWithAuth(`/learners/${id}/parent-update`, { method: 'PATCH', body: JSON.stringify(data) });
   },
   delete: async (id) => {
     cacheDelPrefix('learners:');

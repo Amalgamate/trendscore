@@ -19,6 +19,7 @@ import { ASSESSMENT_STATUS_CODES, getAssessmentStatus, hasPerformanceScore } fro
 import { useAssessmentSetup } from '../hooks/useAssessmentSetup';
 import { useLearningAreas } from '../hooks/useLearningAreas';
 import { useTeacherWorkload } from '../hooks/useTeacherWorkload';
+import { useTeacherContext } from '../../../hooks/useTeacherContext';
 import { useSchoolData } from '../../../contexts/SchoolDataContext';
 import { getLearningAreasByGrade } from '../../../constants/learningAreas';
 import { getAcademicYearOptions, getCurrentAcademicYear } from '../utils/academicYear';
@@ -170,6 +171,25 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
   });
   const learningAreasMgr = useLearningAreas(setup.selectedGrade);
   const teacherWorkload = useTeacherWorkload();
+  const teacherCtx = useTeacherContext();
+
+  // ── Subject-teacher ownership check ──────────────────────────────────────
+  // Fires whenever a learning area is selected or filters change.
+  // Shows a persistent warning banner when a class teacher (not the named
+  // subject teacher) is about to enter scores.
+  const [classTeacherOverrideWarning, setClassTeacherOverrideWarning] = useState(false);
+
+  useEffect(() => {
+    if (!teacherCtx.restricted || !selectedLearningArea) {
+      setClassTeacherOverrideWarning(false);
+      return;
+    }
+    const grade = setup.selectedGrade || stagedGrade;
+    const isAssigned = teacherCtx.isSubjectTeacher(selectedLearningArea, grade);
+    const isClassT = teacherCtx.isClassTeacher && teacherCtx.isClassTeacherFor(grade);
+    // Warn when they are the class teacher but not the named subject teacher
+    setClassTeacherOverrideWarning(!isAssigned && isClassT);
+  }, [selectedLearningArea, setup.selectedGrade, stagedGrade, teacherCtx]);
   const normalizedDefaultTestType = useMemo(
     () => normalizeTestType(defaultTestType),
     [defaultTestType]
@@ -1414,6 +1434,25 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
         duration: 4000,
       });
 
+      // If a class teacher (not the named subject teacher) just entered marks,
+      // surface a persistent reminder toast so the action is consciously noted.
+      if (classTeacherOverrideWarning) {
+        toast(
+          `⚠️ Note: You are the class teacher, not the assigned subject teacher for "${selectedLearningArea}". Marks saved — please inform the subject teacher.`,
+          {
+            duration: 8000,
+            style: {
+              background: '#fffbeb',
+              color: '#92400e',
+              border: '1px solid #fcd34d',
+              fontSize: '13px',
+              maxWidth: '420px',
+            },
+            icon: '⚠️',
+          }
+        );
+      }
+
     } catch (error) {
       console.error('Save error:', error);
       toast.dismiss(saveToastId);
@@ -1732,6 +1771,23 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
       {/* Assessment Table - Renders below filter bar when test selected */}
       {selectedTestId && (
         <div className="p-6">
+
+          {/* ── Class-teacher override warning banner ───────────────────────── */}
+          {classTeacherOverrideWarning && (
+            <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+              <span className="mt-0.5 text-lg leading-none">⚠️</span>
+              <div>
+                <p className="text-sm font-semibold text-amber-800">
+                  You are not the assigned subject teacher for <em>{selectedLearningArea}</em>
+                </p>
+                <p className="mt-0.5 text-xs text-amber-700">
+                  You are entering scores as the class teacher. The subject teacher should be the primary recorder for this subject.
+                  This action will be logged.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* PDF Export Content Wrapper */}
           <div id="assessment-report-content" className="bg-white">
 

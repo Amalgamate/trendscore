@@ -11,17 +11,18 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  ArrowLeft, Wallet, CheckCircle2, AlertTriangle,
-  ChevronRight, RefreshCw, X, Users,
+  CheckCircle2, AlertTriangle,
+  Users,
 } from 'lucide-react';
-import { dashboardAPI, feeAPI } from '../../../../services/api';
+import { dashboardAPI } from '../../../../services/api';
 
 const fmt    = (n) => Number(n || 0).toLocaleString();
-const fmtPct = (n) => `${Math.round(Number(n || 0))}%`;
 
 function Skeleton({ className = '' }) {
   return <div className={`animate-pulse rounded-lg bg-gray-100 ${className}`} />;
 }
+
+const getChildPhoto = (child) => child?.photoUrl || child?.profilePicture || child?.photo || child?.imageUrl || null;
 
 // ─── Family Fee Overview ──────────────────────────────────────────────────────
 
@@ -30,46 +31,72 @@ function FamilyFeeHeader({ children, loading }) {
   const allCleared   = totalBalance === 0 && children.length > 0;
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-      <div className="px-4 pt-4 pb-3">
-        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Total Outstanding</p>
+    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-700 via-blue-600 to-sky-500 p-4 text-white shadow-sm">
+      <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/10" />
+      <div className="absolute -bottom-14 left-8 h-36 w-36 rounded-full bg-sky-300/20" />
+
+      <div className="relative">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold text-blue-100 uppercase tracking-wider mb-1">Total Outstanding</p>
+            <p className="text-xs text-blue-100/90">
+              {children.length} child{children.length !== 1 ? 'ren' : ''} linked
+            </p>
+          </div>
+          <div className={`h-9 w-9 rounded-full flex items-center justify-center ${allCleared ? 'bg-emerald-400/20 text-emerald-100' : 'bg-amber-300/20 text-amber-100'}`}>
+            {allCleared ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+          </div>
+        </div>
+
         {loading ? (
-          <Skeleton className="h-8 w-36" />
+          <Skeleton className="h-10 w-44 bg-white/20 mt-3" />
         ) : (
-          <div className="flex items-end gap-2">
-            <p className={`text-3xl font-bold ${allCleared ? 'text-emerald-600' : 'text-rose-600'}`}>
+          <div className="mt-3">
+            <p className="text-3xl font-black tracking-tight">
               KES {fmt(totalBalance)}
             </p>
-            {allCleared && <CheckCircle2 size={18} className="text-emerald-500 mb-1" />}
-            {!allCleared && totalBalance > 0 && <AlertTriangle size={18} className="text-amber-500 mb-1" />}
+            <p className="text-xs text-blue-100 mt-1">
+              {allCleared ? 'All balances are cleared' : 'Balance summary by child'}
+            </p>
           </div>
         )}
-        <p className="text-xs text-gray-500 mt-0.5">across {children.length} child{children.length !== 1 ? 'ren' : ''}</p>
-      </div>
 
-      {!loading && children.length > 0 && (
-        <div className="border-t border-gray-100">
-          {children.map((child) => {
-            const bal = Number(child.feeBalance || 0);
-            return (
-              <div key={child.id} className="flex items-center justify-between px-4 py-2.5 border-b border-gray-50 last:border-0">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-full bg-gray-100 text-gray-600 text-[10px] font-bold flex items-center justify-center">
-                    {child.name?.[0]}
+        {!loading && children.length > 0 && (
+          <div className="mt-4 space-y-2">
+            {children.map((child) => {
+              const bal = Number(child.feeBalance || 0);
+              const photoSrc = getChildPhoto(child);
+              return (
+                <div key={child.id} className="flex items-center justify-between gap-3 rounded-xl bg-white/12 px-3 py-2.5 ring-1 ring-white/15 backdrop-blur">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {photoSrc ? (
+                      <img
+                        src={photoSrc}
+                        alt={child.name}
+                        className="w-9 h-9 rounded-full object-cover border-2 border-white/80 shadow-sm flex-shrink-0"
+                        onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'flex'; }}
+                      />
+                    ) : null}
+                    <div
+                      style={{ display: photoSrc ? 'none' : 'flex' }}
+                      className="w-9 h-9 rounded-full bg-white/20 border-2 border-white/80 text-white text-xs font-bold items-center justify-center flex-shrink-0"
+                    >
+                      {child.name?.[0]}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold truncate">{child.name}</p>
+                      <p className="text-[10px] text-blue-100 truncate">{child.grade}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm text-gray-800 font-medium">{child.name}</p>
-                    <p className="text-[10px] text-gray-400">{child.grade}</p>
-                  </div>
+                  <span className={`text-sm font-black flex-shrink-0 ${bal > 0 ? 'text-amber-100' : 'text-emerald-100'}`}>
+                    {bal > 0 ? `KES ${fmt(bal)}` : 'Cleared'}
+                  </span>
                 </div>
-                <span className={`text-sm font-bold ${bal > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                  {bal > 0 ? `KES ${fmt(bal)}` : '✓ Cleared'}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -172,11 +199,20 @@ function Step3Distribution({ mode, amount, strategy, setStrategy, custom, setCus
         {children.map(c => {
           const bal = Number(c.feeBalance || 0);
           const isSel = selected === c.id;
+          const photoSrc = getChildPhoto(c);
           return (
             <button key={c.id} onClick={() => setSelected(isSel ? null : c.id)}
               className={`w-full flex items-center gap-3 px-4 py-3 border-t border-gray-50 text-left transition-colors ${isSel ? 'bg-[#3B1FA3]/5' : 'hover:bg-gray-50'}`}
             >
               <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${isSel ? 'border-[#3B1FA3] bg-[#3B1FA3]' : 'border-gray-300'}`} />
+              {photoSrc ? (
+                <img
+                  src={photoSrc}
+                  alt={c.name}
+                  className="w-8 h-8 rounded-full object-cover border border-blue-500 shadow-sm"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
+              ) : null}
               <div className="flex-1"><p className="text-sm font-medium text-gray-800">{c.name}</p><p className="text-[10px] text-gray-400">{c.grade}</p></div>
               <span className={`text-sm font-bold ${bal > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{bal > 0 ? `KES ${fmt(bal)}` : 'Cleared'}</span>
             </button>
@@ -262,22 +298,7 @@ const ParentPortalFees = ({ user, onNavigate }) => {
 
   return (
     <div className="min-h-screen bg-[#F5F5F7] pb-20">
-      <div className="bg-white border-b border-gray-100 sticky top-0 z-10">
-        <div className="flex items-center gap-3 px-4 py-3">
-          <button onClick={() => onNavigate('parent-portal-home')} className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-600 transition-colors">
-            <ArrowLeft size={18} />
-          </button>
-          <div className="flex-1">
-            <h1 className="text-base font-bold text-gray-900">School Fees</h1>
-            <p className="text-[10px] text-gray-500">Family fee management</p>
-          </div>
-          <button onClick={load} className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400 transition-colors">
-            <RefreshCw size={14} />
-          </button>
-        </div>
-      </div>
-
-      <div className="px-4 pt-4 space-y-4">
+      <div className="pt-1 space-y-4">
         {error && <div className="bg-rose-50 border border-rose-200 rounded-xl p-3"><p className="text-xs text-rose-700">{error}</p></div>}
 
         {/* Family balance header */}

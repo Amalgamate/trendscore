@@ -383,9 +383,35 @@ export class LearnerController {
   async updateLearner(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params;
+      const callerRole = req.user!.role;
+      const callerId = req.user!.userId;
 
       const learner = await prisma.learner.findUnique({ where: { id } });
       if (!learner) throw new ApiError(404, 'Learner not found');
+
+      // ── Parent guard: parents can only update their own children,
+      //    and only the display name + photo fields.
+      if (callerRole === 'PARENT') {
+        if (learner.parentId !== callerId) {
+          throw new ApiError(403, 'You can only update your own child\'s profile');
+        }
+        const { firstName, lastName, photo } = req.body;
+        const parentUpdateData: any = { updatedBy: callerId };
+        if (firstName && String(firstName).trim().length >= 2) parentUpdateData.firstName = String(firstName).trim();
+        if (lastName && String(lastName).trim().length >= 2) parentUpdateData.lastName = String(lastName).trim();
+        if (photo) parentUpdateData.photoUrl = photo;
+        if (Object.keys(parentUpdateData).length <= 1) {
+          throw new ApiError(400, 'Provide at least one field: firstName, lastName, or photo');
+        }
+        const updated = await prisma.learner.update({
+          where: { id },
+          data: parentUpdateData,
+          select: { id: true, firstName: true, lastName: true, photoUrl: true, grade: true, stream: true },
+        });
+        return res.json({ success: true, message: 'Profile updated successfully', data: updated });
+      }
+
+      // ── Non-parent update flow continues below ──
 
       const allowedFields = [
         'firstName', 'lastName', 'middleName',
@@ -626,6 +652,69 @@ export class LearnerController {
     const { learnerIds, nextGrade } = req.body;
     const result = await prisma.$transaction(learnerIds.map((id: string) => prisma.learner.update({ where: { id }, data: { grade: String(nextGrade), updatedBy: req.user!.userId } })));
     res.json({ success: true, message: `Promoted ${result.length} learners` });
+  }
+
+  /**
+   * PATCH /api/learners/:id/parent-update
+   * Allows a parent to update ONLY their own child's firstName, lastName, and photo.
+   * Scoped to parent role — no EDIT_LEARNER permission required.
+   */
+  async parentUpdateLearner(req: AuthRequest, res: Response) {
+    const { id } = req.params;
+    const parentId = req.user!.userId;
+
+    // 1. Verify this learner belongs to the requesting parent
+    const learner = await prisma.learner.findUnique({
+      where: { id },
+      select: { id: true, parentId: true, firstName: true, lastName: true },
+    });
+
+    if (!learner) {
+      throw new ApiError(404, 'Learner not found');
+    }
+
+    if (learner.parentId !== parentId) {
+      throw new ApiError(403, 'You can only update your own child\'s profile');
+    }
+
+    // 2. Extract only the allowed fields — parents cannot change grade, class, etc.
+    const { firstName, lastName, photo } = req.body;
+
+    const updateData: Record<string, any> = { updatedBy: parentId };
+
+    if (firstName && String(firstName).trim().length >= 2) {
+      updateData.firstName = String(firstName).trim();
+    }
+    if (lastName && String(lastName).trim().length >= 2) {
+      updateData.lastName = String(lastName).trim();
+    }
+    if (photo) {
+      // photo is a base64 data URL — store as photoUrl
+      updateData.photoUrl = photo;
+    }
+
+    if (Object.keys(updateData).length <= 1) {
+      throw new ApiError(400, 'Provide at least one field to update: firstName, lastName, or photo');
+    }
+
+    const updated = await prisma.learner.update({
+      where: { id },
+      data: updateData,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        photoUrl: true,
+        grade: true,
+        stream: true,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: updated,
+    });
   }
 }
 
