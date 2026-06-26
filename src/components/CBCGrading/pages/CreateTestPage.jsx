@@ -1,8 +1,28 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Save } from 'lucide-react';
-import { gradingAPI } from '../../../services/api';
-import { getLearningAreasByGrade } from '../../../constants/learningAreas';
+import { configAPI } from '../../../services/api';
 import { CANONICAL_TEST_TYPE_OPTIONS, normalizeTestType } from '../utils/testType';
+
+const toCanonicalGrade = (grade) => {
+  const raw = String(grade || '').trim().toUpperCase();
+  if (!raw) return '';
+  const compact = raw.replace(/\s+/g, '_');
+  const match = compact.match(/^GRADE_?(\d+)$/);
+  if (match) return `GRADE_${match[1]}`;
+  return compact;
+};
+
+const normalizeLearningAreaKey = (value) =>
+  String(value || '').toLowerCase().replace(/&/g, 'and').replace(/\s+/g, '').trim();
+
+const uniqueSortedNames = (items = []) => [
+  ...new Map(
+    items
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+      .map((item) => [normalizeLearningAreaKey(item), item])
+  ).values()
+].sort((a, b) => a.localeCompare(b));
 
 const CreateTestPage = ({ onSave, onCancel, initialData, availableGrades }) => {
   const [formData, setFormData] = useState({
@@ -22,8 +42,45 @@ const CreateTestPage = ({ onSave, onCancel, initialData, availableGrades }) => {
     weight: 1.0,
     ...initialData
   });
+  const [gradeLearningAreas, setGradeLearningAreas] = useState([]);
+  const [loadingLearningAreas, setLoadingLearningAreas] = useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadGradeLearningAreas = async () => {
+      if (!formData.grade) {
+        setGradeLearningAreas([]);
+        return;
+      }
+      setLoadingLearningAreas(true);
+      try {
+        const resp = await configAPI.getLearningAreas({ gradeLevel: toCanonicalGrade(formData.grade) });
+        const rows = Array.isArray(resp?.data) ? resp.data : (Array.isArray(resp) ? resp : []);
+        const names = uniqueSortedNames(rows.map((row) => row?.name));
+        if (!cancelled) setGradeLearningAreas(names);
+      } catch (error) {
+        console.error('Failed to load grade learning areas:', error);
+        if (!cancelled) setGradeLearningAreas([]);
+      } finally {
+        if (!cancelled) setLoadingLearningAreas(false);
+      }
+    };
+    loadGradeLearningAreas();
+    return () => { cancelled = true; };
+  }, [formData.grade]);
 
+  useEffect(() => {
+    if (!formData.subject) return;
+    const selectedKey = normalizeLearningAreaKey(formData.subject);
+    const canonicalSubject = gradeLearningAreas.find((area) => normalizeLearningAreaKey(area) === selectedKey);
+    if (!canonicalSubject) {
+      setFormData(prev => ({ ...prev, subject: '' }));
+      return;
+    }
+    if (canonicalSubject !== formData.subject) {
+      setFormData(prev => ({ ...prev, subject: canonicalSubject }));
+    }
+  }, [formData.subject, gradeLearningAreas]);
 
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -169,7 +226,7 @@ const CreateTestPage = ({ onSave, onCancel, initialData, availableGrades }) => {
                 <div className="relative">
                   <select
                     value={formData.grade}
-                    onChange={(e) => handleChange('grade', e.target.value)}
+                    onChange={(e) => setFormData(prev => ({ ...prev, grade: e.target.value, subject: '' }))}
                     className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-all appearance-none cursor-pointer"
                   >
                     <option value="">Select Grade</option>
@@ -261,10 +318,18 @@ const CreateTestPage = ({ onSave, onCancel, initialData, availableGrades }) => {
                   onChange={(e) => handleChange('subject', e.target.value)}
                   className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-all appearance-none cursor-pointer"
                   required
-                  disabled={!formData.grade}
+                  disabled={!formData.grade || loadingLearningAreas}
                 >
-                  <option value="">{formData.grade ? 'Select Learning Area' : 'Select Grade first'}</option>
-                  {formData.grade && getLearningAreasByGrade(formData.grade).map(area => (
+                  <option value="">
+                    {!formData.grade
+                      ? 'Select Grade first'
+                      : loadingLearningAreas
+                        ? 'Loading learning areas...'
+                        : gradeLearningAreas.length
+                          ? 'Select Learning Area'
+                          : 'No learning areas configured for this grade'}
+                  </option>
+                  {gradeLearningAreas.map(area => (
                     <option key={area} value={area}>{area}</option>
                   ))}
                 </select>

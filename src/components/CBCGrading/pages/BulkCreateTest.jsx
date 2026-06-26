@@ -7,7 +7,6 @@ import { DatePicker } from '../../ui/date-picker';
 import { assessmentAPI, gradingAPI, configAPI } from '../../../services/api';
 import { useNotifications } from '../hooks/useNotifications';
 import { useAuth } from '../../../hooks/useAuth';
-import { getLearningAreasByGrade } from '../../../constants/learningAreas';
 import { Button } from '../../ui/button';
 import { CANONICAL_TEST_TYPE_OPTIONS, normalizeTestType } from '../utils/testType';
 
@@ -27,6 +26,27 @@ const TERMS = [
     { value: 'TERM_2', label: 'Term 2' },
     { value: 'TERM_3', label: 'Term 3' },
 ];
+
+const toCanonicalGrade = (grade) => {
+    const raw = String(grade || '').trim().toUpperCase();
+    if (!raw) return '';
+    const compact = raw.replace(/\s+/g, '_');
+    const match = compact.match(/^GRADE_?(\d+)$/);
+    if (match) return `GRADE_${match[1]}`;
+    return compact;
+};
+
+const normalizeLearningAreaKey = (value) =>
+    String(value || '').toLowerCase().replace(/&/g, 'and').replace(/\s+/g, '').trim();
+
+const uniqueSortedNames = (items = []) => [
+    ...new Map(
+        items
+            .map((item) => String(item || '').trim())
+            .filter(Boolean)
+            .map((item) => [normalizeLearningAreaKey(item), item])
+    ).values()
+].sort((a, b) => a.localeCompare(b));
 
 const BulkCreateTest = ({ onBack, onSuccess }) => {
     const { user } = useAuth();
@@ -53,8 +73,31 @@ const BulkCreateTest = ({ onBack, onSuccess }) => {
     });
 
     const [selectedGrades, setSelectedGrades] = useState([]);
+    const [areaCountsByGrade, setAreaCountsByGrade] = useState({});
 
     useEffect(() => { loadData(); }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        const loadAreaCounts = async () => {
+            if (selectedGrades.length === 0) {
+                setAreaCountsByGrade({});
+                return;
+            }
+            const entries = await Promise.all(selectedGrades.map(async (grade) => {
+                try {
+                    const resp = await configAPI.getLearningAreas({ gradeLevel: toCanonicalGrade(grade) });
+                    const rows = Array.isArray(resp?.data) ? resp.data : (Array.isArray(resp) ? resp : []);
+                    return [grade, uniqueSortedNames(rows.map((row) => row?.name)).length];
+                } catch {
+                    return [grade, 0];
+                }
+            }));
+            if (!cancelled) setAreaCountsByGrade(Object.fromEntries(entries));
+        };
+        loadAreaCounts();
+        return () => { cancelled = true; };
+    }, [selectedGrades]);
 
     const loadData = async () => {
         setLoadingScales(true);
@@ -101,9 +144,9 @@ const BulkCreateTest = ({ onBack, onSuccess }) => {
             const areasByGrade = new Map();
             for (const grade of selectedGrades) {
                 try {
-                    const resp = await configAPI.getLearningAreas({ gradeLevel: grade });
+                    const resp = await configAPI.getLearningAreas({ gradeLevel: toCanonicalGrade(grade) });
                     const rows = Array.isArray(resp?.data) ? resp.data : (Array.isArray(resp) ? resp : []);
-                    const names = [...new Set(rows.map((r) => String(r?.name || '').trim()).filter(Boolean))];
+                    const names = uniqueSortedNames(rows.map((r) => r?.name));
                     areasByGrade.set(grade, names);
                 } catch {
                     areasByGrade.set(grade, []);
@@ -111,8 +154,7 @@ const BulkCreateTest = ({ onBack, onSuccess }) => {
             }
 
             for (const grade of selectedGrades) {
-                const dbAreas = areasByGrade.get(grade) || [];
-                const learningAreas = dbAreas.length > 0 ? dbAreas : getLearningAreasByGrade(grade);
+                const learningAreas = areasByGrade.get(grade) || [];
                 if (!learningAreas || learningAreas.length === 0) continue;
 
                 const payload = {
@@ -163,7 +205,7 @@ const BulkCreateTest = ({ onBack, onSuccess }) => {
             ? `Grade ${String(g).replace('GRADE', '')}`
             : g.replace('GRADE_', 'Grade ').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
-    const totalTests = selectedGrades.reduce((sum, grade) => sum + getLearningAreasByGrade(grade).length, 0);
+    const totalTests = selectedGrades.reduce((sum, grade) => sum + (areaCountsByGrade[grade] || 0), 0);
 
     return (
         <div className="min-h-screen bg-[#f8fafc] pb-20">

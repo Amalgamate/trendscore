@@ -17,11 +17,9 @@ import PDFPreviewModal from '../shared/PDFPreviewModal';
 import { getGradeColor } from '../../../utils/grading/colors';
 import { ASSESSMENT_STATUS_CODES, getAssessmentStatus, hasPerformanceScore } from '../../../utils/cbeGrading';
 import { useAssessmentSetup } from '../hooks/useAssessmentSetup';
-import { useLearningAreas } from '../hooks/useLearningAreas';
 import { useTeacherWorkload } from '../hooks/useTeacherWorkload';
 import { useTeacherContext } from '../../../hooks/useTeacherContext';
 import { useSchoolData } from '../../../contexts/SchoolDataContext';
-import { getLearningAreasByGrade } from '../../../constants/learningAreas';
 import { getAcademicYearOptions, getCurrentAcademicYear } from '../utils/academicYear';
 import { CANONICAL_TEST_TYPE_OPTIONS, normalizeTestType, resolveTestType, formatTestTypeLabel } from '../utils/testType';
 import { ScoreUnlockPrompt } from '../../shared/ScoreUnlockPrompt';
@@ -52,6 +50,21 @@ const formatGradeLabel = (grade) => {
 const matchesAcademicYear = (testYear, selectedYear) => {
   if (!selectedYear) return true;
   return String(testYear || '').trim() === String(selectedYear).trim();
+};
+const normalizeLearningAreaKey = (value) =>
+  String(value || '').toLowerCase().replace(/&/g, 'and').replace(/\s+/g, '').trim();
+const uniqueSortedNames = (items = []) => [
+  ...new Map(
+    items
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+      .map((item) => [normalizeLearningAreaKey(item), item])
+  ).values()
+].sort((a, b) => a.localeCompare(b));
+const findCanonicalLearningArea = (value, canonicalAreas = []) => {
+  const key = normalizeLearningAreaKey(value);
+  if (!key) return '';
+  return canonicalAreas.find((area) => normalizeLearningAreaKey(area) === key) || '';
 };
 // ─── Custom Test Picker ────────────────────────────────────────────────────────
 // Replaces the native <select> so we can render a green tick next to tests that
@@ -169,7 +182,6 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     defaultStream: localStorage.getItem('cbc_summative_appliedStream') || '',
     defaultAcademicYear: parseInt(localStorage.getItem('cbc_summative_appliedYear')) || getCurrentAcademicYear()
   });
-  const learningAreasMgr = useLearningAreas(setup.selectedGrade);
   const teacherWorkload = useTeacherWorkload();
   const teacherCtx = useTeacherContext();
 
@@ -212,6 +224,8 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
   const [fallbackGrades, setFallbackGrades] = useState([]);
   const [selectedGradeAreas, setSelectedGradeAreas] = useState([]);
   const [stagedGradeAreas, setStagedGradeAreas] = useState([]);
+  const [selectedGradeAreasLoaded, setSelectedGradeAreasLoaded] = useState(false);
+  const [stagedGradeAreasLoaded, setStagedGradeAreasLoaded] = useState(false);
   const [availableTerms, setAvailableTerms] = useState([]);
   const [availableStreams, setAvailableStreams] = useState([]);
   const [contextualStreams, setContextualStreams] = useState([]);
@@ -380,15 +394,19 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     const loadAreasForSelectedGrade = async () => {
       if (!setup.selectedGrade) {
         setSelectedGradeAreas([]);
+        setSelectedGradeAreasLoaded(true);
         return;
       }
+      setSelectedGradeAreasLoaded(false);
       try {
         const resp = await configAPI.getLearningAreas({ gradeLevel: toCanonicalGrade(setup.selectedGrade) });
         const rows = Array.isArray(resp?.data) ? resp.data : (Array.isArray(resp) ? resp : []);
         const names = rows.map((r) => String(r?.name || '').trim()).filter(Boolean);
-        setSelectedGradeAreas([...new Set(names)]);
+        setSelectedGradeAreas(uniqueSortedNames(names));
       } catch {
         setSelectedGradeAreas([]);
+      } finally {
+        setSelectedGradeAreasLoaded(true);
       }
     };
     loadAreasForSelectedGrade();
@@ -398,15 +416,19 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     const loadAreasForStagedGrade = async () => {
       if (!stagedGrade) {
         setStagedGradeAreas([]);
+        setStagedGradeAreasLoaded(true);
         return;
       }
+      setStagedGradeAreasLoaded(false);
       try {
         const resp = await configAPI.getLearningAreas({ gradeLevel: toCanonicalGrade(stagedGrade) });
         const rows = Array.isArray(resp?.data) ? resp.data : (Array.isArray(resp) ? resp : []);
         const names = rows.map((r) => String(r?.name || '').trim()).filter(Boolean);
-        setStagedGradeAreas([...new Set(names)]);
+        setStagedGradeAreas(uniqueSortedNames(names));
       } catch {
         setStagedGradeAreas([]);
+      } finally {
+        setStagedGradeAreasLoaded(true);
       }
     };
     loadAreasForStagedGrade();
@@ -542,33 +564,13 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
   );
 
   const availableLearningAreas = useMemo(() => {
-    // Collect all learning areas from the filtered tests
-    const areas = new Set();
-    filteredTestsBySelection.forEach(t => {
-      if (t.learningArea) areas.add(t.learningArea);
-    });
-
-    // Unified source: merge persisted tests + grade hook + backend grade areas
-    (learningAreasMgr.flatLearningAreas || []).forEach((area) => areas.add(area));
-    (selectedGradeAreas || []).forEach((area) => areas.add(area));
-
-    return Array.from(areas).sort();
-  }, [filteredTestsBySelection, learningAreasMgr.flatLearningAreas, selectedGradeAreas]);
+    return uniqueSortedNames(selectedGradeAreas);
+  }, [selectedGradeAreas]);
 
   // Staged available learning areas - for dropdown options while editing
   const stagedAvailableLearningAreas = useMemo(() => {
-    const areas = new Set();
-    stagedFilteredTestsBySelection.forEach(t => {
-      if (t.learningArea) areas.add(t.learningArea);
-    });
-
-    // Use grade-driven canonical learning areas (constant map + backend), even before "Load" is clicked
-    const stagedOfficialAreas = stagedGrade ? getLearningAreasByGrade(stagedGrade) : [];
-    stagedOfficialAreas.forEach((area) => areas.add(area));
-    (stagedGradeAreas || []).forEach((area) => areas.add(area));
-
-    return Array.from(areas).sort();
-  }, [stagedFilteredTestsBySelection, stagedGrade, stagedGradeAreas]);
+    return uniqueSortedNames(stagedGradeAreas);
+  }, [stagedGradeAreas]);
 
   const filteredLearningAreasByWorkload = useMemo(() => {
     const areas = availableLearningAreas;
@@ -598,6 +600,38 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
       assignedSubjects.some(as => normalize(as) === normalize(area))
     );
   }, [stagedAvailableLearningAreas, teacherWorkload.isTeacher, stagedGrade, teacherWorkload]);
+
+  useEffect(() => {
+    if (!selectedGradeAreasLoaded || !setup.selectedGrade || !selectedLearningArea) return;
+    const canonical = findCanonicalLearningArea(selectedLearningArea, availableLearningAreas);
+    if (canonical && canonical !== selectedLearningArea) {
+      setSelectedLearningArea(canonical);
+      localStorage.setItem('cbc_summative_appliedLearningArea', canonical);
+      return;
+    }
+    if (!canonical) {
+      setSelectedLearningArea('');
+      setSelectedTestId('');
+      localStorage.removeItem('cbc_summative_appliedLearningArea');
+      localStorage.removeItem('cbc_summative_appliedTestId');
+    }
+  }, [availableLearningAreas, selectedGradeAreasLoaded, selectedLearningArea, setup.selectedGrade]);
+
+  useEffect(() => {
+    if (!stagedGradeAreasLoaded || !stagedGrade || !stagedLearningArea) return;
+    const canonical = findCanonicalLearningArea(stagedLearningArea, stagedAvailableLearningAreas);
+    if (canonical && canonical !== stagedLearningArea) {
+      setStagedLearningArea(canonical);
+      localStorage.setItem('cbc_summative_stagedLearningArea', canonical);
+      return;
+    }
+    if (!canonical) {
+      setStagedLearningArea('');
+      setStagedTestId('');
+      localStorage.removeItem('cbc_summative_stagedLearningArea');
+      localStorage.removeItem('cbc_summative_stagedTestId');
+    }
+  }, [stagedAvailableLearningAreas, stagedGradeAreasLoaded, stagedGrade, stagedLearningArea]);
 
   const finalTests = useMemo(() => {
     if (!selectedLearningArea) return [];
