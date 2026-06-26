@@ -7,7 +7,7 @@ import { redisCacheService } from '../services/redis-cache.service';
 import { configService } from '../services/config.service';
 import { buildSnapshot, generateInsights } from '../services/insights.service';
 import { reportDashboardService } from '../services/reportDashboard.service';
-import { CanonicalInstitutionType } from '../utils/institutionNormalizer';
+import { CanonicalInstitutionType, getInstitutionType } from '../utils/institutionNormalizer';
 
 import logger from '../utils/logger';
 // ─── TTL constants ─────────────────────────────────────────────────────────────
@@ -433,11 +433,10 @@ export class DashboardController {
 
     /**
      * Returns the resolved institution type for this request.
-     * Reads req.resolvedInstitutionType set by institutionContextResolver —
-     * never re-derives from headers or req.school.
+     * Uses the centralized getInstitutionType from institutionNormalizer.
      */
     private getInstitutionType(req: AuthRequest): CanonicalInstitutionType {
-        return (req.resolvedInstitutionType ?? 'PRIMARY_CBC') as CanonicalInstitutionType;
+        return getInstitutionType(req);
     }
 
     private formatAcademicPeriod(term: string, academicYear: number) {
@@ -450,7 +449,8 @@ export class DashboardController {
 
     async getIntelligenceSummary(req: AuthRequest, res: Response) {
         try {
-            const today = new Date();
+            const now = new Date();
+            const today = new Date(now);
             today.setHours(0, 0, 0, 0);
 
             const thirtyDaysAgo = new Date(today);
@@ -1651,14 +1651,18 @@ export class DashboardController {
             if (!userId) throw new ApiError(400, 'User ID is required');
             const institutionType = this.getInstitutionType(req) as any;
 
-            const cacheKey = `dashboard:teacher:v4:${userId}`;
+            const cacheKey = `dashboard:teacher:v5:${userId}`;
             const cached = await redisCacheService.get<any>(cacheKey);
             if (cached) return res.json({ success: true, data: cached, _cached: true });
 
-            const today = new Date();
+            const now = new Date();
+            const today = new Date(now);
             today.setHours(0, 0, 0, 0);
 
-            const [myClasses, pendingAssessmentCount, pendingAssessmentItems, recentActivityRaw] = await Promise.all([
+            const nextWeek = new Date(today);
+            nextWeek.setDate(nextWeek.getDate() + 7);
+
+            const [myClasses, pendingAssessmentCount, pendingAssessmentItems, recentActivityRaw, recentMessagesRaw, upcomingEventsRaw] = await Promise.all([
                 prisma.class.findMany({
                     where: {
                         archived: false,
@@ -1704,6 +1708,24 @@ export class DashboardController {
                     where: { teacherId: userId },
                     orderBy: { createdAt: 'desc' }, take: 10,
                     select: { id: true, title: true, learningArea: true, createdAt: true },
+                }),
+                prisma.message.findMany({
+                    where: { senderId: userId },
+                    orderBy: { createdAt: 'desc' },
+                    take: 6,
+                    select: { id: true, subject: true, body: true, createdAt: true, status: true, recipientType: true },
+                }),
+                prisma.event.findMany({
+                    where: {
+                        startDate: { gte: today, lte: nextWeek },
+                        OR: [
+                            { creatorId: userId },
+                            { type: { in: ['MEETING', 'EXAM', 'ACADEMIC', 'GENERAL'] as any[] } },
+                        ],
+                    },
+                    orderBy: { startDate: 'asc' },
+                    take: 8,
+                    select: { id: true, title: true, startDate: true, endDate: true, type: true, location: true, allDay: true },
                 }),
             ]);
 
@@ -1874,6 +1896,27 @@ export class DashboardController {
                 })
                 .filter(item => !item.submitted);
 
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+            const scheduleWithStatus = todaysSchedule.map((item) => {
+                const startParts = String(item.time || '').split(':').map(Number);
+                const endParts = String(item.endTime || '').split(':').map(Number);
+                const start = startParts.length >= 2 && !startParts.some(Number.isNaN)
+                    ? startParts[0] * 60 + startParts[1]
+                    : null;
+                const end = endParts.length >= 2 && !endParts.some(Number.isNaN)
+                    ? endParts[0] * 60 + endParts[1]
+                    : null;
+                let status = 'scheduled';
+                if (start !== null && end !== null && currentMinutes >= start && currentMinutes <= end) status = 'in-progress';
+                else if (start !== null && currentMinutes < start) status = 'upcoming';
+                else if (end !== null && currentMinutes > end) status = 'completed';
+                return { ...item, status };
+            });
+
+            const pendingAttendanceLearners = attendanceDue.reduce((sum, item) => (
+                sum + Math.max(0, Number(item.learners || 0) - Number(item.marked || 0))
+            ), 0);
+
             const assessmentItems = pendingAssessmentItems.map((item: any) => ({
                 id: item.id,
                 grade: item.learner?.stream ? `${item.learner.grade?.replace(/_/g, ' ')} ${item.learner.stream}` : item.learner?.grade?.replace(/_/g, ' ') || 'Learner',
@@ -1927,10 +1970,120 @@ export class DashboardController {
                 }
                 : null;
 
+            const classLoad = learnerAnalysisClasses.map((cls: any) => {
+                const attendanceMarked = Number(cls.attendanceMarked || 0);
+                const learnerCount = Number(cls.learnerCount || 0);
+                const pending = Math.max(0, learnerCount - attendanceMarked);
+                const assessmentCount = cls.subjects.reduce((sum: number, subject: any) => sum + Number(subject.pendingAssessments || 0), 0);
+                const attendanceRate = learnerCount > 0 ? Math.round((attendanceMarked / learnerCount) * 100) : 0;
+                return {
+                    id: cls.classId,
+                    name: cls.className,
+                    room: cls.room,
+                    learnerCount,
+                    attendanceRate,
+                    pending,
+                    assessmentCount,
+                    subjects: cls.subjects.map((subject: any) => subject.subject).slice(0, 3),
+                };
+            });
+
+            const eventActivity = upcomingEventsRaw
+                .filter((evt: any) => new Date(evt.startDate).toDateString() === today.toDateString())
+                .map((evt: any) => ({
+                    id: evt.id,
+                    text: evt.title,
+                    detail: evt.type?.replace(/_/g, ' ') || 'Calendar',
+                    time: evt.startDate,
+                    type: 'calendar',
+                }));
+
+            const recentActivity = [
+                ...recentActivityRaw.map(act => ({
+                    id: act.id,
+                    text: act.title || `${act.learningArea} assessment`,
+                    detail: `${act.learningArea || 'Assessment'} created`,
+                    time: act.createdAt,
+                    type: 'assessment',
+                })),
+                ...recentMessagesRaw.map((msg: any) => ({
+                    id: msg.id,
+                    text: msg.subject || 'Parent message',
+                    detail: `${String(msg.recipientType || '').replace(/_/g, ' ') || 'Message'} · ${msg.status}`,
+                    time: msg.createdAt,
+                    type: 'message',
+                })),
+                ...eventActivity,
+            ]
+                .sort((a: any, b: any) => new Date(b.time).getTime() - new Date(a.time).getTime())
+                .slice(0, 8);
+
+            const pendingWork = {
+                assignmentsToReview: assessmentItems.filter((item: any) => String(item.type || '').toUpperCase().includes('ASSIGN')).length,
+                assessmentsToGrade: assessmentItems.length,
+                learnerAlerts: learnersNeedingAttention.length,
+                parentMessages: recentMessagesRaw.filter((msg: any) => msg.status === 'DRAFT' || msg.status === 'FAILED').length,
+                attendancePending: attendanceDue.length,
+                pendingAttendanceLearners,
+                outstandingFeeLearners: feeBalanceLearners.length,
+            };
+
+            const nextAttendance = attendanceDue[0];
+            const currentLesson = scheduleWithStatus.find((item: any) => item.status === 'in-progress');
+            const nextLesson = scheduleWithStatus.find((item: any) => item.status === 'upcoming') || scheduleWithStatus[0];
+            const nextAction = nextAttendance
+                ? {
+                    type: 'attendance',
+                    title: `Take attendance for ${nextAttendance.grade}`,
+                    description: `${nextAttendance.marked}/${nextAttendance.learners} marked`,
+                    actionLabel: 'Start Attendance',
+                    navigateTo: 'attendance-daily',
+                    classId: nextAttendance.id,
+                    priority: 'high',
+                }
+                : assessmentItems[0]
+                    ? {
+                        type: 'assessment',
+                        title: `Complete ${assessmentItems[0].title}`,
+                        description: [assessmentItems[0].subject, assessmentItems[0].learnerName].filter(Boolean).join(' · '),
+                        actionLabel: 'Enter Marks',
+                        navigateTo: 'assess-summative-assessment',
+                        priority: 'medium',
+                    }
+                    : nextLesson
+                        ? {
+                            type: 'lesson',
+                            title: `${currentLesson ? 'Continue' : 'Prepare'} ${nextLesson.subject}`,
+                            description: [nextLesson.grade, nextLesson.room, nextLesson.time].filter(Boolean).join(' · '),
+                            actionLabel: 'View Timetable',
+                            navigateTo: 'planner-timetable',
+                            priority: currentLesson ? 'high' : 'normal',
+                        }
+                        : {
+                            type: 'clear',
+                            title: 'No urgent action',
+                            description: 'Your attendance and assessment queues are clear.',
+                            actionLabel: 'View Learners',
+                            navigateTo: 'teacher-learner-analysis',
+                            priority: 'low',
+                        };
+
+            const upcomingEvents = upcomingEventsRaw.map((evt: any) => ({
+                id: evt.id,
+                title: evt.title,
+                date: evt.startDate,
+                endDate: evt.endDate,
+                type: evt.type,
+                location: evt.location,
+                allDay: evt.allDay,
+            }));
+
             const payload = {
                 stats: {
                     myStudents: totalMyStudents, myClasses: myClassesWithOccupancy.length,
-                    pendingTasks: pendingAssessmentCount, messages: messages.length,
+                    pendingTasks: pendingAssessmentCount + attendanceDue.length + learnersNeedingAttention.length,
+                    messages: messages.length,
+                    lessonsToday: scheduleWithStatus.length,
                     isClassTeacher,
                     classTeacherOf,
                     analytics: {
@@ -1939,9 +2092,12 @@ export class DashboardController {
                         completion: 0, engagement: 0,
                     },
                 },
-                schedule: todaysSchedule.length > 0 ? todaysSchedule : classSummary,
+                schedule: scheduleWithStatus.length > 0 ? scheduleWithStatus : classSummary,
                 attendanceDue,
                 assessmentsToMark: assessmentItems,
+                pendingWork,
+                nextAction,
+                myClasses: classLoad,
                 feeSummary: {
                     learnersWithBalance: feeBalanceLearners.length,
                     totalOutstanding: Number(feeBalanceAgg._sum.balance || 0),
@@ -1950,9 +2106,15 @@ export class DashboardController {
                 messages,
                 learnersNeedingAttention,
                 topPerformers,
-                recentActivity: recentActivityRaw.map(act => ({
-                    id: act.id, text: `${act.title} created for ${act.learningArea}`, time: act.createdAt, type: 'assessment',
-                })),
+                recentActivity,
+                upcomingEvents,
+                quickActions: [
+                    { id: 'attendance', label: 'Take Attendance', icon: 'attendance', navigateTo: 'attendance-daily', count: attendanceDue.length },
+                    { id: 'marks', label: 'Enter Marks', icon: 'marks', navigateTo: 'assess-summative-assessment', count: assessmentItems.length },
+                    { id: 'lesson-notes', label: 'Lesson Notes', icon: 'notes', navigateTo: 'learning-hub-lesson-plans' },
+                    { id: 'message', label: 'Send Message', icon: 'message', navigateTo: 'communication' },
+                    { id: 'learners', label: 'Student Search', icon: 'learners', navigateTo: 'teacher-learner-analysis', count: learnersNeedingAttention.length },
+                ],
             };
 
             await redisCacheService.set(cacheKey, payload, TEACHER_CACHE_TTL);

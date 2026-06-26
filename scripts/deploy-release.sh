@@ -10,6 +10,7 @@
 #   SCHOOL_ID       instance id from deploy/instances.manifest.json (required for DEPLOY_TARGET=school)
 #   MANIFEST_PATH   path to manifest JSON (default: ./deploy/instances.manifest.json)
 #   APPS_DIR, MAIN_DIR, BACKUP_DIR  override manifest defaults
+#   BACKUP_RETENTION_COUNT number of per-instance backup snapshots to keep (default 5, 0 disables pruning)
 #   DEPLOY_CONSOLE  true|false — also roll console image (default false for school targets)
 #   DRY_RUN         true — print plan only
 #
@@ -65,6 +66,7 @@ FRONTEND_IMAGE_BASE="${FRONTEND_IMAGE_BASE:-$(jq -r '.defaults.frontend_image' "
 BACKEND_IMAGE_BASE="${BACKEND_IMAGE_BASE:-$(jq -r '.defaults.backend_image' "${MANIFEST_PATH}")}"
 CONSOLE_IMAGE_BASE="${CONSOLE_IMAGE_BASE:-$(jq -r '.defaults.console_image' "${MANIFEST_PATH}")}"
 HEALTH_HOST="${HEALTH_HOST:-$(jq -r '.defaults.health_host' "${MANIFEST_PATH}")}"
+BACKUP_RETENTION_COUNT="${BACKUP_RETENTION_COUNT:-5}"
 
 FRONTEND_IMAGE="${FRONTEND_IMAGE_BASE}:${IMAGE_TAG}"
 BACKEND_IMAGE="${BACKEND_IMAGE_BASE}:${IMAGE_TAG}"
@@ -467,6 +469,7 @@ backup_database() {
     docker_cmd compose exec -T db pg_dump -U "${db_user}" "${db_name}" < /dev/null \
       | run_as_root tee "${dest}/database.sql" >/dev/null
     echo "${dest}/database.sql" | run_as_root tee "${dest}/LATEST" >/dev/null
+    prune_backup_snapshots "${id}"
     return 0
   fi
 
@@ -480,6 +483,31 @@ backup_database() {
     exec -T db pg_dump -U "${db_user}" "${db_name}" < /dev/null \
     | run_as_root tee "${dest}/database.sql" >/dev/null
   echo "${dest}/database.sql" | run_as_root tee "${dest}/LATEST" >/dev/null
+  prune_backup_snapshots "${id}"
+}
+
+prune_backup_snapshots() {
+  local id="$1"
+  local keep="${BACKUP_RETENTION_COUNT}"
+  local parent="${BACKUP_DIR}/${id}"
+
+  [[ "${keep}" =~ ^[0-9]+$ ]] || fail "BACKUP_RETENTION_COUNT must be a non-negative integer"
+  [[ "${keep}" -gt 0 ]] || { log "Backup retention disabled for ${id}"; return 0; }
+  [[ -d "${parent}" ]] || return 0
+
+  mapfile -t snapshots < <(
+    find "${parent}" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
+      | grep -E '^[0-9]{8}T[0-9]{6}Z$' \
+      | sort -r
+  )
+  [[ "${#snapshots[@]}" -gt "${keep}" ]] || return 0
+
+  local snapshot pruned=0
+  for snapshot in "${snapshots[@]:${keep}}"; do
+    run_as_root rm -rf -- "${parent}/${snapshot}"
+    pruned=$((pruned + 1))
+  done
+  log "Backup retention: kept ${keep}, pruned ${pruned} old snapshot(s) for ${id}"
 }
 
 pull_images() {

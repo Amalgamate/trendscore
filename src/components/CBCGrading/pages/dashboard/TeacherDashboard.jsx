@@ -53,6 +53,12 @@ export const CLASS_STATUS_CONFIG = {
     dotClass: 'bg-slate-300',
     label: 'Later',
   },
+  completed: {
+    cardClass: 'bg-emerald-50 border-emerald-200',
+    badgeClass: 'text-emerald-700 bg-emerald-100',
+    dotClass: 'bg-emerald-500',
+    label: 'Done',
+  },
 };
 
 // ─── Tiny helpers ─────────────────────────────────────────────────────────────
@@ -414,64 +420,184 @@ const TodaysTimetable = ({ classes, onNavigate }) => {
   );
 };
 
-// ─── Assignments Coming Soon card ─────────────────────────────────────────────
-const MOCK_ASSIGNMENTS = [
-  { id: 1, title: 'Homework: Fractions worksheet', grade: 'Grade 5A', due: 'Tomorrow', subject: 'Mathematics', submitted: 14, total: 28 },
-  { id: 2, title: 'Reading response journal', grade: 'Grade 5A', due: 'Friday', subject: 'English', submitted: 22, total: 28 },
-  { id: 3, title: 'Science diagram labelling', grade: 'Grade 6B', due: 'Next Monday', subject: 'Science', submitted: 8, total: 31 },
-];
+const formatTime = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (!Number.isNaN(date.getTime())) {
+    const today = new Date();
+    if (date.toDateString() === today.toDateString()) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+  return String(value);
+};
 
-const AssignmentsCard = () => (
-  <AppCard
-    title="Assignments"
-    subtitle="Track homework and class tasks"
-  >
-    {/* Coming Soon banner */}
-    <div className="mb-4 flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
-        <Sparkles size={15} />
-      </div>
-      <div>
-        <p className="text-xs font-black text-blue-800">Coming Soon</p>
-        <p className="text-[11px] font-semibold text-blue-600 mt-0.5">
-          Assignment creation, submission tracking and grading — launching next term.
-        </p>
-      </div>
-    </div>
-
-    {/* Placeholder rows (blurred/dimmed) */}
-    <div className="space-y-2 pointer-events-none select-none">
-      {MOCK_ASSIGNMENTS.map((a) => {
-        const pct = Math.round((a.submitted / a.total) * 100);
-        return (
-          <div key={a.id}
-            className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 opacity-50 blur-[0.5px]">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-sm font-black text-slate-900 truncate">{a.title}</p>
-                <p className="text-[11px] font-semibold text-slate-500 mt-0.5">
-                  {a.subject} · {a.grade} · Due {a.due}
-                </p>
-              </div>
-              <span className="text-xs font-black text-slate-500 shrink-0">{a.submitted}/{a.total}</span>
-            </div>
-            {/* mini progress */}
-            <div className="mt-2 h-1 w-full rounded-full bg-slate-200">
-              <div className="h-1 rounded-full bg-blue-400" style={{ width: `${pct}%` }} />
-            </div>
+const NextActionCard = ({ action, onNavigate }) => {
+  if (!action) return null;
+  return (
+    <AppCard title="My Next Action" subtitle={action.priority === 'high' ? 'Needs attention now' : 'Recommended next step'}>
+      <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm">
+            {action.type === 'attendance' ? <GraduationCap size={21} /> : action.type === 'assessment' ? <ClipboardList size={21} /> : <Calendar size={21} />}
           </div>
-        );
-      })}
-    </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-blue-500">{action.type}</p>
+            <h3 className="mt-1 text-sm font-black text-slate-950">{action.title}</h3>
+            {action.description && <p className="mt-1 text-xs font-semibold text-slate-500">{action.description}</p>}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onNavigate(action.navigateTo)}
+          className="mt-4 flex h-10 w-full items-center justify-center rounded-xl bg-blue-600 text-sm font-black text-white hover:bg-blue-700 transition-colors"
+        >
+          {action.actionLabel}
+        </button>
+      </div>
+    </AppCard>
+  );
+};
 
-    <button
-      type="button"
-      disabled
-      className="mt-4 w-full flex items-center justify-center gap-1.5 text-sm font-black text-slate-400 bg-slate-100 rounded-xl py-2 cursor-not-allowed"
-    >
-      <BookOpen size={14} />
-      Create Assignment — Coming Soon
-    </button>
+const PendingWorkCard = ({ pending = {}, onNavigate }) => {
+  const rows = [
+    { label: 'Assessments to grade', value: pending.assessmentsToGrade || 0, icon: <ClipboardList size={14} />, tone: 'text-blue-600 bg-blue-50', page: 'assess-summative-assessment' },
+    { label: 'Attendance pending', value: pending.attendancePending || 0, icon: <Clock size={14} />, tone: 'text-amber-600 bg-amber-50', page: 'attendance-daily' },
+    { label: 'Learner alerts', value: pending.learnerAlerts || 0, icon: <AlertTriangle size={14} />, tone: 'text-rose-600 bg-rose-50', page: 'teacher-learner-analysis' },
+    { label: 'Parent message drafts', value: pending.parentMessages || 0, icon: <MessageSquare size={14} />, tone: 'text-violet-600 bg-violet-50', page: 'communication' },
+    { label: 'Outstanding fee learners', value: pending.outstandingFeeLearners || 0, icon: <GraduationCap size={14} />, tone: 'text-emerald-600 bg-emerald-50', page: 'teacher-learner-analysis' },
+  ];
+
+  return (
+    <AppCard title="Pending Work" subtitle="Live queues from attendance, assessment and communication">
+      <div className="space-y-2">
+        {rows.map((row) => (
+          <button
+            key={row.label}
+            type="button"
+            onClick={() => onNavigate(row.page)}
+            className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-slate-50 transition-colors"
+          >
+            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${row.tone}`}>{row.icon}</span>
+            <span className="min-w-0 flex-1 text-sm font-bold text-slate-700">{row.label}</span>
+            <span className="text-sm font-black text-slate-950">{row.value}</span>
+          </button>
+        ))}
+      </div>
+    </AppCard>
+  );
+};
+
+const MyClassesCard = ({ classes = [], onNavigate }) => (
+  <AppCard title="My Classes" subtitle={`${classes.length} assigned class${classes.length === 1 ? '' : 'es'}`}>
+    <div className="space-y-2">
+      {classes.length === 0 ? (
+        <EmptyState icon={<GraduationCap size={40} />} title="No assigned classes" description="Classes assigned to you will appear here." />
+      ) : classes.slice(0, 5).map((cls) => (
+        <button
+          key={cls.id}
+          type="button"
+          onClick={() => onNavigate('teacher-learner-analysis')}
+          className="flex w-full items-center gap-3 rounded-xl border border-slate-100 px-3 py-3 text-left hover:border-blue-200 hover:bg-blue-50/40 transition-colors"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-black text-blue-700">
+            {initials(cls.name)}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-black text-slate-950">{cls.name}</span>
+            <span className="mt-0.5 block truncate text-[11px] font-semibold text-slate-500">
+              {cls.learnerCount} learners{cls.subjects?.length ? ` · ${cls.subjects.join(', ')}` : ''}
+            </span>
+          </span>
+          <span className="text-right">
+            <span className="block text-xs font-black text-emerald-600">{cls.attendanceRate}%</span>
+            <span className="block text-[10px] font-semibold text-slate-400">attendance</span>
+          </span>
+        </button>
+      ))}
+    </div>
+  </AppCard>
+);
+
+const QuickActionsCard = ({ actions = [], onNavigate }) => {
+  const iconFor = (icon) => {
+    if (icon === 'attendance') return <GraduationCap size={18} />;
+    if (icon === 'marks') return <ClipboardList size={18} />;
+    if (icon === 'notes') return <BookOpen size={18} />;
+    if (icon === 'message') return <MessageSquare size={18} />;
+    return <Sparkles size={18} />;
+  };
+
+  return (
+    <AppCard title="Quick Actions" subtitle="Frequent teacher tasks">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {actions.map((action) => (
+          <button
+            key={action.id}
+            type="button"
+            onClick={() => onNavigate(action.navigateTo)}
+            className="relative flex min-h-[82px] flex-col items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-2 text-center hover:border-blue-300 hover:bg-blue-50/40 transition-colors"
+          >
+            {Number(action.count || 0) > 0 && (
+              <span className="absolute right-2 top-2 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-black text-rose-600">
+                {action.count}
+              </span>
+            )}
+            <span className="text-blue-600">{iconFor(action.icon)}</span>
+            <span className="text-[11px] font-black leading-tight text-slate-700">{action.label}</span>
+          </button>
+        ))}
+      </div>
+    </AppCard>
+  );
+};
+
+const RecentActivityCard = ({ activities = [] }) => (
+  <AppCard title="Recent Activity" subtitle="Latest work you touched">
+    <div className="space-y-3">
+      {activities.length === 0 ? (
+        <EmptyState icon={<Clock size={40} />} title="No recent activity" description="Assessment, messages and events appear here." />
+      ) : activities.slice(0, 5).map((activity) => (
+        <div key={`${activity.type}-${activity.id}`} className="flex items-start gap-3">
+          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 text-slate-500">
+            {activity.type === 'message' ? <MessageSquare size={14} /> : activity.type === 'calendar' ? <Calendar size={14} /> : <ClipboardList size={14} />}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-black text-slate-900">{activity.text}</span>
+            <span className="mt-0.5 block truncate text-[11px] font-semibold text-slate-500">{activity.detail}</span>
+          </span>
+          <span className="shrink-0 text-[11px] font-semibold text-slate-400">{formatTime(activity.time)}</span>
+        </div>
+      ))}
+    </div>
+  </AppCard>
+);
+
+const CalendarMiniCard = ({ events = [], onNavigate }) => (
+  <AppCard title="Calendar" subtitle="Next seven days">
+    <div className="space-y-2">
+      {events.length === 0 ? (
+        <EmptyState icon={<Calendar size={40} />} title="No upcoming events" description="Meetings, exams and academic events appear here." />
+      ) : events.slice(0, 5).map((event) => (
+        <button
+          key={event.id}
+          type="button"
+          onClick={() => onNavigate('calendar')}
+          className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-slate-50 transition-colors"
+        >
+          <span className="flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+            <span className="text-[10px] font-black uppercase">{formatTime(event.date).split(' ')[0]}</span>
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-black text-slate-900">{event.title}</span>
+            <span className="block truncate text-[11px] font-semibold text-slate-500">
+              {String(event.type || 'GENERAL').replace(/_/g, ' ')}{event.location ? ` · ${event.location}` : ''}
+            </span>
+          </span>
+        </button>
+      ))}
+    </div>
   </AppCard>
 );
 
@@ -487,8 +613,10 @@ const TeacherDashboard = ({ user, onNavigate }) => {
   const sectionControls = useDashboardSections('teacher', [
     { id: 'executive-summary', label: 'Executive Summary', description: 'KPI overview' },
     { id: 'timetable', label: "Today's Timetable", description: 'Scheduled classes today' },
+    { id: 'next-work', label: 'Next Work', description: 'Next action and pending queues' },
+    { id: 'classes-actions', label: 'Classes & Actions', description: 'Assigned classes and shortcuts' },
     { id: 'learner-spotlight', label: 'Learner Spotlight', description: 'Top performers & learners needing attention' },
-    { id: 'assignments', label: 'Assignments', description: 'Homework & class task tracking' },
+    { id: 'activity-calendar', label: 'Activity & Calendar', description: 'Recent work and upcoming events' },
   ]);
 
   const loadMetrics = async () => {
@@ -531,6 +659,12 @@ const TeacherDashboard = ({ user, onNavigate }) => {
   const isClassTeacher = metrics?.stats?.isClassTeacher ?? false;
   const classTeacherOf = metrics?.stats?.classTeacherOf ?? null;
   const learnersSubvalue = isClassTeacher && classTeacherOf?.name ? classTeacherOf.name : 'across classes';
+  const pendingWork = metrics?.pendingWork || {};
+  const nextAction = metrics?.nextAction || null;
+  const myClasses = metrics?.myClasses || metrics?.learnerAnalysis?.classes || [];
+  const quickActions = metrics?.quickActions || [];
+  const recentActivity = metrics?.recentActivity || [];
+  const upcomingEvents = metrics?.upcomingEvents || [];
 
   if (loading) {
     return (
@@ -566,7 +700,7 @@ const TeacherDashboard = ({ user, onNavigate }) => {
           items={[
             {
               label: "Today's Classes",
-              value: todaysClasses.length,
+              value: metrics?.stats?.lessonsToday ?? todaysClasses.length,
               subvalue: 'scheduled',
               icon: <Calendar size={26} />,
               tone: 'navy',
@@ -575,7 +709,7 @@ const TeacherDashboard = ({ user, onNavigate }) => {
             {
               label: 'Attendance Due',
               value: attendanceDue.length,
-              subvalue: 'pending',
+              subvalue: pendingWork.pendingAttendanceLearners ? `${pendingWork.pendingAttendanceLearners} learners` : 'pending',
               icon: <Clock size={26} />,
               tone: 'teal',
               onClick: () => onNavigate('attendance-daily'),
@@ -601,19 +735,34 @@ const TeacherDashboard = ({ user, onNavigate }) => {
       </DashboardSection>
 
       {/* ── 2. Timetable + Learner Spotlight (side by side on lg) ────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.8fr)] gap-6">
         <DashboardSection id="timetable" controls={sectionControls}>
           <TodaysTimetable classes={todaysClasses} onNavigate={onNavigate} />
         </DashboardSection>
 
-        <DashboardSection id="learner-spotlight" controls={sectionControls}>
-          <LearnerSpotlight metrics={metrics} onNavigate={onNavigate} />
+        <DashboardSection id="next-work" controls={sectionControls}>
+          <div className="space-y-6">
+            <NextActionCard action={nextAction} onNavigate={onNavigate} />
+            <PendingWorkCard pending={pendingWork} onNavigate={onNavigate} />
+          </div>
         </DashboardSection>
       </div>
 
-      {/* ── 3. Assignments ───────────────────────────────────────────── */}
-      <DashboardSection id="assignments" controls={sectionControls}>
-        <AssignmentsCard />
+      {/* ── 3. Class load + learner attention + shortcuts ────────────── */}
+      <DashboardSection id="classes-actions" controls={sectionControls}>
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <MyClassesCard classes={myClasses} onNavigate={onNavigate} />
+          <LearnerSpotlight metrics={metrics} onNavigate={onNavigate} />
+          <QuickActionsCard actions={quickActions} onNavigate={onNavigate} />
+        </div>
+      </DashboardSection>
+
+      {/* ── 4. Activity + Calendar ───────────────────────────────────── */}
+      <DashboardSection id="activity-calendar" controls={sectionControls}>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <RecentActivityCard activities={recentActivity} />
+          <CalendarMiniCard events={upcomingEvents} onNavigate={onNavigate} />
+        </div>
       </DashboardSection>
 
       <DashboardSectionControls {...sectionControls} />
