@@ -156,6 +156,43 @@ if (!schoolSlug) fail('school_slug is required');
 if (!environment) fail('environment is required');
 if (!branch) fail('branch is required');
 
+const BATCH_SLUGS = new Set(['all_schools', 'pilot']);
+if (BATCH_SLUGS.has(schoolSlug)) {
+  const batchEnv = schoolSlug === 'pilot' ? 'pilot' : 'production';
+  const details = {
+    schoolId: schoolSlug,
+    schoolName: schoolSlug === 'pilot' ? 'Pilot Tier Schools' : 'All Schools',
+    domain: '',
+    composeProject: '',
+    environment: batchEnv,
+    githubEnvironment: githubEnvironmentName(batchEnv),
+    branch,
+    kind: '',
+    tier: batchEnv,
+    envFile: '',
+  };
+
+  console.log(`Batch deployment target: ${details.schoolName}`);
+  console.log(`  Environment          : ${details.environment}`);
+  console.log(`  Branch               : ${details.branch}`);
+  console.log('');
+  console.log(JSON.stringify(details, null, 2));
+
+  writeOutput(args.githubOutput, {
+    school_id: details.schoolId,
+    school_name: details.schoolName,
+    domain: '',
+    compose_project: '',
+    environment: details.environment,
+    github_environment: details.githubEnvironment,
+    branch: details.branch,
+    deploy_target: schoolSlug,
+  });
+
+  writeSummary(args.githubSummary, details);
+  process.exit(0);
+}
+
 const manifestPath = path.resolve(args.manifestPath);
 if (!fs.existsSync(manifestPath)) {
   fail(`Manifest not found: ${manifestPath}`);

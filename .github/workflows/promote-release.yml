@@ -115,11 +115,18 @@ jobs:
       - name: Deploy matched school only
         env:
           IMAGE_TAG: ${{ needs.validate.outputs.image_tag }}
+          DEPLOY_TARGET: ${{ needs.validate.outputs.deploy_target }}
           SCHOOL_ID: ${{ needs.validate.outputs.school_id }}
         run: |
           set -euo pipefail
-          ssh production \
-            "DEPLOY_TARGET=school SCHOOL_ID=${SCHOOL_ID} IMAGE_TAG=${IMAGE_TAG} MANIFEST_PATH=/srv/zawadi/apps/deploy/instances.manifest.json bash /srv/zawadi/apps/deploy/deploy-release.sh"
+          DEPLOY_CMD="DEPLOY_TARGET=${DEPLOY_TARGET} IMAGE_TAG=${IMAGE_TAG} MANIFEST_PATH=/srv/zawadi/apps/deploy/instances.manifest.json"
+          if [[ "${DEPLOY_TARGET}" == "all_schools" || "${DEPLOY_TARGET}" == "pilot" ]]; then
+            echo "Batch deploy: ${DEPLOY_TARGET}"
+            ssh production "${DEPLOY_CMD} bash /srv/zawadi/apps/deploy/deploy-release.sh"
+          else
+            echo "Single school deploy: ${SCHOOL_ID}"
+            ssh production "${DEPLOY_CMD} SCHOOL_ID=${SCHOOL_ID} bash /srv/zawadi/apps/deploy/deploy-release.sh"
+          fi
 
       - name: Report success
         if: success()
@@ -127,7 +134,7 @@ jobs:
           {
             echo "## Deployment succeeded"
             echo ""
-            echo "Deployed only \`${{ needs.validate.outputs.school_id }}\` using \`${{ needs.validate.outputs.image_tag }}\`."
+            echo "Deployed \`${{ needs.validate.outputs.deploy_target }}\` target with tag \`${{ needs.validate.outputs.image_tag }}\`."
             echo ""
             echo "Per-instance pipeline: verify target → DB backup → pull image → migrate → restart → health check."
           } >> "$GITHUB_STEP_SUMMARY"

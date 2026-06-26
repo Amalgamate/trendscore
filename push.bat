@@ -121,9 +121,9 @@ where gh >nul 2>&1
 if %ERRORLEVEL%==0 (
   :: Use GitHub CLI
   if "%SCHOOL%"=="" (
-    gh workflow run promote-release.yml --repo %REPO% -f image_tag=%TAG% -f deployment_target=%DEPLOY_TARGET%
+    gh workflow run promote-release.yml --repo %REPO% -f branch=%TAG% -f school_slug=%DEPLOY_TARGET% -f environment=production
   ) else (
-    gh workflow run promote-release.yml --repo %REPO% -f image_tag=%TAG% -f deployment_target=%DEPLOY_TARGET% -f school_id=%SCHOOL%
+    gh workflow run promote-release.yml --repo %REPO% -f branch=%TAG% -f school_slug=%SCHOOL% -f environment=production
   )
   if %ERRORLEVEL%==0 (
     echo   [OK] Workflow triggered successfully.
@@ -135,7 +135,7 @@ if %ERRORLEVEL%==0 (
   echo   [INFO] GitHub CLI (gh) not found.
   echo   To trigger manually, go to:
   echo   https://github.com/%REPO%/actions/workflows/promote-release.yml
-  echo   And dispatch with: tag=%TAG% target=%DEPLOY_TARGET% school=%SCHOOL%
+  echo   And dispatch with: school_slug=%SCHOOL% environment=production branch=%TAG%
 )
 goto :eof
 
