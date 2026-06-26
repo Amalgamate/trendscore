@@ -191,14 +191,19 @@ const SplashScreen = ({ isLoading, user, onReady }) => {
   return (
     <div className={`splash-screen ${canHide ? 'fade-out' : ''}`}>
       <div className="splash-content">
-        {/* Logo */}
+        {/* Logo with ring ripple */}
         <div className="splash-logo">
+          <div className="logo-ripples">
+            <div className="ripple-ring ripple-1" />
+            <div className="ripple-ring ripple-2" />
+            <div className="ripple-ring ripple-3" />
+          </div>
           <div className="logo-circle">
-            <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="40" cy="40" r="35" stroke="white" strokeWidth="2"/>
-              <path d="M30 40L38 48L50 32" stroke="white" strokeWidth="2" fill="none"
-                strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+            <img
+              src="/splash/trendscore-logo.png"
+              alt="TrendScore"
+              className="logo-image"
+            />
           </div>
         </div>
 
