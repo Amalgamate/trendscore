@@ -45,41 +45,45 @@ const ProgressBar = ({ value = 0, tone = 'bg-violet-600' }) => (
   </div>
 );
 
-const StatCard = ({ icon: Icon, label, value, helper, color, bg, progress, tone }) => (
-  <div className="min-h-[112px] rounded-lg border border-slate-100 bg-white p-4 shadow-sm">
-    <div className="flex items-start gap-4">
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg" style={{ color, backgroundColor: bg }}>
-        <Icon size={24} strokeWidth={2.4} />
+const StatCard = ({ icon: Icon, label, value, helper, color, bg, progress, tone, gradient = 'from-slate-100 to-slate-200' }) => (
+  <div className={`min-h-[112px] flex rounded-lg p-[1px] bg-gradient-to-br ${gradient} shadow-sm transition-all duration-300 hover:shadow-md`}>
+    <div className="w-full min-h-[110px] rounded-[7px] bg-white p-4 flex flex-col justify-between">
+      <div className="flex items-start gap-4">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg" style={{ color, backgroundColor: bg }}>
+          <Icon size={24} strokeWidth={2.4} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-black uppercase tracking-[0.08em] text-slate-500">{label}</p>
+          <p className="mt-1 text-2xl font-black leading-none text-slate-950">{value}</p>
+          <p className="mt-1 truncate text-xs font-semibold text-slate-500">{helper}</p>
+        </div>
       </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-black uppercase tracking-[0.08em] text-slate-500">{label}</p>
-        <p className="mt-1 text-2xl font-black leading-none text-slate-950">{value}</p>
-        <p className="mt-1 truncate text-xs font-semibold text-slate-500">{helper}</p>
-      </div>
+      {progress !== undefined && (
+        <div className="mt-4">
+          <ProgressBar value={progress} tone={tone} />
+        </div>
+      )}
     </div>
-    {progress !== undefined && (
-      <div className="mt-4">
-        <ProgressBar value={progress} tone={tone} />
-      </div>
-    )}
   </div>
 );
 
-const ActionTile = ({ icon: Icon, label, helper, tone, onClick }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className="group flex min-h-[96px] items-center gap-3 rounded-lg border border-slate-100 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-  >
-    <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${tone}`}>
-      <Icon size={22} strokeWidth={2.4} />
-    </div>
-    <div className="min-w-0 flex-1">
-      <p className="text-sm font-black text-slate-950">{label}</p>
-      <p className="mt-1 text-xs font-semibold text-slate-500">{helper}</p>
-    </div>
-    <ArrowRight size={18} className="text-slate-300 transition group-hover:text-violet-600" />
-  </button>
+const ActionTile = ({ icon: Icon, label, helper, tone, onClick, gradient = 'from-slate-100 to-slate-200' }) => (
+  <div className={`min-h-[96px] flex rounded-lg p-[1px] bg-gradient-to-br ${gradient} shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md`}>
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex w-full min-h-[94px] items-center gap-3 rounded-[7px] bg-white p-4 text-left"
+    >
+      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${tone}`}>
+        <Icon size={22} strokeWidth={2.4} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-black text-slate-950">{label}</p>
+        <p className="mt-1 text-xs font-semibold text-slate-500">{helper}</p>
+      </div>
+      <ArrowRight size={18} className="text-slate-300 transition group-hover:translate-x-1 group-hover:text-violet-600" />
+    </button>
+  </div>
 );
 
 const SectionHeader = ({ title, helper, action }) => (
@@ -284,10 +288,10 @@ const MobileAssessmentsDashboard = ({ learners = [], onNavigate }) => {
         )}
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard icon={Users} label="Learners in Scope" value={summary.learners ?? fallback.learners} helper={`${fallback.grades} grades - ${fallback.streams} streams`} color="#7c3aed" bg="#f1e9ff" />
-          <StatCard icon={BookOpen} label="Tests Configured" value={summary.tests ?? 0} helper={`${summary.subjects ?? 0} learning areas`} color="#3678f5" bg="#e8f0ff" />
-          <StatCard icon={ClipboardList} label="Mark Entry" value={formatPercent(summary.markEntryCompletionRate)} helper={`${summary.accountedEntries ?? 0}/${summary.expectedEntries ?? 0} entries accounted`} color="#16a34a" bg="#e7f8ee" progress={summary.markEntryCompletionRate || 0} tone="bg-emerald-600" />
-          <StatCard icon={FileText} label="Report Ready" value={formatPercent(summary.reportReadyRate)} helper={`${summary.reportReadyLearners ?? 0} learners ready`} color="#f97316" bg="#fff1e7" progress={summary.reportReadyRate || 0} tone="bg-orange-500" />
+          <StatCard icon={Users} label="Learners in Scope" value={summary.learners ?? fallback.learners} helper={`${fallback.grades} grades - ${fallback.streams} streams`} color="#7c3aed" bg="#f1e9ff" gradient="from-violet-500/30 via-indigo-500/15 to-purple-500/30" />
+          <StatCard icon={BookOpen} label="Tests Configured" value={summary.tests ?? 0} helper={`${summary.subjects ?? 0} learning areas`} color="#3678f5" bg="#e8f0ff" gradient="from-blue-500/30 via-indigo-500/15 to-cyan-500/30" />
+          <StatCard icon={ClipboardList} label="Mark Entry" value={formatPercent(summary.markEntryCompletionRate)} helper={`${summary.accountedEntries ?? 0}/${summary.expectedEntries ?? 0} entries accounted`} color="#16a34a" bg="#e7f8ee" progress={summary.markEntryCompletionRate || 0} tone="bg-emerald-600" gradient="from-emerald-500/30 via-teal-500/15 to-green-500/30" />
+          <StatCard icon={FileText} label="Report Ready" value={formatPercent(summary.reportReadyRate)} helper={`${summary.reportReadyLearners ?? 0} learners ready`} color="#f97316" bg="#fff1e7" progress={summary.reportReadyRate || 0} tone="bg-orange-500" gradient="from-orange-500/30 via-amber-500/15 to-yellow-500/30" />
         </section>
 
         {loading && (
@@ -295,14 +299,14 @@ const MobileAssessmentsDashboard = ({ learners = [], onNavigate }) => {
         )}
 
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <ActionTile icon={Target} label="Summative Tests" helper="Create and deploy exams or tests." tone="bg-violet-50 text-violet-700" onClick={go('assess-summative-tests')} />
-          <ActionTile icon={PenLine} label="Record Marks" helper="Enter learner scores by class and subject." tone="bg-blue-50 text-blue-700" onClick={go('assess-summative-assessment')} />
-          <ActionTile icon={CheckCircle} label="Formative" helper="Track continuous classroom assessment." tone="bg-emerald-50 text-emerald-700" onClick={go('assess-formative')} />
-          <ActionTile icon={FileText} label="Reports" helper="Open summary and learner reports." tone="bg-orange-50 text-orange-700" onClick={go('assess-summary-report')} />
-          <ActionTile icon={Star} label="Core Competencies" helper="Assess CBC competency development." tone="bg-yellow-50 text-yellow-700" onClick={go('assess-core-competencies')} />
-          <ActionTile icon={Heart} label="Values" helper="Review national values and conduct signals." tone="bg-rose-50 text-rose-700" onClick={go('assess-values')} />
-          <ActionTile icon={ShieldCheck} label="Performance Scales" helper="Manage grading rubrics and levels." tone="bg-teal-50 text-teal-700" onClick={go('assess-performance-scale')} />
-          <ActionTile icon={Settings} label="Learning Areas" helper="Manage subjects and learning areas." tone="bg-slate-100 text-slate-700" onClick={go('assess-learning-areas')} />
+          <ActionTile icon={Target} label="Summative Tests" helper="Create and deploy exams or tests." tone="bg-violet-50 text-violet-700" onClick={go('assess-summative-tests')} gradient="from-violet-500/20 to-purple-600/20 hover:from-violet-500/50 hover:to-purple-600/50" />
+          <ActionTile icon={PenLine} label="Record Marks" helper="Enter learner scores by class and subject." tone="bg-blue-50 text-blue-700" onClick={go('assess-summative-assessment')} gradient="from-blue-500/20 to-indigo-600/20 hover:from-blue-500/50 hover:to-indigo-600/50" />
+          <ActionTile icon={CheckCircle} label="Formative" helper="Track continuous classroom assessment." tone="bg-emerald-50 text-emerald-700" onClick={go('assess-formative')} gradient="from-emerald-500/20 to-green-600/20 hover:from-emerald-500/50 hover:to-green-600/50" />
+          <ActionTile icon={FileText} label="Reports" helper="Open summary and learner reports." tone="bg-orange-50 text-orange-700" onClick={go('assess-summary-report')} gradient="from-orange-500/20 to-amber-600/20 hover:from-orange-500/50 hover:to-amber-600/50" />
+          <ActionTile icon={Star} label="Core Competencies" helper="Assess CBC competency development." tone="bg-yellow-50 text-yellow-700" onClick={go('assess-core-competencies')} gradient="from-yellow-500/20 to-amber-500/20 hover:from-yellow-500/50 hover:to-amber-500/50" />
+          <ActionTile icon={Heart} label="Values" helper="Review national values and conduct signals." tone="bg-rose-50 text-rose-700" onClick={go('assess-values')} gradient="from-rose-500/20 to-pink-600/20 hover:from-rose-500/50 hover:to-pink-600/50" />
+          <ActionTile icon={ShieldCheck} label="Performance Scales" helper="Manage grading rubrics and levels." tone="bg-teal-50 text-teal-700" onClick={go('assess-performance-scale')} gradient="from-teal-500/20 to-emerald-600/20 hover:from-teal-500/50 hover:to-emerald-600/50" />
+          <ActionTile icon={Settings} label="Learning Areas" helper="Manage subjects and learning areas." tone="bg-slate-100 text-slate-700" onClick={go('assess-learning-areas')} gradient="from-slate-300/20 to-slate-400/20 hover:from-slate-400/50 hover:to-slate-500/50" />
         </section>
       </div>
     </div>

@@ -173,23 +173,6 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
   const teacherWorkload = useTeacherWorkload();
   const teacherCtx = useTeacherContext();
 
-  // ── Subject-teacher ownership check ──────────────────────────────────────
-  // Fires whenever a learning area is selected or filters change.
-  // Shows a persistent warning banner when a class teacher (not the named
-  // subject teacher) is about to enter scores.
-  const [classTeacherOverrideWarning, setClassTeacherOverrideWarning] = useState(false);
-
-  useEffect(() => {
-    if (!teacherCtx.restricted || !selectedLearningArea) {
-      setClassTeacherOverrideWarning(false);
-      return;
-    }
-    const grade = setup.selectedGrade || stagedGrade;
-    const isAssigned = teacherCtx.isSubjectTeacher(selectedLearningArea, grade);
-    const isClassT = teacherCtx.isClassTeacher && teacherCtx.isClassTeacherFor(grade);
-    // Warn when they are the class teacher but not the named subject teacher
-    setClassTeacherOverrideWarning(!isAssigned && isClassT);
-  }, [selectedLearningArea, setup.selectedGrade, stagedGrade, teacherCtx]);
   const normalizedDefaultTestType = useMemo(
     () => normalizeTestType(defaultTestType),
     [defaultTestType]
@@ -241,6 +224,24 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
   const [stagedTestType, setStagedTestType] = useState(() => normalizedDefaultTestType || localStorage.getItem('cbc_summative_stagedTestType') || '');
   const [stagedLearningArea, setStagedLearningArea] = useState(() => localStorage.getItem('cbc_summative_stagedLearningArea') || '');
   const [stagedTestId, setStagedTestId] = useState(() => initialTestId || localStorage.getItem('cbc_summative_stagedTestId') || '');
+
+  // ── Subject-teacher ownership check ──────────────────────────────────────
+  // Fires whenever a learning area is selected or filters change.
+  // Shows a persistent warning banner when a class teacher (not the named
+  // subject teacher) is about to enter scores.
+  const [classTeacherOverrideWarning, setClassTeacherOverrideWarning] = useState(false);
+
+  useEffect(() => {
+    if (!teacherCtx.restricted || !selectedLearningArea) {
+      setClassTeacherOverrideWarning(false);
+      return;
+    }
+    const grade = setup.selectedGrade || stagedGrade;
+    const isAssigned = teacherCtx.isSubjectTeacher(selectedLearningArea, grade);
+    const isClassT = teacherCtx.isClassTeacher && teacherCtx.isClassTeacherFor(grade);
+    // Warn when they are the class teacher but not the named subject teacher
+    setClassTeacherOverrideWarning(!isAssigned && isClassT);
+  }, [selectedLearningArea, setup.selectedGrade, stagedGrade, teacherCtx]);
 
   const resetStagedLearningAreaAndTest = useCallback(() => {
     setStagedLearningArea('');
