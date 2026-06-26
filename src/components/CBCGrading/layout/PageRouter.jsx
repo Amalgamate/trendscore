@@ -489,7 +489,13 @@ const PageRouter = ({
             return (
               <LearnerProfile
                 learner={pageParams.learner}
-                onBack={() => handleNavigate(effectiveRole === 'PARENT' ? 'dashboard' : 'learners-list')}
+                onBack={() => {
+                  if (user?.role === 'TEACHER') {
+                    handleNavigate('teacher-learner-analysis');
+                  } else {
+                    handleNavigate(effectiveRole === 'PARENT' ? 'dashboard' : 'learners-list');
+                  }
+                }}
                 brandingSettings={brandingSettings}
                 onNavigate={handleNavigate}
               />
