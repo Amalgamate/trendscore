@@ -11,10 +11,17 @@ const { getAllClassData } = vi.hoisted(() => ({
   getAllClassData: vi.fn()
 }));
 
+const { getLearners } = vi.hoisted(() => ({
+  getLearners: vi.fn()
+}));
+
 vi.mock('../../../../services/api', () => ({
   default: {
     classes: {
       getAllClassData
+    },
+    learners: {
+      getAll: getLearners
     }
   },
   dashboardAPI: {
@@ -90,6 +97,7 @@ describe('TeacherLearnerAnalysis', () => {
   beforeEach(() => {
     getTeacherMetrics.mockResolvedValue(mockMetrics);
     getAllClassData.mockResolvedValue(mockClassData);
+    getLearners.mockResolvedValue({ data: [] });
   });
 
   afterEach(() => {
@@ -137,6 +145,58 @@ describe('TeacherLearnerAnalysis', () => {
     fireEvent.click(aminaCard);
     expect(onNavigateMock).toHaveBeenCalledWith('learner-profile', {
       learner: mockClassData.enrollments[0].learner
+    });
+  });
+
+  it('falls back to grade and stream learners when class enrollments are empty', async () => {
+    getTeacherMetrics.mockResolvedValue({
+      ...mockMetrics,
+      learnerAnalysis: {
+        ...mockMetrics.learnerAnalysis,
+        classes: [
+          {
+            classId: 'class-7a',
+            className: 'GRADE 7 A',
+            grade: 'GRADE_7',
+            stream: 'A',
+            learnerCount: 18,
+            subjects: [{ subject: 'Mathematics' }]
+          }
+        ]
+      }
+    });
+    getAllClassData.mockResolvedValue({
+      data: {
+        id: 'class-7a',
+        grade: 'GRADE_7',
+        stream: 'A',
+        enrollments: []
+      }
+    });
+    getLearners.mockResolvedValue({
+      data: [
+        {
+          id: 'learner-7a-1',
+          firstName: 'Zuleka',
+          lastName: 'Issack',
+          gender: 'FEMALE',
+          admissionNumber: '999'
+        }
+      ]
+    });
+
+    render(<TeacherLearnerAnalysis user={mockUser} onNavigate={() => {}} />);
+
+    await waitFor(() => expect(screen.getByText('GRADE 7 A')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /View Students List/i }));
+
+    await waitFor(() => expect(screen.getByText('Zuleka Issack')).toBeTruthy());
+    expect(getLearners).toHaveBeenCalledWith({
+      grade: 'GRADE_7',
+      stream: 'A',
+      status: 'ACTIVE',
+      page: 1,
+      limit: 500
     });
   });
 });

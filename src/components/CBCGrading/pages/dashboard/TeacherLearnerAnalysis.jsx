@@ -16,6 +16,58 @@ import {
 import api, { dashboardAPI } from '../../../../services/api';
 import { EmptyState } from '@/design-system/components';
 
+const unwrapApiPayload = (payload) => {
+  let current = payload;
+  for (let i = 0; i < 3; i += 1) {
+    if (
+      current &&
+      !Array.isArray(current) &&
+      Object.prototype.hasOwnProperty.call(current, 'data') &&
+      (
+        current.success !== undefined ||
+        Array.isArray(current.data) ||
+        current.data?.enrollments ||
+        current.data?.students ||
+        current.data?.learners
+      )
+    ) {
+      current = current.data;
+    } else {
+      break;
+    }
+  }
+  return current;
+};
+
+const getRosterEntries = (classDetails) => {
+  const candidates = [
+    classDetails?.enrollments,
+    classDetails?.students,
+    classDetails?.learners,
+    classDetails?.data?.enrollments,
+    classDetails?.data?.students,
+    classDetails?.data?.learners,
+    Array.isArray(classDetails?.data) ? classDetails.data : null,
+    Array.isArray(classDetails) ? classDetails : null,
+  ];
+  return candidates.find((candidate) => Array.isArray(candidate) && candidate.length > 0) ||
+    candidates.find((candidate) => Array.isArray(candidate)) ||
+    [];
+};
+
+const normalizeRosterStudent = (entry) => entry?.learner ?? entry?.student ?? entry;
+
+const parseGradeStreamFromName = (className) => {
+  const normalized = String(className || '').trim().toUpperCase();
+  const match = normalized.match(/GRADE[\s_]*(\d+)\s*([A-Z])?/) || normalized.match(/FORM[\s_]*(\d+)\s*([A-Z])?/);
+  if (!match) return {};
+  const prefix = normalized.startsWith('FORM') ? 'FORM' : 'GRADE';
+  return {
+    grade: `${prefix}_${match[1]}`,
+    stream: match[2] || '',
+  };
+};
+
 const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState(null);
@@ -71,7 +123,33 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
       // fetchWithAuth returns response.data which is { success, data: { enrollments, ... } }
       // getAllClassData spreads that, so we may get { success, data: { enrollments } } OR
       // { enrollments } depending on how the spread lands. Normalise here.
-      const classPayload = raw?.data ?? raw;
+      let classPayload = unwrapApiPayload(raw) || {};
+      const rosterEntries = getRosterEntries(classPayload);
+
+      if (rosterEntries.length === 0 && (classItem.learnerCount || 0) > 0) {
+        const parsed = parseGradeStreamFromName(classItem.className);
+        const grade = classPayload.grade || classItem.grade || parsed.grade;
+        const stream = classPayload.stream || classItem.stream || parsed.stream;
+
+        if (grade) {
+          const learnerResponse = await api.learners.getAll({
+            grade,
+            ...(stream ? { stream } : {}),
+            status: 'ACTIVE',
+            page: 1,
+            limit: 500,
+          });
+          const learnerPayload = unwrapApiPayload(learnerResponse);
+          const fallbackStudents = Array.isArray(learnerPayload)
+            ? learnerPayload
+            : getRosterEntries(learnerPayload);
+          classPayload = {
+            ...classPayload,
+            students: fallbackStudents,
+          };
+        }
+      }
+
       setClassDetails(classPayload);
     } catch (err) {
       console.error('Failed to load class enrollments:', err);
@@ -92,16 +170,13 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
   // Client-side search, filtering and sorting
   const filteredStudents = useMemo(() => {
     // Support multiple shapes: { enrollments: [{learner: {...}}] } or { enrollments: [{...learner}] } or { students: [...] }
-    const rawList =
-      classDetails?.enrollments ||
-      classDetails?.students ||
-      [];
+    const rawList = getRosterEntries(classDetails);
 
     if (!rawList.length) return [];
 
     // Each entry is either an enrollment wrapper { learner: {...}, ...} or a raw learner object
     let list = rawList
-      .map((e) => e?.learner ?? e)
+      .map(normalizeRosterStudent)
       .filter((s) => s && (s.firstName || s.lastName || s.id));
 
     // Filter by search term
