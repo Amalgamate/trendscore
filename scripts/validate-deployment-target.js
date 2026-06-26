@@ -156,12 +156,15 @@ if (!schoolSlug) fail('school_slug is required');
 if (!environment) fail('environment is required');
 if (!branch) fail('branch is required');
 
-const BATCH_SLUGS = new Set(['all_schools', 'pilot']);
-if (BATCH_SLUGS.has(schoolSlug)) {
-  const batchEnv = schoolSlug === 'pilot' ? 'pilot' : 'production';
+const rawSlug = String(args.schoolSlug || '').trim().toLowerCase();
+const BATCH_SLUGS = new Set(['all_schools', 'all-schools', 'pilot']);
+if (BATCH_SLUGS.has(rawSlug)) {
+  const isPilot = rawSlug === 'pilot';
+  const batchEnv = isPilot ? 'pilot' : 'production';
+  const deployTarget = isPilot ? 'pilot' : 'all_schools';
   const details = {
-    schoolId: schoolSlug,
-    schoolName: schoolSlug === 'pilot' ? 'Pilot Tier Schools' : 'All Schools',
+    schoolId: deployTarget,
+    schoolName: isPilot ? 'Pilot Tier Schools' : 'All Schools',
     domain: '',
     composeProject: '',
     environment: batchEnv,
@@ -186,7 +189,7 @@ if (BATCH_SLUGS.has(schoolSlug)) {
     environment: details.environment,
     github_environment: details.githubEnvironment,
     branch: details.branch,
-    deploy_target: schoolSlug,
+    deploy_target: deployTarget,
   });
 
   writeSummary(args.githubSummary, details);
