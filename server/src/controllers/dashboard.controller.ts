@@ -288,6 +288,29 @@ export class DashboardController {
         return dedupedSignals;
     }
 
+    /**
+     * Derives top-performing learners from the same signal data.
+     * Learners with avgPercentage >= 70 and no critical risk factor are
+     * considered top performers. Sorted descending by avgPercentage.
+     */
+    private async getTeacherTopPerformers(classIds: string[], take = 5) {
+        // Pull a wider slice so we have enough candidates above the threshold
+        const signals = await this.getLearnerRiskSignals({ classIds, take: 100 });
+
+        return signals
+            .filter((s) => s.avgPercentage !== null && s.avgPercentage >= 70)
+            .sort((a, b) => (b.avgPercentage ?? 0) - (a.avgPercentage ?? 0))
+            .slice(0, take)
+            .map((s) => ({
+                id: `${s.learnerId}:top`,
+                learnerId: s.learnerId,
+                name: s.name,
+                grade: s.grade,
+                avgScore: s.avgPercentage,
+                attendanceRate: s.attendanceRate,
+            }));
+    }
+
     private async getTeacherLearnerRiskItems(classIds: string[], take = 6) {
         const learnerSignals = await this.getLearnerRiskSignals({ classIds, take });
 
@@ -1628,7 +1651,7 @@ export class DashboardController {
             if (!userId) throw new ApiError(400, 'User ID is required');
             const institutionType = this.getInstitutionType(req) as any;
 
-            const cacheKey = `dashboard:teacher:v3:${userId}`;
+            const cacheKey = `dashboard:teacher:v4:${userId}`;
             const cached = await redisCacheService.get<any>(cacheKey);
             if (cached) return res.json({ success: true, data: cached, _cached: true });
 
@@ -1713,9 +1736,10 @@ export class DashboardController {
                     _count: true,
                 })
                 : [];
-            const [messages, learnersNeedingAttention] = await Promise.all([
+            const [messages, learnersNeedingAttention, topPerformers] = await Promise.all([
                 this.getDashboardMessages(userId),
                 this.getTeacherLearnerRiskItems(classIds),
+                this.getTeacherTopPerformers(classIds),
             ]);
             const attendanceCountMap = new Map(attendanceByClass.map(row => [row.classId, row._count]));
 
@@ -1925,6 +1949,7 @@ export class DashboardController {
                 learnerAnalysis,
                 messages,
                 learnersNeedingAttention,
+                topPerformers,
                 recentActivity: recentActivityRaw.map(act => ({
                     id: act.id, text: `${act.title} created for ${act.learningArea}`, time: act.createdAt, type: 'assessment',
                 })),
