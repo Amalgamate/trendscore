@@ -7,7 +7,7 @@ import { redisCacheService } from '../services/redis-cache.service';
 import { configService } from '../services/config.service';
 import { buildSnapshot, generateInsights } from '../services/insights.service';
 import { reportDashboardService } from '../services/reportDashboard.service';
-import { CanonicalInstitutionType, getInstitutionType } from '../utils/institutionNormalizer';
+import { CanonicalInstitutionType } from '../utils/institutionNormalizer';
 
 import logger from '../utils/logger';
 // ─── TTL constants ─────────────────────────────────────────────────────────────
@@ -433,10 +433,11 @@ export class DashboardController {
 
     /**
      * Returns the resolved institution type for this request.
-     * Uses the centralized getInstitutionType from institutionNormalizer.
+     * Reads req.resolvedInstitutionType set by institutionContextResolver -
+     * never re-derives from headers or req.school.
      */
     private getInstitutionType(req: AuthRequest): CanonicalInstitutionType {
-        return getInstitutionType(req);
+        return (req.resolvedInstitutionType ?? 'PRIMARY_CBC') as CanonicalInstitutionType;
     }
 
     private formatAcademicPeriod(term: string, academicYear: number) {
