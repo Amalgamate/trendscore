@@ -179,12 +179,17 @@ function ResultRow({ result, learnerId, onSnapshotSaved }) {
   );
 }
 
-// Term group
-function TermGroup({ term, year, results, learnerId, onSnapshotSaved }) {
+// Result group (by Term or by Exam/Test Type)
+function ResultGroup({ term, year, testType, results, learnerId, onSnapshotSaved, isTermGrouping }) {
   const [expanded, setExpanded] = useState(true);
   const avg = results.reduce((s, r) => s + Number(r.percentage || 0), 0) / (results.length || 1);
   const gc = gradeColor(avg >= 75 ? 'EE' : avg >= 50 ? 'ME' : avg >= 40 ? 'AE' : 'BE');
   const snapshotCount = results.filter(r => r.paperSnapshotUrl).length;
+
+  const GroupIcon = isTermGrouping ? Calendar : Award;
+  const groupTitle = isTermGrouping
+    ? `${formatTerm(term)} | ${year}`
+    : `${formatTestType(testType)} | ${year}`;
 
   return (
     <div className="border border-gray-200 rounded-2xl overflow-hidden bg-white">
@@ -195,10 +200,10 @@ function TermGroup({ term, year, results, learnerId, onSnapshotSaved }) {
       >
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-[#4F46E5]/10 flex items-center justify-center">
-            <Calendar size={14} className="text-[#4F46E5]" />
+            <GroupIcon size={14} className="text-[#4F46E5]" />
           </div>
           <div>
-            <p className="text-sm font-bold text-gray-900">{formatTerm(term)} | {year}</p>
+            <p className="text-sm font-bold text-gray-900">{groupTitle}</p>
             <p className="text-xs text-gray-400">{results.length} subject{results.length !== 1 ? 's' : ''} | Avg: {Math.round(avg)}%
               {snapshotCount > 0 && ` | ${snapshotCount} paper proof${snapshotCount > 1 ? 's' : ''}`}
             </p>
@@ -284,13 +289,51 @@ export default function LearnerAcademicTab({ assessments: initialAssessments, le
     return true;
   });
 
-  // Group by term + year
+  const isTermGrouping = filterTerm === 'all';
+
+  // Group by term + year, or testType + year depending on selection
   const groups = filtered.reduce((acc, r) => {
-    const key = `${r.test?.term || 'UNKNOWN'}_${r.test?.academicYear || ''}`;
-    if (!acc[key]) acc[key] = { term: r.test?.term, year: r.test?.academicYear, results: [] };
+    const key = isTermGrouping
+      ? `${r.test?.term || 'UNKNOWN'}_${r.test?.academicYear || ''}`
+      : `${r.test?.testType || 'UNKNOWN'}_${r.test?.academicYear || ''}`;
+    if (!acc[key]) {
+      acc[key] = {
+        term: r.test?.term,
+        year: r.test?.academicYear,
+        testType: r.test?.testType,
+        results: []
+      };
+    }
     acc[key].results.push(r);
     return acc;
   }, {});
+
+  // Sort groups: year descending, and then Term/Exam Type in logical order
+  const sortedGroupEntries = Object.entries(groups).sort((a, b) => {
+    const yA = a[1].year || 0;
+    const yB = b[1].year || 0;
+    if (yB !== yA) return yB - yA;
+
+    if (isTermGrouping) {
+      const tA = String(a[1].term || '');
+      const tB = String(b[1].term || '');
+      return tB.localeCompare(tA); // TERM_3, TERM_2, TERM_1
+    } else {
+      const typeOrder = {
+        'OPENER': 1,
+        'CAT': 2,
+        'MID_TERM': 3,
+        'END_TERM': 4,
+        'WEEKLY': 5,
+        'MONTHLY': 6,
+        'MOCK': 7,
+        'OTHER': 8
+      };
+      const oA = typeOrder[a[1].testType] || 99;
+      const oB = typeOrder[b[1].testType] || 99;
+      return oA - oB;
+    }
+  });
 
   if (loading) {
     return (
@@ -335,17 +378,19 @@ export default function LearnerAcademicTab({ assessments: initialAssessments, le
         </div>
       </div>
 
-      {/* Term groups */}
-      {Object.keys(groups).length > 0 ? (
+      {/* Result groups */}
+      {sortedGroupEntries.length > 0 ? (
         <div className="space-y-4">
-          {Object.entries(groups).map(([key, group]) => (
-            <TermGroup
+          {sortedGroupEntries.map(([key, group]) => (
+            <ResultGroup
               key={key}
               term={group.term}
               year={group.year}
+              testType={group.testType}
               results={group.results}
               learnerId={learnerId}
               onSnapshotSaved={handleSnapshotSaved}
+              isTermGrouping={isTermGrouping}
             />
           ))}
         </div>
