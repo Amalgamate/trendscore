@@ -13,6 +13,7 @@ import { useNotifications } from '../../hooks/useNotifications';
 import ProfilePhotoModal from '../../shared/ProfilePhotoModal';
 import PathwaysWizard from './PathwaysWizard';
 import LearnerFeeConfigurator from './LearnerFeeConfigurator';
+import LearnerAcademicTab from './LearnerAcademicTab';
 
 const CompactLearnerHeader = ({
     learner,
@@ -576,38 +577,12 @@ const LearnerProfile = ({ learner: initialLearner, onBack, brandingSettings, onN
 
                         {/* ACADEMIC TAB */}
                         {activeTab === 'academic' && (
-                            <div className="space-y-6 animate-fade-in">
-                                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                                    <h3 className="text-lg font-medium text-gray-800 mb-6">Recent Assessments</h3>
-                                    {assessments.length > 0 ? (
-                                        <div className="space-y-4">
-                                            {assessments.map((assessment, idx) => (
-                                                <div key={idx} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100 hover:border-brand-purple/30 transition">
-                                                    <div className="flex items-start gap-4">
-                                                        <div className="p-3 bg-white rounded-lg border border-gray-200 text-brand-purple">
-                                                            <Activity size={20} />
-                                                        </div>
-                                                        <div>
-                                                            <h4 className="font-medium text-gray-800">{assessment.test?.name || 'Assessment'}</h4>
-                                                            <p className="text-sm text-gray-500">
-                                                                {assessment.test?.subject} • {assessment.test?.term} • {assessment.createdAt ? new Date(assessment.createdAt).toLocaleDateString() : 'N/A'}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <p className="text-2xl font-medium text-gray-900">{assessment.score}%</p>
-                                                        <p className="text-xs font-semibold text-gray-500 uppercase">{assessment.grade}</p>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="p-12 text-center text-gray-400 flex flex-col items-center">
-                                            <GraduationCap size={48} className="mb-4 text-gray-200" />
-                                            <p>No assessment records found.</p>
-                                        </div>
-                                    )}
-                                </div>
+                            <div className="animate-fade-in">
+                                <LearnerAcademicTab
+                                    assessments={assessments}
+                                    learnerId={currentLearner?.id}
+                                    loading={loading}
+                                />
                             </div>
                         )}
 

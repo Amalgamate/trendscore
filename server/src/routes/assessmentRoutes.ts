@@ -296,6 +296,15 @@ router.get(
   assessmentController.getSummativeByLearner
 );
 
+router.patch(
+  '/summative/results/:id/snapshot',
+  authenticate,
+  rateLimit({ windowMs: 60_000, maxRequests: 30 }),
+  express.json({ limit: '12mb' }),
+  auditLog('UPLOAD_RESULT_PAPER_SNAPSHOT'),
+  assessmentController.uploadResultSnapshot
+);
+
 router.get(
   '/summative/results/test/:testId',
   authenticate,

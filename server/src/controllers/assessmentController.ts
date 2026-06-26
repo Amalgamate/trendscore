@@ -1621,10 +1621,16 @@ export const getSummativeByLearner = async (req: AuthRequest, res: Response) => 
 
     const filteredResults = await filterSummativeResultsBySecondarySelection(results as any[]);
 
+    // Surface paperSnapshotUrl from orphanFields for the frontend
+    const enrichedResults = filteredResults.map((r: any) => ({
+      ...r,
+      paperSnapshotUrl: (r.orphanFields as any)?.paperSnapshotUrl || null,
+    }));
+
     res.json({
       success: true,
-      data: filteredResults,
-      count: filteredResults.length,
+      data: enrichedResults,
+      count: enrichedResults.length,
       communication: {
         hasSentSms: communicationLogs.some((log: { channel: string }) => log.channel === 'SMS'),
         hasSentWhatsApp: communicationLogs.some((log: { channel: string }) => log.channel === 'WHATSAPP'),
@@ -2402,3 +2408,62 @@ function _rerankTestResultsAsync(testId: string) {
   });
 }
 
+
+/**
+ * PATCH /api/assessments/summative/results/:id/snapshot
+ * Saves a base64 paper snapshot as proof for a summative result.
+ * Only the recorder or admin roles may attach/replace a snapshot.
+ */
+export const uploadResultSnapshot = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { snapshotUrl } = req.body;
+    const userId = req.user!.userId;
+
+    if (!snapshotUrl) {
+      throw new ApiError(400, 'snapshotUrl is required (base64 data URL)');
+    }
+
+    // Verify the result exists and the caller can update it.
+    const result = await prisma.summativeResult.findUnique({
+      where: { id },
+      select: { id: true, recordedBy: true },
+    });
+    if (!result) throw new ApiError(404, 'Result not found');
+
+    const canManageSnapshot = result.recordedBy === userId || ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'].includes(req.user?.role || '');
+    if (!canManageSnapshot) {
+      throw new ApiError(403, 'Only the result recorder or an administrator can save a snapshot');
+    }
+
+    // Store the snapshot URL in the orphanFields JSON column.
+    const existing = await prisma.summativeResult.findUnique({
+      where: { id },
+      select: { orphanFields: true },
+    });
+
+    const orphanFields: Record<string, any> = (existing?.orphanFields as Record<string, any>) || {};
+    orphanFields.paperSnapshotUrl = snapshotUrl;
+    orphanFields.paperSnapshotUploadedBy = userId;
+    orphanFields.paperSnapshotUploadedAt = new Date().toISOString();
+
+    const updated = await prisma.summativeResult.update({
+      where: { id },
+      data: { orphanFields },
+      select: { id: true, orphanFields: true },
+    });
+
+    res.json({
+      success: true,
+      message: 'Paper snapshot saved successfully',
+      data: {
+        id: updated.id,
+        paperSnapshotUrl: snapshotUrl,
+      },
+    });
+  } catch (error: any) {
+    if (error instanceof ApiError) throw error;
+    logger.error('Error saving paper snapshot:', error);
+    throw new ApiError(500, 'Failed to save snapshot: ' + error.message);
+  }
+};

@@ -924,6 +924,7 @@ model SummativeResult {
   competencyBand   String?
   gradeDescription String?
   assessmentStatusCode String?
+  orphanFields     Json?
   levelId          String?                  @map("level_id")
   resultHistory    SummativeResultHistory[]
   learner          Learner                  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
