@@ -30,7 +30,6 @@ import {
   Send,
   Sparkles,
   Star,
-  TriangleAlert,
   X,
 } from 'lucide-react';
 
@@ -123,7 +122,7 @@ const MessageParentSheet = ({ learner, onClose }) => {
           {/* context chip */}
           {learner.issue && (
             <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
-              <TriangleAlert size={12} />
+              <AlertTriangle size={12} />
               Re: {learner.issue}
             </div>
           )}
@@ -263,7 +262,7 @@ const LearnerSpotlight = ({ metrics, onNavigate }) => {
                 : 'text-slate-500 hover:text-slate-700'
             }`}
           >
-            <TriangleAlert size={13} />
+            <AlertTriangle size={13} />
             Needs Attention
             {flagged.length > 0 && (
               <span className="ml-1 rounded-full bg-rose-100 text-rose-600 text-[10px] font-black px-1.5 py-0.5">
