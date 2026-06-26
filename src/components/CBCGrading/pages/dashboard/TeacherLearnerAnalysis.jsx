@@ -67,8 +67,12 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
     setClassError(null);
     setClassDetails(null);
     try {
-      const data = await api.classes.getAllClassData(classItem.classId);
-      setClassDetails(data);
+      const raw = await api.classes.getAllClassData(classItem.classId);
+      // fetchWithAuth returns response.data which is { success, data: { enrollments, ... } }
+      // getAllClassData spreads that, so we may get { success, data: { enrollments } } OR
+      // { enrollments } depending on how the spread lands. Normalise here.
+      const classPayload = raw?.data ?? raw;
+      setClassDetails(classPayload);
     } catch (err) {
       console.error('Failed to load class enrollments:', err);
       setClassError('Failed to load student list. Please try again.');
@@ -87,9 +91,18 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
 
   // Client-side search, filtering and sorting
   const filteredStudents = useMemo(() => {
-    if (!classDetails?.enrollments) return [];
+    // Support multiple shapes: { enrollments: [{learner: {...}}] } or { enrollments: [{...learner}] } or { students: [...] }
+    const rawList =
+      classDetails?.enrollments ||
+      classDetails?.students ||
+      [];
 
-    let list = classDetails.enrollments.map((e) => e.learner).filter(Boolean);
+    if (!rawList.length) return [];
+
+    // Each entry is either an enrollment wrapper { learner: {...}, ...} or a raw learner object
+    let list = rawList
+      .map((e) => e?.learner ?? e)
+      .filter((s) => s && (s.firstName || s.lastName || s.id));
 
     // Filter by search term
     if (searchTerm.trim()) {
