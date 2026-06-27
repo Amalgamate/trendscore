@@ -56,6 +56,13 @@ export const getParentLoginEmailCandidates = (phone?: string | null): string[] =
     .filter((email): email is string => Boolean(email));
 };
 
+const isMissingFamilyTableError = (error: unknown): boolean => {
+  const maybeError = error as { code?: string; meta?: { table?: string } };
+  return maybeError?.code === 'P2021' &&
+    typeof maybeError.meta?.table === 'string' &&
+    maybeError.meta.table.includes('family_');
+};
+
 export interface CreateOrGetParentArgs {
   phone?: string;
   name?: string;
@@ -186,31 +193,42 @@ export class ParentService {
     relationship?: string | null;
     isPrimary?: boolean;
   }): Promise<void> {
-    const member = await prisma.familyMember.findUnique({
-      where: { userId: args.parentId },
-      select: { familyAccountId: true }
-    });
+    let member: { familyAccountId: string } | null = null;
+    try {
+      member = await prisma.familyMember.findUnique({
+        where: { userId: args.parentId },
+        select: { familyAccountId: true }
+      });
+    } catch (error) {
+      if (isMissingFamilyTableError(error)) return;
+      throw error;
+    }
 
     if (!member?.familyAccountId) return;
 
-    await prisma.learnerFamilyLink.upsert({
-      where: {
-        familyAccountId_learnerId: {
+    try {
+      await prisma.learnerFamilyLink.upsert({
+        where: {
+          familyAccountId_learnerId: {
+            familyAccountId: member.familyAccountId,
+            learnerId: args.learnerId
+          }
+        },
+        update: {
+          relationship: args.relationship || undefined,
+          isPrimary: args.isPrimary ?? true
+        },
+        create: {
           familyAccountId: member.familyAccountId,
-          learnerId: args.learnerId
+          learnerId: args.learnerId,
+          relationship: args.relationship || undefined,
+          isPrimary: args.isPrimary ?? true
         }
-      },
-      update: {
-        relationship: args.relationship || undefined,
-        isPrimary: args.isPrimary ?? true
-      },
-      create: {
-        familyAccountId: member.familyAccountId,
-        learnerId: args.learnerId,
-        relationship: args.relationship || undefined,
-        isPrimary: args.isPrimary ?? true
-      }
-    });
+      });
+    } catch (error) {
+      if (isMissingFamilyTableError(error)) return;
+      throw error;
+    }
   }
 
   private async ensureFamilyMembership(parent: any, args: {
@@ -218,40 +236,63 @@ export class ParentService {
     phone?: string | null;
     normalizedPhone?: string | null;
   }): Promise<void> {
-    const normalizedPhone = args.normalizedPhone || normalizeParentPhoneForFamily(args.phone || parent.phone);
-    if (!normalizedPhone) return;
+    try {
+      const normalizedPhone = args.normalizedPhone || normalizeParentPhoneForFamily(args.phone || parent.phone);
+      if (!normalizedPhone) return;
 
-    const existingByUser = await prisma.familyMember.findUnique({
-      where: { userId: parent.id }
-    });
-    if (existingByUser) return;
+      const existingByUser = await prisma.familyMember.findUnique({
+        where: { userId: parent.id }
+      });
+      if (existingByUser) return;
 
-    const existingByPhone = await prisma.familyMember.findFirst({
-      where: { normalizedPhone },
-      include: { familyAccount: true }
-    });
+      const existingByPhone = await prisma.familyMember.findFirst({
+        where: { normalizedPhone },
+        include: { familyAccount: true }
+      });
 
-    const familyAccount = existingByPhone?.familyAccount || await prisma.familyAccount.create({
-      data: {
-        displayName: `${args.name || `${parent.firstName} ${parent.lastName}` || 'Family'} Family`,
-        primaryPhone: normalizedPhone
+      if (existingByPhone) {
+        if (!existingByPhone.userId) {
+          await prisma.familyMember.update({
+            where: { id: existingByPhone.id },
+            data: {
+              userId: parent.id,
+              name: args.name || `${parent.firstName} ${parent.lastName}`.trim() || existingByPhone.name,
+              phone: args.phone || parent.phone || existingByPhone.phone,
+              status: 'ACTIVE',
+              verifiedAt: parent.emailVerified ? new Date() : existingByPhone.verifiedAt
+            }
+          });
+        }
+        return;
       }
-    });
 
-    await prisma.familyMember.create({
-      data: {
-        familyAccountId: familyAccount.id,
-        userId: parent.id,
-        name: args.name || `${parent.firstName} ${parent.lastName}`.trim() || 'Parent',
-        phone: args.phone || parent.phone || normalizedPhone,
-        normalizedPhone,
-        relationship: 'Guardian',
-        role: existingByPhone ? 'GUARDIAN' : 'PRIMARY_GUARDIAN',
-        status: 'ACTIVE',
-        isPrimary: !existingByPhone,
-        verifiedAt: parent.emailVerified ? new Date() : null
+      const familyAccount = await prisma.familyAccount.create({
+        data: {
+          displayName: `${args.name || `${parent.firstName} ${parent.lastName}` || 'Family'} Family`,
+          primaryPhone: normalizedPhone
+        }
+      });
+
+      await prisma.familyMember.create({
+        data: {
+          familyAccountId: familyAccount.id,
+          userId: parent.id,
+          name: args.name || `${parent.firstName} ${parent.lastName}`.trim() || 'Parent',
+          phone: args.phone || parent.phone || normalizedPhone,
+          normalizedPhone,
+          relationship: 'Guardian',
+          role: 'PRIMARY_GUARDIAN',
+          status: 'ACTIVE',
+          isPrimary: true,
+          verifiedAt: parent.emailVerified ? new Date() : null
+        }
+      });
+    } catch (error) {
+      if (isMissingFamilyTableError(error)) {
+        return;
       }
-    });
+      throw error;
+    }
   }
 }
 
