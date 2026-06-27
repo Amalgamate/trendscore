@@ -177,9 +177,9 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
       return normalizedParents;
     } catch (err) {
       console.error('fetchParents error:', err);
-      return parents;
+      return [];
     }
-  }, [parents]);
+  }, []);
 
   // ── Dialog & Modal States ─────────────────────────────────────────────────
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
