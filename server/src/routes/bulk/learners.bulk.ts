@@ -41,6 +41,7 @@ const learnerSchema = z.object({
   'DOB': z.string().optional(),
   'Date of Birth': z.string().optional(),
   'Birth Entry Number': z.string().optional(),
+  'Special Needs': z.string().optional(),
   'Parent/Guardian': z.string().optional(),
   'Phone 1': z.string().optional(),
   'Phone 2': z.string().optional(),
@@ -98,6 +99,11 @@ const HEADER_ALIASES: Record<string, string> = {
   BIRTHCERTIFICATENO: 'Birth Entry Number',
   BIRTHCERTNO: 'Birth Entry Number',
   BCNO: 'Birth Entry Number',
+  DISABILITYTYPEIFANY: 'Special Needs',
+  DISABILITYTYPE: 'Special Needs',
+  DISABILITY: 'Special Needs',
+  SPECIALNEEDS: 'Special Needs',
+  SPECIALNEED: 'Special Needs',
   PARENTGUARDIAN: 'Parent/Guardian',
   GUARDIAN: 'Parent/Guardian',
   PARENT: 'Parent/Guardian',
@@ -175,7 +181,7 @@ function isSectionRow(row: any[]): boolean {
   return /GRADE|CLASS|PLAYGROUP|PP1|PP2/i.test(normalizeCellValue(populatedCells[0]));
 }
 
-function rowToRecord(headers: string[], values: any[]): Record<string, string> {
+function rowToRecord(headers: string[], values: any[], fallbackClass?: string): Record<string, string> {
   const record: Record<string, string> = {};
   headers.forEach((header, index) => {
     if (!header) return;
@@ -184,7 +190,11 @@ function rowToRecord(headers: string[], values: any[]): Record<string, string> {
       record[header] = value;
     }
   });
-  return normalizeUploadRow(record);
+  const normalized = normalizeUploadRow(record);
+  if (!normalized['Class'] && fallbackClass) {
+    normalized['Class'] = fallbackClass;
+  }
+  return normalized;
 }
 
 function shouldSkipParsedRow(row: Record<string, any>): boolean {
@@ -244,6 +254,12 @@ function parseUploadDate(value: any, fallback: Date): Date {
   return Number.isNaN(parsed.getTime()) ? fallback : parsed;
 }
 
+function inferClassFromSheetName(sheetName: string): string | undefined {
+  const normalized = normalizeCellValue(sheetName);
+  if (!normalized) return undefined;
+  return /GRADE|CLASS|PLAYGROUP|PP\s*[12]|PP[12]/i.test(normalized) ? normalized : undefined;
+}
+
 function isExcelUpload(file: Express.Multer.File): boolean {
   const name = String(file.originalname || '').toLowerCase();
   return (
@@ -257,25 +273,34 @@ function isExcelUpload(file: Express.Multer.File): boolean {
 async function parseUploadRows(file: Express.Multer.File): Promise<ParsedUploadRow[]> {
   if (isExcelUpload(file)) {
     const workbook = XLSX.read(file.buffer, { type: 'buffer', cellDates: false });
-    const firstSheetName = workbook.SheetNames[0];
-    if (!firstSheetName) return [];
+    const parsedRows: ParsedUploadRow[] = [];
 
-    const rows = XLSX.utils.sheet_to_json<any[]>(workbook.Sheets[firstSheetName], {
-      header: 1,
-      defval: '',
-      raw: false,
-    });
-    const headerRowIndex = findHeaderRowIndex(rows);
-    if (headerRowIndex === -1) return [];
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      if (!sheet) continue;
 
-    const headers = rows[headerRowIndex].map(canonicalHeaderName);
-    return rows
-      .slice(headerRowIndex + 1)
-      .map((row, index) => ({
-        line: headerRowIndex + index + 2,
-        data: rowToRecord(headers, row),
-      }))
-      .filter((row) => !isEmptyExcelRow(Object.values(row.data)) && !isSectionRow(Object.values(row.data)));
+      const rows = XLSX.utils.sheet_to_json<any[]>(sheet, {
+        header: 1,
+        defval: '',
+        raw: false,
+      });
+      const headerRowIndex = findHeaderRowIndex(rows);
+      if (headerRowIndex === -1) continue;
+
+      const headers = rows[headerRowIndex].map(canonicalHeaderName);
+      const fallbackClass = inferClassFromSheetName(sheetName);
+      const sheetRows = rows
+        .slice(headerRowIndex + 1)
+        .map((row, index) => ({
+          line: headerRowIndex + index + 2,
+          data: rowToRecord(headers, row, fallbackClass),
+        }))
+        .filter((row) => !isEmptyExcelRow(Object.values(row.data)) && !isSectionRow(Object.values(row.data)));
+
+      parsedRows.push(...sheetRows);
+    }
+
+    return parsedRows;
   }
 
   const rows: ParsedUploadRow[] = [];
@@ -448,6 +473,7 @@ router.post(
               gender: gender,
               dateOfBirth: dob,
               upiNumber: birthEntryNumber || undefined,
+              specialNeeds: csvData['Special Needs'] || undefined,
               parentId: parentId,
               guardianName: csvData['Parent/Guardian'] || undefined,
               guardianPhone: csvData['Phone 1'] || undefined,
@@ -484,6 +510,7 @@ router.post(
               status: 'ACTIVE',
               admissionDate,
               upiNumber: birthEntryNumber || undefined,
+              specialNeeds: csvData['Special Needs'] || undefined,
               guardianName: csvData['Parent/Guardian'] || undefined,
               guardianPhone: csvData['Phone 1'] || undefined,
               parentId: parentId,
@@ -647,6 +674,7 @@ router.get(
       'Gender': learner.gender,
       'Date of Birth': learner.dateOfBirth ? new Date(learner.dateOfBirth).toLocaleDateString('en-GB') : '',
       'Birth Entry Number': learner.upiNumber || '',
+      'Disability type (if any)': learner.specialNeeds || '',
       'Learner Name': `${learner.firstName} ${learner.lastName}`,
       'Adm No': learner.admissionNumber,
       'Class': learner.grade.replace('_', ' '),
@@ -660,7 +688,7 @@ router.get(
     }));
 
     const parser = new Parser({
-      fields: ['S/No', 'Surname', 'First Name', 'Other Names', 'Gender', 'Date of Birth', 'Birth Entry Number', 'Learner Name', 'Adm No', 'Class', 'Term', 'Year', 'Parent/Guardian', 'Phone 1', 'Phone 2', 'Reg Date', 'Bal Due']
+      fields: ['S/No', 'Surname', 'First Name', 'Other Names', 'Gender', 'Date of Birth', 'Birth Entry Number', 'Disability type (if any)', 'Learner Name', 'Adm No', 'Class', 'Term', 'Year', 'Parent/Guardian', 'Phone 1', 'Phone 2', 'Reg Date', 'Bal Due']
     });
     const csv = parser.parse(csvData);
 
@@ -680,7 +708,7 @@ router.get(
   '/template',
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   (_req: Request, res: Response) => {
-  const fields = ['S/No', 'Surname', 'First Name', 'Other Names', 'Gender', 'Date of Birth', 'Birth Entry Number', 'Learner Name', 'Adm No', 'Class', 'Stream', 'Term', 'Year', 'Parent/Guardian', 'Phone 1', 'Phone 2', 'Reg Date', 'Bal Due'];
+  const fields = ['S/No', 'Surname', 'First Name', 'Other Names', 'Gender', 'Date of Birth', 'Birth Entry Number', 'Disability type (if any)', 'Learner Name', 'Adm No', 'Class', 'Stream', 'Term', 'Year', 'Parent/Guardian', 'Phone 1', 'Phone 2', 'Reg Date', 'Bal Due'];
   const template = [{
     'S/No': '1',
     'Surname': 'Doe',
@@ -689,6 +717,7 @@ router.get(
     'Gender': 'Male',
     'Date of Birth': '02/01/2018',
     'Birth Entry Number': '123456789',
+    'Disability type (if any)': '',
     'Learner Name': '',
     'Adm No': '1001',
     'Class': 'Grade 1',
