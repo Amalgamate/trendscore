@@ -8,12 +8,14 @@ import { dashboardAPI } from '../../../../services/api';
 import { AppCard, EmptyState } from '@/design-system/components';
 import DashboardSummary from './DashboardSummary';
 import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
-import AdminOverviewTabs from './AdminOverviewTabs';
 import {
   Activity,
   AlertTriangle,
+  BarChart3,
   Building2,
+  CircleDollarSign,
   DatabaseBackup,
+  FileText,
   GraduationCap,
   KeyRound,
   Lock,
@@ -28,15 +30,17 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
   const [refreshing, setRefreshing] = useState(false);
   const [metrics, setMetrics] = useState(null);
   const [apiError, setApiError] = useState(null);
-  const [activeOverviewTab, setActiveOverviewTab] = useState('general');
 
   const userId = user?.id || user?.userId;
   const sectionControls = useDashboardSections('super-admin', [
     { id: 'executive-summary', label: 'Executive Summary', description: 'Platform-wide administrative snapshot' },
+    { id: 'super-admin-quick-actions', label: 'Quick Actions', description: 'Priority control shortcuts' },
     { id: 'system-control', label: 'System Control', description: 'Settings, logs, backup, and maintenance' },
+    { id: 'system-reporting', label: 'System Reporting', description: 'Logs, audit trails, and operational visibility' },
+    { id: 'academic-oversight', label: 'Academic Oversight', description: 'Assessment, terms, and academic risk' },
+    { id: 'finance-oversight', label: 'Finance Oversight', description: 'Fee and accounting reporting' },
     { id: 'identity-access', label: 'Identity & Access', description: 'Users, roles, and security controls' },
     { id: 'institution-operations', label: 'Institution Operations', description: 'School, academic, finance, and staff administration' },
-    { id: 'admin-quick-actions', label: 'Quick Actions', description: 'High-priority super admin shortcuts' },
   ]);
 
   const loadMetrics = async (filter = 'term') => {
@@ -75,11 +79,19 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
     if (value >= 1000) return `KES ${Math.round(value / 1000)}K`;
     return `KES ${value.toLocaleString()}`;
   };
-  const formatPercent = (value = 0) => `${Math.max(0, Math.min(100, Number(value) || 0))}%`;
 
   const collectionRate = (stats.feeCollected + stats.feePending) > 0
     ? Math.round((stats.feeCollected / (stats.feeCollected + stats.feePending)) * 100)
     : 0;
+
+  const quickActions = [
+    { label: 'System Control', icon: ShieldCheck, path: 'settings-system-control', bg: 'bg-[#1d4ed8]', note: 'Sessions, cache, platform actions' },
+    { label: 'System Logs', icon: Activity, path: 'settings-system-logs', bg: 'bg-[#6366f1]', note: 'Operational events and audit trails' },
+    { label: 'Financials', icon: CircleDollarSign, path: 'fees-overview', bg: 'bg-[#10b981]', note: 'Fees, balances, collections' },
+    { label: 'Academics', icon: GraduationCap, path: 'assess-summary-report', bg: 'bg-[#8b5cf6]', note: 'Assessment and academic risk' },
+    { label: 'Users', icon: Users, path: 'settings-users', bg: 'bg-[#0f766e]', note: 'Accounts, roles, access' },
+    { label: 'Backups', icon: DatabaseBackup, path: 'system-maintenance', bg: 'bg-[#f59e0b]', note: 'Backup, restore, maintenance' },
+  ];
 
   const toolGroups = {
     system: [
@@ -88,6 +100,24 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
       { label: 'Backup & Restore', description: 'Control backup, restore, and reset workflows',   icon: DatabaseBackup,path: 'system-maintenance'       },
       { label: 'System Settings', description: 'Manage core platform settings',                   icon: ServerCog,     path: 'settings-school'          },
       { label: 'Branding',       description: 'Control school branding and public identity',      icon: Building2,     path: 'settings-branding'        },
+    ],
+    reporting: [
+      { label: 'System Logs', description: 'Review errors, access patterns, and server events', icon: Activity, path: 'settings-system-logs' },
+      { label: 'Audit Trail', description: 'Inspect administrative and finance-sensitive actions', icon: FileText, path: 'settings-system-logs' },
+      { label: 'Financial Reports', description: 'Open accounting reports and statements', icon: BarChart3, path: 'accounting-reports' },
+      { label: 'Academic Reports', description: 'Open summary assessment reporting', icon: GraduationCap, path: 'assess-summary-report' },
+    ],
+    academics: [
+      { label: 'Assessment Reports', description: 'Review academic performance and missing assessment signals', icon: BarChart3, path: 'assess-summary-report' },
+      { label: 'Academic Settings', description: 'Terms, grades, streams, and academic configuration', icon: GraduationCap, path: 'settings-academic' },
+      { label: 'Annual Planner', description: 'Open the yearly academic planning workspace', icon: Activity, path: 'annual-planner' },
+      { label: 'Timetable', description: 'Inspect academic scheduling and class allocations', icon: Wrench, path: 'timetable' },
+    ],
+    finance: [
+      { label: 'Fee Management', description: 'Review fee accounts, invoices, and balances', icon: CircleDollarSign, path: 'fees-overview' },
+      { label: 'Financial Reports', description: 'Open accounting reports and finance statements', icon: BarChart3, path: 'accounting-reports' },
+      { label: 'Collection Risk', description: 'Follow pending balances and collection exposure', icon: AlertTriangle, path: 'fees-overview' },
+      { label: 'Accounting Control', description: 'Open finance oversight and accounting tools', icon: ShieldCheck, path: 'accounting-reports' },
     ],
     identity: [
       { label: 'User Management', description: 'Create and manage users across roles', icon: Users, path: 'settings-users' },
@@ -126,6 +156,27 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
     </div>
   );
 
+  const renderColoredQuickActions = () => (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {quickActions.map((action) => (
+        <button
+          key={action.label}
+          type="button"
+          onClick={() => onNavigate(action.path)}
+          className="group flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left transition hover:border-slate-300 active:scale-[0.99]"
+        >
+          <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${action.bg} text-white transition-transform group-hover:scale-105`}>
+            <action.icon size={20} />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-sm font-extrabold text-slate-950">{action.label}</span>
+            <span className="mt-1 block text-xs font-semibold text-slate-500">{action.note}</span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+
   if (apiError && !metrics) {
     return (
       <EmptyState
@@ -151,76 +202,66 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
         </div>
       )}
 
-      <AdminOverviewTabs
-        activeTab={activeOverviewTab}
-        onTabChange={setActiveOverviewTab}
-        onNavigate={onNavigate}
-        stats={stats}
-        metrics={metrics}
-        formatKesAmount={formatKesAmount}
-        formatPercent={formatPercent}
-        sectionControls={sectionControls}
-      />
-
       <div className="space-y-6">
-        {activeOverviewTab === 'general' && (
-      <>
-      <DashboardSection id="executive-summary" controls={sectionControls}>
-        <DashboardSummary
-          title="Executive Summary"
-          description="Administrative control points that need first visibility."
-          showHeader={false}
-          items={[
-            { label: 'Users', value: stats.activeStudents + stats.activeTeachers, subvalue: 'active learners and staff', icon: <Users size={26} />, tone: 'navy', onClick: () => onNavigate('settings-users') },
-            { label: 'Staff', value: `${stats.activeTeachers}/${stats.totalTeachers}`, subvalue: 'active staff', icon: <ShieldCheck size={26} />, tone: 'teal', onClick: () => onNavigate('hr-staff-profiles') },
-            { label: 'Collection Rate', value: `${collectionRate}%`, subvalue: `${formatKesAmount(stats.feePending)} pending`, icon: <Activity size={26} />, tone: 'green', onClick: () => onNavigate('accounting-reports') },
-            { label: 'Academic Risk', value: stats.atRiskStudents + stats.totalMissedExams, subvalue: 'risk and pending assessment signals', icon: <AlertTriangle size={26} />, tone: 'red', onClick: () => onNavigate('assess-summary-report') },
-          ]}
-        />
-      </DashboardSection>
+        <DashboardSection id="executive-summary" controls={sectionControls}>
+          <DashboardSummary
+            title="Executive Summary"
+            description="Administrative control points that need first visibility."
+            showHeader={false}
+            items={[
+              { label: 'Users', value: stats.activeStudents + stats.activeTeachers, subvalue: 'active learners and staff', icon: <Users size={26} />, tone: 'navy', onClick: () => onNavigate('settings-users') },
+              { label: 'Staff', value: `${stats.activeTeachers}/${stats.totalTeachers}`, subvalue: 'active staff', icon: <ShieldCheck size={26} />, tone: 'teal', onClick: () => onNavigate('hr-staff-profiles') },
+              { label: 'Collection Rate', value: `${collectionRate}%`, subvalue: `${formatKesAmount(stats.feePending)} pending`, icon: <Activity size={26} />, tone: 'green', onClick: () => onNavigate('accounting-reports') },
+              { label: 'Academic Risk', value: stats.atRiskStudents + stats.totalMissedExams, subvalue: 'risk and pending assessment signals', icon: <AlertTriangle size={26} />, tone: 'red', onClick: () => onNavigate('assess-summary-report') },
+            ]}
+          />
+        </DashboardSection>
 
-      <DashboardSection id="system-control" controls={sectionControls}>
-        <AppCard title="System Control" subtitle="Settings, logs, backups, and platform maintenance">
-          {renderToolGrid(toolGroups.system)}
-        </AppCard>
-      </DashboardSection>
+        <DashboardSection id="super-admin-quick-actions" controls={sectionControls}>
+          <AppCard title="Super Admin Quick Actions" subtitle="Colored shortcuts for the controls used most often">
+            {renderColoredQuickActions()}
+          </AppCard>
+        </DashboardSection>
 
-      <DashboardSection id="identity-access" controls={sectionControls}>
-        <AppCard title="Identity & Access" subtitle="Users, roles, security, and permission oversight">
-          {renderToolGrid(toolGroups.identity)}
-        </AppCard>
-      </DashboardSection>
+        <DashboardSection id="system-control" controls={sectionControls}>
+          <AppCard title="System Control" subtitle="Settings, logs, backups, and platform maintenance">
+            {renderToolGrid(toolGroups.system)}
+          </AppCard>
+        </DashboardSection>
 
-      <DashboardSection id="institution-operations" controls={sectionControls}>
-        <AppCard title="Institution Operations" subtitle="Administrative control over school operations">
-          {renderToolGrid(toolGroups.operations)}
-        </AppCard>
-      </DashboardSection>
+        <DashboardSection id="system-reporting" controls={sectionControls}>
+          <AppCard title="System Reporting" subtitle="Operational reporting, logs, audits, and oversight">
+            {renderToolGrid(toolGroups.reporting)}
+          </AppCard>
+        </DashboardSection>
 
-      <DashboardSection id="admin-quick-actions" controls={sectionControls}>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {[
-            { label: 'Users', icon: Users, path: 'settings-users' },
-            { label: 'Logs', icon: Activity, path: 'settings-system-logs' },
-            { label: 'Backup', icon: DatabaseBackup, path: 'system-maintenance' },
-            { label: 'Maintenance', icon: Wrench, path: 'system-maintenance' },
-          ].map((action) => (
-            <button
-              key={action.label}
-              type="button"
-              onClick={() => onNavigate(action.path)}
-              className="rounded-lg border border-slate-200 p-4 text-center transition hover:border-brand-purple/50 hover:bg-brand-purple/5"
-            >
-              <action.icon size={24} className="mx-auto mb-2 text-brand-purple" />
-              <p className="text-xs font-semibold text-gray-900">{action.label}</p>
-            </button>
-          ))}
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <DashboardSection id="academic-oversight" controls={sectionControls}>
+            <AppCard title="Academics" subtitle="Academic settings, assessment reporting, planning, and timetable">
+              {renderToolGrid(toolGroups.academics)}
+            </AppCard>
+          </DashboardSection>
+
+          <DashboardSection id="finance-oversight" controls={sectionControls}>
+            <AppCard title="Finances" subtitle="Fee management, accounting reports, and collection oversight">
+              {renderToolGrid(toolGroups.finance)}
+            </AppCard>
+          </DashboardSection>
         </div>
-      </DashboardSection>
 
-      <DashboardSectionControls {...sectionControls} />
-      </>
-      )}
+        <DashboardSection id="identity-access" controls={sectionControls}>
+          <AppCard title="Identity & Access" subtitle="Users, roles, security, and permission oversight">
+            {renderToolGrid(toolGroups.identity)}
+          </AppCard>
+        </DashboardSection>
+
+        <DashboardSection id="institution-operations" controls={sectionControls}>
+          <AppCard title="Institution Operations" subtitle="Administrative control over school operations">
+            {renderToolGrid(toolGroups.operations)}
+          </AppCard>
+        </DashboardSection>
+
+        <DashboardSectionControls {...sectionControls} />
       </div>
     </>
   );
