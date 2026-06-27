@@ -410,19 +410,19 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
 
   return (
     <>
-    <header className="h-20 bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm sticky top-0 z-50 app-header-loading">
+    <header className="h-[var(--app-header-height)] bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm sticky top-0 z-50 app-header-loading">
       <div className="app-layout-row h-full flex items-center justify-between">
-      <div className="flex items-center gap-4 group cursor-pointer" onClick={() => onNavigate?.('dashboard')}>
+      <div className="flex items-center gap-3 group cursor-pointer" onClick={() => onNavigate?.('dashboard')}>
         <div className="relative">
           {brandingSettings?.logoUrl && (
             <img
               src={brandingSettings.logoUrl}
               alt="Logo"
-              className="w-12 h-12 object-contain transition-transform duration-500 group-hover:scale-110 drop-shadow-sm"
+              className="w-11 h-11 object-contain transition-transform duration-500 group-hover:scale-110 drop-shadow-sm"
               onError={(e) => { e.target.style.display = 'none'; }}
             />
           )}
-          <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
+          <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full"></div>
         </div>
         <div className="hidden sm:block">
           <div className="flex items-center gap-2">
