@@ -16,7 +16,6 @@ const BulkOperationsModal = ({
   const [exporting, setExporting] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
   const [dragActive, setDragActive] = useState(false);
-  const [forceCreate, setForceCreate] = useState(false);
   const fileInputRef = useRef(null);
 
   if (!isOpen) return null;
@@ -84,10 +83,7 @@ const BulkOperationsModal = ({
       const formData = new FormData();
       formData.append('file', file);
 
-      // School ID removed for single-tenant mode
-      const schoolId = null;
-
-      const response = await axiosInstance.post(`/bulk/${entityType}/upload?forceCreate=${forceCreate ? 'true' : 'false'}`, formData, {
+      const response = await axiosInstance.post(`/bulk/${entityType}/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         },
@@ -146,9 +142,6 @@ const BulkOperationsModal = ({
         return;
       }
 
-      // School ID removed for single-tenant mode
-      const schoolId = null;
-
       let url = `${API_BASE_URL}/bulk/${entityType}/export`;
 
       const response = await fetch(url, {
@@ -181,15 +174,30 @@ const BulkOperationsModal = ({
     }
   };
 
+  const getErrorResource = (record) => {
+    if (!record) return 'N/A';
+    const splitName = [record['First Name'], record['Other Names'], record['Surname']]
+      .filter(Boolean)
+      .join(' ');
+    return record.email ||
+      record.admissionNumber ||
+      record.admNo ||
+      record['Adm No'] ||
+      record['Learner Name'] ||
+      splitName ||
+      record['Birth Entry Number'] ||
+      'N/A';
+  };
+
   const downloadErrorReport = () => {
     if (!uploadResult || !uploadResult.details) return;
 
     const { failed, validationErrors } = uploadResult.details;
     const allErrors = [
-      ...failed.map(f => ({ Line: f.line, Resource: f.email || f.admissionNumber || 'N/A', Error: f.reason })),
+      ...failed.map(f => ({ Line: f.line, Resource: getErrorResource(f), Error: f.reason })),
       ...validationErrors.map(v => ({
         Line: v.line,
-        Resource: v.data?.['Adm No'] || v.data?.['Learner Name'] || 'N/A',
+        Resource: getErrorResource(v.data),
         Error: Array.isArray(v.error) ? v.error.map((entry) => entry.message).join('; ') : 'Validation failed'
       }))
     ];
@@ -218,7 +226,6 @@ const BulkOperationsModal = ({
     setFile(null);
     setUploadResult(null);
     setUploadProgress(0);
-    setForceCreate(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -271,7 +278,7 @@ const BulkOperationsModal = ({
                 )}
               </div>
               <span className="text-xs font-medium text-[var(--brand-purple)] uppercase tracking-wider">
-                {exporting ? 'Exporting...' : 'Export All Stuents'}
+                {exporting ? 'Exporting...' : 'Export All Students'}
               </span>
             </button>
           </div>
@@ -303,24 +310,6 @@ const BulkOperationsModal = ({
                     <span className="text-sm font-medium text-gray-700 truncate max-w-[280px]">{file.name}</span>
                     <p className="text-[10px] text-gray-400 font-medium">Ready for processing</p>
                   </div>
-
-                  {/* Force Create Option - Enhanced UI */}
-                  <label className="flex items-center gap-3 p-4 bg-amber-50/50 border border-amber-100 rounded-2xl cursor-pointer hover:bg-amber-50 transition-colors group">
-                    <div className="relative flex items-center">
-                      <input
-                        type="checkbox"
-                        id="forceCreate"
-                        checked={forceCreate}
-                        onChange={(e) => setForceCreate(e.target.checked)}
-                        className="peer h-5 w-5 cursor-pointer appearance-none rounded-md border border-amber-300 bg-white checked:bg-amber-500 checked:border-amber-500 transition-all"
-                      />
-                      <CheckCircle className="absolute h-3.5 w-3.5 text-white left-0.5 opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none" />
-                    </div>
-                    <div className="text-left">
-                      <span className="text-xs font-medium text-amber-900 block">Force Update (Overwrite)</span>
-                      <p className="text-[10px] text-amber-700 leading-tight mt-0.5">Replace existing records with matching identifiers.</p>
-                    </div>
-                  </label>
 
                   <div className="flex flex-col items-center w-full pt-2">
                     {uploading && (

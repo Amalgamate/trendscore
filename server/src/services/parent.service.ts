@@ -11,9 +11,49 @@ export const normalizeParentPhoneForLogin = (phone?: string | null): string | nu
   return digits || null;
 };
 
+export const normalizeParentPhoneForFamily = (phone?: string | null): string | null => {
+  const digits = normalizeParentPhoneForLogin(phone);
+  if (!digits) return null;
+
+  if (digits.length === 10 && digits.startsWith('0')) {
+    return `254${digits.slice(1)}`;
+  }
+
+  if (digits.length === 9 && /^[17]/.test(digits)) {
+    return `254${digits}`;
+  }
+
+  return digits;
+};
+
+export const getParentPhoneLookupCandidates = (phone?: string | null): string[] => {
+  const rawDigits = normalizeParentPhoneForLogin(phone);
+  const canonical = normalizeParentPhoneForFamily(phone);
+  const candidates = new Set<string>();
+
+  if (rawDigits) candidates.add(rawDigits);
+  if (canonical) {
+    candidates.add(canonical);
+    if (canonical.startsWith('254') && canonical.length === 12) {
+      candidates.add(`0${canonical.slice(3)}`);
+    }
+  }
+
+  const raw = String(phone || '').trim();
+  if (raw) candidates.add(raw);
+
+  return Array.from(candidates).filter(Boolean);
+};
+
 export const buildParentLoginEmail = (phone?: string | null): string | null => {
   const normalizedPhone = normalizeParentPhoneForLogin(phone);
   return normalizedPhone ? `${normalizedPhone}@${PRODUCT_EMAIL_DOMAIN}` : null;
+};
+
+export const getParentLoginEmailCandidates = (phone?: string | null): string[] => {
+  return getParentPhoneLookupCandidates(phone)
+    .map((candidate) => buildParentLoginEmail(candidate))
+    .filter((email): email is string => Boolean(email));
 };
 
 export interface CreateOrGetParentArgs {
@@ -42,14 +82,30 @@ export class ParentService {
    * a brand new parent securely with generated passwords and credentials.
    */
   public async getOrCreateParent(args: CreateOrGetParentArgs) {
-    const finalEmail = buildParentLoginEmail(args.phone);
+    const normalizedPhone = normalizeParentPhoneForFamily(args.phone);
+    const finalEmail = buildParentLoginEmail(normalizedPhone || args.phone);
     if (!args.phone || !finalEmail) return null;
+    const phoneCandidates = getParentPhoneLookupCandidates(args.phone);
+    const emailCandidates = Array.from(new Set([finalEmail, ...getParentLoginEmailCandidates(args.phone)]));
 
-    // Check by phone first if provided
-    const existingParentByPhone = await prisma.user.findFirst({
-      where: { phone: args.phone, role: 'PARENT' }
+    const existingParent = await prisma.user.findFirst({
+      where: {
+        role: 'PARENT',
+        OR: [
+          { phone: { in: phoneCandidates } },
+          { email: { in: emailCandidates } },
+          { username: { in: emailCandidates } }
+        ]
+      }
     });
-    if (existingParentByPhone) return existingParentByPhone;
+    if (existingParent) {
+      await this.ensureFamilyMembership(existingParent, {
+        name: args.name,
+        phone: args.phone,
+        normalizedPhone
+      });
+      return existingParent;
+    }
 
     const existingParentByLogin = await prisma.user.findUnique({
       where: { email: finalEmail }
@@ -77,13 +133,19 @@ export class ParentService {
         email: finalEmail,
         firstName,
         lastName,
-        phone,
+        phone: normalizedPhone || phone,
         password: await bcrypt.hash(parentPassword, 11),
         role: 'PARENT',
         status: args.status || 'ACTIVE',
         passwordResetToken: forceResetToken,
         passwordResetExpiry: forceResetExpiry,
       }
+    });
+
+    await this.ensureFamilyMembership(parent, {
+      name: pName,
+      phone: normalizedPhone || phone,
+      normalizedPhone
     });
 
     const skipNotifications = args.skipNotifications || process.env.SKIP_PARENT_PORTAL_NOTIFICATIONS === 'true' || process.env.NODE_ENV === 'test';
@@ -116,6 +178,80 @@ export class ParentService {
     }
 
     return parent;
+  }
+
+  public async linkLearnerToParentFamily(args: {
+    parentId: string;
+    learnerId: string;
+    relationship?: string | null;
+    isPrimary?: boolean;
+  }): Promise<void> {
+    const member = await prisma.familyMember.findUnique({
+      where: { userId: args.parentId },
+      select: { familyAccountId: true }
+    });
+
+    if (!member?.familyAccountId) return;
+
+    await prisma.learnerFamilyLink.upsert({
+      where: {
+        familyAccountId_learnerId: {
+          familyAccountId: member.familyAccountId,
+          learnerId: args.learnerId
+        }
+      },
+      update: {
+        relationship: args.relationship || undefined,
+        isPrimary: args.isPrimary ?? true
+      },
+      create: {
+        familyAccountId: member.familyAccountId,
+        learnerId: args.learnerId,
+        relationship: args.relationship || undefined,
+        isPrimary: args.isPrimary ?? true
+      }
+    });
+  }
+
+  private async ensureFamilyMembership(parent: any, args: {
+    name?: string | null;
+    phone?: string | null;
+    normalizedPhone?: string | null;
+  }): Promise<void> {
+    const normalizedPhone = args.normalizedPhone || normalizeParentPhoneForFamily(args.phone || parent.phone);
+    if (!normalizedPhone) return;
+
+    const existingByUser = await prisma.familyMember.findUnique({
+      where: { userId: parent.id }
+    });
+    if (existingByUser) return;
+
+    const existingByPhone = await prisma.familyMember.findFirst({
+      where: { normalizedPhone },
+      include: { familyAccount: true }
+    });
+
+    const familyAccount = existingByPhone?.familyAccount || await prisma.familyAccount.create({
+      data: {
+        displayName: `${args.name || `${parent.firstName} ${parent.lastName}` || 'Family'} Family`,
+        primaryPhone: normalizedPhone
+      }
+    });
+
+    await prisma.familyMember.create({
+      data: {
+        familyAccountId: familyAccount.id,
+        userId: parent.id,
+        name: args.name || `${parent.firstName} ${parent.lastName}`.trim() || 'Parent',
+        phone: args.phone || parent.phone || normalizedPhone,
+        normalizedPhone,
+        relationship: 'Guardian',
+        role: existingByPhone ? 'GUARDIAN' : 'PRIMARY_GUARDIAN',
+        status: 'ACTIVE',
+        isPrimary: !existingByPhone,
+        verifiedAt: parent.emailVerified ? new Date() : null
+      }
+    });
   }
 }
 

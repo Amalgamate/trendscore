@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { 
   ShieldAlert, RefreshCcw, Database, AlertTriangle, CheckCircle2, 
-  Trash2, Loader2, ArrowLeft, Info, Eraser
+  Trash2, Loader2, ArrowLeft, Info, Eraser, UploadCloud, Users, GraduationCap, WalletCards
 } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 import api from '../../../services/api';
 import usePageNavigation from '../../../hooks/usePageNavigation';
 import BackupSettings from './settings/BackupSettings';
+import BulkOperationsModal from '../shared/bulk/BulkOperationsModal';
+import FeeImportModal from '../shared/FeeImportModal';
 
 const SystemMaintenancePage = () => {
   const navigateTo = usePageNavigation();
@@ -20,6 +22,7 @@ const SystemMaintenancePage = () => {
   const [institutionResetStatus, setInstitutionResetStatus] = useState('idle'); // idle, loading, success, error
   const [institutionResetLoading, setInstitutionResetLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('restore');
+  const [activeImport, setActiveImport] = useState(null);
 
   const REQUIRED_CONFIRM_TEXT = 'RESET TOTAL ACCOUNTING';
   const REQUIRED_INSTITUTION_CONFIRM_TEXT = 'RESET WHOLE INSTITUTION';
@@ -162,6 +165,96 @@ const SystemMaintenancePage = () => {
     </div>
   );
 
+  const importGroups = [
+    {
+      id: 'learners',
+      title: 'Learners',
+      description: 'Bulk upload learner records, admission numbers, classes, streams, and guardian contacts.',
+      icon: GraduationCap,
+      entityType: 'learners',
+      actionLabel: 'Import Learners',
+    },
+    {
+      id: 'staff',
+      title: 'Teachers & Staff',
+      description: 'Import teacher and operational staff accounts using controlled identity matching.',
+      icon: Users,
+      entityType: 'teachers',
+      actionLabel: 'Import Staff',
+    },
+    {
+      id: 'parents',
+      title: 'Parents',
+      description: 'Create or link parent accounts to existing learners without duplicating guardian profiles.',
+      icon: Users,
+      entityType: 'parents',
+      actionLabel: 'Import Parents',
+    },
+    {
+      id: 'fees',
+      title: 'Fees',
+      description: 'Import opening balances, payments, waivers, and transport fee updates with audit checks.',
+      icon: WalletCards,
+      entityType: 'fees',
+      actionLabel: 'Import Fees',
+    },
+  ];
+
+  const importTitles = {
+    learners: 'Bulk Learner Import',
+    teachers: 'Bulk Staff Import',
+    parents: 'Bulk Parent Import',
+  };
+
+  const renderImportsTab = () => (
+    <div className="grid gap-6">
+      <div className="bg-white border border-slate-200 rounded-xl p-6">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center text-blue-600 flex-shrink-0">
+            <UploadCloud className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-slate-900">Import Center</h3>
+            <p className="text-slate-600 text-sm mt-1">
+              Central place for bulk uploads. Each import will validate first, show duplicate/conflict rows,
+              then require confirmation before writing records.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        {importGroups.map(({ id, title, description, icon: Icon, entityType, actionLabel }) => (
+          <div key={id} className="bg-white border border-slate-200 rounded-xl p-5">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-slate-600 flex-shrink-0">
+                <Icon className="w-5 h-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className="font-medium text-slate-900">{title}</h4>
+                <p className="text-sm text-slate-500 mt-1">{description}</p>
+                <button
+                  type="button"
+                  onClick={() => setActiveImport(entityType)}
+                  className="mt-4 inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-slate-900 text-white hover:bg-black transition-colors"
+                >
+                  <UploadCloud className="w-4 h-4" />
+                  {actionLabel}
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const tabs = [
+    { id: 'restore', label: 'Restore' },
+    { id: 'imports', label: 'Imports' },
+    { id: 'reset', label: 'Reset' },
+  ];
+
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <div className="flex items-center gap-4 mb-8">
@@ -173,38 +266,52 @@ const SystemMaintenancePage = () => {
         </button>
         <div>
           <h1 className="text-2xl font-medium text-slate-900">System Maintenance</h1>
-          <p className="text-slate-500 text-sm">Administrative tools for Restore | Reset operations.</p>
+          <p className="text-slate-500 text-sm">Administrative tools for Restore, Imports, and Reset operations.</p>
         </div>
       </div>
 
       <div className="mb-6">
         <div className="inline-flex bg-slate-100 p-1 rounded-lg">
-          <button
-            type="button"
-            onClick={() => setActiveTab('restore')}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition ${
-              activeTab === 'restore'
-                ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Restore
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('reset')}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition ${
-              activeTab === 'reset'
-                ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Reset
-          </button>
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition ${
+                activeTab === tab.id
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {activeTab === 'restore' ? <BackupSettings /> : renderResetTab()}
+      {activeTab === 'restore' && <BackupSettings />}
+      {activeTab === 'imports' && renderImportsTab()}
+      {activeTab === 'reset' && renderResetTab()}
+
+      <BulkOperationsModal
+        isOpen={['learners', 'teachers', 'parents'].includes(activeImport)}
+        onClose={() => setActiveImport(null)}
+        title={importTitles[activeImport] || 'Bulk Import'}
+        entityType={activeImport}
+        onUploadComplete={() => {
+          setActiveImport(null);
+          showSuccess('Import completed');
+        }}
+      />
+
+      <FeeImportModal
+        isOpen={activeImport === 'fees'}
+        onClose={() => setActiveImport(null)}
+        onComplete={() => {
+          setActiveImport(null);
+          showSuccess('Fee import completed');
+        }}
+      />
 
       {/* Reset Confirmation Modal */}
       {showResetModal && (

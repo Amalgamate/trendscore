@@ -137,6 +137,12 @@ router.post(
                   guardianPhone: csvData['Phone'],
                 }
               });
+              await parentService.linkLearnerToParentFamily({
+                parentId: parent.id,
+                learnerId: learner.id,
+                relationship: 'Guardian',
+                isPrimary: true
+              });
             }
           }
         }

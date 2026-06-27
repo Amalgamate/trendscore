@@ -76,6 +76,8 @@ model User {
   createdFeeStructures      FeeStructure[]           @relation("CreatedFeeStructures")
   waivedFines               Fine[]                   @relation("FineWaivers")
   formativeAssessments      FormativeAssessment[]    @relation("TeacherFormativeAssessments")
+  familyMembership          FamilyMember?
+  invitedFamilyMembers      FamilyMember[]           @relation("FamilyMemberInviter")
   learners                  Learner[]                @relation("ParentLearners")
   approvedLeaves            LeaveRequest[]           @relation("ApprovedLeaves")
   leaveRequests             LeaveRequest[]           @relation("UserLeaves")
@@ -445,6 +447,7 @@ model Learner {
   coCurricularActivities CoCurricularActivity[]    @relation("LearnerCoCurricular")
   coreCompetencies       CoreCompetency[]          @relation("LearnerCoreCompetencies")
   feeInvoices            FeeInvoice[]              @relation("LearnerInvoices")
+  familyLinks            LearnerFamilyLink[]
   formativeAssessments   FormativeAssessment[]
   subjectSelections      LearnerSubjectSelection[]
   parent                 User?                     @relation("ParentLearners", fields: [parentId], references: [id])
@@ -469,6 +472,71 @@ model Learner {
   @@index([archived])
 
   @@map("learners")
+}
+
+model FamilyAccount {
+  id            String              @id @default(uuid())
+  familyCode    String              @unique @default(uuid())
+  displayName   String?
+  primaryPhone  String?
+  status        FamilyAccountStatus @default(ACTIVE)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  archived      Boolean             @default(false)
+  archivedAt    DateTime?
+  archivedBy    String?
+  members       FamilyMember[]
+  learners      LearnerFamilyLink[]
+
+  @@index([primaryPhone])
+  @@index([status, archived])
+  @@map("family_accounts")
+}
+
+model FamilyMember {
+  id              String             @id @default(uuid())
+  familyAccountId String
+  userId          String?            @unique
+  name            String
+  phone           String
+  normalizedPhone String
+  relationship    String?
+  role            FamilyMemberRole   @default(GUARDIAN)
+  status          FamilyMemberStatus @default(INVITED)
+  isPrimary       Boolean            @default(false)
+  canLogin        Boolean            @default(true)
+  canPayFees      Boolean            @default(true)
+  canViewReports  Boolean            @default(true)
+  canReceiveSms   Boolean            @default(true)
+  verifiedAt      DateTime?
+  invitedById     String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  familyAccount   FamilyAccount      @relation(fields: [familyAccountId], references: [id], onDelete: Cascade)
+  user            User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  invitedBy       User?              @relation("FamilyMemberInviter", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@unique([familyAccountId, normalizedPhone])
+  @@index([normalizedPhone])
+  @@index([familyAccountId, isPrimary])
+  @@index([status])
+  @@map("family_members")
+}
+
+model LearnerFamilyLink {
+  id              String        @id @default(uuid())
+  familyAccountId String
+  learnerId       String
+  relationship    String?
+  isPrimary       Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  familyAccount   FamilyAccount @relation(fields: [familyAccountId], references: [id], onDelete: Cascade)
+  learner         Learner       @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+
+  @@unique([familyAccountId, learnerId])
+  @@index([learnerId])
+  @@index([familyAccountId, isPrimary])
+  @@map("learner_family_links")
 }
 
 model Pathway {
@@ -2689,6 +2757,25 @@ enum LearnerStatus {
   TRANSFERRED_OUT
   GRADUATED
   DROPPED_OUT
+  SUSPENDED
+}
+
+enum FamilyAccountStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum FamilyMemberRole {
+  PRIMARY_GUARDIAN
+  GUARDIAN
+  SPONSOR
+  EMERGENCY_CONTACT
+}
+
+enum FamilyMemberStatus {
+  INVITED
+  ACTIVE
   SUSPENDED
 }
 

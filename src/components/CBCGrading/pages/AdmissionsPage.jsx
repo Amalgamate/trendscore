@@ -518,7 +518,7 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
     const sanitizedPayload = sanitizeLearnerPayload(finalFormData);
 
     if (hasSensitiveFieldChanges && (!changeReason || changeReason.trim().length < 10)) {
-      showError('Please provide a clear reason (minimum 10 characters) for changing Assessment number, Date of Birth, or Grade.');
+      showError('Please provide a clear reason (minimum 10 characters) for changing Birth Entry Number, Date of Birth, or Grade.');
       setCurrentStep(3);
       return;
     }
@@ -798,14 +798,14 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-500 uppercase tracking-tight mb-1">Assessment number</label>
+                      <label className="block text-xs font-medium text-gray-500 uppercase tracking-tight mb-1">Birth Entry Number</label>
                       <input
                         type="text"
                         name="upiNumber"
                         value={formData.upiNumber}
                         onChange={handleInputChange}
                         className="w-full px-3 py-2 bg-emerald-50 border border-emerald-100 rounded-md text-sm shadow-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 font-mono font-medium text-emerald-700"
-                        placeholder="e.g. ABC1234567"
+                        placeholder="e.g. 123456789"
                       />
                     </div>
                     <div>
@@ -899,7 +899,7 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
                     <h4 className="text-xs font-medium text-orange-600 uppercase tracking-widest mb-2 border-b border-orange-50 pb-1">Admin Info</h4>
                     <div className="space-y-2 text-sm">
                       <p className="flex justify-between"><span className="text-gray-500">Adm No:</span> <span className="font-semibold text-gray-800">{formData.admissionNumber || 'Auto-generated'}</span></p>
-                      <p className="flex justify-between"><span className="text-gray-500">Assessment number:</span> <span className="font-semibold text-emerald-600 font-mono">{formData.upiNumber || 'N/A'}</span></p>
+                      <p className="flex justify-between"><span className="text-gray-500">Birth Entry Number:</span> <span className="font-semibold text-emerald-600 font-mono">{formData.upiNumber || 'N/A'}</span></p>
                     </div>
                   </div>
                 </div>
@@ -915,7 +915,7 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
                       Reason for Sensitive Change <span className="text-red-600">*</span>
                     </label>
                     <p className="text-xs text-amber-800 mb-2">
-                      Required because Assessment number, Date of Birth, or Grade was changed.
+                      Required because Birth Entry Number, Date of Birth, or Grade was changed.
                     </p>
                     <textarea
                       value={changeReason}
