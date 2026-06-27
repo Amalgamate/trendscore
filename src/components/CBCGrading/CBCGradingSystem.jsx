@@ -664,26 +664,9 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
     );
   }
 
-  const dashboardTabPages = [
-    'dashboard',
-    'finance-dashboard',
-    'academic-intelligence',
-    'attendance-reports',
-    'planner-calendar',
-    'planner-timetable',
-    'planner-agenda',
-    'planner-schemes',
-    'events-calendar',
-    'academic-ai-insights',
-    'hr-portal',
-    'inventory-items'
-  ];
-  const useFlushDashboardTabs =
-    dashboardTabPages.includes(currentPage) &&
-    ['OWNER', 'ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER'].includes(String(user?.role || '').toUpperCase());
   const contentClassName = user?.role === 'ACCOUNTANT' && currentPage === 'finance-dashboard'
     ? 'min-h-full'
-    : `app-layout-content${useFlushDashboardTabs ? ' app-layout-content--flush-top' : ''}`;
+    : 'app-layout-content';
 
   return (
     <div className="flex h-screen bg-[var(--app-page-bg)] overflow-hidden font-inter border-t-2 border-[var(--brand-teal)]">

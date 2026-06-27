@@ -59,9 +59,11 @@
   --toolbar-bg: #030b82;
   --toolbar-border: #02075e;
   --app-max-width: 100%;
+  --app-content-max-width: 90rem;
   --app-header-height: 72px;
   --app-gutter-x: 1.5rem;
   --app-gutter-y: 1.5rem;
+  --app-content-top-gap: 2rem;
   --app-page-bg: #e8f0f7;
 }
 
@@ -149,15 +151,17 @@
   }
 
   .app-layout-content {
-    max-width: var(--app-max-width);
+    width: 100%;
+    max-width: var(--app-content-max-width);
+    min-height: 100%;
     margin-left: auto;
     margin-right: auto;
-    padding: var(--app-gutter-y) var(--app-gutter-x);
+    padding: var(--app-content-top-gap) var(--app-gutter-x) var(--app-gutter-y);
     background-color: var(--app-page-bg);
   }
 
   .app-layout-content--flush-top {
-    padding-top: 0;
+    padding-top: var(--app-content-top-gap) !important;
   }
 
   .surface-panel {
