@@ -9,12 +9,9 @@ import { ApiError } from '../utils/error.util';
 import { AuthRequest } from '../middleware/permissions.middleware';
 import { Term } from '@prisma/client';
 import { configService } from '../services/config.service';
+import { getInstitutionType } from '../utils/institutionNormalizer';
 
 export class ClassController {
-  private getInstitutionType(req: AuthRequest): 'PRIMARY_CBC' | 'SECONDARY' | 'TERTIARY' {
-    return (req.resolvedInstitutionType || req.school?.institutionType || 'PRIMARY_CBC') as 'PRIMARY_CBC' | 'SECONDARY' | 'TERTIARY';
-  }
-
   private async generateClassCode(): Promise<string> {
     const totalClasses = await prisma.class.count();
     const nextNumber = totalClasses + 1;
@@ -57,7 +54,7 @@ export class ClassController {
 
   async getAllClasses(req: AuthRequest, res: Response) {
     const { grade, stream, academicYear, term, active = 'true' } = req.query;
-    const institutionType = this.getInstitutionType(req);
+    const institutionType = getInstitutionType(req);
     const whereClause: any = { institutionType };
 
     if (grade) whereClause.grade = grade as string;
@@ -119,7 +116,7 @@ export class ClassController {
 
   async getClassById(req: AuthRequest, res: Response) {
     const { id } = req.params;
-    const institutionType = this.getInstitutionType(req);
+    const institutionType = getInstitutionType(req);
 
     const classData = await prisma.class.findFirst({
       where: { id, institutionType },
@@ -151,7 +148,7 @@ export class ClassController {
 
   async createClass(req: AuthRequest, res: Response) {
     const { name, grade, stream, teacherId, academicYear, term, capacity = 40, room } = req.body;
-    const institutionType = this.getInstitutionType(req);
+    const institutionType = getInstitutionType(req);
 
     if (!grade) throw new ApiError(400, 'Grade is required');
 

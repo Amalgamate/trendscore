@@ -19,10 +19,25 @@ const asMinutes = (value, fallback) => {
   return Math.min(1440, Math.max(5, parsed));
 };
 
+/**
+ * Snap a HH:MM time string to the nearest 15-minute boundary.
+ * e.g. "07:23" → "07:30", "07:07" → "07:00", "07:53" → "08:00"
+ */
+export function snapToQuarterHour(value) {
+  if (!TIME_PATTERN.test(value || '')) return DEFAULT_ATTENDANCE_SETTINGS.lockTime;
+  const [h, m] = value.split(':').map(Number);
+  const totalMins = h * 60 + m;
+  const snapped = Math.round(totalMins / 15) * 15;
+  const sh = Math.floor(snapped / 60) % 24;
+  const sm = snapped % 60;
+  return `${String(sh).padStart(2, '0')}:${String(sm).padStart(2, '0')}`;
+}
+
 export function normalizeAttendanceSettings(value = {}) {
+  const rawTime = value.lockTime || '';
   return {
     lockEnabled: asBoolean(value.lockEnabled, DEFAULT_ATTENDANCE_SETTINGS.lockEnabled),
-    lockTime: TIME_PATTERN.test(value.lockTime || '') ? value.lockTime : DEFAULT_ATTENDANCE_SETTINGS.lockTime,
+    lockTime: TIME_PATTERN.test(rawTime) ? snapToQuarterHour(rawTime) : DEFAULT_ATTENDANCE_SETTINGS.lockTime,
     unlockWindowMinutes: asMinutes(value.unlockWindowMinutes, DEFAULT_ATTENDANCE_SETTINGS.unlockWindowMinutes),
     allowLateAfterLock: asBoolean(value.allowLateAfterLock, DEFAULT_ATTENDANCE_SETTINGS.allowLateAfterLock),
     requireRemarksForLateExcused: asBoolean(

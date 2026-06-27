@@ -30,6 +30,7 @@ import { accountingService } from '../services/accounting.service';
 import { complianceService } from '../services/compliance.service';
 import { EmailService } from '../services/email.service';
 import { calculateLearnerInvoice } from '../services/learnerFeeConfiguration.service';
+import { getInstitutionType } from '../utils/institutionNormalizer';
 
 import logger from '../utils/logger';
 function normalizeEnumValue(value?: string): string | undefined {
@@ -54,10 +55,6 @@ function getPreviousTermContext(termRaw: string, academicYearRaw: number): { ter
 }
 
 const SECONDARY_GRADE_CODES = ['GRADE10', 'GRADE11', 'GRADE12', 'GRADE_10', 'GRADE_11', 'GRADE_12', 'FORM_1', 'FORM_2', 'FORM_3', 'FORM_4'] as const;
-
-function getInstitutionType(req: AuthRequest): 'PRIMARY_CBC' | 'SECONDARY' | 'TERTIARY' {
-  return (req.resolvedInstitutionType || req.school?.institutionType || 'PRIMARY_CBC') as 'PRIMARY_CBC' | 'SECONDARY' | 'TERTIARY';
-}
 
 function applyInvoiceInstitutionScope(req: AuthRequest, whereClause: any = {}) {
   const institutionType = getInstitutionType(req);

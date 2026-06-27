@@ -16,6 +16,11 @@ import {
   getPublicBrandingAsset,
   getPublicManifest
 } from '../controllers/school.controller';
+import {
+  applySchoolModulePackage,
+  getSchoolModules,
+  updateSchoolModules
+} from '../controllers/module.controller';
 import { validate } from '../middleware/validation.middleware';
 import { requireRole } from '../middleware/permissions.middleware';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
@@ -58,6 +63,7 @@ const updateSchoolSchema = z.object({
   welcomeMessage: z.string().max(2000).optional().nullable(),
   onboardingTitle: z.string().max(255).optional().nullable(),
   onboardingMessage: z.string().max(2000).optional().nullable(),
+  packageId: z.enum(['starter', 'standard', 'professional', 'enterprise']).optional(),
   admissionNumberMode: z.enum(['AUTO', 'MANUAL']).optional(),
   admissionPattern: z.string().min(1).max(120).optional(),
   admissionSequenceWidth: z.number().int().min(1).max(12).optional(),
@@ -72,6 +78,18 @@ const configureInstitutionSchema = z.object({
 
 const resetWholeInstitutionSchema = z.object({
   confirmToken: z.literal('RESET_WHOLE_INSTITUTION')
+});
+
+const moduleUpdateSchema = z.object({
+  modules: z.array(z.object({
+    slug: z.string().min(1).max(80),
+    isActive: z.boolean().optional(),
+    isVisible: z.boolean().optional()
+  })).min(1)
+});
+
+const modulePackageSchema = z.object({
+  packageId: z.enum(['starter', 'standard', 'professional', 'enterprise'])
 });
 
 // Public branding route (no auth) — generous limits; these are polled by the
@@ -96,6 +114,27 @@ router.post('/provision',
 router.get('/',
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   asyncHandler(getSchool)
+);
+
+router.get('/modules/config',
+  rateLimit({ windowMs: 60_000, maxRequests: 100 }),
+  asyncHandler(getSchoolModules)
+);
+
+router.put('/modules/config',
+  requireRole([...ROLE_SCHOOL_ADMIN]),
+  rateLimit({ windowMs: 60_000, maxRequests: 30 }),
+  express.json(),
+  validate(moduleUpdateSchema),
+  asyncHandler(updateSchoolModules)
+);
+
+router.post('/modules/package',
+  requireRole([...ROLE_SCHOOL_ADMIN]),
+  rateLimit({ windowMs: 60_000, maxRequests: 10 }),
+  express.json(),
+  validate(modulePackageSchema),
+  asyncHandler(applySchoolModulePackage)
 );
 
 // Fallback for obsolete ID-based fetches from frontend
@@ -167,4 +206,3 @@ router.post('/reset-sequence',
 );
 
 export default router;
-

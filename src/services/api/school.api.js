@@ -37,4 +37,15 @@ export const schoolAPI = {
       method: 'POST',
       body: JSON.stringify({ confirmToken }),
     }),
+  getModules: async () => fetchWithAuth('/schools/modules/config'),
+  updateModules: async (data) =>
+    fetchWithAuth('/schools/modules/config', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  applyModulePackage: async (packageId) =>
+    fetchWithAuth('/schools/modules/package', {
+      method: 'POST',
+      body: JSON.stringify({ packageId }),
+    }),
 };

@@ -7,6 +7,7 @@ import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
 import { AuthRequest } from '../middleware/permissions.middleware';
 import { LearnerStatus, Gender } from '@prisma/client';
+import { getInstitutionType } from '../utils/institutionNormalizer';
 import { generateAdmissionNumber } from '../services/admissionNumber.service';
 import { feeService } from '../services/fee.service';
 import { SmsService } from '../services/sms.service';
@@ -20,8 +21,6 @@ import { PRODUCT_STORAGE_PREFIX } from '../config/productIdentity';
 import logger from '../utils/logger';
 const SKIP_PARENT_PORTAL_NOTIFICATIONS = process.env.SKIP_PARENT_PORTAL_NOTIFICATIONS === 'true' || process.env.NODE_ENV === 'test';
 const SECONDARY_GRADE_CODES = ['GRADE10', 'GRADE11', 'GRADE12', 'GRADE_10', 'GRADE_11', 'GRADE_12', 'FORM_1', 'FORM_2', 'FORM_3'] as const;
-const getInstitutionType = (req: AuthRequest): 'PRIMARY_CBC' | 'SECONDARY' | 'TERTIARY' =>
-  (req.resolvedInstitutionType || req.school?.institutionType || 'PRIMARY_CBC') as 'PRIMARY_CBC' | 'SECONDARY' | 'TERTIARY';
 
 const applyInstitutionGradeScope = (
   institutionType: 'PRIMARY_CBC' | 'SECONDARY' | 'TERTIARY',

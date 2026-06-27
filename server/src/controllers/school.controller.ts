@@ -7,6 +7,7 @@ import { generateAdmissionNumber, getCurrentSequenceValue, resetSequence, getNex
 import { provisionNewSchool } from '../services/school-provisioning.service';
 import { deleteSchoolSafely } from '../services/school-deletion.service';
 import { clearSchoolCache } from '../middleware/schoolContext.middleware';
+import { applyModulePackageToSchool, normalizePackageId } from '../services/moduleCatalog.service';
 
 import logger from '../utils/logger';
 const VALID_INSTITUTION_TYPES = new Set(['PRIMARY_CBC', 'SECONDARY', 'TERTIARY']);
@@ -184,6 +185,7 @@ export const updateSchool = async (req: AuthRequest, res: Response) => {
         stampUrl: req.body.stampUrl || '/branding/stamp.svg',
       },
     });
+    await applyModulePackageToSchool(created.id, normalizePackageId(req.body.packageId || 'starter'), undefined, req.user?.userId);
     return res.status(201).json({ success: true, message: 'School settings initialized', data: created });
   }
 

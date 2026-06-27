@@ -3,6 +3,7 @@ const PAGE_APP_REQUIREMENTS = {
   'annual-planner': 'planner',
   'events-calendar': 'planner',
   'planner-agenda': 'planner',
+  'timetable': 'timetable',
   'planner-timetable': 'timetable',
   'planner-schemes': 'curriculum',
   'planner-duty-roster': 'planner',
@@ -73,6 +74,7 @@ const PAGE_APP_REQUIREMENTS = {
   'hr-leave': 'staff-hr',
   'hr-payroll': 'payroll',
   'hr-documents': 'staff-hr',
+  'hr-attendance': 'staff-hr',
   'hr-performance': 'staff-hr',
 
   'accounting-dashboard': 'accounting',
@@ -125,6 +127,14 @@ const PAGE_APP_REQUIREMENTS = {
   'fees-reports': 'fee-management',
   'fees-statements': 'fee-management',
   'fees-unmatched': 'fee-management',
+
+  'settings-school': 'school-settings',
+  'settings-branding': 'school-settings',
+  'settings-modules': 'school-settings',
+  'settings-users': 'user-management',
+  'settings-approvals': 'approvals',
+  'settings-communication': 'sms-notifications',
+  'settings-payment': 'fee-management',
 };
 
 const ROLE_PAGE_ALLOWLIST = {
@@ -197,7 +207,7 @@ export const isParentPortalPage = (page) => {
 
 export const resolveDashboardPage = (user) => {
   const role = normalizeRole(user?.role);
-  if (userHasParentPortalAccess(user)) return 'dashboard';
+  if (userHasParentPortalAccess(user)) return 'parent-portal-home';
   if (STUDENT_ROLES.has(role)) return 'dashboard';
   if (FINANCE_ROLES.has(role)) return 'finance-dashboard';
   return 'dashboard';
@@ -242,6 +252,7 @@ const INSTITUTION_AGNOSTIC_PAGES = new Set([
   'dashboard',
   'help',
   'settings-school',
+  'settings-modules',
   'settings-users',
   'settings-system-logs',
   'settings-system-control',
@@ -268,7 +279,11 @@ export const getRequiredAppForPage = (page) => {
 };
 
 export const hasAppAccess = (user, slug) => {
-  return true;
+  if (!slug) return true;
+
+  const enabledApps = user?.enabledApps || user?.activeModules || user?.school?.enabledApps || user?.school?.activeModules;
+  if (!Array.isArray(enabledApps) || enabledApps.length === 0) return true;
+  return enabledApps.includes(slug);
 };
 
 export const hasPageAccess = (user, page) => {
@@ -288,7 +303,7 @@ export const hasPageAccess = (user, page) => {
     return false;
   }
 
-  return true;
+  return hasAppAccess(user, getRequiredAppForPage(normalizedPage));
 };
 
 export { PAGE_APP_REQUIREMENTS };

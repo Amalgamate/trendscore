@@ -9,6 +9,7 @@ import { Term } from '@prisma/client';
 import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
 import { gradingService } from '../services/grading.service';
+import { getInstitutionType } from '../utils/institutionNormalizer';
 import * as reportService from '../services/report.service';
 
 import logger from '../utils/logger';
@@ -175,7 +176,7 @@ export const reportController = {
         throw new ApiError(404, 'Learner not found');
       }
 
-      const institutionType = (req.school?.institutionType || 'PRIMARY_CBC') as string;
+      const institutionType = getInstitutionType(req);
       const systemType = institutionType === 'SECONDARY' ? 'SECONDARY' : 'SUMMATIVE';
       const gradingSystem = await gradingService.getGradingSystem(systemType);
       const ranges = gradingSystem?.ranges || [];

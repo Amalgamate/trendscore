@@ -1,6 +1,7 @@
 import prisma from '../config/database';
 import bcrypt from 'bcrypt';
 import { EmailService } from './email-resend.service';
+import { applyModulePackageToSchool, normalizePackageId } from './moduleCatalog.service';
 
 export interface SchoolProvisioningData {
   schoolName: string;
@@ -21,6 +22,7 @@ export interface SchoolProvisioningData {
   motto?: string;
   vision?: string;
   mission?: string;
+  packageId?: string;
 }
 
 export interface ProvisioningResult {
@@ -34,6 +36,7 @@ export interface ProvisioningResult {
 export async function provisionNewSchool(data: SchoolProvisioningData): Promise<ProvisioningResult> {
   const tempPassword = generateTempPassword();
   const hashedPassword = await bcrypt.hash(tempPassword, 10);
+  const packageId = normalizePackageId(data.packageId || 'starter');
 
   const result = await prisma.$transaction(async (tx) => {
     const existingSchool = await tx.school.findFirst({
@@ -144,6 +147,8 @@ export async function provisionNewSchool(data: SchoolProvisioningData): Promise<
         data: { code: ft.code, name: ft.name, category: ft.category as any, isActive: true },
       });
     }
+
+    await applyModulePackageToSchool(school.id, packageId, tx, adminUser.id);
 
     return { school, adminUser, admissionSequence };
   });

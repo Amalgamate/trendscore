@@ -5,6 +5,7 @@ import { calculationService } from '../services/calculation.service';
 import { Term, FormativeAssessmentType, Grade } from '@prisma/client';
 import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
+import { getInstitutionType } from '../utils/institutionNormalizer';
 
 // Helper to safely parse dates
 const safeParseDate = (dateVal: any, defaultDate: Date): Date => {
@@ -21,9 +22,6 @@ const GRADE_OPTIONS = [
 ];
 
 const SS_GRADE_OPTIONS = ['GRADE_10', 'GRADE_11', 'GRADE_12'];
-
-const resolveInstitutionContext = (req: AuthRequest): 'PRIMARY_CBC' | 'SECONDARY' | 'TERTIARY' =>
-  (req.resolvedInstitutionType || req.school?.institutionType || 'PRIMARY_CBC') as 'PRIMARY_CBC' | 'SECONDARY' | 'TERTIARY';
 
 export const getTermConfigs = async (req: Request, res: Response) => {
   const configs = await configService.getTermConfigs();
@@ -142,7 +140,7 @@ export const deleteStreamConfig = async (req: Request, res: Response) => {
 };
 
 export const getClasses = async (req: AuthRequest, res: Response) => {
-  const institutionType = resolveInstitutionContext(req) as 'PRIMARY_CBC' | 'SECONDARY';
+  const institutionType = getInstitutionType(req) as 'PRIMARY_CBC' | 'SECONDARY';
   const classes = await configService.getClasses(institutionType);
   res.json({ success: true, data: classes });
 };
@@ -159,7 +157,7 @@ export const deleteClass = async (req: Request, res: Response) => {
 
 export const getGrades = async (req: Request, res: Response) => {
   const r = req as AuthRequest;
-  const institutionType = resolveInstitutionContext(r) as 'PRIMARY_CBC' | 'SECONDARY';
+  const institutionType = getInstitutionType(r) as 'PRIMARY_CBC' | 'SECONDARY';
   res.json({ success: true, data: institutionType === 'SECONDARY' ? SS_GRADE_OPTIONS : GRADE_OPTIONS });
 };
 
@@ -194,7 +192,7 @@ export const seedStreams = async (req: Request, res: Response) => {
 };
 
 export const seedClasses = async (req: AuthRequest, res: Response) => {
-  const institutionType = resolveInstitutionContext(req) as 'PRIMARY_CBC' | 'SECONDARY';
+  const institutionType = getInstitutionType(req) as 'PRIMARY_CBC' | 'SECONDARY';
   const year = new Date().getFullYear();
   const term: Term = 'TERM_1';
   const grades =

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import Sidebar from './layout/Sidebar';
 import Header from './layout/Header';
 import HorizontalSubmenu from './layout/HorizontalSubmenu';
@@ -27,6 +27,7 @@ import { refreshBus } from '../../utils/refreshBus';
 import axiosInstance from '../../services/api/axiosConfig';
 import { hasPageAccess, isParentPortalPage, resolveDashboardPage, userHasParentPortalAccess } from './utils/appAccess';
 import { resolveLearnerSaveIntent } from './utils/learnerSaveIntent';
+import { useModuleAccess } from '../../contexts/ModuleAccessContext';
 
 const extractApiErrorMessage = (err, fallback = 'Request failed') => {
   const data = err?.response?.data;
@@ -64,10 +65,12 @@ const extractLearner403Message = (err) => {
 export default function CBCGradingSystem({ user, onLogout, brandingSettings, setBrandingSettings }) {
   const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
   const mainContentRef = useRef(null);
-  const parentPortal = userHasParentPortalAccess(user);
+  const { activeSlugs } = useModuleAccess();
+  const accessUser = useMemo(() => ({ ...(user || {}), enabledApps: activeSlugs }), [activeSlugs, user]);
+  const parentPortal = userHasParentPortalAccess(accessUser);
   const getAllowedPage = useCallback((page) => (
-    hasPageAccess(user, page) ? page : resolveDashboardPage(user)
-  ), [user]);
+    hasPageAccess(accessUser, page) ? page : resolveDashboardPage(accessUser)
+  ), [accessUser]);
 
   // ── UI State ─────────────────────────────────────────────────────────────
   const {
@@ -221,14 +224,14 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
         if (allowedPage === state.appPage && state.appParams?.learner) setEditingLearner(state.appParams.learner);
         useUIStore.setState({ currentPage: allowedPage, pageParams: allowedPage === state.appPage ? (state.appParams || {}) : {} });
       } else {
-        const landingPage = resolveDashboardPage(user);
+        const landingPage = resolveDashboardPage(accessUser);
         window.history.pushState({ appPage: landingPage, appParams: {} }, '', window.location.href);
         useUIStore.setState({ currentPage: landingPage, pageParams: {} });
       }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [getAllowedPage, user]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [accessUser, getAllowedPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (user?.role === 'ACCOUNTANT' && window.location.pathname.includes('/app/accountant/dashboard')) {
@@ -240,7 +243,7 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
       return;
     }
     if (!parentPortal && isParentPortalPage(currentPage)) {
-      setCurrentPage(resolveDashboardPage(user));
+      setCurrentPage(resolveDashboardPage(accessUser));
       return;
     }
     // Redirect parents away from the generic dashboard to the parent portal home.
@@ -248,10 +251,10 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
       setCurrentPage('parent-portal-home');
       return;
     }
-    if (!hasPageAccess(user, currentPage)) {
-      setCurrentPage(resolveDashboardPage(user));
+    if (!hasPageAccess(accessUser, currentPage)) {
+      setCurrentPage(resolveDashboardPage(accessUser));
     }
-  }, [currentPage, parentPortal, setCurrentPage, user]);
+  }, [accessUser, currentPage, parentPortal, setCurrentPage]);
 
   // Lazy-load parents on first visit to a parents page
   const parentsLoaded = useRef(false);
@@ -590,7 +593,7 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
                 <PageRouter
                   currentPage={currentPage}
                   pageParams={pageParams}
-                  user={user}
+                  user={accessUser}
                   learners={learners}
                   teachers={teachers}
                   parents={parents}
@@ -607,7 +610,7 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
             </div>
             {/* Single global bottom nav for all parent portal pages */}
             <MobileBottomNav
-              role={user?.role}
+              role={accessUser?.role}
               currentPath={currentPage}
               onNavigate={handleNavigate}
             />
@@ -625,7 +628,7 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
 
     return (
       <MobileAppShell
-        user={user}
+        user={accessUser}
         brandingSettings={brandingSettings}
         onLogout={handleLogout}
         onNavigate={handleNavigate}
@@ -636,7 +639,7 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
           <PageRouter
             currentPage={currentPage}
             pageParams={pageParams}
-            user={user}
+            user={accessUser}
             learners={learners}
             teachers={teachers}
             parents={parents}
@@ -686,7 +689,7 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
     <div className="flex h-screen bg-gray-50 overflow-hidden font-inter border-t-2 border-[var(--brand-teal)]">
       <CommandPalette onNavigate={handleNavigate} />
       <Sidebar
-        user={user}
+        user={accessUser}
         brandingSettings={brandingSettings}
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
@@ -697,7 +700,7 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
       <div className="flex-1 flex min-h-0 flex-col min-w-0 overflow-hidden relative">
         {!(parentPortal && currentPage.startsWith('parent-portal')) && !(user?.role === 'ACCOUNTANT' && currentPage === 'finance-dashboard') && (
           <>
-            <Header user={user} onLogout={handleLogout} onNavigate={handleNavigate} />
+            <Header user={accessUser} onLogout={handleLogout} onNavigate={handleNavigate} />
             <HorizontalSubmenu currentPage={currentPage} onNavigate={handleNavigate} />
           </>
         )}
@@ -707,7 +710,7 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
               <PageRouter
                 currentPage={currentPage}
                 pageParams={pageParams}
-                user={user}
+                user={accessUser}
                 learners={learners}
                 teachers={teachers}
                 parents={parents}

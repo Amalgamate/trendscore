@@ -62,3 +62,26 @@ export function normalizeInstitutionTypeOrDefault(raw: unknown): CanonicalInstit
 export function isValidInstitutionType(raw: unknown): boolean {
   return normalizeInstitutionType(raw) !== null;
 }
+
+/**
+ * Reads the resolved institution type from a request object.
+ *
+ * After institutionContextResolver middleware runs (mounted globally in server.ts),
+ * req.resolvedInstitutionType is guaranteed to be a canonical value.
+ * Use this everywhere instead of inlining the fallback chain
+ *   (req.resolvedInstitutionType || req.school?.institutionType || 'PRIMARY_CBC')
+ *
+ * Accepts any object with an optional resolvedInstitutionType so controllers
+ * don't need to import a specific Express AuthRequest type.
+ */
+/**
+ * Accepts any object shape — the resolvedInstitutionType may be the canonical
+ * union on properly-typed AuthRequest, or the generic string from Express
+ * augmentation. Both work at runtime.
+ */
+export function getInstitutionType(req: {
+  resolvedInstitutionType?: string | null;
+}): CanonicalInstitutionType {
+  const raw = req.resolvedInstitutionType;
+  return normalizeInstitutionType(raw) ?? DEFAULT_INSTITUTION_TYPE;
+}

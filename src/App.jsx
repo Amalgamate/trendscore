@@ -9,6 +9,7 @@ import { FeeActionsProvider } from './contexts/FeeActionsContext';
 import { UserNotificationProvider } from './contexts/UserNotificationContext';
 import { ChatProvider } from './contexts/ChatContext';
 import { RolePreviewProvider } from './contexts/RolePreviewContext';
+import { ModuleAccessProvider } from './contexts/ModuleAccessContext';
 import FeeApprovalReminder from './components/CBCGrading/layout/FeeApprovalReminder';
 import axiosInstance from './services/api/axiosConfig';
 import { useBootstrapStore } from './store/useBootstrapStore';
@@ -372,12 +373,14 @@ function AppContent() {
                       <UserNotificationProvider>
                         <ChatProvider>
                           <RolePreviewProvider user={user}>
-                            <CBCGradingSystem
-                              user={user}
-                              onLogout={handleLogout}
-                              brandingSettings={brandingSettings}
-                              setBrandingSettings={setBrandingSettings}
-                            />
+                            <ModuleAccessProvider user={user}>
+                              <CBCGradingSystem
+                                user={user}
+                                onLogout={handleLogout}
+                                brandingSettings={brandingSettings}
+                                setBrandingSettings={setBrandingSettings}
+                              />
+                            </ModuleAccessProvider>
                           </RolePreviewProvider>
                         </ChatProvider>
                         <FeeApprovalReminder />

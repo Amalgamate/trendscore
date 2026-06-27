@@ -9,8 +9,12 @@ import {
   Users,
   Home,
 } from 'lucide-react';
+import { useModuleAccess } from '../../../contexts/ModuleAccessContext';
+import { hasPageAccess } from '../utils/appAccess';
 
-const QuickActions = ({ onNavigate, currentPage }) => {
+const QuickActions = ({ onNavigate, currentPage, user }) => {
+  const { activeSlugs } = useModuleAccess();
+  const accessUser = { ...(user || {}), enabledApps: activeSlugs };
   const actions = [
     { label: 'Annual Planner', icon: Activity, path: 'annual-planner', bg: 'bg-[#1d4ed8]', activeBg: 'bg-blue-50 text-blue-800 border-blue-200' },
     { label: 'Financials', icon: CircleDollarSign, path: 'fees-overview', bg: 'bg-[#10b981]', activeBg: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
@@ -19,7 +23,7 @@ const QuickActions = ({ onNavigate, currentPage }) => {
     { label: 'Time Table', icon: Calendar, path: 'timetable', bg: 'bg-[#8b5cf6]', activeBg: 'bg-purple-50 text-purple-700 border-purple-100' },
     { label: 'Pledge Management', icon: Bookmark, path: 'fees-invoices', bg: 'bg-[#e05f00]', activeBg: 'bg-orange-50 text-orange-700 border-orange-100' },
     { label: 'User Management', icon: Users, path: 'settings-users', bg: 'bg-[#0f766e]', activeBg: 'bg-teal-50 text-teal-700 border-teal-100' },
-  ];
+  ].filter((action) => hasPageAccess(accessUser, action.path));
 
   return (
     <div className="bg-white border-b border-slate-200">

@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { useAuth } from '../../../hooks/useAuth';
 import { useInstitutionLabels } from '../../../hooks/useInstitutionLabels';
+import { useModuleAccess } from '../../../contexts/ModuleAccessContext';
+import { hasPageAccess } from '../utils/appAccess';
 import {
   secondaryNavSections,
   SECONDARY_SCHOOL_SECTIONS,
@@ -65,6 +67,50 @@ const restrictNavSections = (nav, allowedIds, labelsById = {}) => {
         backOfficeSections: filterSections(nav.backOfficeSections),
         docsCenterSection: isAllowed(nav.docsCenterSection) ? withRestrictedLabel(nav.docsCenterSection) : null,
         systemAdminSections: filterSections(nav.systemAdminSections)
+    };
+};
+
+const filterItemsByModule = (items = [], accessUser, isModuleEnabled) => items.reduce((acc, item) => {
+    if (item.app && !isModuleEnabled(item.app)) return acc;
+    if (item.path && !hasPageAccess(accessUser, item.path)) return acc;
+
+    if (item.type === 'group') {
+        const children = filterItemsByModule(item.items || [], accessUser, isModuleEnabled);
+        if (children.length) acc.push({ ...item, items: children });
+        return acc;
+    }
+
+    acc.push(item);
+    return acc;
+}, []);
+
+const filterSectionsByModule = (sections = [], accessUser, isModuleEnabled) => sections.reduce((acc, section) => {
+    if (!section) return acc;
+    if (section.app && !isModuleEnabled(section.app)) return acc;
+    if (section.path && !hasPageAccess(accessUser, section.path)) return acc;
+
+    const items = filterItemsByModule(section.items || [], accessUser, isModuleEnabled);
+    if ((section.items || []).length > 0 && items.length === 0 && !['dashboard', 'settings', 'docs-center'].includes(section.id)) {
+        return acc;
+    }
+
+    acc.push({ ...section, items });
+    return acc;
+}, []);
+
+const filterNavByModules = (nav, accessUser, isModuleEnabled) => {
+    const filterOne = (section) => filterSectionsByModule(section ? [section] : [], accessUser, isModuleEnabled)[0] || null;
+    return {
+        ...nav,
+        navSections: filterSectionsByModule(nav.navSections || [], accessUser, isModuleEnabled),
+        dashboardSection: filterOne(nav.dashboardSection),
+        communicationSection: filterOne(nav.communicationSection),
+        schoolSections: filterSectionsByModule(nav.schoolSections || [], accessUser, isModuleEnabled),
+        lmsSection: filterOne(nav.lmsSection),
+        studentLmsSection: filterOne(nav.studentLmsSection),
+        backOfficeSections: filterSectionsByModule(nav.backOfficeSections || [], accessUser, isModuleEnabled),
+        docsCenterSection: filterOne(nav.docsCenterSection),
+        systemAdminSections: filterSectionsByModule(nav.systemAdminSections || [], accessUser, isModuleEnabled),
     };
 };
 
@@ -419,6 +465,7 @@ export const allNavSections = [
         permission: 'SCHOOL_SETTINGS',
         items: [
             { id: 'settings-school',         label: 'School Settings',         path: 'settings-school',         permission: 'SCHOOL_SETTINGS'   },
+            { id: 'settings-modules',        label: 'Modules & Package',       path: 'settings-modules',        permission: 'SCHOOL_SETTINGS'   },
             { id: 'settings-academic',       label: 'Academic Settings',       path: 'settings-academic',       permission: 'ACADEMIC_SETTINGS' },
             { id: 'settings-communication',  label: 'Communication Settings',  path: 'settings-communication',  permission: 'SCHOOL_SETTINGS'   },
             { id: 'settings-payment',        label: 'Payment Settings',        path: 'settings-payment',        permission: 'SCHOOL_SETTINGS'   },
@@ -503,8 +550,10 @@ function parentSchoolSectionsFromNav(nav) {
 export const useNavigation = () => {
     const { can, role, isRole } = usePermissions();
     const { user, institutionType } = useAuth();
+    const { activeSlugs, isModuleEnabled } = useModuleAccess();
     const labels = useInstitutionLabels();
     const restrictSidebarForSchool = isRestrictedSidebarHost();
+    const accessUser = useMemo(() => ({ ...(user || {}), enabledApps: activeSlugs }), [activeSlugs, user]);
     const accountantNav = useMemo(() => {
         const financeItems = accountantFinanceNavigation.filter(item => !item.permission || can(item.permission));
         const communicationItems = accountantCommunicationNavigation.filter(item => !item.permission || can(item.permission));
@@ -577,6 +626,8 @@ export const useNavigation = () => {
                 'parents-list',
             ].includes(item.id)) return false;
 
+            if (item.app && !isModuleEnabled(item.app)) return false;
+            if (item.path && !hasPageAccess(accessUser, item.path)) return false;
             if (item.permission && !can(item.permission)) return false;
             
             return true;
@@ -645,7 +696,7 @@ export const useNavigation = () => {
             systemAdminSections: nav.filter(s => SECONDARY_SYSTEM_SECTIONS.includes(s.id)),
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [institutionType, can, role]);
+    }, [institutionType, can, role, accessUser, isModuleEnabled]);
 
     // ── Tertiary ─────────────────────────────────────────────────────────────
     const tertiaryNav = useMemo(() => {
@@ -690,7 +741,7 @@ export const useNavigation = () => {
             systemAdminSections: nav.filter(s => TERTIARY_SYSTEM_SECTIONS.includes(s.id)),
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [institutionType, can, role]);
+    }, [institutionType, can, role, accessUser, isModuleEnabled]);
 
     // ── CBC (default) ─────────────────────────────────────────────────────────
 
@@ -706,6 +757,8 @@ export const useNavigation = () => {
                 'parents-list',
             ].includes(item.id)) return false;
 
+            if (item.app && !isModuleEnabled(item.app)) return false;
+            if (item.path && !hasPageAccess(accessUser, item.path)) return false;
             if (item.permission && !can(item.permission)) return false;
             return true;
         };
@@ -760,7 +813,7 @@ export const useNavigation = () => {
             built = transformNavForParentRole(built);
         }
         return built;
-    }, [can, role, isRole, labels]);
+    }, [can, role, isRole, labels, accessUser, isModuleEnabled]);
 
     const dashboardSection = navSections.find(s => s.id === 'dashboard');
     const lmsSection = navSections.find(s => s.id === 'lms');
@@ -889,11 +942,15 @@ export const useNavigation = () => {
             };
         }
 
+        const visibleNav = filterNavByModules(builtNav, accessUser, isModuleEnabled);
+
         return restrictSidebarForSchool
-            ? restrictNavSections(builtNav, RESTRICTED_SIDEBAR_SECTION_IDS, RESTRICTED_SIDEBAR_SECTION_LABELS)
-            : builtNav;
+            ? restrictNavSections(visibleNav, RESTRICTED_SIDEBAR_SECTION_IDS, RESTRICTED_SIDEBAR_SECTION_LABELS)
+            : visibleNav;
     }, [
+        accessUser,
         institutionType,
+        isModuleEnabled,
         role,
         restrictSidebarForSchool,
         accountantNav,

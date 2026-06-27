@@ -36,6 +36,8 @@ import {
 } from 'recharts';
 import { dashboardAPI, transportAPI } from '../../../services/api';
 import { QuickActions } from '../shared';
+import { useModuleAccess } from '../../../contexts/ModuleAccessContext';
+import { hasPageAccess } from '../utils/appAccess';
 
 
 const moduleToneMap = {
@@ -292,6 +294,8 @@ const ExecutiveModuleCard = ({
 
 
 const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'desktop' }) => {
+  const { activeSlugs } = useModuleAccess();
+  const accessUser = useMemo(() => ({ ...(user || {}), enabledApps: activeSlugs }), [activeSlugs, user]);
   const [dashboard, setDashboard] = useState(null);
   const [transportSummary, setTransportSummary] = useState(null);
   const [transportReports, setTransportReports] = useState(null);
@@ -409,6 +413,7 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
   const collapsedModules = useMemo(() => [
     {
       id: 'fees',
+      app: 'fee-management',
       title: 'Fees',
       icon: CircleDollarSign,
       summary: [
@@ -419,6 +424,7 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
     },
     {
       id: 'assessment',
+      app: 'gradebook',
       title: 'Assessment',
       icon: BarChart2,
       summary: [
@@ -429,6 +435,7 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
     },
     {
       id: 'attendance',
+      app: 'attendance',
       title: 'Attendance',
       icon: Users,
       summary: [
@@ -438,6 +445,7 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
     },
     {
       id: 'expenses',
+      app: 'accounting',
       title: 'Expenses',
       icon: Wallet,
       summary: [
@@ -448,6 +456,7 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
     },
     {
       id: 'transport',
+      app: 'transport',
       title: 'Transport',
       icon: Bus,
       summary: [
@@ -457,6 +466,7 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
     },
     {
       id: 'health',
+      app: null,
       title: 'Insights',
       icon: Lightbulb,
       summary: [
@@ -465,7 +475,8 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
         { text: `Attendance today is ${Math.round(attendanceRate)}% (${integer(stats.presentToday)} present, ${integer(stats.absentToday)} absent). Teacher rate: ${Math.round(Number(stats.teacherAttendanceRate || 0))}%.` },
       ],
     },
-  ], [
+  ].filter((module) => !module.app || hasPageAccess(accessUser, module.id === 'fees' ? 'fees-overview' : module.id === 'assessment' ? 'assess-mobile-dashboard' : module.id === 'attendance' ? 'attendance-daily' : module.id === 'expenses' ? 'accounting-expenses' : module.id === 'transport' ? 'transport-routes' : 'dashboard')), [
+    accessUser,
     feeCollected,
     stats.feePending,
     collectionRate,
@@ -1003,7 +1014,7 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
   return (
     <div className="min-h-screen bg-[#F5F5F7] pb-24">
       {/* Full-width Quick Actions matching the original white strip */}
-      <QuickActions onNavigate={onNavigate} currentPage="dashboard" />
+      <QuickActions onNavigate={onNavigate} currentPage="dashboard" user={accessUser} />
 
       {/* Hero Metric Cards — temporarily hidden */}
       {false && (

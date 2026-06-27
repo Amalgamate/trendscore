@@ -27,6 +27,116 @@ function ToggleField({ label, description, checked, onChange }) {
   );
 }
 
+// Hour options: 05:00 – 23:00, labelled in 12h format for readability
+const HOUR_OPTIONS = Array.from({ length: 19 }, (_, i) => {
+  const h = i + 5; // 05 to 23
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const display = (h % 12 || 12) + ' ' + suffix;
+  return { value: String(h).padStart(2, '0'), label: display };
+});
+
+const MINUTE_OPTIONS = [
+  { value: '00', label: ':00' },
+  { value: '15', label: ':15' },
+  { value: '30', label: ':30' },
+  { value: '45', label: ':45' },
+];
+
+// Common unlock window presets in minutes
+const UNLOCK_PRESETS = [
+  { value: 15,  label: '15 min' },
+  { value: 30,  label: '30 min' },
+  { value: 60,  label: '1 hour' },
+  { value: 120, label: '2 hours' },
+  { value: 180, label: '3 hours' },
+];
+
+function LockTimePicker({ value, disabled, onChange }) {
+  const [hour, minute] = (value || '07:30').split(':');
+
+  const handleHour = (h) => onChange(`${h}:${minute}`);
+  const handleMinute = (m) => onChange(`${hour}:${m}`);
+
+  const selectClass = cn(
+    'h-11 rounded-md border border-gray-300 px-2 text-base font-semibold outline-none',
+    'focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/20',
+    disabled
+      ? 'cursor-not-allowed bg-gray-100 text-gray-400 border-gray-200'
+      : 'bg-white text-gray-950 cursor-pointer hover:border-brand-purple/50'
+  );
+
+  return (
+    <div className="mt-3 flex items-center gap-2">
+      <select
+        value={hour}
+        disabled={disabled}
+        onChange={(e) => handleHour(e.target.value)}
+        className={cn(selectClass, 'flex-1')}
+        aria-label="Lock hour"
+      >
+        {HOUR_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+      <select
+        value={minute}
+        disabled={disabled}
+        onChange={(e) => handleMinute(e.target.value)}
+        className={cn(selectClass, 'w-24')}
+        aria-label="Lock minute"
+      >
+        {MINUTE_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function UnlockWindowPicker({ value, onChange }) {
+  const numVal = Number(value);
+  const isPreset = UNLOCK_PRESETS.some((p) => p.value === numVal);
+
+  return (
+    <div className="mt-3 space-y-2">
+      {/* Quick presets */}
+      <div className="flex flex-wrap gap-2">
+        {UNLOCK_PRESETS.map((preset) => (
+          <button
+            key={preset.value}
+            type="button"
+            onClick={() => onChange(preset.value)}
+            className={cn(
+              'rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors',
+              numVal === preset.value
+                ? 'border-brand-purple bg-brand-purple text-white'
+                : 'border-gray-300 bg-white text-gray-700 hover:border-brand-purple/50 hover:text-brand-purple'
+            )}
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
+      {/* Custom value input */}
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          min="5"
+          max="1440"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={cn(
+            'h-9 w-24 rounded-md border px-3 text-sm font-semibold outline-none',
+            'focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/20',
+            isPreset ? 'border-gray-300 text-gray-500' : 'border-brand-purple text-gray-950'
+          )}
+        />
+        <span className="text-xs text-gray-500">minutes (5 – 1440)</span>
+      </div>
+    </div>
+  );
+}
+
 export default function AttendanceSettingsPage() {
   const { showSuccess, showError } = useNotifications();
   const [settings, setSettings] = useState(DEFAULT_ATTENDANCE_SETTINGS);
@@ -108,32 +218,30 @@ export default function AttendanceSettingsPage() {
             />
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block rounded-lg border border-gray-200 bg-white p-4">
+              <div className="rounded-lg border border-gray-200 bg-white p-4">
                 <span className="block text-sm font-semibold text-gray-950">Daily lock time</span>
-                <input
-                  type="time"
+                <LockTimePicker
                   value={settings.lockTime}
                   disabled={!settings.lockEnabled}
-                  onChange={(event) => updateSetting('lockTime', event.target.value)}
-                  className="mt-3 h-11 w-full rounded-md border border-gray-300 px-3 text-base font-semibold outline-none focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/20 disabled:bg-gray-100 disabled:text-gray-400"
-                />
-                <span className="mt-2 block text-xs text-gray-500">Displayed to teachers as {lockLabel}.</span>
-              </label>
-
-              <label className="block rounded-lg border border-gray-200 bg-white p-4">
-                <span className="block text-sm font-semibold text-gray-950">Unlock review window</span>
-                <input
-                  type="number"
-                  min="5"
-                  max="1440"
-                  value={settings.unlockWindowMinutes}
-                  onChange={(event) => updateSetting('unlockWindowMinutes', event.target.value)}
-                  className="mt-3 h-11 w-full rounded-md border border-gray-300 px-3 text-base font-semibold outline-none focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/20"
+                  onChange={(value) => updateSetting('lockTime', value)}
                 />
                 <span className="mt-2 block text-xs text-gray-500">
-                  Use the Attendance Unlock approval workflow to set the actual relock expiry.
+                  {settings.lockEnabled
+                    ? <>Teachers see this as <strong>{lockLabel}</strong>.</>
+                    : 'Enable locking above to activate this setting.'}
                 </span>
-              </label>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 bg-white p-4">
+                <span className="block text-sm font-semibold text-gray-950">Unlock review window</span>
+                <UnlockWindowPicker
+                  value={settings.unlockWindowMinutes}
+                  onChange={(value) => updateSetting('unlockWindowMinutes', value)}
+                />
+                <span className="mt-2 block text-xs text-gray-500">
+                  How long an approved unlock stays open before re-locking automatically.
+                </span>
+              </div>
             </div>
           </section>
 

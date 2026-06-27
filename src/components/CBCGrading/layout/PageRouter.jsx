@@ -54,6 +54,7 @@ const ClassList = lazy(() => import('../pages/ClassList'));
 const CreateClassForm = lazy(() => import('../pages/CreateClassForm'));
 const ClassDetailPage = lazy(() => import('../pages/ClassDetailPage'));
 const SchoolSettings = lazy(() => import('../pages/settings/SchoolSettings'));
+const ModuleSettingsPage = lazy(() => import('../pages/settings/ModuleSettingsPage'));
 const AcademicSettings = lazy(() => import('../pages/settings/AcademicSettings'));
 const UserManagement = lazy(() => import('../pages/settings/UserManagement'));
 const CommunicationSettings = lazy(() => import('../pages/settings/CommunicationSettings'));
@@ -772,6 +773,7 @@ const PageRouter = ({
           case 'hr-attendance': return <AttendanceManager />;
 
           case 'settings-school': return <SchoolSettings brandingSettings={brandingSettings} setBrandingSettings={handlers.setBrandingSettings} />;
+          case 'settings-modules': return <ErrorBoundary><ModuleSettingsPage /></ErrorBoundary>;
           case 'settings-academic': return <AcademicSettings />;
           case 'settings-users':
             return isMobile ? (

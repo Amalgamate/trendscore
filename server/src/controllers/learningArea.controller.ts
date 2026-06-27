@@ -8,12 +8,10 @@ import { AuthRequest } from '../middleware/permissions.middleware';
 import prisma from '../config/database';
 import { seedSeniorPathways } from '../services/ss-pathways.seed';
 import { ApiError } from '../utils/error.util';
+import { getInstitutionType } from '../utils/institutionNormalizer';
 
 import logger from '../utils/logger';
 const router = Router();
-
-const resolveInstitutionType = (req: AuthRequest): 'PRIMARY_CBC' | 'SECONDARY' | 'TERTIARY' =>
-  (req.resolvedInstitutionType || req.school?.institutionType || 'PRIMARY_CBC') as 'PRIMARY_CBC' | 'SECONDARY' | 'TERTIARY';
 
 const normalizeGradeLevel = (value?: string | null): string => {
   const raw = String(value || '').trim().toUpperCase();
@@ -27,7 +25,7 @@ const normalizeGradeLevel = (value?: string | null): string => {
  */
 export const getLearningAreas = async (req: AuthRequest, res: Response) => {
   try {
-    const institutionType = resolveInstitutionType(req);
+    const institutionType = getInstitutionType(req);
     const { gradeLevel, pathway, category } = (req.query || {}) as { gradeLevel?: string; pathway?: string; category?: string };
     const normalizedGradeLevel = normalizeGradeLevel(gradeLevel);
 
@@ -88,7 +86,7 @@ export const getLearningArea = async (req: AuthRequest, res: Response) => {
 export const createLearningArea = async (req: AuthRequest, res: Response) => {
   try {
     const { name, shortName, gradeLevel, icon, color, description, isCore, pathway, category, pathwayId, categoryId } = req.body;
-    const institutionType = resolveInstitutionType(req);
+    const institutionType = getInstitutionType(req);
 
     if (!name || !gradeLevel) {
       throw new ApiError(400, 'Name and grade level are required');
@@ -139,7 +137,7 @@ export const updateLearningArea = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { name, shortName, gradeLevel, icon, color, description, isCore, pathway, category, pathwayId, categoryId } = req.body;
-    const institutionType = resolveInstitutionType(req);
+    const institutionType = getInstitutionType(req);
 
     const learningArea = await prisma.learningArea.findUnique({
       where: { id }
@@ -196,7 +194,7 @@ export const updateLearningArea = async (req: AuthRequest, res: Response) => {
 export const deleteLearningArea = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const institutionType = resolveInstitutionType(req);
+    const institutionType = getInstitutionType(req);
 
     const learningArea = await prisma.learningArea.findUnique({
       where: { id }
@@ -227,7 +225,7 @@ export const deleteLearningArea = async (req: AuthRequest, res: Response) => {
  */
 export const seedLearningAreas = async (req: AuthRequest, res: Response) => {
   try {
-    const institutionType = resolveInstitutionType(req) as 'PRIMARY_CBC' | 'SECONDARY';
+    const institutionType = getInstitutionType(req) as 'PRIMARY_CBC' | 'SECONDARY';
 
     // Official CBC Per-Grade Mapping
     const primaryCbcGradeMappings: { [key: string]: string[] } = {

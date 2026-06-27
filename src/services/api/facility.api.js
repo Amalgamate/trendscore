@@ -1,5 +1,4 @@
 import { fetchWithAuth } from './core';
-import axiosInstance from './axiosConfig';
 
 export const facilityAPI = {
   getStreamsByBranch: async () => fetchWithAuth('/facility/streams'),

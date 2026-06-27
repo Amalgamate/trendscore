@@ -4,6 +4,7 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import { gradingService } from '../services/grading.service';
 import { auditService } from '../services/audit.service';
 import { AssessmentStatus, CurriculumType, FormativeAssessmentType, Prisma, Term, SummativeTestType } from '@prisma/client';
+import { getInstitutionType } from '../utils/institutionNormalizer';
 import { aiAssistantService } from '../services/ai-assistant.service';
 import { detailedToGeneralRating } from '../utils/rubric.util';
 import { redisCacheService } from '../services/redis-cache.service';
@@ -205,7 +206,7 @@ export const getFormativeAssessments = async (req: AuthRequest, res: Response) =
       const resolvedArea = await resolveLearningAreaWithContext({
         learningArea: String(learningArea),
         grade: grade ? String(grade) : undefined,
-        institutionType: (req.resolvedInstitutionType as any) || (req.school?.institutionType as any) || 'PRIMARY_CBC',
+        institutionType: getInstitutionType(req) as any,
       });
       whereClause.OR = resolvedArea.id
         ? [{ learningAreaId: resolvedArea.id }, { learningArea: String(learningArea) }]
@@ -263,7 +264,7 @@ export const getBulkFormativeResults = async (req: AuthRequest, res: Response) =
       const resolvedArea = await resolveLearningAreaWithContext({
         learningArea: String(learningArea),
         grade: String(grade),
-        institutionType: (req.resolvedInstitutionType as any) || (req.school?.institutionType as any) || 'PRIMARY_CBC',
+        institutionType: getInstitutionType(req) as any,
       });
       whereClause.OR = resolvedArea.id
         ? [{ learningAreaId: resolvedArea.id }, { learningArea: String(learningArea) }]
@@ -337,7 +338,7 @@ export const createFormativeAssessment = async (req: AuthRequest, res: Response)
       learningAreaId,
       learningArea,
       grade: learner?.grade || undefined,
-      institutionType: (learner?.institutionType as any) || (req.resolvedInstitutionType as any) || (req.school?.institutionType as any) || 'PRIMARY_CBC',
+      institutionType: (learner?.institutionType as any) || getInstitutionType(req) as any,
     });
     const resolvedLearningArea = resolvedArea.name;
     const resolvedLearningAreaId = resolvedArea.id;
@@ -482,7 +483,7 @@ export const recordFormativeResultsBulk = async (req: AuthRequest, res: Response
         learningAreaId: assessment.learningAreaId,
         learningArea: assessment.learningArea,
         grade: learnerCtx?.grade || undefined,
-        institutionType: (learnerCtx?.institutionType as any) || (req.resolvedInstitutionType as any) || (req.school?.institutionType as any) || 'PRIMARY_CBC',
+        institutionType: (learnerCtx?.institutionType as any) || getInstitutionType(req) as any,
       });
       assessment.learningArea = resolvedArea.name || assessment.learningArea;
       assessment.learningAreaId = resolvedArea.id || assessment.learningAreaId || null;
@@ -748,7 +749,7 @@ export const createSummativeTest = async (req: AuthRequest, res: Response) => {
     const testType = rawTestType || rawType;
 
     const teacherId = req.user?.userId;
-    const institutionType = (req.resolvedInstitutionType || req.school?.institutionType || 'PRIMARY_CBC') as string;
+    const institutionType = getInstitutionType(req);
     assertGradeAllowedForInstitution(institutionType, String(grade || ''), 'Create test');
 
     const normalizedTerm = String(term || '')
@@ -759,7 +760,7 @@ export const createSummativeTest = async (req: AuthRequest, res: Response) => {
       learningAreaId,
       learningArea,
       grade: grade ? String(grade) : undefined,
-      institutionType: (req.resolvedInstitutionType as any) || (req.school?.institutionType as any) || 'PRIMARY_CBC',
+      institutionType: getInstitutionType(req) as any,
     });
     const resolvedLearningArea = resolvedArea.name;
     const resolvedLearningAreaId = resolvedArea.id;
@@ -877,7 +878,7 @@ export const generateTestsBulk = async (req: AuthRequest, res: Response) => {
     } = req.body;
 
     const teacherId = req.user?.userId;
-    const institutionType = (req.resolvedInstitutionType || req.school?.institutionType || 'PRIMARY_CBC') as string;
+    const institutionType = getInstitutionType(req);
     assertGradeAllowedForInstitution(institutionType, String(grade || ''), 'Bulk test generation');
 
     if (!learningAreas || !Array.isArray(learningAreas) || !grade || !term || !academicYear || !teacherId) {
@@ -916,7 +917,7 @@ export const generateTestsBulk = async (req: AuthRequest, res: Response) => {
     const scaleWarnings: string[] = [];
     let duplicateCount = 0;
 
-    const institutionScope = (req.resolvedInstitutionType || req.school?.institutionType || 'PRIMARY_CBC') as 'PRIMARY_CBC' | 'SECONDARY' | 'TERTIARY';
+    const institutionScope = getInstitutionType(req);
     for (const area of learningAreas) {
       const areaKey = String(area).trim().toLowerCase();
       const resolvedArea = await resolveLearningAreaWithContext({
@@ -1021,7 +1022,7 @@ export const getSummativeTests = async (req: AuthRequest, res: Response) => {
 
     if (term) whereClause.term = term;
     if (academicYear) whereClause.academicYear = parseInt(academicYear as string);
-    const institutionType = String(req.resolvedInstitutionType || req.school?.institutionType || 'PRIMARY_CBC').toUpperCase();
+    const institutionType = getInstitutionType(req).toUpperCase();
     if (grade) {
       assertGradeAllowedForInstitution(institutionType, String(grade), 'List tests');
       whereClause.grade = grade;
@@ -1036,7 +1037,7 @@ export const getSummativeTests = async (req: AuthRequest, res: Response) => {
       const resolvedArea = await resolveLearningAreaWithContext({
         learningArea: String(learningArea),
         grade: grade ? String(grade) : undefined,
-        institutionType: (req.resolvedInstitutionType as any) || (req.school?.institutionType as any) || 'PRIMARY_CBC',
+        institutionType: getInstitutionType(req) as any,
       });
       resolvedAreaIdForFilter = resolvedArea.id;
       whereClause.OR = resolvedArea.id
@@ -1193,7 +1194,7 @@ export const updateSummativeTest = async (req: AuthRequest, res: Response) => {
 
     const nextGrade = updateData.grade != null ? String(updateData.grade) : test.grade;
     const nextLearningArea = updateData.learningArea != null ? String(updateData.learningArea) : test.learningArea;
-    const institutionType = (req.resolvedInstitutionType as any) || (req.school?.institutionType as any) || 'PRIMARY_CBC';
+    const institutionType = getInstitutionType(req) as any;
     const resolvedArea = updateData.learningArea != null || updateData.learningAreaId != null
       ? await resolveLearningAreaWithContext({
           learningAreaId: updateData.learningAreaId,
@@ -1453,7 +1454,7 @@ export const recordSummativeResult = async (req: AuthRequest, res: Response) => 
       gradingSystem = await gradingService.getGradingSystemById(test.scaleId);
     }
     
-    const institutionType = (req.resolvedInstitutionType || req.school?.institutionType || 'PRIMARY_CBC') as string;
+    const institutionType = getInstitutionType(req);
     
     if (!gradingSystem) {
       const systemType = institutionType === 'SECONDARY' ? 'SECONDARY' : 'SUMMATIVE';
@@ -1652,7 +1653,7 @@ export const getSummativeByLearner = async (req: AuthRequest, res: Response) => 
 export const getTestResults = async (req: Request, res: Response) => {
   try {
     const { testId } = req.params;
-    const institutionScope = String(req.resolvedInstitutionType || req.school?.institutionType || 'PRIMARY_CBC').toUpperCase();
+    const institutionScope = getInstitutionType(req).toUpperCase();
 
     const test = await prisma.summativeTest.findUnique({
       where: { id: testId },
@@ -2159,7 +2160,7 @@ export const recordSummativeResultsBulk = async (req: AuthRequest, res: Response
       gradingSystem = await gradingService.getGradingSystemById(test.scaleId);
     }
     
-    const institutionType = (req.resolvedInstitutionType || req.school?.institutionType || 'PRIMARY_CBC') as string;
+    const institutionType = getInstitutionType(req);
     
     if (!gradingSystem) {
       const systemType = institutionType === 'SECONDARY' ? 'SECONDARY' : 'SUMMATIVE';
