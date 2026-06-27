@@ -677,7 +677,7 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50/50 flex flex-col overflow-hidden">
+    <div className="min-h-screen bg-[var(--app-page-bg)] flex flex-col overflow-hidden">
       {/* Combined Sticky Header + Filter Bar - Unified Component */}
       <div className="sticky top-0 z-40 bg-white shadow-sm print:hidden">
         {/* Assessment Header */}

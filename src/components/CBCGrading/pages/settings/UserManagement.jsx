@@ -873,7 +873,7 @@ const UserManagement = () => {
   }, [users, activeTab]);
 
   return (
-    <div className="min-h-screen bg-[#eef3f8]">
+    <div className="min-h-screen bg-[var(--app-page-bg)]">
       {/* Notification Toast */}
       {notification && (
         <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-xl shadow-lg flex items-center gap-3 backdrop-blur-sm ${notification.type === 'success'

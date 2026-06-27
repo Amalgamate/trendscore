@@ -229,7 +229,7 @@ const MobileAssessmentsDashboard = ({ learners = [], onNavigate }) => {
   const go = (page) => () => onNavigate?.(page);
 
   return (
-    <div className="min-h-[calc(100vh-96px)] bg-slate-50 p-3 md:p-5">
+    <div className="min-h-[calc(100vh-96px)] bg-[var(--app-page-bg)] p-3 md:p-5">
       <div className="mx-auto max-w-[1500px] space-y-4">
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm">
           <div>

@@ -1012,7 +1012,7 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
   ];
 
   return (
-    <div className="min-h-screen bg-[#eef3f8] pb-24">
+    <div className="min-h-screen bg-[var(--app-page-bg)] pb-24">
       {/* Full-width Quick Actions matching the original white strip */}
       <QuickActions onNavigate={onNavigate} currentPage="dashboard" user={accessUser} />
 

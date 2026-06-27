@@ -178,7 +178,7 @@ const SelfProfilePage = ({ user: initialUser, onNavigate, onLogout, backTarget =
   };
 
   return (
-    <div className="min-h-full bg-gray-50 px-4 py-5 sm:px-6 lg:px-8">
+    <div className="min-h-full bg-[var(--app-page-bg)] px-4 py-5 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-5xl space-y-5">
         <div className="flex flex-wrap items-center gap-3">
           <button

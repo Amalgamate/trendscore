@@ -167,7 +167,7 @@ const ParentPortalTransport = ({ onNavigate }) => {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="min-h-screen bg-[#eef3f8] pb-24">
+    <div className="min-h-screen bg-[var(--app-page-bg)] pb-24">
       {/* Header */}
       <div className="bg-white border-b border-gray-100 sticky top-0 z-10">
         <div className="flex items-center gap-3 px-4 py-3">

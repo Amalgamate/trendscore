@@ -297,7 +297,7 @@ const ParentPortalFees = ({ user, onNavigate }) => {
   const step = !payMode ? 0 : payMode === 'full' ? 2 : amount ? (strategy ? 4 : 3) : 2;
 
   return (
-    <div className="min-h-screen bg-[#eef3f8] pb-20">
+    <div className="min-h-screen bg-[var(--app-page-bg)] pb-20">
       <div className="pt-1 space-y-4">
         {error && <div className="bg-rose-50 border border-rose-200 rounded-xl p-3"><p className="text-xs text-rose-700">{error}</p></div>}
 

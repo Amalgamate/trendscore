@@ -73,7 +73,7 @@ const BiometricManager = ({ currentPage }) => {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50/50">
+    <div className="min-h-screen bg-[var(--app-page-bg)]">
       {/* Header Section */}
       <div className="bg-white border-b border-slate-200">
         <div className="px-6 py-6 max-w-7xl mx-auto">

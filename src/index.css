@@ -62,6 +62,7 @@
   --app-header-height: 5rem;
   --app-gutter-x: 1.5rem;
   --app-gutter-y: 1.5rem;
+  --app-page-bg: #dfeaf4;
 }
 
 .dark {
@@ -152,6 +153,7 @@
     margin-left: auto;
     margin-right: auto;
     padding: var(--app-gutter-y) var(--app-gutter-x);
+    background-color: var(--app-page-bg);
   }
 
   .app-layout-content--flush-top {

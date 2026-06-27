@@ -197,7 +197,7 @@ const AcademicIntelligenceShell = ({
     : children;
 
   return (
-    <div className="min-h-[calc(100vh-96px)] bg-slate-50">
+    <div className="min-h-[calc(100vh-96px)] bg-[var(--app-page-bg)]">
       <div className="mx-auto max-w-[1500px] space-y-3 p-2 md:p-3">
           <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm md:hidden">
             <label htmlFor="academic-intelligence-mobile-nav" className="mb-1 block text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">

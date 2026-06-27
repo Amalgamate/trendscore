@@ -313,7 +313,7 @@ const ParentPortalHome = ({ user, onNavigate, brandingSettings }) => {
   }
 
   return (
-    <div className="min-h-screen bg-[#eef3f8] pb-24">
+    <div className="min-h-screen bg-[var(--app-page-bg)] pb-24">
 
       {/* Edit Student Modal */}
       {editingChild && (

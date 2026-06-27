@@ -1499,7 +1499,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
 
   // Render Main Page with persistent filter bar
   return (
-    <div className="min-h-screen bg-slate-50/30">
+    <div className="min-h-screen bg-[var(--app-page-bg)]">
       {/* react-hot-toast container — renders toasts for this component */}
       <Toaster
         position="top-right"

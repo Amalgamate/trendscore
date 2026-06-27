@@ -15,7 +15,7 @@ import StudentMobileDashboard from './mobile/StudentMobileDashboard';
  * Loading fallback for lazy-loaded dashboards
  */
 const LoadingFallback = () => (
-  <div className="flex items-center justify-center h-screen bg-[#eef3f8]">
+  <div className="flex items-center justify-center h-screen bg-[var(--app-page-bg)]">
     <div className="text-center">
       <div className="w-10 h-10 bg-brand-purple rounded-full animate-spin mx-auto mb-3" />
       <p className="text-sm text-gray-600">Loading...</p>

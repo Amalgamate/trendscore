@@ -184,7 +184,7 @@ export default function AttendanceSettingsPage() {
   };
 
   return (
-    <div className="min-h-full bg-gray-50 px-4 py-5 sm:px-6 lg:px-8">
+    <div className="min-h-full bg-[var(--app-page-bg)] px-4 py-5 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-5xl space-y-5">
         <div className="flex flex-col gap-3 border-b border-gray-200 bg-white px-4 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
           <div className="flex items-start gap-3">

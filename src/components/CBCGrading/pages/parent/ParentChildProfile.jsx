@@ -491,7 +491,7 @@ export default function ParentChildProfile({ child, onBack, initialTab = 'overvi
   const isPresent = child.todayStatus === 'PRESENT' || child.isPresent;
 
   return (
-    <div className="min-h-screen bg-[#eef3f8] pb-24">
+    <div className="min-h-screen bg-[var(--app-page-bg)] pb-24">
 
       {/* Purple header card */}
       <div className="bg-[#3B1FA3] px-4 pt-4 pb-0">

@@ -258,7 +258,7 @@ const ParentPortalMessages = ({ user, onNavigate }) => {
   }
 
   return (
-    <div className="min-h-screen bg-[#eef3f8] pb-24">
+    <div className="min-h-screen bg-[var(--app-page-bg)] pb-24">
 
       {/* Header */}
       <div className="bg-white sticky top-0 z-10 border-b border-gray-100">
