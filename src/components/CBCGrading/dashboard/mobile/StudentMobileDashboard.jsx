@@ -164,7 +164,7 @@ const StudentMobileDashboard = ({ user, onNavigate }) => {
   const greeting   = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen bg-[#eef3f8] pb-24">
 
       {/* ── Greeting Header ── */}
       <div className="bg-[#3B1FA3] px-5 pt-5 pb-6">

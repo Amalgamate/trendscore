@@ -255,7 +255,7 @@ const TeacherMobileAssessView = ({ user, onNavigate }) => {
   const hasAnything = homeroom || subjectClasses.length > 0;
 
   return (
-    <div className="min-h-full bg-slate-50 pb-28">
+    <div className="min-h-full bg-[#eef3f8] pb-28">
       {/* ── Page header ── */}
       <div className="bg-white border-b border-slate-100 px-4 pt-4 pb-3">
         <h1 className="text-base font-black text-slate-950">My Classes</h1>

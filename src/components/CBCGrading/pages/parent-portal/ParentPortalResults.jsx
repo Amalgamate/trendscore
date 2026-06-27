@@ -507,7 +507,7 @@ const ParentPortalResults = ({ onNavigate }) => {
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F5F7] pb-20">
+    <div className="min-h-screen bg-[#eef3f8] pb-20">
       <div className="pt-1 space-y-4">
         {error && (
           <div className="bg-rose-50 border border-rose-200 rounded-xl p-3">

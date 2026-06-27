@@ -237,7 +237,7 @@ const ParentPortalAttendance = ({ onNavigate }) => {
   const totalAbsent = children.reduce((sum, child) => sum + Number(child.attendanceSummary?.absentDays || 0), 0);
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className="min-h-screen bg-[#eef3f8] pb-20">
       <div className="pt-1 space-y-3">
         {error && <div className="bg-rose-50 border border-rose-200 rounded-xl p-3"><p className="text-xs text-rose-700">{error}</p></div>}
 

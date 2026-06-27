@@ -498,7 +498,7 @@ export function AttendanceReportsV2({ learners: propLearners }) {
   const exportLabel = `${activeReport.startDate}_to_${activeReport.endDate}`;
 
   return (
-    <div className="min-h-full bg-slate-50 px-4 py-4 sm:px-6 lg:px-8">
+    <div className="min-h-full bg-[#eef3f8] px-4 py-4 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-[1600px] flex-col gap-5">
         <section className="rounded-2xl border border-slate-100 bg-white shadow-sm">
           <div className="flex flex-col gap-4 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">

@@ -586,7 +586,7 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
     if (parentPortal) {
       return (
         <>
-          <div className="h-[100dvh] w-full flex flex-col overflow-hidden bg-[#F5F5F7]">
+          <div className="h-[100dvh] w-full flex flex-col overflow-hidden bg-[#eef3f8]">
             {/* Scrollable content — pb-24 ensures content clears the bottom nav */}
             <div className="flex-1 overflow-y-auto pb-24">
               <ErrorBoundary>
@@ -686,7 +686,7 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
     : `app-layout-content${useFlushDashboardTabs ? ' app-layout-content--flush-top' : ''}`;
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden font-inter border-t-2 border-[var(--brand-teal)]">
+    <div className="flex h-screen bg-[#eef3f8] overflow-hidden font-inter border-t-2 border-[var(--brand-teal)]">
       <CommandPalette onNavigate={handleNavigate} />
       <Sidebar
         user={accessUser}

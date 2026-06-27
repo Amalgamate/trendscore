@@ -101,7 +101,7 @@ const ModuleSettingsPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-6">
+    <div className="min-h-screen bg-[#eef3f8] p-4 md:p-6">
       <div className="mx-auto max-w-6xl space-y-5">
         <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-end md:justify-between">
           <div>

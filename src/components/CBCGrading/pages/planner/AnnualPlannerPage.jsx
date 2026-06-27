@@ -486,7 +486,7 @@ export default function AnnualPlannerPage({ onNavigate, user }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F5F7] text-slate-800 print:bg-white pb-24">
+    <div className="min-h-screen bg-[#eef3f8] text-slate-800 print:bg-white pb-24">
       {/* Full-width Quick Actions matching the executive dashboard */}
       <div className="print:hidden">
         <QuickActions onNavigate={handleNavigatePage} currentPage="annual-planner" />
@@ -1428,7 +1428,7 @@ export default function AnnualPlannerPage({ onNavigate, user }) {
                 <Button 
                   type="button" 
                   onClick={() => {
-                    if (confirm('Delete this event?')) {
+                    if (window.confirm('Delete this event?')) {
                       setIsModalOpen(false);
                       handleDeleteEvent(modalEvent.id);
                     }
@@ -1451,4 +1451,3 @@ export default function AnnualPlannerPage({ onNavigate, user }) {
   </div>
   );
 }
-
