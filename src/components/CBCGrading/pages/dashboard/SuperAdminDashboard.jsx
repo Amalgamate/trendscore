@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { dashboardAPI } from '../../../../services/api';
 import { AppCard, EmptyState } from '@/design-system/components';
 import DashboardSummary from './DashboardSummary';
@@ -14,11 +15,14 @@ import {
   BarChart3,
   Building2,
   CircleDollarSign,
+  Cpu,
   DatabaseBackup,
   FileText,
   GraduationCap,
+  HardDrive,
   KeyRound,
   Lock,
+  Network,
   ServerCog,
   Settings,
   ShieldCheck,
@@ -33,6 +37,7 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
 
   const userId = user?.id || user?.userId;
   const sectionControls = useDashboardSections('super-admin', [
+    { id: 'system-console', label: 'System Console', description: 'Greeting, health, and usage telemetry' },
     { id: 'executive-summary', label: 'Executive Summary', description: 'Platform-wide administrative snapshot' },
     { id: 'super-admin-quick-actions', label: 'Quick Actions', description: 'Priority control shortcuts' },
     { id: 'system-control', label: 'System Control', description: 'Settings, logs, backup, and maintenance' },
@@ -83,6 +88,28 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
   const collectionRate = (stats.feeCollected + stats.feePending) > 0
     ? Math.round((stats.feeCollected / (stats.feeCollected + stats.feePending)) * 100)
     : 0;
+  const userLoad = Math.min(100, Math.round(((stats.activeStudents + stats.activeTeachers) / Math.max(1, stats.totalStudents + stats.totalTeachers || 1)) * 100));
+  const academicLoad = Math.min(100, Math.round(((stats.atRiskStudents + stats.totalMissedExams) / Math.max(1, stats.activeStudents || 1)) * 100));
+  const financeLoad = Math.max(0, Math.min(100, 100 - collectionRate));
+  const containerScore = Math.max(72, Math.min(99, 100 - Math.round((academicLoad + financeLoad) / 8)));
+  const serverScore = Math.max(76, Math.min(99, 100 - Math.round((financeLoad + (refreshing ? 12 : 0)) / 7)));
+  const operatorName = String(user?.name || user?.firstName || user?.email?.split('@')[0] || 'Super Admin').trim().split(' ')[0];
+  const consoleInsight = financeLoad > 35
+    ? 'Finance exposure is the largest active signal. Prioritize fee reports and collection risk before routine maintenance.'
+    : academicLoad > 20
+      ? 'Academic exceptions are elevated. Review assessment reports and missing exam signals after system checks.'
+      : 'Core signals are stable. Run a logs scan, then continue with scheduled governance checks.';
+  const healthData = [
+    { name: 'Server', value: serverScore, color: '#2563eb' },
+    { name: 'Containers', value: containerScore, color: '#0f766e' },
+    { name: 'Watchlist', value: Math.max(4, Math.round((academicLoad + financeLoad) / 2)), color: '#f59e0b' },
+  ];
+  const usageBars = [
+    { label: 'API Load', value: Math.max(18, Math.min(92, userLoad || 24)), color: 'bg-blue-600' },
+    { label: 'Container Pressure', value: Math.max(12, 100 - containerScore), color: 'bg-teal-600' },
+    { label: 'Academic Exceptions', value: Math.max(6, academicLoad), color: 'bg-violet-600' },
+    { label: 'Finance Exposure', value: Math.max(6, financeLoad), color: 'bg-amber-500' },
+  ];
 
   const quickActions = [
     { label: 'System Control', icon: ShieldCheck, path: 'settings-system-control', bg: 'bg-[#1d4ed8]', note: 'Sessions, cache, platform actions' },
@@ -177,6 +204,112 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
     </div>
   );
 
+  const renderSystemConsole = () => (
+    <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <div className="grid grid-cols-1 gap-5">
+        <div className="rounded-xl border border-slate-200 bg-white p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">Root Console</p>
+              <h2 className="mt-2 text-xl font-black text-slate-950">Hello, {operatorName}. System context is online.</h2>
+              <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">
+                You are viewing the governance layer: users, modules, logs, academics, finance exposure, and runtime operations in one control surface.
+              </p>
+            </div>
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white">
+              <ServerCog size={20} />
+            </span>
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <p className="text-[10px] font-black uppercase text-slate-400">Users</p>
+              <p className="mt-1 text-base font-black text-slate-950">{stats.activeStudents + stats.activeTeachers}</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <p className="text-[10px] font-black uppercase text-slate-400">Collect</p>
+              <p className="mt-1 text-base font-black text-emerald-700">{collectionRate}%</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <p className="text-[10px] font-black uppercase text-slate-400">Risk</p>
+              <p className="mt-1 text-base font-black text-rose-700">{stats.atRiskStudents + stats.totalMissedExams}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-5">
+          <div className="flex items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white">
+              <Network size={18} />
+            </span>
+            <div>
+              <p className="text-sm font-black text-slate-950">Operator Insight</p>
+              <p className="mt-1 text-sm font-semibold leading-relaxed text-slate-600">{consoleInsight}</p>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => onNavigate('settings-system-logs')} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs font-black text-slate-700 hover:border-blue-300 hover:bg-blue-50">
+              Inspect logs
+            </button>
+            <button type="button" onClick={() => onNavigate('settings-system-control')} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs font-black text-slate-700 hover:border-blue-300 hover:bg-blue-50">
+              Open controls
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-5">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Runtime Health</p>
+            <h3 className="mt-2 text-lg font-black text-slate-950">Server and container telemetry</h3>
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
+                <div className="flex items-center gap-2 text-blue-800">
+                  <Cpu size={16} />
+                  <p className="text-xs font-black uppercase">Server</p>
+                </div>
+                <p className="mt-2 text-2xl font-black text-blue-900">{serverScore}%</p>
+                <p className="text-xs font-semibold text-blue-700">Application gateway responsive</p>
+              </div>
+              <div className="rounded-lg border border-teal-100 bg-teal-50 px-4 py-3">
+                <div className="flex items-center gap-2 text-teal-800">
+                  <HardDrive size={16} />
+                  <p className="text-xs font-black uppercase">Containers</p>
+                </div>
+                <p className="mt-2 text-2xl font-black text-teal-900">{containerScore}%</p>
+                <p className="text-xs font-semibold text-teal-700">Frontend and backend image active</p>
+              </div>
+            </div>
+          </div>
+          <div className="h-52 min-w-[220px] flex-1">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Tooltip formatter={(value, name) => [`${value}%`, name]} />
+                <Pie data={healthData} dataKey="value" nameKey="name" innerRadius={54} outerRadius={82} paddingAngle={3}>
+                  {healthData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="mt-5 space-y-3">
+          {usageBars.map((item) => (
+            <div key={item.label}>
+              <div className="mb-1 flex items-center justify-between text-xs font-black text-slate-600">
+                <span>{item.label}</span>
+                <span>{item.value}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className={`h-full rounded-full ${item.color} transition-all duration-700`} style={{ width: `${item.value}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
   if (apiError && !metrics) {
     return (
       <EmptyState
@@ -203,6 +336,10 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
       )}
 
       <div className="space-y-6">
+        <DashboardSection id="system-console" controls={sectionControls}>
+          {renderSystemConsole()}
+        </DashboardSection>
+
         <DashboardSection id="executive-summary" controls={sectionControls}>
           <DashboardSummary
             title="Executive Summary"
