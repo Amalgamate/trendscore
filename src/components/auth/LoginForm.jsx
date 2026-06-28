@@ -60,12 +60,13 @@ const safeHexColor = (value, fallback) =>
   /^#[0-9A-Fa-f]{6}$/.test(String(value || '')) ? value : fallback;
 
 const MOBILE_SPLASH_ASSETS = {
-  login: '/splash/new/splash-light.png',
+  login: '/splash/african-student-compass-bg.png',
   logo: '/splash/new/TrendsCORE-Logo.png',
   admin: '/splash/new/admin.png',
   teacher: '/splash/new/teacher.png',
   parent: '/splash/new/parent.png',
   student: '/splash/new/student.png',
+  compass: '/splash/trendscore-compass.png',
 };
 
 const normalizeMobileRole = (userData) => {
@@ -112,6 +113,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
   const [phoneOtpCooldown, setPhoneOtpCooldown] = useState(0);
   const [phonePasswordFallback, setPhonePasswordFallback] = useState(false);
   const [mobileRoleIntro, setMobileRoleIntro] = useState(null);
+  const [loginBgRole, setLoginBgRole] = useState(null); // null | 'admin' | 'teacher' | 'parent' | 'student'
   const [showInstitutionSetupModal, setShowInstitutionSetupModal] = useState(false);
   const [institutionChoice, setInstitutionChoice] = useState('PRIMARY_CBC');
   const [pendingCredentialsData, setPendingCredentialsData] = useState(null);
@@ -201,12 +203,28 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
 
   const handlePhoneOtpChange = (e) => {
     const { name, value } = e.target;
+    let formatted = value;
+    if (name === 'phone') {
+      formatted = value.replace(/\D/g, '').slice(0, 12);
+    } else if (name === 'code') {
+      formatted = value.replace(/\D/g, '').slice(0, 6);
+    }
     setPhoneOtp(prev => ({
       ...prev,
-      [name]: name === 'code' ? value.replace(/\D/g, '').slice(0, 6) : value,
+      [name]: formatted,
     }));
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
   };
+
+  // Normalise any Kenyan number variant to +254XXXXXXXXX
+  const normalizeKenyanPhone = (raw) => {
+    const digits = String(raw).replace(/\D/g, '');
+    if (digits.startsWith('254') && digits.length === 12) return `+${digits}`;
+    if (digits.startsWith('0') && digits.length === 10) return `+254${digits.slice(1)}`;
+    if (digits.length === 9) return `+254${digits}`;
+    return raw.trim(); // pass through and let server validate
+  };
+
 
   const buildLoginUserData = (credentialsData, identifier) => {
     const { user, mustChangePassword } = credentialsData;
@@ -295,24 +313,52 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
     return () => controller.abort();
   }, [phoneOtpStep, phoneOtp.code]);
 
+  // Auto-submit phone number when it reaches 9 digits on mobile
+  useEffect(() => {
+    if (isMobile && phoneOtpStep === 'request' && phoneOtp.phone.length === 9 && !isPhoneOtpLoading) {
+      const timer = setTimeout(() => {
+        handlePhoneOtpRequest();
+      }, 250);
+      return () => clearTimeout(timer);
+    }
+  }, [phoneOtp.phone, phoneOtpStep, isMobile, isPhoneOtpLoading]);
+
+  // Auto-submit OTP code when it reaches 6 digits on mobile
+  useEffect(() => {
+    if (isMobile && phoneOtpStep === 'verify' && !phonePasswordFallback && phoneOtp.code.length === 6 && !isPhoneOtpLoading) {
+      const timer = setTimeout(() => {
+        handlePhoneOtpVerify();
+      }, 250);
+      return () => clearTimeout(timer);
+    }
+  }, [phoneOtp.code, phoneOtpStep, phonePasswordFallback, isMobile, isPhoneOtpLoading]);
+
   const handlePhoneOtpRequest = async (e) => {
-    e.preventDefault();
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
     if (!validatePhoneOtpRequest()) return;
 
     setIsPhoneOtpLoading(true);
     setErrors({});
     try {
-      const result = await authAPI.requestPhoneOtp({ phone: phoneOtp.phone.trim() });
+      const result = await authAPI.requestPhoneOtp({ phone: normalizeKenyanPhone(phoneOtp.phone) });
       setPhoneOtp(prev => ({
         ...prev,
         challengeId: result.challengeId,
         expiresAt: result.expiresAt || null,
         resendAfterSeconds: result.resendAfterSeconds || 60,
-        code: '',
+        code: result.devOtp || '',
       }));
       setPhoneOtpCooldown(result.resendAfterSeconds || 60);
       setPhoneOtpStep('verify');
       setPhonePasswordFallback(false);
+      // Detect role from API response and switch background
+      if (result.role || result.userRole) {
+        const raw = String(result.role || result.userRole || '').toUpperCase();
+        if (raw.includes('ADMIN') || raw.includes('OWNER') || raw.includes('ACCOUNT')) setLoginBgRole('admin');
+        else if (raw.includes('TEACHER') || raw.includes('STAFF')) setLoginBgRole('teacher');
+        else if (raw.includes('PARENT') || raw.includes('GUARDIAN')) setLoginBgRole('parent');
+        else if (raw.includes('STUDENT') || raw.includes('LEARNER')) setLoginBgRole('student');
+      }
       toast.success(result.message || 'Code sent if the parent account exists.');
     } catch (error) {
       setErrors({ form: error.message || 'Unable to request code' });
@@ -322,7 +368,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
   };
 
   const handlePhoneOtpVerify = async (e) => {
-    e.preventDefault();
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
     if (!validatePhoneOtpVerify()) return;
 
     setIsPhoneOtpLoading(true);
@@ -330,7 +376,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
     try {
       const credentialsData = await authAPI.verifyPhoneOtp({
         challengeId: phoneOtp.challengeId,
-        phone: phoneOtp.phone.trim(),
+        phone: normalizeKenyanPhone(phoneOtp.phone),
         code: phoneOtp.code,
       });
       await completeBypassLogin(credentialsData, phoneOtp.phone);
@@ -356,7 +402,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
     setErrors({});
     try {
       const credentialsData = await authAPI.login({
-        phone: phoneOtp.phone.trim(),
+        phone: normalizeKenyanPhone(phoneOtp.phone),
         password: formData.password,
       });
 
@@ -479,7 +525,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
     mobileRoleIntro?.user?.firstName ||
     String(mobileRoleIntro?.user?.name || 'there').split(' ')[0] ||
     'there';
-  const mobilePhoneDisplay = phoneOtp.phone.trim() || '+254';
+  const mobilePhoneDisplay = phoneOtp.phone.trim() || '—';
   const formattedCooldown = `00:${String(phoneOtpCooldown).padStart(2, '0')}`;
 
   const handleMobileCodeChange = (index, value) => {
@@ -510,21 +556,21 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
           className="absolute inset-0 bg-cover bg-center bg-no-repeat"
           style={{ backgroundImage: `url(${MOBILE_SPLASH_ASSETS[mobileRole]})` }}
         />
-        <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/55" />
+
         <div
           className="relative z-10 flex min-h-[100dvh] flex-col justify-end px-6"
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.5rem)' }}
         >
-          <div className="mx-auto w-full max-w-[19rem] rounded-[1.65rem] border border-white/35 bg-white/20 px-5 py-5 text-center shadow-2xl backdrop-blur-xl">
+          <div className="mx-auto w-full max-w-[19rem] rounded-xl border border-white/35 bg-white/28 px-5 py-5 text-center shadow-2xl backdrop-blur-xl">
             <img
               src={MOBILE_SPLASH_ASSETS.logo}
               alt="TrendSCORE"
               className="mx-auto mb-4 w-40 object-contain"
             />
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/80">
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-white/85">
               {mobileRole} portal
             </p>
-            <h1 className="mt-2 text-2xl font-black leading-tight text-white">
+            <h1 className="mt-2 text-2xl font-semibold leading-tight text-white">
               Welcome back, {mobileFirstName}
             </h1>
             <p className="mt-2 text-xs font-medium leading-5 text-white/85">
@@ -538,217 +584,301 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
   }
 
   if (isMobile && !showInstitutionSetupModal) {
+    // Resolve which background image to use
+    const bgImage = loginBgRole
+      ? MOBILE_SPLASH_ASSETS[loginBgRole] || MOBILE_SPLASH_ASSETS.login
+      : MOBILE_SPLASH_ASSETS.login;
+
+    // Format the phone number for the KE field display
+    const rawDigits = phoneOtp.phone.replace(/\D/g, '');
+    // Strip leading 0 or 254 for display after the +254 prefix
+    let displayDigits = rawDigits;
+    if (displayDigits.startsWith('254')) displayDigits = displayDigits.slice(3);
+    else if (displayDigits.startsWith('0')) displayDigits = displayDigits.slice(1);
+    // Format as: 712 345 678
+    const formatDisplay = (d) => {
+      if (!d) return '';
+      return d.replace(/(\d{3})(\d{3})(\d{0,3})/, (_, a, b, c) => [a, b, c].filter(Boolean).join(' '));
+    };
+
     return (
-      <div className="relative min-h-[100dvh] w-full overflow-hidden bg-slate-950 text-slate-950">
-        <div
+      <div
+        className="relative min-h-[100dvh] w-full overflow-hidden text-slate-950"
+        style={{ backgroundColor: '#FAF9F6' }}
+      >
+        {/* Background image removed */}
+
+        {/* Custom compass dial SVG — bottom-right, clipped, slowly spinning */}
+        <style>{`
+          @keyframes compassSpin {
+            0%   { transform: rotate(0deg)   skewX(0deg)   skewY(0deg); }
+            25%  { transform: rotate(90deg)  skewX(1.5deg) skewY(0.8deg); }
+            50%  { transform: rotate(180deg) skewX(0deg)   skewY(0deg); }
+            75%  { transform: rotate(270deg) skewX(-1.5deg) skewY(-0.8deg); }
+            100% { transform: rotate(360deg) skewX(0deg)   skewY(0deg); }
+          }
+        `}</style>
+        <svg
           aria-hidden="true"
-          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-          style={{ backgroundImage: `url(${MOBILE_SPLASH_ASSETS.login})` }}
-        />
-        <div aria-hidden="true" className="absolute inset-0 bg-white/5" />
+          viewBox="0 0 300 300"
+          xmlns="http://www.w3.org/2000/svg"
+          style={{
+            position: 'absolute',
+            bottom: '-190px',
+            right: '-190px',
+            width: '500px',
+            height: '500px',
+            opacity: 0.1,
+            animation: 'compassSpin 28s linear infinite',
+            transformOrigin: 'center center',
+            pointerEvents: 'none',
+            zIndex: 1,
+          }}
+        >
+          <circle cx="150" cy="150" r="145" fill="none" stroke="#041635" strokeWidth="0.6" />
+          <circle cx="150" cy="150" r="138" fill="none" stroke="#041635" strokeWidth="0.3" />
+          <circle cx="150" cy="150" r="118" fill="none" stroke="#041635" strokeWidth="0.5" />
+          <circle cx="150" cy="150" r="112" fill="none" stroke="#041635" strokeWidth="0.25" />
+          {Array.from({ length: 72 }).map((_, i) => {
+            const angle = (i * 5 * Math.PI) / 180;
+            const isMajor = i % 9 === 0;
+            const isMid   = i % 3 === 0;
+            const outer = 145;
+            const inner = isMajor ? 128 : isMid ? 132 : 136;
+            const x1 = 150 + outer * Math.sin(angle);
+            const y1 = 150 - outer * Math.cos(angle);
+            const x2 = 150 + inner * Math.sin(angle);
+            const y2 = 150 - inner * Math.cos(angle);
+            return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#041635" strokeWidth={isMajor ? 0.9 : isMid ? 0.55 : 0.35} />;
+          })}
+          <text x="150" y="106" textAnchor="middle" dominantBaseline="middle" fontSize="10" fontWeight="600" fill="#041635" fontFamily="system-ui, sans-serif" letterSpacing="2">N</text>
+          <text x="150" y="198" textAnchor="middle" dominantBaseline="middle" fontSize="8" fontWeight="400" fill="#041635" fontFamily="system-ui, sans-serif">S</text>
+          <text x="196" y="150" textAnchor="middle" dominantBaseline="middle" fontSize="8" fontWeight="400" fill="#041635" fontFamily="system-ui, sans-serif">E</text>
+          <text x="104" y="150" textAnchor="middle" dominantBaseline="middle" fontSize="8" fontWeight="400" fill="#041635" fontFamily="system-ui, sans-serif">W</text>
+          <circle cx="150" cy="150" r="28" fill="none" stroke="#041635" strokeWidth="0.5" />
+          <circle cx="150" cy="150" r="4"  fill="none" stroke="#041635" strokeWidth="0.8" />
+          <polygon points="150,118 153,150 150,160 147,150" fill="none" stroke="#041635" strokeWidth="0.7" strokeLinejoin="round" />
+          <polygon points="150,182 153,150 150,140 147,150" fill="none" stroke="#041635" strokeWidth="0.5" strokeLinejoin="round" opacity="0.5" />
+          <line x1="150" y1="122" x2="150" y2="135" stroke="#041635" strokeWidth="0.35" />
+          <line x1="150" y1="165" x2="150" y2="178" stroke="#041635" strokeWidth="0.35" />
+          <line x1="122" y1="150" x2="135" y2="150" stroke="#041635" strokeWidth="0.35" />
+          <line x1="165" y1="150" x2="178" y2="150" stroke="#041635" strokeWidth="0.35" />
+        </svg>
 
         <div
           className="relative z-10 flex min-h-[100dvh] flex-col px-6"
           style={{
-            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 3.25rem)',
+            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2.75rem)',
             paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.25rem)',
           }}
         >
-          <div className="flex flex-1 flex-col items-center">
+          <div className="flex flex-1 flex-col items-start justify-center w-full max-w-[18.5rem] mx-auto">
+            {/* Logo — 15% larger than before (11rem * 1.15 = 12.65rem) */}
             <img
               src={MOBILE_SPLASH_ASSETS.logo}
               alt="TrendSCORE"
-              className="w-full max-w-[15rem] object-contain drop-shadow-[0_10px_28px_rgba(255,255,255,0.65)]"
+              className="w-full max-w-[12.65rem] object-contain"
             />
 
-            <div className="mt-8 text-center">
-              <h1 className="text-[2rem] font-black leading-none text-[#06285a]">
-                {phoneOtpStep === 'request' ? 'Welcome!' : 'Welcome Back!'}
-              </h1>
-              <p className="mt-3 text-base font-semibold text-slate-700">
-                {phoneOtpStep === 'request'
-                  ? "Let's get you started"
-                  : 'Enter the OTP sent to your phone number'}
-              </p>
+            {/* Timeless welcome text */}
+            <div className="mt-8 mb-2 text-left w-full">
+              <h1 className="text-2xl font-bold text-[#0E2A5A] tracking-tight">Welcome back</h1>
+              <p className="mt-1.5 text-xs font-medium text-slate-500">Continue with your registered phone number.</p>
             </div>
 
+            {/* Card — Solid white card, 24px radius, orange border */}
             <form
               onSubmit={phoneOtpStep === 'request'
                 ? handlePhoneOtpRequest
                 : phonePasswordFallback
                   ? handlePhonePasswordLogin
                   : handlePhoneOtpVerify}
-              className="mt-8 w-full max-w-[18rem] rounded-[1.65rem] border border-white/60 bg-white/58 px-5 py-5 shadow-2xl shadow-slate-900/15 backdrop-blur-xl"
+              className="mt-6 w-full max-w-[18.5rem] px-1 py-4 transition-all"
             >
               {errors.form && (
-                <div className="mb-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50/95 px-3 py-2 text-xs font-semibold text-red-700">
+                <div className="mb-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50/95 px-3 py-2 text-xs font-medium text-red-700">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>{errors.form}</span>
                 </div>
               )}
 
-              {phoneOtpStep === 'request' ? (
-                <>
-                  <div>
-                    <h2 className="text-base font-black text-[#06285a]">Enter your phone number</h2>
-                    <p className="mt-2 text-sm font-semibold leading-5 text-slate-900">
-                      We'll use this to identify your account
-                    </p>
+              {isPhoneOtpLoading ? (
+                /* Premium preloader animation */
+                <div className="flex flex-col items-center justify-center py-8">
+                  <div className="relative h-10 w-10">
+                    <div className="absolute inset-0 rounded-full border-4 border-[#F47C20]/15" />
+                    <div className="absolute inset-0 rounded-full border-4 border-t-[#F47C20] animate-spin" />
                   </div>
-
-                  <div className="mt-5 rounded-md border border-slate-200 bg-white/95 px-3 py-2.5 shadow-sm">
-                    <div className="flex items-center gap-2.5">
-                      <span className="grid h-9 w-10 shrink-0 place-items-center rounded bg-slate-50 text-xs font-black text-[#06285a]">
-                        KE
-                      </span>
-                      <span className="shrink-0 text-base font-black text-[#06285a]">+254</span>
-                      <span className="h-7 w-px bg-slate-200" />
-                      <input
-                        id="login-phone"
-                        type="tel"
-                        name="phone"
-                        value={phoneOtp.phone}
-                        onChange={handlePhoneOtpChange}
-                        placeholder="Enter phone number"
-                        autoComplete="tel"
-                        inputMode="tel"
-                        className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
-                      />
-                    </div>
-                  </div>
-                  {errors.phone && <p className="mt-2 text-xs font-bold uppercase text-red-600">{errors.phone}</p>}
-                </>
+                  <p className="mt-4 text-xs font-semibold text-[#0E2A5A] animate-pulse">
+                    {phoneOtpStep === 'request' ? 'Verifying phone number...' : 'Authenticating...'}
+                  </p>
+                </div>
               ) : (
                 <>
-                  <div className="flex items-center justify-center gap-3">
-                    <span className="grid h-7 w-8 place-items-center rounded bg-white/80 text-xs font-black text-[#06285a]">KE</span>
-                    <span className="text-base font-black text-white drop-shadow">{mobilePhoneDisplay}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPhoneOtpStep('request');
-                        setPhonePasswordFallback(false);
-                        setPhoneOtp(prev => ({ ...prev, code: '' }));
-                      }}
-                      className="ml-1 text-sm font-black text-orange-500"
-                    >
-                      Change
-                    </button>
-                  </div>
+                  {phoneOtpStep === 'request' ? (
+                    <>
+                      <label htmlFor="login-phone" className="text-[10px] font-bold tracking-wider text-slate-400 block mb-2 uppercase">PHONE NUMBER</label>
 
-                  {!phonePasswordFallback && (
-                    <div className="mt-6">
-                      <Label className="text-sm font-semibold text-white drop-shadow">Enter OTP</Label>
-                      <div className="mt-3 grid grid-cols-6 gap-1.5">
-                        {Array.from({ length: 6 }).map((_, index) => (
-                          <input
-                            key={index}
-                            id={`mobile-otp-${index}`}
-                            type="text"
-                            inputMode="numeric"
-                            autoComplete={index === 0 ? 'one-time-code' : 'off'}
-                            value={phoneOtp.code[index] || ''}
-                            onChange={(event) => handleMobileCodeChange(index, event.target.value)}
-                            onKeyDown={(event) => handleMobileCodeKeyDown(index, event)}
-                            className={cn(
-                              'aspect-square min-w-0 rounded-lg border border-white/80 bg-white/95 text-center text-xl font-black text-[#06285a] shadow-sm outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/25',
-                              errors.code && 'border-red-400 bg-red-50'
-                            )}
-                          />
-                        ))}
+                      {/* KE flag + +254 prefix + formatted input */}
+                      <div className="mt-2 flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-3 focus-within:border-[#F47C20] focus-within:ring-4 focus-within:ring-[#F47C20]/15 transition-all shadow-sm">
+                        <span className="text-base leading-none" aria-label="Kenya">🇰🇪</span>
+                        <span className="text-sm font-semibold text-slate-500 select-none">+254</span>
+                        <span className="h-4 w-px bg-slate-300 shrink-0" />
+                        <input
+                          id="login-phone"
+                          type="tel"
+                          name="phone"
+                          value={formatDisplay(displayDigits)}
+                          onChange={(e) => {
+                            const clean = e.target.value.replace(/\D/g, '').replace(/^(254|0)/, '').slice(0, 9);
+                            setPhoneOtp(prev => ({ ...prev, phone: clean }));
+                            if (errors.phone) setErrors(prev => ({ ...prev, phone: '' }));
+                          }}
+                          placeholder="712 345 678"
+                          autoComplete="tel"
+                          inputMode="numeric"
+                          className="flex-1 min-w-0 bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-300"
+                        />
                       </div>
-                      {errors.code && <p className="mt-2 text-xs font-bold uppercase text-red-100">{errors.code}</p>}
-                    </div>
+                      {errors.phone && <p className="mt-2 text-xs font-bold uppercase text-red-600">{errors.phone}</p>}
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-center gap-3 mb-4">
+                        <span className="text-sm font-bold text-[#0E2A5A]">🇰🇪 +254 {formatDisplay(displayDigits)}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPhoneOtpStep('request');
+                            setPhonePasswordFallback(false);
+                            setLoginBgRole(null);
+                            setPhoneOtp(prev => ({ ...prev, code: '' }));
+                          }}
+                          className="ml-1 text-sm font-semibold text-[#F47C20]"
+                        >
+                          Change
+                        </button>
+                      </div>
+
+                      {!phonePasswordFallback && (
+                        <div className="mt-4">
+                          <Label className="text-xs font-bold tracking-wider text-slate-400 block mb-2 uppercase">Enter OTP</Label>
+                          <div className="mt-2 grid grid-cols-6 gap-1.5">
+                            {Array.from({ length: 6 }).map((_, index) => (
+                              <input
+                                key={index}
+                                id={`mobile-otp-${index}`}
+                                type="text"
+                                inputMode="numeric"
+                                autoComplete={index === 0 ? 'one-time-code' : 'off'}
+                                value={phoneOtp.code[index] || ''}
+                                onChange={(event) => handleMobileCodeChange(index, event.target.value)}
+                                onKeyDown={(event) => handleMobileCodeKeyDown(index, event)}
+                                className={cn(
+                                  'aspect-square min-w-0 rounded-md border border-slate-300 bg-white text-center text-xl font-semibold text-[#0E2A5A] shadow-sm outline-none focus:border-[#F47C20] focus:ring-4 focus:ring-[#F47C20]/25',
+                                  errors.code && 'border-red-400 bg-red-50'
+                                )}
+                              />
+                            ))}
+                          </div>
+                          {errors.code && <p className="mt-2 text-xs font-bold uppercase text-red-600">{errors.code}</p>}
+                        </div>
+                      )}
+
+                      {phonePasswordFallback && (
+                        <div className="mt-4">
+                          <Label htmlFor="phone-password" className="text-xs font-bold tracking-wider text-slate-400 block mb-2 uppercase">
+                            Password
+                          </Label>
+                          <div className="relative mt-2">
+                            <Input
+                              id="phone-password"
+                              type={showPassword ? 'text' : 'password'}
+                              name="password"
+                              value={formData.password}
+                              onChange={handleChange}
+                              className={cn(
+                                'h-11 rounded-md border-slate-300 bg-white pr-11 text-sm font-medium text-slate-900',
+                                errors.password && 'border-red-400 bg-red-50'
+                              )}
+                              placeholder="Enter password"
+                              autoComplete="current-password"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(!showPassword)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+                            >
+                              {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                            </button>
+                          </div>
+                          {errors.password && <p className="mt-2 text-xs font-bold uppercase text-red-600">{errors.password}</p>}
+                        </div>
+                      )}
+
+                      <div className="mt-5 text-center text-sm font-medium text-slate-500">
+                        Didn't receive OTP?{' '}
+                        <button
+                          type="button"
+                          onClick={handlePhoneOtpRequest}
+                          disabled={isPhoneOtpLoading || phoneOtpCooldown > 0}
+                          className="font-bold text-[#F47C20] disabled:text-orange-300"
+                        >
+                          {phoneOtpCooldown > 0 ? `Resend in ${formattedCooldown}` : 'Resend'}
+                        </button>
+                      </div>
+                    </>
                   )}
 
                   {phonePasswordFallback && (
-                    <div className="mt-6">
-                      <Label htmlFor="phone-password" className="text-sm font-semibold text-white drop-shadow">
-                        Password
-                      </Label>
-                      <div className="relative mt-3">
-                        <Input
-                          id="phone-password"
-                          type={showPassword ? 'text' : 'password'}
-                          name="password"
-                          value={formData.password}
-                          onChange={handleChange}
-                          className={cn(
-                            'h-11 rounded-lg border-white/80 bg-white/95 pr-11 text-sm font-semibold text-slate-900',
-                            errors.password && 'border-red-400 bg-red-50'
-                          )}
-                          placeholder="Enter password"
-                          autoComplete="current-password"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
-                        >
-                          {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
-                        </button>
-                      </div>
-                      {errors.password && <p className="mt-2 text-xs font-bold uppercase text-red-100">{errors.password}</p>}
-                    </div>
+                    <Button
+                      type="submit"
+                      disabled={isPhoneOtpLoading}
+                      className="mt-6 h-14 w-full rounded-xl bg-[#F47C20] text-base font-semibold text-white shadow-md shadow-[#F47C20]/25 hover:bg-[#e06b12] active:scale-[0.98] transition-all"
+                    >
+                      <span className="flex items-center gap-2 justify-center">
+                        Sign In
+                        <ArrowRight size={18} />
+                      </span>
+                    </Button>
                   )}
 
-                  <div className="mt-5 text-center text-sm font-semibold text-white">
-                    Didn't receive OTP?{' '}
-                    <button
-                      type="button"
-                      onClick={handlePhoneOtpRequest}
-                      disabled={isPhoneOtpLoading || phoneOtpCooldown > 0}
-                      className="font-black text-orange-500 disabled:text-orange-300"
-                    >
-                      {phoneOtpCooldown > 0 ? `Resend in ${formattedCooldown}` : 'Resend'}
-                    </button>
-                  </div>
+                  {phoneOtpStep === 'verify' && (
+                    <>
+                      <div className="my-5 flex items-center gap-4 text-xs font-medium text-slate-400">
+                        <span className="h-px flex-1 bg-slate-200" />
+                        OR
+                        <span className="h-px flex-1 bg-slate-200" />
+                      </div>
+                      <div className="text-center">
+                        <button
+                          type="button"
+                          onClick={() => setPhonePasswordFallback(prev => !prev)}
+                          className="inline-flex items-center gap-2 text-base font-semibold text-[#F47C20]"
+                        >
+                          <Lock size={17} />
+                          {phonePasswordFallback ? 'Use OTP' : 'Use Password'}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </>
               )}
 
-              <Button
-                type="submit"
-                disabled={isPhoneOtpLoading}
-                className="mt-7 h-12 w-full rounded bg-orange-500 text-base font-black text-white shadow-lg shadow-orange-500/25 hover:bg-orange-600 active:scale-[0.98]"
-              >
-                {isPhoneOtpLoading ? (
-                  <span className="flex items-center gap-2">
-                    <span className="h-4 w-4 rounded-full border-2 border-white/35 border-t-white animate-spin" />
-                    {phoneOtpStep === 'request' ? 'Sending...' : phonePasswordFallback ? 'Signing in...' : 'Verifying...'}
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-3">
-                    Continue
-                    <ArrowRight size={18} />
-                  </span>
-                )}
-              </Button>
-
-              {phoneOtpStep === 'verify' && (
-                <>
-                  <div className="my-5 flex items-center gap-4 text-xs font-semibold text-white">
-                    <span className="h-px flex-1 bg-white/35" />
-                    OR
-                    <span className="h-px flex-1 bg-white/35" />
-                  </div>
-                  <div className="text-center">
-                    <button
-                      type="button"
-                      onClick={() => setPhonePasswordFallback(prev => !prev)}
-                      className="inline-flex items-center gap-2 text-base font-black text-orange-500"
-                    >
-                      <Lock size={17} />
-                      {phonePasswordFallback ? 'Use OTP' : 'Use Password'}
-                    </button>
-                  </div>
-                </>
-              )}
-
-              <div className="mt-5 flex items-center justify-center gap-2.5 text-sm font-semibold text-slate-950">
-                <Lock size={15} className="text-orange-500" />
-                <span>Secure. Simple. Smart.</span>
+              {/* Security trust badge */}
+              <div className="mt-5 flex items-center justify-start gap-2 text-xs font-medium text-slate-400">
+                <Lock size={12} className="text-slate-300" />
+                <span>Trusted by schools across Kenya</span>
               </div>
             </form>
+          </div>
+
+          {/* Page footer */}
+          <div className="w-full max-w-[18.5rem] mx-auto pb-2 pt-6">
+            <div className="h-px w-full bg-slate-200/60" />
+            <p className="mt-3 text-left text-[10px] font-medium text-slate-400 tracking-wide">
+              &copy; 2026 &bull; A product of Treads Core
+            </p>
           </div>
         </div>
       </div>

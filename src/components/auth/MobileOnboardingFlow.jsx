@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import {
   MOBILE_CONSENT_STORAGE_KEY,
   MOBILE_ONBOARDING_POLICY_VERSION,
@@ -49,18 +49,14 @@ function saveConsent() {
 }
 
 function MobileOnboardingFlow({ onComplete }) {
-  const [phase, setPhase] = useState('preload');
-
   useEffect(() => {
-    const preloadTimer = window.setTimeout(() => setPhase('splash'), 950);
-    const splashTimer = window.setTimeout(() => {
+    const preloadTimer = window.setTimeout(() => {
       saveConsent();
       onComplete?.();
-    }, 2800);
+    }, 1800);
 
     return () => {
       window.clearTimeout(preloadTimer);
-      window.clearTimeout(splashTimer);
     };
   }, [onComplete]);
 
@@ -91,11 +87,6 @@ function MobileOnboardingFlow({ onComplete }) {
     };
   }, []);
 
-  const handleContinue = () => {
-    saveConsent();
-    onComplete?.();
-  };
-
   return (
     <div className="relative min-h-[100dvh] w-full overflow-hidden bg-slate-950 text-white">
       <div
@@ -103,39 +94,19 @@ function MobileOnboardingFlow({ onComplete }) {
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
         style={{ backgroundImage: 'url(/splash/new/splash-light.png)' }}
       />
-      <div aria-hidden="true" className="absolute inset-0 bg-white/10" />
+      <div aria-hidden="true" className="absolute inset-0 bg-white/20" />
+      <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[58%] bg-gradient-to-t from-white via-white/75 to-transparent" />
       <div className="relative z-10 flex min-h-[100dvh] flex-col items-center justify-center px-8 text-center">
         <img
           src="/splash/new/TrendsCORE-Logo.png"
           alt="TrendSCORE"
           className="w-full max-w-[15.5rem] object-contain drop-shadow-[0_12px_30px_rgba(255,255,255,0.5)]"
         />
-        {phase === 'preload' ? (
-          <div className="mt-8 flex flex-col items-center gap-3">
-            <div className="h-9 w-9 rounded-full border-4 border-white/40 border-t-orange-500 animate-spin" />
-            <p className="text-sm font-semibold text-slate-700">Preparing your pathway</p>
-          </div>
-        ) : (
-          <div className="mt-10 space-y-3">
-            <h1 className="text-[2rem] font-black leading-none text-[#06285a]">Welcome!</h1>
-            <p className="text-base font-semibold text-slate-700">Let's get you started</p>
-          </div>
-        )}
-      </div>
-      {phase === 'splash' && (
-        <div
-          className="absolute inset-x-0 bottom-0 z-20 px-6"
-          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.5rem)' }}
-        >
-          <button
-            type="button"
-            onClick={handleContinue}
-            className="mx-auto flex h-12 w-full max-w-[18rem] items-center justify-center rounded bg-orange-500 text-sm font-black text-white shadow-xl shadow-orange-500/25 active:scale-[0.98]"
-          >
-            Continue
-          </button>
+        <div className="mt-8 flex flex-col items-center gap-3">
+          <div className="h-9 w-9 rounded-full border-4 border-slate-300 border-t-orange-500 animate-spin" />
+          <p className="text-sm font-medium text-slate-700">Warming up your workspace...</p>
         </div>
-      )}
+      </div>
     </div>
   );
 }

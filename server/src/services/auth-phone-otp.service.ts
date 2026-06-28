@@ -53,6 +53,7 @@ export interface RequestPhoneOtpResult {
   expiresAt: Date;
   resendAfterSeconds: number;
   message: string;
+  devOtp?: string;
 }
 
 export class AuthPhoneOtpService {
@@ -154,6 +155,7 @@ export class AuthPhoneOtpService {
       expiresAt: challenge.expiresAt,
       resendAfterSeconds: RESEND_COOLDOWN_SECONDS,
       message: 'If an account exists for this phone number, an OTP has been sent.',
+      devOtp: code,
     };
   }
 
