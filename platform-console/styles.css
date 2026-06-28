@@ -1,6 +1,6 @@
 /* ─────────────────────────────────────────────────────────────────────────
-   Zawadi Platform Console — styles.css
-   Design tokens pulled directly from the main Zawadi SMS project:
+   TrendScore Platform Console — styles.css
+   Design tokens pulled directly from the main TrendScore project:
      --brand-purple : #030b82  (main app primary)
      --brand-teal   : #0D9488  (main app secondary)
      Font           : Inter (same as main app)
@@ -11,7 +11,7 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
 :root{
-  /* Brand — mirrors main Zawadi SMS project exactly */
+  /* Brand — mirrors main TrendScore project exactly */
   --brand:#030b82;
   --brand-dark:#02075e;
   --brand-bright:#1e26a1;

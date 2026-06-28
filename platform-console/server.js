@@ -565,7 +565,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'zawadi-platform-console' });
+  res.json({ ok: true, service: 'trendscore-platform-console' });
 });
 
 function requireAuth(req, res, next) {
