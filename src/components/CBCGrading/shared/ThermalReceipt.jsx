@@ -1,5 +1,4 @@
 import React from 'react';
-import { cn } from '../../../utils/cn';
 
 /**
  * ThermalReceipt
@@ -18,7 +17,7 @@ const ThermalReceipt = ({ invoice, schoolInfo }) => {
     <div className="thermal-receipt-container font-mono text-[10px] leading-tight text-black p-1 w-[58mm] mx-auto bg-white border border-gray-100">
       {/* Header */}
       <div className="text-center mb-4 space-y-1">
-        <h1 className="text-sm font-semibold uppercase">{schoolInfo?.name || 'ZAWADI SCHOOL'}</h1>
+        <h1 className="text-sm font-semibold uppercase">{schoolInfo?.name || 'TRENDSCORE SCHOOL'}</h1>
         <p>{schoolInfo?.address || 'P.O. BOX 123-00100, NAIROBI'}</p>
         <p>Tel: {schoolInfo?.phone || '0700 000 000'}</p>
         <div className="border-b border-dashed border-black my-2" />
