@@ -14,10 +14,12 @@ import {
   CheckCircle,
   Clock3,
   RotateCw,
+  Lock,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { authAPI, schoolAPI } from '../../services/api';
 import { setBranchId, setSelectedInstitutionType } from '../../services/schoolContext';
+import { useMobile } from '../../hooks/useMobileDetection';
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
@@ -57,7 +59,29 @@ const INSTITUTION_OPTIONS = [
 const safeHexColor = (value, fallback) =>
   /^#[0-9A-Fa-f]{6}$/.test(String(value || '')) ? value : fallback;
 
+const MOBILE_SPLASH_ASSETS = {
+  login: '/splash/new/splash-light.png',
+  logo: '/splash/new/TrendsCORE-Logo.png',
+  admin: '/splash/new/admin.png',
+  teacher: '/splash/new/teacher.png',
+  parent: '/splash/new/parent.png',
+  student: '/splash/new/student.png',
+};
+
+const normalizeMobileRole = (userData) => {
+  const roles = Array.isArray(userData?.roles) && userData.roles.length > 0 ? userData.roles : [userData?.role];
+  const normalized = roles.map((role) => String(role || '').toUpperCase());
+
+  if (normalized.some((role) => role.includes('ADMIN') || role.includes('OWNER'))) return 'admin';
+  if (normalized.some((role) => role.includes('TEACHER') || role.includes('STAFF'))) return 'teacher';
+  if (normalized.some((role) => role.includes('PARENT') || role.includes('GUARDIAN'))) return 'parent';
+  if (normalized.some((role) => role.includes('STUDENT') || role.includes('LEARNER'))) return 'student';
+  if (normalized.some((role) => role.includes('ACCOUNT'))) return 'admin';
+  return 'admin';
+};
+
 export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, brandingSettings }) {
+  const isMobile = useMobile();
   const defaultSchoolProfile = {
     name: brandingSettings?.schoolName || brandingSettings?.name || '',
     motto: brandingSettings?.motto || '',
@@ -87,6 +111,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
   const [phoneOtpStep, setPhoneOtpStep] = useState('request');
   const [phoneOtpCooldown, setPhoneOtpCooldown] = useState(0);
   const [phonePasswordFallback, setPhonePasswordFallback] = useState(false);
+  const [mobileRoleIntro, setMobileRoleIntro] = useState(null);
   const [showInstitutionSetupModal, setShowInstitutionSetupModal] = useState(false);
   const [institutionChoice, setInstitutionChoice] = useState('PRIMARY_CBC');
   const [pendingCredentialsData, setPendingCredentialsData] = useState(null);
@@ -204,6 +229,15 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
     };
   };
 
+  const finishLogin = (loginUserData, token, refreshToken) => {
+    if (isMobile) {
+      setMobileRoleIntro({ user: loginUserData, token, refreshToken });
+      return;
+    }
+
+    onLoginSuccess(loginUserData, token, refreshToken);
+  };
+
   const completeBypassLogin = async (credentialsData, identifier = phoneOtp.phone) => {
     const { token, refreshToken, user } = credentialsData;
     if (token) localStorage.setItem('token', token);
@@ -216,8 +250,18 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
     if (bid) setBranchId(bid);
     setSelectedInstitutionType(loginUserData.institutionType);
 
-    onLoginSuccess(loginUserData, token, refreshToken);
+    finishLogin(loginUserData, token, refreshToken);
   };
+
+  useEffect(() => {
+    if (!mobileRoleIntro) return undefined;
+
+    const timer = window.setTimeout(() => {
+      onLoginSuccess(mobileRoleIntro.user, mobileRoleIntro.token, mobileRoleIntro.refreshToken);
+    }, 2300);
+
+    return () => window.clearTimeout(timer);
+  }, [mobileRoleIntro, onLoginSuccess]);
 
   useEffect(() => {
     if (phoneOtpCooldown <= 0) return undefined;
@@ -430,6 +474,286 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
   };
 
   const loginBackgroundColor = brandingSettings?.primaryColor || 'var(--brand-primary)';
+  const mobileRole = normalizeMobileRole(mobileRoleIntro?.user);
+  const mobileFirstName =
+    mobileRoleIntro?.user?.firstName ||
+    String(mobileRoleIntro?.user?.name || 'there').split(' ')[0] ||
+    'there';
+  const mobilePhoneDisplay = phoneOtp.phone.trim() || '+254';
+  const formattedCooldown = `00:${String(phoneOtpCooldown).padStart(2, '0')}`;
+
+  const handleMobileCodeChange = (index, value) => {
+    const digits = value.replace(/\D/g, '');
+    if (!digits) {
+      setPhoneOtp(prev => ({
+        ...prev,
+        code: `${prev.code.slice(0, index)}${prev.code.slice(index + 1)}`.slice(0, 6),
+      }));
+      return;
+    }
+
+    const nextDigits = `${phoneOtp.code.slice(0, index)}${digits}${phoneOtp.code.slice(index + digits.length)}`.slice(0, 6);
+    setPhoneOtp(prev => ({ ...prev, code: nextDigits }));
+  };
+
+  const handleMobileCodeKeyDown = (index, event) => {
+    if (event.key !== 'Backspace' || phoneOtp.code[index] || index <= 0) return;
+    const previous = document.getElementById(`mobile-otp-${index - 1}`);
+    previous?.focus();
+  };
+
+  if (mobileRoleIntro) {
+    return (
+      <div className="relative min-h-[100dvh] w-full overflow-hidden bg-slate-950 text-white">
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+          style={{ backgroundImage: `url(${MOBILE_SPLASH_ASSETS[mobileRole]})` }}
+        />
+        <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/55" />
+        <div
+          className="relative z-10 flex min-h-[100dvh] flex-col justify-end px-6"
+          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.5rem)' }}
+        >
+          <div className="mx-auto w-full max-w-[19rem] rounded-[1.65rem] border border-white/35 bg-white/20 px-5 py-5 text-center shadow-2xl backdrop-blur-xl">
+            <img
+              src={MOBILE_SPLASH_ASSETS.logo}
+              alt="TrendSCORE"
+              className="mx-auto mb-4 w-40 object-contain"
+            />
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/80">
+              {mobileRole} portal
+            </p>
+            <h1 className="mt-2 text-2xl font-black leading-tight text-white">
+              Welcome back, {mobileFirstName}
+            </h1>
+            <p className="mt-2 text-xs font-medium leading-5 text-white/85">
+              Loading your {mobileRole} workspace.
+            </p>
+            <div className="mx-auto mt-5 h-8 w-8 rounded-full border-4 border-white/35 border-t-orange-500 animate-spin" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isMobile && !showInstitutionSetupModal) {
+    return (
+      <div className="relative min-h-[100dvh] w-full overflow-hidden bg-slate-950 text-slate-950">
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+          style={{ backgroundImage: `url(${MOBILE_SPLASH_ASSETS.login})` }}
+        />
+        <div aria-hidden="true" className="absolute inset-0 bg-white/5" />
+
+        <div
+          className="relative z-10 flex min-h-[100dvh] flex-col px-6"
+          style={{
+            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 3.25rem)',
+            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.25rem)',
+          }}
+        >
+          <div className="flex flex-1 flex-col items-center">
+            <img
+              src={MOBILE_SPLASH_ASSETS.logo}
+              alt="TrendSCORE"
+              className="w-full max-w-[15rem] object-contain drop-shadow-[0_10px_28px_rgba(255,255,255,0.65)]"
+            />
+
+            <div className="mt-8 text-center">
+              <h1 className="text-[2rem] font-black leading-none text-[#06285a]">
+                {phoneOtpStep === 'request' ? 'Welcome!' : 'Welcome Back!'}
+              </h1>
+              <p className="mt-3 text-base font-semibold text-slate-700">
+                {phoneOtpStep === 'request'
+                  ? "Let's get you started"
+                  : 'Enter the OTP sent to your phone number'}
+              </p>
+            </div>
+
+            <form
+              onSubmit={phoneOtpStep === 'request'
+                ? handlePhoneOtpRequest
+                : phonePasswordFallback
+                  ? handlePhonePasswordLogin
+                  : handlePhoneOtpVerify}
+              className="mt-8 w-full max-w-[18rem] rounded-[1.65rem] border border-white/60 bg-white/58 px-5 py-5 shadow-2xl shadow-slate-900/15 backdrop-blur-xl"
+            >
+              {errors.form && (
+                <div className="mb-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50/95 px-3 py-2 text-xs font-semibold text-red-700">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{errors.form}</span>
+                </div>
+              )}
+
+              {phoneOtpStep === 'request' ? (
+                <>
+                  <div>
+                    <h2 className="text-base font-black text-[#06285a]">Enter your phone number</h2>
+                    <p className="mt-2 text-sm font-semibold leading-5 text-slate-900">
+                      We'll use this to identify your account
+                    </p>
+                  </div>
+
+                  <div className="mt-5 rounded-md border border-slate-200 bg-white/95 px-3 py-2.5 shadow-sm">
+                    <div className="flex items-center gap-2.5">
+                      <span className="grid h-9 w-10 shrink-0 place-items-center rounded bg-slate-50 text-xs font-black text-[#06285a]">
+                        KE
+                      </span>
+                      <span className="shrink-0 text-base font-black text-[#06285a]">+254</span>
+                      <span className="h-7 w-px bg-slate-200" />
+                      <input
+                        id="login-phone"
+                        type="tel"
+                        name="phone"
+                        value={phoneOtp.phone}
+                        onChange={handlePhoneOtpChange}
+                        placeholder="Enter phone number"
+                        autoComplete="tel"
+                        inputMode="tel"
+                        className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400"
+                      />
+                    </div>
+                  </div>
+                  {errors.phone && <p className="mt-2 text-xs font-bold uppercase text-red-600">{errors.phone}</p>}
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-center gap-3">
+                    <span className="grid h-7 w-8 place-items-center rounded bg-white/80 text-xs font-black text-[#06285a]">KE</span>
+                    <span className="text-base font-black text-white drop-shadow">{mobilePhoneDisplay}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPhoneOtpStep('request');
+                        setPhonePasswordFallback(false);
+                        setPhoneOtp(prev => ({ ...prev, code: '' }));
+                      }}
+                      className="ml-1 text-sm font-black text-orange-500"
+                    >
+                      Change
+                    </button>
+                  </div>
+
+                  {!phonePasswordFallback && (
+                    <div className="mt-6">
+                      <Label className="text-sm font-semibold text-white drop-shadow">Enter OTP</Label>
+                      <div className="mt-3 grid grid-cols-6 gap-1.5">
+                        {Array.from({ length: 6 }).map((_, index) => (
+                          <input
+                            key={index}
+                            id={`mobile-otp-${index}`}
+                            type="text"
+                            inputMode="numeric"
+                            autoComplete={index === 0 ? 'one-time-code' : 'off'}
+                            value={phoneOtp.code[index] || ''}
+                            onChange={(event) => handleMobileCodeChange(index, event.target.value)}
+                            onKeyDown={(event) => handleMobileCodeKeyDown(index, event)}
+                            className={cn(
+                              'aspect-square min-w-0 rounded-lg border border-white/80 bg-white/95 text-center text-xl font-black text-[#06285a] shadow-sm outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/25',
+                              errors.code && 'border-red-400 bg-red-50'
+                            )}
+                          />
+                        ))}
+                      </div>
+                      {errors.code && <p className="mt-2 text-xs font-bold uppercase text-red-100">{errors.code}</p>}
+                    </div>
+                  )}
+
+                  {phonePasswordFallback && (
+                    <div className="mt-6">
+                      <Label htmlFor="phone-password" className="text-sm font-semibold text-white drop-shadow">
+                        Password
+                      </Label>
+                      <div className="relative mt-3">
+                        <Input
+                          id="phone-password"
+                          type={showPassword ? 'text' : 'password'}
+                          name="password"
+                          value={formData.password}
+                          onChange={handleChange}
+                          className={cn(
+                            'h-11 rounded-lg border-white/80 bg-white/95 pr-11 text-sm font-semibold text-slate-900',
+                            errors.password && 'border-red-400 bg-red-50'
+                          )}
+                          placeholder="Enter password"
+                          autoComplete="current-password"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+                        >
+                          {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                        </button>
+                      </div>
+                      {errors.password && <p className="mt-2 text-xs font-bold uppercase text-red-100">{errors.password}</p>}
+                    </div>
+                  )}
+
+                  <div className="mt-5 text-center text-sm font-semibold text-white">
+                    Didn't receive OTP?{' '}
+                    <button
+                      type="button"
+                      onClick={handlePhoneOtpRequest}
+                      disabled={isPhoneOtpLoading || phoneOtpCooldown > 0}
+                      className="font-black text-orange-500 disabled:text-orange-300"
+                    >
+                      {phoneOtpCooldown > 0 ? `Resend in ${formattedCooldown}` : 'Resend'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              <Button
+                type="submit"
+                disabled={isPhoneOtpLoading}
+                className="mt-7 h-12 w-full rounded bg-orange-500 text-base font-black text-white shadow-lg shadow-orange-500/25 hover:bg-orange-600 active:scale-[0.98]"
+              >
+                {isPhoneOtpLoading ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 rounded-full border-2 border-white/35 border-t-white animate-spin" />
+                    {phoneOtpStep === 'request' ? 'Sending...' : phonePasswordFallback ? 'Signing in...' : 'Verifying...'}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-3">
+                    Continue
+                    <ArrowRight size={18} />
+                  </span>
+                )}
+              </Button>
+
+              {phoneOtpStep === 'verify' && (
+                <>
+                  <div className="my-5 flex items-center gap-4 text-xs font-semibold text-white">
+                    <span className="h-px flex-1 bg-white/35" />
+                    OR
+                    <span className="h-px flex-1 bg-white/35" />
+                  </div>
+                  <div className="text-center">
+                    <button
+                      type="button"
+                      onClick={() => setPhonePasswordFallback(prev => !prev)}
+                      className="inline-flex items-center gap-2 text-base font-black text-orange-500"
+                    >
+                      <Lock size={17} />
+                      {phonePasswordFallback ? 'Use OTP' : 'Use Password'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              <div className="mt-5 flex items-center justify-center gap-2.5 text-sm font-semibold text-slate-950">
+                <Lock size={15} className="text-orange-500" />
+                <span>Secure. Simple. Smart.</span>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
