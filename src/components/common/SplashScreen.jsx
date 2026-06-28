@@ -1,232 +1,94 @@
-/**
- * SplashScreen — data-aware version
- *
- * Behaviour:
- *   1. Renders immediately when the app boots (auth is resolving).
- *   2. Once the user is authenticated, fires off the bootstrap pre-load in
- *      parallel with the existing branding / subject fetches.
- *   3. The progress bar now reflects *actual* fetch progress:
- *        0–20 %   — auth check (instant, localStorage read)
- *       20–40 %   — branding fetch
- *       40–100%   — bootstrap data (learners, teachers, classes, streams, subjects)
- *   4. Fades out once bootstrap reports ready AND a minimum display time
- *      has elapsed (400 ms) so it never flashes.
- *
- * Props:
- *   isLoading  {boolean}  — true while auth context is still initialising
- *   user       {object|null} — the authenticated user (null until auth done)
- *   onReady    {() => void}  — called once splash can safely hide
- */
-
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useEffect, useRef, useMemo, useState } from 'react';
 import '../../styles/splashscreen.css';
-import { useBootstrapStore } from '../../store/useBootstrapStore';
-import axiosInstance from '../../services/api/axiosConfig';
-import { PRODUCT_DISPLAY_NAME } from '../../config/productIdentity';
 
-const ROLES_WITH_ALL_LEARNERS_ACCESS = new Set([
-  'SUPER_ADMIN',
-  'ADMIN',
-  'HEAD_TEACHER',
-  'HEAD_OF_CURRICULUM',
-  'TEACHER',
-  'ACCOUNTANT',
-  'RECEPTIONIST',
-  'LIBRARIAN',
-  'NURSE',
-  'SECURITY',
-  'DRIVER',
-  'COOK',
-  'CLEANER',
-  'GROUNDSKEEPER',
-  'IT_SUPPORT',
-]);
+const MIN_DISPLAY_MS = 2000;
 
-const ROLES_WITH_ALL_USERS_ACCESS = new Set([
-  'SUPER_ADMIN',
-  'ADMIN',
-  'HEAD_TEACHER',
-  'HEAD_OF_CURRICULUM',
-  'TEACHER',
-]);
+const SplashScreen = ({ onReady }) => {
+  const [isFading, setIsFading] = useState(false);
+  const [visible, setVisible] = useState(true);
+  const timeoutRef = useRef(null);
 
-// ── Fetch helpers called by the bootstrap store ────────────────────────────
-//  These live outside the component so they never change identity.
+  const compassTicks = useMemo(
+    () => Array.from({ length: 72 }, (_, i) => {
+      const angle = (i * 5 * Math.PI) / 180;
+      const isMajor = i % 9 === 0;
+      const isMid = i % 3 === 0;
+      const outer = 145;
+      const inner = isMajor ? 128 : isMid ? 132 : 136;
+      const x1 = 150 + outer * Math.sin(angle);
+      const y1 = 150 - outer * Math.cos(angle);
+      const x2 = 150 + inner * Math.sin(angle);
+      const y2 = 150 - inner * Math.cos(angle);
+      return (
+        <line
+          key={i}
+          x1={x1}
+          y1={y1}
+          x2={x2}
+          y2={y2}
+          stroke="#f97316"
+          strokeWidth={isMajor ? 1.2 : isMid ? 0.75 : 0.45}
+          opacity={isMajor ? 1 : 0.75}
+        />
+      );
+    }),
+    []
+  );
 
-const buildApiFns = (institutionType = 'PRIMARY_CBC', role = '') => ({
-  fetchLearners: async () => {
-    if (!ROLES_WITH_ALL_LEARNERS_ACCESS.has(role)) return [];
-    const res = await axiosInstance.get('/learners', {
-      params: { limit: 200, status: 'ACTIVE', institutionType },
-    });
-    return res.data?.data ?? [];
-  },
-
-  fetchTeachers: async () => {
-    if (!ROLES_WITH_ALL_USERS_ACCESS.has(role)) return [];
-    const res = await axiosInstance.get('/users', {
-      params: { role: 'TEACHER', limit: 200 },
-    });
-    return res.data?.data ?? [];
-  },
-
-  fetchClasses: async () => {
-    if (!ROLES_WITH_ALL_LEARNERS_ACCESS.has(role)) return [];
-    const res = await axiosInstance.get('/classes');
-    return res.data?.data ?? [];
-  },
-
-  fetchStreams: async () => {
-    const res = await axiosInstance.get('/facility/streams');
-    return Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
-  },
-
-  fetchSubjects: async () => {
-    const res = await axiosInstance.get('/learning-areas');
-    return res.data?.data ?? [];
-  },
-
-  // Only fetch fee stats for roles that actually use the fee module
-  // This pre-loads the metric-card data so FeeCollectionPage shows instantly
-  fetchFeeStats: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST'].includes(role)
-    ? async () => {
-        const res = await axiosInstance.get('/fees/invoices', { params: { limit: 'all' } });
-        return {
-          invoices: res.data?.data ?? [],
-          totals:   res.data?.totals ?? null,
-        };
-      }
-    : null,
-});
-
-// ── Component ──────────────────────────────────────────────────────────────
-
-const MIN_DISPLAY_MS = 400; // never disappear faster than this
-
-const SplashScreen = ({ isLoading, user, onReady }) => {
-  const [progress, setProgress]   = useState(0);
-  const [label, setLabel]         = useState('Checking session…');
-  const [canHide, setCanHide]     = useState(false);
-  const [visible, setVisible]     = useState(true);
-  const mountedAt                 = useRef(Date.now());
-  const bootstrapFired            = useRef(false);
-
-  const { bootstrap, ready: bootstrapReady } = useBootstrapStore();
-
-  // ── Phase 1: auth resolving (0 → 25%) ────────────────────────────────
   useEffect(() => {
-    if (!isLoading) {
-      setProgress(25);
-      setLabel(user ? 'Session restored…' : 'Ready to sign in…');
-    }
-  }, [isLoading, user]);
+    setIsFading(false);
+    setVisible(true);
 
-  // ── Phase 2: trigger bootstrap once we have a user ────────────────────
+    window.clearTimeout(timeoutRef.current);
+    timeoutRef.current = window.setTimeout(() => {
+      setIsFading(true);
+    }, MIN_DISPLAY_MS);
+
+    return () => window.clearTimeout(timeoutRef.current);
+  }, []);
+
   useEffect(() => {
-    if (!user || bootstrapFired.current) return;
-    bootstrapFired.current = true;
-
-    setProgress(30);
-    setLabel('Loading school data…');
-
-    const apiFns = buildApiFns(user.institutionType, user.role ?? '');
-    bootstrap(apiFns);
-  }, [user, bootstrap]);
-
-  // ── Phase 3: drive progress bar while bootstrap is running ────────────
-  useEffect(() => {
-    if (!user || bootstrapReady) return; // nothing to animate
-
-    // Animate smoothly from 30 → 90 while waiting for the real data
-    const id = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 90) { clearInterval(id); return 90; }
-        // Decelerate as we approach 90 so it doesn't stall obviously
-        const step = Math.max(1, (90 - prev) * 0.15);
-        return Math.min(90, prev + step);
-      });
-    }, 120);
-
-    return () => clearInterval(id);
-  }, [user, bootstrapReady]);
-
-  // ── Phase 4: bootstrap finished ───────────────────────────────────────
-  useEffect(() => {
-    if (!bootstrapReady) return;
-
-    setProgress(100);
-    setLabel('All set!');
-
-    // Respect the minimum display time
-    const elapsed = Date.now() - mountedAt.current;
-    const remaining = Math.max(0, MIN_DISPLAY_MS - elapsed);
-
-    const id = setTimeout(() => setCanHide(true), remaining);
-    return () => clearTimeout(id);
-  }, [bootstrapReady]);
-
-  // ── Non-authenticated path: just wait for auth to resolve ─────────────
-  useEffect(() => {
-    if (!isLoading && !user) {
-      // Not logged in — hide after minimum time
-      const elapsed = Date.now() - mountedAt.current;
-      const remaining = Math.max(0, MIN_DISPLAY_MS - elapsed);
-      const id = setTimeout(() => setCanHide(true), remaining);
-      return () => clearTimeout(id);
-    }
-  }, [isLoading, user]);
-
-  // ── Trigger fade-out ──────────────────────────────────────────────────
-  useEffect(() => {
-    if (!canHide) return;
-    const id = setTimeout(() => {
+    if (!isFading) return;
+    const id = window.setTimeout(() => {
       setVisible(false);
       onReady?.();
-    }, 300); // match CSS fade-out duration
-    return () => clearTimeout(id);
-  }, [canHide, onReady]);
+    }, 250);
+    return () => window.clearTimeout(id);
+  }, [isFading, onReady]);
 
   if (!visible) return null;
 
   return (
-    <div className={`splash-screen ${canHide ? 'fade-out' : ''}`}>
+    <div className={`splash-screen ${isFading ? 'fade-out' : ''}`}>
       <div className="splash-content">
-        {/* Logo with ring ripple */}
-        <div className="splash-logo">
-          <div className="logo-ripples">
-            <div className="ripple-ring ripple-1" />
-            <div className="ripple-ring ripple-2" />
-            <div className="ripple-ring ripple-3" />
-          </div>
-          <div className="logo-circle">
-            <img
-              src="/splash/trendscore-logo.png"
-              alt="TrendScore"
-              className="logo-image"
-            />
-          </div>
+        <div className="spinner-wrapper">
+          <div className="spinner-ring" />
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 300 300"
+            xmlns="http://www.w3.org/2000/svg"
+            className="splash-compass-svg"
+          >
+            <circle cx="150" cy="150" r="145" fill="none" stroke="#f97316" strokeWidth="1" opacity="0.15" />
+            <circle cx="150" cy="150" r="138" fill="none" stroke="#f97316" strokeWidth="0.5" opacity="0.1" />
+            <circle cx="150" cy="150" r="118" fill="none" stroke="#f97316" strokeWidth="0.85" opacity="0.18" />
+            <circle cx="150" cy="150" r="112" fill="none" stroke="#f97316" strokeWidth="0.4" opacity="0.1" />
+            {compassTicks}
+            <text x="150" y="104" textAnchor="middle" dominantBaseline="middle" fontSize="12" fontWeight="700" fill="#f97316" fontFamily="system-ui, sans-serif" letterSpacing="2">N</text>
+            <text x="150" y="196" textAnchor="middle" dominantBaseline="middle" fontSize="10" fontWeight="500" fill="#f97316" fontFamily="system-ui, sans-serif">S</text>
+            <text x="194" y="150" textAnchor="middle" dominantBaseline="middle" fontSize="10" fontWeight="500" fill="#f97316" fontFamily="system-ui, sans-serif">E</text>
+            <text x="106" y="150" textAnchor="middle" dominantBaseline="middle" fontSize="10" fontWeight="500" fill="#f97316" fontFamily="system-ui, sans-serif">W</text>
+            <circle cx="150" cy="150" r="28" fill="none" stroke="#f97316" strokeWidth="0.7" opacity="0.35" />
+            <circle cx="150" cy="150" r="4" fill="none" stroke="#f97316" strokeWidth="0.9" opacity="0.9" />
+            <polygon points="150,118 153,150 150,160 147,150" fill="none" stroke="#f97316" strokeWidth="1" strokeLinejoin="round" />
+            <polygon points="150,182 153,150 150,140 147,150" fill="none" stroke="#f97316" strokeWidth="0.7" strokeLinejoin="round" opacity="0.55" />
+            <line x1="150" y1="122" x2="150" y2="135" stroke="#f97316" strokeWidth="0.5" opacity="0.8" />
+            <line x1="150" y1="165" x2="150" y2="178" stroke="#f97316" strokeWidth="0.5" opacity="0.8" />
+            <line x1="122" y1="150" x2="135" y2="150" stroke="#f97316" strokeWidth="0.5" opacity="0.8" />
+            <line x1="165" y1="150" x2="178" y2="150" stroke="#f97316" strokeWidth="0.5" opacity="0.8" />
+          </svg>
         </div>
-
-        <h1 className="splash-title">{PRODUCT_DISPLAY_NAME}</h1>
-        <p className="splash-subtitle">Education Management System</p>
-
-        {/* Progress bar */}
-        <div className="loading-bar-container">
-          <div className="loading-bar">
-            <div
-              className="loading-bar-fill"
-              style={{
-                width: `${progress}%`,
-                transition: progress === 100 ? 'width 0.3s ease-out' : 'width 0.5s ease-in-out',
-              }}
-            >
-              <div className="loading-bar-shimmer" />
-            </div>
-          </div>
-          <p className="loading-text">{Math.round(progress)}%</p>
-        </div>
-
-        <p className="splash-footer">{label}</p>
+        <div className="splash-brand-name">Treads CORE</div>
       </div>
     </div>
   );
