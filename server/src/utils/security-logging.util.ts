@@ -79,7 +79,7 @@ export const logSecurityEvent = (entry: SecurityLogEntry): void => {
     logger.info(logData, entry.message);
   }
 
-  // In production, send to centralized logging service (e.g., Sentry, DataDog)
+  // In production, send to the configured centralized logging service.
   if (process.env.NODE_ENV === 'production') {
     // TODO: Send to logging service
   }
