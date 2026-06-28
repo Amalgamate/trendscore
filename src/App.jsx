@@ -13,6 +13,7 @@ import { ModuleAccessProvider } from './contexts/ModuleAccessContext';
 import FeeApprovalReminder from './components/CBCGrading/layout/FeeApprovalReminder';
 import axiosInstance from './services/api/axiosConfig';
 import { useBootstrapStore } from './store/useBootstrapStore';
+import { resolveDashboardPage } from './components/CBCGrading/utils/appAccess';
 
 import ErrorBoundary from './components/common/ErrorBoundary';
 import { LEGACY_BRAND_NAMES, PRODUCT_DISPLAY_NAME } from './config/productIdentity';
@@ -315,6 +316,18 @@ function AppContent() {
       // type before entering the app. The backend signals this via requiresInstitutionSetup.
       navigate('/auth/setup-institution', { replace: true });
     } else {
+      try {
+        localStorage.setItem('cbc_ui_state', JSON.stringify({
+          state: {
+            currentPage: resolveDashboardPage(userData),
+            pageParams: {},
+            sidebarOpen: true,
+          },
+          version: 0,
+        }));
+      } catch {
+        // Storage can be unavailable in restricted browser modes.
+      }
       navigate(userData.role === 'ACCOUNTANT' ? '/app/accountant/dashboard' : '/app', { replace: true });
     }
   };

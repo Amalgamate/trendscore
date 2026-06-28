@@ -1,0 +1,24 @@
+# Phase 2 Checklist
+
+- [x] Phase 2 unlocked in `LOCK_FILE.md`
+- [x] Existing login behavior preserved
+- [x] Existing OTP-after-password behavior preserved
+- [x] Existing refresh/logout behavior preserved
+- [x] Canonical phone normalization utility added
+- [x] Phone normalization tests added
+- [x] OTP storage does not store plaintext codes
+- [x] OTP expiry implemented
+- [x] OTP attempt limits implemented
+- [x] OTP resend controls implemented
+- [x] Additive phone OTP request endpoint added
+- [x] Additive phone OTP verify endpoint added
+- [x] Endpoint contract tests added
+- [x] TypeScript passes
+- [x] Targeted auth tests pass
+- [x] No UI changes
+- [x] No destructive database changes
+- [x] Backward compatible
+- [x] Status updated
+- [x] Progress updated
+- [x] Phase 2 report completed
+- [x] Phase 3 readiness decision recorded

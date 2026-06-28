@@ -13,11 +13,11 @@ import {
   ArrowRight,
   CheckCircle,
   Clock3,
+  RotateCw,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { authAPI, schoolAPI } from '../../services/api';
 import { setBranchId, setSelectedInstitutionType } from '../../services/schoolContext';
-import OTPVerificationForm from './OTPVerificationForm';
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
@@ -57,7 +57,7 @@ const INSTITUTION_OPTIONS = [
 const safeHexColor = (value, fallback) =>
   /^#[0-9A-Fa-f]{6}$/.test(String(value || '')) ? value : fallback;
 
-export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword, onLoginSuccess, brandingSettings }) {
+export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, brandingSettings }) {
   const defaultSchoolProfile = {
     name: brandingSettings?.schoolName || brandingSettings?.name || '',
     motto: brandingSettings?.motto || '',
@@ -73,12 +73,20 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
     onboardingTitle: brandingSettings?.onboardingTitle || 'Join Our Community',
     onboardingMessage: brandingSettings?.onboardingMessage || 'Create an account to start managing your school today.',
   };
-  const [formData, setFormData] = useState({ email: '', password: '', rememberMe: false });
+  const [formData, setFormData] = useState({ password: '', rememberMe: false });
+  const [phoneOtp, setPhoneOtp] = useState({
+    phone: '',
+    challengeId: '',
+    code: '',
+    expiresAt: null,
+    resendAfterSeconds: 0,
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
-  const [isLoading, setIsLoading] = useState(false);
-  const [showOTPVerification, setShowOTPVerification] = useState(false);
-  const [pendingUserData, setPendingUserData] = useState(null);
+  const [isPhoneOtpLoading, setIsPhoneOtpLoading] = useState(false);
+  const [phoneOtpStep, setPhoneOtpStep] = useState('request');
+  const [phoneOtpCooldown, setPhoneOtpCooldown] = useState(0);
+  const [phonePasswordFallback, setPhonePasswordFallback] = useState(false);
   const [showInstitutionSetupModal, setShowInstitutionSetupModal] = useState(false);
   const [institutionChoice, setInstitutionChoice] = useState('PRIMARY_CBC');
   const [pendingCredentialsData, setPendingCredentialsData] = useState(null);
@@ -89,7 +97,6 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
   const [isLoadingInstitutionSetupProgress, setIsLoadingInstitutionSetupProgress] = useState(false);
   const [wizardStep, setWizardStep] = useState('institution');
   const [schoolProfile, setSchoolProfile] = useState(defaultSchoolProfile);
-  const skipOtp = import.meta.env.VITE_SKIP_OTP === 'true';
   const institutionOptionMap = useMemo(
     () => INSTITUTION_OPTIONS.reduce((acc, item) => ({ ...acc, [item.value]: item }), {}),
     []
@@ -143,12 +150,20 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
     };
   }, [showInstitutionSetupModal, pendingCredentialsData, institutionChoice]);
 
-  const validateForm = () => {
+  const validatePhoneOtpRequest = () => {
     const newErrors = {};
-    if (!formData.email.trim()) newErrors.email = 'Email is required';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) newErrors.email = 'Invalid email';
-    if (!formData.password) newErrors.password = 'Password is required';
-    else if (formData.password.length < 6) newErrors.password = 'Min 6 characters';
+    const digits = phoneOtp.phone.replace(/\D/g, '');
+    if (!digits) newErrors.phone = 'Phone number is required';
+    else if (digits.length < 9) newErrors.phone = 'Enter a valid phone number';
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const validatePhoneOtpVerify = () => {
+    const newErrors = {};
+    const code = phoneOtp.code.replace(/\D/g, '');
+    if (!phoneOtp.challengeId) newErrors.phone = 'Request a code first';
+    if (!/^\d{6}$/.test(code)) newErrors.code = 'Enter the 6 digit code';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -159,14 +174,19 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
   };
 
-  const completeBypassLogin = async (credentialsData) => {
-    const { token, refreshToken, user, mustChangePassword } = credentialsData;
-    if (token) localStorage.setItem('token', token);
-    if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
-    if (formData.rememberMe) localStorage.setItem('authToken', token);
+  const handlePhoneOtpChange = (e) => {
+    const { name, value } = e.target;
+    setPhoneOtp(prev => ({
+      ...prev,
+      [name]: name === 'code' ? value.replace(/\D/g, '').slice(0, 6) : value,
+    }));
+    if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
+  };
 
-    const resolvedInstitutionType = resolveInstitutionType(formData.email, user);
-    const loginUserData = {
+  const buildLoginUserData = (credentialsData, identifier) => {
+    const { user, mustChangePassword } = credentialsData;
+    const resolvedInstitutionType = resolveInstitutionType(identifier, user);
+    return {
       email: user.email,
       name: `${user.firstName} ${user.lastName}`,
       role: user.role,
@@ -175,18 +195,152 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
       firstName: user.firstName,
       lastName: user.lastName,
       institutionType: resolvedInstitutionType,
-      schoolId: null,
+      schoolId: user.schoolId || null,
       branchId: user.branchId || user.branch?.id || null,
       school: user.school || null,
       branch: user.branch || null,
-      mustChangePassword
+      mustChangePassword,
+      loginMethod: credentialsData.loginMethod || null,
     };
+  };
+
+  const completeBypassLogin = async (credentialsData, identifier = phoneOtp.phone) => {
+    const { token, refreshToken, user } = credentialsData;
+    if (token) localStorage.setItem('token', token);
+    if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
+    if (formData.rememberMe) localStorage.setItem('authToken', token);
+
+    const loginUserData = buildLoginUserData(credentialsData, identifier);
 
     const bid = user.branchId || user.branch?.id || '';
     if (bid) setBranchId(bid);
-    setSelectedInstitutionType(resolvedInstitutionType);
+    setSelectedInstitutionType(loginUserData.institutionType);
 
     onLoginSuccess(loginUserData, token, refreshToken);
+  };
+
+  useEffect(() => {
+    if (phoneOtpCooldown <= 0) return undefined;
+    const timer = window.setTimeout(() => {
+      setPhoneOtpCooldown(prev => Math.max(0, prev - 1));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [phoneOtpCooldown]);
+
+  useEffect(() => {
+    if (phoneOtpStep === 'verify' && phoneOtpCooldown === 0 && !phoneOtp.code) {
+      setPhonePasswordFallback(true);
+    }
+  }, [phoneOtpStep, phoneOtpCooldown, phoneOtp.code]);
+
+  useEffect(() => {
+    if (phoneOtpStep !== 'verify' || phoneOtp.code || !('OTPCredential' in window) || !navigator.credentials) {
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    navigator.credentials.get({
+      otp: { transport: ['sms'] },
+      signal: controller.signal,
+    }).then((credential) => {
+      if (credential?.code) {
+        setPhoneOtp(prev => ({ ...prev, code: String(credential.code).replace(/\D/g, '').slice(0, 6) }));
+      }
+    }).catch(() => {});
+
+    return () => controller.abort();
+  }, [phoneOtpStep, phoneOtp.code]);
+
+  const handlePhoneOtpRequest = async (e) => {
+    e.preventDefault();
+    if (!validatePhoneOtpRequest()) return;
+
+    setIsPhoneOtpLoading(true);
+    setErrors({});
+    try {
+      const result = await authAPI.requestPhoneOtp({ phone: phoneOtp.phone.trim() });
+      setPhoneOtp(prev => ({
+        ...prev,
+        challengeId: result.challengeId,
+        expiresAt: result.expiresAt || null,
+        resendAfterSeconds: result.resendAfterSeconds || 60,
+        code: '',
+      }));
+      setPhoneOtpCooldown(result.resendAfterSeconds || 60);
+      setPhoneOtpStep('verify');
+      setPhonePasswordFallback(false);
+      toast.success(result.message || 'Code sent if the parent account exists.');
+    } catch (error) {
+      setErrors({ form: error.message || 'Unable to request code' });
+    } finally {
+      setIsPhoneOtpLoading(false);
+    }
+  };
+
+  const handlePhoneOtpVerify = async (e) => {
+    e.preventDefault();
+    if (!validatePhoneOtpVerify()) return;
+
+    setIsPhoneOtpLoading(true);
+    setErrors({});
+    try {
+      const credentialsData = await authAPI.verifyPhoneOtp({
+        challengeId: phoneOtp.challengeId,
+        phone: phoneOtp.phone.trim(),
+        code: phoneOtp.code,
+      });
+      await completeBypassLogin(credentialsData, phoneOtp.phone);
+    } catch (error) {
+      setErrors({ form: error.message || 'Unable to verify code' });
+    } finally {
+      setIsPhoneOtpLoading(false);
+    }
+  };
+
+  const handlePhonePasswordLogin = async (e) => {
+    e.preventDefault();
+    const newErrors = {};
+    const digits = phoneOtp.phone.replace(/\D/g, '');
+    if (!digits) newErrors.phone = 'Phone number is required';
+    else if (digits.length < 9) newErrors.phone = 'Enter a valid phone number';
+    if (!formData.password) newErrors.password = 'Password is required';
+    else if (formData.password.length < 6) newErrors.password = 'Min 6 characters';
+    setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) return;
+
+    setIsPhoneOtpLoading(true);
+    setErrors({});
+    try {
+      const credentialsData = await authAPI.login({
+        phone: phoneOtp.phone.trim(),
+        password: formData.password,
+      });
+
+      if (credentialsData?.user?.role === 'SUPER_ADMIN' && credentialsData?.user?.requiresInstitutionSetup) {
+        setPendingCredentialsData(credentialsData);
+        setInstitutionChoice(credentialsData?.user?.institutionType || 'PRIMARY_CBC');
+        setInstitutionSetupError('');
+        setInstitutionSetupSuccess('');
+        setInstitutionSetupProgress(null);
+        setWizardStep('institution');
+        setSchoolProfile(prev => ({
+          ...prev,
+          name: credentialsData?.user?.school?.name || prev.name,
+          email: credentialsData?.user?.school?.email || prev.email,
+          phone: credentialsData?.user?.school?.phone || prev.phone,
+          address: credentialsData?.user?.school?.address || prev.address,
+          motto: credentialsData?.user?.school?.motto || prev.motto,
+        }));
+        setShowInstitutionSetupModal(true);
+        return;
+      }
+
+      await completeBypassLogin(credentialsData, phoneOtp.phone);
+    } catch (error) {
+      setErrors({ form: error.message || 'Authentication failed' });
+    } finally {
+      setIsPhoneOtpLoading(false);
+    }
   };
 
   const handleInstitutionOptionClick = (value) => {
@@ -275,116 +429,6 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
     await completeBypassLogin(credentials);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validateForm()) return;
-
-    setIsLoading(true);
-    setErrors({});
-
-    try {
-      const credentialsData = await authAPI.login({
-        email: formData.email.trim(),
-        password: formData.password,
-      });
-
-      const userRole = credentialsData?.user?.role;
-      const shouldUseOtp = credentialsData?.requiresOtp !== false;
-      const isStudent = userRole === 'STUDENT';
-      const isSuperAdmin = userRole === 'SUPER_ADMIN';
-      const shouldBypassOtp = skipOtp || !shouldUseOtp || isStudent || isSuperAdmin;
-
-      if (userRole === 'SUPER_ADMIN' && credentialsData?.user?.requiresInstitutionSetup) {
-        setPendingCredentialsData(credentialsData);
-        setInstitutionChoice(credentialsData?.user?.institutionType || 'PRIMARY_CBC');
-        setInstitutionSetupError('');
-        setInstitutionSetupSuccess('');
-        setInstitutionSetupProgress(null);
-        setWizardStep('institution');
-        setSchoolProfile(prev => ({
-          ...prev,
-          name: credentialsData?.user?.school?.name || prev.name,
-          email: credentialsData?.user?.school?.email || prev.email,
-          phone: credentialsData?.user?.school?.phone || prev.phone,
-          address: credentialsData?.user?.school?.address || prev.address,
-          motto: credentialsData?.user?.school?.motto || prev.motto,
-        }));
-        setShowInstitutionSetupModal(true);
-        return;
-      }
-
-      if (shouldBypassOtp) {
-        await completeBypassLogin(credentialsData);
-        return;
-      }
-
-      // Trigger OTP flow
-
-      try {
-        await authAPI.sendOTP({ email: formData.email });
-        setPendingUserData({
-          email: formData.email,
-          phone: credentialsData.user?.phone || credentialsData.user?.school?.phone || '+254XXXXXXXX',
-          user: credentialsData.user,
-          token: credentialsData.token,
-          refreshToken: credentialsData.refreshToken,
-          mustChangePassword: credentialsData.mustChangePassword,
-          institutionType: resolveInstitutionType(formData.email, credentialsData.user),
-        });
-        setShowOTPVerification(true);
-      } catch (otpError) {
-        setErrors({ form: otpError.message || 'Failed to send OTP' });
-      }
-    } catch (error) {
-      setErrors({ form: error.message || 'Authentication failed' });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleOTPVerifySuccess = async (userData) => {
-    if (pendingUserData?.token) {
-      localStorage.setItem('token', pendingUserData.token);
-      if (pendingUserData.refreshToken) localStorage.setItem('refreshToken', pendingUserData.refreshToken);
-      if (formData.rememberMe) localStorage.setItem('authToken', pendingUserData.token);
-    }
-
-    // Unified single-tenant mode
-    let school = pendingUserData.user.school || null;
-
-    const resolvedInstitutionType = pendingUserData.institutionType || resolveInstitutionType(pendingUserData.email, pendingUserData.user);
-    const loginUserData = {
-      email: pendingUserData.user.email,
-      name: `${pendingUserData.user.firstName} ${pendingUserData.user.lastName}`,
-      role: pendingUserData.user.role,
-      roles: Array.isArray(pendingUserData.user.roles) && pendingUserData.user.roles.length > 0
-        ? pendingUserData.user.roles
-        : [pendingUserData.user.role],
-      id: pendingUserData.user.id,
-      firstName: pendingUserData.user.firstName,
-      lastName: pendingUserData.user.lastName,
-      institutionType: resolvedInstitutionType,
-      schoolId: null,
-      branchId: pendingUserData.user.branchId || pendingUserData.user.branch?.id || null,
-      school: school,
-      branch: pendingUserData.user.branch || null,
-      mustChangePassword: pendingUserData.mustChangePassword
-    };
-
-    // setCurrentSchoolId removed for single-tenant mode
-    const bid = pendingUserData.user.branchId || pendingUserData.user.branch?.id || '';
-    if (bid) setBranchId(bid);
-    setSelectedInstitutionType(resolvedInstitutionType);
-
-    onLoginSuccess(loginUserData, pendingUserData.token, pendingUserData.refreshToken);
-  };
-
-  const handleBackToLogin = () => {
-    setShowOTPVerification(false);
-    setPendingUserData(null);
-    setErrors({});
-  };
-
   const loginBackgroundColor = brandingSettings?.primaryColor || 'var(--brand-primary)';
 
   return (
@@ -429,16 +473,7 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
             </div>
           )}
 
-          {showOTPVerification && pendingUserData ? (
-            <OTPVerificationForm
-              email={pendingUserData.email}
-              phone={pendingUserData.phone}
-              onVerifySuccess={handleOTPVerifySuccess}
-              onBackToLogin={handleBackToLogin}
-              brandingSettings={brandingSettings}
-            />
-          ) : (
-            <>
+          <>
               <div className="text-center mb-6">
                 <h1 className="text-2xl font-semibold text-gray-900 leading-tight">
                   {brandingSettings?.welcomeTitle || 'Welcome Back!'}
@@ -449,7 +484,14 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
                   </p>
                 )}
               </div>
-              <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-5">
+              <form
+                onSubmit={phoneOtpStep === 'request'
+                  ? handlePhoneOtpRequest
+                  : phonePasswordFallback
+                    ? handlePhonePasswordLogin
+                    : handlePhoneOtpVerify}
+                className="space-y-3.5 sm:space-y-5"
+              >
               {/* Demo pills commented out as requested 
               <div className="flex flex-wrap gap-2 justify-center mb-2 pb-4 border-b border-gray-100">
                 {DEMO_ACCOUNTS.map(acc => (
@@ -478,102 +520,134 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
               </div>
               */}
 
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-gray-700 font-medium ml-1">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  className={cn(
-                    "h-12 border-gray-200 focus:border-brand-purple focus:ring-brand-purple/20",
-                    errors.email && "border-red-500 bg-red-50"
-                  )}
-                  placeholder="you@school.com"
-                  autoComplete="email"
-                />
-                {errors.email && <p className="text-red-600 text-[10px] font-medium uppercase ml-1">{errors.email}</p>}
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between ml-1">
-                  <Label htmlFor="password" className="text-gray-700 font-medium">Password</Label>
-                  <button
-                    type="button"
-                    onClick={onSwitchToForgotPassword}
-                    className="text-[10px] text-brand-purple hover:underline font-medium"
-                  >
-                    Forgot?
-                  </button>
-                </div>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    name="password"
-                    value={formData.password}
-                    onChange={handleChange}
-                    className={cn(
-                      "h-12 pr-12 border-gray-200 focus:border-brand-purple focus:ring-brand-purple/20",
-                      errors.password && "border-red-500 bg-red-50"
-                    )}
-                    placeholder="••••••••"
-                    autoComplete="current-password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand-purple transition-colors"
-                  >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-                {errors.password && <p className="text-red-600 text-[10px] font-medium uppercase ml-1">{errors.password}</p>}
-              </div>
-
-              <div className="pt-1 sm:pt-2">
-                <label className="flex items-center gap-3 group cursor-pointer">
-                  <Checkbox
-                    name="rememberMe"
-                    checked={formData.rememberMe}
-                    onChange={handleChange}
-                    className="w-4 h-4 rounded border-gray-300 text-brand-purple focus:ring-brand-purple accent-brand-purple cursor-pointer transition-transform group-active:scale-90"
-                  />
-                  <span className="text-sm text-gray-600 font-medium transition-colors group-hover:text-gray-950">Remember me</span>
-                </label>
-              </div>
-
-              <Button
-                type="submit"
-                disabled={isLoading}
-                className="w-full h-10 sm:h-12 text-sm font-medium shadow-xl transition-all duration-300 transform active:scale-95 bg-brand-purple hover:bg-brand-purple/90"
-              >
-                {isLoading ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Signing in...</span>
+                  <div className="space-y-2">
+                    <Label htmlFor="login-phone" className="text-gray-700 font-medium ml-1">Phone number</Label>
+                    <Input
+                      id="login-phone"
+                      type="tel"
+                      name="phone"
+                      value={phoneOtp.phone}
+                      onChange={handlePhoneOtpChange}
+                      className={cn(
+                        "h-12 border-gray-200 focus:border-brand-purple focus:ring-brand-purple/20",
+                        errors.phone && "border-red-500 bg-red-50"
+                      )}
+                      placeholder="0712 345 678"
+                      autoComplete="tel"
+                      inputMode="tel"
+                      disabled={phoneOtpStep === 'verify' && isPhoneOtpLoading && !phonePasswordFallback}
+                    />
+                    {errors.phone && <p className="text-red-600 text-[10px] font-medium uppercase ml-1">{errors.phone}</p>}
                   </div>
-                ) : (
-                  'Sign In'
-                )}
-              </Button>
 
-              <div className="pt-4 sm:pt-6 border-t border-gray-100 text-center">
-                <p className="text-xs text-gray-500 font-medium">
-                  New?{' '}
-                  <button
-                    type="button"
-                    onClick={onSwitchToRegister}
-                    className="text-brand-purple hover:underline font-medium ml-1"
+                  {phoneOtpStep === 'verify' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between ml-1">
+                        <Label htmlFor="parent-phone-code" className="text-gray-700 font-medium">Code</Label>
+                        <button
+                          type="button"
+                          onClick={handlePhoneOtpRequest}
+                          disabled={isPhoneOtpLoading || phoneOtpCooldown > 0}
+                          className="inline-flex items-center gap-1 text-[10px] text-brand-purple hover:underline font-medium disabled:text-gray-400 disabled:no-underline"
+                        >
+                          <RotateCw size={11} />
+                          {phoneOtpCooldown > 0 ? `${phoneOtpCooldown}s` : 'Resend'}
+                        </button>
+                      </div>
+                      <Input
+                        id="parent-phone-code"
+                        type="text"
+                        name="code"
+                        value={phoneOtp.code}
+                        onChange={handlePhoneOtpChange}
+                        className={cn(
+                          "h-12 border-gray-200 text-center text-lg font-semibold tracking-[0.35em] focus:border-brand-purple focus:ring-brand-purple/20",
+                          errors.code && "border-red-500 bg-red-50"
+                        )}
+                        placeholder="000000"
+                        autoComplete="one-time-code"
+                        inputMode="numeric"
+                      />
+                      {errors.code && <p className="text-red-600 text-[10px] font-medium uppercase ml-1">{errors.code}</p>}
+                    </div>
+                  )}
+
+                  {phoneOtpStep === 'verify' && (
+                    <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2">
+                      <button
+                        type="button"
+                        onClick={() => setPhonePasswordFallback(prev => !prev)}
+                        className="text-xs font-semibold text-brand-purple hover:underline"
+                      >
+                        {phonePasswordFallback ? 'Use code' : 'Use password'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onSwitchToForgotPassword}
+                        className="text-[10px] text-gray-500 hover:text-brand-purple hover:underline font-medium"
+                      >
+                        Forgot?
+                      </button>
+                    </div>
+                  )}
+
+                  {phonePasswordFallback && (
+                    <div className="space-y-2">
+                      <Label htmlFor="phone-password" className="text-gray-700 font-medium">Password</Label>
+                      <div className="relative">
+                        <Input
+                          id="phone-password"
+                          type={showPassword ? 'text' : 'password'}
+                          name="password"
+                          value={formData.password}
+                          onChange={handleChange}
+                          className={cn(
+                            "h-12 pr-12 border-gray-200 focus:border-brand-purple focus:ring-brand-purple/20",
+                            errors.password && "border-red-500 bg-red-50"
+                          )}
+                          placeholder="••••••••"
+                          autoComplete="current-password"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand-purple transition-colors"
+                        >
+                          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                      {errors.password && <p className="text-red-600 text-[10px] font-medium uppercase ml-1">{errors.password}</p>}
+                    </div>
+                  )}
+
+                  <div className="pt-1 sm:pt-2">
+                    <label className="flex items-center gap-3 group cursor-pointer">
+                      <Checkbox
+                        name="rememberMe"
+                        checked={formData.rememberMe}
+                        onChange={handleChange}
+                        className="w-4 h-4 rounded border-gray-300 text-brand-purple focus:ring-brand-purple accent-brand-purple cursor-pointer transition-transform group-active:scale-90"
+                      />
+                      <span className="text-sm text-gray-600 font-medium transition-colors group-hover:text-gray-950">Remember me</span>
+                    </label>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    disabled={isPhoneOtpLoading}
+                    className="w-full h-10 sm:h-12 text-sm font-medium shadow-xl transition-all duration-300 transform active:scale-95 bg-brand-purple hover:bg-brand-purple/90"
                   >
-                    Create account
-                  </button>
-                </p>
-              </div>
+                    {isPhoneOtpLoading ? (
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>{phoneOtpStep === 'request' ? 'Sending...' : phonePasswordFallback ? 'Signing in...' : 'Verifying...'}</span>
+                      </div>
+                    ) : (
+                      phoneOtpStep === 'request' ? 'Send Code' : phonePasswordFallback ? 'Sign In' : 'Verify & Sign In'
+                    )}
+                  </Button>
             </form>
             </>
-          )}
         </CardContent>
       </Card>
 

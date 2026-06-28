@@ -13,6 +13,7 @@ import { feeService } from '../services/fee.service';
 import { SmsService } from '../services/sms.service';
 import { EmailService } from '../services/email.service';
 import { parentService } from '../services/parent.service';
+import { parentAccessService } from '../services/parent-access.service';
 import { ensureStudentAccountForLearner } from '../services/studentAccount.service';
 import { auditService } from '../services/audit.service';
 import { v2 as cloudinary } from 'cloudinary';
@@ -59,7 +60,9 @@ export class LearnerController {
 
     let whereClause: any = { archived: false, institutionType };
     whereClause = applyInstitutionGradeScope(institutionType, whereClause);
-    if (currentUserRole === 'PARENT') whereClause.parentId = currentUserId;
+    if (currentUserRole === 'PARENT') {
+      whereClause.id = { in: await parentAccessService.getAccessibleLearnerIds(currentUserId) };
+    }
     if (grade) whereClause.grade = String(grade);
     if (stream) whereClause.stream = String(stream);
     if (status) whereClause.status = String(status).toUpperCase() as LearnerStatus;
@@ -167,7 +170,7 @@ export class LearnerController {
     });
     if (!learner) throw new ApiError(404, 'Learner not found');
     if (learner.institutionType !== institutionType) throw new ApiError(404, 'Learner not found');
-    if (req.user!.role === 'PARENT' && learner.parentId !== req.user!.userId) {
+    if (req.user!.role === 'PARENT' && !(await parentAccessService.canAccessLearner(req.user!.userId, id))) {
       throw new ApiError(403, 'You can only access your own children');
     }
     res.json({ success: true, data: learner });
@@ -391,7 +394,7 @@ export class LearnerController {
       // ── Parent guard: parents can only update their own children,
       //    and only the display name + photo fields.
       if (callerRole === 'PARENT') {
-        if (learner.parentId !== callerId) {
+        if (!(await parentAccessService.canAccessLearner(callerId, id))) {
           throw new ApiError(403, 'You can only update your own child\'s profile');
         }
         const { firstName, lastName, photo } = req.body;
@@ -672,7 +675,7 @@ export class LearnerController {
       throw new ApiError(404, 'Learner not found');
     }
 
-    if (learner.parentId !== parentId) {
+    if (!(await parentAccessService.canAccessLearner(parentId, id))) {
       throw new ApiError(403, 'You can only update your own child\'s profile');
     }
 

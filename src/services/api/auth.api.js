@@ -77,6 +77,30 @@ export const authAPI = {
     }
   },
 
+  requestPhoneOtp: async (data) => {
+    try {
+      const response = await axiosInstance.post('/auth/phone-otp/request', data);
+      return response.data;
+    } catch (error) {
+      if (error.response?.data) {
+        throw new Error(extractApiErrorMessage(error.response.data, error.response.status));
+      }
+      throw error;
+    }
+  },
+
+  verifyPhoneOtp: async (data) => {
+    try {
+      const response = await axiosInstance.post('/auth/phone-otp/verify', data);
+      return response.data;
+    } catch (error) {
+      if (error.response?.data) {
+        throw new Error(extractApiErrorMessage(error.response.data, error.response.status));
+      }
+      throw error;
+    }
+  },
+
   getCsrf: async () => {
     const response = await axiosInstance.get('/auth/csrf');
     return response.data;

@@ -10,6 +10,7 @@ import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
 import { AuthRequest } from '../middleware/permissions.middleware';
 import { AttendanceStatus } from '@prisma/client';
+import { parentAccessService } from '../services/parent-access.service';
 
 export class AttendanceController {
   private async getTeacherAssignedClassIds(userId: string): Promise<string[]> {
@@ -466,10 +467,7 @@ export class AttendanceController {
 
     // Check permissions
     if (currentUserRole === 'PARENT') {
-      const learner = await prisma.learner.findUnique({
-        where: { id: learnerId },
-      });
-      if (!learner || learner.parentId !== currentUserId) {
+      if (!(await parentAccessService.canAccessLearner(currentUserId, learnerId))) {
         throw new ApiError(403, 'You can only access your own children\'s attendance');
       }
     }
