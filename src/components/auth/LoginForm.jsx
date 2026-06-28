@@ -668,11 +668,11 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
         <div
           className="relative z-10 flex min-h-[100dvh] flex-col px-6"
           style={{
-            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2.75rem)',
+            paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.5rem)',
             paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.25rem)',
           }}
         >
-          <div className="flex flex-1 flex-col items-start justify-center w-full max-w-[18.5rem] mx-auto">
+          <div className="flex flex-1 flex-col items-start justify-start pt-16 w-full max-w-[18.5rem] mx-auto">
             {/* Logo — 15% larger than before (11rem * 1.15 = 12.65rem) */}
             <img
               src={MOBILE_SPLASH_ASSETS.logo}
