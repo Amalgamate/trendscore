@@ -11,12 +11,7 @@ import {
 } from 'lucide-react';
 import { dashboardAPI } from '../../../../services/api';
 import ParentChildProfile from '../parent/ParentChildProfile';
-
-// ─── Skeleton ──────────────────────────────────────────────────────────────────
-
-function Skeleton({ className = '' }) {
-  return <div className={`animate-pulse rounded-lg bg-gray-100 ${className}`} />;
-}
+import { Skeleton } from '../../../ui';
 
 const getChildPhoto = (child) => child?.photoUrl || child?.profilePicture || child?.photo || child?.imageUrl || null;
 

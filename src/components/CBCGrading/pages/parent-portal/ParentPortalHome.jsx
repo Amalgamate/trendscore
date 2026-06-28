@@ -14,13 +14,10 @@ import { dashboardAPI } from '../../../../services/api';
 import ParentChildProfile from '../parent/ParentChildProfile';
 import MobilePortalAppBar from '../../layout/MobilePortalAppBar';
 import EditStudentModal from '../parent/EditStudentModal';
+import { Skeleton } from '../../../ui';
 
 const fmt    = (n) => Number(n || 0).toLocaleString();
 const fmtPct = (n) => `${Math.round(Number(n || 0))}%`;
-
-function Skeleton({ className = '' }) {
-  return <div className={`animate-pulse rounded-lg bg-gray-200 ${className}`} />;
-}
 
 const getChildPhoto = (child) => child?.photoUrl || child?.profilePicture || child?.photo || child?.imageUrl || null;
 

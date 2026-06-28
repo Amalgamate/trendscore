@@ -13,12 +13,9 @@ import {
   ShieldCheck, TrendingUp, AlertTriangle,
 } from 'lucide-react';
 import { dashboardAPI, attendanceAPI } from '../../../../services/api';
+import { Skeleton } from '../../../ui';
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '—';
-
-function Skeleton({ className = '' }) {
-  return <div className={`animate-pulse rounded-lg bg-gray-100 ${className}`} />;
-}
 
 const getChildPhoto = (child) => child?.photoUrl || child?.profilePicture || child?.photo || child?.imageUrl || null;
 

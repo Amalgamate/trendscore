@@ -15,12 +15,9 @@ import {
   Users,
 } from 'lucide-react';
 import { dashboardAPI } from '../../../../services/api';
+import { Skeleton } from '../../../ui';
 
 const fmt    = (n) => Number(n || 0).toLocaleString();
-
-function Skeleton({ className = '' }) {
-  return <div className={`animate-pulse rounded-lg bg-gray-100 ${className}`} />;
-}
 
 const getChildPhoto = (child) => child?.photoUrl || child?.profilePicture || child?.photo || child?.imageUrl || null;
 

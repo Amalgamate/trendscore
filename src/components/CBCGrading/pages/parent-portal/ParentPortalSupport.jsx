@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { supportAPI } from '../../../../services/supportApi';
 import { PRODUCT_SUPPORT_EMAIL } from '../../../../config/productIdentity';
+import { Skeleton } from '../../../ui';
 
 // ─── Parent FAQ content ─────────────────────────────────────────────────────
 
@@ -61,10 +62,6 @@ const STATUS_STYLES = {
 function fmtDateTime(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-}
-
-function Skeleton({ className = '' }) {
-  return <div className={`animate-pulse rounded-lg bg-gray-100 ${className}`} />;
 }
 
 // ─── FAQ Accordion Item ─────────────────────────────────────────────────────

@@ -19,6 +19,7 @@ import { authAPI, schoolAPI } from '../../services/api';
 import { setBranchId, setSelectedInstitutionType } from '../../services/schoolContext';
 import OTPVerificationForm from './OTPVerificationForm';
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Card, CardContent, CardHeader } from "../ui/card";
@@ -533,8 +534,7 @@ export default function LoginForm({ onSwitchToRegister, onSwitchToForgotPassword
 
               <div className="pt-1 sm:pt-2">
                 <label className="flex items-center gap-3 group cursor-pointer">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     name="rememberMe"
                     checked={formData.rememberMe}
                     onChange={handleChange}

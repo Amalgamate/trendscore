@@ -7,6 +7,7 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
+import { Checkbox } from '../ui/checkbox';
 import {
   MOBILE_CONSENT_STORAGE_KEY,
   MOBILE_ONBOARDING_POLICY_VERSION,
@@ -207,13 +208,14 @@ function ConsentContent({ accepted, setAccepted, onViewPolicy }) {
 
       {/* Checkbox */}
       <label className="mt-8 flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left shadow-sm">
-        <input
-          type="checkbox"
-          checked={accepted}
-          required
-          onChange={(e) => setAccepted(e.target.checked)}
-          className="mt-0.5 h-5 w-5 shrink-0 rounded border-slate-300 accent-orange-500 focus:ring-orange-400"
-        />
+        <span className="mt-0.5">
+          <Checkbox
+            checked={accepted}
+            required
+            onChange={(e) => setAccepted(e.target.checked)}
+            className="h-5 w-5 shrink-0 rounded border-slate-300 focus:ring-orange-400 checked:border-orange-500 checked:bg-orange-500"
+          />
+        </span>
         <span className="text-sm font-semibold leading-6 text-slate-700">
           I agree to the Terms of Use, Privacy Policy and Data Protection Policy.
         </span>

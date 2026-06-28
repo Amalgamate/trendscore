@@ -10,6 +10,7 @@ import {
   File, FileSpreadsheet, Image as ImageIcon, X,
 } from 'lucide-react';
 import { documentsAPI } from '../../../../services/api';
+import { Skeleton } from '../../../ui';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -40,10 +41,6 @@ function formatCategoryLabel(cat) {
     .split(/[-_]/)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
-}
-
-function Skeleton({ className = '' }) {
-  return <div className={`animate-pulse rounded-lg bg-gray-100 ${className}`} />;
 }
 
 // ─── Document Card ──────────────────────────────────────────────────────────
