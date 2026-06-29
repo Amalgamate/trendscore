@@ -26,6 +26,7 @@ describe('appAccess', () => {
     expect(hasAppAccess(user, 'inventory')).toBe(true);
     expect(hasPageAccess(user, 'learners-list')).toBe(true);
     expect(hasPageAccess(user, 'attendance-daily')).toBe(true);
+    expect(hasPageAccess(user, 'attendance-configuration')).toBe(true);
     expect(hasPageAccess(user, 'inventory-items')).toBe(true);
     expect(hasPageAccess(user, 'assess-summative-report')).toBe(true);
   });

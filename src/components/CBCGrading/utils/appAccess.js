@@ -20,6 +20,7 @@ const PAGE_APP_REQUIREMENTS = {
 
   'attendance-daily': 'attendance',
   'attendance-reports': 'attendance',
+  'attendance-configuration': 'attendance',
 
   'assess-mobile-dashboard': 'gradebook',
   'assess-formative': 'gradebook',

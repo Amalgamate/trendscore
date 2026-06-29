@@ -172,6 +172,7 @@ export const PAGE_TITLES = {
   // Attendance
   'attendance-daily': 'Daily Attendance',
   'attendance-reports': 'Attendance Reports',
+  'attendance-configuration': 'Attendance Configuration',
 
   // Messages
   'comm-notices': 'Notices & Announcements',
