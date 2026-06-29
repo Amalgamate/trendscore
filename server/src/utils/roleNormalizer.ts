@@ -18,6 +18,7 @@ import type { Role } from '../config/permissions';
 // Values are the canonical Role strings defined in config/permissions.ts.
 
 export const ROLE_ALIAS_MAP: Readonly<Record<string, string>> = {
+  SYSTEM_ADMIN:          'SUPER_ADMIN',
   SYSTEM_ADMINISTRATOR: 'SUPER_ADMIN',
   SUPERADMIN:           'SUPER_ADMIN',
   HEADTEACHER:          'HEAD_TEACHER',

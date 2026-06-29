@@ -116,7 +116,7 @@ router.use('/planner', requireApp('planner'), plannerRoutes);
 router.use('/duty-rosters', requireApp('planner'), dutyRosterRoutes);
 router.use('/schemes', requireApp('curriculum'), schemeOfWorkRoutes);
 router.use('/backup', backupRoutes);
-router.use('/hr', requireApp('staff-hr'), hrRoutes);
+router.use('/hr', hrRoutes);
 router.use('/accounting', requireApp('accounting'), accountingRoutes);
 router.use('/finance', requireApp('fee-management'), financeRoutes);
 router.use('/inventory', requireApp('inventory'), inventoryRoutes);

@@ -1,15 +1,17 @@
 /**
  * Frontend Permissions Configuration
  * Mirror of backend permissions for UI access control
- * 
+ *
  * @module config/permissions
  */
+
+const SYSTEM_ADMIN_ROLES = ['SUPER_ADMIN', 'SYSTEM_ADMIN', 'SYSTEM_ADMINISTRATOR'];
 
 export const PERMISSIONS = {
   // ============================================
   // USER MANAGEMENT
   // ============================================
-  CREATE_ADMIN: ['SUPER_ADMIN'],
+  CREATE_ADMIN: SYSTEM_ADMIN_ROLES,
   CREATE_TEACHER: ['SUPER_ADMIN', 'ADMIN'],
   CREATE_PARENT: ['SUPER_ADMIN', 'ADMIN'],
   CREATE_ACCOUNTANT: ['SUPER_ADMIN', 'ADMIN'],
@@ -58,17 +60,17 @@ export const PERMISSIONS = {
   // ============================================
   // SETTINGS
   // ============================================
-  SYSTEM_SETTINGS: ['SUPER_ADMIN'],
-  SCHOOL_SETTINGS: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
-  ACADEMIC_SETTINGS: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
-  GRADING_SYSTEM: ['SUPER_ADMIN', 'ADMIN'],
+  SYSTEM_SETTINGS: SYSTEM_ADMIN_ROLES,
+  SCHOOL_SETTINGS: [...SYSTEM_ADMIN_ROLES, 'ADMIN', 'HEAD_TEACHER'],
+  ACADEMIC_SETTINGS: [...SYSTEM_ADMIN_ROLES, 'ADMIN', 'HEAD_TEACHER'],
+  GRADING_SYSTEM: [...SYSTEM_ADMIN_ROLES, 'ADMIN'],
   TERMS_AND_STREAMS: ['SUPER_ADMIN', 'ADMIN'],
-  BRANDING_SETTINGS: ['SUPER_ADMIN'],
-  BACKUP_SETTINGS: ['SUPER_ADMIN'],
-  USER_ROLES_SETTINGS: ['SUPER_ADMIN'],
-  VIEW_ACADEMIC_SETTINGS: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'],
-  MANAGE_LEARNING_AREAS: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'], // Head teacher can manage learning areas
-  MANAGE_FACILITIES: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'], // Head teacher can manage classes and facilities
+  BRANDING_SETTINGS: SYSTEM_ADMIN_ROLES,
+  BACKUP_SETTINGS: SYSTEM_ADMIN_ROLES,
+  USER_ROLES_SETTINGS: SYSTEM_ADMIN_ROLES,
+  VIEW_ACADEMIC_SETTINGS: [...SYSTEM_ADMIN_ROLES, 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'],
+  MANAGE_LEARNING_AREAS: [...SYSTEM_ADMIN_ROLES, 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'], // Head teacher can manage learning areas
+  MANAGE_FACILITIES: [...SYSTEM_ADMIN_ROLES, 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'], // Head teacher can manage classes and facilities
 
   // ============================================
   // COMMUNICATIONS
@@ -77,7 +79,7 @@ export const PERMISSIONS = {
   SEND_MESSAGES: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER', 'ACCOUNTANT'],
   VIEW_INBOX: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER', 'PARENT', 'ACCOUNTANT', 'RECEPTIONIST'],
   DELETE_OWN_MESSAGES: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER', 'PARENT', 'ACCOUNTANT', 'RECEPTIONIST'],
-  DELETE_ANY_MESSAGE: ['SUPER_ADMIN'],
+  DELETE_ANY_MESSAGE: SYSTEM_ADMIN_ROLES,
 
   // ============================================
   // FINANCE / FEE MANAGEMENT
@@ -147,13 +149,13 @@ export const PERMISSIONS = {
   MANAGE_BIOMETRIC_DEVICES: ['SUPER_ADMIN', 'ADMIN'],
   ENROLL_FINGERPRINTS: ['SUPER_ADMIN', 'ADMIN'],
   VIEW_BIOMETRIC_LOGS: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
-  CONFIGURE_BIOMETRIC_API: ['SUPER_ADMIN'],
+  CONFIGURE_BIOMETRIC_API: SYSTEM_ADMIN_ROLES,
 
   // ============================================
   // AUDIT & LOGS
   // ============================================
-  VIEW_AUDIT_LOGS: ['SUPER_ADMIN'],
-  VIEW_SYSTEM_LOGS: ['SUPER_ADMIN'],
+  VIEW_AUDIT_LOGS: SYSTEM_ADMIN_ROLES,
+  VIEW_SYSTEM_LOGS: SYSTEM_ADMIN_ROLES,
   VIEW_USER_ACTIVITY: ['SUPER_ADMIN', 'ADMIN'],
 
   // ============================================
@@ -180,6 +182,8 @@ export const PERMISSIONS = {
  */
 export const ROLES = {
   SUPER_ADMIN: 'SUPER_ADMIN',
+  SYSTEM_ADMIN: 'SYSTEM_ADMIN',
+  SYSTEM_ADMINISTRATOR: 'SYSTEM_ADMINISTRATOR',
   ADMIN: 'ADMIN',
   HEAD_TEACHER: 'HEAD_TEACHER',
   TEACHER: 'TEACHER',
@@ -195,6 +199,8 @@ export const ROLES = {
  */
 export const ROLE_NAMES = {
   SUPER_ADMIN: 'Super Admin',
+  SYSTEM_ADMIN: 'System Admin',
+  SYSTEM_ADMINISTRATOR: 'System Administrator',
   ADMIN: 'Admin',
   HEAD_TEACHER: 'Head Teacher',
   TEACHER: 'Teacher',
@@ -211,6 +217,8 @@ export const ROLE_NAMES = {
  */
 export const ROLE_HIERARCHY = {
   SUPER_ADMIN: 7,
+  SYSTEM_ADMIN: 7,
+  SYSTEM_ADMINISTRATOR: 7,
   ADMIN: 6,
   HEAD_TEACHER: 5,
   HEAD_OF_CURRICULUM: 5,

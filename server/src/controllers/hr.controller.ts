@@ -3,6 +3,7 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import { hrService } from '../services/hr.service';
 import { ApiError } from '../utils/error.util';
 import { SmsService } from '../services/sms.service';
+import { getIpAddress } from '../utils/security-logging.util';
 
 import logger from '../utils/logger';
 export class HRController {
@@ -28,7 +29,7 @@ export class HRController {
             const userId = req.user?.userId;
             if (!userId) throw new ApiError(401, 'Unauthorized');
             const result = await hrService.clockInStaff(userId, req.body || {}, {
-                ipAddress: req.ip,
+                ipAddress: getIpAddress(req),
                 userAgent: req.get('user-agent')
             });
             res.status(201).json({ success: true, message: 'Clock-in recorded', data: result });
@@ -59,7 +60,7 @@ export class HRController {
             const userId = req.user?.userId;
             if (!userId) throw new ApiError(401, 'Unauthorized');
             const result = await hrService.clockOutStaff(userId, req.body || {}, {
-                ipAddress: req.ip,
+                ipAddress: getIpAddress(req),
                 userAgent: req.get('user-agent')
             });
             res.status(200).json({ success: true, message: 'Clock-out recorded', data: result });
