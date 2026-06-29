@@ -7,7 +7,10 @@ export default function OTPVerificationForm({
   phone,
   onVerifySuccess,
   onBackToLogin,
-  brandingSettings
+  brandingSettings,
+  // optional flags from server/login flow
+  smsConfigured, // boolean | undefined
+  autofillAllowed, // boolean | undefined
 }) {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
@@ -39,7 +42,12 @@ export default function OTPVerificationForm({
 
   // ── Web OTP API — Android SMS autofill ─────────────────────────────────────
   useEffect(() => {
+    // If OTPCredential isn't available, do nothing
     if (!('OTPCredential' in window)) return;
+
+    // If caller explicitly disabled autofill, skip starting the Web OTP listener
+    if (autofillAllowed === false) return;
+
     const controller = new AbortController();
 
     navigator.credentials
@@ -53,7 +61,7 @@ export default function OTPVerificationForm({
 
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [autofillAllowed]);
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
   const fillOtp = (code) => {
@@ -185,6 +193,12 @@ export default function OTPVerificationForm({
             Enter the 6-digit code sent to <span className="font-semibold">{phone}</span>
           </p>
         </div>
+
+        {smsConfigured === false && autofillAllowed === false && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+            <p className="text-sm text-yellow-800 font-medium">SMS Not Configured. Contact Admin.</p>
+          </div>
+        )}
       </div>
 
       {/* OTP Input */}
