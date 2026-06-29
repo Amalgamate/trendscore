@@ -170,6 +170,44 @@ describe('AuthPhoneOtpService', () => {
     });
   });
 
+  it('returns a clear SMS unavailable error message when SMS is not configured', async () => {
+    mockedPrisma.user.findFirst.mockResolvedValue({ id: 'parent-1' });
+    mockedPrisma.authOtpChallenge.findFirst.mockResolvedValue(null);
+    mockedPrisma.authOtpChallenge.create.mockResolvedValue({
+      id: 'challenge-sms-missing',
+      expiresAt: new Date('2026-06-28T12:10:00.000Z'),
+    });
+    mockedPrisma.authOtpChallenge.update.mockResolvedValue({});
+    mockedSms.isAvailable.mockResolvedValue(false);
+
+    const result = await service.requestParentOtp({ phone: '0712345678' });
+
+    expect(result.smsConfigured).toBe(false);
+    expect(result.autofillAllowed).toBe(false);
+    expect(result.message).toBe('SMS Not Configured. Contact Admin.');
+    expect(result.devOtp).toBeUndefined();
+  });
+
+  it('does not expose devOtp in production for normal users', async () => {
+    process.env.NODE_ENV = 'production';
+    mockedPrisma.user.findFirst.mockResolvedValue({ id: 'parent-1' });
+    mockedPrisma.authOtpChallenge.findFirst.mockResolvedValue(null);
+    mockedPrisma.authOtpChallenge.create.mockResolvedValue({
+      id: 'challenge-prod',
+      expiresAt: new Date('2026-06-28T12:10:00.000Z'),
+    });
+    mockedPrisma.authOtpChallenge.update.mockResolvedValue({});
+    mockedSms.isAvailable.mockResolvedValue(true);
+
+    const result = await service.requestParentOtp({ phone: '0712345678' });
+
+    expect(result.autofillAllowed).toBe(false);
+    expect(result.devOtp).toBeUndefined();
+    expect(result.smsConfigured).toBe(true);
+
+    process.env.NODE_ENV = 'test';
+  });
+
   it('uses the fixed setup OTP only for the configured super admin phone', async () => {
     mockedPrisma.user.findFirst.mockResolvedValue({ id: 'super-admin-1' });
     mockedPrisma.authOtpChallenge.findFirst.mockResolvedValue(null);

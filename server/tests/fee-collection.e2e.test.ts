@@ -4,6 +4,7 @@ jest.mock('../src/services/whatsapp.service', () => ({
   whatsappService: {
     sendFeeReminder: jest.fn(async () => ({ success: true })),
     sendMessage: jest.fn(async () => ({ success: true })),
+    sendFeePaymentNotification: jest.fn(async () => ({ success: true })),
     sendAssessmentNotification: jest.fn(async () => ({ success: true })),
     sendAnnouncement: jest.fn(async () => ({ success: true })),
     sendCustomMessage: jest.fn(async () => ({ success: true })),

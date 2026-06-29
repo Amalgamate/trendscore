@@ -151,9 +151,11 @@ export class AuthPhoneOtpService {
       if (!smsConfigured) {
         console.warn('[AuthPhoneOtpService] SMS requested but service is not configured.');
       } else {
-        SmsService.sendSms(normalized.e164, SMS_MESSAGES.otp(code, OTP_EXPIRY_MINUTES)).catch((error: any) => {
-          console.warn('[AuthPhoneOtpService] OTP SMS delivery failed:', error?.message || error);
-        });
+        Promise.resolve()
+          .then(() => SmsService.sendSms(normalized.e164, SMS_MESSAGES.otp(code, OTP_EXPIRY_MINUTES)))
+          .catch((error: any) => {
+            console.warn('[AuthPhoneOtpService] OTP SMS delivery failed:', error?.message || error);
+          });
       }
     }
 

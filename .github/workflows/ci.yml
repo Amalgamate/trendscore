@@ -60,4 +60,5 @@ jobs:
         env:
           JWT_SECRET: ci_dummy_jwt_secret_minimum_32_chars________
           JWT_REFRESH_SECRET: ci_dummy_refresh_secret_minimum_32_chars_
+          ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
         run: npm test

@@ -27,6 +27,7 @@ concurrency:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   validate:
@@ -108,6 +109,21 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate container images exist
+        run: |
+          set -euo pipefail
+          for image in ghcr.io/amalgamate/zawadi-frontend ghcr.io/amalgamate/zawadi-backend ghcr.io/amalgamate/zawadi-console; do
+            echo "Inspecting ${image}:${{ needs.validate.outputs.image_tag }}"
+            docker manifest inspect "${image}:${{ needs.validate.outputs.image_tag }}" >/dev/null
+          done
 
       - name: Upload deploy assets
         run: bash scripts/ci/sync-deploy-assets.sh
