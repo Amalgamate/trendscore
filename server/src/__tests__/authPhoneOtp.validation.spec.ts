@@ -1,6 +1,30 @@
-import { phoneOtpRequestSchema, phoneOtpVerifySchema } from '../utils/validation.util';
+import { loginSchema, phoneOtpRequestSchema, phoneOtpVerifySchema } from '../utils/validation.util';
 
 describe('phone OTP validation contracts', () => {
+  it('accepts password login payloads with email credentials', () => {
+    expect(loginSchema.parse({
+      email: 'USER@Example.com',
+      password: 'Test123!',
+    })).toEqual({
+      email: 'user@example.com',
+      password: 'Test123!',
+    });
+  });
+
+  it('accepts password login payloads with phone credentials', () => {
+    expect(loginSchema.parse({
+      phone: '0712345678',
+      password: 'Test123!',
+    })).toEqual({
+      phone: '0712345678',
+      password: 'Test123!',
+    });
+  });
+
+  it('rejects password login payloads without email or phone credentials', () => {
+    expect(() => loginSchema.parse({ password: 'Test123!' })).toThrow();
+  });
+
   it('accepts request payloads with a phone number', () => {
     expect(phoneOtpRequestSchema.parse({ phone: '0712345678' })).toEqual({ phone: '0712345678' });
   });

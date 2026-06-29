@@ -102,6 +102,7 @@ export class AuthController {
 
   async login(req: Request, res: Response) {
     const result = await authLoginService.loginWithPassword({
+      email: req.body.email,
       phone: req.body.phone,
       password: req.body.password,
       requestSchool: (req as any).school || null,
