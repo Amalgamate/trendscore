@@ -462,7 +462,7 @@ export class SmsService {
             if (msApiKey) return true;
 
             return false;
-        } catch (err) {
+        } catch (err: any) {
             console.error('[SmsService.isAvailable] Error checking SMS availability:', err?.message || err);
             return false;
         }
