@@ -192,6 +192,26 @@ const PARENT_PORTAL_PERMISSIONS = new Set([
 
 export const normalizeRole = (role) => String(role || '').trim().toUpperCase();
 
+const isSuperAdmin = (user) => {
+  const roles = Array.isArray(user?.roles) ? user.roles.map(normalizeRole) : [];
+  return normalizeRole(user?.role) === 'SUPER_ADMIN' || roles.includes('SUPER_ADMIN');
+};
+
+const SETTINGS_PAGES = new Set([
+  'settings-school',
+  'settings-branding',
+  'settings-modules',
+  'settings-academic',
+  'settings-users',
+  'settings-approvals',
+  'settings-system-logs',
+  'settings-system-control',
+  'settings-communication',
+  'settings-payment',
+  'settings-profile',
+  'system-maintenance',
+]);
+
 export const userHasParentPortalAccess = (user) => {
   if (normalizeRole(user?.role) === 'PARENT') return true;
   const roles = Array.isArray(user?.roles) ? user.roles.map(normalizeRole) : [];
@@ -251,6 +271,7 @@ const TERTIARY_ONLY_PAGES = new Set([
 const INSTITUTION_AGNOSTIC_PAGES = new Set([
   'dashboard',
   'help',
+  'settings-academic',
   'settings-school',
   'settings-modules',
   'settings-users',
@@ -301,6 +322,10 @@ export const hasPageAccess = (user, page) => {
 
   if (!isInstitutionPageAllowed(user?.institutionType, normalizedPage)) {
     return false;
+  }
+
+  if (isSuperAdmin(user) && SETTINGS_PAGES.has(normalizedPage)) {
+    return true;
   }
 
   return hasAppAccess(user, getRequiredAppForPage(normalizedPage));

@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { userAPI, learnerAPI } from '../../../../services/api';
 import { getStoredUser } from '../../../../services/schoolContext';
-import { PERMISSIONS } from '../../../../config/permissions';
+import { PERMISSIONS, ROLE_NAMES } from '../../../../config/permissions';
 import ResetPasswordModal from '../../shared/ResetPasswordModal';
 
 // Real API is imported from services/api.js
@@ -18,7 +18,7 @@ import ResetPasswordModal from '../../shared/ResetPasswordModal';
 const ROLES_CONFIG = [
   {
     value: 'SUPER_ADMIN',
-    label: 'Super Admin',
+    label: ROLE_NAMES.SUPER_ADMIN,
     color: 'red',
     permissions: {
       users: { view: true, create: true, edit: true, delete: true },
@@ -32,7 +32,7 @@ const ROLES_CONFIG = [
   },
   {
     value: 'ADMIN',
-    label: 'Admin',
+    label: ROLE_NAMES.ADMIN,
     color: 'purple',
     permissions: {
       users: { view: true, create: true, edit: true, delete: false },
@@ -156,7 +156,7 @@ const ROLE_ACCESS_STORAGE_KEY = 'trendscore.roleAccessOverrides.v1';
 
 const ROLE_META = {
   SUPER_ADMIN: {
-    title: 'Administrator',
+    title: ROLE_NAMES.SUPER_ADMIN,
     description: 'Full system access and control',
     detail: 'Full system access and control. Can manage all modules and settings.',
     tone: 'purple',
@@ -164,7 +164,7 @@ const ROLE_META = {
     created: 'Jan 10, 2024',
   },
   ADMIN: {
-    title: 'Administrator',
+    title: ROLE_NAMES.ADMIN,
     description: 'Manage users, learners, finance and reports',
     detail: 'Operational administration access across users, students, reports and finance.',
     tone: 'purple',

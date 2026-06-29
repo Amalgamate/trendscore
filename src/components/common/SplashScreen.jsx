@@ -78,14 +78,12 @@ const SplashScreen = ({ onReady }) => {
             <text x="150" y="196" textAnchor="middle" dominantBaseline="middle" fontSize="10" fontWeight="500" fill="#f97316" fontFamily="system-ui, sans-serif">S</text>
             <text x="194" y="150" textAnchor="middle" dominantBaseline="middle" fontSize="10" fontWeight="500" fill="#f97316" fontFamily="system-ui, sans-serif">E</text>
             <text x="106" y="150" textAnchor="middle" dominantBaseline="middle" fontSize="10" fontWeight="500" fill="#f97316" fontFamily="system-ui, sans-serif">W</text>
-            <circle cx="150" cy="150" r="28" fill="none" stroke="#f97316" strokeWidth="0.7" opacity="0.35" />
-            <circle cx="150" cy="150" r="4" fill="none" stroke="#f97316" strokeWidth="0.9" opacity="0.9" />
-            <polygon points="150,118 153,150 150,160 147,150" fill="none" stroke="#f97316" strokeWidth="1" strokeLinejoin="round" />
-            <polygon points="150,182 153,150 150,140 147,150" fill="none" stroke="#f97316" strokeWidth="0.7" strokeLinejoin="round" opacity="0.55" />
-            <line x1="150" y1="122" x2="150" y2="135" stroke="#f97316" strokeWidth="0.5" opacity="0.8" />
-            <line x1="150" y1="165" x2="150" y2="178" stroke="#f97316" strokeWidth="0.5" opacity="0.8" />
-            <line x1="122" y1="150" x2="135" y2="150" stroke="#f97316" strokeWidth="0.5" opacity="0.8" />
-            <line x1="165" y1="150" x2="178" y2="150" stroke="#f97316" strokeWidth="0.5" opacity="0.8" />
+            <circle cx="150" cy="150" r="34" fill="none" stroke="#ffffff" strokeWidth="0.9" opacity="0.45" />
+            <circle cx="150" cy="150" r="4" fill="#ffffff" opacity="0.95" />
+            <polygon points="150,88 158,150 150,172 142,150" fill="none" stroke="#ffffff" strokeWidth="1.6" strokeLinejoin="round" />
+            <polygon points="150,212 158,150 150,128 142,150" fill="none" stroke="#ffffff" strokeWidth="1.2" strokeLinejoin="round" opacity="0.75" />
+            <polygon points="212,150 150,158 128,150 150,142" fill="none" stroke="#ffffff" strokeWidth="1.2" strokeLinejoin="round" opacity="0.8" />
+            <polygon points="88,150 150,158 172,150 150,142" fill="none" stroke="#ffffff" strokeWidth="1.2" strokeLinejoin="round" opacity="0.8" />
           </svg>
         </div>
         <div className="splash-brand-name">Treads CORE</div>

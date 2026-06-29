@@ -1,17 +1,26 @@
+import {
+  ROLE_HIERARCHY,
+  ROLE_NAMES,
+  ROLES,
+  SUPER_ADMIN_ROLES,
+} from '../../server/src/config/roleDefinitions';
+
 /**
  * Frontend Permissions Configuration
- * Mirror of backend permissions for UI access control
+ * Mirrors backend permissions for UI access control.
+ *
+ * Canonical role values come from server/src/config/roleDefinitions.ts.
+ * Legacy aliases such as SYSTEM_ADMINISTRATOR are normalized on the backend
+ * token path but are not assignable application roles.
  *
  * @module config/permissions
  */
-
-const SYSTEM_ADMIN_ROLES = ['SUPER_ADMIN', 'SYSTEM_ADMIN', 'SYSTEM_ADMINISTRATOR'];
 
 export const PERMISSIONS = {
   // ============================================
   // USER MANAGEMENT
   // ============================================
-  CREATE_ADMIN: SYSTEM_ADMIN_ROLES,
+  CREATE_ADMIN: SUPER_ADMIN_ROLES,
   CREATE_TEACHER: ['SUPER_ADMIN', 'ADMIN'],
   CREATE_PARENT: ['SUPER_ADMIN', 'ADMIN'],
   CREATE_ACCOUNTANT: ['SUPER_ADMIN', 'ADMIN'],
@@ -60,17 +69,17 @@ export const PERMISSIONS = {
   // ============================================
   // SETTINGS
   // ============================================
-  SYSTEM_SETTINGS: SYSTEM_ADMIN_ROLES,
-  SCHOOL_SETTINGS: [...SYSTEM_ADMIN_ROLES, 'ADMIN', 'HEAD_TEACHER'],
-  ACADEMIC_SETTINGS: [...SYSTEM_ADMIN_ROLES, 'ADMIN', 'HEAD_TEACHER'],
-  GRADING_SYSTEM: [...SYSTEM_ADMIN_ROLES, 'ADMIN'],
+  SYSTEM_SETTINGS: SUPER_ADMIN_ROLES,
+  SCHOOL_SETTINGS: [...SUPER_ADMIN_ROLES, 'ADMIN', 'HEAD_TEACHER'],
+  ACADEMIC_SETTINGS: [...SUPER_ADMIN_ROLES, 'ADMIN', 'HEAD_TEACHER'],
+  GRADING_SYSTEM: [...SUPER_ADMIN_ROLES, 'ADMIN'],
   TERMS_AND_STREAMS: ['SUPER_ADMIN', 'ADMIN'],
-  BRANDING_SETTINGS: SYSTEM_ADMIN_ROLES,
-  BACKUP_SETTINGS: SYSTEM_ADMIN_ROLES,
-  USER_ROLES_SETTINGS: SYSTEM_ADMIN_ROLES,
-  VIEW_ACADEMIC_SETTINGS: [...SYSTEM_ADMIN_ROLES, 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'],
-  MANAGE_LEARNING_AREAS: [...SYSTEM_ADMIN_ROLES, 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'], // Head teacher can manage learning areas
-  MANAGE_FACILITIES: [...SYSTEM_ADMIN_ROLES, 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'], // Head teacher can manage classes and facilities
+  BRANDING_SETTINGS: SUPER_ADMIN_ROLES,
+  BACKUP_SETTINGS: SUPER_ADMIN_ROLES,
+  USER_ROLES_SETTINGS: SUPER_ADMIN_ROLES,
+  VIEW_ACADEMIC_SETTINGS: [...SUPER_ADMIN_ROLES, 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'],
+  MANAGE_LEARNING_AREAS: [...SUPER_ADMIN_ROLES, 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'], // Head teacher can manage learning areas
+  MANAGE_FACILITIES: [...SUPER_ADMIN_ROLES, 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'], // Head teacher can manage classes and facilities
 
   // ============================================
   // COMMUNICATIONS
@@ -79,7 +88,7 @@ export const PERMISSIONS = {
   SEND_MESSAGES: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER', 'ACCOUNTANT'],
   VIEW_INBOX: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER', 'PARENT', 'ACCOUNTANT', 'RECEPTIONIST'],
   DELETE_OWN_MESSAGES: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER', 'PARENT', 'ACCOUNTANT', 'RECEPTIONIST'],
-  DELETE_ANY_MESSAGE: SYSTEM_ADMIN_ROLES,
+  DELETE_ANY_MESSAGE: SUPER_ADMIN_ROLES,
 
   // ============================================
   // FINANCE / FEE MANAGEMENT
@@ -149,13 +158,13 @@ export const PERMISSIONS = {
   MANAGE_BIOMETRIC_DEVICES: ['SUPER_ADMIN', 'ADMIN'],
   ENROLL_FINGERPRINTS: ['SUPER_ADMIN', 'ADMIN'],
   VIEW_BIOMETRIC_LOGS: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
-  CONFIGURE_BIOMETRIC_API: SYSTEM_ADMIN_ROLES,
+  CONFIGURE_BIOMETRIC_API: SUPER_ADMIN_ROLES,
 
   // ============================================
   // AUDIT & LOGS
   // ============================================
-  VIEW_AUDIT_LOGS: SYSTEM_ADMIN_ROLES,
-  VIEW_SYSTEM_LOGS: SYSTEM_ADMIN_ROLES,
+  VIEW_AUDIT_LOGS: SUPER_ADMIN_ROLES,
+  VIEW_SYSTEM_LOGS: SUPER_ADMIN_ROLES,
   VIEW_USER_ACTIVITY: ['SUPER_ADMIN', 'ADMIN'],
 
   // ============================================
@@ -177,57 +186,7 @@ export const PERMISSIONS = {
   MANAGE_TERTIARY_ACADEMICS: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
 };
 
-/**
- * All available user roles
- */
-export const ROLES = {
-  SUPER_ADMIN: 'SUPER_ADMIN',
-  SYSTEM_ADMIN: 'SYSTEM_ADMIN',
-  SYSTEM_ADMINISTRATOR: 'SYSTEM_ADMINISTRATOR',
-  ADMIN: 'ADMIN',
-  HEAD_TEACHER: 'HEAD_TEACHER',
-  TEACHER: 'TEACHER',
-  PARENT: 'PARENT',
-  ACCOUNTANT: 'ACCOUNTANT',
-  RECEPTIONIST: 'RECEPTIONIST',
-  HEAD_OF_CURRICULUM: 'HEAD_OF_CURRICULUM',
-  STUDENT: 'STUDENT',
-};
-
-/**
- * Role display names
- */
-export const ROLE_NAMES = {
-  SUPER_ADMIN: 'Super Admin',
-  SYSTEM_ADMIN: 'System Admin',
-  SYSTEM_ADMINISTRATOR: 'System Administrator',
-  ADMIN: 'Admin',
-  HEAD_TEACHER: 'Head Teacher',
-  TEACHER: 'Teacher',
-  PARENT: 'Parent',
-  ACCOUNTANT: 'Accountant',
-  RECEPTIONIST: 'Receptionist',
-  HEAD_OF_CURRICULUM: 'Head of Curriculum',
-  STUDENT: 'Student',
-};
-
-/**
- * Role hierarchy - used for determining authority
- * Higher number = higher authority
- */
-export const ROLE_HIERARCHY = {
-  SUPER_ADMIN: 7,
-  SYSTEM_ADMIN: 7,
-  SYSTEM_ADMINISTRATOR: 7,
-  ADMIN: 6,
-  HEAD_TEACHER: 5,
-  HEAD_OF_CURRICULUM: 5,
-  TEACHER: 4,
-  ACCOUNTANT: 3,
-  RECEPTIONIST: 2,
-  PARENT: 1,
-  STUDENT: 0,
-};
+export { ROLE_HIERARCHY, ROLE_NAMES, ROLES };
 
 const ROLE_ACCESS_STORAGE_KEY = 'trendscore.roleAccessOverrides.v1';
 

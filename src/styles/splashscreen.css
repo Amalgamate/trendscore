@@ -1,11 +1,12 @@
-/* Minimal dark splash screen with glowing line loader */
+/* Minimal dark splash screen with line loader */
 
 .splash-screen {
   position: fixed;
   inset: 0;
   width: 100%;
   height: 100%;
-  background: radial-gradient(circle at top, #1b2735 0%, #090b10 65%, #020305 100%);
+  /* Solid brand background for the preloader */
+  background: #030B82;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -56,23 +57,21 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: spinnerRotate 11s linear infinite;
+  animation: spinnerRotate 6s linear infinite;
 }
 
 .spinner-ring {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 6px solid rgba(251, 146, 60, 0.2);
-  border-top-color: #f97316;
-  box-shadow: 0 0 20px rgba(251, 146, 60, 0.35);
+  border: 6px solid #f97316;
 }
 
 .splash-compass-svg {
-  width: 120px;
-  height: 120px;
+  width: 132px;
+  height: 132px;
   z-index: 1;
-  animation: compassRotate 6s linear infinite;
+  animation: compassRotate 12s linear infinite;
 }
 
 .spinner-compass {
@@ -97,10 +96,6 @@
 
 @keyframes compassRotate {
   to { transform: rotate(-360deg); }
-}
-
-.splash-compass-svg {
-  animation: compassRotate 10s linear infinite;
 }
 
 @media (max-width: 640px) {

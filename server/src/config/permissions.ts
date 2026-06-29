@@ -1,7 +1,9 @@
+import { ROLE_HIERARCHY, type Role } from './roleDefinitions';
+
 /**
  * Permissions Configuration
  * Defines which roles have access to which features/actions
- * 
+ *
  * @module config/permissions
  */
 
@@ -143,27 +145,7 @@ export const PERMISSIONS = {
  */
 export type Permission = keyof typeof PERMISSIONS;
 
-/**
- * Type for all available roles (includes all UserRole enum values from Prisma)
- */
-export type Role =
-  | 'SUPER_ADMIN'
-  | 'ADMIN'
-  | 'HEAD_TEACHER'
-  | 'HEAD_OF_CURRICULUM'
-  | 'TEACHER'
-  | 'PARENT'
-  | 'ACCOUNTANT'
-  | 'RECEPTIONIST'
-  | 'STUDENT'
-  | 'LIBRARIAN'
-  | 'NURSE'
-  | 'SECURITY'
-  | 'DRIVER'
-  | 'COOK'
-  | 'CLEANER'
-  | 'GROUNDSKEEPER'
-  | 'IT_SUPPORT';
+export type { Role };
 
 /**
  * Check if a role has a specific permission
@@ -188,30 +170,6 @@ export function getRolePermissions(role: Role): Permission[] {
     .filter(([_, roles]) => (roles as readonly Role[]).includes(role))
     .map(([permission]) => permission as Permission);
 }
-
-/**
- * Role hierarchy - used for determining if a user can manage another user
- * Higher number = higher authority
- */
-export const ROLE_HIERARCHY = {
-  SUPER_ADMIN: 7,
-  ADMIN: 6,
-  HEAD_TEACHER: 5,
-  HEAD_OF_CURRICULUM: 5,
-  TEACHER: 4,
-  ACCOUNTANT: 3,
-  RECEPTIONIST: 2,
-  LIBRARIAN: 2,
-  NURSE: 2,
-  IT_SUPPORT: 2,
-  SECURITY: 1,
-  DRIVER: 1,
-  COOK: 1,
-  CLEANER: 1,
-  GROUNDSKEEPER: 1,
-  PARENT: 1,
-  STUDENT: 0,
-} as const;
 
 /**
  * Check if a role can manage another role

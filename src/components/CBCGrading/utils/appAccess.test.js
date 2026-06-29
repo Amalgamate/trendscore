@@ -35,6 +35,16 @@ describe('appAccess', () => {
     expect(hasPageAccess({ role: 'SUPER_ADMIN' }, 'inventory-items')).toBe(true);
   });
 
+  it('lets super admins open every settings page regardless of package modules', () => {
+    const superAdmin = { role: 'SUPER_ADMIN', enabledApps: ['school-settings'] };
+    const schoolAdmin = { role: 'ADMIN', enabledApps: ['school-settings'] };
+
+    expect(hasPageAccess(superAdmin, 'settings-payment')).toBe(true);
+    expect(hasPageAccess(superAdmin, 'settings-academic')).toBe(true);
+    expect(hasPageAccess(superAdmin, 'settings-system-control')).toBe(true);
+    expect(hasPageAccess(schoolAdmin, 'settings-payment')).toBe(false);
+  });
+
   it('isolates parent portal pages to parent users or explicit parent permissions', () => {
     expect(isParentPortalPage('parent-portal-home')).toBe(true);
     expect(hasPageAccess({ role: 'PARENT' }, 'parent-portal-home')).toBe(true);

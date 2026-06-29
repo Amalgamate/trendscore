@@ -12,6 +12,7 @@ import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
 import { AuthRequest } from '../middleware/permissions.middleware';
 import { Role, canManageRole } from '../config/permissions';
+import { USER_ROLES } from '../config/roleDefinitions';
 import { whatsappService } from '../services/whatsapp.service';
 import { SmsService } from '../services/sms.service';
 import { SMS_MESSAGES } from '../config/communication.messages';
@@ -19,25 +20,7 @@ import { generateStaffId } from '../services/staffId.service';
 import { redisCacheService } from '../services/redis-cache.service';
 import { buildParentLoginEmail } from '../services/parent.service';
 
-const VALID_ROLES: Role[] = [
-  'SUPER_ADMIN',
-  'ADMIN',
-  'HEAD_TEACHER',
-  'HEAD_OF_CURRICULUM',
-  'TEACHER',
-  'PARENT',
-  'ACCOUNTANT',
-  'RECEPTIONIST',
-  'LIBRARIAN',
-  'NURSE',
-  'SECURITY',
-  'DRIVER',
-  'COOK',
-  'CLEANER',
-  'GROUNDSKEEPER',
-  'IT_SUPPORT',
-  'STUDENT'
-];
+const VALID_ROLES = [...USER_ROLES];
 
 const normalizeRoles = (input: unknown): Role[] => {
   if (!Array.isArray(input)) return [];
