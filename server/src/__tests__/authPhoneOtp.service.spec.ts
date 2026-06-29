@@ -29,6 +29,7 @@ jest.mock('../config/database', () => ({
 jest.mock('../services/sms.service', () => ({
   SmsService: {
     sendSms: jest.fn(),
+    isAvailable: jest.fn(),
   },
 }));
 
@@ -59,7 +60,7 @@ const mockedPrisma = prisma as unknown as {
   };
 };
 
-const mockedSms = SmsService as unknown as { sendSms: jest.Mock };
+const mockedSms = SmsService as unknown as { sendSms: jest.Mock; isAvailable: jest.Mock };
 const mockedAuthTokenService = authTokenService as unknown as { issueTokenPair: jest.Mock };
 
 const validParent = {
@@ -115,6 +116,7 @@ describe('AuthPhoneOtpService', () => {
     });
     mockedPrisma.user.update.mockResolvedValue({});
     mockedPrisma.auditLog.create.mockResolvedValue({});
+    mockedSms.isAvailable.mockResolvedValue(true);
   });
 
   afterAll(() => {
