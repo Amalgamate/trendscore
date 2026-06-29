@@ -59,6 +59,10 @@ const mockPrisma = {
     school: {
         findFirst: jest.fn(),
     },
+    schoolAppConfig: {
+        count: jest.fn(),
+        findFirst: jest.fn(),
+    },
     user: {
         findMany: jest.fn(),
         findUnique: jest.fn(),
@@ -342,6 +346,13 @@ describe('HRService', () => {
         service = new HRService();
         jest.clearAllMocks();
         (mockPrisma.school.findFirst as Mock).mockResolvedValue(makeSchool({ geofenceEnforcementMode: 'OFF' }));
+        (mockPrisma.schoolAppConfig.count as Mock).mockResolvedValue(1);
+        (mockPrisma.schoolAppConfig.findFirst as Mock).mockResolvedValue({
+            id: 'school-app-config-001',
+            isActive: true,
+            isVisible: true,
+            app: { name: 'Staff HR', slug: 'staff-hr' },
+        });
         (mockPrisma.staffAttendanceAttemptLog.create as Mock).mockResolvedValue({ id: 'attempt-001' });
     });
 
