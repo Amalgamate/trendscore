@@ -437,6 +437,38 @@ export class SmsService {
     }
 
     /**
+     * Check whether an SMS provider/configuration is available.
+     * Returns true when DB config exists and smsEnabled is true, or
+     * when environment variable fallbacks (Africa'sTalking / MobileSasa)
+     * are present.
+     */
+    static async isAvailable(): Promise<boolean> {
+        try {
+            if (cachedConfig && (Date.now() - cachedConfig.timestamp) < CACHE_TTL_MS) {
+                return Boolean(cachedConfig.data && cachedConfig.data.smsEnabled);
+            }
+
+            const config = await prisma.communicationConfig.findFirst();
+            if (config && config.smsEnabled) {
+                cachedConfig = { data: config, timestamp: Date.now() };
+                return true;
+            }
+
+            const atApiKey = process.env.AT_API_KEY || process.env.AFRICASTALKING_API_KEY;
+            const atUsername = process.env.AT_USERNAME || process.env.AFRICASTALKING_USERNAME;
+            const msApiKey = process.env.MOBILESASA_API_KEY;
+
+            if (atApiKey && atUsername) return true;
+            if (msApiKey) return true;
+
+            return false;
+        } catch (err) {
+            console.error('[SmsService.isAvailable] Error checking SMS availability:', err?.message || err);
+            return false;
+        }
+    }
+
+    /**
      * Send SMS via MobileSasa
      *
      * MobileSasa API: POST /v1/send/bulk

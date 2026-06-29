@@ -105,6 +105,8 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
     code: '',
     expiresAt: null,
     resendAfterSeconds: 0,
+    smsConfigured: null,
+    autofillAllowed: false,
   });
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
@@ -300,6 +302,9 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
       return undefined;
     }
 
+    // Only start Web OTP when server indicates autofill is allowed for this session
+    if (!phoneOtp.autofillAllowed) return undefined;
+
     const controller = new AbortController();
     navigator.credentials.get({
       otp: { transport: ['sms'] },
@@ -311,7 +316,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
     }).catch(() => {});
 
     return () => controller.abort();
-  }, [phoneOtpStep, phoneOtp.code]);
+  }, [phoneOtpStep, phoneOtp.code, phoneOtp.autofillAllowed]);
 
   // Auto-submit phone number when it reaches 9 digits on mobile
   useEffect(() => {
@@ -341,13 +346,26 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
     setErrors({});
     try {
       const result = await authAPI.requestPhoneOtp({ phone: normalizeKenyanPhone(phoneOtp.phone) });
+
       setPhoneOtp(prev => ({
         ...prev,
         challengeId: result.challengeId,
         expiresAt: result.expiresAt || null,
         resendAfterSeconds: result.resendAfterSeconds || 60,
         code: result.devOtp || '',
+        smsConfigured: result.smsConfigured ?? null,
+        autofillAllowed: result.autofillAllowed || false,
       }));
+
+      // If SMS is not configured and autofill isn't allowed (i.e., not super-admin), show clear message and stop
+      if (result.smsConfigured === false && !result.autofillAllowed) {
+        setPhoneOtpCooldown(result.resendAfterSeconds || 60);
+        setPhonePasswordFallback(true);
+        setErrors({ form: result.message || 'SMS Not Configured. Contact Admin.' });
+        toast.error(result.message || 'SMS Not Configured. Contact Admin.');
+        return;
+      }
+
       setPhoneOtpCooldown(result.resendAfterSeconds || 60);
       setPhoneOtpStep('verify');
       setPhonePasswordFallback(false);

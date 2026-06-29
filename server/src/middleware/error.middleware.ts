@@ -111,6 +111,8 @@ export const errorHandler = (
     requestId,
   };
 
+  // Stack traces are not included in responses. Use server logs for stack details.
+
   if (requiredRoles            !== undefined) body.requiredRoles            = requiredRoles;
   if (userRoles                !== undefined) body.userRoles                = userRoles;
   if (requestedInstitutionType !== undefined) body.requestedInstitutionType = requestedInstitutionType;

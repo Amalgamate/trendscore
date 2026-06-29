@@ -54,6 +54,8 @@ export interface RequestPhoneOtpResult {
   resendAfterSeconds: number;
   message: string;
   devOtp?: string;
+  smsConfigured?: boolean;
+  autofillAllowed?: boolean;
 }
 
 export class AuthPhoneOtpService {
@@ -142,11 +144,21 @@ export class AuthPhoneOtpService {
       data: { codeHash: hashOtpCode(code, challenge.id) },
     });
 
+    // Determine whether SMS is configured (DB or env) so frontend can show a clear message
+    const smsConfigured = await SmsService.isAvailable();
+
     if (user?.id && !setupPhone && process.env.NODE_ENV !== 'test') {
-      SmsService.sendSms(normalized.e164, SMS_MESSAGES.otp(code, OTP_EXPIRY_MINUTES)).catch((error: any) => {
-        console.warn('[AuthPhoneOtpService] OTP SMS delivery failed:', error?.message || error);
-      });
+      if (!smsConfigured) {
+        console.warn('[AuthPhoneOtpService] SMS requested but service is not configured.');
+      } else {
+        SmsService.sendSms(normalized.e164, SMS_MESSAGES.otp(code, OTP_EXPIRY_MINUTES)).catch((error: any) => {
+          console.warn('[AuthPhoneOtpService] OTP SMS delivery failed:', error?.message || error);
+        });
+      }
     }
+
+    // Only expose the dev OTP in allowed bootstrap scenarios
+    const allowDevOtp = setupPhone || (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_OTP === 'true');
 
     return {
       success: true,
@@ -154,8 +166,10 @@ export class AuthPhoneOtpService {
       phone: normalized.e164,
       expiresAt: challenge.expiresAt,
       resendAfterSeconds: RESEND_COOLDOWN_SECONDS,
-      message: 'If an account exists for this phone number, an OTP has been sent.',
-      devOtp: code,
+      message: smsConfigured ? 'If an account exists for this phone number, an OTP has been sent.' : 'SMS Not Configured. Contact Admin.',
+      devOtp: allowDevOtp ? code : undefined,
+      smsConfigured,
+      autofillAllowed: Boolean(setupPhone),
     };
   }
 
