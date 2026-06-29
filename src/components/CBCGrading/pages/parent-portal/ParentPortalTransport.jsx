@@ -10,10 +10,7 @@ import {
   ArrowLeft, MapPin, Bus, Phone, RefreshCw, AlertCircle, Navigation, Users,
 } from 'lucide-react';
 import api, { dashboardAPI } from '../../../../services/api';
-
-function Skeleton({ className = '' }) {
-  return <div className={`animate-pulse rounded-lg bg-gray-100 ${className}`} />;
-}
+import { Skeleton } from '../../../ui';
 
 function fmtMoney(n) {
   const v = Number(n || 0);

@@ -63,6 +63,12 @@ _cache/
 *.tmp
 *.temp
 .cache/
+todelete/
+.agents/
+.friday/
+.kilo/
+.kiro/
+.venv/
 
 # Editor & OS
 .DS_Store

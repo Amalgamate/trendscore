@@ -10,10 +10,7 @@ import {
   Clock, AlertCircle, RefreshCw, ArrowLeft,
 } from 'lucide-react';
 import axiosInstance from '../../../../services/api/axiosConfig';
-
-function Skeleton({ className = '' }) {
-  return <div className={`animate-pulse rounded-lg bg-gray-100 ${className}`} />;
-}
+import { Skeleton } from '../../../ui';
 
 const getProgressColor = (pct) => {
   if (pct >= 80) return 'bg-emerald-500';

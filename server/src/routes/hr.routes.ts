@@ -5,6 +5,7 @@ import { authenticate } from '../middleware/auth.middleware';
 import { auditLog, requireRole } from '../middleware/permissions.middleware';
 import { validate } from '../middleware/validation.middleware';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
+import { requireApp } from '../middleware/requireApp';
 
 const router = Router();
 
@@ -92,6 +93,7 @@ const markAttendanceSchema = z.object({
 router.get(
     '/dashboard',
     authenticate,
+    requireApp('staff-hr'),
     requireRole([...ROLE_HR_ADMIN]),
     rateLimit({ windowMs: 60_000, maxRequests: 120 }),
     hrController.getDashboardStats
@@ -123,6 +125,8 @@ router.get(
     rateLimit({ windowMs: 60_000, maxRequests: 120 }),
     hrController.getTodayClockIn
 );
+
+router.use(requireApp('staff-hr'));
 
 // ── Staff Directory ──────────────────────────────────────────────────────────
 
@@ -427,4 +431,3 @@ router.put(
 );
 
 export default router;
-

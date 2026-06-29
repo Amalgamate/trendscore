@@ -3,7 +3,6 @@ import bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import type {} from '@prisma/client';
 import prisma from '../config/database';
-import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../utils/jwt.util';
 import { ApiError } from '../utils/error.util';
 import { Role, canManageRole } from '../config/permissions';
 import { AuthRequest } from '../middleware/permissions.middleware';
@@ -11,58 +10,19 @@ import { validatePassword, DEFAULT_PASSWORD_POLICY, PARENT_PASSWORD_POLICY } fro
 import { EmailService } from '../services/email-resend.service';
 import { whatsappService } from '../services/whatsapp.service';
 import { redisCacheService } from '../services/redis-cache.service';
-import { isTokenGloballyInvalidated, markGlobalForceLogout } from '../services/auth-session.service';
+import { markGlobalForceLogout } from '../services/auth-session.service';
+import { authLoginService } from '../services/auth-login.service';
+import { authPhoneOtpService } from '../services/auth-phone-otp.service';
+import { authTokenService } from '../services/auth-token.service';
 import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 import { buildParentLoginEmail } from '../services/parent.service';
 
 import logger from '../utils/logger';
-/**
- * Redis key for a revoked refresh token.
- * TTL is set to the remaining lifetime of the token (7d), so Redis auto-cleans.
- */
-const revokedTokenKey = (token: string) => `revoked_rt:${token}`;
-
-const revokeRefreshToken = async (token: string): Promise<void> => {
-  const ttl = 7 * 24 * 60 * 60;
-  await redisCacheService.set(revokedTokenKey(token), '1', ttl);
-};
-
-const isRefreshTokenRevoked = async (token: string): Promise<boolean> => {
-  const val = await redisCacheService.get<string>(revokedTokenKey(token));
-  return val !== null;
-};
 
 const MAX_LOGIN_ATTEMPTS = 999; // lockout disabled
 const ACCOUNT_LOCK_MINUTES = 0; // lockout disabled
 
 export class AuthController {
-  private setTokenCookies(res: Response, accessToken: string, refreshToken: string) {
-    const isProd = process.env.NODE_ENV === 'production';
-    const secureCookies = (process.env.SECURE_COOKIES || '').toLowerCase() === 'true';
-    const useSecureCookies = isProd ? secureCookies : false;
-    const commonOptions: any = {
-      httpOnly: true,
-      secure: useSecureCookies,
-      sameSite: useSecureCookies ? 'none' : 'lax',
-      path: '/'
-    };
-
-    res.cookie('accessToken', accessToken, {
-      ...commonOptions,
-      maxAge: 60 * 60 * 1000 // 60 mins (align with 1h JWT expiration)
-    });
-
-    res.cookie('refreshToken', refreshToken, {
-      ...commonOptions,
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days (matching JWT_REFRESH_EXPIRES_IN default)
-    });
-  }
-
-  private clearTokenCookies(res: Response) {
-    res.clearCookie('accessToken', { path: '/' });
-    res.clearCookie('refreshToken', { path: '/' });
-  }
-
   async register(req: AuthRequest, res: Response) {
     let { email, password, firstName, lastName, role, phone } = req.body;
 
@@ -127,10 +87,9 @@ export class AuthController {
       }).catch(err => logger.error('Failed to send welcome email:', err));
     }
 
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user);
+    const { accessToken, refreshToken } = authTokenService.issueTokenPair(user);
 
-    this.setTokenCookies(res, accessToken, refreshToken);
+    authTokenService.setTokenCookies(res, accessToken, refreshToken);
 
     res.status(201).json({
       success: true, 
@@ -142,123 +101,38 @@ export class AuthController {
   }
 
   async login(req: Request, res: Response) {
-    const { email, password } = req.body;
-
-    if (!email || !password) throw new ApiError(400, 'Email and password are required');
-
-    const xssPatterns = [/<script/gi, /javascript:/gi, /on\w+\s*=/gi, /<iframe/gi];
-    if (xssPatterns.some(pattern => pattern.test(password))) {
-      throw new ApiError(400, 'Invalid password format');
-    }
-
-    const cacheKey = `auth:user:${email}`;
-    let user = await redisCacheService.get<any>(cacheKey);
-
-    if (!user) {
-      user = await prisma.user.findUnique({
-        where: { email },
-        select: {
-          id: true, password: true, status: true, loginAttempts: true, lockedUntil: true,
-          role: true, roles: true, email: true, firstName: true, lastName: true,
-          phone: true, lastLogin: true, institutionType: true, emailVerified: true,
-          verificationRequired: true,
-          // mustChangePassword indicator — set on auto-created parent/student accounts
-          passwordResetToken: true,
-        }
-      });
-      if (user) await redisCacheService.set(cacheKey, user, 5 * 60);
-    }
-
-    if (!user) throw new ApiError(401, 'Invalid credentials');
-
-    if (user.lockedUntil && user.lockedUntil > new Date()) {
-      // Lockout disabled — clear and continue
-      await prisma.user.update({ where: { id: user.id }, data: { loginAttempts: 0, lockedUntil: null } });
-    }
-
-    const isValidPassword = await bcrypt.compare(password, user.password);
-    if (!isValidPassword) {
-      await redisCacheService.delete(cacheKey);
-      // No lockout — just increment counter for auditing but never lock
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { loginAttempts: (user.loginAttempts || 0) + 1 }
-      });
-      throw new ApiError(401, 'Invalid credentials');
-    }
-
-    if (user.status !== 'ACTIVE') throw new ApiError(403, 'Account is not active');
-
-    const userRolesForVerify = ((user.roles && user.roles.length > 0) ? user.roles : [user.role]) as string[];
-    const isSuperAdmin = userRolesForVerify.includes('SUPER_ADMIN');
-    const schoolConfig = await prisma.school.findFirst({
-      where: { archived: false },
-      orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }, { createdAt: 'desc' }],
-      select: { id: true, institutionType: true, institutionTypeLocked: true, requiresUserVerification: true }
-    });
-    const schoolRequiresVerification = schoolConfig?.requiresUserVerification !== false;
-    const userRequiresVerification = user.verificationRequired !== false;
-    // School admins must verify email/phone; platform SUPER_ADMIN is exempt (OTP also bypassed below).
-    if (
-      !user.emailVerified &&
-      !isSuperAdmin &&
-      schoolRequiresVerification &&
-      userRequiresVerification &&
-      userRolesForVerify.some((r) => r === 'ADMIN')
-    ) {
-      throw new ApiError(
-        403,
-        'Please verify your account before signing in. Complete phone verification or use the link in your welcome email.'
-      );
-    }
-
-    // ── C1 fix: detect auto-created accounts that must change their password ──
-    // passwordResetToken is set on parent/student accounts created via learner admission.
-    // We surface this as mustChangePassword so the frontend can intercept and redirect.
-    const mustChangePassword = !!user.passwordResetToken;
-
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user);
-
-    this.setTokenCookies(res, accessToken, refreshToken);
-
-    await redisCacheService.delete(cacheKey);
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { lastLogin: new Date(), loginAttempts: 0, lockedUntil: null }
+    const result = await authLoginService.loginWithPassword({
+      email: req.body.email,
+      phone: req.body.phone,
+      password: req.body.password,
+      requestSchool: (req as any).school || null,
     });
 
-    const { password: _, passwordResetToken: __, ...userWithoutSensitive } = user;
+    authTokenService.setTokenCookies(res, result.token, result.refreshToken);
+    res.json(result);
+  }
 
-    const schoolId = (user as any).schoolId || (req as any).school?.id;
-    // Single-tenant fallback: the user record has no schoolId column, so we
-    // resolve the one-and-only school from the DB.
-    const resolvedSchoolId: string | undefined = schoolId || schoolConfig?.id;
+  async requestPhoneOtp(req: Request, res: Response) {
+    const result = await authPhoneOtpService.requestParentOtp({
+      phone: req.body.phone,
+      ipAddress: req.ip || undefined,
+      userAgent: req.headers['user-agent'] ? String(req.headers['user-agent']) : undefined,
+    });
 
-    const userRoles = ((user.roles && user.roles.length > 0) ? user.roles : [user.role]) as string[];
-    const requiresInstitutionSetup = userRoles.includes('SUPER_ADMIN') && !(schoolConfig?.institutionTypeLocked === true);
-    const communicationConfig = await prisma.communicationConfig.findFirst({
-      select: { emailTemplates: true }
+    res.json(result);
+  }
+
+  async verifyPhoneOtp(req: Request, res: Response) {
+    const result = await authPhoneOtpService.verifyParentOtp({
+      challengeId: req.body.challengeId,
+      phone: req.body.phone,
+      code: req.body.code,
+      ipAddress: req.ip || undefined,
+      userAgent: req.headers['user-agent'] ? String(req.headers['user-agent']) : undefined,
     });
-    const otpEnabled = (communicationConfig?.emailTemplates as any)?.__security?.otpEnabled !== false;
-    const requiresOtp = otpEnabled && !userRoles.some(r => ['SUPER_ADMIN', 'STUDENT'].includes(r));
-    res.json({
-      success: true,
-      user: {
-        ...userWithoutSensitive,
-        schoolId: resolvedSchoolId || null,
-        roles: userRoles,
-        institutionType: user.institutionType || schoolConfig?.institutionType || (req as any).school?.institutionType || 'PRIMARY_CBC',
-        institutionTypeLocked: schoolConfig?.institutionTypeLocked === true,
-        requiresInstitutionSetup,
-        availableInstitutionTypes: ['PRIMARY_CBC', 'SECONDARY', 'TERTIARY'],
-      },
-      token: accessToken, // Return actual token for cross-domain headers fallback
-      refreshToken: refreshToken,
-      requiresOtp,
-      mustChangePassword,
-      message: mustChangePassword ? 'Login successful — please set a new password' : 'Login successful'
-    });
+
+    authTokenService.setTokenCookies(res, result.token, result.refreshToken);
+    res.json(result);
   }
 
   async checkAvailability(req: Request, res: Response) {
@@ -299,26 +173,13 @@ export class AuthController {
     const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
     if (!refreshToken) throw new ApiError(400, 'Refresh token required');
 
-    const revoked = await isRefreshTokenRevoked(refreshToken);
-    if (revoked) throw new ApiError(401, 'Refresh token has already been used');
-
     try {
-      const decoded = verifyRefreshToken(refreshToken);
-      if (await isTokenGloballyInvalidated(decoded)) {
-        await revokeRefreshToken(refreshToken);
-        this.clearTokenCookies(res);
-        throw new ApiError(401, 'Session invalidated by administrator');
-      }
+      const {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+      } = await authTokenService.rotateRefreshToken(refreshToken);
 
-      const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
-      if (!user || user.status !== 'ACTIVE') throw new ApiError(401, 'Invalid user or account inactive');
-
-      await revokeRefreshToken(refreshToken);
-
-      const newAccessToken = generateAccessToken(user);
-      const newRefreshToken = generateRefreshToken(user);
-
-      this.setTokenCookies(res, newAccessToken, newRefreshToken);
+      authTokenService.setTokenCookies(res, newAccessToken, newRefreshToken);
 
       res.json({ 
         success: true,
@@ -326,6 +187,9 @@ export class AuthController {
         refreshToken: newRefreshToken
       }); // tokens rotated in cookies, actual tokens returned for headers fallback
     } catch (error) {
+      if (error instanceof ApiError && error.message === 'Session invalidated by administrator') {
+        authTokenService.clearTokenCookies(res);
+      }
       if (error instanceof ApiError) throw error;
       throw new ApiError(401, 'Invalid refresh token');
     }
@@ -391,9 +255,9 @@ export class AuthController {
   async logout(req: AuthRequest, res: Response) {
     const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
     if (refreshToken) {
-      try { await revokeRefreshToken(refreshToken); } catch { /* non-blocking */ }
+      try { await authTokenService.revokeRefreshToken(refreshToken); } catch { /* non-blocking */ }
     }
-    this.clearTokenCookies(res);
+    authTokenService.clearTokenCookies(res);
     res.json({ success: true, message: 'Logged out' });
   }
 
@@ -411,7 +275,7 @@ export class AuthController {
       throw new ApiError(500, 'Failed to invalidate active sessions. Please try again.');
     }
     logger.info(`[AUTH] Force-logout-all triggered by user ${req.user?.userId}`);
-    this.clearTokenCookies(res);
+    authTokenService.clearTokenCookies(res);
     res.json({
       success: true,
       forcedAfter,

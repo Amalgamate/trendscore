@@ -7,20 +7,16 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  BookOpen, Clock, TrendingUp, CheckCircle2, AlertCircle,
+  BookOpen, TrendingUp, CheckCircle2, AlertCircle,
   Trophy, CalendarDays, ChevronRight, RefreshCw, Award,
   FileText, BarChart3, Target,
 } from 'lucide-react';
 import axiosInstance from '../../../../services/api/axiosConfig';
 import { dashboardAPI } from '../../../../services/api';
+import { Skeleton } from '../../../ui';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function Skeleton({ className = '' }) {
-  return <div className={`animate-pulse rounded-lg bg-gray-100 ${className}`} />;
-}
-
-const fmtPct = (n) => `${Math.round(Number(n || 0))}%`;
 const fmtNum = (n) => Number(n || 0).toLocaleString();
 
 function scoreColor(n) {

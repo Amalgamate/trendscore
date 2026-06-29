@@ -12,7 +12,7 @@ TMP_STACK_COMPOSE="/tmp/trendscore-stack-docker-compose.yml"
 scp deploy/instances.manifest.json "production:${TMP_MANIFEST}"
 scp scripts/deploy-release.sh "production:${TMP_SCRIPT}"
 scp docker-compose.yml "production:${TMP_MAIN_COMPOSE}"
-scp deploy/portainer/docker-compose.stack.yml "production:${TMP_STACK_COMPOSE}"
+scp deploy/docker-compose.stack.yml "production:${TMP_STACK_COMPOSE}"
 
 ssh production "set -euo pipefail
   sudo mkdir -p '${REMOTE_DEPLOY_DIR}'

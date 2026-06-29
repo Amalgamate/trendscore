@@ -22,10 +22,7 @@ import {
 } from 'recharts';
 import { dashboardAPI } from '../../../../services/api';
 import ParentChildProfile from '../parent/ParentChildProfile';
-
-function Skeleton({ className = '' }) {
-  return <div className={`animate-pulse rounded-lg bg-gray-200 ${className}`} />;
-}
+import { Skeleton } from '../../../ui';
 
 function scoreColor(n) {
   const v = Number(n || 0);

@@ -7,6 +7,7 @@ import { redisCacheService } from '../services/redis-cache.service';
 import { configService } from '../services/config.service';
 import { buildSnapshot, generateInsights } from '../services/insights.service';
 import { reportDashboardService } from '../services/reportDashboard.service';
+import { parentAccessService } from '../services/parent-access.service';
 import { CanonicalInstitutionType } from '../utils/institutionNormalizer';
 
 import logger from '../utils/logger';
@@ -2138,9 +2139,11 @@ export class DashboardController {
             const cached = await redisCacheService.get<any>(cacheKey);
             if (cached) return res.json({ success: true, data: cached, _cached: true });
 
+            const accessibleLearnerIds = await parentAccessService.getAccessibleLearnerIds(userId);
+
             const [children, noticesCount, notices] = await Promise.all([
                 prisma.learner.findMany({
-                    where: { parentId: userId, archived: false },
+                    where: { id: { in: accessibleLearnerIds }, archived: false },
                     include: {
                         feeInvoices: { 
                             where: { archived: false }, 

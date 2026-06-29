@@ -23,7 +23,7 @@ Monorepo with two first-class apps plus deployment plumbing.
 | `platform-console/` | Separate platform-level console (secondary). |
 | `assets/`, `data/`, `backups/`, `tmp/` | Local-only / generated artifacts (see `.gitignore`). |
 
-Top-level docs of note: `README.md`, `PARENT_PORTAL_*.md`, `MOBILESASA_*.md`, `TIMETABLE_PDF_EXPORT.md`, `AUDIT_MOBILESASA_SMS_INTEGRATION_READINESS.md`.
+Top-level docs of note: `README.md`, `CODEBASE_INDEX.md`, `deploy/DEPLOYMENT.md`, `deploy/WORKFLOW.md`, and focused reports under `docs/`.
 
 ---
 
@@ -243,7 +243,7 @@ The **single source of truth** for deployment targets. No school list is hardcod
 
 **Key field semantics:**
 - `kind: "main"` (only `jrn`) → deploys into the shared `zawadijrn` stack at `/srv/zawadi/apps/zawadijrn`; also publishes the built static bundle to nginx.
-- `kind: "stack"` → deploys as an isolated Docker Compose project using `deploy/portainer/docker-compose.stack.yml`.
+- `kind: "stack"` → deploys as an isolated Docker Compose project using `deploy/docker-compose.stack.yml`.
 - `tier` maps to environment (demo/pilot/production) and selects the GitHub **Environment** approval gate.
 - `active: false` OR `deployment_allowed: false` → blocks deployment.
 - `aliases` → operator-friendly typed slugs (e.g. `lions-complex` for id `lionscomplex`).
@@ -288,7 +288,7 @@ Runs on the deploy host. For the matched school, in order (all-or-fail per insta
 
 **Fail-fast safety:** if validation fails, no server contact is made. If a server deploy fails mid-pipeline, the DB backup under `/srv/zawadi/backups` is the rollback source. `DRY_RUN=true` prints the plan only.
 
-### 9.6 Per-stack runtime — `deploy/portainer/docker-compose.stack.yml`
+### 9.6 Per-stack runtime — `deploy/docker-compose.stack.yml`
 
 Each `kind: stack` school runs this compose file with its own `-p <project>` + `--env-file`. Services:
 - **db** — `postgres:15-alpine`, healthcheck, persistent `db_data` volume.
@@ -312,7 +312,7 @@ Separate path: `DEPLOY_CONSOLE_ONLY=true bash deploy-release.sh` → pulls `zawa
 
 ### 9.9 Deployment docs & secrets
 
-- **Docs:** `deploy/DEPLOYMENT.md`, `deploy/WORKFLOW.md`, `deploy/portainer/README.md`.
+- **Docs:** `deploy/DEPLOYMENT.md`, `deploy/WORKFLOW.md`.
 - **Required GitHub secrets:** `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (plus the three approval-gated Environments above).
 - **Required GitHub Environments** (with required reviewers): `deploy-demo`, `deploy-pilot`, `deploy-production-school`.
 - **Server-side manual run** (bypassing Actions): `DEPLOY_TARGET=school IMAGE_TAG=sha-<commit> SCHOOL_ID=<id> MANIFEST_PATH=... bash deploy-release.sh`.

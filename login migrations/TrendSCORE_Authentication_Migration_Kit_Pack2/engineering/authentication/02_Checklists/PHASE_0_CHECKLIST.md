@@ -1,0 +1,28 @@
+# Phase 0 Checklist
+
+- [x] Login endpoints mapped
+- [x] OTP endpoints mapped
+- [x] JWT flow documented
+- [x] Refresh token flow documented
+- [x] Cookie behavior documented
+- [x] localStorage fallback documented
+- [x] Parent login documented
+- [x] Parent account creation documented
+- [x] Parent-child relationship model documented
+- [x] Family account model documented
+- [x] Role resolution documented
+- [x] Permission middleware documented
+- [x] Route protection documented
+- [x] Session handling documented
+- [x] Device handling documented
+- [x] PWA manifest documented
+- [x] Service worker documented
+- [x] Offline behavior documented
+- [x] Push notification behavior documented
+- [x] SMS provider behavior documented
+- [x] Security risks listed
+- [x] Duplicate code identified
+- [x] Dead code identified
+- [x] Phase 0 report completed
+- [x] Phase 1 readiness decision recorded
+- [x] No production code changed

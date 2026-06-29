@@ -1,0 +1,21 @@
+# Phase 1 Checklist
+
+- [x] Controllers orchestrate only
+- [x] JWT logic centralized
+- [x] Cookie logic centralized
+- [x] Refresh logic centralized
+- [x] Duplicate auth helpers removed
+- [x] Login behavior unchanged
+- [x] OTP-after-password behavior unchanged
+- [x] Refresh-token behavior unchanged
+- [x] Logout behavior unchanged
+- [x] `/auth/me` behavior unchanged
+- [x] Tests passing
+- [x] No API changes
+- [x] No UI changes
+- [x] No database changes
+- [x] Backward compatible
+- [x] Status updated
+- [x] Progress updated
+- [x] Phase 1 report completed
+- [x] Phase 2 readiness decision recorded

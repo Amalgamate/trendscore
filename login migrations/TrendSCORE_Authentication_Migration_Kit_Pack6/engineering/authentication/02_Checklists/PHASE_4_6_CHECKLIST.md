@@ -1,0 +1,25 @@
+# Phase 4-6 Checklist
+
+- [x] Combined Phase 4-6 unlocked in `LOCK_FILE.md`
+- [x] Existing login UI reviewed
+- [x] Existing auth state/session flow reviewed
+- [x] Parent portal route/entry reviewed
+- [x] Phone OTP request UI implemented
+- [x] Phone OTP verify UI implemented
+- [x] OTP resend/cooldown state implemented
+- [x] OTP loading/error/success states implemented
+- [x] Existing email/password login preserved
+- [x] Phone OTP login stores/uses the same authenticated session state
+- [x] Parent post-login route verified
+- [x] Non-parent login behavior unchanged
+- [x] Refresh behavior after phone OTP login verified
+- [x] Logout behavior after phone OTP login verified
+- [x] Mobile login layout verified
+- [x] PWA readiness audit completed
+- [x] Targeted frontend tests added or updated where practical
+- [x] Targeted backend auth tests rerun
+- [x] TypeScript/build verification run
+- [x] Manual verification notes recorded
+- [x] Combined Phase 4-6 report completed
+- [x] Phase 7 readiness decision recorded
+- [x] Phase 7 remains locked

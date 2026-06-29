@@ -26,7 +26,7 @@ const QuickActions = ({ onNavigate, currentPage, user }) => {
   ].filter((action) => hasPageAccess(accessUser, action.path));
 
   return (
-    <div className="bg-white border-b border-slate-200">
+    <div className="hidden md:block bg-white border-b border-slate-200">
       <div className="max-w-7xl mx-auto flex items-center justify-start lg:justify-center py-2.5 px-4 md:px-6 overflow-x-auto scrollbar-none">
 
         {/* Home Button */}

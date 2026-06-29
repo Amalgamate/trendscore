@@ -5,7 +5,7 @@ import { asyncHandler } from '../utils/async.util';
 import { sendOTP, verifyOTP } from '../controllers/otp.controller';
 import { authRateLimit, progressiveRateLimit } from '../middleware/enhanced-rateLimit.middleware';
 import { validate } from '../middleware/validation.middleware';
-import { loginSchema, registerSchema, emailSchema } from '../utils/validation.util';
+import { loginSchema, registerSchema, emailSchema, phoneOtpRequestSchema, phoneOtpVerifySchema } from '../utils/validation.util';
 import { requireRole } from '../middleware/permissions.middleware';
 
 const router = Router();
@@ -33,6 +33,19 @@ router.post('/login',
   }),
   validate(loginSchema),
   asyncHandler(authController.login.bind(authController))
+);
+
+// Additive parent-only phone OTP login. Password login remains unchanged.
+router.post('/phone-otp/request',
+  authRateLimit(3, 60_000),
+  validate(phoneOtpRequestSchema),
+  asyncHandler(authController.requestPhoneOtp.bind(authController))
+);
+
+router.post('/phone-otp/verify',
+  authRateLimit(5, 60_000),
+  validate(phoneOtpVerifySchema),
+  asyncHandler(authController.verifyPhoneOtp.bind(authController))
 );
 
 // Token refresh

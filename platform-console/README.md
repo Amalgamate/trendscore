@@ -1,6 +1,6 @@
-# Zawadi Platform Console
+# TrendScore Platform Console
 
-Standalone control panel for the Zawadi SaaS platform.
+Standalone control panel for the TrendScore SaaS platform.
 
 ## Running with Auth (Recommended)
 

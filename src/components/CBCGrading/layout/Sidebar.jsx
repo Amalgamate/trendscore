@@ -371,12 +371,12 @@ const Sidebar = React.memo(({
           />
         ) : sidebarOpen ? (
           <span className="text-base font-semibold text-white tracking-wider truncate text-center leading-tight px-1">
-            {brandingSettings?.schoolName || 'ZAWADI'}
+            {brandingSettings?.schoolName || 'TrendScore'}
           </span>
         ) : (
           <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/20 shadow-inner">
             <span className="text-sm font-semibold text-white">
-              {(brandingSettings?.schoolName || 'ZA').substring(0, 2).toUpperCase()}
+              {(brandingSettings?.schoolName || 'TS').substring(0, 2).toUpperCase()}
             </span>
           </div>
         )}

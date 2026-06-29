@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast';
 import { onboardingAPI, authAPI } from '../../services/api';
 import { PRODUCT_DISPLAY_NAME } from '../../config/productIdentity';
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../ui/card";
@@ -712,8 +713,7 @@ export default function RegisterForm({ onSwitchToLogin, onRegisterSuccess, brand
             <div className="mt-12 pt-10 border-t border-gray-100/50">
               <div className="flex items-center justify-center mb-10 group">
                 <label className="flex items-center gap-3 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     id="terms"
                     name="termsAccepted"
                     checked={formData.termsAccepted}

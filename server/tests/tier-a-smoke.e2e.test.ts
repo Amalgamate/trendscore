@@ -97,6 +97,28 @@ describe('Tier A smoke (real DB)', () => {
     // Use lower bcrypt cost for test speed (still validates login/refresh logic)
     const hashed = await bcrypt.hash(PASSWORD, 4);
 
+    // Auth sessions require an active school context in fresh CI databases.
+    await prisma.school.upsert({
+      where: { name: 'Tier A Smoke Academy' },
+      update: {
+        active: true,
+        status: 'ACTIVE',
+        archived: false,
+        institutionType: 'PRIMARY_CBC',
+        institutionTypeLocked: true,
+        requiresUserVerification: false
+      },
+      create: {
+        name: 'Tier A Smoke Academy',
+        active: true,
+        status: 'ACTIVE',
+        institutionType: 'PRIMARY_CBC',
+        institutionTypeLocked: true,
+        requiresUserVerification: false,
+        curriculumType: 'CBC_AND_EXAM'
+      }
+    });
+
     // Seed a single ACTIVE SUPER_ADMIN user (required for /auth/login + role checks)
     await prisma.user.upsert({
       where: { id: USER_ID },

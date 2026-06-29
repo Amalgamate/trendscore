@@ -8,9 +8,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  ArrowLeft, MoreVertical, CreditCard, TrendingUp,
-  CheckCircle2, XCircle, Clock, Loader2, GraduationCap,
-  ChevronRight, Receipt, FileText, Info, Bell,
+  ArrowLeft, MoreVertical, CreditCard,
+  CheckCircle2, Loader2, GraduationCap,
+  ChevronRight, Receipt, Bell,
 } from 'lucide-react';
 import api from '../../../../services/api';
 import { cn } from '../../../../utils/cn';
@@ -19,17 +19,12 @@ import { cn } from '../../../../utils/cn';
 
 const fmt     = (n)  => Number(n || 0).toLocaleString();
 const fmtDate = (d)  => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
-const fmtPct  = (n)  => `${Math.round(Number(n || 0))}%`;
 const INVOICE_COLORS = {
   PAID:          'bg-emerald-100 text-emerald-700',
   PARTIALLY_PAID:'bg-amber-100 text-amber-700',
   UNPAID:        'bg-red-100 text-red-700',
   CANCELLED:     'bg-gray-100 text-gray-500',
 };
-
-function Skeleton({ className = '' }) {
-  return <div className={`animate-pulse rounded-lg bg-gray-200 ${className}`} />;
-}
 
 function EmptyCard({ icon: Icon, message }) {
   return (
@@ -233,8 +228,6 @@ function ResultsTab({ learnerId, subjects: dashboardSubjects }) {
       </div>
     );
   }
-
-  const BAR_COLORS = ['bg-emerald-500', 'bg-blue-500', 'bg-[#3B1FA3]', 'bg-amber-500', 'bg-rose-500', 'bg-violet-500'];
 
   return (
     <div className="space-y-4">

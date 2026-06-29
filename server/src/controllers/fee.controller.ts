@@ -30,6 +30,7 @@ import { accountingService } from '../services/accounting.service';
 import { complianceService } from '../services/compliance.service';
 import { EmailService } from '../services/email.service';
 import { calculateLearnerInvoice } from '../services/learnerFeeConfiguration.service';
+import { parentAccessService } from '../services/parent-access.service';
 import { getInstitutionType } from '../utils/institutionNormalizer';
 
 import logger from '../utils/logger';
@@ -521,7 +522,7 @@ export class FeeController {
     if (!learner) throw new ApiError(404, 'Learner not found');
 
     if (req.user!.role === 'PARENT') {
-      if ((learner as any).parentId !== req.user!.userId) {
+      if (!(await parentAccessService.canAccessLearner(req.user!.userId, learnerId))) {
         throw new ApiError(403, 'You can only view invoices for your own children');
       }
     }

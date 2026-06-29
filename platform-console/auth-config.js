@@ -1,4 +1,4 @@
-// Zawadi Platform Console auth config.
+// TrendScore Platform Console auth config.
 // Credentials and secrets must come from environment variables so they are not
 // committed to GitHub or baked into the Docker image.
 

@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { AnimatePresence } from 'framer-motion';
+import PageTransition from '../components/common/PageTransition';
 import LoginForm from '../components/auth/LoginForm';
 import RegisterForm from '../components/auth/RegisterForm';
 import ForgotPasswordForm from '../components/auth/ForgotPasswordForm';
@@ -124,51 +126,69 @@ function Auth({ onAuthSuccess, brandingSettings, basePath = '/auth' }) {
         </div>
       )}
       <div className={contentClass}>
-        {isMobileOnboardingActive && (
-          <MobileOnboardingFlow onComplete={() => setShowMobileOnboarding(false)} />
-        )}
-        {view === 'login' && (
-          isMobileOnboardingActive ? null : (
-            <LoginForm
-              onSwitchToRegister={toRegister}
-              onSwitchToForgotPassword={toForgotPassword}
-              onLoginSuccess={handleLoginSuccess}
-              brandingSettings={brandingSettings}
-            />
-          )
-        )}
-        {view === 'register' && (
-          <RegisterForm
-            onSwitchToLogin={toLogin}
-            onRegisterSuccess={handleRegisterSuccess}
-            brandingSettings={brandingSettings}
-          />
-        )}
-        {view === 'forgot-password' && (
-          <ForgotPasswordForm onSwitchToLogin={toLogin} brandingSettings={brandingSettings} />
-        )}
-        {view === 'reset-password' && <ResetPasswordForm onResetSuccess={handleResetSuccess} />}
-        {view === 'verify-email' && (
-          <EmailVerificationForm
-            email={userData?.email}
-            phone={userData?.phone}
-            onVerifySuccess={handleVerifySuccess}
-            brandingSettings={brandingSettings}
-          />
-        )}
-        {view === 'welcome' && (
-          <WelcomeScreen
-            user={userData}
-            onGetStarted={handleGetStarted}
-            brandingSettings={brandingSettings}
-          />
-        )}
-        {view === 'setup-institution' && (
-          <InstitutionSetupWizard
-            onComplete={() => navigate('/app', { replace: true })}
-            brandingSettings={brandingSettings}
-          />
-        )}
+        <AnimatePresence mode="wait">
+          {isMobileOnboardingActive && (
+            <PageTransition key="onboarding">
+              <MobileOnboardingFlow onComplete={() => setShowMobileOnboarding(false)} />
+            </PageTransition>
+          )}
+          {view === 'login' && !isMobileOnboardingActive && (
+            <PageTransition key="login">
+              <LoginForm
+                onSwitchToRegister={toRegister}
+                onSwitchToForgotPassword={toForgotPassword}
+                onLoginSuccess={handleLoginSuccess}
+                brandingSettings={brandingSettings}
+              />
+            </PageTransition>
+          )}
+          {view === 'register' && (
+            <PageTransition key="register">
+              <RegisterForm
+                onSwitchToLogin={toLogin}
+                onRegisterSuccess={handleRegisterSuccess}
+                brandingSettings={brandingSettings}
+              />
+            </PageTransition>
+          )}
+          {view === 'forgot-password' && (
+            <PageTransition key="forgot-password">
+              <ForgotPasswordForm onSwitchToLogin={toLogin} brandingSettings={brandingSettings} />
+            </PageTransition>
+          )}
+          {view === 'reset-password' && (
+            <PageTransition key="reset-password">
+              <ResetPasswordForm onResetSuccess={handleResetSuccess} />
+            </PageTransition>
+          )}
+          {view === 'verify-email' && (
+            <PageTransition key="verify-email">
+              <EmailVerificationForm
+                email={userData?.email}
+                phone={userData?.phone}
+                onVerifySuccess={handleVerifySuccess}
+                brandingSettings={brandingSettings}
+              />
+            </PageTransition>
+          )}
+          {view === 'welcome' && (
+            <PageTransition key="welcome">
+              <WelcomeScreen
+                user={userData}
+                onGetStarted={handleGetStarted}
+                brandingSettings={brandingSettings}
+              />
+            </PageTransition>
+          )}
+          {view === 'setup-institution' && (
+            <PageTransition key="setup-institution">
+              <InstitutionSetupWizard
+                onComplete={() => navigate('/app', { replace: true })}
+                brandingSettings={brandingSettings}
+              />
+            </PageTransition>
+          )}
+        </AnimatePresence>
       </div>
       <style>{`
         @keyframes blob {

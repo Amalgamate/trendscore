@@ -36,9 +36,33 @@ export const passwordSchema = z
     'Password cannot contain HTML or script tags'
   );
 
+const optionalEmailSchema = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  emailSchema.optional()
+);
+
+const optionalLoginPhoneSchema = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z.string().min(9, 'Phone number is required').max(20, 'Phone number is too long').optional()
+);
+
 export const loginSchema = z.object({
-  email: emailSchema,
+  email: optionalEmailSchema,
+  phone: optionalLoginPhoneSchema,
   password: z.string().min(1, 'Password is required')
+}).refine((data) => Boolean(data.email || data.phone), {
+  message: 'Email or phone number is required',
+  path: ['email'],
+});
+
+export const phoneOtpRequestSchema = z.object({
+  phone: z.string().min(9, 'Phone number is required').max(20, 'Phone number is too long')
+});
+
+export const phoneOtpVerifySchema = z.object({
+  challengeId: z.string().min(1, 'Challenge ID is required'),
+  phone: z.string().min(9, 'Phone number is required').max(20, 'Phone number is too long'),
+  code: z.string().regex(/^\d{6}$/, 'OTP code must be 6 digits')
 });
 
 export const registerSchema = z.object({
@@ -215,4 +239,6 @@ export const validateInputSafe = <T>(
 
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
+export type PhoneOtpRequestInput = z.infer<typeof phoneOtpRequestSchema>;
+export type PhoneOtpVerifyInput = z.infer<typeof phoneOtpVerifySchema>;
 export type PaginationInput = z.infer<typeof paginationSchema>;

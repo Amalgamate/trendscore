@@ -5,6 +5,7 @@ import { TaxCalculator } from '../utils/tax.calculator';
 import { SmsService } from './sms.service';
 import { whatsappService } from './whatsapp.service';
 import { ApiError } from '../utils/error.util';
+import logger from '../utils/logger';
 
 type AttendanceLocationPayload = {
     latitude?: number;
@@ -1058,6 +1059,13 @@ export class HRService {
         // ── IP-based enforcement (primary check) ─────────────────────────────
         const ipResult = this.evaluateIpCheck(context.ipAddress, school);
         if (!ipResult.allowed) {
+            logger.warn({
+                userId,
+                ipAddress: context.ipAddress,
+                allowedClockInIps: school?.allowedClockInIps,
+                reason: ipResult.reasonCode,
+                endpoint: 'clock-in'
+            }, 'HR clock-in blocked by IP restriction');
             throw this.buildIpDeniedError(ipResult);
         }
 

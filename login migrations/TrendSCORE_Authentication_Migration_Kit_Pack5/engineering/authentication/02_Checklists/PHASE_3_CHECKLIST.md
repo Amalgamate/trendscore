@@ -1,0 +1,26 @@
+# Phase 3 Checklist
+
+- [x] Phase 3 unlocked in `LOCK_FILE.md`
+- [x] Phase 3 phase document created
+- [x] Existing password login preserved
+- [x] Phone OTP verify issues authenticated session for parents
+- [x] JWT generation reuses existing auth token service
+- [x] Refresh token generation reuses existing auth token service
+- [x] Cookie handling reuses existing auth token service
+- [x] Parent role validation enforced
+- [x] Parent active status validation enforced
+- [x] Locked parent account validation enforced
+- [x] School active validation enforced
+- [x] OTP challenge consumed after successful login
+- [x] Parent OTP login audit log created
+- [x] Disabled parent test added
+- [x] Wrong role test added
+- [x] Locked account test added
+- [x] Expired OTP test added
+- [x] Invalid OTP test retained
+- [x] Successful OTP login test added
+- [x] Existing password login regression test retained
+- [x] TypeScript verification run
+- [x] Targeted auth tests run
+- [x] Phase 3 report completed
+- [x] Phase 4 remains locked

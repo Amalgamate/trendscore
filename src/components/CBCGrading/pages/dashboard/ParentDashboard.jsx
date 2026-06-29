@@ -21,13 +21,10 @@ import {
   ArrowRight, HelpCircle, BookMarked, Flag,
   Clock, Pencil,
 } from 'lucide-react';
+import { Skeleton } from '../../../ui';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const fmt = (n) => Number(n || 0).toLocaleString('en-KE');
-
-function Skeleton({ className = '' }) {
-  return <div className={`animate-pulse rounded-xl bg-gray-100 ${className}`} />;
-}
 
 const getTimeGreeting = () => {
   const hour = new Date().getHours();

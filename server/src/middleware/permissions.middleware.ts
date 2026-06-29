@@ -3,6 +3,7 @@ import { Permission, Role, hasPermission } from '../config/permissions';
 import { getCanonicalRoles, hasAnyRole } from '../utils/roleNormalizer';
 import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
+import { parentAccessService } from '../services/parent-access.service';
 
 type InstitutionType = 'PRIMARY_CBC' | 'SECONDARY' | 'TERTIARY';
 
@@ -162,7 +163,7 @@ export class ResourceAccessControl {
    * Check if user can access a specific learner.
    * - SUPER_ADMIN, ADMIN, HEAD_TEACHER: all learners
    * - TEACHER: learner edits allowed by EDIT_LEARNER permission
-   * - PARENT: only own children
+   * - PARENT: direct children or active family-linked learners
    */
   static canAccessLearner() {
     return async (req: AuthRequest, _res: Response, next: NextFunction) => {
@@ -195,12 +196,7 @@ export class ResourceAccessControl {
           const learnerId = req.params.learnerId || req.params.id || req.body.learnerId || req.query.learnerId;
           if (!learnerId) return next();
 
-          const learner = await prisma.learner.findUnique({
-            where: { id: learnerId },
-            select: { parentId: true }
-          });
-
-          if (learner && learner.parentId === userId) return next();
+          if (await parentAccessService.canAccessLearner(userId, String(learnerId))) return next();
           return next(
             new ApiError(403, "You can only access your own children's information")
               .withCode('ACCESS_DENIED')
@@ -264,12 +260,7 @@ export class ResourceAccessControl {
             const learnerId = req.query.learnerId || req.body.learnerId;
             if (!learnerId) return next();
 
-            const learner = await prisma.learner.findUnique({
-              where: { id: learnerId as string },
-              select: { parentId: true }
-            });
-
-            if (learner && learner.parentId === userId) return next();
+            if (await parentAccessService.canAccessLearner(userId, String(learnerId))) return next();
             return next(
               new ApiError(403, 'You can only view assessments for your own children')
                 .withCode('ACCESS_DENIED')
