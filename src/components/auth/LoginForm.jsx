@@ -635,6 +635,16 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
             75%  { transform: rotate(270deg) skewX(-1.5deg) skewY(-0.8deg); }
             100% { transform: rotate(360deg) skewX(0deg)   skewY(0deg); }
           }
+          @keyframes mobileLogoFadeIn {
+            0% {
+              opacity: 0;
+              transform: translateY(8px) scale(0.98);
+            }
+            100% {
+              opacity: 1;
+              transform: translateY(0) scale(1);
+            }
+          }
         `}</style>
         <svg
           aria-hidden="true"
@@ -690,16 +700,17 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
             paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.25rem)',
           }}
         >
-          <div className="flex flex-1 flex-col items-start justify-start pt-16 w-full max-w-[18.5rem] mx-auto">
+          <div className="flex flex-1 flex-col items-center justify-start pt-16 w-full max-w-[18.5rem] mx-auto">
             {/* Logo — 15% larger than before (11rem * 1.15 = 12.65rem) */}
             <img
               src={MOBILE_SPLASH_ASSETS.logo}
               alt="TrendSCORE"
-              className="w-full max-w-[12.65rem] object-contain"
+              className="mx-auto w-full max-w-[12.65rem] object-contain"
+              style={{ animation: 'mobileLogoFadeIn 750ms ease-out 120ms both' }}
             />
 
             {/* Timeless welcome text */}
-            <div className="mt-8 mb-2 text-left w-full">
+            <div className="mt-8 mb-2 text-center w-full">
               <h1 className="text-2xl font-bold text-[#0E2A5A] tracking-tight">Welcome back</h1>
               <p className="mt-1.5 text-xs font-medium text-slate-500">Continue with your registered phone number.</p>
             </div>
