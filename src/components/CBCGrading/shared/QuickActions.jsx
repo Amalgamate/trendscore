@@ -16,13 +16,13 @@ const QuickActions = ({ onNavigate, currentPage, user }) => {
   const { activeSlugs } = useModuleAccess();
   const accessUser = { ...(user || {}), enabledApps: activeSlugs };
   const actions = [
-    { label: 'Annual Planner', icon: Activity, path: 'annual-planner', bg: 'bg-[#1d4ed8]', activeBg: 'bg-blue-50 text-blue-800 border-blue-200' },
-    { label: 'Financials', icon: CircleDollarSign, path: 'fees-overview', bg: 'bg-[#10b981]', activeBg: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-    { label: 'Approvals', icon: GraduationCap, path: 'settings-approvals', bg: 'bg-[#6366f1]', activeBg: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
-    { label: 'Leave Management', icon: Clock, path: 'hr-leave', bg: 'bg-[#f59e0b]', activeBg: 'bg-amber-50 text-amber-700 border-amber-100' },
-    { label: 'Time Table', icon: Calendar, path: 'timetable', bg: 'bg-[#8b5cf6]', activeBg: 'bg-purple-50 text-purple-700 border-purple-100' },
-    { label: 'Pledge Management', icon: Bookmark, path: 'fees-invoices', bg: 'bg-[#e05f00]', activeBg: 'bg-orange-50 text-orange-700 border-orange-100' },
-    { label: 'User Management', icon: Users, path: 'settings-users', bg: 'bg-[#0f766e]', activeBg: 'bg-teal-50 text-teal-700 border-teal-100' },
+    { label: 'Annual Planner', icon: Activity, path: 'annual-planner', color: '#1d4ed8', activeBg: 'bg-blue-50 text-blue-800 border-blue-200' },
+    { label: 'Financials', icon: CircleDollarSign, path: 'fees-overview', color: '#10b981', activeBg: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+    { label: 'Approvals', icon: GraduationCap, path: 'settings-approvals', color: '#6366f1', activeBg: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
+    { label: 'Leave Management', icon: Clock, path: 'hr-leave', color: '#f59e0b', activeBg: 'bg-amber-50 text-amber-700 border-amber-100' },
+    { label: 'Time Table', icon: Calendar, path: 'timetable', color: '#8b5cf6', activeBg: 'bg-purple-50 text-purple-700 border-purple-100' },
+    { label: 'Pledge Management', icon: Bookmark, path: 'fees-invoices', color: '#e05f00', activeBg: 'bg-orange-50 text-orange-700 border-orange-100' },
+    { label: 'User Management', icon: Users, path: 'settings-users', color: '#0f766e', activeBg: 'bg-teal-50 text-teal-700 border-teal-100' },
   ].filter((action) => hasPageAccess(accessUser, action.path));
 
   return (
@@ -55,20 +55,21 @@ const QuickActions = ({ onNavigate, currentPage, user }) => {
               <button
                 type="button"
                 onClick={() => onNavigate && onNavigate(a.path)}
-                className={`group flex items-center gap-2 px-3 py-1.5 rounded-xl border active:scale-95 transition-all duration-200 shrink-0 ${
+                className={`group flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-150 active:scale-95 shrink-0 ${
                   isActive
                     ? `${a.activeBg} font-semibold shadow-sm`
-                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50 hover:border-slate-100'
+                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50 hover:border-slate-200'
                 }`}
               >
-                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${a.bg} text-white shadow-sm transition-transform duration-300 group-hover:scale-105`}>
-                  <Icon size={15} className="text-white" />
-                </div>
-                <span className="text-xs font-semibold tracking-wide">{a.label}</span>
+                <Icon
+                  size={15}
+                  className="shrink-0 transition-transform duration-200 group-hover:scale-110"
+                  style={{ color: a.color }}
+                />
+                <span className="text-[13px] font-semibold tracking-tight">{a.label}</span>
               </button>
-              {/* Divider between items (not after the last one) */}
               {idx < actions.length - 1 && (
-                <span className="h-5 w-px bg-slate-150 mx-0.5 shrink-0" style={{ backgroundColor: '#e8ecf0' }} />
+                <span className="h-4 w-px bg-slate-200 mx-1 shrink-0" />
               )}
             </React.Fragment>
           );

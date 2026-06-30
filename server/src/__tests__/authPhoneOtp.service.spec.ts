@@ -5,6 +5,7 @@ jest.mock('../config/database', () => ({
   default: {
     user: {
       findFirst: jest.fn(),
+      findMany: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
     },
@@ -48,7 +49,7 @@ import { authTokenService } from '../services/auth-token.service';
 import { AuthPhoneOtpService, hashOtpCode } from '../services/auth-phone-otp.service';
 
 const mockedPrisma = prisma as unknown as {
-  user: { findFirst: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
+  user: { findFirst: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
   school: { findFirst: jest.Mock };
   communicationConfig: { findFirst: jest.Mock };
   auditLog: { create: jest.Mock };
@@ -125,7 +126,7 @@ describe('AuthPhoneOtpService', () => {
 
   it('creates a hashed phone OTP challenge without storing plaintext OTP', async () => {
     jest.spyOn(crypto, 'randomInt').mockImplementationOnce((() => 123456) as any);
-    mockedPrisma.user.findFirst.mockResolvedValue({ id: 'parent-1' });
+    mockedPrisma.user.findMany.mockResolvedValue([{ id: 'parent-1', role: 'PARENT', roles: ['PARENT'] }]);
     mockedPrisma.authOtpChallenge.findFirst.mockResolvedValue(null);
     mockedPrisma.authOtpChallenge.create.mockResolvedValue({
       id: 'challenge-1',
@@ -139,12 +140,12 @@ describe('AuthPhoneOtpService', () => {
       userAgent: 'jest',
     });
 
-    expect(mockedPrisma.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockedPrisma.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         status: 'ACTIVE',
         archived: false,
       }),
-      select: { id: true },
+      select: { id: true, role: true, roles: true },
     }));
     expect(mockedPrisma.authOtpChallenge.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
@@ -170,8 +171,30 @@ describe('AuthPhoneOtpService', () => {
     });
   });
 
+  it('binds a shared phone OTP challenge to a staff account before a student account', async () => {
+    mockedPrisma.user.findMany.mockResolvedValue([
+      { id: 'student-1', role: 'STUDENT', roles: [] },
+      { id: 'admin-1', role: 'ADMIN', roles: ['ADMIN'] },
+    ]);
+    mockedPrisma.authOtpChallenge.findFirst.mockResolvedValue(null);
+    mockedPrisma.authOtpChallenge.create.mockResolvedValue({
+      id: 'challenge-shared-phone',
+      expiresAt: new Date('2026-06-28T12:10:00.000Z'),
+    });
+    mockedPrisma.authOtpChallenge.update.mockResolvedValue({});
+
+    await service.requestParentOtp({ phone: '0720705588' });
+
+    expect(mockedPrisma.authOtpChallenge.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        userId: 'admin-1',
+        phoneNormalized: '+254720705588',
+      }),
+    }));
+  });
+
   it('returns a clear SMS unavailable error message when SMS is not configured', async () => {
-    mockedPrisma.user.findFirst.mockResolvedValue({ id: 'parent-1' });
+    mockedPrisma.user.findMany.mockResolvedValue([{ id: 'parent-1', role: 'PARENT', roles: ['PARENT'] }]);
     mockedPrisma.authOtpChallenge.findFirst.mockResolvedValue(null);
     mockedPrisma.authOtpChallenge.create.mockResolvedValue({
       id: 'challenge-sms-missing',
@@ -190,7 +213,7 @@ describe('AuthPhoneOtpService', () => {
 
   it('does not expose devOtp in production for normal users', async () => {
     process.env.NODE_ENV = 'production';
-    mockedPrisma.user.findFirst.mockResolvedValue({ id: 'parent-1' });
+    mockedPrisma.user.findMany.mockResolvedValue([{ id: 'parent-1', role: 'PARENT', roles: ['PARENT'] }]);
     mockedPrisma.authOtpChallenge.findFirst.mockResolvedValue(null);
     mockedPrisma.authOtpChallenge.create.mockResolvedValue({
       id: 'challenge-prod',
@@ -209,7 +232,7 @@ describe('AuthPhoneOtpService', () => {
   });
 
   it('uses the fixed setup OTP only for the configured super admin phone', async () => {
-    mockedPrisma.user.findFirst.mockResolvedValue({ id: 'super-admin-1' });
+    mockedPrisma.user.findMany.mockResolvedValue([{ id: 'super-admin-1', role: 'SUPER_ADMIN', roles: ['SUPER_ADMIN'] }]);
     mockedPrisma.authOtpChallenge.findFirst.mockResolvedValue(null);
     mockedPrisma.authOtpChallenge.create.mockResolvedValue({
       id: 'challenge-setup',
@@ -223,7 +246,7 @@ describe('AuthPhoneOtpService', () => {
       userAgent: 'jest',
     });
 
-    expect(mockedPrisma.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockedPrisma.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         role: 'SUPER_ADMIN',
         status: 'ACTIVE',

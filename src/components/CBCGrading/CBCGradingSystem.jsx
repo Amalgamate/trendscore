@@ -10,6 +10,8 @@ import ErrorBoundary from './shared/ErrorBoundary';
 import CommandPalette from './layout/CommandPalette';
 import GitPopupAlert from './layout/GitPopupAlert';
 import GitNotificationDialog from './layout/GitNotificationDialog';
+import ImpersonationBanner from '../../components/ImpersonationBanner';
+import { useImpersonation } from '../../contexts/ImpersonationContext';
 
 // Hooks
 import { useNotifications } from './hooks/useNotifications';
@@ -65,8 +67,12 @@ const extractLearner403Message = (err) => {
 export default function CBCGradingSystem({ user, onLogout, brandingSettings, setBrandingSettings }) {
   const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
   const mainContentRef = useRef(null);
+  const bannerRef = useRef(null);
   const { activeSlugs } = useModuleAccess();
   const accessUser = useMemo(() => ({ ...(user || {}), enabledApps: activeSlugs }), [activeSlugs, user]);
+
+  // Impersonation session state
+  const { isImpersonating, impersonatedUser, stopImpersonation, isLoading: impersonationLoading } = useImpersonation();
   const parentPortal = userHasParentPortalAccess(accessUser);
   const getAllowedPage = useCallback((page) => (
     hasPageAccess(accessUser, page) ? page : resolveDashboardPage(accessUser)
@@ -670,6 +676,15 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
 
   return (
     <div className="flex h-screen bg-[var(--app-page-bg)] overflow-hidden font-inter border-t-2 border-[var(--brand-teal)]">
+      {/* Impersonation banner — fixed above all content (Req 4.1, 4.4–4.6) */}
+      {isImpersonating && impersonatedUser && (
+        <ImpersonationBanner
+          ref={bannerRef}
+          impersonatedUser={impersonatedUser}
+          onExit={stopImpersonation}
+          isExiting={impersonationLoading}
+        />
+      )}
       <CommandPalette onNavigate={handleNavigate} />
       <Sidebar
         user={accessUser}

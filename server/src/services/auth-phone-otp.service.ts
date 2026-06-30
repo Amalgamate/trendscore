@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
 import { getKenyanPhoneLookupCandidates, normalizeKenyanPhone } from '../utils/phone.util';
+import { selectPreferredPhoneLoginUser } from '../utils/phoneLoginUserSelector';
 import { buildParentLoginEmail, getParentLoginEmailCandidates } from './parent.service';
 import { SmsService } from './sms.service';
 import { SMS_MESSAGES, OTP_CONFIG } from '../config/communication.messages';
@@ -68,7 +69,7 @@ export class AuthPhoneOtpService {
     ].filter((email): email is string => Boolean(email))));
 
     const setupPhone = isSuperAdminSetupPhone(normalized.e164);
-    const user = await prisma.user.findFirst({
+    const matchingUsers = await prisma.user.findMany({
       where: {
         ...(setupPhone ? { role: 'SUPER_ADMIN' as const } : {}),
         status: 'ACTIVE',
@@ -79,8 +80,10 @@ export class AuthPhoneOtpService {
           { username: { in: emailCandidates } },
         ],
       },
-      select: { id: true },
+      select: { id: true, role: true, roles: true },
+      take: 10,
     });
+    const user = selectPreferredPhoneLoginUser(matchingUsers);
 
     const latestChallenge = await prisma.authOtpChallenge.findFirst({
       where: {

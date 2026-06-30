@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App.jsx';
 import { AuthProvider } from './contexts/AuthContext.jsx';
+import { ImpersonationProvider } from './contexts/ImpersonationContext.jsx';
 
 const isLocalDevHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 const shouldRegisterServiceWorker = import.meta.env.PROD && 'serviceWorker' in navigator;
@@ -90,7 +91,9 @@ const AppWrapper = import.meta.env.DEV ? React.Fragment : React.StrictMode;
 root.render(
   <AppWrapper>
     <AuthProvider>
-      <App />
+      <ImpersonationProvider>
+        <App />
+      </ImpersonationProvider>
     </AuthProvider>
   </AppWrapper>
 );

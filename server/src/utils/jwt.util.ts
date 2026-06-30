@@ -10,6 +10,8 @@ interface JWTPayload {
   role: Role;
   roles?: Role[];
   institutionType: InstitutionType;
+  isImpersonation?: boolean;
+  originalAdminId?: string;
   iat?: number;
 }
 

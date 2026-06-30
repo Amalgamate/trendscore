@@ -5,6 +5,8 @@ import { ApiError } from '../utils/error.util';
 import { Role } from '../config/permissions';
 import { normalizeRole, getCanonicalRoles } from '../utils/roleNormalizer';
 import { isTokenGloballyInvalidated } from '../services/auth-session.service';
+import { redisCacheService } from '../services/redis-cache.service';
+import { revokedImpersonationKey } from '../services/impersonation.service';
 
 export type { AuthRequest };
 
@@ -32,12 +34,38 @@ export const authenticate = async (
       throw new ApiError(401, 'Session invalidated by administrator').withCode('FORCE_LOGOUT');
     }
 
+    // ── Impersonation token revocation check (Requirement 6.3) ───────────────
+    // Check the Redis revocation list for impersonation tokens BEFORE
+    // processing any payload fields. This runs even for non-impersonation
+    // tokens (the key simply won't exist), so normal requests are unaffected.
+    const isRevoked = await redisCacheService.get(revokedImpersonationKey(token));
+    if (isRevoked) {
+      throw new ApiError(401, 'Impersonation session has been revoked').withCode('TOKEN_REVOKED');
+    }
+
+    // ── Validate impersonation payload integrity (Requirement 6.4) ───────────
+    // If the token claims isImpersonation:true it MUST also carry originalAdminId.
+    // Reject early to prevent partially-formed sessions from reaching handlers.
+    if (decoded.isImpersonation === true) {
+      if (!decoded.originalAdminId || (decoded.originalAdminId as string).trim() === '') {
+        throw new ApiError(401, 'Invalid impersonation token: missing originalAdminId').withCode('INVALID_TOKEN');
+      }
+    }
+
     // Normalize roles exactly once at the auth boundary.
     // From this point req.user.role and req.user.roles are always canonical —
     // no downstream guard or controller should re-normalize.
     const canonicalRole  = normalizeRole(decoded.role) as Role;
     const canonicalRoles = getCanonicalRoles(decoded) as Role[];
-    req.user = { ...decoded, role: canonicalRole, roles: canonicalRoles };
+
+    // ── Propagate impersonation claims to req.user (Requirements 6.1, 6.2) ──
+    req.user = {
+      ...decoded,
+      role: canonicalRole,
+      roles: canonicalRoles,
+      isImpersonation: !!decoded.isImpersonation,
+      originalAdminId: (decoded as any).originalAdminId ?? undefined,
+    };
 
     next();
   } catch (error: any) {
@@ -86,11 +114,26 @@ export const optionalAuthenticate = async (
       return next();
     }
 
+    // ── Impersonation token revocation check ──────────────────────────────
+    // Silently continue as anonymous if the impersonation token was revoked.
+    const isRevoked = await redisCacheService.get(revokedImpersonationKey(token));
+    if (isRevoked) {
+      return next();
+    }
+
     // Mirror authenticate(): normalize at the boundary so all downstream
     // code sees canonical roles whether or not auth was required.
     const canonicalRole  = normalizeRole(decoded.role) as Role;
     const canonicalRoles = getCanonicalRoles(decoded) as Role[];
-    req.user = { ...decoded, role: canonicalRole, roles: canonicalRoles };
+
+    // Propagate impersonation claims (Requirements 6.1, 6.2).
+    req.user = {
+      ...decoded,
+      role: canonicalRole,
+      roles: canonicalRoles,
+      isImpersonation: !!decoded.isImpersonation,
+      originalAdminId: (decoded as any).originalAdminId ?? undefined,
+    };
 
     next();
   } catch {

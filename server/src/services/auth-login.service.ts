@@ -5,6 +5,7 @@ import { redisCacheService } from './redis-cache.service';
 import { authTokenService } from './auth-token.service';
 import { buildParentLoginEmail, getParentLoginEmailCandidates } from './parent.service';
 import { getKenyanPhoneLookupCandidates, normalizeKenyanPhone } from '../utils/phone.util';
+import { selectPreferredPhoneLoginUser } from '../utils/phoneLoginUserSelector';
 
 interface LoginParams {
   email?: string;
@@ -53,7 +54,7 @@ export class AuthLoginService {
     }
 
     const identifier = String(email || phone || '').trim();
-    const cacheKey = `auth:user:${identifier}`;
+    const cacheKey = `auth:v2:user:${identifier}`;
     let user = await redisCacheService.get<any>(cacheKey);
 
     if (!user) {
@@ -79,7 +80,7 @@ export class AuthLoginService {
         });
       }
       if (!user && phone) {
-        user = await prisma.user.findFirst({
+        const matchingUsers = await prisma.user.findMany({
           where: {
             archived: false,
             OR: [
@@ -95,7 +96,9 @@ export class AuthLoginService {
             verificationRequired: true,
             passwordResetToken: true,
           },
+          take: 10,
         });
+        user = selectPreferredPhoneLoginUser(matchingUsers);
       }
       if (user) await redisCacheService.set(cacheKey, user, 5 * 60);
     }

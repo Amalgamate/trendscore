@@ -8,6 +8,7 @@ jest.mock('../config/database', () => ({
     user: {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
+      findMany: jest.fn(),
       update: jest.fn(),
     },
     school: {
@@ -44,7 +45,7 @@ import { AuthLoginService } from '../services/auth-login.service';
 
 const mockedBcrypt = bcrypt as unknown as { compare: jest.Mock };
 const mockedPrisma = prisma as unknown as {
-  user: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock };
+  user: { findUnique: jest.Mock; findFirst: jest.Mock; findMany: jest.Mock; update: jest.Mock };
   school: { findFirst: jest.Mock };
   communicationConfig: { findFirst: jest.Mock };
 };
@@ -101,9 +102,9 @@ describe('AuthLoginService', () => {
       requestSchool: null,
     });
 
-    expect(mockedRedis.set).toHaveBeenCalledWith('auth:user:admin@example.test', user, 5 * 60);
+    expect(mockedRedis.set).toHaveBeenCalledWith('auth:v2:user:admin@example.test', user, 5 * 60);
     expect(mockedAuthTokenService.issueTokenPair).toHaveBeenCalledWith(user);
-    expect(mockedRedis.delete).toHaveBeenCalledWith('auth:user:admin@example.test');
+    expect(mockedRedis.delete).toHaveBeenCalledWith('auth:v2:user:admin@example.test');
     expect(mockedPrisma.user.update).toHaveBeenCalledWith({
       where: { id: 'user-1' },
       data: { lastLogin: expect.any(Date), loginAttempts: 0, lockedUntil: null },
@@ -150,7 +151,7 @@ describe('AuthLoginService', () => {
       passwordResetToken: null,
     };
     mockedRedis.get.mockResolvedValue(null);
-    mockedPrisma.user.findFirst.mockResolvedValue(user);
+    mockedPrisma.user.findMany.mockResolvedValue([user]);
     mockedBcrypt.compare.mockResolvedValue(true);
 
     const result = await service.loginWithPassword({
@@ -160,7 +161,7 @@ describe('AuthLoginService', () => {
     });
 
     expect(mockedPrisma.user.findUnique).not.toHaveBeenCalled();
-    expect(mockedPrisma.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockedPrisma.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         archived: false,
         OR: expect.arrayContaining([
@@ -174,6 +175,51 @@ describe('AuthLoginService', () => {
       token: 'access.jwt',
       refreshToken: 'refresh.jwt',
     });
+  });
+
+  it('prefers a school admin over a student when a phone number is shared', async () => {
+    const studentUser = {
+      id: 'student-1',
+      email: '1490@trendscore.co.ke',
+      password: 'student-hashed',
+      status: 'ACTIVE',
+      loginAttempts: 0,
+      lockedUntil: null,
+      role: 'STUDENT',
+      roles: [],
+      firstName: 'Bridgit',
+      lastName: 'Shania',
+      phone: '0720705588',
+      lastLogin: null,
+      institutionType: 'PRIMARY_CBC',
+      emailVerified: true,
+      verificationRequired: false,
+      passwordResetToken: null,
+    };
+    const adminUser = {
+      ...studentUser,
+      id: 'admin-1',
+      email: 'guyo@example.test',
+      password: 'admin-hashed',
+      role: 'ADMIN',
+      roles: ['ADMIN'],
+      firstName: 'Guyo',
+      lastName: 'Huqa',
+      phone: '+254720705588',
+      verificationRequired: true,
+    };
+    mockedRedis.get.mockResolvedValue(null);
+    mockedPrisma.user.findMany.mockResolvedValue([studentUser, adminUser]);
+    mockedBcrypt.compare.mockResolvedValue(true);
+
+    const result = await service.loginWithPassword({
+      phone: '0720705588',
+      password: 'secret123',
+      requestSchool: null,
+    });
+
+    expect(mockedAuthTokenService.issueTokenPair).toHaveBeenCalledWith(adminUser);
+    expect(result.user).toMatchObject({ id: 'admin-1', role: 'ADMIN', roles: ['ADMIN'] });
   });
 
   it('preserves invalid password behavior and increments login attempts', async () => {
@@ -207,7 +253,7 @@ describe('AuthLoginService', () => {
       message: 'Invalid credentials',
     });
 
-    expect(mockedRedis.delete).toHaveBeenCalledWith('auth:user:admin@example.test');
+    expect(mockedRedis.delete).toHaveBeenCalledWith('auth:v2:user:admin@example.test');
     expect(mockedPrisma.user.update).toHaveBeenCalledWith({
       where: { id: 'user-1' },
       data: { loginAttempts: 3, lockedUntil: null },

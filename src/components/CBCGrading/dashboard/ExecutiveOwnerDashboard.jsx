@@ -1013,7 +1013,25 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
 
   return (
     <div className="min-h-screen bg-[var(--app-page-bg)] pb-24">
-      {/* Full-width Quick Actions matching the original white strip */}
+      {/* Greeting header — design system style matching SuperAdmin console */}
+      <div className={`${isMobile ? 'px-4 pt-5 pb-4' : 'px-6 lg:px-10 pt-7 pb-4'} bg-white border-b border-slate-200 flex items-center justify-between gap-4`}>
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-600">School Dashboard</p>
+          <h1 className="mt-1.5 text-xl font-black text-slate-950">{salutation}, {displayName}!</h1>
+          <p className="mt-1 text-sm font-semibold text-slate-500">
+            Today is{' '}
+            <span className="font-bold text-slate-700">
+              {new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date())}
+            </span>
+            {' '}· {greetingSubtitle}
+          </p>
+        </div>
+        {loading && (
+          <span className="text-xs font-semibold text-slate-400 animate-pulse shrink-0">Refreshing…</span>
+        )}
+      </div>
+
+      {/* Quick Actions navigation strip */}
       <QuickActions onNavigate={onNavigate} currentPage="dashboard" user={accessUser} />
 
       {/* Hero Metric Cards — temporarily hidden */}
@@ -1036,15 +1054,6 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
       <div className={`${isMobile ? 'px-4 pt-5' : 'px-6 lg:px-10 pt-8'} space-y-8 pb-10`}>
         {/* Module Section */}
         <section ref={moduleSectionRef} className="space-y-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-lg font-black text-slate-900">{salutation}, {displayName}!</p>
-              <p className="mt-0.5 text-sm text-slate-500">
-                Today is <span className="font-bold text-slate-800">{new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date())}</span> · {greetingSubtitle} Click any module below to expand for details.
-              </p>
-            </div>
-            {loading ? <span className="animate-pulse text-xs font-medium text-slate-400">Refreshing data...</span> : null}
-          </div>
 
           {/* Grid: active card floats to top (col-span-full), rest fill below in 2-3 col layout */}
           <div className="grid grid-cols-1 gap-5 xl:grid-cols-2 2xl:grid-cols-3">

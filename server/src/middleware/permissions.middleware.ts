@@ -23,6 +23,18 @@ declare global {
         email: string;
         role: Role;
         roles?: Role[];
+        /**
+         * `true` when the request is made with an impersonation token.
+         * Set by `authenticate` middleware; `false` (or absent) for normal sessions.
+         * Requirement 6.1
+         */
+        isImpersonation?: boolean;
+        /**
+         * The real admin's user ID when `isImpersonation === true`.
+         * Used by audit logic and the stop-impersonation flow.
+         * Requirement 6.1
+         */
+        originalAdminId?: string;
       };
       school?: School;
       requestId?: string;
@@ -41,6 +53,16 @@ export interface AuthRequest extends Request {
     email: string;
     role: Role;
     roles?: Role[];
+    /**
+     * `true` when the request is made with an impersonation token.
+     * Set by `authenticate` middleware. Requirement 6.1
+     */
+    isImpersonation?: boolean;
+    /**
+     * The real admin's user ID when `isImpersonation === true`.
+     * Requirement 6.1
+     */
+    originalAdminId?: string;
   };
   school?: School;
   file?: any;
