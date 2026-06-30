@@ -1,5 +1,16 @@
 import { fetchWithAuth } from './core';
 
+async function getCsrfHeaders() {
+  const response = await fetchWithAuth('/auth/csrf');
+  const token = response?.token ?? response?.data?.token;
+
+  if (!token) {
+    throw new Error('Unable to prepare secure admin request. Please try again.');
+  }
+
+  return { 'X-CSRF-Token': token };
+}
+
 /**
  * Frontend types (mirrored from server/src/types/impersonation.types.ts)
  *
@@ -68,6 +79,7 @@ export async function searchUsersForImpersonation(query, limit = 10) {
 export async function startImpersonationSession(targetUserId) {
   const response = await fetchWithAuth('/admin/impersonate/start', {
     method: 'POST',
+    headers: await getCsrfHeaders(),
     body: JSON.stringify({ targetUserId }),
   });
   // The endpoint returns the ImpersonationStartResult directly (or wrapped)
@@ -84,7 +96,10 @@ export async function startImpersonationSession(targetUserId) {
  * @returns {Promise<void>}
  */
 export async function stopImpersonationSession() {
-  await fetchWithAuth('/admin/impersonate/stop', { method: 'POST' });
+  await fetchWithAuth('/admin/impersonate/stop', {
+    method: 'POST',
+    headers: await getCsrfHeaders(),
+  });
 }
 
 /**
