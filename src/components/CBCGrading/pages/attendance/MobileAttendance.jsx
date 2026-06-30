@@ -323,7 +323,8 @@ export function MobileAttendance() {
     });
     setPendingChanges(allPresent);
     setAllMarkedPresent(true);
-  }, [dailyReport, effectivePolicy.isLocked, policy.lockLabel, showError]);
+    showSuccess('All learners marked present. Tap Save Attendance to submit.');
+  }, [dailyReport, effectivePolicy.isLocked, policy.lockLabel, showError, showSuccess]);
 
   const handleStatusChange = useCallback((learnerId, status) => {
     if (effectivePolicy.isLocked && lockedStatuses.has(status)) {
@@ -580,7 +581,7 @@ export function MobileAttendance() {
                 <p className="text-center text-xs text-gray-400 mt-2">
                   {effectivePolicy.isLocked
                     ? (attendanceSettings.allowLateAfterLock ? 'Late and exception marking remain available.' : 'All attendance changes require unlock.')
-                    : 'Then edit exceptions below'}
+                    : 'Then edit exceptions below and tap Save Attendance'}
                 </p>
               </div>
             )}
@@ -597,7 +598,7 @@ export function MobileAttendance() {
                       All {stats.total} learners marked present
                     </p>
                     <p className="text-xs text-emerald-600">
-                      {completedAt ? `Completed at ${formatCompletionTime(completedAt)}` : 'Edit exceptions below, then save'}
+                      {completedAt ? `Completed at ${formatCompletionTime(completedAt)}` : 'Not saved yet. Edit exceptions, then tap Save Attendance.'}
                     </p>
                   </div>
                   <AttendanceMarkAllCompact
