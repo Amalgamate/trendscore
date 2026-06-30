@@ -715,6 +715,8 @@ const UserManagement = () => {
       matchesTab = user.role === 'PARENT' && !user.archived;
     } else if (activeTab === 'students') {
       matchesTab = user.role === 'STUDENT' && !user.archived;
+    } else if (activeTab === 'admins') {
+      matchesTab = ['SUPER_ADMIN', 'ADMIN'].includes(user.role) && !user.archived;
     } else if (activeTab === 'staff') {
       matchesTab = ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN', 'NURSE', 'SECURITY', 'DRIVER', 'COOK', 'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT'].includes(user.role) && !user.archived;
     } else if (activeTab === 'archive') {
@@ -998,6 +1000,7 @@ const UserManagement = () => {
               <div className="flex items-center gap-1 bg-white p-1 rounded-xl shadow-sm border border-gray-100 overflow-x-auto no-scrollbar">
                 {[
                   { id: 'all', label: 'All Users', icon: Users, color: 'blue' },
+                  { id: 'admins', label: 'Admins', icon: Shield, color: 'purple' },
                   { id: 'staff', label: 'Staff', icon: Shield, color: 'blue' },
                   { id: 'parents', label: 'Parents', icon: Users, color: 'green' },
                   { id: 'students', label: 'Students', icon: BookOpen, color: 'orange' },
@@ -1018,6 +1021,7 @@ const UserManagement = () => {
                       {tab.id === 'archive' ? users.filter(u => u.archived).length :
                         tab.id === 'students' ? (learnerStats.total > 0 ? learnerStats.total : getStudentUsers().length) :
                           tab.id === 'parents' ? getParentUsers().length :
+                            tab.id === 'admins' ? activeUsers.filter(u => ['SUPER_ADMIN', 'ADMIN'].includes(u.role)).length :
                             tab.id === 'staff' ? staffCount :
                               activeUsers.length}
                     </span>

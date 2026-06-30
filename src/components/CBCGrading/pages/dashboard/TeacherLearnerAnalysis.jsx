@@ -11,10 +11,10 @@ import {
   SlidersHorizontal,
   ChevronRight,
   Eye,
-  Sparkles,
 } from 'lucide-react';
 import api, { dashboardAPI } from '../../../../services/api';
 import { EmptyState } from '@/design-system/components';
+import { useRolePreview } from '../../../../contexts/RolePreviewContext';
 
 const unwrapApiPayload = (payload) => {
   let current = payload;
@@ -57,6 +57,32 @@ const getRosterEntries = (classDetails) => {
 
 const normalizeRosterStudent = (entry) => entry?.learner ?? entry?.student ?? entry;
 
+const formatKes = (value) => `KES ${Number(value || 0).toLocaleString()}`;
+
+const getFeeSummary = (student) => {
+  const invoices = Array.isArray(student?.feeInvoices) ? student.feeInvoices : [];
+  const invoicedTotal = invoices.reduce((sum, inv) => sum + Number(inv.totalAmount || 0), 0);
+  const paidTotal = invoices.reduce((sum, inv) => sum + Number(inv.paidAmount || 0), 0);
+  const invoiceBalance = invoices.reduce((sum, inv) => sum + Number(inv.balance || 0), 0);
+  const balance = Number(student?.feeBalance ?? student?.balance ?? invoiceBalance ?? 0);
+
+  let status = 'NOT_PAID';
+  if (balance < 0) status = 'OVERPAID';
+  else if (balance <= 0 && (paidTotal > 0 || invoicedTotal > 0)) status = 'PAID';
+  else if (paidTotal > 0) status = 'PARTIAL';
+
+  return { balance, paidTotal, invoicedTotal, status };
+};
+
+const PAYMENT_FILTERS = [
+  { id: 'ALL', label: 'All' },
+  { id: 'PAID', label: 'Paid' },
+  { id: 'NOT_PAID', label: 'Not paid' },
+  { id: 'PARTIAL', label: 'Partial' },
+  { id: 'BALANCE', label: 'Has balance' },
+  { id: 'OVERPAID', label: 'Overpaid' },
+];
+
 const parseGradeStreamFromName = (className) => {
   const normalized = String(className || '').trim().toUpperCase();
   const match = normalized.match(/GRADE[\s_]*(\d+)\s*([A-Z])?/) || normalized.match(/FORM[\s_]*(\d+)\s*([A-Z])?/);
@@ -68,12 +94,30 @@ const parseGradeStreamFromName = (className) => {
   };
 };
 
+const normalizeSubjectNames = (subjects = []) => (
+  Array.isArray(subjects)
+    ? subjects
+      .map((item) => item?.subject || item?.name || item)
+      .filter(Boolean)
+    : []
+);
+
+const sameClass = (classItem, classRef) => {
+  if (!classItem || !classRef) return false;
+  return classItem.classId === classRef.id ||
+    classItem.classId === classRef.classId ||
+    classItem.className === classRef.name ||
+    classItem.className === classRef.className;
+};
+
 const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
+  const rolePreview = useRolePreview();
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState(null);
   const [error, setError] = useState(null);
 
   // In-page class details navigation
+  const [activePage, setActivePage] = useState('overview');
   const [selectedClass, setSelectedClass] = useState(null);
   const [classDetails, setClassDetails] = useState(null);
   const [loadingClass, setLoadingClass] = useState(false);
@@ -82,7 +126,9 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
   // Class list filter states
   const [searchTerm, setSearchTerm] = useState('');
   const [genderFilter, setGenderFilter] = useState('ALL');
+  const [paymentFilter, setPaymentFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState('NAME_ASC');
+  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
 
   useEffect(() => {
     let active = true;
@@ -90,6 +136,10 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
       try {
         setLoading(true);
         setError(null);
+        if (rolePreview?.isPreviewingRole) {
+          if (active) setMetrics({});
+          return;
+        }
         const response = await dashboardAPI.getTeacherMetrics('today');
         if (!active) return;
         setMetrics(response?.data || response || {});
@@ -102,55 +152,83 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
     };
     load();
     return () => { active = false; };
-  }, []);
+  }, [rolePreview?.isPreviewingRole]);
 
   const analysis = metrics?.learnerAnalysis || {};
   const stats = metrics?.stats || {};
-  const isClassTeacher = stats.isClassTeacher || false;
   const classTeacherOf = stats.classTeacherOf || null;
 
   const classes = useMemo(() => (
     Array.isArray(analysis.classes) ? analysis.classes : []
   ), [analysis.classes]);
 
-  const handleOpenClassList = async (classItem) => {
+  const myClass = useMemo(() => {
+    const matched = classes.find((classItem) => sameClass(classItem, classTeacherOf));
+    if (matched) return matched;
+    if (classTeacherOf) {
+      return {
+        classId: classTeacherOf.id,
+        className: classTeacherOf.name,
+        grade: classTeacherOf.grade,
+        stream: classTeacherOf.stream || '',
+        learnerCount: classTeacherOf.learnerCount || 0,
+        subjects: [{ subject: 'Class teacher' }],
+      };
+    }
+    return null;
+  }, [classTeacherOf, classes]);
+
+  const subjectClasses = useMemo(() => (
+    classes.filter((classItem) => {
+      const subjectNames = normalizeSubjectNames(classItem.subjects);
+      return subjectNames.length > 0 && !(
+        subjectNames.length === 1 &&
+        subjectNames[0].toLowerCase() === 'class teacher' &&
+        sameClass(classItem, myClass)
+      );
+    })
+  ), [classes, myClass]);
+
+  const loadClassPayload = async (classItem) => {
+    const raw = await api.classes.getAllClassData(classItem.classId);
+    let classPayload = unwrapApiPayload(raw) || {};
+    const rosterEntries = getRosterEntries(classPayload);
+
+    if (rosterEntries.length === 0 && (classItem.learnerCount || 0) > 0) {
+      const parsed = parseGradeStreamFromName(classItem.className);
+      const grade = classPayload.grade || classItem.grade || parsed.grade;
+      const stream = classPayload.stream || classItem.stream || parsed.stream;
+
+      if (grade) {
+        const learnerResponse = await api.learners.getAll({
+          grade,
+          ...(stream ? { stream } : {}),
+          status: 'ACTIVE',
+          page: 1,
+          limit: 500,
+        });
+        const learnerPayload = unwrapApiPayload(learnerResponse);
+        const fallbackStudents = Array.isArray(learnerPayload)
+          ? learnerPayload
+          : getRosterEntries(learnerPayload);
+        classPayload = {
+          ...classPayload,
+          students: fallbackStudents,
+        };
+      }
+    }
+
+    return classPayload;
+  };
+
+  const handleOpenClassList = async (classItem, page = 'my-class') => {
+    setActivePage(page);
     setSelectedClass(classItem);
     setLoadingClass(true);
     setClassError(null);
     setClassDetails(null);
     try {
-      const raw = await api.classes.getAllClassData(classItem.classId);
-      // fetchWithAuth returns response.data which is { success, data: { enrollments, ... } }
-      // getAllClassData spreads that, so we may get { success, data: { enrollments } } OR
-      // { enrollments } depending on how the spread lands. Normalise here.
-      let classPayload = unwrapApiPayload(raw) || {};
-      const rosterEntries = getRosterEntries(classPayload);
-
-      if (rosterEntries.length === 0 && (classItem.learnerCount || 0) > 0) {
-        const parsed = parseGradeStreamFromName(classItem.className);
-        const grade = classPayload.grade || classItem.grade || parsed.grade;
-        const stream = classPayload.stream || classItem.stream || parsed.stream;
-
-        if (grade) {
-          const learnerResponse = await api.learners.getAll({
-            grade,
-            ...(stream ? { stream } : {}),
-            status: 'ACTIVE',
-            page: 1,
-            limit: 500,
-          });
-          const learnerPayload = unwrapApiPayload(learnerResponse);
-          const fallbackStudents = Array.isArray(learnerPayload)
-            ? learnerPayload
-            : getRosterEntries(learnerPayload);
-          classPayload = {
-            ...classPayload,
-            students: fallbackStudents,
-          };
-        }
-      }
-
-      setClassDetails(classPayload);
+      setClassDetails(await loadClassPayload(classItem));
     } catch (err) {
       console.error('Failed to load class enrollments:', err);
       setClassError('Failed to load student list. Please try again.');
@@ -159,12 +237,47 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
     }
   };
 
+  const handleOpenSubjectsList = async () => {
+    setActivePage('my-subjects');
+    setSelectedClass({
+      classId: 'my-subjects',
+      className: 'My Subjects',
+      learnerCount: subjectClasses.reduce((sum, classItem) => sum + Number(classItem.learnerCount || 0), 0),
+    });
+    setLoadingClass(true);
+    setClassError(null);
+    setClassDetails(null);
+    try {
+      const payloads = await Promise.all(subjectClasses.map(async (classItem) => {
+        const payload = await loadClassPayload(classItem);
+        return getRosterEntries(payload)
+          .map(normalizeRosterStudent)
+          .filter((student) => student && (student.id || student.firstName || student.lastName))
+          .map((student) => ({
+            ...student,
+            className: classItem.className,
+            taughtSubjects: normalizeSubjectNames(classItem.subjects).join(', ') || 'Assigned subject',
+          }));
+      }));
+
+      setClassDetails({ students: payloads.flat() });
+    } catch (err) {
+      console.error('Failed to load subject learners:', err);
+      setClassError('Failed to load subject student list. Please try again.');
+    } finally {
+      setLoadingClass(false);
+    }
+  };
+
   const handleCloseClassList = () => {
+    setActivePage('overview');
     setSelectedClass(null);
     setClassDetails(null);
     setSearchTerm('');
     setGenderFilter('ALL');
+    setPaymentFilter('ALL');
     setSortBy('NAME_ASC');
+    setSelectedStudentIds([]);
   };
 
   // Client-side search, filtering and sorting
@@ -193,6 +306,14 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
       list = list.filter((s) => String(s.gender).toUpperCase() === genderFilter);
     }
 
+    if (paymentFilter !== 'ALL') {
+      list = list.filter((s) => {
+        const fee = getFeeSummary(s);
+        if (paymentFilter === 'BALANCE') return fee.balance > 0;
+        return fee.status === paymentFilter;
+      });
+    }
+
     // Sort list
     list.sort((a, b) => {
       const nameA = `${a.firstName || ''} ${a.lastName || ''}`.trim().toLowerCase();
@@ -205,13 +326,38 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
     });
 
     return list;
-  }, [classDetails, searchTerm, genderFilter, sortBy]);
+  }, [classDetails, searchTerm, genderFilter, paymentFilter, sortBy]);
+
+  const selectedCount = selectedStudentIds.length;
+  const allVisibleSelected = filteredStudents.length > 0 &&
+    filteredStudents.every((student) => selectedStudentIds.includes(student.id));
+
+  const toggleStudentSelection = (studentId) => {
+    setSelectedStudentIds((prev) => (
+      prev.includes(studentId)
+        ? prev.filter((id) => id !== studentId)
+        : [...prev, studentId]
+    ));
+  };
+
+  const toggleAllVisible = () => {
+    if (allVisibleSelected) {
+      setSelectedStudentIds((prev) => prev.filter((id) => !filteredStudents.some((student) => student.id === id)));
+      return;
+    }
+    setSelectedStudentIds((prev) => Array.from(new Set([...prev, ...filteredStudents.map((student) => student.id)])));
+  };
 
   const getInitials = (firstName, lastName) => {
     const f = String(firstName || '').charAt(0).toUpperCase();
     const l = String(lastName || '').charAt(0).toUpperCase();
     return `${f}${l}` || '?';
   };
+
+  const isSubjectTable = activePage === 'my-subjects';
+  const directoryDescription = isSubjectTable
+    ? 'A combined student table for the subjects and classes assigned to you.'
+    : `Manage and view detailed profiles of students enrolled in ${selectedClass?.className || 'your class'}.`;
 
   if (loading) {
     return (
@@ -244,17 +390,25 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
           </h1>
           <p className="mt-1 text-xs leading-5 text-slate-600 font-sans">
             {selectedClass
-              ? `Manage and view detailed profiles of students enrolled in ${selectedClass.className}.`
-              : `View statistics, assignments, and roster information for your classes.`}
+              ? directoryDescription
+              : `Choose My Class or My Subjects to open a student roster table.`}
           </p>
         </div>
-        {selectedClass && (
+        {selectedClass ? (
           <button
             onClick={handleCloseClassList}
             className="flex items-center gap-2 self-start md:self-auto bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 text-xs font-black transition-colors rounded-lg font-sans"
           >
             <ArrowLeft size={14} />
-            Back to Classes
+            Back to Overview
+          </button>
+        ) : (
+          <button
+            onClick={() => onNavigate('dashboard')}
+            className="flex items-center gap-2 self-start md:self-auto bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 text-xs font-black transition-colors rounded-lg font-sans"
+          >
+            <ArrowLeft size={14} />
+            Back to Dashboard
           </button>
         )}
       </div>
@@ -262,121 +416,84 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
       {/* Main Container: Class list vs Student list */}
       {!selectedClass ? (
         <>
-          {/* Metrics summary widgets */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="border border-slate-200/80 rounded-xl bg-white p-4 shadow-sm transition-all hover:shadow-md">
-              <Users className="mb-2 text-indigo-600" size={24} />
-              <p className="text-2xl font-black text-slate-950">{analysis.totalLearners || 0}</p>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Learners Taught</p>
-            </div>
-            <div className="border border-slate-200/80 rounded-xl bg-white p-4 shadow-sm transition-all hover:shadow-md">
-              <GraduationCap className="mb-2 text-emerald-600" size={24} />
-              <p className="text-2xl font-black text-slate-950">{analysis.totalClasses || 0}</p>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Classes Assigned</p>
-            </div>
-            <div className="border border-slate-200/80 rounded-xl bg-white p-4 shadow-sm transition-all hover:shadow-md">
-              <BookOpen className="mb-2 text-amber-600" size={24} />
-              <p className="text-2xl font-black text-slate-950">{analysis.totalSubjects || 0}</p>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Subjects Taught</p>
-            </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => myClass && handleOpenClassList(myClass, 'my-class')}
+              disabled={!myClass}
+              className="group min-h-[154px] rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-indigo-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700">
+                  <GraduationCap size={24} />
+                </div>
+                <ChevronRight size={18} className="text-slate-300 transition group-hover:text-indigo-600" />
+              </div>
+              <div className="mt-4">
+                <h2 className="text-lg font-black text-slate-950">My Class</h2>
+                <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                  {myClass ? `${myClass.className} student table` : 'No class-teacher class assigned'}
+                </p>
+              </div>
+              <div className="mt-4 flex items-end justify-between border-t border-slate-100 pt-3">
+                <div>
+                  <p className="text-2xl font-black text-slate-950">{myClass?.learnerCount || 0}</p>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Students</p>
+                </div>
+                <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-[10px] font-black text-slate-700">
+                  Open table
+                </span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenSubjectsList}
+              disabled={subjectClasses.length === 0}
+              className="group min-h-[154px] rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-emerald-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+                  <BookOpen size={24} />
+                </div>
+                <ChevronRight size={18} className="text-slate-300 transition group-hover:text-emerald-600" />
+              </div>
+              <div className="mt-4">
+                <h2 className="text-lg font-black text-slate-950">My Subjects</h2>
+                <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                  Students from the classes and subjects assigned to you.
+                </p>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
+                <div>
+                  <p className="text-2xl font-black text-slate-950">{subjectClasses.length}</p>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Classes</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-black text-slate-950">{analysis.totalSubjects || 0}</p>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Subjects</p>
+                </div>
+              </div>
+            </button>
           </div>
 
-          {/* Classes Grid */}
-          <div className="space-y-4">
-            <h2 className="text-sm font-black text-slate-950 uppercase tracking-wider">Assigned Classes</h2>
-
-            {classes.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {classes.map((classItem) => {
-                  const isSupervisor = isClassTeacher && classTeacherOf &&
-                    (classItem.classId === classTeacherOf.id || classItem.className === classTeacherOf.name);
-
-                  return (
-                    <div
-                      key={classItem.classId}
-                      className={`group border rounded-xl overflow-hidden bg-white shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 ${
-                        isSupervisor ? 'border-indigo-400 bg-gradient-to-br from-indigo-50/20 to-white' : 'border-slate-200/80'
-                      }`}
-                    >
-                      {/* Card Header */}
-                      <div className="p-4 border-b border-slate-100 flex items-start justify-between">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-base font-black text-slate-950 truncate max-w-[150px]">
-                              {classItem.className}
-                            </h3>
-                            {isSupervisor && (
-                              <span className="inline-flex items-center gap-1 bg-indigo-100 text-indigo-800 text-[9px] font-black uppercase px-2 py-0.5 rounded-full">
-                                <Sparkles size={8} /> Supervisor
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-slate-500 mt-1">
-                            {classItem.room ? `Room ${classItem.room}` : 'No Room Allocated'}
-                          </p>
-                        </div>
-                        <div className="h-10 w-10 shrink-0 bg-slate-100 group-hover:bg-indigo-50 transition-colors flex items-center justify-center rounded-lg text-slate-700 group-hover:text-indigo-600 font-bold text-sm">
-                          {classItem.className.match(/\d+/) ? `G${classItem.className.match(/\d+/)[0]}` : 'C'}
-                        </div>
-                      </div>
-
-                      {/* Card Body */}
-                      <div className="p-4 space-y-3">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-slate-500 font-semibold">Total Students:</span>
-                          <span className="text-slate-900 font-black flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded">
-                            <Users size={12} /> {classItem.learnerCount || 0}
-                          </span>
-                        </div>
-
-                        {/* Subject chips */}
-                        <div className="space-y-1">
-                          <span className="text-[10px] font-black uppercase text-slate-400">Taught Subjects</span>
-                          <div className="flex flex-wrap gap-1">
-                            {classItem.subjects && classItem.subjects.length > 0 ? (
-                              classItem.subjects.map((sub, i) => (
-                                <span
-                                  key={i}
-                                  className="text-[10px] font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md"
-                                >
-                                  {sub.subject}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-[10px] font-semibold text-slate-400 italic">No assigned subjects</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Card Footer */}
-                      <div className="p-3 bg-slate-50/50 border-t border-slate-100">
-                        <button
-                          onClick={() => handleOpenClassList(classItem)}
-                          className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 text-slate-700 px-3 py-2 text-xs font-black transition-all rounded-lg"
-                        >
-                          View Students List
-                          <ChevronRight size={14} className="text-slate-400 group-hover:text-indigo-600 transition-colors" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-slate-600">
+                <Users size={18} />
               </div>
-            ) : (
-              <div className="p-6">
-                <EmptyState
-                  icon={<Users size={44} />}
-                  title="No assigned learners found"
-                  description="Learners appear here after the teacher is assigned as a class teacher or subject teacher on the timetable."
-                />
+              <div>
+                <h2 className="text-sm font-black text-slate-950">Student tables</h2>
+                <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                  Open either card to view students in a simple Excel-style roster with filters, selection, fee paid totals, and balances.
+                </p>
               </div>
-            )}
+            </div>
           </div>
         </>
       ) : (
         /* Class Student Directory view */
-        <div className="border border-slate-200/80 rounded-xl bg-white shadow-sm overflow-hidden">
+        <div className="border border-slate-300 bg-white shadow-sm overflow-hidden">
           {/* Directory Toolbar / Filters */}
           <div className="p-4 border-b border-slate-100 bg-slate-50/50 space-y-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -408,6 +525,20 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
                   </select>
                 </div>
 
+                <div className="flex bg-white border border-slate-200 rounded-lg p-1 gap-1 overflow-x-auto">
+                  {PAYMENT_FILTERS.map((filter) => (
+                    <button
+                      key={filter.id}
+                      onClick={() => setPaymentFilter(filter.id)}
+                      className={`whitespace-nowrap px-3 py-1 rounded text-[10px] font-black uppercase transition-colors ${
+                        paymentFilter === filter.id ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+
                 <div className="flex bg-white border border-slate-200 rounded-lg p-1 gap-1">
                   <button
                     onClick={() => setGenderFilter('ALL')}
@@ -436,6 +567,11 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
                 </div>
               </div>
             </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-slate-500">
+              <span>{filteredStudents.length} student{filteredStudents.length === 1 ? '' : 's'} shown</span>
+              <span>{selectedCount} selected</span>
+            </div>
           </div>
 
           {/* Directory Content */}
@@ -449,55 +585,113 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
               <AlertTriangle size={36} className="mb-2" />
               <p className="text-xs font-semibold">{classError}</p>
               <button
-                onClick={() => handleOpenClassList(selectedClass)}
+                onClick={() => (isSubjectTable ? handleOpenSubjectsList() : handleOpenClassList(selectedClass, activePage))}
                 className="mt-3 bg-indigo-600 text-white px-4 py-1.5 text-xs font-black rounded-lg hover:bg-indigo-700"
               >
                 Retry
               </button>
             </div>
           ) : filteredStudents.length > 0 ? (
-            <div className="divide-y divide-slate-100">
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-collapse text-left">
+                <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-600">
+                  <tr>
+                    <th className="w-10 border border-slate-200 px-3 py-2">
+                      <input
+                        type="checkbox"
+                        checked={allVisibleSelected}
+                        onChange={toggleAllVisible}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        aria-label="Select all visible students"
+                      />
+                    </th>
+                    <th className="border border-slate-200 px-3 py-2">Student</th>
+                    <th className="border border-slate-200 px-3 py-2">Admission</th>
+                    {isSubjectTable && <th className="border border-slate-200 px-3 py-2">Class</th>}
+                    {isSubjectTable && <th className="border border-slate-200 px-3 py-2">Subjects</th>}
+                    <th className="border border-slate-200 px-3 py-2">Gender</th>
+                    <th className="border border-slate-200 px-3 py-2 text-right">Paid</th>
+                    <th className="border border-slate-200 px-3 py-2 text-right">Balance</th>
+                    <th className="border border-slate-200 px-3 py-2">Status</th>
+                    <th className="border border-slate-200 px-3 py-2 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white">
               {filteredStudents.map((student) => {
                 const isMale = String(student.gender).toUpperCase() === 'MALE';
                 const avatarBg = isMale ? 'bg-blue-50 text-blue-700' : 'bg-rose-50 text-rose-700';
+                const fee = getFeeSummary(student);
+                const statusClass = fee.status === 'PAID'
+                  ? 'bg-emerald-50 text-emerald-700'
+                  : fee.status === 'PARTIAL'
+                    ? 'bg-amber-50 text-amber-700'
+                    : fee.status === 'OVERPAID'
+                      ? 'bg-indigo-50 text-indigo-700'
+                      : 'bg-rose-50 text-rose-700';
 
                 return (
-                  <div
-                    key={student.id}
-                    onClick={() => onNavigate('learner-profile', { learner: student })}
-                    className="p-4 flex items-center justify-between hover:bg-slate-50/50 transition-colors cursor-pointer group"
+                  <tr
+                    key={`${student.id || student.admissionNumber}-${student.className || selectedClass?.className || ''}-${student.taughtSubjects || ''}`}
+                    className="hover:bg-slate-50/60 transition-colors"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      {/* Avatar */}
-                      <div className={`h-10 w-10 rounded-full shrink-0 flex items-center justify-center font-black text-xs ${avatarBg}`}>
-                        {getInitials(student.firstName, student.lastName)}
+                    <td className="border border-slate-200 px-3 py-2 align-middle">
+                      <input
+                        type="checkbox"
+                        checked={selectedStudentIds.includes(student.id)}
+                        onChange={() => toggleStudentSelection(student.id)}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        aria-label={`Select ${student.firstName || 'student'}`}
+                      />
+                    </td>
+                    <td className="border border-slate-200 px-3 py-2 align-middle">
+                      <div className="flex items-center gap-3 min-w-[180px]">
+                        <div className={`h-9 w-9 rounded-full shrink-0 flex items-center justify-center font-black text-xs ${avatarBg}`}>
+                          {getInitials(student.firstName, student.lastName)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black text-slate-950">
+                            {student.firstName} {student.lastName}
+                          </p>
+                          <p className="truncate text-[11px] font-semibold text-slate-500">{student.status || 'ACTIVE'}</p>
+                        </div>
                       </div>
-
-                      {/* Name / Adm details */}
-                      <div className="min-w-0">
-                        <h4 className="text-sm font-black text-slate-950 group-hover:text-indigo-600 transition-colors truncate">
-                          {student.firstName} {student.lastName}
-                        </h4>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          Adm: <span className="font-semibold text-slate-700">{student.admissionNumber || 'N/A'}</span>
-                          <span className="mx-2">•</span>
-                          Gender: <span className="font-semibold text-slate-700">{student.gender || 'N/A'}</span>
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* View detailed profile */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-400 group-hover:text-indigo-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                        View Profile
+                    </td>
+                    <td className="border border-slate-200 px-3 py-2 align-middle text-xs font-bold text-slate-700">{student.admissionNumber || 'N/A'}</td>
+                    {isSubjectTable && (
+                      <td className="border border-slate-200 px-3 py-2 align-middle text-xs font-bold text-slate-700">
+                        {student.className || 'N/A'}
+                      </td>
+                    )}
+                    {isSubjectTable && (
+                      <td className="border border-slate-200 px-3 py-2 align-middle text-xs font-semibold text-slate-600">
+                        {student.taughtSubjects || 'Assigned subject'}
+                      </td>
+                    )}
+                    <td className="border border-slate-200 px-3 py-2 align-middle text-xs font-bold text-slate-700">{student.gender || 'N/A'}</td>
+                    <td className="border border-slate-200 px-3 py-2 align-middle text-right text-xs font-black text-emerald-700">{formatKes(fee.paidTotal)}</td>
+                    <td className={`border border-slate-200 px-3 py-2 align-middle text-right text-xs font-black ${fee.balance > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                      {formatKes(fee.balance)}
+                    </td>
+                    <td className="border border-slate-200 px-3 py-2 align-middle">
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${statusClass}`}>
+                        {fee.status.replace('_', ' ')}
                       </span>
-                      <div className="h-8 w-8 rounded-lg flex items-center justify-center border border-slate-200/80 bg-white group-hover:border-indigo-300 text-slate-400 group-hover:text-indigo-600 transition-all shadow-sm">
-                        <Eye size={14} />
-                      </div>
-                    </div>
-                  </div>
+                    </td>
+                    <td className="border border-slate-200 px-3 py-2 align-middle text-right">
+                      <button
+                        type="button"
+                        onClick={() => onNavigate('learner-profile', { learner: student })}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] font-black text-slate-600 hover:border-indigo-300 hover:text-indigo-600"
+                      >
+                        <Eye size={13} />
+                        View
+                      </button>
+                    </td>
+                  </tr>
                 );
               })}
+                </tbody>
+              </table>
             </div>
           ) : (
             <div className="py-12 text-center text-slate-500">

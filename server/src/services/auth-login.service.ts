@@ -17,7 +17,7 @@ interface LoginParams {
   } | null;
 }
 
-type LoginMethod = 'PASSWORD' | 'PHONE_OTP';
+type LoginMethod = 'PASSWORD' | 'PHONE_OTP' | 'STUDENT_PHONE_PASSWORD';
 
 const MAX_PASSWORD_LOGIN_ATTEMPTS = 5;
 const PASSWORD_LOCKOUT_MINUTES = 15;

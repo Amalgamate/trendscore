@@ -237,6 +237,91 @@ export const validateInputSafe = <T>(
   return { success: true, data: result.data as T };
 };
 
+// ============================================
+// STUDENT PHONE LOGIN SCHEMAS
+// ============================================
+
+// XSS patterns mirrored from password.util.ts for use in input validation
+const XSS_PATTERNS_INLINE = [
+  /<script[^>]*>/gi,
+  /<\/script>/gi,
+  /javascript:/gi,
+  /on\w+\s*=/gi,
+  /<iframe[^>]*>/gi,
+  /<embed[^>]*>/gi,
+  /<object[^>]*>/gi,
+];
+
+const containsXSS = (value: string): boolean =>
+  XSS_PATTERNS_INLINE.some((pattern) => {
+    pattern.lastIndex = 0; // reset stateful regex flags
+    return pattern.test(value);
+  });
+
+/**
+ * Validates the phone lookup endpoint body.
+ * Accepts phone strings that contain 9–12 digit characters after stripping
+ * all non-digit characters (Kenyan phone format). Rejects XSS patterns.
+ */
+export const studentPhoneLookupSchema = z.object({
+  phone: z
+    .string()
+    .refine((val) => !containsXSS(val), {
+      message: 'Phone number contains unsafe content',
+    })
+    .refine(
+      (val) => {
+        const digits = val.replace(/\D/g, '');
+        return digits.length >= 9 && digits.length <= 12;
+      },
+      {
+        message: 'Phone number must contain between 9 and 12 digits',
+      }
+    ),
+});
+
+/**
+ * Validates the student phone login endpoint body.
+ * - sessionToken: non-empty, must match {base64url}.{hex-signature} format
+ * - studentUserId: non-empty string
+ * - password: 6–200 characters, rejects XSS patterns
+ */
+export const studentPhoneLoginSchema = z.object({
+  sessionToken: z
+    .string()
+    .min(1, 'Session token is required')
+    .refine(
+      (val) => {
+        // Must have at least two parts separated by a dot;
+        // first part is base64url, second part is a hex signature
+        const dotIndex = val.indexOf('.');
+        if (dotIndex < 1) return false;
+        const payload = val.slice(0, dotIndex);
+        const signature = val.slice(dotIndex + 1);
+        return (
+          payload.length > 0 &&
+          signature.length > 0 &&
+          /^[A-Za-z0-9_-]+$/.test(payload) &&
+          /^[0-9a-fA-F]+$/.test(signature)
+        );
+      },
+      {
+        message: 'Session token format is invalid',
+      }
+    ),
+  studentUserId: z.string().min(1, 'Student user ID is required'),
+  password: z
+    .string()
+    .min(6, 'Password must be between 6 and 200 characters')
+    .max(200, 'Password must be between 6 and 200 characters')
+    .refine((val) => !containsXSS(val), {
+      message: 'Password contains unsafe content',
+    }),
+});
+
+export type StudentPhoneLookupInput = z.infer<typeof studentPhoneLookupSchema>;
+export type StudentPhoneLoginInput = z.infer<typeof studentPhoneLoginSchema>;
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type PhoneOtpRequestInput = z.infer<typeof phoneOtpRequestSchema>;

@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useUIStore } from '../../../../store/useUIStore';
-import { QuickActions } from '../../shared';
 import api from '../../../../services/api';
 import CalendarView from './CalendarView';
 import ApprovalsPage from '../ApprovalsPage';
@@ -40,7 +38,6 @@ import {
   Zap,
   CheckSquare,
   FileCheck,
-  Home,
   ClipboardCheck
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -88,16 +85,7 @@ const INITIAL_TERM_FORM = {
   isParentVisible: true,
 };
 
-export default function AnnualPlannerPage({ onNavigate, user }) {
-  const setCurrentPage = useUIStore((s) => s.setCurrentPage);
-  const handleNavigatePage = (path) => {
-    if (typeof onNavigate === 'function') {
-      onNavigate(path);
-    } else {
-      setCurrentPage(path);
-    }
-  };
-  const handleGoHome = () => handleNavigatePage('dashboard');
+export default function AnnualPlannerPage() {
   const [academicYear, setAcademicYear] = useState(new Date().getFullYear());
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'timeline', 'calendar', 'terms', 'events', 'reports'
   const [events, setEvents] = useState([]);
@@ -487,11 +475,6 @@ export default function AnnualPlannerPage({ onNavigate, user }) {
 
   return (
     <div className="min-h-screen bg-[var(--app-page-bg)] text-slate-800 print:bg-white pb-24">
-      {/* Full-width Quick Actions matching the executive dashboard */}
-      <div className="print:hidden">
-        <QuickActions onNavigate={handleNavigatePage} currentPage="annual-planner" />
-      </div>
-
       <div className="p-6 lg:p-8 print:p-0">
         {/* Header Panel (Hidden in print mode) */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 print:hidden">

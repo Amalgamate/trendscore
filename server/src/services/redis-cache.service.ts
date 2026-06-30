@@ -26,6 +26,7 @@ class RedisCacheService {
     this.initialize();
     // Cleanup memory cache every 5 minutes
     this.cleanupInterval = setInterval(() => this.cleanupMemory(), 5 * 60 * 1000);
+    this.cleanupInterval.unref?.();
   }
 
   private async initialize() {

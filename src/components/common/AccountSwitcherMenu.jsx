@@ -45,8 +45,10 @@ const AccountSwitcherMenu = ({ user, onLogout, onProfile }) => {
   const isPreviewingRole = rolePreview?.isPreviewingRole;
 
   const handleUserSelect = async (selectedUser) => {
-    setMenuOpen(false);
-    await startImpersonation(selectedUser.id);
+    const switched = await startImpersonation(selectedUser.id);
+    if (switched) {
+      setMenuOpen(false);
+    }
   };
 
   const handleLogout = () => {

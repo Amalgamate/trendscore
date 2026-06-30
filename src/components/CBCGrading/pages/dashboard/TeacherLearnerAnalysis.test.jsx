@@ -15,6 +15,10 @@ const { getLearners } = vi.hoisted(() => ({
   getLearners: vi.fn()
 }));
 
+const { rolePreviewState } = vi.hoisted(() => ({
+  rolePreviewState: { isPreviewingRole: false }
+}));
+
 vi.mock('../../../../services/api', () => ({
   default: {
     classes: {
@@ -27,6 +31,10 @@ vi.mock('../../../../services/api', () => ({
   dashboardAPI: {
     getTeacherMetrics
   }
+}));
+
+vi.mock('../../../../contexts/RolePreviewContext', () => ({
+  useRolePreview: () => rolePreviewState
 }));
 
 // Mock the CSS/Design System elements
@@ -95,6 +103,7 @@ describe('TeacherLearnerAnalysis', () => {
   };
 
   beforeEach(() => {
+    rolePreviewState.isPreviewingRole = false;
     getTeacherMetrics.mockResolvedValue(mockMetrics);
     getAllClassData.mockResolvedValue(mockClassData);
     getLearners.mockResolvedValue({ data: [] });
@@ -104,32 +113,36 @@ describe('TeacherLearnerAnalysis', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders summary banner metrics and class cards grid', async () => {
+  it('renders the two roster entry cards', async () => {
     render(<TeacherLearnerAnalysis user={mockUser} onNavigate={() => {}} />);
 
     // Loader is shown first
     expect(screen.getByText(/Loading your class analysis.../)).toBeTruthy();
 
     // Wait for metrics to load
-    await waitFor(() => expect(screen.getByText('45')).toBeTruthy());
-    expect(screen.getByText('Grade 4 East')).toBeTruthy();
-    expect(screen.getByText('Grade 5 West')).toBeTruthy();
-
-    // Check the "Supervisor" badge on Grade 4 East
-    expect(screen.getByText('Supervisor')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('My Class')).toBeTruthy());
+    expect(screen.getByText('My Subjects')).toBeTruthy();
+    expect(screen.getByText('Grade 4 East student table')).toBeTruthy();
+    expect(screen.getByText('Student tables')).toBeTruthy();
   });
 
-  it('navigates to student roster list on class card click', async () => {
+  it('does not call teacher metrics while previewing a teacher role as super admin', async () => {
+    rolePreviewState.isPreviewingRole = true;
+
+    render(<TeacherLearnerAnalysis user={{ id: 'admin-1', role: 'SUPER_ADMIN' }} onNavigate={() => {}} />);
+
+    await waitFor(() => expect(screen.getByText('My Class')).toBeTruthy());
+    expect(getTeacherMetrics).not.toHaveBeenCalled();
+  });
+
+  it('opens the My Class student table', async () => {
     const onNavigateMock = vi.fn();
     render(<TeacherLearnerAnalysis user={mockUser} onNavigate={onNavigateMock} />);
 
-    await waitFor(() => expect(screen.getByText('Grade 4 East')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('My Class')).toBeTruthy());
 
-    // Click "View Students List" on Grade 4 East
-    const viewListButtons = screen.getAllByRole('button', { name: /View Students List/i });
-    fireEvent.click(viewListButtons[0]);
+    fireEvent.click(screen.getByRole('button', { name: /My Class/i }));
 
-    // Check loader is shown or resolved
     await waitFor(() => expect(screen.getByPlaceholderText(/Search students by name or admission no.../i)).toBeTruthy());
     expect(screen.getByText('Amina Ahmed')).toBeTruthy();
     expect(screen.getByText('Yusuf Kamau')).toBeTruthy();
@@ -140,9 +153,7 @@ describe('TeacherLearnerAnalysis', () => {
     expect(screen.queryByText('Yusuf Kamau')).toBeNull();
     expect(screen.getByText('Amina Ahmed')).toBeTruthy();
 
-    // Navigate to student profile on click
-    const aminaCard = screen.getByText('Amina Ahmed').closest('.group');
-    fireEvent.click(aminaCard);
+    fireEvent.click(screen.getAllByRole('button', { name: /^View$/i })[0]);
     expect(onNavigateMock).toHaveBeenCalledWith('learner-profile', {
       learner: mockClassData.enrollments[0].learner
     });
@@ -187,10 +198,11 @@ describe('TeacherLearnerAnalysis', () => {
 
     render(<TeacherLearnerAnalysis user={mockUser} onNavigate={() => {}} />);
 
-    await waitFor(() => expect(screen.getByText('GRADE 7 A')).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: /View Students List/i }));
+    await waitFor(() => expect(screen.getByText('My Subjects')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /My Subjects/i }));
 
     await waitFor(() => expect(screen.getByText('Zuleka Issack')).toBeTruthy());
+    expect(screen.getByText('GRADE 7 A')).toBeTruthy();
     expect(getLearners).toHaveBeenCalledWith({
       grade: 'GRADE_7',
       stream: 'A',

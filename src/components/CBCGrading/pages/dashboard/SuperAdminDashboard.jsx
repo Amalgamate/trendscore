@@ -7,7 +7,6 @@ import React, { useEffect, useState } from 'react';
 import { dashboardAPI } from '../../../../services/api';
 import { AppCard, EmptyState } from '@/design-system/components';
 import { DashboardSection, DashboardSectionControls, useDashboardSections } from './DashboardSections';
-import { QuickActions } from '../../shared';
 import {
   Activity,
   AlertTriangle,
@@ -177,23 +176,6 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
 
   return (
     <div className="min-h-screen bg-[var(--app-page-bg)] pb-24">
-      {/* Greeting header */}
-      <div className="px-6 lg:px-10 pt-7 pb-4 bg-white border-b border-slate-200 flex items-center justify-between gap-4">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-600">Super Admin</p>
-          <h1 className="mt-1.5 text-xl font-black text-slate-950">Hello, {operatorName}. System context is online.</h1>
-          <p className="mt-1 text-sm font-semibold text-slate-500">
-            You are viewing the governance layer: users, modules, logs, academics, finance exposure, and runtime operations.
-          </p>
-        </div>
-        {refreshing && (
-          <span className="text-xs font-semibold text-slate-400 animate-pulse shrink-0">Syncing…</span>
-        )}
-      </div>
-
-      {/* Quick Actions navigation strip */}
-      <QuickActions onNavigate={onNavigate} currentPage="dashboard" user={user} />
-
       <div className="px-6 lg:px-10 pt-8 space-y-6 pb-10">
         <DashboardSection id="super-admin-quick-actions" controls={sectionControls}>
           <AppCard title="Super Admin Quick Actions" subtitle="Colored shortcuts for the controls used most often">

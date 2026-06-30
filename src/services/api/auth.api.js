@@ -101,6 +101,30 @@ export const authAPI = {
     }
   },
 
+  studentPhoneLookup: async ({ phone }) => {
+    try {
+      const response = await axiosInstance.post('/auth/student-phone/lookup', { phone });
+      return response.data;
+    } catch (error) {
+      if (error.response?.data) {
+        throw new Error(extractApiErrorMessage(error.response.data, error.response.status));
+      }
+      throw error;
+    }
+  },
+
+  studentPhoneLogin: async ({ sessionToken, studentUserId, password }) => {
+    try {
+      const response = await axiosInstance.post('/auth/student-phone/login', { sessionToken, studentUserId, password });
+      return response.data;
+    } catch (error) {
+      if (error.response?.data) {
+        throw new Error(extractApiErrorMessage(error.response.data, error.response.status));
+      }
+      throw error;
+    }
+  },
+
   getCsrf: async () => {
     const response = await axiosInstance.get('/auth/csrf');
     return response.data;

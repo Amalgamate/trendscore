@@ -2,6 +2,7 @@ import bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import prisma from '../config/database';
 import { PRODUCT_EMAIL_DOMAIN, PRODUCT_TEMP_PASSWORD_PREFIX } from '../config/productIdentity';
+import { studentPasswordIssuanceService } from './studentPasswordIssuance.service';
 
 type EnsureStudentAccountInput = {
   admissionNumber: string;
@@ -9,6 +10,13 @@ type EnsureStudentAccountInput = {
   lastName: string;
   middleName?: string | null;
   phone?: string | null;
+  // Optional delivery channels for password issuance
+  deliveryChannels?: {
+    parentPhone?: string | null;
+    guardianPhone?: string | null;
+    studentPhone?: string | null;
+    parentEmail?: string | null;
+  } | null;
 };
 
 const STUDENT_EMAIL_DOMAIN = PRODUCT_EMAIL_DOMAIN;
@@ -101,6 +109,29 @@ export const ensureStudentAccountForLearner = async (input: EnsureStudentAccount
     },
     select: { id: true }
   });
+
+  // Attempt password delivery if delivery channels were provided.
+  // Failures must never block account creation — they are caught and logged.
+  if (input.deliveryChannels) {
+    try {
+      await studentPasswordIssuanceService.issueInitialPassword({
+        learnerId: '', // not available here — only used for logging
+        studentUserId: createdUser.id,
+        admissionNumber: input.admissionNumber,
+        firstName: input.firstName,
+        tempPassword, // plain-text — still in scope, discarded after this call
+        parentPhone: input.deliveryChannels.parentPhone ?? null,
+        guardianPhone: input.deliveryChannels.guardianPhone ?? null,
+        studentPhone: input.deliveryChannels.studentPhone ?? null,
+        parentEmail: input.deliveryChannels.parentEmail ?? null,
+      });
+    } catch (err: any) {
+      console.warn(
+        `[ensureStudentAccountForLearner] Password delivery failed for student ${input.admissionNumber}:`,
+        err?.message ?? err,
+      );
+    }
+  }
 
   return { created: true, userId: createdUser.id };
 };

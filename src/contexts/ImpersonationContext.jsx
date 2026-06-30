@@ -165,7 +165,7 @@ export function ImpersonationProvider({ children }) {
     } catch (storageErr) {
       setError('Failed to save session — localStorage may be full or disabled.');
       setIsLoading(false);
-      return;
+      return false;
     }
 
     try {
@@ -183,6 +183,7 @@ export function ImpersonationProvider({ children }) {
         email: result.impersonatedUser.email,
         role:  result.impersonatedUser.role,
       });
+      return true;
     } catch (err) {
       // Rollback: remove localStorage keys so there's no orphaned state (Req 3.13)
       localStorage.removeItem(LS_ORIGINAL_TOKEN);
@@ -193,6 +194,7 @@ export function ImpersonationProvider({ children }) {
         ?? err?.message
         ?? 'Failed to start impersonation session.';
       setError(message);
+      return false;
     } finally {
       setIsLoading(false);
     }
@@ -218,7 +220,14 @@ export function ImpersonationProvider({ children }) {
       // Restore original admin session (Req 5.5)
       restoreOriginalSession();
     } catch (err) {
-      // On failure: re-enable exit control, leave impersonation active (Req 5.7)
+      // In local dev the stop/CSRF request can fail while the saved admin
+      // session is still valid. Restore locally so the user is not trapped.
+      if (restoreOriginalSession()) {
+        showToast('Returned to your account. The server could not confirm impersonation cleanup.');
+        return;
+      }
+
+      // On failure without a recoverable admin session: re-enable exit control.
       const message = err?.response?.data?.error
         ?? err?.response?.data?.message
         ?? err?.message
@@ -227,7 +236,7 @@ export function ImpersonationProvider({ children }) {
     } finally {
       setIsLoading(false);
     }
-  }, [auth, restoreOriginalSession]);
+  }, [auth, restoreOriginalSession, showToast]);
 
   const value = {
     isImpersonating,

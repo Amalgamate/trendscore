@@ -108,6 +108,20 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
     smsConfigured: null,
     autofillAllowed: false,
   });
+  const [loginMode, setLoginMode] = useState('standard'); // 'standard' | 'phoneOtp' | 'student'
+
+  const [studentLogin, setStudentLogin] = useState({
+    phone: '',
+    sessionToken: '',
+    candidates: [],          // [{ studentUserId, admissionNumber, firstName, lastName, grade }]
+    selectedStudentUserId: '',
+    step: 'phone',           // 'phone' | 'pick' | 'password'
+    password: '',
+    isLoading: false,
+    error: '',
+    cooldown: 0,             // seconds countdown for 429 rate limit
+  });
+
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [isPhoneOtpLoading, setIsPhoneOtpLoading] = useState(false);
@@ -292,6 +306,14 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
   }, [phoneOtpCooldown]);
 
   useEffect(() => {
+    if (studentLogin.cooldown <= 0) return undefined;
+    const timer = window.setTimeout(() => {
+      setStudentLogin(prev => ({ ...prev, cooldown: Math.max(0, prev.cooldown - 1) }));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [studentLogin.cooldown]);
+
+  useEffect(() => {
     if (phoneOtpStep === 'verify' && phoneOtpCooldown === 0 && !phoneOtp.code) {
       setPhonePasswordFallback(true);
     }
@@ -451,6 +473,94 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
     }
   };
 
+  const handleStudentPhoneLookup = async (e) => {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    const digits = studentLogin.phone.replace(/\D/g, '');
+    if (digits.length < 9) {
+      setStudentLogin(prev => ({ ...prev, error: 'Enter a valid phone number (min 9 digits)' }));
+      return;
+    }
+    setStudentLogin(prev => ({ ...prev, isLoading: true, error: '' }));
+    try {
+      const result = await authAPI.studentPhoneLookup({ phone: normalizeKenyanPhone(studentLogin.phone) });
+      const candidates = result.candidates || [];
+      const sessionToken = result.sessionToken || '';
+      if (candidates.length === 0) {
+        setStudentLogin(prev => ({
+          ...prev,
+          isLoading: false,
+          error: 'No student account found for this phone number',
+          sessionToken,
+          candidates: [],
+        }));
+      } else if (candidates.length === 1) {
+        setStudentLogin(prev => ({
+          ...prev,
+          isLoading: false,
+          sessionToken,
+          candidates,
+          selectedStudentUserId: candidates[0].studentUserId,
+          step: 'password',
+          error: '',
+        }));
+      } else {
+        setStudentLogin(prev => ({
+          ...prev,
+          isLoading: false,
+          sessionToken,
+          candidates,
+          step: 'pick',
+          error: '',
+        }));
+      }
+    } catch (error) {
+      const msg = error.message || 'Unable to look up phone number';
+      const lowerMsg = msg.toLowerCase();
+      if (lowerMsg.includes('too many') || lowerMsg.includes('wait')) {
+        const seconds = parseInt((msg.match(/(\d+)\s*second/) || [])[1] || '60', 10);
+        setStudentLogin(prev => ({ ...prev, isLoading: false, cooldown: seconds, error: '' }));
+      } else {
+        setStudentLogin(prev => ({ ...prev, isLoading: false, error: msg }));
+      }
+    }
+  };
+
+  const handleStudentCandidateSelect = (studentUserId) => {
+    setStudentLogin(prev => ({ ...prev, selectedStudentUserId: studentUserId, error: '' }));
+  };
+
+  const handleStudentCandidateContinue = () => {
+    if (!studentLogin.selectedStudentUserId) return;
+    setStudentLogin(prev => ({ ...prev, step: 'password', error: '' }));
+  };
+
+  const handleStudentPhoneLogin = async (e) => {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    if (studentLogin.password.length < 6) {
+      setStudentLogin(prev => ({ ...prev, error: 'Password must be at least 6 characters' }));
+      return;
+    }
+    setStudentLogin(prev => ({ ...prev, isLoading: true, error: '' }));
+    try {
+      const credentialsData = await authAPI.studentPhoneLogin({
+        sessionToken: studentLogin.sessionToken,
+        studentUserId: studentLogin.selectedStudentUserId,
+        password: studentLogin.password,
+      });
+      setStudentLogin(prev => ({ ...prev, isLoading: false }));
+      await completeBypassLogin(credentialsData, studentLogin.phone);
+    } catch (error) {
+      const msg = error.message || 'Authentication failed';
+      const lowerMsg = msg.toLowerCase();
+      if (lowerMsg.includes('too many') || lowerMsg.includes('wait')) {
+        const seconds = parseInt((msg.match(/(\d+)\s*second/) || [])[1] || '60', 10);
+        setStudentLogin(prev => ({ ...prev, isLoading: false, cooldown: seconds, error: '' }));
+      } else {
+        setStudentLogin(prev => ({ ...prev, isLoading: false, error: msg }));
+      }
+    }
+  };
+
   const handleInstitutionOptionClick = (value) => {
     setInstitutionChoice(value);
     setWizardStep('profile');
@@ -545,6 +655,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
     'there';
   const mobilePhoneDisplay = phoneOtp.phone.trim() || '—';
   const formattedCooldown = `00:${String(phoneOtpCooldown).padStart(2, '0')}`;
+  const formattedStudentCooldown = `00:${String(studentLogin.cooldown).padStart(2, '0')}`;
 
   const handleMobileCodeChange = (index, value) => {
     const digits = value.replace(/\D/g, '');
@@ -712,10 +823,161 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
             {/* Timeless welcome text */}
             <div className="mt-8 mb-2 text-center w-full">
               <h1 className="text-2xl font-bold text-[#0E2A5A] tracking-tight">Welcome back</h1>
-              <p className="mt-1.5 text-xs font-medium text-slate-500">Continue with your registered phone number.</p>
+              <p className="mt-1.5 text-xs font-medium text-slate-500">
+                {loginMode === 'student' ? 'Sign in with your parent\'s phone number.' : 'Continue with your registered phone number.'}
+              </p>
             </div>
 
             {/* Card — Solid white card, 24px radius, orange border */}
+            {loginMode === 'student' ? (
+              /* ── Mobile Student Login Flow ── */
+              <div className="mt-6 w-full max-w-[18.5rem] px-1 py-4 transition-all">
+                {studentLogin.error && (
+                  <div className="mb-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50/95 px-3 py-2 text-xs font-medium text-red-700">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{studentLogin.error}</span>
+                  </div>
+                )}
+
+                {studentLogin.isLoading ? (
+                  <div className="flex flex-col items-center justify-center py-8">
+                    <div className="relative h-10 w-10">
+                      <div className="absolute inset-0 rounded-full border-4 border-[#F47C20]/15" />
+                      <div className="absolute inset-0 rounded-full border-4 border-t-[#F47C20] animate-spin" />
+                    </div>
+                    <p className="mt-4 text-xs font-semibold text-[#0E2A5A] animate-pulse">
+                      {studentLogin.step === 'phone' ? 'Looking up account...' : 'Signing in...'}
+                    </p>
+                  </div>
+                ) : studentLogin.step === 'phone' ? (
+                  <form onSubmit={handleStudentPhoneLookup}>
+                    <label htmlFor="student-mobile-phone" className="text-[10px] font-bold tracking-wider text-slate-400 block mb-2 uppercase">Parent&apos;s Phone Number</label>
+                    <div className="mt-2 flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-3 focus-within:border-[#F47C20] focus-within:ring-4 focus-within:ring-[#F47C20]/15 transition-all shadow-sm">
+                      <span className="text-base leading-none" aria-label="Kenya">🇰🇪</span>
+                      <span className="text-sm font-semibold text-slate-500 select-none">+254</span>
+                      <span className="h-4 w-px bg-slate-300 shrink-0" />
+                      <input
+                        id="student-mobile-phone"
+                        type="tel"
+                        inputMode="numeric"
+                        value={studentLogin.phone}
+                        onChange={(e) => {
+                          const clean = e.target.value.replace(/\D/g, '').slice(0, 12);
+                          setStudentLogin(prev => ({ ...prev, phone: clean, error: '' }));
+                        }}
+                        placeholder="712 345 678"
+                        autoComplete="tel"
+                        className="flex-1 min-w-0 bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-300"
+                      />
+                    </div>
+                    {studentLogin.cooldown > 0 && (
+                      <p className="mt-2 text-xs font-medium text-amber-700">
+                        Please wait {formattedStudentCooldown} before trying again
+                      </p>
+                    )}
+                    <Button
+                      type="submit"
+                      disabled={studentLogin.isLoading || studentLogin.cooldown > 0}
+                      className="mt-5 h-12 w-full rounded-xl bg-[#F47C20] text-sm font-semibold text-white shadow-md shadow-[#F47C20]/25 hover:bg-[#e06b12] active:scale-[0.98] transition-all disabled:opacity-60"
+                    >
+                      Find my account
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => setLoginMode('standard')}
+                      className="mt-4 w-full text-center text-xs font-semibold text-slate-500 hover:text-[#F47C20]"
+                    >
+                      ← Back to login
+                    </button>
+                  </form>
+                ) : studentLogin.step === 'pick' ? (
+                  <div>
+                    <p className="text-sm font-bold text-[#0E2A5A] mb-3">Who are you?</p>
+                    <div className="space-y-2">
+                      {studentLogin.candidates.map((c) => (
+                        <button
+                          key={c.studentUserId}
+                          type="button"
+                          onClick={() => handleStudentCandidateSelect(c.studentUserId)}
+                          className={cn(
+                            'w-full rounded-xl border px-3 py-2.5 text-left text-xs font-medium transition-all',
+                            studentLogin.selectedStudentUserId === c.studentUserId
+                              ? 'border-[#F47C20] bg-orange-50 text-[#0E2A5A]'
+                              : 'border-slate-200 bg-white text-slate-700 hover:border-[#F47C20]/50'
+                          )}
+                        >
+                          {c.firstName} {c.lastName} — {c.admissionNumber} ({c.grade})
+                        </button>
+                      ))}
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={handleStudentCandidateContinue}
+                      disabled={!studentLogin.selectedStudentUserId}
+                      className="mt-5 h-12 w-full rounded-xl bg-[#F47C20] text-sm font-semibold text-white shadow-md shadow-[#F47C20]/25 hover:bg-[#e06b12] active:scale-[0.98] transition-all disabled:opacity-40"
+                    >
+                      Continue
+                    </Button>
+                  </div>
+                ) : (
+                  /* step === 'password' */
+                  <form onSubmit={handleStudentPhoneLogin}>
+                    {(() => {
+                      const selected = studentLogin.candidates.find(c => c.studentUserId === studentLogin.selectedStudentUserId);
+                      return selected ? (
+                        <p className="mb-3 text-sm font-semibold text-[#0E2A5A]">
+                          {selected.firstName} {selected.lastName}
+                        </p>
+                      ) : null;
+                    })()}
+                    <Label htmlFor="student-mobile-password" className="text-[10px] font-bold tracking-wider text-slate-400 block mb-2 uppercase">Password</Label>
+                    <div className="relative mt-2">
+                      <Input
+                        id="student-mobile-password"
+                        type={showPassword ? 'text' : 'password'}
+                        value={studentLogin.password}
+                        onChange={(e) => setStudentLogin(prev => ({ ...prev, password: e.target.value, error: '' }))}
+                        className="h-11 rounded-xl border-slate-300 bg-white pr-11 text-sm font-medium text-slate-900"
+                        placeholder="Enter password"
+                        autoComplete="current-password"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+                      >
+                        {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                      </button>
+                    </div>
+                    {studentLogin.cooldown > 0 && (
+                      <p className="mt-2 text-xs font-medium text-amber-700">
+                        Please wait {formattedStudentCooldown} before trying again
+                      </p>
+                    )}
+                    <Button
+                      type="submit"
+                      disabled={studentLogin.isLoading || studentLogin.cooldown > 0}
+                      className="mt-5 h-12 w-full rounded-xl bg-[#F47C20] text-sm font-semibold text-white shadow-md shadow-[#F47C20]/25 hover:bg-[#e06b12] active:scale-[0.98] transition-all disabled:opacity-60"
+                    >
+                      Sign in
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => setStudentLogin(prev => ({
+                        ...prev,
+                        step: prev.candidates.length > 1 ? 'pick' : 'phone',
+                        password: '',
+                        error: '',
+                      }))}
+                      className="mt-4 w-full text-center text-xs font-semibold text-slate-500 hover:text-[#F47C20]"
+                    >
+                      ← Back
+                    </button>
+                  </form>
+                )}
+              </div>
+            ) : (
+            /* ── Existing Mobile OTP / Password Flow ── */
             <form
               onSubmit={phoneOtpStep === 'request'
                 ? handlePhoneOtpRequest
@@ -899,7 +1161,22 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
                 <Lock size={12} className="text-slate-300" />
                 <span>Trusted by schools across Kenya</span>
               </div>
+
+              {/* Switch to student login */}
+              <div className="mt-4 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginMode('student');
+                    setStudentLogin(prev => ({ ...prev, step: 'phone', phone: '', error: '', password: '', candidates: [], selectedStudentUserId: '', sessionToken: '' }));
+                  }}
+                  className="text-xs font-semibold text-[#F47C20] hover:underline"
+                >
+                  Switch to student login
+                </button>
+              </div>
             </form>
+            )} {/* end loginMode !== 'student' ternary */}
           </div>
 
           {/* Page footer */}
@@ -957,7 +1234,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
           )}
 
           <>
-              <div className="text-center mb-6">
+              <div className="text-center mb-4">
                 <h1 className="text-2xl font-semibold text-gray-900 leading-tight">
                   {brandingSettings?.welcomeTitle || 'Welcome Back!'}
                 </h1>
@@ -967,6 +1244,182 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
                   </p>
                 )}
               </div>
+
+              {/* Login mode tabs */}
+              <div className="flex gap-1 rounded-lg bg-gray-100 p-1 mb-5">
+                <button
+                  type="button"
+                  onClick={() => setLoginMode('standard')}
+                  className={cn(
+                    'flex-1 rounded-md py-1.5 text-xs font-semibold transition-all',
+                    loginMode === 'standard' || loginMode === 'phoneOtp'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  )}
+                >
+                  Parent / Staff
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginMode('student');
+                    setStudentLogin(prev => ({ ...prev, step: 'phone', phone: '', error: '', password: '', candidates: [], selectedStudentUserId: '', sessionToken: '' }));
+                  }}
+                  className={cn(
+                    'flex-1 rounded-md py-1.5 text-xs font-semibold transition-all',
+                    loginMode === 'student'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  )}
+                >
+                  Student
+                </button>
+              </div>
+
+              {loginMode === 'student' ? (
+                /* ── Desktop Student Login Flow ── */
+                <div className="space-y-4">
+                  {studentLogin.error && (
+                    <div className="p-3 bg-red-50 border-l-4 border-red-500 rounded-lg flex items-start gap-3 text-red-700">
+                      <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                      <span className="text-sm font-medium">{studentLogin.error}</span>
+                    </div>
+                  )}
+
+                  {studentLogin.step === 'phone' && (
+                    <form onSubmit={handleStudentPhoneLookup} className="space-y-3.5">
+                      <div className="space-y-2">
+                        <Label htmlFor="student-phone" className="text-gray-700 font-medium ml-1">Parent&apos;s phone number</Label>
+                        <Input
+                          id="student-phone"
+                          type="tel"
+                          inputMode="tel"
+                          value={studentLogin.phone}
+                          onChange={(e) => {
+                            const v = e.target.value.replace(/\D/g, '').slice(0, 12);
+                            setStudentLogin(prev => ({ ...prev, phone: v, error: '' }));
+                          }}
+                          className="h-12 border-gray-200 focus:border-brand-purple focus:ring-brand-purple/20"
+                          placeholder="0712 345 678"
+                          autoComplete="tel"
+                        />
+                      </div>
+                      {studentLogin.cooldown > 0 && (
+                        <p className="text-xs font-medium text-amber-700">
+                          Please wait {formattedStudentCooldown} before trying again
+                        </p>
+                      )}
+                      <Button
+                        type="submit"
+                        disabled={studentLogin.isLoading || studentLogin.cooldown > 0}
+                        className="w-full h-10 sm:h-12 text-sm font-medium bg-brand-purple hover:bg-brand-purple/90 disabled:opacity-60"
+                      >
+                        {studentLogin.isLoading ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            <span>Looking up account...</span>
+                          </div>
+                        ) : 'Find my account'}
+                      </Button>
+                    </form>
+                  )}
+
+                  {studentLogin.step === 'pick' && (
+                    <div className="space-y-3">
+                      <p className="text-sm font-semibold text-gray-900">Who are you?</p>
+                      <div className="space-y-2">
+                        {studentLogin.candidates.map((c) => (
+                          <button
+                            key={c.studentUserId}
+                            type="button"
+                            onClick={() => handleStudentCandidateSelect(c.studentUserId)}
+                            className={cn(
+                              'w-full rounded-lg border px-4 py-3 text-left text-sm font-medium transition-all',
+                              studentLogin.selectedStudentUserId === c.studentUserId
+                                ? 'border-brand-purple bg-violet-50 text-gray-900'
+                                : 'border-gray-200 bg-white text-gray-700 hover:border-brand-purple/50'
+                            )}
+                          >
+                            {c.firstName} {c.lastName} — {c.admissionNumber} ({c.grade})
+                          </button>
+                        ))}
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={handleStudentCandidateContinue}
+                        disabled={!studentLogin.selectedStudentUserId}
+                        className="w-full h-10 sm:h-12 text-sm font-medium bg-brand-purple hover:bg-brand-purple/90 disabled:opacity-40"
+                      >
+                        Continue
+                      </Button>
+                    </div>
+                  )}
+
+                  {studentLogin.step === 'password' && (
+                    <form onSubmit={handleStudentPhoneLogin} className="space-y-3.5">
+                      {(() => {
+                        const selected = studentLogin.candidates.find(c => c.studentUserId === studentLogin.selectedStudentUserId);
+                        return selected ? (
+                          <p className="text-sm font-semibold text-gray-900">
+                            {selected.firstName} {selected.lastName}
+                          </p>
+                        ) : null;
+                      })()}
+                      <div className="space-y-2">
+                        <Label htmlFor="student-password" className="text-gray-700 font-medium">Password</Label>
+                        <div className="relative">
+                          <Input
+                            id="student-password"
+                            type={showPassword ? 'text' : 'password'}
+                            value={studentLogin.password}
+                            onChange={(e) => setStudentLogin(prev => ({ ...prev, password: e.target.value, error: '' }))}
+                            className="h-12 pr-12 border-gray-200 focus:border-brand-purple focus:ring-brand-purple/20"
+                            placeholder="••••••••"
+                            autoComplete="current-password"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand-purple transition-colors"
+                          >
+                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                          </button>
+                        </div>
+                      </div>
+                      {studentLogin.cooldown > 0 && (
+                        <p className="text-xs font-medium text-amber-700">
+                          Please wait {formattedStudentCooldown} before trying again
+                        </p>
+                      )}
+                      <Button
+                        type="submit"
+                        disabled={studentLogin.isLoading || studentLogin.cooldown > 0}
+                        className="w-full h-10 sm:h-12 text-sm font-medium bg-brand-purple hover:bg-brand-purple/90 disabled:opacity-60"
+                      >
+                        {studentLogin.isLoading ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            <span>Signing in...</span>
+                          </div>
+                        ) : 'Sign in'}
+                      </Button>
+                      <button
+                        type="button"
+                        onClick={() => setStudentLogin(prev => ({
+                          ...prev,
+                          step: prev.candidates.length > 1 ? 'pick' : 'phone',
+                          password: '',
+                          error: '',
+                        }))}
+                        className="w-full text-center text-xs font-medium text-gray-500 hover:text-brand-purple"
+                      >
+                        ← Back
+                      </button>
+                    </form>
+                  )}
+                </div>
+              ) : (
+              /* ── Existing Phone OTP / Password Flow ── */
               <form
                 onSubmit={phoneOtpStep === 'request'
                   ? handlePhoneOtpRequest
@@ -1130,6 +1583,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
                     )}
                   </Button>
             </form>
+            )} {/* end loginMode !== 'student' ternary */}
             </>
         </CardContent>
       </Card>

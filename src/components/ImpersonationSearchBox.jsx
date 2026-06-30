@@ -82,17 +82,6 @@ const ImpersonationSearchBox = ({ onUserSelect, disabled = false }) => {
   // Tracks the most recent request so stale responses are discarded
   const currentRequestRef = useRef(0);
 
-  // ── Outside-click handler ─────────────────────────────────────────────────
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
-        clearQueryAndResults();
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   // ── Cleanup on unmount ────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
@@ -112,6 +101,17 @@ const ImpersonationSearchBox = ({ onUserSelect, disabled = false }) => {
       debounceTimerRef.current = null;
     }
   }, []);
+
+  // ── Outside-click handler ─────────────────────────────────────────────────
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        clearQueryAndResults();
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [clearQueryAndResults]);
 
   const performSearch = useCallback(async (searchQuery) => {
     if (!searchQuery.trim()) {
@@ -177,9 +177,11 @@ const ImpersonationSearchBox = ({ onUserSelect, disabled = false }) => {
   };
 
   // ── Result selection ──────────────────────────────────────────────────────
-  const handleResultClick = (user) => {
-    clearQueryAndResults();
+  const handleResultClick = (event, user) => {
+    event.preventDefault();
+    event.stopPropagation();
     onUserSelect?.(user);
+    clearQueryAndResults();
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -230,7 +232,7 @@ const ImpersonationSearchBox = ({ onUserSelect, disabled = false }) => {
           className={cn(
             'absolute left-0 right-0 top-full mt-1',
             'bg-white border border-gray-200 rounded-md shadow-lg',
-            'z-50 max-h-80 overflow-y-auto'
+            'z-[9999] max-h-80 overflow-y-auto pointer-events-auto'
           )}
         >
           {/* Inline error message (Requirement 1.8) */}
@@ -259,13 +261,24 @@ const ImpersonationSearchBox = ({ onUserSelect, disabled = false }) => {
                 key={user.id}
                 role="option"
                 aria-selected="false"
-                onClick={() => handleResultClick(user)}
+                onMouseDown={(event) => handleResultClick(event, user)}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                }}
+                onClick={(event) => {
+                  if (event.detail === 0) {
+                    handleResultClick(event, user);
+                    return;
+                  }
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
                 className={cn(
                   'w-full flex items-start gap-3 px-3 py-2.5 text-left',
                   'hover:bg-slate-50 active:bg-slate-100 transition-colors',
                   'border-b border-gray-50 last:border-b-0',
                   'focus:outline-none focus:bg-slate-50',
-                  'cursor-pointer'
+                  'cursor-pointer pointer-events-auto relative z-[10000]'
                 )}
               >
                 {/* Role badge */}

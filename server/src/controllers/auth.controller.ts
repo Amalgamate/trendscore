@@ -16,6 +16,8 @@ import { authPhoneOtpService } from '../services/auth-phone-otp.service';
 import { authTokenService } from '../services/auth-token.service';
 import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 import { buildParentLoginEmail } from '../services/parent.service';
+import { studentPhoneLookupService } from '../services/studentPhoneLookup.service';
+import { studentPhoneLoginService } from '../services/studentPhoneLogin.service';
 
 import logger from '../utils/logger';
 
@@ -331,6 +333,24 @@ export class AuthController {
         mustChangePassword: !!passwordResetToken,
       }
     });
+  }
+
+  async studentPhoneLookup(req: Request, res: Response) {
+    const result = await studentPhoneLookupService.lookup(req.body.phone, req.ip);
+    res.json(result);
+  }
+
+  async studentPhoneLogin(req: Request, res: Response) {
+    const result = await studentPhoneLoginService.login({
+      sessionToken: req.body.sessionToken,
+      studentUserId: req.body.studentUserId,
+      password: req.body.password,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] ? String(req.headers['user-agent']) : undefined,
+    });
+
+    authTokenService.setTokenCookies(res, result.token, result.refreshToken);
+    res.json(result);
   }
 
   async getSeededUsers(_req: Request, res: Response) {

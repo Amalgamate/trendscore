@@ -5,7 +5,7 @@ import { asyncHandler } from '../utils/async.util';
 import { sendOTP, verifyOTP } from '../controllers/otp.controller';
 import { authRateLimit, progressiveRateLimit } from '../middleware/enhanced-rateLimit.middleware';
 import { validate } from '../middleware/validation.middleware';
-import { loginSchema, registerSchema, emailSchema, phoneOtpRequestSchema, phoneOtpVerifySchema } from '../utils/validation.util';
+import { loginSchema, registerSchema, emailSchema, phoneOtpRequestSchema, phoneOtpVerifySchema, studentPhoneLookupSchema, studentPhoneLoginSchema } from '../utils/validation.util';
 import { requireRole } from '../middleware/permissions.middleware';
 
 const router = Router();
@@ -46,6 +46,19 @@ router.post('/phone-otp/verify',
   authRateLimit(5, 60_000),
   validate(phoneOtpVerifySchema),
   asyncHandler(authController.verifyPhoneOtp.bind(authController))
+);
+
+// Student phone login flow
+router.post('/student-phone/lookup',
+  authRateLimit(3, 60_000),
+  validate(studentPhoneLookupSchema),
+  asyncHandler(authController.studentPhoneLookup.bind(authController))
+);
+
+router.post('/student-phone/login',
+  authRateLimit(5, 60_000),
+  validate(studentPhoneLoginSchema),
+  asyncHandler(authController.studentPhoneLogin.bind(authController))
 );
 
 // Token refresh

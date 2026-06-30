@@ -93,6 +93,8 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('token', token);
       if (refreshToken) {
         localStorage.setItem('refreshToken', refreshToken);
+      } else if (refreshToken === null) {
+        localStorage.removeItem('refreshToken');
       }
 
       // Store user data

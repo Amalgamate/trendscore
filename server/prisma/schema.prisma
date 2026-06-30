@@ -3008,6 +3008,7 @@ model PushSubscription {
 enum AuthOtpPurpose {
   PARENT_PHONE_LOGIN
   PHONE_VERIFICATION
+  STUDENT_PHONE_PASSWORD_LOGIN
 }
 
 enum AuthOtpStatus {

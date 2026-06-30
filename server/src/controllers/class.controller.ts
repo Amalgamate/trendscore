@@ -125,7 +125,23 @@ export class ClassController {
         enrollments: {
           where: { active: true },
           include: {
-            learner: { select: { id: true, admissionNumber: true, firstName: true, lastName: true, middleName: true, dateOfBirth: true, gender: true, status: true, photoUrl: true } },
+            learner: {
+              select: {
+                id: true,
+                admissionNumber: true,
+                firstName: true,
+                lastName: true,
+                middleName: true,
+                dateOfBirth: true,
+                gender: true,
+                status: true,
+                photoUrl: true,
+                feeInvoices: {
+                  where: { status: { not: 'CANCELLED' } },
+                  select: { id: true, totalAmount: true, paidAmount: true, balance: true, status: true },
+                },
+              },
+            },
           },
           orderBy: { learner: { firstName: 'asc' } }
         },

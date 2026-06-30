@@ -98,7 +98,9 @@ app.use(cors({
     'x-institution-type',
     'X-Institution-Type',
     'x-session-check',
-    'X-Session-Check'
+    'X-Session-Check',
+    'x-csrf-token',
+    'X-CSRF-Token'
   ],
   exposedHeaders: ['X-Total-Count', 'X-Page-Count', 'X-Request-Id'],
   maxAge: 86400, // 24 hours
