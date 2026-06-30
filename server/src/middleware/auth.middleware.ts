@@ -38,7 +38,17 @@ export const authenticate = async (
     // Check the Redis revocation list for impersonation tokens BEFORE
     // processing any payload fields. This runs even for non-impersonation
     // tokens (the key simply won't exist), so normal requests are unaffected.
-    const isRevoked = await redisCacheService.get(revokedImpersonationKey(token));
+    // Fail open: if Redis is unavailable the check is skipped rather than
+    // blocking all authenticated requests. redisCacheService.get() already
+    // catches internal errors and returns null, but we wrap defensively here
+    // to ensure any unexpected throw never propagates into the auth catch block.
+    let isRevoked: string | null = null;
+    try {
+      isRevoked = await redisCacheService.get(revokedImpersonationKey(token));
+    } catch {
+      // Redis unavailable — treat as not revoked and continue.
+      console.warn('[Auth] Redis revocation check failed — failing open');
+    }
     if (isRevoked) {
       throw new ApiError(401, 'Impersonation session has been revoked').withCode('TOKEN_REVOKED');
     }
@@ -116,7 +126,13 @@ export const optionalAuthenticate = async (
 
     // ── Impersonation token revocation check ──────────────────────────────
     // Silently continue as anonymous if the impersonation token was revoked.
-    const isRevoked = await redisCacheService.get(revokedImpersonationKey(token));
+    // Fail open on Redis errors — treat as not revoked.
+    let isRevoked: string | null = null;
+    try {
+      isRevoked = await redisCacheService.get(revokedImpersonationKey(token));
+    } catch {
+      // Redis unavailable — fail open.
+    }
     if (isRevoked) {
       return next();
     }
