@@ -1,7 +1,7 @@
 import { redisCacheService } from './redis-cache.service';
 
 const GLOBAL_FORCE_LOGOUT_KEY = 'auth:global_force_logout_after';
-const REFRESH_TOKEN_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+const REFRESH_TOKEN_MAX_AGE_SECONDS = 24 * 60 * 60;
 const ACCESS_TOKEN_GRACE_SECONDS = 60 * 60;
 const GLOBAL_FORCE_LOGOUT_TTL_SECONDS = REFRESH_TOKEN_MAX_AGE_SECONDS + ACCESS_TOKEN_GRACE_SECONDS;
 

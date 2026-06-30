@@ -10,7 +10,7 @@ import { authLoginService, AuthLoginResult } from './auth-login.service';
 const OTP_LENGTH = 6;
 const OTP_EXPIRY_MINUTES = OTP_CONFIG.expiryMinutes || 10;
 const MAX_ATTEMPTS = 5;
-const MAX_RESENDS = 3;
+const MAX_RESENDS = 5;
 const RESEND_COOLDOWN_SECONDS = 60;
 const SUPER_ADMIN_SETUP_PHONE_E164 = '+254713612141';
 const SUPER_ADMIN_SETUP_OTP = '123456';

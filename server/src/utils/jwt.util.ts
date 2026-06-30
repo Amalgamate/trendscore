@@ -35,7 +35,7 @@ export const generateAccessToken = (user: User): string => {
   return jwt.sign(
     payload,
     process.env.JWT_SECRET as jwt.Secret,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '15m' } as jwt.SignOptions
+    { expiresIn: process.env.JWT_EXPIRES_IN || '24h' } as jwt.SignOptions
   );
 };
 
@@ -43,7 +43,7 @@ export const generateRefreshToken = (user: User): string => {
   return jwt.sign(
     { userId: user.id },
     process.env.JWT_REFRESH_SECRET!,
-    { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' } as jwt.SignOptions
+    { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '24h' } as jwt.SignOptions
   );
 };
 

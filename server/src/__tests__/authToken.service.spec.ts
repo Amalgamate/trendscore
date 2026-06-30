@@ -80,12 +80,12 @@ describe('AuthTokenService', () => {
     expect(cookie).toHaveBeenCalledWith(
       'accessToken',
       'access.jwt',
-      expect.objectContaining({ httpOnly: true, path: '/', maxAge: 60 * 60 * 1000 })
+      expect.objectContaining({ httpOnly: true, path: '/', maxAge: 24 * 60 * 60 * 1000 })
     );
     expect(cookie).toHaveBeenCalledWith(
       'refreshToken',
       'refresh.jwt',
-      expect.objectContaining({ httpOnly: true, path: '/', maxAge: 7 * 24 * 60 * 60 * 1000 })
+      expect.objectContaining({ httpOnly: true, path: '/', maxAge: 24 * 60 * 60 * 1000 })
     );
   });
 
@@ -124,7 +124,7 @@ describe('AuthTokenService', () => {
 
     expect(mockedVerifyRefresh).toHaveBeenCalledWith('old.refresh.jwt');
     expect(mockedPrisma.user.findUnique).toHaveBeenCalledWith({ where: { id: 'user-1' } });
-    expect(mockedRedis.set).toHaveBeenCalledWith('revoked_rt:old.refresh.jwt', '1', 7 * 24 * 60 * 60);
+    expect(mockedRedis.set).toHaveBeenCalledWith('revoked_rt:old.refresh.jwt', '1', 24 * 60 * 60);
     expect(pair).toEqual({ accessToken: 'access.jwt', refreshToken: 'refresh.jwt' });
   });
 
@@ -146,6 +146,6 @@ describe('AuthTokenService', () => {
       statusCode: 401,
       message: 'Session invalidated by administrator',
     });
-    expect(mockedRedis.set).toHaveBeenCalledWith('revoked_rt:old.refresh.jwt', '1', 7 * 24 * 60 * 60);
+    expect(mockedRedis.set).toHaveBeenCalledWith('revoked_rt:old.refresh.jwt', '1', 24 * 60 * 60);
   });
 });

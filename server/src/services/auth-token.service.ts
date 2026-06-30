@@ -6,7 +6,7 @@ import { isTokenGloballyInvalidated } from './auth-session.service';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../utils/jwt.util';
 import { ApiError } from '../utils/error.util';
 
-const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
+const SESSION_TTL_SECONDS = 24 * 60 * 60;
 
 const revokedTokenKey = (token: string) => `revoked_rt:${token}`;
 
@@ -43,12 +43,12 @@ export class AuthTokenService {
 
     res.cookie('accessToken', accessToken, {
       ...commonOptions,
-      maxAge: 60 * 60 * 1000,
+      maxAge: SESSION_TTL_SECONDS * 1000,
     });
 
     res.cookie('refreshToken', refreshToken, {
       ...commonOptions,
-      maxAge: REFRESH_TOKEN_TTL_SECONDS * 1000,
+      maxAge: SESSION_TTL_SECONDS * 1000,
     });
   }
 
@@ -59,7 +59,7 @@ export class AuthTokenService {
   }
 
   async revokeRefreshToken(token: string): Promise<void> {
-    await redisCacheService.set(revokedTokenKey(token), '1', REFRESH_TOKEN_TTL_SECONDS);
+    await redisCacheService.set(revokedTokenKey(token), '1', SESSION_TTL_SECONDS);
   }
 
   async isRefreshTokenRevoked(token: string): Promise<boolean> {

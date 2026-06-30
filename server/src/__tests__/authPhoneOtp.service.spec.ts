@@ -155,7 +155,7 @@ describe('AuthPhoneOtpService', () => {
         status: 'PENDING',
         codeHash: 'pending',
         maxAttempts: 5,
-        maxResends: 3,
+        maxResends: 5,
       }),
     }));
     const updateCall = mockedPrisma.authOtpChallenge.update.mock.calls[0][0];
@@ -240,7 +240,7 @@ describe('AuthPhoneOtpService', () => {
       id: 'challenge-1',
       lastSentAt: new Date(),
       resendCount: 0,
-      maxResends: 3,
+      maxResends: 5,
       lockedUntil: null,
     });
 

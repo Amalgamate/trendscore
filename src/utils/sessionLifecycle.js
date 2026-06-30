@@ -1,7 +1,7 @@
 import { resetMobileOnboardingForLogout } from './mobileOnboardingStorage';
 
 export const SESSION_POLL_INTERVAL_MS = 30_000;
-export const INACTIVITY_LOGOUT_MS = 30 * 60 * 1000;
+export const INACTIVITY_LOGOUT_MS = 24 * 60 * 60 * 1000;
 
 export function clearAuthAndRedirect(reason = 'expired') {
   if (typeof window === 'undefined') return;
