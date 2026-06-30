@@ -12,7 +12,7 @@ import EditStudentModal from '../parent/EditStudentModal';
 import MobilePortalAppBar from '../../layout/MobilePortalAppBar';
 import {
   Wallet, BarChart3, ClipboardCheck, FileText as FileTextIcon,
-  MessageSquare, Bus, HeartHandshake, Heart, Gift,
+  MessageSquare,
   Users, Eye, EyeOff, ChevronLeft, ChevronRight, ChevronDown,
   MessageCircle, User, AlertTriangle, RefreshCw, Bell,
   Utensils, Dumbbell, TreePine,
@@ -25,6 +25,24 @@ import { Skeleton } from '../../../ui';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const fmt = (n) => Number(n || 0).toLocaleString('en-KE');
+
+const canUseBetaFeatures = (user) => {
+  const role = String(user?.role || '').toUpperCase();
+  const permissions = Array.isArray(user?.permissions) ? user.permissions : [];
+  return role === 'SUPER_ADMIN' || role === 'ADMIN' || permissions.includes('BETA_REVIEWER');
+};
+
+function BetaBadge() {
+  return (
+    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-700">
+      Beta
+    </span>
+  );
+}
+
+function inactiveBetaNotice(label) {
+  console.info(`[Beta] ${label} is inactive for this role.`);
+}
 
 const getTimeGreeting = () => {
   const hour = new Date().getHours();
@@ -85,7 +103,6 @@ function HeroCard({ metrics, loading, onNavigate }) {
   const miniStats = [
     { label: 'Children', value: children.length, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-50' },
     { label: 'Avg. Attendance', value: `${Math.round(stats.avgAttendance || 0)}%`, icon: ClipboardCheck, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Avg. Performance', value: stats.avgPerformance ? `${Math.round(stats.avgPerformance)}%` : '—', icon: BarChart3, color: 'text-blue-600', bg: 'bg-blue-50' },
     { label: 'Unread Messages', value: unread, icon: MessageSquare, color: 'text-amber-600', bg: 'bg-amber-50' },
   ];
 
@@ -137,7 +154,7 @@ function HeroCard({ metrics, loading, onNavigate }) {
           </div>
         </div>
         {/* Mini stats */}
-        <div className="hidden sm:grid sm:grid-cols-4 xl:flex sm:divide-x divide-white/15 border-t xl:border-t-0 border-white/15 bg-white/8 backdrop-blur-sm">
+        <div className="hidden sm:grid sm:grid-cols-3 xl:flex sm:divide-x divide-white/15 border-t xl:border-t-0 border-white/15 bg-white/8 backdrop-blur-sm">
           {miniStats.map((s) => {
             const Icon = s.icon;
             return (
@@ -386,12 +403,7 @@ function QuickActions({ onNavigate }) {
   const [expanded, setExpanded] = useState(false);
   const actions = [
     { label: 'Academic Reports', sub: 'View performance', icon: BarChart3, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', path: 'parent-portal-results' },
-    { label: 'Fees', sub: 'Make payments', icon: Wallet, color: 'text-[#4F46E5]', bg: 'bg-indigo-50', border: 'border-indigo-200', path: 'parent-portal-fees' },
     { label: 'Attendance', sub: 'View records', icon: ClipboardCheck, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200', path: 'parent-portal-attendance' },
-    { label: 'Trips', sub: 'View & book', icon: Bus, color: 'text-rose-600', bg: 'bg-rose-50', border: 'border-rose-200', beta: 'bg-rose-100 text-rose-700 border-rose-200', path: 'parent-portal-transport' },
-    { label: 'Apply for Scholarship', sub: 'View & apply', icon: HeartHandshake, color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-200', beta: 'bg-purple-100 text-purple-700 border-purple-200', path: 'comm-notices' },
-    { label: 'Refer a Student', sub: 'Points for cash or fees', icon: Gift, color: 'text-lime-700', bg: 'bg-lime-50', border: 'border-lime-200', beta: 'bg-lime-100 text-lime-800 border-lime-200', path: 'comm-notices' },
-    { label: 'Needy Children', sub: 'Support a child', icon: Heart, color: 'text-pink-600', bg: 'bg-pink-50', border: 'border-pink-200', beta: 'bg-pink-100 text-pink-700 border-pink-200', path: 'comm-notices' },
   ];
 
   return (
@@ -404,7 +416,7 @@ function QuickActions({ onNavigate }) {
         <div className="min-w-0">
           <h3 className="text-sm font-bold text-gray-900">Quick Actions</h3>
           <p className="text-xs text-gray-500 mt-1 truncate">
-            {actions.length} shortcuts · Academic reports, fees, attendance and more
+            {actions.length} shortcuts · Academic reports and attendance
           </p>
         </div>
         <ChevronDown
@@ -606,7 +618,7 @@ const PLACEHOLDER_CLUBS = [
   { name: 'Music Club', icon: Music, color: 'bg-amber-100 text-amber-600' },
 ];
 
-function AlumniClubsCard({ onNavigate }) {
+function AlumniClubsCard({ onNavigate, betaEnabled }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -617,9 +629,12 @@ function AlumniClubsCard({ onNavigate }) {
         className="w-full flex items-center justify-between gap-3 text-left"
       >
         <div className="min-w-0">
-          <h3 className="text-sm font-bold">Alumni & Clubs</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-bold">Alumni & Clubs</h3>
+            <BetaBadge />
+          </div>
           <p className="text-xs text-indigo-200 mt-1 truncate">
-            {PLACEHOLDER_CLUBS.length} active clubs · alumni network
+            {betaEnabled ? `${PLACEHOLDER_CLUBS.length} active clubs · alumni network` : 'Inactive for parent accounts'}
           </p>
         </div>
         <ChevronDown
@@ -631,15 +646,22 @@ function AlumniClubsCard({ onNavigate }) {
       {expanded && (
         <div className="mt-4">
           <div className="flex justify-end mb-3">
-            <button onClick={() => onNavigate('comm-notices')} className="text-xs text-indigo-300 hover:text-white transition-colors">View all</button>
+            <button
+              onClick={() => betaEnabled ? onNavigate('comm-notices') : inactiveBetaNotice('Alumni & Clubs')}
+              disabled={!betaEnabled}
+              className="text-xs text-indigo-300 hover:text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {betaEnabled ? 'View all' : 'Inactive'}
+            </button>
           </div>
           <p className="text-indigo-200 text-xs mb-1">Stay connected.</p>
           <p className="text-indigo-200 text-xs mb-3">Inspire. Support. Grow.</p>
           <button
-            onClick={() => onNavigate('comm-notices')}
-            className="mb-4 px-4 py-2 bg-white text-[#312E81] text-xs font-bold rounded-lg hover:bg-indigo-50 transition-colors self-start"
+            onClick={() => betaEnabled ? onNavigate('comm-notices') : inactiveBetaNotice('Alumni & Clubs')}
+            disabled={!betaEnabled}
+            className="mb-4 px-4 py-2 bg-white text-[#312E81] text-xs font-bold rounded-lg hover:bg-indigo-50 transition-colors self-start disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Join Alumni Network
+            {betaEnabled ? 'Join Alumni Network' : 'Inactive Beta'}
           </button>
           <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-3">Active Clubs</p>
           <div className="grid grid-cols-2 gap-2 flex-1">
@@ -673,7 +695,7 @@ const PLACEHOLDER_GALLERY = [
   'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=200&q=80',
 ];
 
-function SchoolGalleryCard({ onNavigate }) {
+function SchoolGalleryCard({ onNavigate, betaEnabled }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -684,9 +706,12 @@ function SchoolGalleryCard({ onNavigate }) {
         className="w-full flex items-center justify-between gap-3 text-left"
       >
         <div className="min-w-0">
-          <h3 className="text-sm font-bold text-gray-900">School Gallery</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-bold text-gray-900">School Gallery</h3>
+            <BetaBadge />
+          </div>
           <p className="text-xs text-gray-500 mt-1 truncate">
-            {PLACEHOLDER_GALLERY.length} recent school moments
+            {betaEnabled ? `${PLACEHOLDER_GALLERY.length} recent school moments` : 'Inactive for parent accounts'}
           </p>
         </div>
         <ChevronDown
@@ -698,7 +723,13 @@ function SchoolGalleryCard({ onNavigate }) {
       {expanded && (
         <div className="mt-4">
           <div className="flex justify-end mb-3">
-            <button onClick={() => onNavigate('comm-notices')} className="text-xs text-[#4F46E5] font-semibold hover:underline">View all</button>
+            <button
+              onClick={() => betaEnabled ? onNavigate('comm-notices') : inactiveBetaNotice('School Gallery')}
+              disabled={!betaEnabled}
+              className="text-xs text-[#4F46E5] font-semibold hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {betaEnabled ? 'View all' : 'Inactive'}
+            </button>
           </div>
           <div className="grid grid-cols-2 gap-2">
             {PLACEHOLDER_GALLERY.map((src, i) => (
@@ -729,7 +760,7 @@ const PLACEHOLDER_NEWSLETTERS = [
   { month: 'APR', day: '05', title: 'April Newsletter 2024', excerpt: 'School activities and student spotlight.', year: 2024 },
 ];
 
-function LatestNewsletterCard({ onNavigate }) {
+function LatestNewsletterCard({ onNavigate, betaEnabled }) {
   const [expanded, setExpanded] = useState(false);
   const latest = PLACEHOLDER_NEWSLETTERS[0];
 
@@ -741,9 +772,12 @@ function LatestNewsletterCard({ onNavigate }) {
         className="w-full flex items-center justify-between gap-3 text-left"
       >
         <div className="min-w-0">
-          <h3 className="text-sm font-bold text-gray-900">Latest Newsletter</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-bold text-gray-900">Latest Newsletter</h3>
+            <BetaBadge />
+          </div>
           <p className="text-xs text-gray-500 mt-1 truncate">
-            {latest ? `${latest.month} ${latest.day} - ${latest.title}` : 'No newsletter available'}
+            {betaEnabled && latest ? `${latest.month} ${latest.day} - ${latest.title}` : 'Inactive for parent accounts'}
           </p>
         </div>
         <ChevronDown
@@ -755,7 +789,13 @@ function LatestNewsletterCard({ onNavigate }) {
       {expanded && (
         <div className="mt-4">
           <div className="flex justify-end mb-3">
-            <button onClick={() => onNavigate('comm-notices')} className="text-xs text-[#4F46E5] font-semibold hover:underline">View all</button>
+            <button
+              onClick={() => betaEnabled ? onNavigate('comm-notices') : inactiveBetaNotice('Latest Newsletter')}
+              disabled={!betaEnabled}
+              className="text-xs text-[#4F46E5] font-semibold hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {betaEnabled ? 'View all' : 'Inactive'}
+            </button>
           </div>
           <div className="space-y-3">
             {PLACEHOLDER_NEWSLETTERS.map((n, i) => (
@@ -767,8 +807,12 @@ function LatestNewsletterCard({ onNavigate }) {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-gray-900 truncate">{n.title}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{n.excerpt}</p>
-                  <button onClick={() => onNavigate('comm-notices')} className="text-xs text-[#4F46E5] font-semibold mt-1 flex items-center gap-1 hover:underline">
-                    Read more <ArrowRight size={10} />
+                  <button
+                    onClick={() => betaEnabled ? onNavigate('comm-notices') : inactiveBetaNotice('Latest Newsletter')}
+                    disabled={!betaEnabled}
+                    className="text-xs text-[#4F46E5] font-semibold mt-1 flex items-center gap-1 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {betaEnabled ? 'Read more' : 'Inactive'} <ArrowRight size={10} />
                   </button>
                 </div>
               </div>
@@ -850,7 +894,6 @@ function AnnouncementsCard({ metrics, onNavigate }) {
 // ─── Footer Utility ───────────────────────────────────────────────────────────
 function FooterUtility({ onNavigate }) {
   const links = [
-    { label: 'School Trips', sub: 'View upcoming trips', icon: Bus, path: 'parent-portal-transport' },
     { label: 'Parent Handbook', sub: 'Read school policies', icon: BookMarked, path: 'comm-notices' },
     { label: 'Report an Issue', sub: "Let us know if something's wrong", icon: Flag, path: 'comm-messages' },
     { label: 'Visit Help Center', sub: 'Find answers to common questions', icon: HelpCircle, path: 'comm-notices' },
@@ -950,6 +993,7 @@ const ParentDashboard = ({ user, onNavigate, onLogout, brandingSettings }) => {
   }
 
   const children = metrics?.children || [];
+  const betaEnabled = canUseBetaFeatures(user);
 
   return (
     <div className="space-y-5 pb-10 px-4 md:px-0">
@@ -995,9 +1039,9 @@ const ParentDashboard = ({ user, onNavigate, onLogout, brandingSettings }) => {
 
       {/* Bottom 4-col section */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
-        <AlumniClubsCard onNavigate={onNavigate} />
-        <SchoolGalleryCard onNavigate={onNavigate} />
-        <LatestNewsletterCard onNavigate={onNavigate} />
+        <AlumniClubsCard onNavigate={onNavigate} betaEnabled={betaEnabled} />
+        <SchoolGalleryCard onNavigate={onNavigate} betaEnabled={betaEnabled} />
+        <LatestNewsletterCard onNavigate={onNavigate} betaEnabled={betaEnabled} />
         <AnnouncementsCard metrics={metrics} onNavigate={onNavigate} />
       </div>
 

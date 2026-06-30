@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import {
-  ArrowLeft, User, Bell, Truck, FileText, HelpCircle,
+  ArrowLeft, User, Bell, FileText, HelpCircle,
   Settings, LogOut, Shield, Eye, Languages, Lock,
   ChevronRight, ExternalLink, AlertCircle, MessageSquare, Calendar
 } from 'lucide-react';
@@ -194,12 +194,6 @@ const ParentPortalMore = ({ user, onNavigate, onLogout }) => {
             label="School Calendar"
             subtitle="Term dates and school events"
             action={() => onNavigate('events-calendar')}
-          />
-          <MenuItem
-            icon={Truck}
-            label="Transport Details"
-            subtitle="View route and schedule"
-            action={() => onNavigate('parent-portal-transport')}
           />
           <MenuItem
             icon={FileText}

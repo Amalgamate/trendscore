@@ -285,6 +285,8 @@ const PageRouter = ({
   const rolePreview = useRolePreview();
   const effectiveRole = rolePreview?.effectiveRole || user?.role;
   const parentPortal = userHasParentPortalAccess(user);
+  const betaReviewer = ['SUPER_ADMIN', 'ADMIN'].includes(String(user?.role || '').toUpperCase())
+    || (Array.isArray(user?.permissions) && user.permissions.includes('BETA_REVIEWER'));
   
   // Single mobile detection — source of truth for all role-based mobile routing
   const [isMobile, setIsMobile] = useState(false);
@@ -563,6 +565,15 @@ const PageRouter = ({
           case 'parent-portal-attendance':
             return renderParentPortalShell(<ParentPortalAttendance onNavigate={handleNavigate} />);
           case 'parent-portal-transport':
+            if (!betaReviewer) {
+              return renderParentPortalShell(
+                <ComingSoon
+                  badge="Beta"
+                  title="Trips is inactive"
+                  description="This beta menu is available only to school administrators and beta reviewers."
+                />
+              );
+            }
             return renderParentPortalShell(<ParentPortalTransport onNavigate={handleNavigate} />);
           case 'parent-portal-documents':
             return renderParentPortalShell(<ParentPortalDocuments onNavigate={handleNavigate} />);

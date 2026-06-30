@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   CreditCard, BarChart2, Users,
-  MapPin, ChevronRight, ChevronDown, Eye,
+  ChevronRight, ChevronDown, Eye,
   AlertCircle, FileText, Pencil,
 } from 'lucide-react';
 import { dashboardAPI } from '../../../../services/api';
@@ -63,10 +63,9 @@ function FamilyOverviewCard({ metrics, loading, onNavigate }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mb-5">
+      <div className="grid grid-cols-2 gap-3 mb-5">
         {[
           { label: 'Attendance (Avg)', value: loading ? null : fmtPct(stats.avgAttendance), delta: stats.attendanceDelta },
-          { label: 'Avg Performance',  value: loading ? null : fmtPct(stats.avgPerformance || stats.avgScore), delta: stats.performanceDelta },
           { label: 'Unread Messages',  value: loading ? null : String(unread || messages.length), delta: null },
         ].map((s) => (
           <div key={s.label}>
@@ -200,9 +199,7 @@ function QuickActions({ onNavigate }) {
   const [expanded, setExpanded] = useState(false);
   const actions = [
     { label: 'Academic Reports', icon: BarChart2, path: 'parent-portal-results', color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Fees',       icon: CreditCard,   path: 'parent-portal-fees',       color: 'text-[#3B1FA3]',    bg: 'bg-[#3B1FA3]/10' },
     { label: 'Attendance', icon: Users,         path: 'parent-portal-attendance', color: 'text-blue-600',     bg: 'bg-blue-50'      },
-    { label: 'Trips',      icon: MapPin,        path: 'parent-portal-transport',  color: 'text-rose-600',     bg: 'bg-rose-50', beta: 'bg-rose-100 text-rose-700 border-rose-200' },
   ];
 
   return (
@@ -223,7 +220,7 @@ function QuickActions({ onNavigate }) {
       </button>
 
       {expanded && (
-        <div className="grid grid-cols-3 gap-3 mt-4">
+        <div className="grid grid-cols-2 gap-3 mt-4">
           {actions.map((a) => {
             const Icon = a.icon;
             return (
