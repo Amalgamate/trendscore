@@ -21,6 +21,7 @@ import {
   ServerCog,
   Settings,
   ShieldCheck,
+  UploadCloud,
   Users,
   Wrench,
 } from 'lucide-react';
@@ -65,7 +66,7 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
   const quickActions = [
     { label: 'System Control', icon: ShieldCheck, path: 'settings-system-control', color: '#1d4ed8', note: 'Sessions, cache, platform actions' },
     { label: 'System Logs', icon: Activity, path: 'settings-system-logs', color: '#6366f1', note: 'Operational events and audit trails' },
-    { label: 'Financials', icon: CircleDollarSign, path: 'fees-overview', color: '#10b981', note: 'Fees, balances, collections' },
+    { label: 'Data Upload', icon: UploadCloud, path: 'system-maintenance', color: '#10b981', note: 'Import learners, staff, parents, fees' },
     { label: 'Academics', icon: GraduationCap, path: 'assess-summary-report', color: '#8b5cf6', note: 'Assessment and academic risk' },
     { label: 'Users', icon: Users, path: 'settings-users', color: '#0f766e', note: 'Accounts, roles, access' },
     { label: 'Backups', icon: DatabaseBackup, path: 'system-maintenance', color: '#f59e0b', note: 'Backup, restore, maintenance' },

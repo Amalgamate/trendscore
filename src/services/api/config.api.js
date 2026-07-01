@@ -49,7 +49,7 @@ export const configAPI = {
 
   getBranding: async () => fetchWithAuth('/schools/public/branding'),
 
-  getLearningAreas: async (params = {}) => {
+  getLearningAreas: async (params = {}, options = {}) => {
     const suffix = institutionCacheKeySuffix();
     const query = new URLSearchParams(
       Object.entries(params || {}).reduce((acc, [k, v]) => {
@@ -59,7 +59,12 @@ export const configAPI = {
       }, {})
     ).toString();
     const path = `/learning-areas${query ? `?${query}` : ''}`;
-    return cachedFetch(`config:learning-areas:${suffix}:${query || 'all'}`, () => fetchWithAuth(path), TTL.LONG);
+    const cacheKey = `config:learning-areas:${suffix}:${query || 'all'}`;
+    if (options?.fresh) {
+      cacheDel(cacheKey);
+      return fetchWithAuth(path);
+    }
+    return cachedFetch(cacheKey, () => fetchWithAuth(path), TTL.LONG);
   },
   getLearningArea: async (id) => fetchWithAuth(`/learning-areas/${id}`),
   createLearningArea: async (data) => {

@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../../../../services/api';
 import CalendarView from './CalendarView';
-import ApprovalsPage from '../ApprovalsPage';
-import { printWindow } from '../../../../utils/simplePdfGenerator';
+import ModuleTabNav from '../../shared/ModuleTabNav';
 import { 
   Plus, 
   Edit2, 
@@ -25,7 +24,6 @@ import {
   Clock,
   Settings,
   Layers,
-  Download,
   BookOpen,
   Award,
   Compass,
@@ -35,10 +33,7 @@ import {
   Video,
   ExternalLink,
   HelpCircle,
-  Zap,
-  CheckSquare,
-  FileCheck,
-  ClipboardCheck
+  CheckSquare
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
@@ -87,7 +82,7 @@ const INITIAL_TERM_FORM = {
 
 export default function AnnualPlannerPage() {
   const [academicYear, setAcademicYear] = useState(new Date().getFullYear());
-  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'timeline', 'calendar', 'terms', 'events', 'reports'
+  const [activeTab, setActiveTab] = useState('calendar'); // 'calendar', 'terms', 'events', 'reports'
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [openTerms, setOpenTerms] = useState({ TERM_1: true, TERM_2: false, TERM_3: false });
@@ -467,28 +462,25 @@ export default function AnnualPlannerPage() {
       .slice(0, 10);
   }, [events]);
 
-  const handleTriggerReport = (title, type) => {
-    toast.success(`Generating report for ${title}...`);
-    // Prepares styled layout capture to render using window.print style utility
-    window.print();
-  };
+  const plannerTabs = [
+    { id: 'calendar', label: 'Calendar View', icon: <Calendar size={13} /> },
+    { id: 'terms', label: 'Term Setup', icon: <CheckSquare size={13} /> },
+    { id: 'events', label: 'All Events', icon: <FileText size={13} /> },
+  ];
 
   return (
     <div className="min-h-screen bg-[var(--app-page-bg)] text-slate-800 print:bg-white pb-24">
-      <div className="p-6 lg:p-8 print:p-0">
-        {/* Header Panel (Hidden in print mode) */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 print:hidden">
-        <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3">
-            <span className="p-2.5 bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-500/20">
-              <Compass className="h-6 w-6" />
-            </span>
-            Year Planning Command Center
-          </h1>
-          <p className="text-slate-500 mt-1">Stripe-style hub to manage terms, configuration controls, and school calendars.</p>
-        </div>
+      <div className="print:hidden">
+        <ModuleTabNav
+          sectionLabel="ANNUAL PLANNER"
+          tabs={plannerTabs}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+        />
+      </div>
 
-        <div className="flex items-center gap-4">
+      <div className="p-6 lg:p-8 print:p-0">
+      <div className="mb-6 flex justify-end print:hidden">
           <div className="flex items-center gap-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
             <label htmlFor="year-select" className="text-xs font-bold text-slate-400 uppercase tracking-wider pl-2">Academic Year</label>
             <select 
@@ -502,41 +494,6 @@ export default function AnnualPlannerPage() {
               ))}
             </select>
           </div>
-        </div>
-      </div>
-
-      {/* Tabs navigation block */}
-      <div className="flex items-stretch border-b border-slate-200 mb-8 overflow-x-auto scrollbar-none print:hidden">
-
-
-
-        {[
-          { id: 'dashboard', label: 'Command Center', icon: Zap },
-          { id: 'timeline', label: 'Year Timeline', icon: Layers },
-          { id: 'calendar', label: 'Calendar View', icon: Calendar },
-          { id: 'terms', label: 'Term Setup', icon: CheckSquare },
-          { id: 'events', label: 'All Events', icon: FileText },
-          { id: 'reports', label: 'Reports Hub', icon: FileCheck },
-          { id: 'approvals', label: 'Approvals', icon: ClipboardCheck },
-        ].map((tab, idx, arr) => (
-          <React.Fragment key={tab.id}>
-            <button
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2.5 px-5 py-4 font-bold text-sm border-b-2 transition-all shrink-0 ${
-                activeTab === tab.id 
-                  ? 'border-blue-600 text-blue-600 bg-blue-50/40' 
-                  : 'border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-50/60'
-              }`}
-            >
-              <tab.icon className="h-4 w-4" />
-              {tab.label}
-            </button>
-            {/* Divider between tabs (but not after the last one) */}
-            {idx < arr.length - 1 && (
-              <span className="w-px self-stretch bg-slate-100 my-2" />
-            )}
-          </React.Fragment>
-        ))}
       </div>
 
       {/* Active Tab Container */}
@@ -1237,43 +1194,6 @@ export default function AnnualPlannerPage() {
                 })}
               </div>
 
-            </div>
-          )}
-
-          {/* TAB 6: REPORTS & DOCUMENT CENTER */}
-          {activeTab === 'reports' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-              {[
-                { title: 'Academic Calendar PDF', desc: 'Official overview of term dates and openings.', type: 'academic' },
-                { title: 'Term Planner', desc: 'Detailed schedules grouped per active learning term.', type: 'term' },
-                { title: 'Exam Planner', desc: 'Summary of assessment calendars and testing blocks.', type: 'exam' },
-                { title: 'Assessment Planner', desc: 'Formative & summative assessment schedules.', type: 'assessment' },
-                { title: 'School Event Calendar', desc: 'Complete school activities list.', type: 'general' },
-                { title: 'Parent Portal Calendar', desc: 'Calendar copies optimized for families.', type: 'parent' },
-              ].map((rpt, idx) => (
-                <div key={idx} className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col justify-between min-h-[180px]">
-                  <div>
-                    <h3 className="font-extrabold text-slate-900 text-base">{rpt.title}</h3>
-                    <p className="text-xs text-slate-500 mt-1">{rpt.desc}</p>
-                  </div>
-                  
-                  <div className="flex gap-2 justify-end border-t pt-4 mt-6">
-                    <Button 
-                      onClick={() => handleTriggerReport(rpt.title, rpt.type)} 
-                      className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 text-xs font-bold w-full justify-center"
-                    >
-                      <Download className="h-4 w-4" /> Download PDF / print
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* TAB 7: APPROVALS */}
-          {activeTab === 'approvals' && (
-            <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
-              <ApprovalsPage />
             </div>
           )}
 

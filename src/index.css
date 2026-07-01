@@ -164,6 +164,12 @@
     padding-top: var(--app-content-top-gap) !important;
   }
 
+  .module-tab-nav-shell {
+    margin-top: calc(var(--app-content-top-gap) * -1);
+    margin-left: calc(var(--app-gutter-x) * -1);
+    margin-right: calc(var(--app-gutter-x) * -1);
+  }
+
   .surface-panel {
     @apply bg-white border border-gray-200 rounded-lg shadow-sm;
     background-color: #ffffff;

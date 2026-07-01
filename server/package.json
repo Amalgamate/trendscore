@@ -16,7 +16,6 @@
     "seed": "ts-node prisma/seed.ts",
     "seed:streams": "ts-node prisma/seed-streams.ts",
     "seed:classes": "ts-node prisma/seed-classes.ts",
-    "seed:learning-areas": "ts-node prisma/seed-learning-areas.ts",
     "seed:ss:pathways": "ts-node prisma/seed-ss-pathways.ts",
     "seed:coa": "ts-node scripts/seed-accounting.ts",
     "seed:ss:learning-areas": "ts-node prisma/seed-ss-learning-areas.ts",

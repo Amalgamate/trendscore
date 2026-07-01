@@ -20,6 +20,7 @@ import DeviceList from './DeviceList';
 import EnrollmentDashboard from './EnrollmentDashboard';
 import LogViewer from './LogViewer';
 import BridgeConfig from './BridgeConfig';
+import ModuleTabNav from '../../shared/ModuleTabNav';
 
 const BiometricManager = ({ currentPage }) => {
   const [activeTab, setActiveTab] = useState('enrollment');
@@ -66,16 +67,22 @@ const BiometricManager = ({ currentPage }) => {
   }, []);
 
   const tabs = [
-    { id: 'enrollment', label: 'Enrollment', icon: Fingerprint, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { id: 'devices', label: 'Devices', icon: Cpu, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-    { id: 'logs', label: 'Attendance Logs', icon: History, color: 'text-amber-600', bg: 'bg-amber-50' },
-    { id: 'config', label: 'Setup & API', icon: Settings, color: 'text-slate-600', bg: 'bg-slate-50' },
+    { id: 'enrollment', label: 'Enrollment', icon: Fingerprint },
+    { id: 'devices', label: 'Devices', icon: Cpu },
+    { id: 'logs', label: 'Attendance Logs', icon: History },
+    { id: 'config', label: 'Setup & API', icon: Settings },
   ];
 
   return (
     <div className="min-h-screen bg-[var(--app-page-bg)]">
+      <ModuleTabNav
+        sectionLabel="BIOMETRICS"
+        tabs={tabs}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+      />
       {/* Header Section */}
-      <div className="bg-white border-b border-slate-200">
+      <div className="hidden">
         <div className="px-6 py-6 max-w-7xl mx-auto">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="flex items-center gap-4">

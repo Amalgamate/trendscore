@@ -27,7 +27,7 @@ const QuickActions = ({ onNavigate, currentPage, user }) => {
 
   return (
     <div className="hidden md:block bg-white border-b border-slate-200">
-      <div className="max-w-7xl mx-auto flex items-center justify-start lg:justify-center py-2.5 px-4 md:px-6 overflow-x-auto scrollbar-none">
+      <div className="app-layout-row flex items-center justify-start py-2.5 overflow-x-auto scrollbar-none">
 
         {/* Home Button */}
         <button

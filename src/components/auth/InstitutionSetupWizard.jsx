@@ -102,16 +102,6 @@ const InstitutionSetupWizard = ({ brandingSettings, onComplete }) => {
           console.warn('Auto-seed classes failed:', e);
         }
 
-        try {
-          const laRes = await configAPI.seedLearningAreas();
-          const createdAreas = laRes?.created ?? laRes?.data?.created;
-          const skippedAreas = laRes?.skipped ?? laRes?.data?.skipped;
-          toast.success(
-            `Junior learning areas seeded${typeof createdAreas === 'number' ? ` (created ${createdAreas}, skipped ${skippedAreas ?? 0})` : ''}.`
-          );
-        } catch (e) {
-          console.warn('Auto-seed learning areas failed:', e);
-        }
       }
 
       if (typeof onComplete === 'function') {

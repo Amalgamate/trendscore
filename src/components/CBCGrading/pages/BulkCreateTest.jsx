@@ -86,7 +86,7 @@ const BulkCreateTest = ({ onBack, onSuccess }) => {
             }
             const entries = await Promise.all(selectedGrades.map(async (grade) => {
                 try {
-                    const resp = await configAPI.getLearningAreas({ gradeLevel: toCanonicalGrade(grade) });
+                    const resp = await configAPI.getLearningAreas({ gradeLevel: toCanonicalGrade(grade) }, { fresh: true });
                     const rows = Array.isArray(resp?.data) ? resp.data : (Array.isArray(resp) ? resp : []);
                     return [grade, uniqueSortedNames(rows.map((row) => row?.name)).length];
                 } catch {
@@ -144,7 +144,7 @@ const BulkCreateTest = ({ onBack, onSuccess }) => {
             const areasByGrade = new Map();
             for (const grade of selectedGrades) {
                 try {
-                    const resp = await configAPI.getLearningAreas({ gradeLevel: toCanonicalGrade(grade) });
+                    const resp = await configAPI.getLearningAreas({ gradeLevel: toCanonicalGrade(grade) }, { fresh: true });
                     const rows = Array.isArray(resp?.data) ? resp.data : (Array.isArray(resp) ? resp : []);
                     const names = uniqueSortedNames(rows.map((r) => r?.name));
                     areasByGrade.set(grade, names);

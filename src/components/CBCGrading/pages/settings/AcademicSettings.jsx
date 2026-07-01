@@ -798,6 +798,7 @@ const AcademicSettings = () => {
     <div className="space-y-6">
       {/* Tabs */}
       <ModuleTabNav
+        sectionLabel="ACADEMICS"
         tabs={ACADEMIC_TABS}
         activeTab={activeTab}
         onTabChange={setActiveTab}

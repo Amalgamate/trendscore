@@ -279,7 +279,6 @@ async function main() {
   console.log('   └─ Creates: Classes for each grade (GRADE_1, GRADE_2, etc.)');
   console.log('   └─ ⚠️  MUST run after npm run seed');
   console.log('');
-  console.log('3️⃣  npm run seed:learning-areas');
   console.log('   └─ Creates: Learning areas for existing grade levels');
   console.log('   └─ ⚠️  MUST run after npm run seed:classes');
   console.log('   └─ 🔗 Validates that classes exist before seeding areas');

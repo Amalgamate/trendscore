@@ -17,6 +17,7 @@ import ChatPanel from '../../chat/ChatPanel';
 import SmsBalanceWidget from './SmsBalanceWidget';
 import '../../../styles/notifications.css';
 import { PRODUCT_DISPLAY_NAME } from '../../../config/productIdentity';
+import { getSchoolDisplayName } from '../../../utils/schoolDisplayName';
 
 const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate }) => {
   const [showNotifications, setShowNotifications] = useState(false);
@@ -427,7 +428,7 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
         <div className="hidden sm:block">
           <div className="flex items-center gap-2">
             <h1 className="text-base lg:text-lg font-semibold text-gray-900 leading-none tracking-tight uppercase">
-              {brandingSettings?.schoolName || PRODUCT_DISPLAY_NAME}
+              {getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, { fallback: PRODUCT_DISPLAY_NAME })}
             </h1>
           </div>
           <p className="text-[9px] text-gray-400 font-medium uppercase tracking-[0.2em] mt-1">

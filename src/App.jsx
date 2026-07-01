@@ -17,6 +17,7 @@ import { resolveDashboardPage } from './components/CBCGrading/utils/appAccess';
 
 import ErrorBoundary from './components/common/ErrorBoundary';
 import { LEGACY_BRAND_NAMES, PRODUCT_DISPLAY_NAME } from './config/productIdentity';
+import { getExplicitSchoolName } from './utils/schoolDisplayName';
 import {
   clearAuthAndRedirect,
   getAuthErrorCode,
@@ -53,11 +54,14 @@ function SWUpdateBanner() {
 const APP_DISPLAY_NAME = PRODUCT_DISPLAY_NAME;
 
 const normalizeSchoolName = (name) => {
+  const explicitName = getExplicitSchoolName(name);
+  if (explicitName) return explicitName;
+
   const trimmed = String(name || '').trim();
-  if (!trimmed) return APP_DISPLAY_NAME;
+  if (!trimmed) return '';
   const lower = trimmed.toLowerCase();
-  if (LEGACY_BRAND_NAMES.has(lower)) return APP_DISPLAY_NAME;
-  return trimmed;
+  if (LEGACY_BRAND_NAMES.has(lower)) return '';
+  return '';
 };
 
 const pickBrandingValue = (incoming, fallback) => {
@@ -77,7 +81,7 @@ const DEFAULT_BRANDING = {
   accentColor2: '#e11d48',
   welcomeTitle: `Welcome to ${APP_DISPLAY_NAME}`,
   welcomeMessage: 'Sign in to access your school portal.',
-  schoolName: APP_DISPLAY_NAME,
+  schoolName: '',
   motto: 'School Management System',
 };
 
@@ -215,8 +219,8 @@ function AppContent() {
     document.title = isAuthenticated
       ? user?.role === 'SUPER_ADMIN'
         ? 'Admin Dashboard'
-        : `${brandingSettings.schoolName || 'School'} — Dashboard`
-      : brandingSettings.schoolName || 'School Management';
+        : `${brandingSettings.schoolName || APP_DISPLAY_NAME} — Dashboard`
+      : brandingSettings.schoolName || APP_DISPLAY_NAME;
   }, [isAuthenticated, user, brandingSettings.schoolName]);
 
   // Session lifecycle guard:

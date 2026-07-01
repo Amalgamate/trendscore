@@ -292,6 +292,41 @@ const ExecutiveModuleCard = ({
   );
 };
 
+const ExecutiveMobileModuleCard = ({ module, onNavigate }) => {
+  const Icon = module.icon;
+  const tone = moduleToneMap[module.id] || moduleToneMap.health;
+  const canNavigate = Boolean(module.path && onNavigate);
+
+  const content = (
+    <>
+      <div className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-r-[26px] ${tone.solidBg} text-white shadow-sm`}>
+        <Icon size={25} strokeWidth={2.5} />
+      </div>
+      <div className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4">
+        <p className="truncate text-[15px] font-black text-slate-900">{module.title}</p>
+        {canNavigate ? <ChevronRight size={18} className="shrink-0 text-slate-500" /> : null}
+      </div>
+    </>
+  );
+
+  const className = `flex min-h-[68px] w-full overflow-hidden rounded-2xl border ${tone.border} ${tone.lightBg} text-left shadow-sm transition active:scale-[0.99]`;
+
+  if (!canNavigate) {
+    return <div className={className}>{content}</div>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => onNavigate(module.path)}
+      className={`${className} focus:outline-none focus:ring-2 focus:ring-blue-500/30`}
+      aria-label={`Open ${module.title}`}
+    >
+      {content}
+    </button>
+  );
+};
+
 
 const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'desktop' }) => {
   const { activeSlugs } = useModuleAccess();
@@ -414,6 +449,7 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
     {
       id: 'fees',
       app: 'fee-management',
+      path: 'fees-overview',
       title: 'Fees',
       icon: CircleDollarSign,
       summary: [
@@ -425,6 +461,7 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
     {
       id: 'assessment',
       app: 'gradebook',
+      path: 'assess-mobile-dashboard',
       title: 'Assessment',
       icon: BarChart2,
       summary: [
@@ -436,6 +473,7 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
     {
       id: 'attendance',
       app: 'attendance',
+      path: 'attendance-daily',
       title: 'Attendance',
       icon: Users,
       summary: [
@@ -446,6 +484,7 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
     {
       id: 'expenses',
       app: 'accounting',
+      path: 'accounting-expenses',
       title: 'Expenses',
       icon: Wallet,
       summary: [
@@ -457,6 +496,7 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
     {
       id: 'transport',
       app: 'transport',
+      path: 'transport-routes',
       title: 'Transport',
       icon: Bus,
       summary: [
@@ -1056,8 +1096,12 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
         <section ref={moduleSectionRef} className="space-y-5">
 
           {/* Grid: active card floats to top (col-span-full), rest fill below in 2-3 col layout */}
-          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2 2xl:grid-cols-3">
+          <div className={isMobile ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-1 gap-5 xl:grid-cols-2 2xl:grid-cols-3'}>
             {sortedModules.map((module) => {
+              if (isMobile) {
+                return <ExecutiveMobileModuleCard key={module.id} module={module} onNavigate={onNavigate} />;
+              }
+
               const isActive = activeModule === module.id;
               return (
                 <ExecutiveModuleCard

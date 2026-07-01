@@ -10,6 +10,7 @@ import {
 import { userAPI, learnerAPI } from '../../../../services/api';
 import { getStoredUser } from '../../../../services/schoolContext';
 import { PERMISSIONS, ROLE_NAMES } from '../../../../config/permissions';
+import ModuleTabNav from '../../shared/ModuleTabNav';
 import ResetPasswordModal from '../../shared/ResetPasswordModal';
 
 // Real API is imported from services/api.js
@@ -889,17 +890,19 @@ const UserManagement = () => {
         </div>
       )}
 
-      <div className="p-6 space-y-5">
+      <ModuleTabNav
+        sectionLabel="USER MANAGEMENT"
+        tabs={[
+          { id: 'list', label: 'User List', icon: <Users size={13} /> },
+          { id: 'config', label: 'System Roles', icon: <Shield size={13} /> },
+          { id: 'logs', label: 'Activity Logs', icon: <Activity size={13} /> },
+        ]}
+        activeTab={viewMode}
+        onTabChange={setViewMode}
+      />
 
-        {/* ═══════════════════════════════════════════════════════════
-            PAGE HEADER
-        ═══════════════════════════════════════════════════════════ */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">User Management</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Manage users, roles and access across the system.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+      <div className="p-6 space-y-5">
+        <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               onClick={() => {
                 setEditingUser(null);
@@ -933,42 +936,14 @@ const UserManagement = () => {
               <Mail size={16} />
               Invite Users
             </button>
-          </div>
         </div>
 
-        {/* ═══════════════════════════════════════════════════════════
-            NAVIGATION TABS
-        ═══════════════════════════════════════════════════════════ */}
-        <div className="flex flex-col gap-3 border-b border-gray-200 pb-0 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-1">
-            {[
-              { id: 'list', label: 'User List', icon: Users },
-              { id: 'config', label: 'System Roles', icon: Shield },
-              { id: 'logs', label: 'Activity Logs', icon: Activity }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setViewMode(tab.id)}
-                className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all relative ${
-                  viewMode === tab.id
-                    ? 'text-blue-600'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <tab.icon size={16} />
-                {tab.label}
-                {viewMode === tab.id && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full" />
-                )}
-              </button>
-            ))}
-          </div>
-
-          {canManageVerification && (
+        {canManageVerification && (
+          <div className="flex justify-end">
             <button
               onClick={handleSchoolVerificationToggle}
               disabled={verificationSaving}
-              className={`mb-2 inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-all lg:mb-0 ${
+              className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
                 verificationSaving
                   ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
                   : verificationSettings.requiresUserVerification
@@ -984,8 +959,8 @@ const UserManagement = () => {
                   ? 'Disable Verification'
                   : 'Enable Verification'}
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* ═══════════════════════════════════════════════════════════
             USER LIST VIEW — TWO-COLUMN LAYOUT

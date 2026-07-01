@@ -18,6 +18,7 @@ import React, { useState } from 'react';
 import { LayoutDashboard, GitBranch, History } from 'lucide-react';
 import { useAuth }    from '../../../../hooks/useAuth';
 import { useUIStore } from '../../../../store/useUIStore';
+import ModuleTabNav from '../../shared/ModuleTabNav';
 import { ApprovalDashboard }      from './ApprovalDashboard';
 import { ApprovalRequestDetail }  from './ApprovalRequestDetail';
 
@@ -42,9 +43,9 @@ const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN'];
 // ── Tab definitions ───────────────────────────────────────────────────────────
 
 const ALL_TABS = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, adminOnly: false },
-  { id: 'workflows', label: 'Workflows', icon: GitBranch,        adminOnly: true  },
-  { id: 'history',   label: 'History',   icon: History,          adminOnly: false },
+  { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={13} />, adminOnly: false },
+  { id: 'workflows', label: 'Workflows', icon: <GitBranch size={13} />,        adminOnly: true  },
+  { id: 'history',   label: 'History',   icon: <History size={13} />,          adminOnly: false },
 ];
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -93,35 +94,16 @@ export function ApprovalsPage() {
 
   // ── Tab view ──────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-5 p-4 md:p-6">
-      {/* Page title */}
-      <div>
-        <h1 className="text-xl md:text-2xl font-semibold text-gray-900">Approvals</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          Manage approval requests, workflows, and history.
-        </p>
-      </div>
-
-      {/* Tab bar */}
-      <div className="flex items-center gap-1 border-b border-gray-200 -mb-2">
-        {visibleTabs.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setActiveTab(id)}
-            className={`flex items-center gap-1.5 px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${
-              activeTab === id
-                ? 'border-[#002C60] text-[#002C60]'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Icon size={15} />
-            {label}
-          </button>
-        ))}
-      </div>
+    <div>
+      <ModuleTabNav
+        sectionLabel="APPROVALS"
+        tabs={visibleTabs}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+      />
 
       {/* Tab content */}
-      <div className="pt-2">
+      <div className="p-4 md:p-6">
         {activeTab === 'dashboard' && (
           <ApprovalDashboard
             currentUserId={currentUserId}

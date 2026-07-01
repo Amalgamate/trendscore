@@ -36,6 +36,7 @@ import FeeStructurePage from './FeeStructurePage';
 import { useBootstrapStore } from '../../../store/useBootstrapStore';
 import { useMobile } from '../../../hooks/useMobileDetection';
 import { DataCard } from '../shared';
+import ModuleTabNav from '../shared/ModuleTabNav';
 
 const TERM_ORDER = { TERM_1: 1, TERM_2: 2, TERM_3: 3 };
 
@@ -1301,63 +1302,24 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
 
   if (loading && !showCreateModal) return <LoadingSpinner />;
 
+  const feeTabs = [
+    { id: 'overview', label: 'Fee Overview', icon: Wallet },
+    { id: 'invoices', label: 'Fee Invoices', icon: FileText },
+    { id: 'types', label: 'Fee Types', icon: Coins },
+    { id: 'structure', label: 'Fee Structure', icon: Building2 },
+    { id: 'unmatched', label: 'Unmatched Payments', icon: AlertTriangle, badge: unmatchedCount || null },
+  ];
+
   return (
     <div className="space-y-6">
 
       {/* Page Tabs */}
-      <div className="flex items-center gap-1 border-b border-gray-200 -mb-2">
-        <button
-          onClick={() => setActiveTab('overview')}
-          className={`px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === 'overview'
-              ? 'border-brand-teal text-brand-teal'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-        >
-          Fee Overview
-        </button>
-        <button
-          onClick={() => setActiveTab('invoices')}
-          className={`hidden md:block px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === 'invoices'
-              ? 'border-brand-teal text-brand-teal'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-        >
-          Fee Invoices
-        </button>
-        <button
-          onClick={() => setActiveTab('types')}
-          className={`hidden md:block px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === 'types'
-              ? 'border-brand-teal text-brand-teal'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-        >
-          Fee Types
-        </button>
-        <button
-          onClick={() => setActiveTab('structure')}
-          className={`hidden md:block px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === 'structure'
-              ? 'border-brand-teal text-brand-teal'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-        >
-          Fee Structure
-        </button>
-        <button
-          onClick={() => setActiveTab('unmatched')}
-          className={`hidden md:flex px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px items-center gap-2 ${activeTab === 'unmatched'
-              ? 'border-amber-500 text-amber-700'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-        >
-          <AlertTriangle size={14} />
-          Unmatched Payments
-          {unmatchedCount > 0 && (
-            <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-amber-500 text-white text-[10px] font-semibold">
-              {unmatchedCount}
-            </span>
-          )}
-        </button>
-      </div>
+      <ModuleTabNav
+        sectionLabel="FINANCE"
+        tabs={feeTabs}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+      />
 
       {/* Unmatched Payments Tab */}
       {activeTab === 'unmatched' && (

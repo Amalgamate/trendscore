@@ -565,9 +565,6 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
 
           {/* Right: Action buttons */}
           <div className="flex-shrink-0 flex items-center gap-2">
-            <button onClick={handleAddSingleTest} className="flex items-center gap-2 px-4 py-2 bg-brand-teal text-white rounded-xl hover:bg-brand-teal/90 transition shadow-sm font-medium text-sm">
-              <Plus size={16} /> <span className="hidden sm:inline">New Test</span><span className="inline sm:hidden">+</span>
-            </button>
             <button onClick={handleAdd} className="flex items-center gap-2 px-4 py-2 bg-brand-purple text-white rounded-xl hover:bg-brand-purple/90 transition shadow-sm font-medium text-sm border border-brand-purple/20">
               <Plus size={16} /> <span className="hidden sm:inline">Bulk Create</span><span className="inline sm:hidden">Bulk</span>
             </button>
@@ -780,7 +777,7 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
           icon={Database}
           title="No Summative Tests Found"
           message="Your assessment repository is currently empty. Start by creating a new summative test architecture for your classes."
-          actionText="Create New Test"
+          actionText="Bulk Create"
           onAction={handleAdd}
         />
       )}

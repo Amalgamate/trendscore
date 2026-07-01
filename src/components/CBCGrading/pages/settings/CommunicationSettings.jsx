@@ -560,6 +560,7 @@ const CommunicationSettings = () => {
     <div className="space-y-6">
       {/* Tabs */}
       <ModuleTabNav
+        sectionLabel="COMMUNICATION"
         tabs={COMM_TABS}
         activeTab={activeTab}
         onTabChange={(tab) => {

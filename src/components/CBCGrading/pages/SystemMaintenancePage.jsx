@@ -9,6 +9,7 @@ import usePageNavigation from '../../../hooks/usePageNavigation';
 import BackupSettings from './settings/BackupSettings';
 import BulkOperationsModal from '../shared/bulk/BulkOperationsModal';
 import FeeImportModal from '../shared/FeeImportModal';
+import ModuleTabNav from '../shared/ModuleTabNav';
 
 const SystemMaintenancePage = () => {
   const navigateTo = usePageNavigation();
@@ -250,43 +251,29 @@ const SystemMaintenancePage = () => {
   );
 
   const tabs = [
-    { id: 'restore', label: 'Restore' },
-    { id: 'imports', label: 'Imports' },
-    { id: 'reset', label: 'Reset' },
+    { id: 'restore', label: 'Restore', icon: <Database size={13} /> },
+    { id: 'imports', label: 'Imports', icon: <UploadCloud size={13} /> },
+    { id: 'reset', label: 'Reset', icon: <Eraser size={13} /> },
   ];
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <div className="flex items-center gap-4 mb-8">
+    <div className="min-h-screen bg-[var(--app-page-bg)]">
+      <ModuleTabNav
+        sectionLabel="SYSTEM MAINTENANCE"
+        tabs={tabs}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+      />
+
+      <div className="p-6 max-w-4xl mx-auto">
+      <div className="mb-4 flex justify-start">
         <button 
           onClick={() => navigateTo('FINANCE_DASHBOARD')}
-          className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
         >
-          <ArrowLeft className="w-6 h-6 text-slate-600" />
+          <ArrowLeft className="w-4 h-4" />
+          Back
         </button>
-        <div>
-          <h1 className="text-2xl font-medium text-slate-900">System Maintenance</h1>
-          <p className="text-slate-500 text-sm">Administrative tools for Restore, Imports, and Reset operations.</p>
-        </div>
-      </div>
-
-      <div className="mb-6">
-        <div className="inline-flex bg-slate-100 p-1 rounded-lg">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition ${
-                activeTab === tab.id
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       {activeTab === 'restore' && <BackupSettings />}
@@ -312,6 +299,7 @@ const SystemMaintenancePage = () => {
           showSuccess('Fee import completed');
         }}
       />
+      </div>
 
       {/* Reset Confirmation Modal */}
       {showResetModal && (

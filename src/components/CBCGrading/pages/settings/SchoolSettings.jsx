@@ -8,6 +8,7 @@ import { toast } from 'react-hot-toast';
 import { useNotifications } from '../../hooks/useNotifications';
 import axiosInstance from '../../../../services/api/axiosConfig';
 import { PRODUCT_DISPLAY_NAME } from '../../../../config/productIdentity';
+import { getExplicitSchoolName } from '../../../../utils/schoolDisplayName';
 
 const normalizeHexColor = (value, fallback = '#030b82') => {
   if (typeof value !== 'string') return fallback;
@@ -31,7 +32,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
 
   // State for school settings - Unified Hub
   const [settings, setSettings] = useState({
-    schoolName: brandingSettings?.schoolName || PRODUCT_DISPLAY_NAME,
+    schoolName: getExplicitSchoolName(brandingSettings?.schoolName),
     address: brandingSettings?.address || '',
     phone: brandingSettings?.phone || '',
     email: brandingSettings?.email || '',
@@ -70,7 +71,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
   // Track initial state for dirty checking
   const [savedState, setSavedState] = useState({
     settings: {
-      schoolName: brandingSettings?.schoolName || PRODUCT_DISPLAY_NAME,
+      schoolName: getExplicitSchoolName(brandingSettings?.schoolName),
       address: brandingSettings?.address || '',
       phone: brandingSettings?.phone || '',
       email: brandingSettings?.email || '',
@@ -130,7 +131,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
 
         if (school) {
           const fetchedSettings = {
-            schoolName: school.name || school.schoolName || PRODUCT_DISPLAY_NAME,
+            schoolName: getExplicitSchoolName(school.name || school.schoolName),
             address: school.address || '',
             phone: school.phone || '',
             email: school.email || '',
@@ -260,8 +261,9 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
   const handleSave = async () => {
     setSaving(true);
     try {
+      const explicitSchoolName = getExplicitSchoolName(settings.schoolName);
       const payload = {
-        name: settings.schoolName,
+        name: explicitSchoolName || null,
         address: settings.address,
         phone: settings.phone,
         email: settings.email,
@@ -300,7 +302,9 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
 
       await axiosInstance.put('/schools', payload);
 
-      setSavedState({ settings: { ...settings }, previews: { ...previews } });
+      const savedSettings = { ...settings, schoolName: explicitSchoolName };
+      setSettings(savedSettings);
+      setSavedState({ settings: savedSettings, previews: { ...previews } });
       toast.success('✅ School settings updated successfully!');
 
       // Push updated branding to app state immediately
@@ -310,7 +314,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
           faviconUrl: settings.faviconUrl,
           pwaLogoUrl: settings.pwaLogoUrl,
           stampUrl: settings.stampUrl,
-          schoolName: settings.schoolName,
+          schoolName: explicitSchoolName,
           primaryColor: settings.primaryColor,
           secondaryColor: settings.secondaryColor,
           accentColor1: settings.accentColor1,
@@ -334,7 +338,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
         if (userString) {
           const user = JSON.parse(userString);
           if (user.school) {
-            user.school.name = settings.schoolName;
+            user.school.name = explicitSchoolName;
             user.school.phone = settings.phone;
             user.school.email = settings.email;
             user.school.address = settings.address;
