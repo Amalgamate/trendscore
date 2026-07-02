@@ -8,6 +8,13 @@
 import React from 'react';
 import { getMobileNavConfig } from './MobileNavigationConfig';
 
+const MOBILE_LABELS = {
+  dashboard: 'Home',
+  attendance: 'Attend',
+  timetable: 'Time',
+  collections: 'Fees',
+};
+
 /**
  * Mobile Bottom Navigation Component
  * @param {Object} props
@@ -29,9 +36,10 @@ const MobileBottomNav = ({ role, currentPath = 'dashboard', onNavigate }) => {
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}
     >
-      <div className="grid grid-cols-5 gap-0 max-w-md mx-auto h-16">
+      <div className="grid grid-cols-5 gap-0 w-full max-w-md mx-auto h-16 overflow-hidden">
         {navConfig.items.map((item) => {
           const Icon = item.icon;
+          const displayLabel = item.shortLabel || MOBILE_LABELS[item.id] || item.label;
           const activePaths = item.activePaths || [];
           const isActive =
             currentPath === item.path ||
@@ -45,7 +53,7 @@ const MobileBottomNav = ({ role, currentPath = 'dashboard', onNavigate }) => {
               onClick={() => onNavigate(item.path)}
               aria-label={item.label}
               aria-current={isActive ? 'page' : undefined}
-              className="flex flex-col items-center justify-center gap-1 transition-colors"
+              className="min-w-0 overflow-hidden flex flex-col items-center justify-center gap-1 px-1 transition-colors"
               style={
                 isActive
                   ? {
@@ -63,7 +71,9 @@ const MobileBottomNav = ({ role, currentPath = 'dashboard', onNavigate }) => {
                     : { color: 'rgba(255,255,255,0.70)' }
                 }
               />
-              <span className="text-[10px] font-bold">{item.label}</span>
+              <span className="block w-full truncate text-center text-[9px] font-bold leading-none">
+                {displayLabel}
+              </span>
             </button>
           );
         })}
