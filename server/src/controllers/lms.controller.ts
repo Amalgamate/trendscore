@@ -1,376 +1,392 @@
 /**
- * LMS Controller
- * Handles all Learning Management System endpoints
+ * LMS Controller — Digital Learning Hub
+ *
+ * Stub implementations for all LMS API route handlers.
+ * Each handler returns 501 Not Implemented until the corresponding
+ * service layer is wired in subsequent implementation phases.
+ *
+ * Settings handlers (getLmsSettings, updateLmsSettings) are fully implemented.
+ *
+ * Requirements: 17.1, 17.2, 17.3, 17.6, 16.1, 16.2, 16.3, 16.4, 22.1
  *
  * @module controllers/lms.controller
  */
 
-import { Request, Response } from 'express';
-import { LMSService } from '../services/lms.service';
+import { Response } from 'express';
+import { AuthRequest } from '../middleware/permissions.middleware';
+import { LMSSettingsService, LMSSettingsUpdateInput } from '../services/lms-settings.service';
 import { ApiError } from '../utils/error.util';
-import { AuthRequest } from '../middleware/auth.middleware';
 
-const lmsService = new LMSService();
+const NOT_IMPLEMENTED = { success: false, message: 'Not implemented yet' };
 
-export class LMSController {
-    /**
-     * Course Management Endpoints
-     */
+// ─────────────────────────────────────────────────────────────────────────────
+// LESSONS
+// ─────────────────────────────────────────────────────────────────────────────
 
-    async getCourses(req: AuthRequest, res: Response) {
-        try {
-            const filters = {
-                search: req.query.search as string,
-                category: req.query.category as string,
-                status: req.query.status as string,
-                grade: req.query.grade as string,
-                subject: req.query.subject as string,
-                page: parseInt(req.query.page as string) || 1,
-                limit: parseInt(req.query.limit as string) || 20
-            };
+export const getLessons = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
 
-            const result = await lmsService.getCourses(filters);
-            res.json({
-                success: true,
-                data: result.courses,
-                pagination: result.pagination
-            });
-        } catch (error) {
-            throw new ApiError(500, 'Failed to fetch courses');
-        }
+export const getLessonWithBlocks = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const createLesson = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const updateLesson = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const upsertBlocks = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const publishLesson = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const archiveLesson = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const markLessonProgress = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const getLessonProgress = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const startLessonSession = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const endLessonSession = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ASSIGNMENTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const getAssignments = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const getAssignmentDetail = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const createAssignment = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const updateAssignment = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const publishAssignment = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const closeAssignment = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const archiveAssignment = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const getSubmissions = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const submitAssignment = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const updateDraftSubmission = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const markSubmission = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const getMySubmissions = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RESOURCES (REVISION LIBRARY)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const searchResources = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const getResourceDetail = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const createResource = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const updateResource = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const archiveResource = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const downloadResource = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const toggleBookmark = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MARKETPLACE (Enterprise)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const browseListings = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const getListingDetail = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const createListing = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const approveListing = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const rejectListing = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const initiatePurchase = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+/**
+ * M-Pesa STK push callback — public endpoint (no auth), IP-verified.
+ * See route registration for the guard approach.
+ */
+export const handleMpesaCallback = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const getMyListings = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const getMyPurchases = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const rateResource = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI LEARNING ASSISTANT (Enterprise)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const aiAsk = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const aiSimplify = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const aiFlashcards = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const aiPractice = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const aiExplainMistake = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const aiGenerateAssignment = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const aiGenerateLessonPlan = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const aiGenerateRubric = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const aiQuestionBank = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ANALYTICS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const getAnalyticsOverview = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const getClassAnalytics = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const getLearnerAnalytics = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const getAssignmentAnalytics = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const getLessonEngagementStats = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const getMarketplaceAnalytics = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+export const getLeaderboard = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SETTINGS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/lms/settings
+ *
+ * Returns the current LMS settings for the authenticated school.
+ * Reads from Redis cache (TTL 10 min); on miss, queries DB and creates
+ * a default record if none exists yet.
+ *
+ * Requirements: 16.1, 16.2, 22.1
+ */
+export const getLmsSettings = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const schoolId = req.school?.id;
+    if (!schoolId) {
+      res.status(400).json({ success: false, message: 'School context is required' });
+      return;
     }
 
-    async getCourse(req: AuthRequest, res: Response) {
-        try {
-            const { id } = req.params;
-            const course = await lmsService.getCourse(id);
+    const settings = await LMSSettingsService.getSettings(schoolId);
+    res.json({ success: true, data: settings });
+  } catch (error: any) {
+    if (error instanceof ApiError) {
+      res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+    } else {
+      console.error('[LMS] getLmsSettings error:', error?.message ?? error);
+      res.status(500).json({ success: false, message: 'Failed to retrieve LMS settings' });
+    }
+  }
+};
 
-            if (!course) {
-                throw new ApiError(404, 'Course not found');
-            }
+// All 23 configurable field names — used to strip unknown keys from PUT body
+const ALLOWED_SETTINGS_FIELDS: ReadonlySet<keyof LMSSettingsUpdateInput> = new Set([
+  'enableLearning',
+  'enableMarketplace',
+  'enableAI',
+  'enableRevisionLibrary',
+  'allowLateSubmission',
+  'allowResubmission',
+  'maxUploadSizeMB',
+  'allowedFileTypes',
+  'assignmentDueTime',
+  'enableComments',
+  'enableStudentQuestions',
+  'enableDownloads',
+  'enableGamification',
+  'enableXP',
+  'enableBadges',
+  'enableLeaderboards',
+  'enableStreaks',
+  'notifyParents',
+  'showFeedbackToParents',
+  'showProgressToParents',
+  'marketplaceRevenuePct',
+  'requireApproval',
+  'allowFreeContent',
+]);
 
-            res.json({
-                success: true,
-                data: course
-            });
-        } catch (error) {
-            if (error instanceof ApiError) throw error;
-            throw new ApiError(500, 'Failed to fetch course');
-        }
+/**
+ * PUT /api/lms/settings
+ *
+ * Updates one or more of the 23 configurable LMS settings fields.
+ * Unknown fields are silently ignored. After persisting, the Redis cache
+ * entry for this school is invalidated.
+ *
+ * Requirements: 16.1, 16.3, 16.4, 22.1
+ */
+export const updateLmsSettings = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const schoolId = req.school?.id;
+    if (!schoolId) {
+      res.status(400).json({ success: false, message: 'School context is required' });
+      return;
     }
 
-    async createCourse(req: AuthRequest, res: Response) {
-        try {
-            const courseData = {
-                ...req.body,
-                createdById: req.user!.userId
-            };
-
-            const course = await lmsService.createCourse(courseData);
-            res.status(201).json({
-                success: true,
-                data: course,
-                message: 'Course created successfully'
-            });
-        } catch (error) {
-            if (error instanceof ApiError) throw error;
-            throw new ApiError(500, 'Failed to create course');
-        }
+    // Validate body is an object
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      res.status(400).json({ success: false, message: 'Request body must be a JSON object' });
+      return;
     }
 
-    async updateCourse(req: AuthRequest, res: Response) {
-        try {
-            const { id } = req.params;
-            const course = await lmsService.updateCourse(id, req.body);
-
-            res.json({
-                success: true,
-                data: course,
-                message: 'Course updated successfully'
-            });
-        } catch (error) {
-            if (error instanceof ApiError) throw error;
-            throw new ApiError(500, 'Failed to update course');
-        }
+    // Extract only the known/allowed fields from the request body
+    const data: LMSSettingsUpdateInput = {};
+    for (const key of ALLOWED_SETTINGS_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+        (data as any)[key] = req.body[key];
+      }
     }
 
-    async deleteCourse(req: AuthRequest, res: Response) {
-        try {
-            const { id } = req.params;
-            await lmsService.deleteCourse(id);
-
-            res.json({
-                success: true,
-                message: 'Course deleted successfully'
-            });
-        } catch (error) {
-            if (error instanceof ApiError) throw error;
-            throw new ApiError(500, 'Failed to delete course');
-        }
+    if (Object.keys(data).length === 0) {
+      res.status(400).json({
+        success: false,
+        message: 'No valid settings fields provided',
+        allowedFields: Array.from(ALLOWED_SETTINGS_FIELDS),
+      });
+      return;
     }
 
-    /**
-     * Content Management Endpoints
-     */
-
-    async getContent(req: AuthRequest, res: Response) {
-        try {
-            const filters = {
-                courseId: req.query.courseId as string,
-                type: req.query.type as string,
-                search: req.query.search as string,
-                page: parseInt(req.query.page as string) || 1,
-                limit: parseInt(req.query.limit as string) || 20
-            };
-
-            const result = await lmsService.getContent(filters);
-            res.json({
-                success: true,
-                data: result.content,
-                pagination: result.pagination
-            });
-        } catch (error) {
-            throw new ApiError(500, 'Failed to fetch content');
-        }
+    const updated = await LMSSettingsService.updateSettings(schoolId, data);
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    if (error instanceof ApiError) {
+      res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+    } else {
+      console.error('[LMS] updateLmsSettings error:', error?.message ?? error);
+      res.status(500).json({ success: false, message: 'Failed to update LMS settings' });
     }
+  }
+};
 
-    async uploadContent(req: AuthRequest, res: Response) {
-        try {
-            const contentData = {
-                ...req.body,
-                uploadedById: req.user!.userId
-            };
+// ─────────────────────────────────────────────────────────────────────────────
+// ACHIEVEMENTS
+// ─────────────────────────────────────────────────────────────────────────────
 
-            const content = await lmsService.uploadContent(contentData);
-            res.status(201).json({
-                success: true,
-                data: content,
-                message: 'Content uploaded successfully'
-            });
-        } catch (error) {
-            if (error instanceof ApiError) throw error;
-            throw new ApiError(500, 'Failed to upload content');
-        }
-    }
-
-    async deleteContent(req: AuthRequest, res: Response) {
-        try {
-            const { id } = req.params;
-            await lmsService.deleteContent(id);
-
-            res.json({
-                success: true,
-                message: 'Content deleted successfully'
-            });
-        } catch (error) {
-            if (error instanceof ApiError) throw error;
-            throw new ApiError(500, 'Failed to delete content');
-        }
-    }
-
-    /**
-     * Enrollment Management Endpoints
-     */
-
-    async getEnrollments(req: AuthRequest, res: Response) {
-        try {
-            const filters = {
-                courseId: req.query.courseId as string,
-                learnerId: req.query.learnerId as string,
-                status: req.query.status as string,
-                page: parseInt(req.query.page as string) || 1,
-                limit: parseInt(req.query.limit as string) || 20
-            };
-
-            const result = await lmsService.getEnrollments(filters);
-            res.json({
-                success: true,
-                data: result.enrollments,
-                pagination: result.pagination
-            });
-        } catch (error) {
-            throw new ApiError(500, 'Failed to fetch enrollments');
-        }
-    }
-
-    async enrollLearner(req: AuthRequest, res: Response) {
-        try {
-            const enrollmentData = {
-                ...req.body,
-                enrolledById: req.user!.userId
-            };
-
-            const enrollment = await lmsService.enrollLearner(enrollmentData);
-            res.status(201).json({
-                success: true,
-                data: enrollment,
-                message: 'Learner enrolled successfully'
-            });
-        } catch (error) {
-            if (error instanceof ApiError) throw error;
-            throw new ApiError(500, 'Failed to enroll learner');
-        }
-    }
-
-    async unenrollLearner(req: AuthRequest, res: Response) {
-        try {
-            const { id } = req.params;
-            await lmsService.unenrollLearner(id);
-
-            res.json({
-                success: true,
-                message: 'Learner unenrolled successfully'
-            });
-        } catch (error) {
-            if (error instanceof ApiError) throw error;
-            throw new ApiError(500, 'Failed to unenroll learner');
-        }
-    }
-
-    /**
-     * Progress Tracking Endpoints
-     */
-
-    async getLearnerProgress(req: AuthRequest, res: Response) {
-        try {
-            const { learnerId, courseId } = req.params;
-            const progress = await lmsService.getLearnerProgress(learnerId, courseId);
-
-            res.json({
-                success: true,
-                data: progress
-            });
-        } catch (error) {
-            if (error instanceof ApiError) throw error;
-            throw new ApiError(500, 'Failed to fetch learner progress');
-        }
-    }
-
-    async updateProgress(req: AuthRequest, res: Response) {
-        try {
-            const { enrollmentId } = req.params;
-            const progressData = req.body;
-
-            const progress = await lmsService.updateProgress(enrollmentId, progressData);
-            res.json({
-                success: true,
-                data: progress,
-                message: 'Progress updated successfully'
-            });
-        } catch (error) {
-            if (error instanceof ApiError) throw error;
-            throw new ApiError(500, 'Failed to update progress');
-        }
-    }
-
-    async getStudentCourses(req: AuthRequest, res: Response) {
-        try {
-            const courses = await lmsService.getStudentCourses(req.user!.userId);
-            res.json({
-                success: true,
-                data: courses
-            });
-        } catch (error) {
-            if (error instanceof ApiError) throw error;
-            throw new ApiError(500, 'Failed to fetch student courses');
-        }
-    }
-
-    async getStudentCourse(req: AuthRequest, res: Response) {
-        try {
-            const { courseId } = req.params;
-            const course = await lmsService.getStudentCourse(req.user!.userId, courseId);
-            res.json({
-                success: true,
-                data: course
-            });
-        } catch (error) {
-            if (error instanceof ApiError) throw error;
-            throw new ApiError(500, 'Failed to fetch student course details');
-        }
-    }
-
-    async getStudentAssignments(req: AuthRequest, res: Response) {
-        try {
-            const assignments = await lmsService.getStudentAssignments(req.user!.userId);
-            res.json({
-                success: true,
-                data: assignments
-            });
-        } catch (error) {
-            if (error instanceof ApiError) throw error;
-            throw new ApiError(500, 'Failed to fetch student assignments');
-        }
-    }
-
-    async updateStudentProgress(req: AuthRequest, res: Response) {
-        try {
-            const { enrollmentId, contentItemId, completed, progress, timeSpent } = req.body;
-            const updatedProgress = await lmsService.updateStudentProgress(req.user!.userId, enrollmentId, {
-                contentId: contentItemId,
-                completed,
-                progress,
-                timeSpent
-            });
-            res.json({
-                success: true,
-                data: updatedProgress,
-                message: 'Progress updated successfully'
-            });
-        } catch (error) {
-            if (error instanceof ApiError) throw error;
-            throw new ApiError(500, 'Failed to update student progress');
-        }
-    }
-
-    async submitAssignment(req: AuthRequest, res: Response) {
-        try {
-            const { id } = req.params;
-            const result = await lmsService.submitStudentAssignment(req.user!.userId, id);
-            res.json({
-                success: true,
-                data: result,
-                message: 'Assignment submitted successfully'
-            });
-        } catch (error) {
-            if (error instanceof ApiError) throw error;
-            throw new ApiError(500, 'Failed to submit assignment');
-        }
-    }
-
-    /**
-     * Reports Endpoints
-     */
-
-    async getLMSReports(req: AuthRequest, res: Response) {
-        try {
-            const filters = {
-                courseId: req.query.courseId as string,
-                learnerId: req.query.learnerId as string,
-                dateFrom: req.query.dateFrom as string,
-                dateTo: req.query.dateTo as string,
-                reportType: req.query.reportType as string
-            };
-
-            const reports = await lmsService.getLMSReports(filters);
-            res.json({
-                success: true,
-                data: reports
-            });
-        } catch (error) {
-            throw new ApiError(500, 'Failed to generate reports');
-        }
-    }
-
-    async getLMSDashboardStats(req: AuthRequest, res: Response) {
-        try {
-            const stats = await lmsService.getLMSDashboardStats();
-            res.json({
-                success: true,
-                data: stats
-            });
-        } catch (error) {
-            throw new ApiError(500, 'Failed to fetch LMS dashboard stats');
-        }
-    }
-}
+export const getAchievements = (_req: AuthRequest, res: Response): void => {
+  res.status(501).json(NOT_IMPLEMENTED);
+};

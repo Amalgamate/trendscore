@@ -70,6 +70,14 @@ const PAGE_APP_REQUIREMENTS = {
   'student-quizzes': 'lms',
   'student-course-view': 'lms',
 
+  'learning-dashboard':   'lms-professional',
+  'learning-assignments': 'lms-professional',
+  'learning-lessons':     'lms-professional',
+  'learning-revision':    'lms-professional',
+  'learning-analytics':   'lms-professional',
+  'learning-settings':    'lms-professional',
+  'learning-marketplace': 'lms-enterprise',
+
   'hr-portal': 'staff-hr',
   'hr-staff-profiles': 'staff-hr',
   'hr-leave': 'staff-hr',

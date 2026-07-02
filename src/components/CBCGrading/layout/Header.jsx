@@ -66,15 +66,9 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
 
   const portalLabel = (roleValue) => {
     const roleStr = String(roleValue || '').toUpperCase();
-    if (!roleStr) return 'Portal';
-    if (roleStr === 'SUPER_ADMIN') return 'Super Admin';
-    if (roleStr === 'HEAD_TEACHER') return 'Head Teacher';
-    if (roleStr === 'HEAD_OF_CURRICULUM') return 'HoC';
-    // Default: Title Case words (ADMIN -> Admin, IT_SUPPORT -> IT Support)
-    return roleStr
-      .split('_')
-      .map((w) => (w.length <= 2 ? w : w[0] + w.slice(1).toLowerCase()))
-      .join(' ');
+    if (roleStr === 'PARENT') return 'Parent Portal';
+    if (roleStr === 'STUDENT') return 'Student Portal';
+    return 'School Portal';
   };
 
   const portalPillClass = (roleValue) => {
@@ -404,7 +398,24 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
   return (
     <>
     <header className="h-[var(--app-header-height)] bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm sticky top-0 z-50 app-header-loading">
-      <div className="app-layout-row h-full flex items-center justify-end">
+      <div className="app-layout-row h-full flex items-center justify-between gap-4">
+      <div className="min-w-0 flex items-center gap-3">
+        <div className={cn(
+          "inline-flex h-9 items-center rounded-full border px-3 text-[11px] font-black uppercase tracking-[0.16em] shadow-sm",
+          portalPillClass(user?.role)
+        )}>
+          {portalLabel(user?.role)}
+        </div>
+        <div className="hidden xl:flex min-w-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">
+          <span>{formatToday()}</span>
+          {activeTermLabel && (
+            <>
+              <span className="h-1 w-1 rounded-full bg-gray-300" />
+              <span className={cn(activeTermMeta.isFallback && "text-amber-600")}>{activeTermLabel}</span>
+            </>
+          )}
+        </div>
+      </div>
       <div className="flex items-center gap-2 lg:gap-4">
         {(role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'HEAD_TEACHER') && (
           <SmsBalanceWidget />

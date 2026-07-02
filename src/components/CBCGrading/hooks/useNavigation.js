@@ -26,7 +26,7 @@ import {
     Shirt, ClipboardList, Video, PlayCircle, Gift, Wrench, Activity, Brain, MoreHorizontal
 } from 'lucide-react';
 
-const focusModules = ['dashboard', 'communications', 'planner', 'learners', 'teachers', 'assessment', 'academic-intelligence', 'learning-hub', 'attendance', 'docs-center', 'settings', 'hr', 'finance', 'inventory', 'transport'];
+const focusModules = ['dashboard', 'communications', 'planner', 'learners', 'teachers', 'assessment', 'digital-learning', 'academic-intelligence', 'learning-hub', 'attendance', 'docs-center', 'settings', 'hr', 'finance', 'inventory', 'transport'];
 
 const RESTRICTED_SIDEBAR_HOSTS = new Set([
     'kambigarba-cs.trendscore.co.ke',
@@ -231,6 +231,22 @@ export const allNavSections = [
                     { id: 'assess-performance-scale', label: 'Performance Scale', path: 'assess-performance-scale', permission: 'MANAGE_LEARNING_AREAS' }
                 ]
             }
+        ]
+    },
+    {
+        id: 'digital-learning',
+        label: 'Learning',
+        icon: GraduationCap,
+        app: 'lms-professional',
+        permission: 'ACCESS_LMS',
+        items: [
+            { id: 'learning-dashboard',    label: 'Dashboard',         path: 'learning-dashboard',    permission: 'ACCESS_LMS'             },
+            { id: 'learning-assignments',  label: 'Assignments',       path: 'learning-assignments',  permission: 'ACCESS_LMS'             },
+            { id: 'learning-lessons',      label: 'Lessons',           path: 'learning-lessons',      permission: 'ACCESS_LMS'             },
+            { id: 'learning-revision',     label: 'Revision Library',  path: 'learning-revision',     permission: 'ACCESS_LMS'             },
+            { id: 'learning-analytics',    label: 'Analytics',         path: 'learning-analytics',    permission: 'ANALYTICS_LEARNING'     },
+            { id: 'learning-settings',     label: 'Settings',          path: 'learning-settings',     permission: 'LEARNING_MANAGE'        },
+            { id: 'learning-marketplace',  label: 'Marketplace',       path: 'learning-marketplace',  permission: 'MARKETPLACE_PURCHASE', app: 'lms-enterprise' },
         ]
     },
     {
@@ -916,7 +932,7 @@ export const useNavigation = () => {
             return navSections.filter(s => ['learners', 'assessment', 'academic-intelligence', 'attendance'].includes(s.id));
         }
         return navSections.filter(s => 
-            ['learners', 'teachers', 'assessment', 'academic-intelligence', 'planner', 'timetable', 'learning-hub', 'attendance', 'facilities'].includes(s.id)
+            ['learners', 'teachers', 'assessment', 'digital-learning', 'academic-intelligence', 'planner', 'timetable', 'learning-hub', 'attendance', 'facilities'].includes(s.id)
         );
     }, [navSections, role]);
 

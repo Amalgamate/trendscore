@@ -46,4 +46,9 @@ export const lmsAPI = {
     return fetchWithAuth(`/lms/reports${queryString ? `?${queryString}` : ''}`);
   },
   getDashboardStats: async () => fetchWithAuth('/lms/dashboard/stats'),
+
+  // ─── Settings ──────────────────────────────────────────────────────────────
+  getSettings: async () => fetchWithAuth('/lms/settings'),
+  updateSettings: async (data) =>
+    fetchWithAuth('/lms/settings', { method: 'PUT', body: JSON.stringify(data) }),
 };

@@ -123,6 +123,13 @@ model User {
   dutyRostersCreated        DutyRoster[]
   approvalRequests          ApprovalRequest[]        @relation("ApprovalRequestor")
   approvalActions           ApprovalAction[]         @relation("ApprovalActioner")
+  // ── LMS Digital Learning Hub ────────────────────────────────────────────────
+  createdLessons            LearningLesson[]         @relation("LessonCreator")
+  createdAssignments        LearningAssignment[]     @relation("AssignmentCreator")
+  markedSubmissions         LearningSubmission[]     @relation("SubmissionMarker")
+  uploadedResources         LearningResource[]       @relation("ResourceUploader")
+  marketplaceListings       MarketplaceListing[]     @relation("MarketplaceSeller")
+  marketplacePurchases      MarketplacePurchase[]    @relation("MarketplaceBuyer")
 
 
   @@map("users")
@@ -205,6 +212,13 @@ model School {
   aiGeneratedContents AIGeneratedContent[]
   staffAttendanceLogs StaffAttendanceLog[]
   staffAttendanceAttemptLogs StaffAttendanceAttemptLog[]
+
+  // ── LMS Digital Learning Hub ────────────────────────────────────────────────
+  learningLessons           LearningLesson[]
+  learningAssignments       LearningAssignment[]
+  learningResources         LearningResource[]
+  marketplaceListings       MarketplaceListing[]
+  lmsSettings               LMSSettings?
 
   @@index([kraPin])
   @@index([county])
@@ -298,6 +312,10 @@ model Class {
   facilities      ClassFacility[]
   schedules       ClassSchedule[]
   teacher         User?             @relation("ClassTeacher", fields: [teacherId], references: [id])
+  // ── LMS Digital Learning Hub ────────────────────────────────────────────────
+  learningLessons     LearningLesson[]
+  learningAssignments LearningAssignment[]
+  learningResources   LearningResource[]
 
   @@unique([grade, stream, academicYear, term])
   @@index([institutionType, grade, stream])
@@ -461,6 +479,12 @@ model Learner {
   unitEnrollments        UnitEnrollment[]
   unitResults            UnitResult[]
   pathwaySelections      LearnerPathwaySelection[]
+  // ── LMS Digital Learning Hub ────────────────────────────────────────────────
+  learningSubmissions    LearningSubmission[]      @relation("LearnerSubmissions")
+  learningSessions       LearningSession[]         @relation("LearnerSessions")
+  learningProgress       LearningProgress[]        @relation("LearnerLessonProgress")
+  achievements           LearnerAchievement[]      @relation("LearnerAchievements")
+  bookmarks              LearningBookmark[]        @relation("LearnerBookmarks")
 
   @@index([admissionNumber])
   @@index([parentId])
@@ -1654,6 +1678,10 @@ model LearningArea {
   pathwayRef           Pathway?                  @relation(fields: [pathwayId], references: [id])
   subjectAssignments   SubjectAssignment[]
   summativeTests       SummativeTest[]
+  // ── LMS Digital Learning Hub ────────────────────────────────────────────────
+  learningLessons      LearningLesson[]
+  learningAssignments  LearningAssignment[]
+  learningResources    LearningResource[]
 
   @@unique([name, gradeLevel])
   @@index([institutionType, gradeLevel])
@@ -2543,17 +2571,23 @@ model TransportAssignment {
 }
 
 model LMSCourse {
-  id          String          @id @default(uuid())
-  title       String
-  description String?
-  subject     String
-  grade       String
-  category    String
-  status      CourseStatus    @default(DRAFT)
-  createdById String
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  archived    Boolean         @default(false)
+  id             String          @id @default(uuid())
+  title          String
+  description    String?
+  subject        String
+  grade          String
+  category       String
+  status         CourseStatus    @default(DRAFT)
+  createdById    String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  archived       Boolean         @default(false)
+  // ── LMS Digital Learning Hub extensions (task 1.3) ──────────────────────
+  termId         String?
+  classId        String?
+  learningAreaId String?
+  publishedAt    DateTime?
+  lessonCount    Int?            @default(0)
   content     LMSContent[]
   createdBy   User            @relation("LMSCreatedCourses", fields: [createdById], references: [id])
   enrollments LMSEnrollment[]
@@ -2579,6 +2613,11 @@ model LMSContent {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   archived     Boolean       @default(false)
+  // ── LMS Digital Learning Hub extensions (task 1.3) ──────────────────────
+  resourceType String?
+  topic        String?
+  difficulty   String?
+  language     String?       @default("English")
   course       LMSCourse     @relation(fields: [courseId], references: [id], onDelete: Cascade)
   uploadedBy   User          @relation("LMSUploadedContent", fields: [uploadedById], references: [id])
   progress     LMSProgress[]
@@ -2656,6 +2695,402 @@ model AIGeneratedContent {
   @@map("ai_generated_content")
 }
 
+// ─── LMS DIGITAL LEARNING HUB MODELS ────────────────────────────────────────
+
+// ─── LESSON BUILDER ──────────────────────────────────────────────────────────
+
+model LearningLesson {
+  id              String         @id @default(uuid())
+  schoolId        String
+  courseId        String?        // optional link to existing LMSCourse
+  learningAreaId  String         // FK → LearningArea
+  classId         String         // FK → Class
+  streamId        String?        // optional FK → Stream
+  termId          String         // FK → TermConfig
+  title           String
+  description     String?        @db.Text
+  coverImageUrl   String?
+  estimatedMins   Int?
+  status          LessonStatus   @default(DRAFT)
+  publishedAt     DateTime?
+  allowComments   Boolean        @default(true)
+  allowDownload   Boolean        @default(false)
+  allowQuestions  Boolean        @default(true)
+  createdById     String         // FK → User
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  archived        Boolean        @default(false)
+
+  school          School          @relation(fields: [schoolId], references: [id])
+  learningArea    LearningArea    @relation(fields: [learningAreaId], references: [id])
+  class           Class           @relation(fields: [classId], references: [id])
+  blocks          LessonBlock[]
+  sessions        LearningSession[]
+  progress        LearningProgress[]
+  createdBy       User            @relation("LessonCreator", fields: [createdById], references: [id])
+
+  @@index([schoolId])
+  @@index([classId])
+  @@index([learningAreaId])
+  @@index([status])
+  @@index([termId])
+  @@index([schoolId, classId, learningAreaId])
+  @@map("learning_lessons")
+}
+
+model LessonBlock {
+  id          String          @id @default(uuid())
+  lessonId    String
+  type        LessonBlockType
+  order       Int
+  content     Json            // flexible block payload (text, url, quiz data, etc.)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  archived    Boolean         @default(false)
+
+  lesson      LearningLesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([lessonId])
+  @@index([type])
+  @@map("lesson_blocks")
+}
+
+// ─── ASSIGNMENT SYSTEM ───────────────────────────────────────────────────────
+
+model LearningAssignment {
+  id               String             @id @default(uuid())
+  schoolId         String
+  learningAreaId   String
+  classId          String
+  streamId         String?
+  termId           String
+  title            String
+  instructions     String?            @db.Text
+  category         AssignmentCategory
+  status           AssignmentStatus   @default(DRAFT)
+  dueDate          DateTime?
+  estimatedMins    Int?
+  totalMarks       Int?
+  passMark         Int?
+  rubric           Json?              // structured rubric definition
+  cbcOutcomes      String[]           @default([])  // CBC outcome IDs
+  allowLateSubmit  Boolean            @default(true)
+  allowResubmit    Boolean            @default(false)
+  maxFileSize      Int                @default(25)  // MB
+  allowedFileTypes String[]           @default([])
+  gradebookSync    Boolean            @default(false) // sync marks to assessments module
+  publishedAt      DateTime?
+  createdById      String
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  archived         Boolean            @default(false)
+
+  school           School              @relation(fields: [schoolId], references: [id])
+  learningArea     LearningArea        @relation(fields: [learningAreaId], references: [id])
+  class            Class               @relation(fields: [classId], references: [id])
+  files            AssignmentFile[]
+  submissions      LearningSubmission[]
+  createdBy        User                @relation("AssignmentCreator", fields: [createdById], references: [id])
+
+  @@index([schoolId])
+  @@index([classId])
+  @@index([learningAreaId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([termId])
+  @@index([schoolId, classId, status, dueDate])
+  @@map("learning_assignments")
+}
+
+model AssignmentFile {
+  id           String  @id @default(uuid())
+  assignmentId String
+  name         String
+  url          String
+  fileType     String
+  fileSize     Int?
+  createdAt    DateTime @default(now())
+
+  assignment   LearningAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId])
+  @@map("assignment_files")
+}
+
+model LearningSubmission {
+  id              String           @id @default(uuid())
+  assignmentId    String
+  learnerId       String
+  status          SubmissionStatus @default(DRAFT)
+  content         String?          @db.Text  // rich text answer
+  marks           Float?
+  feedback        String?          @db.Text
+  isLate          Boolean          @default(false)
+  attemptNumber   Int              @default(1)
+  submittedAt     DateTime?
+  markedAt        DateTime?
+  markedById      String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  archived        Boolean          @default(false)
+
+  assignment      LearningAssignment @relation(fields: [assignmentId], references: [id])
+  learner         Learner            @relation("LearnerSubmissions", fields: [learnerId], references: [id])
+  markedBy        User?              @relation("SubmissionMarker", fields: [markedById], references: [id])
+  files           SubmissionFile[]
+
+  @@unique([assignmentId, learnerId, attemptNumber])
+  @@index([assignmentId])
+  @@index([learnerId])
+  @@index([status])
+  @@index([markedById])
+  @@map("learning_submissions")
+}
+
+model SubmissionFile {
+  id           String  @id @default(uuid())
+  submissionId String
+  name         String
+  url          String
+  fileType     String
+  fileSize     Int?
+  createdAt    DateTime @default(now())
+
+  submission   LearningSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@map("submission_files")
+}
+
+// ─── REVISION LIBRARY ────────────────────────────────────────────────────────
+
+model LearningResource {
+  id               String           @id @default(uuid())
+  schoolId         String
+  learningAreaId   String
+  classId          String?
+  title            String
+  description      String?          @db.Text
+  resourceType     ResourceType
+  fileUrl          String?
+  externalUrl      String?
+  thumbnailUrl     String?
+  fileSize         Int?
+  fileType         String?
+  topic            String?
+  term             Int?             // 1, 2, 3
+  year             Int?
+  difficulty       DifficultyLevel?
+  language         String           @default("English")
+  tags             String[]         @default([])
+  downloadCount    Int              @default(0)
+  viewCount        Int              @default(0)
+  isPublic         Boolean          @default(false) // visible outside school
+  uploadedById     String
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  archived         Boolean          @default(false)
+
+  school              School            @relation(fields: [schoolId], references: [id])
+  learningArea        LearningArea      @relation(fields: [learningAreaId], references: [id])
+  class               Class?            @relation(fields: [classId], references: [id])
+  uploadedBy          User              @relation("ResourceUploader", fields: [uploadedById], references: [id])
+  marketplaceListings MarketplaceListing[]
+  bookmarks           LearningBookmark[]
+
+  @@index([schoolId])
+  @@index([learningAreaId])
+  @@index([classId])
+  @@index([resourceType])
+  @@index([topic])
+  @@index([uploadedById])
+  @@map("learning_resources")
+}
+
+// ─── MARKETPLACE (Enterprise) ────────────────────────────────────────────────
+
+model MarketplaceListing {
+  id               String                 @id @default(uuid())
+  schoolId         String
+  resourceId       String
+  sellerId         String
+  title            String
+  description      String?                @db.Text
+  price            Float                  @default(0)  // 0 = free
+  currency         String                 @default("KES")
+  listingType      MarketplaceListingType
+  revenueSharePct  Float                  @default(70) // seller's share %
+  status           MarketplaceStatus      @default(PENDING_APPROVAL)
+  approvalRequestId String?
+  rating           Float?
+  ratingCount      Int                    @default(0)
+  downloadCount    Int                    @default(0)
+  purchaseCount    Int                    @default(0)
+  publishedAt      DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  archived         Boolean                @default(false)
+
+  school           School             @relation(fields: [schoolId], references: [id])
+  resource         LearningResource   @relation(fields: [resourceId], references: [id])
+  seller           User               @relation("MarketplaceSeller", fields: [sellerId], references: [id])
+  purchases        MarketplacePurchase[]
+
+  @@index([schoolId])
+  @@index([sellerId])
+  @@index([status])
+  @@index([listingType])
+  @@index([price])
+  @@map("marketplace_listings")
+}
+
+model MarketplacePurchase {
+  id              String         @id @default(uuid())
+  listingId       String
+  buyerId         String
+  schoolId        String
+  amount          Float
+  currency        String         @default("KES")
+  mpesaReceiptNo  String?
+  transactionId   String?
+  sellerEarnings  Float
+  platformFee     Float
+  status          PurchaseStatus @default(PENDING)
+  downloadCount   Int            @default(0)
+  maxDownloads    Int            @default(5)
+  accessExpiresAt DateTime?
+  purchasedAt     DateTime       @default(now())
+  createdAt       DateTime       @default(now())
+
+  listing         MarketplaceListing @relation(fields: [listingId], references: [id])
+  buyer           User               @relation("MarketplaceBuyer", fields: [buyerId], references: [id])
+
+  @@index([listingId])
+  @@index([buyerId])
+  @@index([schoolId])
+  @@index([status])
+  @@map("marketplace_purchases")
+}
+
+// ─── PROGRESS & GAMIFICATION ─────────────────────────────────────────────────
+
+model LearningProgress {
+  id              String         @id @default(uuid())
+  learnerId       String
+  lessonId        String
+  schoolId        String
+  blocksCompleted Int            @default(0)
+  totalBlocks     Int            @default(0)
+  percentComplete Float          @default(0)
+  timeSpentMins   Int            @default(0)
+  lastBlockId     String?
+  completedAt     DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  learner         Learner        @relation("LearnerLessonProgress", fields: [learnerId], references: [id])
+  lesson          LearningLesson @relation(fields: [lessonId], references: [id])
+
+  @@unique([learnerId, lessonId])
+  @@index([learnerId])
+  @@index([lessonId])
+  @@index([schoolId])
+  @@map("learning_progress")
+}
+
+model LearningSession {
+  id          String         @id @default(uuid())
+  learnerId   String
+  lessonId    String
+  schoolId    String
+  startedAt   DateTime       @default(now())
+  endedAt     DateTime?
+  durationSec Int?
+  deviceType  String?        // mobile | desktop | tablet
+  createdAt   DateTime       @default(now())
+
+  learner     Learner        @relation("LearnerSessions", fields: [learnerId], references: [id])
+  lesson      LearningLesson @relation(fields: [lessonId], references: [id])
+
+  @@index([learnerId])
+  @@index([lessonId])
+  @@index([schoolId])
+  @@index([startedAt])
+  @@map("learning_sessions")
+}
+
+model LearnerAchievement {
+  id          String          @id @default(uuid())
+  learnerId   String
+  schoolId    String
+  type        AchievementType
+  title       String
+  description String?
+  xpEarned    Int             @default(0)
+  metadata    Json?
+  earnedAt    DateTime        @default(now())
+  createdAt   DateTime        @default(now())
+  archived    Boolean         @default(false)
+
+  learner     Learner         @relation("LearnerAchievements", fields: [learnerId], references: [id])
+
+  @@index([learnerId])
+  @@index([schoolId])
+  @@index([type])
+  @@map("learner_achievements")
+}
+
+model LearningBookmark {
+  id          String    @id @default(uuid())
+  learnerId   String
+  resourceId  String?
+  lessonId    String?
+  schoolId    String
+  createdAt   DateTime  @default(now())
+  archived    Boolean   @default(false)
+
+  learner     Learner           @relation("LearnerBookmarks", fields: [learnerId], references: [id])
+  resource    LearningResource? @relation(fields: [resourceId], references: [id])
+
+  @@unique([learnerId, resourceId])
+  @@index([learnerId])
+  @@index([schoolId])
+  @@map("learning_bookmarks")
+}
+
+model LMSSettings {
+  id                     String   @id @default(uuid())
+  schoolId               String   @unique
+  enableLearning         Boolean  @default(true)
+  enableMarketplace      Boolean  @default(false)
+  enableAI               Boolean  @default(false)
+  enableRevisionLibrary  Boolean  @default(true)
+  allowLateSubmission    Boolean  @default(true)
+  allowResubmission      Boolean  @default(false)
+  maxUploadSizeMB        Int      @default(25)
+  allowedFileTypes       String[] @default([])
+  assignmentDueTime      String   @default("23:59")
+  enableComments         Boolean  @default(true)
+  enableStudentQuestions Boolean  @default(true)
+  enableDownloads        Boolean  @default(true)
+  enableGamification     Boolean  @default(false)
+  enableXP               Boolean  @default(false)
+  enableBadges           Boolean  @default(false)
+  enableLeaderboards     Boolean  @default(false)
+  enableStreaks           Boolean  @default(false)
+  notifyParents          Boolean  @default(true)
+  showFeedbackToParents  Boolean  @default(true)
+  showProgressToParents  Boolean  @default(true)
+  marketplaceRevenuePct  Float    @default(70)
+  requireApproval        Boolean  @default(true)
+  allowFreeContent       Boolean  @default(true)
+  updatedAt              DateTime @updatedAt
+
+  school  School @relation(fields: [schoolId], references: [id])
+
+  @@map("lms_settings")
+}
+
 // ─── ENUMS ──────────────────────────────────────────────────────────────────
 
 enum AIContentType {
@@ -2667,6 +3102,14 @@ enum AIContentType {
   CAREER_GUIDANCE
   COMMUNICATION_DRAFT
   NL_ANSWER
+  // LMS AI content types
+  LEARNING_ASSISTANT
+  ASSIGNMENT_GENERATOR
+  LESSON_PLAN
+  RUBRIC_GENERATOR
+  PRACTICE_QUESTIONS
+  FLASHCARD_SET
+  QUESTION_BANK
 }
 
 enum BookStatus {
@@ -3943,4 +4386,115 @@ model ApprovalAction {
   @@index([requestId])
   @@index([approverId])
   @@map("approval_actions")
+}
+
+// ── LMS Digital Learning Hub Enums ─────────────────────────────────────────
+
+enum LessonStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum LessonBlockType {
+  HEADING
+  PARAGRAPH
+  IMAGE
+  GALLERY
+  VIDEO
+  AUDIO
+  QUIZ
+  FLASHCARDS
+  TIMELINE
+  ACCORDION
+  TABLE
+  DIAGRAM
+  CODE
+  FORMULA
+  PDF
+  ASSIGNMENT
+  DISCUSSION
+  REFLECTION
+  TEACHER_NOTES
+  PRACTICE_QUESTIONS
+}
+
+enum AssignmentCategory {
+  HOMEWORK
+  PROJECT
+  REVISION
+  HOLIDAY_WORK
+  RESEARCH
+  READING
+  PRACTICAL
+  GROUP_WORK
+}
+
+enum AssignmentStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  ARCHIVED
+}
+
+enum SubmissionStatus {
+  DRAFT
+  SUBMITTED
+  LATE
+  MARKED
+  RETURNED
+  RESUBMITTED
+}
+
+enum ResourceType {
+  NOTES
+  PAST_PAPER
+  SCHEME
+  WORKSHEET
+  PROJECT
+  EXPERIMENT
+  CBC_ACTIVITY
+  HOLIDAY_PACKAGE
+  VIDEO
+  OTHER
+}
+
+enum DifficultyLevel {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum MarketplaceListingType {
+  FREE
+  PAID
+  BUNDLE
+  SUBSCRIPTION
+}
+
+enum MarketplaceStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  PUBLISHED
+  SUSPENDED
+}
+
+enum PurchaseStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum AchievementType {
+  FIRST_LESSON
+  STREAK_7
+  STREAK_30
+  PERFECT_SCORE
+  FAST_LEARNER
+  TOP_CONTRIBUTOR
+  EARLY_BIRD
+  ASSIGNMENT_ACE
+  RESOURCE_SHARER
 }

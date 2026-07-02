@@ -1,153 +1,507 @@
 /**
- * LMS Routes
- * Defines all Learning Management System API endpoints
+ * LMS Routes — Digital Learning Hub
  *
- * Guard contract:
- * - authenticate at router level
- * - requireRole([...]) per route for consistent structured auth errors
+ * Registers all LMS API endpoints with appropriate middleware:
+ *   - authenticate (applied globally in index.ts before this router)
+ *   - requireApp('lms-professional') for all routes (index.ts mount)
+ *   - requireApp('lms-enterprise') for Marketplace + AI groups (per-route)
+ *   - requirePermission(...) for RBAC
+ *   - requireCsrf for state-mutating routes (POST / PUT / DELETE)
  *
- * FIX: The old import referenced `validateRequest` which was never exported
- * from validation.middleware. The correct export is `validate`.
+ * Mount point: /api/lms  (see server/src/routes/index.ts)
+ *
+ * Requirements: 17.1, 17.2, 17.3, 17.6
  *
  * @module routes/lms.routes
  */
 
-import { Router } from 'express';
-import { LMSController } from '../controllers/lms.controller';
-import { authenticate } from '../middleware/auth.middleware';
-import { requireRole } from '../middleware/permissions.middleware';
-import { validate } from '../middleware/validation.middleware';
-import {
-    createCourseSchema,
-    updateCourseSchema,
-    uploadContentSchema,
-    enrollLearnerSchema
-} from '../validators/lms.validators';
+import { Router, Request, Response, NextFunction } from 'express';
+import { requirePermission } from '../middleware/permissions.middleware';
+import { requireApp } from '../middleware/requireApp';
+import { requireCsrf } from '../middleware/csrf.middleware';
+import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
+import upload from '../middleware/upload.middleware';
+import * as lmsController from '../controllers/lms.controller';
 
 const router = Router();
-const lmsController = new LMSController();
 
-// Apply authentication to all LMS routes
-router.use(authenticate);
+// ─── AI rate limit preset (10 req / min per client) ────────────────────────
+const aiRateLimit = rateLimit({ windowMs: 60_000, maxRequests: 10 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LESSONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** GET /api/lms/lessons — list lessons */
+router.get(
+  '/lessons',
+  requirePermission('LEARNING_VIEW'),
+  lmsController.getLessons
+);
+
+/** GET /api/lms/lessons/:id — lesson with blocks */
+router.get(
+  '/lessons/:id',
+  requirePermission('LEARNING_VIEW'),
+  lmsController.getLessonWithBlocks
+);
+
+/** POST /api/lms/lessons — create lesson (draft) */
+router.post(
+  '/lessons',
+  requirePermission('LESSON_CREATE'),
+  requireCsrf,
+  lmsController.createLesson
+);
+
+/** PUT /api/lms/lessons/:id — update lesson metadata */
+router.put(
+  '/lessons/:id',
+  requirePermission('LESSON_CREATE'),
+  requireCsrf,
+  lmsController.updateLesson
+);
+
+/** POST /api/lms/lessons/:id/blocks — upsert lesson blocks */
+router.post(
+  '/lessons/:id/blocks',
+  requirePermission('LESSON_CREATE'),
+  requireCsrf,
+  lmsController.upsertBlocks
+);
+
+/** PUT /api/lms/lessons/:id/publish — publish lesson */
+router.put(
+  '/lessons/:id/publish',
+  requirePermission('LESSON_PUBLISH'),
+  requireCsrf,
+  lmsController.publishLesson
+);
+
+/** DELETE /api/lms/lessons/:id — archive lesson */
+router.delete(
+  '/lessons/:id',
+  requirePermission('LESSON_CREATE'),
+  requireCsrf,
+  lmsController.archiveLesson
+);
+
+/** POST /api/lms/lessons/:id/progress — mark block complete */
+router.post(
+  '/lessons/:id/progress',
+  requirePermission('LEARNING_VIEW'),
+  requireCsrf,
+  lmsController.markLessonProgress
+);
+
+/** GET /api/lms/lessons/:id/progress — get learner progress */
+router.get(
+  '/lessons/:id/progress',
+  requirePermission('LEARNING_VIEW'),
+  lmsController.getLessonProgress
+);
+
+/** POST /api/lms/lessons/:id/session — start lesson session */
+router.post(
+  '/lessons/:id/session',
+  requirePermission('LEARNING_VIEW'),
+  requireCsrf,
+  lmsController.startLessonSession
+);
+
+/** PUT /api/lms/lessons/sessions/:sessionId — end lesson session */
+router.put(
+  '/lessons/sessions/:sessionId',
+  requirePermission('LEARNING_VIEW'),
+  requireCsrf,
+  lmsController.endLessonSession
+);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ASSIGNMENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** GET /api/lms/assignments — list assignments (role-scoped in service layer) */
+router.get(
+  '/assignments',
+  requirePermission('LEARNING_VIEW'),
+  lmsController.getAssignments
+);
+
+/** GET /api/lms/assignments/:id — assignment detail */
+router.get(
+  '/assignments/:id',
+  requirePermission('LEARNING_VIEW'),
+  lmsController.getAssignmentDetail
+);
+
+/** POST /api/lms/assignments — create assignment */
+router.post(
+  '/assignments',
+  requirePermission('ASSIGNMENT_CREATE'),
+  requireCsrf,
+  lmsController.createAssignment
+);
+
+/** PUT /api/lms/assignments/:id — update assignment */
+router.put(
+  '/assignments/:id',
+  requirePermission('ASSIGNMENT_CREATE'),
+  requireCsrf,
+  lmsController.updateAssignment
+);
+
+/** POST /api/lms/assignments/:id/publish — publish assignment */
+router.post(
+  '/assignments/:id/publish',
+  requirePermission('ASSIGNMENT_CREATE'),
+  requireCsrf,
+  lmsController.publishAssignment
+);
+
+/** POST /api/lms/assignments/:id/close — close assignment */
+router.post(
+  '/assignments/:id/close',
+  requirePermission('ASSIGNMENT_CREATE'),
+  requireCsrf,
+  lmsController.closeAssignment
+);
+
+/** DELETE /api/lms/assignments/:id — archive assignment */
+router.delete(
+  '/assignments/:id',
+  requirePermission('ASSIGNMENT_CREATE'),
+  requireCsrf,
+  lmsController.archiveAssignment
+);
+
+/** GET /api/lms/assignments/:id/submissions — all submissions for an assignment */
+router.get(
+  '/assignments/:id/submissions',
+  requirePermission('ASSIGNMENT_MARK'),
+  lmsController.getSubmissions
+);
+
+/** POST /api/lms/assignments/:id/submit — student submits assignment (with files) */
+router.post(
+  '/assignments/:id/submit',
+  requirePermission('ASSIGNMENT_SUBMIT'),
+  requireCsrf,
+  upload.array('files', 10),
+  lmsController.submitAssignment
+);
+
+/** PUT /api/lms/submissions/:id — update draft submission */
+router.put(
+  '/submissions/:id',
+  requirePermission('ASSIGNMENT_SUBMIT'),
+  requireCsrf,
+  lmsController.updateDraftSubmission
+);
+
+/** POST /api/lms/submissions/:id/mark — mark a submission */
+router.post(
+  '/submissions/:id/mark',
+  requirePermission('ASSIGNMENT_MARK'),
+  requireCsrf,
+  lmsController.markSubmission
+);
+
+/** GET /api/lms/submissions/my — learner's own submissions */
+router.get(
+  '/submissions/my',
+  requirePermission('ASSIGNMENT_SUBMIT'),
+  lmsController.getMySubmissions
+);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RESOURCES (REVISION LIBRARY)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** GET /api/lms/resources — search/list resources */
+router.get(
+  '/resources',
+  requirePermission('LEARNING_VIEW'),
+  lmsController.searchResources
+);
+
+/** GET /api/lms/resources/:id — resource detail */
+router.get(
+  '/resources/:id',
+  requirePermission('LEARNING_VIEW'),
+  lmsController.getResourceDetail
+);
+
+/** POST /api/lms/resources — upload resource (single file) */
+router.post(
+  '/resources',
+  requirePermission('LEARNING_MANAGE'),
+  requireCsrf,
+  upload.single('file'),
+  lmsController.createResource
+);
+
+/** PUT /api/lms/resources/:id — update resource metadata */
+router.put(
+  '/resources/:id',
+  requirePermission('LEARNING_MANAGE'),
+  requireCsrf,
+  lmsController.updateResource
+);
+
+/** DELETE /api/lms/resources/:id — archive resource */
+router.delete(
+  '/resources/:id',
+  requirePermission('LEARNING_MANAGE'),
+  requireCsrf,
+  lmsController.archiveResource
+);
+
+/** POST /api/lms/resources/:id/download — generate signed download URL */
+router.post(
+  '/resources/:id/download',
+  requirePermission('LEARNING_VIEW'),
+  requireCsrf,
+  lmsController.downloadResource
+);
+
+/** POST /api/lms/resources/:id/bookmark — toggle bookmark */
+router.post(
+  '/resources/:id/bookmark',
+  requirePermission('LEARNING_VIEW'),
+  requireCsrf,
+  lmsController.toggleBookmark
+);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MARKETPLACE  (Enterprise tier — requireApp('lms-enterprise') on all routes)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Course Management Routes
+ * M-Pesa STK push callback — PUBLIC, no auth, no enterprise gate.
+ * Must be registered BEFORE the lms-enterprise guard block below
+ * so it is not intercepted by requireApp('lms-enterprise').
+ *
+ * IP allowlisting / Safaricom signature verification is handled
+ * inside the controller / service layer.
  */
-router.get('/courses',
-    requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER']),
-    lmsController.getCourses.bind(lmsController)
+router.post(
+  '/marketplace/mpesa-callback',
+  lmsController.handleMpesaCallback
 );
 
-router.get('/courses/:id',
-    requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER']),
-    lmsController.getCourse.bind(lmsController)
+// All remaining marketplace routes require lms-enterprise.
+// Using a sub-router avoids repeating requireApp on every route.
+const enterpriseRouter = Router();
+enterpriseRouter.use(requireApp('lms-enterprise'));
+
+enterpriseRouter.get(
+  '/marketplace',
+  requirePermission('LEARNING_VIEW'),
+  lmsController.browseListings
 );
 
-router.post('/courses',
-    requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER', 'HEAD_OF_CURRICULUM']),
-    validate(createCourseSchema),
-    lmsController.createCourse.bind(lmsController)
+enterpriseRouter.get(
+  '/marketplace/my-listings',
+  requirePermission('MARKETPLACE_PUBLISH'),
+  lmsController.getMyListings
 );
 
-router.put('/courses/:id',
-    requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER', 'HEAD_OF_CURRICULUM']),
-    validate(updateCourseSchema),
-    lmsController.updateCourse.bind(lmsController)
+enterpriseRouter.get(
+  '/marketplace/my-purchases',
+  requirePermission('MARKETPLACE_PURCHASE'),
+  lmsController.getMyPurchases
 );
 
-router.delete('/courses/:id',
-    requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
-    lmsController.deleteCourse.bind(lmsController)
+enterpriseRouter.get(
+  '/marketplace/:id',
+  requirePermission('LEARNING_VIEW'),
+  lmsController.getListingDetail
 );
 
-/**
- * Content Management Routes
- */
-router.get('/content',
-    requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER']),
-    lmsController.getContent.bind(lmsController)
+enterpriseRouter.post(
+  '/marketplace',
+  requirePermission('MARKETPLACE_PUBLISH'),
+  requireCsrf,
+  lmsController.createListing
 );
 
-router.post('/content',
-    requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER']),
-    validate(uploadContentSchema),
-    lmsController.uploadContent.bind(lmsController)
+enterpriseRouter.post(
+  '/marketplace/:id/approve',
+  requirePermission('MARKETPLACE_APPROVE'),
+  requireCsrf,
+  lmsController.approveListing
 );
 
-router.delete('/content/:id',
-    requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER']),
-    lmsController.deleteContent.bind(lmsController)
+enterpriseRouter.post(
+  '/marketplace/:id/reject',
+  requirePermission('MARKETPLACE_APPROVE'),
+  requireCsrf,
+  lmsController.rejectListing
 );
 
-/**
- * Enrollment Management Routes
- */
-router.get('/enrollments',
-    requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM']),
-    lmsController.getEnrollments.bind(lmsController)
+enterpriseRouter.post(
+  '/marketplace/:id/purchase',
+  requirePermission('MARKETPLACE_PURCHASE'),
+  requireCsrf,
+  lmsController.initiatePurchase
 );
 
-router.post('/enrollments',
-    requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
-    validate(enrollLearnerSchema),
-    lmsController.enrollLearner.bind(lmsController)
+enterpriseRouter.post(
+  '/marketplace/:id/rate',
+  requirePermission('MARKETPLACE_PURCHASE'),
+  requireCsrf,
+  lmsController.rateResource
 );
 
-router.delete('/enrollments/:id',
-    requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
-    lmsController.unenrollLearner.bind(lmsController)
+// ─── AI LEARNING ASSISTANT (Enterprise + rate-limited) ──────────────────────
+
+enterpriseRouter.post(
+  '/ai/ask',
+  requirePermission('LEARNING_VIEW'),
+  aiRateLimit,
+  requireCsrf,
+  lmsController.aiAsk
 );
 
-/**
- * Progress Tracking Routes
- */
-router.get('/progress/:learnerId/:courseId',
-    requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER']),
-    lmsController.getLearnerProgress.bind(lmsController)
+enterpriseRouter.post(
+  '/ai/simplify',
+  requirePermission('LEARNING_VIEW'),
+  aiRateLimit,
+  requireCsrf,
+  lmsController.aiSimplify
 );
 
-router.put('/progress/:enrollmentId',
-    requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER']),
-    lmsController.updateProgress.bind(lmsController)
+enterpriseRouter.post(
+  '/ai/flashcards',
+  requirePermission('LEARNING_VIEW'),
+  aiRateLimit,
+  requireCsrf,
+  lmsController.aiFlashcards
 );
 
-router.get('/my-courses',
-    requireRole(['STUDENT']),
-    lmsController.getStudentCourses.bind(lmsController)
+enterpriseRouter.post(
+  '/ai/practice',
+  requirePermission('LEARNING_VIEW'),
+  aiRateLimit,
+  requireCsrf,
+  lmsController.aiPractice
 );
 
-router.get('/my-courses/:courseId',
-    requireRole(['STUDENT']),
-    lmsController.getStudentCourse.bind(lmsController)
+enterpriseRouter.post(
+  '/ai/explain-mistake',
+  requirePermission('LEARNING_VIEW'),
+  aiRateLimit,
+  requireCsrf,
+  lmsController.aiExplainMistake
 );
 
-router.get('/my-assignments',
-    requireRole(['STUDENT']),
-    lmsController.getStudentAssignments.bind(lmsController)
+enterpriseRouter.post(
+  '/ai/generate-assignment',
+  requirePermission('LESSON_CREATE'),
+  aiRateLimit,
+  requireCsrf,
+  lmsController.aiGenerateAssignment
 );
 
-router.put('/my-progress',
-    requireRole(['STUDENT']),
-    lmsController.updateStudentProgress.bind(lmsController)
+enterpriseRouter.post(
+  '/ai/generate-lesson-plan',
+  requirePermission('LESSON_CREATE'),
+  aiRateLimit,
+  requireCsrf,
+  lmsController.aiGenerateLessonPlan
 );
 
-router.post('/assignments/:id/submit',
-    requireRole(['STUDENT']),
-    lmsController.submitAssignment.bind(lmsController)
+enterpriseRouter.post(
+  '/ai/generate-rubric',
+  requirePermission('ASSIGNMENT_CREATE'),
+  aiRateLimit,
+  requireCsrf,
+  lmsController.aiGenerateRubric
 );
 
-/**
- * Reports Routes
- */
-router.get('/reports',
-    requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
-    lmsController.getLMSReports.bind(lmsController)
+enterpriseRouter.post(
+  '/ai/question-bank',
+  requirePermission('LESSON_CREATE'),
+  aiRateLimit,
+  requireCsrf,
+  lmsController.aiQuestionBank
 );
 
-router.get('/dashboard/stats',
-    requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER']),
-    lmsController.getLMSDashboardStats.bind(lmsController)
+// Mount enterprise sub-router onto the main LMS router
+router.use('/', enterpriseRouter);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ANALYTICS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+router.get(
+  '/analytics/overview',
+  requirePermission('ANALYTICS_LEARNING'),
+  lmsController.getAnalyticsOverview
+);
+
+router.get(
+  '/analytics/class/:classId',
+  requirePermission('ANALYTICS_LEARNING'),
+  lmsController.getClassAnalytics
+);
+
+router.get(
+  '/analytics/learner/:learnerId',
+  requirePermission('ANALYTICS_LEARNING'),
+  lmsController.getLearnerAnalytics
+);
+
+router.get(
+  '/analytics/assignments',
+  requirePermission('ANALYTICS_LEARNING'),
+  lmsController.getAssignmentAnalytics
+);
+
+router.get(
+  '/analytics/lessons',
+  requirePermission('ANALYTICS_LEARNING'),
+  lmsController.getLessonEngagementStats
+);
+
+router.get(
+  '/analytics/marketplace',
+  requirePermission('MARKETPLACE_PUBLISH'),
+  lmsController.getMarketplaceAnalytics
+);
+
+router.get(
+  '/analytics/leaderboard',
+  requirePermission('LEARNING_VIEW'),
+  lmsController.getLeaderboard
+);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+router.get(
+  '/settings',
+  requirePermission('LEARNING_MANAGE'),
+  lmsController.getLmsSettings
+);
+
+router.put(
+  '/settings',
+  requirePermission('LEARNING_MANAGE'),
+  requireCsrf,
+  lmsController.updateLmsSettings
+);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACHIEVEMENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+router.get(
+  '/achievements',
+  requirePermission('LEARNING_VIEW'),
+  lmsController.getAchievements
 );
 
 export default router;
-

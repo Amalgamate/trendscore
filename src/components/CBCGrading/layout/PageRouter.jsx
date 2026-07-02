@@ -156,6 +156,10 @@ const BiometricManager = lazy(() => import('../pages/biometric/BiometricManager'
 // LMS Module
 const LMSManager = lazy(() => import('../pages/LMSManager'));
 const LMSAssignments = lazy(() => import('../pages/lms/LMSAssignments'));
+// LMS Digital Learning Hub — Phase 1+
+const LMSDashboard = lazy(() => import('../pages/LMSDashboard'));
+const LMSPlaceholder = lazy(() => import('../pages/lms/LMSPlaceholder'));
+const LMSSettingsPage = lazy(() => import('../pages/lms/settings/LMSSettingsPage'));
 
 // Student Portal
 const MyCourses = lazy(() => import('../pages/student/MyCourses'));
@@ -701,6 +705,16 @@ const PageRouter = ({
           case 'lms-enrollments': return <LMSManager currentPage={currentPage} />;
           case 'lms-progress': return <LMSManager currentPage={currentPage} />;
           case 'lms-reports': return <LMSManager currentPage={currentPage} />;
+
+          // LMS Digital Learning Hub
+          case 'learning-dashboard': return <LMSDashboard user={user} onNavigate={handleNavigate} />;
+          case 'learning-assignments': return <LMSAssignments user={user} onNavigate={handleNavigate} />;
+          case 'learning-lessons': return <LMSPlaceholder title="Lessons" description="Lesson planning and delivery tools are being prepared for the Digital Learning Hub." />;
+          case 'learning-lesson-builder': return <LMSPlaceholder title="Lesson Builder" description="Interactive lesson authoring is being prepared for the Digital Learning Hub." />;
+          case 'learning-revision': return <LMSPlaceholder title="Revision Library" description="Revision materials and learner practice content are being prepared for the Digital Learning Hub." />;
+          case 'learning-marketplace': return <LMSPlaceholder title="Content Marketplace" description="Curated learning resources and shared school content are being prepared for the Digital Learning Hub." />;
+          case 'learning-analytics': return <LMSPlaceholder title="Learning Analytics" description="Learning engagement and progress analytics are being prepared for the Digital Learning Hub." />;
+          case 'learning-settings': return <LMSSettingsPage user={user} onNavigate={handleNavigate} />;
 
           // Student Portal
           case 'student-courses': return <ErrorBoundary><MyCourses onNavigate={handleNavigate} /></ErrorBoundary>;

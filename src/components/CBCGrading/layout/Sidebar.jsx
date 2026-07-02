@@ -217,6 +217,7 @@ const Sidebar = React.memo(({
   const { role } = usePermissions();
 
   const theme = useMemo(() => getSidebarTheme(brandingSettings), [brandingSettings]);
+  const [logoLoadFailed, setLogoLoadFailed] = useState(false);
   const navScrollRef = useRef(null);
   const sectionRefs = useRef({});
 
@@ -281,6 +282,17 @@ const Sidebar = React.memo(({
     { fallback: 'School Portal' }
   );
   const schoolInitials = getInitials(schoolDisplayName);
+  const schoolLogo =
+    brandingSettings?.logoUrl ||
+    user?.school?.logoUrl ||
+    user?.school?.logo ||
+    user?.logoUrl ||
+    null;
+  const showSchoolLogo = schoolLogo && !logoLoadFailed;
+
+  useEffect(() => {
+    setLogoLoadFailed(false);
+  }, [schoolLogo]);
 
   if (role === 'ACCOUNTANT' && !navData?.isSidebarRestricted) {
     const financeBg = '#080083';
@@ -299,13 +311,19 @@ const Sidebar = React.memo(({
               <p className="truncate text-[15px] font-extrabold uppercase leading-tight tracking-wide text-white">
                 {schoolDisplayName}
               </p>
-              <p className="mt-1 truncate text-[9px] font-bold uppercase tracking-[0.24em] text-white/65">
-                School Portal
-              </p>
             </div>
           ) : (
             <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-sm font-extrabold tracking-wide text-white shadow-inner">
-              {schoolInitials}
+              {showSchoolLogo ? (
+                <img
+                  src={schoolLogo}
+                  alt={schoolDisplayName}
+                  className="h-8 w-8 object-contain"
+                  onError={() => setLogoLoadFailed(true)}
+                />
+              ) : (
+                schoolInitials
+              )}
             </div>
           )}
         </div>
@@ -389,13 +407,19 @@ const Sidebar = React.memo(({
             <p className="truncate text-[15px] font-extrabold uppercase leading-tight tracking-wide text-white">
               {schoolDisplayName}
             </p>
-            <p className="mt-1 truncate text-[9px] font-bold uppercase tracking-[0.24em] text-white/65">
-              School Portal
-            </p>
           </div>
         ) : (
           <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-sm font-extrabold tracking-wide text-white shadow-inner">
-            {schoolInitials}
+            {showSchoolLogo ? (
+              <img
+                src={schoolLogo}
+                alt={schoolDisplayName}
+                className="h-8 w-8 object-contain"
+                onError={() => setLogoLoadFailed(true)}
+              />
+            ) : (
+              schoolInitials
+            )}
           </div>
         )}
       </div>

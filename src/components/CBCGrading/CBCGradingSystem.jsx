@@ -697,7 +697,7 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
         onOpenGitDialog={() => setGitDialogOpen(true)}
       />
       <div className="flex-1 flex min-h-0 flex-col min-w-0 overflow-hidden relative">
-        {!(parentPortal && currentPage.startsWith('parent-portal')) && !(user?.role === 'ACCOUNTANT' && currentPage === 'finance-dashboard') && (
+        {!(user?.role === 'ACCOUNTANT' && currentPage === 'finance-dashboard') && (
           <>
             <Header user={accessUser} onLogout={handleLogout} onNavigate={handleNavigate} brandingSettings={brandingSettings} />
             {String(accessUser?.role || '').toUpperCase() === 'SUPER_ADMIN' && (
