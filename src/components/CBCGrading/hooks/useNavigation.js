@@ -380,12 +380,21 @@ export const allNavSections = [
         app: 'fee-management',
         permission: 'FEE_MANAGEMENT',
         items: [
-            { id: 'fees-overview', label: 'Fee Overview', path: 'fees-overview', permission: 'FEE_MANAGEMENT', icon: Receipt },
-            { id: 'fees-invoices', label: 'Fee Invoices', path: 'fees-invoices', permission: 'FEE_MANAGEMENT', icon: FileText },
-            { id: 'fees-pledges', label: 'Pledges', path: 'fees-pledges', permission: 'FEE_MANAGEMENT', icon: Gift },
-            { id: 'fees-types', label: 'Fee Types', path: 'fees-types', permission: 'FEE_MANAGEMENT', icon: Receipt },
-            { id: 'fees-structure', label: 'Fee Structure', path: 'fees-structure', permission: 'FEE_MANAGEMENT', icon: Building2 },
-            { id: 'fees-unmatched', label: 'Unmatched Payments', path: 'fees-unmatched', permission: 'FEE_MANAGEMENT', icon: AlertCircle },
+            {
+                id: 'group-fees',
+                label: 'Fee Management',
+                type: 'group',
+                icon: Receipt,
+                permission: 'FEE_MANAGEMENT',
+                items: [
+                    { id: 'fees-overview', label: 'Fee Overview', path: 'fees-overview', permission: 'FEE_MANAGEMENT', icon: Receipt },
+                    { id: 'fees-invoices', label: 'Fee Invoices', path: 'fees-invoices', permission: 'FEE_MANAGEMENT', icon: FileText },
+                    { id: 'fees-pledges', label: 'Pledges', path: 'fees-pledges', permission: 'FEE_MANAGEMENT', icon: Gift },
+                    { id: 'fees-types', label: 'Fee Types', path: 'fees-types', permission: 'FEE_MANAGEMENT', icon: Receipt },
+                    { id: 'fees-structure', label: 'Fee Structure', path: 'fees-structure', permission: 'FEE_MANAGEMENT', icon: Building2 },
+                    { id: 'fees-unmatched', label: 'Unmatched Payments', path: 'fees-unmatched', permission: 'FEE_MANAGEMENT', icon: AlertCircle },
+                ],
+            },
             {
                 id: 'group-accounting',
                 label: 'Accounting',
