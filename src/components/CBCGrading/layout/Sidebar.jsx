@@ -25,6 +25,7 @@ import {
 import { useNavigation, groupNavigationByCategory } from '../hooks/useNavigation';
 import { useInstitutionLabels } from '../../../hooks/useInstitutionLabels';
 import { usePermissions } from '../../../hooks/usePermissions';
+import { getSchoolDisplayName } from '../../../utils/schoolDisplayName';
 
 // ─── constants ────────────────────────────────────────────────────────────────
 const SIDEBAR_COLLAPSED_W = 64;
@@ -97,6 +98,7 @@ const getCollapsedIconColor = (id, isActive) => {
     case 'teachers':        return 'text-emerald-500 drop-shadow-[0_0_6px_rgba(16,185,129,0.7)] group-hover:text-emerald-400 group-hover:drop-shadow-[0_0_10px_rgba(16,185,129,0.9)]';
     case 'parents':         return 'text-fuchsia-500 drop-shadow-[0_0_6px_rgba(217,70,239,0.7)] group-hover:text-fuchsia-400 group-hover:drop-shadow-[0_0_10px_rgba(217,70,239,0.9)]';
     case 'assessment':      return 'text-amber-500  drop-shadow-[0_0_6px_rgba(245,158,11,0.7)]  group-hover:text-amber-400  group-hover:drop-shadow-[0_0_10px_rgba(245,158,11,0.9)]';
+    case 'digital-learning': return 'text-teal-400   drop-shadow-[0_0_6px_rgba(45,212,191,0.7)]  group-hover:text-teal-300   group-hover:drop-shadow-[0_0_10px_rgba(45,212,191,0.9)]';
     case 'academic-intelligence': return 'text-indigo-400 drop-shadow-[0_0_6px_rgba(129,140,248,0.7)] group-hover:text-indigo-300 group-hover:drop-shadow-[0_0_10px_rgba(129,140,248,0.9)]';
     case 'communications':  return 'text-cyan-500   drop-shadow-[0_0_6px_rgba(6,182,212,0.7)]   group-hover:text-cyan-400   group-hover:drop-shadow-[0_0_10px_rgba(6,182,212,0.9)]';
     case 'planner':         return 'text-orange-500 drop-shadow-[0_0_6px_rgba(249,115,22,0.7)]  group-hover:text-orange-400 group-hover:drop-shadow-[0_0_10px_rgba(249,115,22,0.9)]';
@@ -113,6 +115,16 @@ const getCollapsedIconColor = (id, isActive) => {
     case 'dashboard':       return 'text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.7)] group-hover:text-white group-hover:drop-shadow-[0_0_10px_rgba(255,255,255,0.9)]';
     default:                return 'text-white/60 group-hover:text-white group-hover:drop-shadow-md';
   }
+};
+
+const getInitials = (name) => {
+  const words = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length === 0) return 'SP';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return words.slice(0, 2).map((word) => word[0]).join('').toUpperCase();
 };
 
 // ─── Route → chunk prefetch map ──────────────────────────────────────────────
@@ -261,6 +273,14 @@ const Sidebar = React.memo(({
   };
 
   const sidebarW = sidebarOpen ? SIDEBAR_EXPANDED_W : SIDEBAR_COLLAPSED_W;
+  const schoolDisplayName = getSchoolDisplayName(
+    brandingSettings?.schoolName,
+    brandingSettings?.name,
+    user?.school?.name,
+    user?.schoolName,
+    { fallback: 'School Portal' }
+  );
+  const schoolInitials = getInitials(schoolDisplayName);
 
   if (role === 'ACCOUNTANT' && !navData?.isSidebarRestricted) {
     const financeBg = '#080083';
@@ -272,23 +292,21 @@ const Sidebar = React.memo(({
       >
         <div
           style={{ height: HEADER_H, backgroundColor: financeDark }}
-          className="flex flex-shrink-0 items-center gap-3 border-b border-white/10 px-5"
+          className="flex flex-shrink-0 items-center border-b border-white/10 px-3"
         >
-          {brandingSettings?.logoUrl ? (
-            <img
-              src={brandingSettings.logoUrl}
-              alt="School Logo"
-              className="h-11 w-11 flex-shrink-0 object-contain"
-            />
-          ) : (
-            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border border-amber-300 bg-white text-xs font-extrabold text-[#080083]">
-              {(brandingSettings?.schoolName || 'LC').substring(0, 2).toUpperCase()}
+          {sidebarOpen ? (
+            <div className="min-w-0 text-left">
+              <p className="truncate text-[15px] font-extrabold uppercase leading-tight tracking-wide text-white">
+                {schoolDisplayName}
+              </p>
+              <p className="mt-1 truncate text-[9px] font-bold uppercase tracking-[0.24em] text-white/65">
+                School Portal
+              </p>
             </div>
-          )}
-          {sidebarOpen && (
-            <span className="min-w-0 truncate text-[13px] font-extrabold uppercase tracking-wide text-white">
-              {brandingSettings?.schoolName || 'Lions Complex Academy'}
-            </span>
+          ) : (
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-sm font-extrabold tracking-wide text-white shadow-inner">
+              {schoolInitials}
+            </div>
           )}
         </div>
 
@@ -361,26 +379,23 @@ const Sidebar = React.memo(({
       style={{ width: sidebarW, backgroundColor: theme.bg }}
       className="relative flex flex-col h-full text-white transition-[width] duration-300 ease-in-out border-r border-white/10 shadow-xl flex-shrink-0 z-30"
     >
-      {/* ── Logo bar ─────────────────────────────────────────────────────── */}
+      {/* ── Institution identity ─────────────────────────────────────────── */}
       <div
         style={{ height: HEADER_H, backgroundColor: theme.dark }}
-        className="flex items-center justify-center px-3 border-b border-white/10 overflow-hidden flex-shrink-0"
+        className="flex items-center px-3 border-b border-white/10 overflow-hidden flex-shrink-0"
       >
-        {brandingSettings?.logoUrl ? (
-          <img
-            src={brandingSettings.logoUrl}
-            alt="School Logo"
-            className={`object-contain transition-all duration-300 ${sidebarOpen ? 'h-11 max-w-full' : 'h-9 w-9'}`}
-          />
-        ) : sidebarOpen ? (
-          <span className="text-base font-semibold text-white tracking-wider truncate text-center leading-tight px-1">
-            {brandingSettings?.schoolName || 'TrendScore'}
-          </span>
+        {sidebarOpen ? (
+          <div className="min-w-0 text-left">
+            <p className="truncate text-[15px] font-extrabold uppercase leading-tight tracking-wide text-white">
+              {schoolDisplayName}
+            </p>
+            <p className="mt-1 truncate text-[9px] font-bold uppercase tracking-[0.24em] text-white/65">
+              School Portal
+            </p>
+          </div>
         ) : (
-          <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/20 shadow-inner">
-            <span className="text-sm font-semibold text-white">
-              {(brandingSettings?.schoolName || 'TS').substring(0, 2).toUpperCase()}
-            </span>
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-sm font-extrabold tracking-wide text-white shadow-inner">
+            {schoolInitials}
           </div>
         )}
       </div>

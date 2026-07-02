@@ -12,6 +12,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Bell, LogOut, Settings } from 'lucide-react';
 import { useUserNotifications } from '../../../contexts/UserNotificationContext';
 import axiosInstance from '../../../services/api/axiosConfig';
+import { getExplicitSchoolName } from '../../../utils/schoolDisplayName';
 
 const GENERIC_SCHOOL_NAMES = new Set([
   'school',
@@ -26,7 +27,7 @@ const normalizeDisplayValue = (value) => String(value || '').trim();
 
 const isGenericSchoolName = (value) => {
   const normalized = normalizeDisplayValue(value).toLowerCase();
-  return !normalized || GENERIC_SCHOOL_NAMES.has(normalized) || normalized.startsWith('trendscore');
+  return !normalized || GENERIC_SCHOOL_NAMES.has(normalized) || !getExplicitSchoolName(value);
 };
 
 const pickSchoolName = (...values) => {
@@ -52,11 +53,11 @@ const MobilePortalAppBar = ({
   const { unreadCount = 0 } = useUserNotifications?.() || {};
 
   const baseSchoolName = pickSchoolName(
+    brandingSettings?.schoolName,
+    brandingSettings?.name,
     user?.school?.name,
     user?.school?.schoolName,
     user?.schoolName,
-    brandingSettings?.schoolName,
-    brandingSettings?.name,
   );
   const [schoolName, setSchoolName] = useState(baseSchoolName);
 
@@ -106,9 +107,9 @@ const MobilePortalAppBar = ({
         const response = await axiosInstance.get('/schools');
         const school = response?.data?.data || response?.data;
         const fetchedName = pickSchoolName(
+          baseSchoolName,
           school?.name,
           school?.schoolName,
-          baseSchoolName,
         );
         if (!cancelled) {
           setSchoolName(fetchedName);

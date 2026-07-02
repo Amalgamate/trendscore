@@ -18,7 +18,6 @@ import { useAssessmentSetup } from '../hooks/useAssessmentSetup';
 import { getLearningAreasByGrade } from '../../../constants/learningAreas';
 import { useSchoolData } from '../../../contexts/SchoolDataContext';
 import { reportAPI } from '../../../services/api/report.api';
-import { PRODUCT_DISPLAY_NAME } from '../../../config/productIdentity';
 import { getSchoolDisplayName } from '../../../utils/schoolDisplayName';
 import { getAcademicYearOptions, getCurrentAcademicYear, getCurrentTerm } from '../utils/academicYear';
 import { resolveTestType, formatTestTypeLabel, compareTestTypes } from '../utils/testType';
@@ -513,7 +512,7 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
     bold: 700,
     title: 800
   };
-  const schoolName = getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, { fallback: PRODUCT_DISPLAY_NAME }).toUpperCase();
+  const schoolName = getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, user?.schoolName, { fallback: 'School' }).toUpperCase();
   const schoolNameLength = schoolName.length;
   const schoolNameFontSize = Math.max(22, Math.min(34, Math.round(980 / Math.max(schoolNameLength, 1))));
   const schoolNameLetterSpacing =
@@ -1020,7 +1019,7 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
 
       {/* Footer Disclaimer - Absolute Bottom */}
       <div className="report-footer-note" style={{ position: 'absolute', bottom: '6mm', left: '8mm', right: '8mm', textAlign: 'center', fontSize: '10px', color: '#64748b', fontWeight: '400' }}>
-        This is an official summative assessment report. Verified by School Administration System. © {new Date().getFullYear()} {getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, { fallback: PRODUCT_DISPLAY_NAME })}.
+        This is an official summative assessment report. Verified by School Administration System. © {new Date().getFullYear()} {getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, user?.schoolName, { fallback: 'School' })}.
       </div>
     </div >
   );
@@ -1797,7 +1796,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       const headers = ['#', 'LEARNER NAME', ...subjectHeaders, 'TOTAL', 'AVG %', 'GRD', 'PTS'];
       const totalColumns = headers.length;
       const lastColLetter = worksheet.getColumn(totalColumns).letter;
-      const schoolName = getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, { fallback: PRODUCT_DISPLAY_NAME }).toUpperCase();
+      const schoolName = getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, user?.schoolName, { fallback: 'School' }).toUpperCase();
       const brandColor = brandingSettings?.brandColor || 'FF1E3A8A';
       const reportTitle = (reportData?.title || 'GRADE REPORT').toUpperCase();
       const streamLabel = reportData?.meta?.stream && reportData.meta.stream !== 'all' ? reportData.meta.stream : 'ALL';
@@ -1944,7 +1943,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     // 1. Data Preparation (Priority: Parent/Guardian -> Parent)
     const parentName = learner.guardianName || learner.parent?.firstName || 'Parent';
     const termLabel = terms.find(t => t.value === selectedTerm)?.label || selectedTerm;
-    const schoolName = getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, { fallback: PRODUCT_DISPLAY_NAME });
+    const schoolName = getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, user?.schoolName, { fallback: 'School' });
 
     const results = row.results || [];
     const totalMarks = results.reduce((sum, r) => sum + (r.score || 0), 0);
@@ -2072,7 +2071,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     const parentPhone = getLearnerPhone(learnerObj);
     const parentName = learnerObj.guardianName || learnerObj.parent?.firstName || 'Parent';
     const termLabel = terms.find(t => t.value === selectedTerm)?.label || selectedTerm;
-    const schoolName = getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, { fallback: PRODUCT_DISPLAY_NAME });
+    const schoolName = getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, user?.schoolName, { fallback: 'School' });
 
     const results = row.results || [];
 
@@ -3870,7 +3869,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
 
                   {/* School Info */}
                   <h1 style={{ fontSize: '36px', fontWeight: '950', color: brandingSettings?.brandColor || '#1E3A8A', margin: '0', textTransform: 'uppercase', letterSpacing: '1.5px', lineHeight: '1.1' }}>
-                    {getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, { fallback: PRODUCT_DISPLAY_NAME })}
+                    {getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, user?.schoolName, { fallback: 'School' })}
                   </h1>
 
                   {user?.school?.motto && (
@@ -4097,7 +4096,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
 
                   {/* School Info */}
                   <h1 style={{ fontSize: '36px', fontWeight: '950', color: brandingSettings?.brandColor || '#1E3A8A', margin: '0', textTransform: 'uppercase', letterSpacing: '1.5px', lineHeight: '1.1' }}>
-                    {getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, { fallback: PRODUCT_DISPLAY_NAME })}
+                    {getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, user?.schoolName, { fallback: 'School' })}
                   </h1>
 
                   {user?.school?.motto && (

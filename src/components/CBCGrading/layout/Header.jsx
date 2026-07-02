@@ -16,8 +16,6 @@ import AccountSwitcherMenu from '../../common/AccountSwitcherMenu';
 import ChatPanel from '../../chat/ChatPanel';
 import SmsBalanceWidget from './SmsBalanceWidget';
 import '../../../styles/notifications.css';
-import { PRODUCT_DISPLAY_NAME } from '../../../config/productIdentity';
-import { getSchoolDisplayName } from '../../../utils/schoolDisplayName';
 
 const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate }) => {
   const [showNotifications, setShowNotifications] = useState(false);
@@ -403,40 +401,10 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
     setClockInState(getCurrentUserClockInStatus(user));
   };
 
-  const brandColor = brandingSettings?.brandColor || 'var(--brand-purple)';
-  const effectiveInstitutionType = String(user?.institutionType || 'PRIMARY_CBC').toUpperCase();
-  const isSecondaryPortal = effectiveInstitutionType === 'SECONDARY';
-  const isTertiaryPortal = effectiveInstitutionType === 'TERTIARY';
-  const institutionLabel = isSecondaryPortal ? 'Senior School' : isTertiaryPortal ? 'Tertiary' : 'Junior School';
-
   return (
     <>
     <header className="h-[var(--app-header-height)] bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm sticky top-0 z-50 app-header-loading">
-      <div className="app-layout-row h-full flex items-center justify-between">
-      <div className="flex items-center gap-3 group cursor-pointer" onClick={() => onNavigate?.('dashboard')}>
-        <div className="relative">
-          {brandingSettings?.logoUrl && (
-            <img
-              src={brandingSettings.logoUrl}
-              alt="Logo"
-              className="w-11 h-11 object-contain transition-transform duration-500 group-hover:scale-110 drop-shadow-sm"
-              onError={(e) => { e.target.style.display = 'none'; }}
-            />
-          )}
-          <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full"></div>
-        </div>
-        <div className="hidden sm:block">
-          <div className="flex items-center gap-2">
-            <h1 className="text-base lg:text-lg font-semibold text-gray-900 leading-none tracking-tight uppercase">
-              {getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, { fallback: PRODUCT_DISPLAY_NAME })}
-            </h1>
-          </div>
-          <p className="text-[9px] text-gray-400 font-medium uppercase tracking-[0.2em] mt-1">
-            School Portal
-          </p>
-        </div>
-      </div>
-
+      <div className="app-layout-row h-full flex items-center justify-end">
       <div className="flex items-center gap-2 lg:gap-4">
         {(role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'HEAD_TEACHER') && (
           <SmsBalanceWidget />

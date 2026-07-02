@@ -16,8 +16,8 @@ import { useBootstrapStore } from './store/useBootstrapStore';
 import { resolveDashboardPage } from './components/CBCGrading/utils/appAccess';
 
 import ErrorBoundary from './components/common/ErrorBoundary';
-import { LEGACY_BRAND_NAMES, PRODUCT_DISPLAY_NAME } from './config/productIdentity';
-import { getExplicitSchoolName } from './utils/schoolDisplayName';
+import { PRODUCT_DISPLAY_NAME } from './config/productIdentity';
+import { getSchoolDisplayName } from './utils/schoolDisplayName';
 import {
   clearAuthAndRedirect,
   getAuthErrorCode,
@@ -52,17 +52,6 @@ function SWUpdateBanner() {
 }
 
 const APP_DISPLAY_NAME = PRODUCT_DISPLAY_NAME;
-
-const normalizeSchoolName = (name) => {
-  const explicitName = getExplicitSchoolName(name);
-  if (explicitName) return explicitName;
-
-  const trimmed = String(name || '').trim();
-  if (!trimmed) return '';
-  const lower = trimmed.toLowerCase();
-  if (LEGACY_BRAND_NAMES.has(lower)) return '';
-  return '';
-};
 
 const pickBrandingValue = (incoming, fallback) => {
   if (incoming === null || incoming === undefined) return fallback;
@@ -115,7 +104,7 @@ function AppContent() {
             faviconUrl: pickBrandingValue(branding.faviconUrl, prev.faviconUrl),
             pwaLogoUrl: pickBrandingValue(branding.pwaLogoUrl, prev.pwaLogoUrl),
             stampUrl: pickBrandingValue(branding.stampUrl, prev.stampUrl),
-            schoolName: normalizeSchoolName(branding.name || branding.schoolName),
+            schoolName: getSchoolDisplayName(branding.schoolName, branding.name, { fallback: '' }),
           }));
         }
       } catch (err) {
@@ -216,11 +205,10 @@ function AppContent() {
 
   // Page title
   useEffect(() => {
+    const schoolTitle = getSchoolDisplayName(brandingSettings.schoolName, user?.school?.name, user?.schoolName, { fallback: 'School Portal' });
     document.title = isAuthenticated
-      ? user?.role === 'SUPER_ADMIN'
-        ? 'Admin Dashboard'
-        : `${brandingSettings.schoolName || APP_DISPLAY_NAME} — Dashboard`
-      : brandingSettings.schoolName || APP_DISPLAY_NAME;
+      ? `${schoolTitle} — Dashboard`
+      : schoolTitle;
   }, [isAuthenticated, user, brandingSettings.schoolName]);
 
   // Session lifecycle guard:

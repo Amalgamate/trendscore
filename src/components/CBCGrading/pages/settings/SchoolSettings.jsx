@@ -170,6 +170,25 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
             settings: fetchedSettings,
             previews: fetchedPreviews
           });
+
+          if (typeof setBrandingSettings === 'function') {
+            setBrandingSettings(prev => ({
+              ...prev,
+              logoUrl: fetchedSettings.logoUrl,
+              faviconUrl: fetchedSettings.faviconUrl,
+              pwaLogoUrl: fetchedSettings.pwaLogoUrl,
+              stampUrl: fetchedSettings.stampUrl,
+              schoolName: fetchedSettings.schoolName,
+              primaryColor: fetchedSettings.primaryColor,
+              secondaryColor: fetchedSettings.secondaryColor,
+              accentColor1: fetchedSettings.accentColor1,
+              accentColor2: fetchedSettings.accentColor2,
+              motto: fetchedSettings.motto,
+              address: fetchedSettings.address,
+              phone: fetchedSettings.phone,
+              email: fetchedSettings.email,
+            }));
+          }
         }
       } catch (error) {
         console.error('Error fetching school data:', error);

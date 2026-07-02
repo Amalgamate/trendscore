@@ -699,7 +699,7 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
       <div className="flex-1 flex min-h-0 flex-col min-w-0 overflow-hidden relative">
         {!(parentPortal && currentPage.startsWith('parent-portal')) && !(user?.role === 'ACCOUNTANT' && currentPage === 'finance-dashboard') && (
           <>
-            <Header user={accessUser} onLogout={handleLogout} onNavigate={handleNavigate} />
+            <Header user={accessUser} onLogout={handleLogout} onNavigate={handleNavigate} brandingSettings={brandingSettings} />
             {String(accessUser?.role || '').toUpperCase() === 'SUPER_ADMIN' && (
               <div className="sticky top-[var(--app-header-height)] z-40">
                 <QuickActions onNavigate={handleNavigate} currentPage={currentPage} user={accessUser} />

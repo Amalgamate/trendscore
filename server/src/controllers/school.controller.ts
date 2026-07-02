@@ -91,9 +91,13 @@ export const getPublicBranding = async (req: Request, res: Response) => {
     });
 
     // Return defaults when no school record exists yet (single-tenant, not yet provisioned)
-    const branding = school ? optimizeSchoolPayload(school) : {
+    const branding = school ? {
+      ...optimizeSchoolPayload(school),
+      schoolName: school.name,
+    } : {
       id: null,
       name: PRODUCT_DISPLAY_NAME,
+      schoolName: '',
       logoUrl: '/branding/logo.png',
       faviconUrl: '/branding/favicon.png',
       pwaLogoUrl: '/logo512.png',
