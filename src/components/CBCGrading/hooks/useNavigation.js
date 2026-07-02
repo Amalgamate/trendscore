@@ -282,6 +282,53 @@ export const allNavSections = [
         ]
     },
     {
+        id: 'reports-center',
+        label: 'Reports',
+        icon: BarChart3,
+        permission: null,
+        items: [
+            { id: 'reports-center-home', label: 'Reports Center', path: 'reports-center', permission: null, icon: BarChart3 },
+            {
+                id: 'group-reports-academic',
+                label: 'Academic Reports',
+                type: 'group',
+                icon: GraduationCap,
+                items: [
+                    { id: 'reports-academic-dashboard', label: 'Analytics Dashboards', path: 'academic-intelligence', permission: 'VIEW_ALL_REPORTS' },
+                    { id: 'reports-report-cards', label: 'Report Cards', path: 'sec-report-cards', permission: 'DOWNLOAD_REPORTS' },
+                    { id: 'reports-termly', label: 'Termly Reports', path: 'assess-termly-report', permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'reports-summative', label: 'Summative Results', path: 'assess-summative-report', permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'reports-formative', label: 'Formative Reports', path: 'assess-formative-report', permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'reports-custom', label: 'Custom Reports', path: 'assess-custom-reports', permission: 'ACCESS_ASSESSMENT_MODULE' },
+                ],
+            },
+            {
+                id: 'group-reports-operations',
+                label: 'Operations Reports',
+                type: 'group',
+                icon: Activity,
+                items: [
+                    { id: 'reports-attendance', label: 'Attendance Reports', path: 'attendance-reports', permission: 'GENERATE_ATTENDANCE_REPORTS' },
+                    { id: 'reports-transport', label: 'Transport Reports', path: 'transport-reports', permission: 'TRANSPORT_MANAGEMENT' },
+                    { id: 'reports-biometric', label: 'Biometric Reports', path: 'biometric-reports', permission: 'BIOMETRIC_MANAGEMENT' },
+                    { id: 'reports-learning', label: 'Learning Reports', path: 'lms-reports', permission: 'ACCESS_LMS' },
+                ],
+            },
+            {
+                id: 'group-reports-finance',
+                label: 'Finance Reports',
+                type: 'group',
+                icon: CreditCard,
+                items: [
+                    { id: 'reports-fees', label: 'Fee Reports', path: 'fees-reports', permission: 'FEE_MANAGEMENT' },
+                    { id: 'reports-accounting', label: 'Accounting Reports', path: 'accounting-reports', permission: 'ACCOUNTING_MANAGEMENT' },
+                    { id: 'reports-statements', label: 'Student Statements', path: 'fees-statements', permission: 'FEE_MANAGEMENT' },
+                    { id: 'reports-fee-overview', label: 'Fee Overview', path: 'fees-overview', permission: 'FEE_MANAGEMENT' },
+                ],
+            },
+        ]
+    },
+    {
         id: 'learning-hub',
         label: 'Resource Center',
         icon: BookOpen,
