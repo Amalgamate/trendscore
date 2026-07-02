@@ -8,7 +8,7 @@ import {
   Plus, CheckCircle, AlertCircle, Clock, FileText, Download,
   X, Loader2, MessageSquare, Phone, Info, User, ShieldCheck, Mail, Upload,
   Trash2, Gift, ThumbsUp, ArrowUpDown, ArrowUp, ArrowDown, Users,
-  Filter, Search, DollarSign, Wallet, Banknote, Coins, Building2, AlertTriangle, Bookmark
+  Filter, Search, DollarSign, Wallet, Banknote, Building2
 } from 'lucide-react';
 import { generateDocument } from '../../../utils/simplePdfGenerator';
 import EmptyState from '../shared/EmptyState';
@@ -37,7 +37,6 @@ import FeeStructurePage from './FeeStructurePage';
 import { useBootstrapStore } from '../../../store/useBootstrapStore';
 import { useMobile } from '../../../hooks/useMobileDetection';
 import { DataCard } from '../shared';
-import ModuleTabNav from '../shared/ModuleTabNav';
 
 const TERM_ORDER = { TERM_1: 1, TERM_2: 2, TERM_3: 3 };
 
@@ -73,7 +72,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
   const [loading, setLoading] = useState(false);
   const [statsLoading, setStatsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(initialTab); // 'overview' | 'invoices' | 'types' | 'structure' | 'unmatched'
-  const [unmatchedCount, setUnmatchedCount] = useState(0);
+  const [, setUnmatchedCount] = useState(0);
   const [whatsappStatus, setWhatsappStatus] = useState({ status: 'fetching', qrCode: null });
   const [allLearners, setAllLearners] = useState([]);
   const [searchLearnerId, setSearchLearnerId] = useState(learnerId || null);
@@ -1303,27 +1302,8 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
 
   if (loading && !showCreateModal) return <LoadingSpinner />;
 
-  const feeTabs = [
-    { id: 'overview', label: 'Fee Overview', icon: Wallet },
-    { id: 'invoices', label: 'Fee Invoices', icon: FileText },
-    { id: 'pledges', label: 'Pledges', icon: Bookmark },
-    { id: 'types', label: 'Fee Types', icon: Coins },
-    { id: 'structure', label: 'Fee Structure', icon: Building2 },
-    { id: 'unmatched', label: 'Unmatched Payments', icon: AlertTriangle, badge: unmatchedCount || null },
-  ];
-
   return (
     <div className="space-y-6">
-
-      {/* Page Tabs */}
-      <ModuleTabNav
-        sectionLabel="FINANCE"
-        tabs={feeTabs}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        variant="dropdown"
-      />
-
       {/* Unmatched Payments Tab */}
       {activeTab === 'unmatched' && (
         <UnmatchedPaymentsPanel onCountChange={setUnmatchedCount} />

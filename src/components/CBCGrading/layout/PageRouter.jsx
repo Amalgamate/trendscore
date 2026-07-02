@@ -48,7 +48,7 @@ const NoticesPage = lazy(() => import('../pages/NoticesPage'));
 const MessagesPage = lazy(() => import('../pages/MessagesPage'));
 const MessageHistoryPage = lazy(() => import('../pages/MessageHistoryPage'));
 const SupportHub = lazy(() => import('../pages/SupportHub'));
-const TimetablePage = lazy(() => import('../pages/TimetablePage'));
+const ReportsCenterPage = lazy(() => import('../pages/ReportsCenterPage'));
 const CodingPlayground = lazy(() => import('../pages/CodingPlayground'));
 const ClassList = lazy(() => import('../pages/ClassList'));
 const CreateClassForm = lazy(() => import('../pages/CreateClassForm'));
@@ -581,10 +581,11 @@ const PageRouter = ({
             return renderParentPortalShell(<ParentPortalSupport onNavigate={handleNavigate} />);
 
           // Others
-          case 'timetable': return <TimetablePage />;
+          case 'timetable': return <PlannerLayout currentPage="planner-timetable" onNavigate={handleNavigate} />;
           case 'coding-playground': return <CodingPlayground />;
           case 'attendance-daily': return <DailyAttendance />;
           case 'attendance-reports': return <AttendanceReports learners={learners} />;
+          case 'reports-center': return <ReportsCenterPage onNavigate={handleNavigate} user={user} />;
           case 'attendance-configuration': return <AttendanceSettingsPage />;
 
           // ── Assessment Module ─────────────────────────────────────────────

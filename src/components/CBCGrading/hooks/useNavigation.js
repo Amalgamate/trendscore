@@ -21,7 +21,7 @@ import {
 import {
     Home, Mail, Calendar, Users, GraduationCap, UserCheck,
     TrendingUp, Zap, CheckSquare, Settings, BookOpen,
-    Users2, Truck, Fingerprint, CreditCard, PieChart, BarChart3,
+    Users2, Truck, Fingerprint, CreditCard, PieChart, BarChart3, AlertCircle,
     Package, Building2, HelpCircle, Receipt, FileText,
     Shirt, ClipboardList, Video, PlayCircle, Gift, Wrench, Activity, Brain, MoreHorizontal
 } from 'lucide-react';
@@ -380,7 +380,12 @@ export const allNavSections = [
         app: 'fee-management',
         permission: 'FEE_MANAGEMENT',
         items: [
-            { id: 'fees-overview', label: 'Fee Management', path: 'fees-overview', permission: 'FEE_MANAGEMENT', icon: Receipt },
+            { id: 'fees-overview', label: 'Fee Overview', path: 'fees-overview', permission: 'FEE_MANAGEMENT', icon: Receipt },
+            { id: 'fees-invoices', label: 'Fee Invoices', path: 'fees-invoices', permission: 'FEE_MANAGEMENT', icon: FileText },
+            { id: 'fees-pledges', label: 'Pledges', path: 'fees-pledges', permission: 'FEE_MANAGEMENT', icon: Gift },
+            { id: 'fees-types', label: 'Fee Types', path: 'fees-types', permission: 'FEE_MANAGEMENT', icon: Receipt },
+            { id: 'fees-structure', label: 'Fee Structure', path: 'fees-structure', permission: 'FEE_MANAGEMENT', icon: Building2 },
+            { id: 'fees-unmatched', label: 'Unmatched Payments', path: 'fees-unmatched', permission: 'FEE_MANAGEMENT', icon: AlertCircle },
             {
                 id: 'group-accounting',
                 label: 'Accounting',

@@ -201,10 +201,14 @@ export const PAGE_TITLES = {
   'facilities-classes': 'Campus Configuration',
 
   // Fees
+  'reports-center': 'Reports Center',
   'fees-overview': 'Fee Overview',
+  'fees-invoices': 'Fee Invoices',
   'fees-structure': 'Fee Structure',
   'fees-collection': 'Fee Collection',
   'fees-pledges': 'Pledge Management',
+  'fees-types': 'Fee Types',
+  'fees-unmatched': 'Unmatched Payments',
   'fees-reports': 'Fee Reports',
   'fees-statements': 'Student Statements',
 

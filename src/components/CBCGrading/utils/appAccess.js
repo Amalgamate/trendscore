@@ -137,6 +137,7 @@ const PAGE_APP_REQUIREMENTS = {
   'settings-approvals': 'approvals',
   'settings-communication': 'sms-notifications',
   'settings-payment': 'fee-management',
+  'reports-center': null,
 };
 
 const ROLE_PAGE_ALLOWLIST = {
@@ -211,6 +212,7 @@ const SETTINGS_PAGES = new Set([
   'settings-communication',
   'settings-payment',
   'settings-profile',
+  'reports-center',
   'system-maintenance',
 ]);
 
