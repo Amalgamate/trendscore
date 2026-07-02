@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   CreditCard, BarChart2, Users,
-  ChevronRight, ChevronDown, Eye,
+  ChevronRight, Eye,
   AlertCircle, FileText, Pencil,
 } from 'lucide-react';
 import { dashboardAPI } from '../../../../services/api';
@@ -196,7 +196,6 @@ function ChildrenSummary({ children, loading, onSelectChild, onEditChild }) {
 // ─── Quick Actions ────────────────────────────────────────────────────────────
 
 function QuickActions({ onNavigate }) {
-  const [expanded, setExpanded] = useState(false);
   const actions = [
     { label: 'Academic Reports', icon: BarChart2, path: 'parent-portal-results', color: 'text-emerald-600', bg: 'bg-emerald-50' },
     { label: 'Attendance', icon: Users,         path: 'parent-portal-attendance', color: 'text-blue-600',     bg: 'bg-blue-50'      },
@@ -204,46 +203,29 @@ function QuickActions({ onNavigate }) {
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-4">
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        className="w-full flex items-center justify-between gap-3 text-left"
-      >
-        <div>
-          <h2 className="text-sm font-bold text-gray-900">Quick Actions</h2>
-          <p className="text-xs text-gray-500 mt-1">{actions.length} shortcuts available</p>
-        </div>
-        <ChevronDown
-          size={18}
-          className={`text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
-        />
-      </button>
-
-      {expanded && (
-        <div className="grid grid-cols-2 gap-3 mt-4">
-          {actions.map((a) => {
-            const Icon = a.icon;
-            return (
-              <button
-                key={a.label}
-                type="button"
-                onClick={() => onNavigate(a.path)}
-                className="bg-white border border-gray-200 rounded-xl py-3.5 flex flex-col items-center gap-2 hover:bg-gray-50 active:scale-95 transition-all"
-              >
-                <div className={`w-9 h-9 rounded-xl ${a.bg} flex items-center justify-center`}>
-                  <Icon size={17} className={a.color} />
-                </div>
-                <span className="text-[10px] font-semibold text-gray-600">{a.label}</span>
-                {a.beta && (
-                  <span className={`rounded-full border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide ${a.beta}`}>
-                    Beta
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <div className="grid grid-cols-2 gap-3">
+        {actions.map((a) => {
+          const Icon = a.icon;
+          return (
+            <button
+              key={a.label}
+              type="button"
+              onClick={() => onNavigate(a.path)}
+              className="bg-white border border-gray-200 rounded-xl py-3.5 flex flex-col items-center gap-2 hover:bg-gray-50 active:scale-95 transition-all"
+            >
+              <div className={`w-9 h-9 rounded-xl ${a.bg} flex items-center justify-center`}>
+                <Icon size={17} className={a.color} />
+              </div>
+              <span className="text-[10px] font-semibold text-gray-600">{a.label}</span>
+              {a.beta && (
+                <span className={`rounded-full border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide ${a.beta}`}>
+                  Beta
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
