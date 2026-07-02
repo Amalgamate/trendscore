@@ -19,8 +19,155 @@ import { Response } from 'express';
 import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
 import { AuthRequest } from '../middleware/permissions.middleware';
+import { pledgeReminderService } from '../services/pledgeReminder.service';
 
 export class FeeCommentsController {
+  /**
+   * GET /fees/pledges
+   * Lists pledges across all invoices for pledge management.
+   */
+  async listPledges(req: AuthRequest, res: Response) {
+    const {
+      status = 'ACTIVE',
+      window = 'all',
+      search = '',
+      limit = '300'
+    } = req.query;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const weekEnd = new Date(today);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    weekEnd.setHours(23, 59, 59, 999);
+
+    const where: any = {
+      archived: false,
+      invoice: { archived: false }
+    };
+
+    const statusValue = String(status || '').toUpperCase();
+    if (statusValue === 'ACTIVE') {
+      where.status = { in: ['PENDING', 'DUE'] };
+    } else if (statusValue && statusValue !== 'ALL') {
+      where.status = statusValue;
+    }
+
+    const windowValue = String(window || 'all').toLowerCase();
+    if (windowValue === 'today') {
+      where.pledgeDate = { gte: today, lt: tomorrow };
+    } else if (windowValue === 'this_week') {
+      where.pledgeDate = { gte: today, lte: weekEnd };
+    } else if (windowValue === 'overdue') {
+      where.pledgeDate = { lt: today };
+      where.status = { in: ['PENDING', 'DUE'] };
+    } else if (windowValue === 'upcoming') {
+      where.pledgeDate = { gt: weekEnd };
+      where.status = { in: ['PENDING'] };
+    }
+
+    const searchText = String(search || '').trim();
+    if (searchText) {
+      where.OR = [
+        { invoice: { invoiceNumber: { contains: searchText, mode: 'insensitive' } } },
+        { invoice: { learner: { firstName: { contains: searchText, mode: 'insensitive' } } } },
+        { invoice: { learner: { lastName: { contains: searchText, mode: 'insensitive' } } } },
+        { invoice: { learner: { admissionNumber: { contains: searchText, mode: 'insensitive' } } } },
+        { invoice: { learner: { guardianName: { contains: searchText, mode: 'insensitive' } } } },
+        { invoice: { learner: { guardianPhone: { contains: searchText, mode: 'insensitive' } } } }
+      ];
+    }
+
+    const take = Math.min(Math.max(Number(limit) || 300, 1), 500);
+
+    const pledges = await prisma.feePledge.findMany({
+      where,
+      take,
+      orderBy: [{ pledgeDate: 'asc' }, { createdAt: 'desc' }],
+      include: {
+        createdBy: { select: { id: true, firstName: true, lastName: true, role: true } },
+        invoice: {
+          select: {
+            id: true,
+            invoiceNumber: true,
+            term: true,
+            academicYear: true,
+            totalAmount: true,
+            paidAmount: true,
+            balance: true,
+            status: true,
+            dueDate: true,
+            learner: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                admissionNumber: true,
+                grade: true,
+                stream: true,
+                guardianName: true,
+                guardianPhone: true,
+                guardianEmail: true,
+                parent: { select: { id: true, firstName: true, lastName: true, phone: true, email: true } }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const summary = pledges.reduce((acc: any, pledge) => {
+      const amount = Number(pledge.pledgedAmount || 0);
+      const pledgeDate = new Date(pledge.pledgeDate);
+      const active = pledge.status === 'PENDING' || pledge.status === 'DUE';
+
+      acc.total += 1;
+      acc.amount += amount;
+      acc.byStatus[pledge.status] = (acc.byStatus[pledge.status] || 0) + 1;
+
+      if (active) {
+        acc.active += 1;
+        acc.activeAmount += amount;
+      }
+      if (active && pledgeDate >= today && pledgeDate <= weekEnd) {
+        acc.thisWeek += 1;
+        acc.thisWeekAmount += amount;
+      }
+      if (active && pledgeDate < today) {
+        acc.overdue += 1;
+        acc.overdueAmount += amount;
+      }
+      if (pledge.reminderCount > 0) {
+        acc.reminded += 1;
+      }
+      return acc;
+    }, {
+      total: 0,
+      amount: 0,
+      active: 0,
+      activeAmount: 0,
+      thisWeek: 0,
+      thisWeekAmount: 0,
+      overdue: 0,
+      overdueAmount: 0,
+      reminded: 0,
+      byStatus: {}
+    });
+
+    res.json({ success: true, data: { pledges, summary } });
+  }
+
+  /**
+   * POST /fees/pledges/reminders/run
+   * Runs the same pledge reminder automation used by the daily cron.
+   */
+  async runPledgeReminderCheck(_req: AuthRequest, res: Response) {
+    const result = await pledgeReminderService.runDailyCheck();
+    res.json({ success: true, data: result, message: 'Pledge reminder automation completed' });
+  }
 
   /**
    * GET /fees/invoices/:id/comments

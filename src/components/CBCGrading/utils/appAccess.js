@@ -122,6 +122,7 @@ const PAGE_APP_REQUIREMENTS = {
   'finance-dashboard': 'fee-management',
   'fees-invoice-detail': 'fee-management',
   'fees-invoices': 'fee-management',
+  'fees-pledges': 'fee-management',
   'fees-record-payment': 'fee-management',
   'fees-structure': 'fee-management',
   'fees-types': 'fee-management',

@@ -82,7 +82,7 @@ const AccountSwitcherMenu = ({ user, onLogout, onProfile }) => {
         </Button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-80">
+      <DropdownMenuContent align="end" className="w-80 overflow-visible">
         {/* User Info Header */}
         <div className="px-4 py-3 border-b border-gray-100">
           <p className="text-sm font-semibold text-gray-900">{user?.name || 'User'}</p>

@@ -8,7 +8,7 @@ import {
   Plus, CheckCircle, AlertCircle, Clock, FileText, Download,
   X, Loader2, MessageSquare, Phone, Info, User, ShieldCheck, Mail, Upload,
   Trash2, Gift, ThumbsUp, ArrowUpDown, ArrowUp, ArrowDown, Users,
-  Filter, Search, DollarSign, Wallet, Banknote, Coins, Building2, AlertTriangle
+  Filter, Search, DollarSign, Wallet, Banknote, Coins, Building2, AlertTriangle, Bookmark
 } from 'lucide-react';
 import { generateDocument } from '../../../utils/simplePdfGenerator';
 import EmptyState from '../shared/EmptyState';
@@ -31,6 +31,7 @@ import usePageNavigation from '../../../hooks/usePageNavigation';
 import { downloadFeeTemplate } from '../../../utils/feeTemplateGenerator';
 import UnmatchedPaymentsPanel from './fees/UnmatchedPaymentsPanel';
 import FeeOverviewDashboard from './fees/FeeOverviewDashboard';
+import FeePledgesPage from './fees/FeePledgesPage';
 import FeeTypesPage from './FeeTypesPage';
 import FeeStructurePage from './FeeStructurePage';
 import { useBootstrapStore } from '../../../store/useBootstrapStore';
@@ -1305,6 +1306,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
   const feeTabs = [
     { id: 'overview', label: 'Fee Overview', icon: Wallet },
     { id: 'invoices', label: 'Fee Invoices', icon: FileText },
+    { id: 'pledges', label: 'Pledges', icon: Bookmark },
     { id: 'types', label: 'Fee Types', icon: Coins },
     { id: 'structure', label: 'Fee Structure', icon: Building2 },
     { id: 'unmatched', label: 'Unmatched Payments', icon: AlertTriangle, badge: unmatchedCount || null },
@@ -1319,6 +1321,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
         tabs={feeTabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}
+        variant="dropdown"
       />
 
       {/* Unmatched Payments Tab */}
@@ -1327,6 +1330,8 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
       )}
 
       {activeTab === 'types' && <FeeTypesPage />}
+
+      {activeTab === 'pledges' && <FeePledgesPage />}
 
       {activeTab === 'structure' && <FeeStructurePage />}
 

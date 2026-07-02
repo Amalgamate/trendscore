@@ -594,11 +594,11 @@ code {
   }
 
   /* ── toolbar-card ──────────────────────────────────────────────────────────
-     White background with blue outline. No fill — clean outlined style.
-     Change --toolbar-border to retheme all list-page toolbars at once.    */
+     White background with a fine neutral edge and a light surface shadow. */
   .toolbar-card {
     background-color: #ffffff;
-    border: 1.5px solid var(--toolbar-border);
+    border: 1px solid rgba(148, 163, 184, 0.38);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
     @apply rounded-xl p-4;
   }
 

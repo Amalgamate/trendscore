@@ -127,6 +127,7 @@ const PREFETCH_MAP = {
   'assess-summative-tests':() => import('../pages/SummativeTestsRouter'),
   'fees-overview':        () => import('../pages/FeeCollectionPage'),
   'fees-collection':      () => import('../pages/FeeCollectionPage'),
+  'fees-pledges':         () => import('../pages/FeeCollectionPage'),
   'fees-unmatched':       () => import('../pages/FeeCollectionPage'),
   'fees-waivers':         () => import('../pages/FeeCollectionPage'),
   'fees-statements':      () => import('../pages/FeeCollectionPage'),

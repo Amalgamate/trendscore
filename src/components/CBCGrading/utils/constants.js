@@ -204,6 +204,7 @@ export const PAGE_TITLES = {
   'fees-overview': 'Fee Overview',
   'fees-structure': 'Fee Structure',
   'fees-collection': 'Fee Collection',
+  'fees-pledges': 'Pledge Management',
   'fees-reports': 'Fee Reports',
   'fees-statements': 'Student Statements',
 

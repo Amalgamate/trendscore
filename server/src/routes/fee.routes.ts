@@ -378,6 +378,21 @@ router.post(
 // ─── Comments & Pledges ────────────────────────────────────────────────────
 
 router.get(
+  '/pledges',
+  requirePermission('FEE_MANAGEMENT'),
+  rateLimit({ windowMs: 60_000, maxRequests: 100 }),
+  asyncHandler(feeCommentsController.listPledges.bind(feeCommentsController))
+);
+
+router.post(
+  '/pledges/reminders/run',
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  rateLimit({ windowMs: 60_000, maxRequests: 5 }),
+  auditLog('RUN_FEE_PLEDGE_REMINDERS'),
+  asyncHandler(feeCommentsController.runPledgeReminderCheck.bind(feeCommentsController))
+);
+
+router.get(
   '/invoices/:id/comments',
   requirePermission('FEE_MANAGEMENT'),
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),

@@ -232,7 +232,7 @@ const ImpersonationSearchBox = ({ onUserSelect, disabled = false }) => {
           className={cn(
             'absolute left-0 right-0 top-full mt-1',
             'bg-white border border-gray-200 rounded-md shadow-lg',
-            'z-[9999] max-h-80 overflow-y-auto pointer-events-auto'
+            'z-[9999] max-h-[min(37.5rem,calc(100vh-12rem))] overflow-y-auto pointer-events-auto'
           )}
         >
           {/* Inline error message (Requirement 1.8) */}

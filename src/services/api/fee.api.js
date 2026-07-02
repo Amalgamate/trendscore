@@ -94,6 +94,17 @@ export const feeAPI = {
 
   // --- Comments & Pledges ---
 
+  listPledges: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchWithAuth(`/fees/pledges${query ? `?${query}` : ''}`);
+  },
+
+  runPledgeReminders: async () =>
+    fetchWithAuth('/fees/pledges/reminders/run', {
+      method: 'POST',
+      body: JSON.stringify({})
+    }),
+
   getInvoiceComments: async (invoiceId) =>
     fetchWithAuth(`/fees/invoices/${invoiceId}/comments`),
 

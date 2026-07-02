@@ -21,7 +21,7 @@ const QuickActions = ({ onNavigate, currentPage, user }) => {
     { label: 'Approvals', icon: GraduationCap, path: 'settings-approvals', color: '#6366f1', activeBg: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
     { label: 'Leave Management', icon: Clock, path: 'hr-leave', color: '#f59e0b', activeBg: 'bg-amber-50 text-amber-700 border-amber-100' },
     { label: 'Time Table', icon: Calendar, path: 'timetable', color: '#8b5cf6', activeBg: 'bg-purple-50 text-purple-700 border-purple-100' },
-    { label: 'Pledge Management', icon: Bookmark, path: 'fees-invoices', color: '#e05f00', activeBg: 'bg-orange-50 text-orange-700 border-orange-100' },
+    { label: 'Pledge Management', icon: Bookmark, path: 'fees-pledges', color: '#e05f00', activeBg: 'bg-orange-50 text-orange-700 border-orange-100' },
     { label: 'User Management', icon: Users, path: 'settings-users', color: '#0f766e', activeBg: 'bg-teal-50 text-teal-700 border-teal-100' },
   ].filter((action) => hasPageAccess(accessUser, action.path));
 
