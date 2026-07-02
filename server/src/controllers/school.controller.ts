@@ -53,6 +53,21 @@ const decodeDataUri = (value: string): { mimeType: string; buffer: Buffer } | nu
     return null;
   }
 };
+
+const normalizeSchoolUpdatePayload = (raw: Record<string, any> = {}) => {
+  const data = { ...raw };
+
+  if (Object.prototype.hasOwnProperty.call(data, 'name')) {
+    const name = typeof data.name === 'string' ? data.name.trim() : '';
+    if (name) {
+      data.name = name;
+    } else {
+      delete data.name;
+    }
+  }
+
+  return data;
+};
 // ============================================
 // SCHOOL MANAGEMENT ENDPOINTS (Single-Tenant)
 // ============================================
@@ -175,27 +190,28 @@ export const getPublicBrandingAsset = async (req: Request, res: Response) => {
 
 export const updateSchool = async (req: AuthRequest, res: Response) => {
   const school = await resolveCurrentSchool();
+  const updatePayload = normalizeSchoolUpdatePayload(req.body);
 
   if (!school) {
     // If no school exists, create it (handles first-time setup/branding)
     const created = await prisma.school.create({
       data: {
-        ...req.body,
-        name: req.body.name || PRODUCT_DISPLAY_NAME, // Ensure a name exists
-        motto: req.body.motto || 'School Management System',
-        logoUrl: req.body.logoUrl || '/branding/logo.png',
-        faviconUrl: req.body.faviconUrl || '/branding/favicon.png',
-        pwaLogoUrl: req.body.pwaLogoUrl || '/logo512.png',
-        stampUrl: req.body.stampUrl || '/branding/stamp.svg',
+        ...updatePayload,
+        name: updatePayload.name || PRODUCT_DISPLAY_NAME, // Ensure a name exists
+        motto: updatePayload.motto || 'School Management System',
+        logoUrl: updatePayload.logoUrl || '/branding/logo.png',
+        faviconUrl: updatePayload.faviconUrl || '/branding/favicon.png',
+        pwaLogoUrl: updatePayload.pwaLogoUrl || '/logo512.png',
+        stampUrl: updatePayload.stampUrl || '/branding/stamp.svg',
       },
     });
-    await applyModulePackageToSchool(created.id, normalizePackageId(req.body.packageId || 'starter'), undefined, req.user?.userId);
+    await applyModulePackageToSchool(created.id, normalizePackageId(updatePayload.packageId || 'starter'), undefined, req.user?.userId);
     return res.status(201).json({ success: true, message: 'School settings initialized', data: created });
   }
 
   const updated = await prisma.school.update({
     where: { id: school.id },
-    data: req.body,
+    data: updatePayload,
   });
   clearSchoolCache();
   res.status(200).json({ success: true, message: 'School updated', data: updated });

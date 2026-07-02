@@ -8,7 +8,8 @@ import { toast } from 'react-hot-toast';
 import { useNotifications } from '../../hooks/useNotifications';
 import axiosInstance from '../../../../services/api/axiosConfig';
 import { PRODUCT_DISPLAY_NAME } from '../../../../config/productIdentity';
-import { getExplicitSchoolName } from '../../../../utils/schoolDisplayName';
+
+const cleanSchoolName = (value) => String(value || '').trim();
 
 const normalizeHexColor = (value, fallback = '#030b82') => {
   if (typeof value !== 'string') return fallback;
@@ -32,7 +33,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
 
   // State for school settings - Unified Hub
   const [settings, setSettings] = useState({
-    schoolName: getExplicitSchoolName(brandingSettings?.schoolName),
+    schoolName: cleanSchoolName(brandingSettings?.schoolName),
     address: brandingSettings?.address || '',
     phone: brandingSettings?.phone || '',
     email: brandingSettings?.email || '',
@@ -71,7 +72,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
   // Track initial state for dirty checking
   const [savedState, setSavedState] = useState({
     settings: {
-      schoolName: getExplicitSchoolName(brandingSettings?.schoolName),
+      schoolName: cleanSchoolName(brandingSettings?.schoolName),
       address: brandingSettings?.address || '',
       phone: brandingSettings?.phone || '',
       email: brandingSettings?.email || '',
@@ -131,7 +132,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
 
         if (school) {
           const fetchedSettings = {
-            schoolName: getExplicitSchoolName(school.name || school.schoolName),
+            schoolName: cleanSchoolName(school.name || school.schoolName),
             address: school.address || '',
             phone: school.phone || '',
             email: school.email || '',
@@ -280,9 +281,9 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const explicitSchoolName = getExplicitSchoolName(settings.schoolName);
+      const explicitSchoolName = cleanSchoolName(settings.schoolName);
       const payload = {
-        name: explicitSchoolName || null,
+        ...(explicitSchoolName ? { name: explicitSchoolName } : {}),
         address: settings.address,
         phone: settings.phone,
         email: settings.email,

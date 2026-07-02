@@ -14,8 +14,6 @@ export const PRODUCT_TEMP_PASSWORD_PREFIX = 'TrendScore';
 
 export const LEGACY_BRAND_NAMES = new Set([
   'zawadi sms',
-  'zawadi junior academy',
-  'zawadi jrn academy',
   'school academy',
   'elimcrown',
   'edu core',
