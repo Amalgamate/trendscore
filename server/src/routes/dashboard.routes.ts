@@ -50,13 +50,25 @@ router.get(
 /**
  * @route   GET /api/dashboard/teacher
  * @desc    Get teacher dashboard metrics
- * @access  TEACHER
+ * @access  TEACHER, HEAD_TEACHER
  */
 router.get(
   '/teacher',
-  requireRole(['TEACHER']),
+  requireRole(['TEACHER', 'HEAD_TEACHER']),
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   asyncHandler(dashboardController.getTeacherMetrics.bind(dashboardController))
+);
+
+/**
+ * @route   GET /api/dashboard/student
+ * @desc    Get student dashboard metrics
+ * @access  STUDENT
+ */
+router.get(
+  '/student',
+  requireRole(['STUDENT']),
+  rateLimit({ windowMs: 60_000, maxRequests: 100 }),
+  asyncHandler(dashboardController.getStudentMetrics.bind(dashboardController))
 );
 
 /**

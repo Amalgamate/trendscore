@@ -309,11 +309,16 @@ export class ImpersonationService {
 
     // ── 7. Issue impersonation JWT (Req 8.1–8.5) ─────────────────────────
     //   TTL is hard-coded to 30 min — intentionally ignores JWT_EXPIRES_IN.
+    const impersonationRoles = Array.from(new Set([
+      targetUser.role,
+      ...(targetUser.roles.length > 0 ? targetUser.roles : []),
+    ])) as Role[];
+
     const impersonationPayload: Omit<ImpersonationJWTPayload, 'iat' | 'exp'> = {
       userId:          targetUser.id,
       email:           targetUser.email!,
       role:            targetUser.role,
-      roles:           targetUser.roles.length > 0 ? targetUser.roles : [targetUser.role],
+      roles:           impersonationRoles,
       institutionType: targetUser.institutionType as ImpersonationJWTPayload['institutionType'],
       isImpersonation: true,
       originalAdminId: requestingUser.userId,

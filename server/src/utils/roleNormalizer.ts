@@ -41,7 +41,8 @@ export function normalizeRole(raw: unknown): string {
 
 /**
  * Returns the canonical roles array for a decoded or req.user object.
- * Prefers the `roles` array; falls back to the scalar `role` field.
+ * Includes the scalar `role` and the `roles` array so stale role arrays cannot
+ * hide the account's active primary role.
  * Returns [] when the user is absent.
  *
  * After Chunk 2 is deployed, req.user is always pre-normalized so this
@@ -51,13 +52,12 @@ export function getCanonicalRoles(
   user: { role?: unknown; roles?: unknown[] } | undefined | null
 ): Role[] {
   if (!user) return [];
-  const source =
-    Array.isArray(user.roles) && user.roles.length > 0
-      ? user.roles
-      : user.role
-      ? [user.role]
-      : [];
-  return source.map(normalizeRole).filter(Boolean) as Role[];
+  const source = [
+    user.role,
+    ...(Array.isArray(user.roles) ? user.roles : []),
+  ];
+  const canonical = source.map(normalizeRole).filter(Boolean);
+  return Array.from(new Set(canonical)) as Role[];
 }
 
 // ── Guard helper ──────────────────────────────────────────────────────────────

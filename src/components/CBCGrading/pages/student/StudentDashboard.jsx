@@ -11,6 +11,7 @@ import {
 } from '@/design-system/components';
 import DashboardSummary from '../dashboard/DashboardSummary';
 import { DashboardSection, DashboardSectionControls, useDashboardSections } from '../dashboard/DashboardSections';
+import { useImpersonation } from '../../../../contexts/ImpersonationContext';
 
 import {
   AlertTriangle,
@@ -19,13 +20,17 @@ import {
   BarChart3,
   Zap,
   TrendingUp,
-  AlertCircle
+  AlertCircle,
+  Info
 } from 'lucide-react';
 
 const StudentDashboard = ({ user, onNavigate }) => {
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState(null);
   const [apiError, setApiError] = useState(null);
+  const [noLearnerRecord, setNoLearnerRecord] = useState(false);
+
+  const { isImpersonating } = useImpersonation();
 
   const userId = user?.id || user?.userId;
   const sectionControls = useDashboardSections('student', [
@@ -40,6 +45,7 @@ const StudentDashboard = ({ user, onNavigate }) => {
     try {
       setLoading(true);
       setApiError(null);
+      setNoLearnerRecord(false);
       const response = await dashboardAPI.getStudentMetrics?.() || { success: true, data: {} };
       if (response.success) {
         setMetrics(response.data);
@@ -48,7 +54,20 @@ const StudentDashboard = ({ user, onNavigate }) => {
       }
     } catch (error) {
       console.error('Failed to load student metrics:', error);
-      setApiError(error.message || 'Could not reach the server.');
+      // If the student account has no linked learner record (common for test/demo accounts
+      // or admin impersonation sessions), show an empty dashboard shell instead of hard error.
+      const isLearnerNotFound =
+        error?.response?.status === 404 ||
+        error?.response?.status === 403 ||
+        (error?.message || '').toLowerCase().includes('learner record not found') ||
+        (error?.message || '').toLowerCase().includes('unauthorized student');
+
+      if (isLearnerNotFound) {
+        setNoLearnerRecord(true);
+        setMetrics({});   // empty shell — all arrays/stats default to empty/zero
+      } else {
+        setApiError(error.message || 'Could not reach the server.');
+      }
     } finally {
       setLoading(false);
     }
@@ -59,39 +78,56 @@ const StudentDashboard = ({ user, onNavigate }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  // Mock data - learner-focused
-  const activeCourses = [
-    { id: 1, name: 'Mathematics', teacher: 'Mr. Kipchoge', progress: 85, learners: 28 },
-    { id: 2, name: 'English', teacher: 'Mrs. Mwangi', progress: 72, learners: 28 },
-    { id: 3, name: 'Science', teacher: 'Dr. Ochieng', progress: 78, learners: 30 },
-    { id: 4, name: 'Social Studies', teacher: 'Mr. Kipchoge', progress: 65, learners: 28 },
-  ];
+  const formatDate = (value) => {
+    if (!value) return 'No date';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'No date';
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  };
 
-  const assignments = [
-    { id: 1, course: 'Mathematics', title: 'Chapter 5 Problem Set', dueDate: '2026-06-03', submitted: false, status: 'pending' },
-    { id: 2, course: 'English', title: 'Essay - My Holiday', dueDate: '2026-06-04', submitted: true, grade: 'A', status: 'submitted' },
-    { id: 3, course: 'Science', title: 'Laboratory Report', dueDate: '2026-06-05', submitted: false, status: 'pending' },
-    { id: 4, course: 'Social Studies', title: 'Project - Local History', dueDate: '2026-06-08', submitted: false, status: 'pending' },
-  ];
+  const activeCourses = (metrics?.courses || []).map((course) => ({
+    id: course.id || course.courseId,
+    name: course.name || course.title || course.subject || 'Course',
+    teacher: course.teacher || course.subject || 'Assigned course',
+    progress: Number(course.progress ?? course.progressPercent ?? 0),
+  }));
 
-  const upcomingDeadlines = [
-    { id: 1, course: 'Mathematics', type: 'Assignment', title: 'Problem Set Chapter 5', date: '2026-06-03', daysLeft: 1, priority: 'high' },
-    { id: 2, course: 'Science', type: 'Quiz', title: 'Chapter 3 Quiz', date: '2026-06-04', daysLeft: 2, priority: 'medium' },
-    { id: 3, course: 'English', type: 'Project', title: 'Book Review Project', date: '2026-06-06', daysLeft: 4, priority: 'medium' },
-  ];
+  const assignments = (metrics?.assignments || []).map((assignment) => ({
+    id: assignment.id,
+    course: assignment.course || assignment.courseTitle || 'Course',
+    title: assignment.title || 'Assignment',
+    dueDate: formatDate(assignment.dueDate || assignment.date),
+    submitted: Boolean(assignment.submitted || assignment.status === 'submitted'),
+    grade: assignment.grade,
+    status: assignment.status,
+  }));
 
-  const quizPerformance = [
-    { id: 1, course: 'Mathematics', quiz: 'Functions & Equations', score: 92, date: '2026-05-28' },
-    { id: 2, course: 'Science', quiz: 'Photosynthesis', score: 78, date: '2026-05-25' },
-    { id: 3, course: 'English', quiz: 'Grammar & Syntax', score: 88, date: '2026-05-22' },
-  ];
+  const upcomingDeadlines = (metrics?.upcomingDeadlines || [])
+    .map((deadline) => ({
+      id: deadline.id,
+      course: deadline.course || deadline.courseTitle || 'Course',
+      type: deadline.type || 'Assignment',
+      title: deadline.title || 'Deadline',
+      date: formatDate(deadline.dueDate || deadline.date),
+      daysLeft: deadline.daysLeft,
+      priority: deadline.priority || 'medium',
+    }));
 
-  const achievements = [
-    { id: 1, name: 'Mathematician', description: '4 Perfect Scores', icon: '🏆', earned: true },
-    { id: 2, name: 'Scholar', description: '80% Overall Average', icon: '📚', earned: true },
-    { id: 3, name: 'Perfect Attendance', description: 'No Missed Days', icon: '✅', earned: true },
-    { id: 4, name: 'Speed Reader', description: '5 Completed Readings', icon: '⚡', earned: false },
-  ];
+  const quizPerformance = (metrics?.subjects || metrics?.recentSubjects || []).map((item) => ({
+    id: item.id,
+    course: item.course || item.subject || item.learningArea || item.name || 'Subject',
+    quiz: item.quiz || item.title || item.name || 'Assessment',
+    score: Number(item.score ?? item.percentage ?? 0),
+    date: formatDate(item.date || item.createdAt),
+  }));
+
+  const achievements = (metrics?.achievements || []).map((achievement) => ({
+    id: achievement.id,
+    name: achievement.name || achievement.title || 'Achievement',
+    description: achievement.description || '',
+    icon: achievement.icon || 'achievement',
+    earned: Boolean(achievement.earned),
+  }));
 
   const getProgressColor = (progress) => {
     if (progress >= 80) return 'text-emerald-600 bg-emerald-50';
@@ -140,12 +176,54 @@ const StudentDashboard = ({ user, onNavigate }) => {
     );
   }
 
-  const overallProgress = Math.round(activeCourses.reduce((sum, c) => sum + c.progress, 0) / activeCourses.length);
-  const avgQuizScore = Math.round(quizPerformance.reduce((sum, q) => sum + q.score, 0) / quizPerformance.length);
+  const overallProgress = activeCourses.length > 0
+    ? Math.round(activeCourses.reduce((sum, c) => sum + c.progress, 0) / activeCourses.length)
+    : 0;
+  const avgQuizScore = quizPerformance.length > 0
+    ? Math.round(quizPerformance.reduce((sum, q) => sum + q.score, 0) / quizPerformance.length)
+    : 0;
   const submittedCount = assignments.filter(a => a.submitted).length;
+
+  // Live attendance data from API
+  const attendanceRate   = metrics?.stats?.attendanceRate ?? metrics?.stats?.attendance ?? null;
+  const attendancePresent = metrics?.stats?.attendancePresent ?? null;
+  const attendanceAbsent  = metrics?.stats?.attendanceAbsent  ?? null;
+  const attendanceTotal   = metrics?.stats?.attendanceTotal   ?? null;
+  const hasAttendance = attendanceTotal !== null && attendanceTotal > 0;
+
+  const getAttendanceBadge = (rate) => {
+    if (rate === null) return null;
+    if (rate >= 90) return { label: 'Excellent attendance!', color: 'text-emerald-600' };
+    if (rate >= 75) return { label: 'Good attendance',       color: 'text-amber-600'  };
+    return               { label: 'Needs improvement',       color: 'text-rose-600'   };
+  };
+  const attendanceBadge = getAttendanceBadge(attendanceRate);
+
+  const attendanceColorClass = attendanceRate === null
+    ? 'text-gray-400'
+    : attendanceRate >= 90 ? 'text-emerald-600'
+    : attendanceRate >= 75 ? 'text-amber-600'
+    : 'text-rose-600';
+
+  const attendanceBorderClass = attendanceRate === null
+    ? 'border-slate-200 bg-slate-50'
+    : attendanceRate >= 90 ? 'border-emerald-200 bg-emerald-50'
+    : attendanceRate >= 75 ? 'border-amber-200 bg-amber-50'
+    : 'border-rose-200 bg-rose-50';
 
   return (
     <div className="space-y-6">
+      {/* Impersonation notice — shown when the student account has no learner record */}
+      {noLearnerRecord && isImpersonating && (
+        <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+          <Info size={18} className="mt-0.5 shrink-0 text-amber-500" />
+          <div>
+            <span className="font-semibold">Preview mode — no learner record found.</span>
+            {' '}This student account isn't linked to a learner profile yet, so dashboard data is unavailable.
+            Enrol the student via the Learners module to populate real data.
+          </div>
+        </div>
+      )}
       <DashboardSection id="executive-summary" controls={sectionControls}>
       <DashboardSummary
         title="Executive Summary"
@@ -345,14 +423,27 @@ const StudentDashboard = ({ user, onNavigate }) => {
           <div className="space-y-2">
             <button
               onClick={() => onNavigate('attendance-analytics')}
-              className="w-full p-6 rounded-lg border border-emerald-200 bg-emerald-50 text-center hover:shadow-md transition"
+              className={`w-full p-6 rounded-lg border text-center hover:shadow-md transition ${attendanceBorderClass}`}
             >
               <div className="flex items-center justify-center mb-3">
-                <CheckCircle2 size={32} className="text-emerald-600" />
+                <CheckCircle2 size={32} className={attendanceColorClass} />
               </div>
-              <p className="text-4xl font-bold text-emerald-600">94%</p>
-              <p className="text-sm text-emerald-700 mt-2">184 days present • 12 days absent</p>
-              <p className="text-xs text-emerald-600 font-semibold mt-3">Excellent attendance!</p>
+              <p className={`text-4xl font-bold ${attendanceColorClass}`}>
+                {hasAttendance ? `${attendanceRate}%` : '--'}
+              </p>
+              {hasAttendance ? (
+                <p className={`text-sm mt-2 ${attendanceColorClass}`}>
+                  {attendancePresent} day{attendancePresent !== 1 ? 's' : ''} present
+                  {attendanceAbsent > 0 ? ` • ${attendanceAbsent} absent` : ''}
+                </p>
+              ) : (
+                <p className="text-sm text-gray-400 mt-2">No attendance data yet</p>
+              )}
+              {attendanceBadge && (
+                <p className={`text-xs font-semibold mt-3 ${attendanceBadge.color}`}>
+                  {attendanceBadge.label}
+                </p>
+              )}
             </button>
           </div>
           <button

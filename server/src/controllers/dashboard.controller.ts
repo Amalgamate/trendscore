@@ -18,6 +18,7 @@ import logger from '../utils/logger';
 const ADMIN_CACHE_TTL   = 300; // 5 min
 const TEACHER_CACHE_TTL = 120; // 2 min
 const PARENT_CACHE_TTL  = 120; // 2 min
+const STUDENT_CACHE_TTL = 120; // 2 min
 
 const JUNIOR_FEE_GRADES = [
     'PLAYGROUP', 'PP1', 'PP2',
@@ -78,6 +79,46 @@ const normalizeFeeGrade = (raw: unknown): string | null => {
 };
 
 export class DashboardController {
+
+    private async getStudentLearnerForUser(userId: string) {
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, username: true, email: true, role: true },
+        });
+
+        if (!user || user.role !== 'STUDENT') {
+            throw new ApiError(403, 'Unauthorized student access');
+        }
+
+        const usernameCandidates = [
+            user.username,
+            user.username?.replace(/-/g, '/'),
+            user.email?.split('@')[0],
+            user.email?.split('@')[0]?.replace(/-/g, '/'),
+        ].filter(Boolean) as string[];
+
+        const learner = await prisma.learner.findFirst({
+            where: {
+                admissionNumber: { in: usernameCandidates },
+                archived: false,
+            },
+            include: {
+                enrollments: {
+                    where: { active: true },
+                    include: {
+                        class: { select: { id: true, name: true, grade: true, stream: true, room: true } },
+                    },
+                    take: 1,
+                },
+            },
+        });
+
+        if (!learner) {
+            throw new ApiError(404, 'Learner record not found for this student');
+        }
+
+        return learner;
+    }
 
     private async getDashboardMessages(userId: string, take = 5) {
         const [receipts, notifications] = await Promise.all([
@@ -2126,6 +2167,262 @@ export class DashboardController {
             logger.error('Teacher Dashboard Error:', error);
             if (error instanceof ApiError) throw error;
             throw new ApiError(500, error.message || 'Failed to fetch teacher dashboard metrics');
+        }
+    }
+
+    /** GET /api/dashboard/parent */
+    /** GET /api/dashboard/student */
+    async getStudentMetrics(req: AuthRequest, res: Response) {
+        try {
+            const userId = req.user?.userId;
+            if (!userId) throw new ApiError(400, 'User ID is required');
+
+            const cacheKey = `dashboard:student:v1:${userId}`;
+            const cached = await redisCacheService.get<any>(cacheKey);
+            if (cached) return res.json({ success: true, data: cached, _cached: true });
+
+            const learner = await this.getStudentLearnerForUser(userId);
+
+            const [attendance, coursesRaw, assignmentsRaw, summativeResults, formativeAssessments, achievementsRaw, messages] = await Promise.all([
+                prisma.attendance.findMany({
+                    where: { learnerId: learner.id, archived: false },
+                    orderBy: { date: 'desc' },
+                    take: 120,
+                    select: { id: true, date: true, status: true },
+                }),
+                prisma.lMSEnrollment.findMany({
+                    where: { learnerId: learner.id, status: 'ACTIVE', archived: false },
+                    include: {
+                        course: {
+                            select: { id: true, title: true, subject: true, grade: true, description: true },
+                        },
+                        progress: {
+                            select: { completed: true, progress: true, contentId: true, lastAccessedAt: true },
+                        },
+                    },
+                    orderBy: { enrolledAt: 'desc' },
+                }),
+                prisma.lMSContent.findMany({
+                    where: {
+                        archived: false,
+                        type: 'ASSIGNMENT',
+                        course: {
+                            enrollments: {
+                                some: { learnerId: learner.id, status: 'ACTIVE', archived: false },
+                            },
+                        },
+                    },
+                    include: {
+                        course: { select: { id: true, title: true, subject: true } },
+                        progress: {
+                            where: { enrollment: { learnerId: learner.id } },
+                            select: { completed: true, progress: true, lastAccessedAt: true },
+                        },
+                    },
+                    orderBy: { createdAt: 'desc' },
+                    take: 12,
+                }),
+                prisma.summativeResult.findMany({
+                    where: { learnerId: learner.id, archived: false },
+                    include: { test: { select: { title: true, learningArea: true, testDate: true } } },
+                    orderBy: { createdAt: 'desc' },
+                    take: 12,
+                }),
+                prisma.formativeAssessment.findMany({
+                    where: { learnerId: learner.id, archived: false },
+                    orderBy: { createdAt: 'desc' },
+                    take: 8,
+                    select: { id: true, title: true, learningArea: true, type: true, percentage: true, overallRating: true, createdAt: true },
+                }),
+                prisma.learnerAchievement.findMany({
+                    where: { learnerId: learner.id, archived: false },
+                    orderBy: { earnedAt: 'desc' },
+                    take: 8,
+                    select: { id: true, title: true, description: true, type: true, earnedAt: true, xpEarned: true },
+                }),
+                this.getDashboardMessages(userId),
+            ]);
+
+            const courseIds = coursesRaw.map((enrollment) => enrollment.courseId);
+            const totalContentCounts = courseIds.length > 0
+                ? await prisma.lMSContent.groupBy({
+                    by: ['courseId'],
+                    where: { courseId: { in: courseIds }, archived: false },
+                    _count: { _all: true },
+                })
+                : [];
+            const contentCountMap = new Map(totalContentCounts.map((count) => [count.courseId, count._count._all]));
+
+            const courses = coursesRaw.map((enrollment) => {
+                const totalItems = contentCountMap.get(enrollment.courseId) || 0;
+                const completedItems = enrollment.progress.filter((item) => item.completed).length;
+                const progressPercent = totalItems > 0
+                    ? Math.round((completedItems / totalItems) * 100)
+                    : Math.round(enrollment.progress.reduce((sum, item) => sum + Number(item.progress || 0), 0) / Math.max(1, enrollment.progress.length));
+
+                return {
+                    id: enrollment.course.id,
+                    courseId: enrollment.course.id,
+                    enrollmentId: enrollment.id,
+                    name: enrollment.course.title,
+                    title: enrollment.course.title,
+                    subject: enrollment.course.subject,
+                    teacher: 'Assigned teacher',
+                    grade: enrollment.course.grade,
+                    description: enrollment.course.description || '',
+                    totalItems,
+                    completedItems,
+                    progress: progressPercent,
+                    progressPercent,
+                };
+            });
+
+            const assignments = assignmentsRaw.map((item) => {
+                const progress = item.progress[0];
+                const submitted = Boolean(progress?.completed);
+                const updatedAt = progress?.lastAccessedAt || item.createdAt;
+                return {
+                    id: item.id,
+                    course: item.course.subject || item.course.title,
+                    courseTitle: item.course.title,
+                    title: item.title,
+                    type: 'Assignment',
+                    dueDate: item.createdAt,
+                    date: item.createdAt,
+                    daysLeft: null,
+                    priority: submitted ? 'low' : 'medium',
+                    submitted,
+                    status: submitted ? 'submitted' : 'pending',
+                    grade: submitted ? 'Submitted' : null,
+                    score: progress?.progress ?? null,
+                    updatedAt,
+                };
+            });
+
+            const presentDays = attendance.filter((item) => item.status === 'PRESENT').length;
+            const absentDays = attendance.filter((item) => item.status === 'ABSENT').length;
+            const attendanceRate = attendance.length > 0 ? Math.round((presentDays / attendance.length) * 100) : 0;
+
+            const scoredResults = summativeResults.filter((result) => typeof result.percentage === 'number');
+            const averageScore = scoredResults.length > 0
+                ? Math.round(scoredResults.reduce((sum, result) => sum + Number(result.percentage || 0), 0) / scoredResults.length)
+                : 0;
+
+            const subjects = summativeResults.map((result) => ({
+                id: result.id,
+                name: result.test.learningArea,
+                learningArea: result.test.learningArea,
+                subject: result.test.learningArea,
+                quiz: result.test.title,
+                title: result.test.title,
+                score: Math.round(Number(result.percentage || 0)),
+                percentage: result.percentage,
+                grade: result.grade,
+                letterGrade: result.grade,
+                date: result.test.testDate || result.createdAt,
+            }));
+
+            const formativeItems = formativeAssessments.map((assessment) => ({
+                id: assessment.id,
+                name: assessment.learningArea,
+                learningArea: assessment.learningArea,
+                subject: assessment.learningArea,
+                quiz: assessment.title || assessment.type,
+                title: assessment.title || assessment.type,
+                score: Math.round(Number(assessment.percentage || 0)),
+                percentage: assessment.percentage,
+                grade: assessment.overallRating,
+                letterGrade: assessment.overallRating,
+                date: assessment.createdAt,
+            }));
+
+            const achievementFallback = [
+                {
+                    id: 'attendance-consistency',
+                    name: 'Attendance Consistency',
+                    description: `${attendanceRate}% attendance`,
+                    icon: 'attendance',
+                    earned: attendanceRate >= 90 && attendance.length > 0,
+                },
+                {
+                    id: 'strong-performance',
+                    name: 'Strong Performance',
+                    description: `${averageScore}% average score`,
+                    icon: 'performance',
+                    earned: averageScore >= 80,
+                },
+                {
+                    id: 'course-progress',
+                    name: 'Course Progress',
+                    description: `${courses.length} active course${courses.length === 1 ? '' : 's'}`,
+                    icon: 'course',
+                    earned: courses.length > 0,
+                },
+                {
+                    id: 'clear-queue',
+                    name: 'Clear Queue',
+                    description: 'No pending assignments',
+                    icon: 'queue',
+                    earned: assignments.length > 0 && assignments.every((assignment) => assignment.submitted),
+                },
+            ];
+
+            const achievements = achievementsRaw.length > 0
+                ? achievementsRaw.map((achievement) => ({
+                    id: achievement.id,
+                    name: achievement.title,
+                    title: achievement.title,
+                    description: achievement.description || String(achievement.type).replace(/_/g, ' '),
+                    icon: String(achievement.type || 'achievement').toLowerCase(),
+                    earned: true,
+                    earnedAt: achievement.earnedAt,
+                    xpEarned: achievement.xpEarned,
+                }))
+                : achievementFallback;
+
+            const classEnrollment = learner.enrollments[0]?.class;
+            const payload = {
+                learner: {
+                    id: learner.id,
+                    name: [learner.firstName, learner.lastName].filter(Boolean).join(' '),
+                    firstName: learner.firstName,
+                    lastName: learner.lastName,
+                    admissionNumber: learner.admissionNumber,
+                    grade: learner.grade,
+                    stream: learner.stream,
+                    className: classEnrollment?.name || [learner.grade, learner.stream].filter(Boolean).join(' '),
+                    photoUrl: learner.photoUrl,
+                },
+                stats: {
+                    attendanceRate,
+                    attendance: attendanceRate,
+                    attendancePresent: presentDays,
+                    attendanceAbsent: absentDays,
+                    attendanceTotal: attendance.length,
+                    averageScore,
+                    overallAverage: averageScore,
+                    courseCount: courses.length,
+                    pendingAssignments: assignments.filter((assignment) => !assignment.submitted).length,
+                    dueSoonCount: assignments.filter((assignment) => !assignment.submitted).length,
+                    submittedAssignments: assignments.filter((assignment) => assignment.submitted).length,
+                    totalAssignments: assignments.length,
+                    badgesEarned: achievements.filter((achievement) => achievement.earned).length,
+                },
+                courses,
+                assignments,
+                upcomingDeadlines: assignments.filter((assignment) => !assignment.submitted),
+                subjects: subjects.length > 0 ? subjects : formativeItems,
+                recentSubjects: subjects.length > 0 ? subjects : formativeItems,
+                achievements,
+                messages,
+            };
+
+            await redisCacheService.set(cacheKey, payload, STUDENT_CACHE_TTL);
+            res.json({ success: true, data: payload });
+        } catch (error: any) {
+            logger.error('Student Dashboard Error:', error);
+            if (error instanceof ApiError) throw error;
+            throw new ApiError(500, error.message || 'Failed to fetch student dashboard metrics');
         }
     }
 

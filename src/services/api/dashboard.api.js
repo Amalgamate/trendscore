@@ -20,6 +20,8 @@ export const dashboardAPI = {
   },
   getTeacherMetrics: async (filter = 'today') =>
     fetchWithAuth(`/dashboard/teacher?filter=${filter}`),
+  getStudentMetrics: async () =>
+    fetchWithAuth('/dashboard/student'),
   getParentMetrics: async () =>
     fetchWithAuth('/dashboard/parent'),
   getAccountantMetrics: async (filter = 'term') =>

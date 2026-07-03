@@ -5,7 +5,7 @@
  *
  * Verifies that:
  *  1. normalizeRole handles all known aliases + pass-through.
- *  2. getCanonicalRoles derives from roles[] or falls back to role scalar.
+ *  2. getCanonicalRoles merges the scalar role with roles[].
  *  3. hasAnyRole correctly gates access using canonical resolution.
  *  4. Aliased roles pass the same guards as their canonical equivalents.
  *  5. optionalAuthenticate produces identical canonical role shape as authenticate.
@@ -58,9 +58,14 @@ describe('getCanonicalRoles', () => {
     expect(getCanonicalRoles(undefined)).toEqual([]);
   });
 
-  test('prefers roles[] array over scalar role', () => {
+  test('merges scalar role with roles[] and keeps unique canonical roles', () => {
     const user = { role: 'TEACHER', roles: ['ADMIN', 'TEACHER'] } as any;
-    expect(getCanonicalRoles(user)).toEqual(['ADMIN', 'TEACHER']);
+    expect(getCanonicalRoles(user)).toEqual(['TEACHER', 'ADMIN']);
+  });
+
+  test('keeps active scalar role when roles[] is stale', () => {
+    const user = { role: 'TEACHER', roles: ['ADMIN'] } as any;
+    expect(getCanonicalRoles(user)).toEqual(['TEACHER', 'ADMIN']);
   });
 
   test('falls back to scalar role when roles[] is empty', () => {
@@ -70,7 +75,7 @@ describe('getCanonicalRoles', () => {
 
   test('normalizes aliases inside the roles array', () => {
     const user = { role: 'SUPER_ADMIN', roles: ['SYSTEM_ADMINISTRATOR', 'SUPERADMIN'] } as any;
-    expect(getCanonicalRoles(user)).toEqual(['SUPER_ADMIN', 'SUPER_ADMIN']);
+    expect(getCanonicalRoles(user)).toEqual(['SUPER_ADMIN']);
   });
 
   test('filters out empty strings from degenerate input', () => {

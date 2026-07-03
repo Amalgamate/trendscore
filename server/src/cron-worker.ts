@@ -12,6 +12,120 @@ import messageService from './services/message.service';
 import logger from './utils/logger';
 import { DutyRosterService } from './services/dutyRoster.service';
 import { approvalEngineService } from './services/approvalEngine.service';
+import { LMSNotificationService } from './services/lms-notification.service';
+
+/**
+ * Query all PUBLISHED assignments whose dueDate falls on tomorrow (in UTC),
+ * find enrolled learners who have not yet submitted, and dispatch the
+ * due-tomorrow notification to each of them.
+ *
+ * Requirements: 3.11, 19.7
+ */
+async function sendAssignmentDueTomorrowReminders(): Promise<void> {
+    // Build tomorrow's date range in UTC (midnight-to-midnight)
+    const now = new Date();
+    const tomorrowStart = new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate() + 1,
+        0, 0, 0, 0,
+    ));
+    const tomorrowEnd = new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate() + 1,
+        23, 59, 59, 999,
+    ));
+
+    // Fetch all PUBLISHED assignments due tomorrow
+    const assignments = await prisma.learningAssignment.findMany({
+        where: {
+            status: 'PUBLISHED',
+            dueDate: { gte: tomorrowStart, lte: tomorrowEnd },
+            archived: false,
+        },
+    });
+
+    if (assignments.length === 0) {
+        logger.info('[CRON] No assignments due tomorrow — skipping reminders');
+        return;
+    }
+
+    logger.info(`[CRON] Found ${assignments.length} assignment(s) due tomorrow`);
+
+    for (const assignment of assignments) {
+        try {
+            // Fetch learner IDs enrolled in the assignment's class
+            const enrollments = await prisma.classEnrollment.findMany({
+                where: { classId: assignment.classId, active: true, archived: false },
+                select: { learnerId: true },
+            });
+
+            if (enrollments.length === 0) continue;
+
+            const allLearnerIds = enrollments.map((e) => e.learnerId);
+
+            // Find learners who have ALREADY submitted (any non-DRAFT submission)
+            const submissions = await prisma.learningSubmission.findMany({
+                where: {
+                    assignmentId: assignment.id,
+                    learnerId: { in: allLearnerIds },
+                    status: { not: 'DRAFT' },
+                    archived: false,
+                },
+                select: { learnerId: true },
+            });
+
+            const submittedLearnerIds = new Set(submissions.map((s) => s.learnerId));
+
+            // Only remind learners who have NOT yet submitted
+            const pendingLearnerIds = allLearnerIds.filter(
+                (id) => !submittedLearnerIds.has(id),
+            );
+
+            if (pendingLearnerIds.length === 0) {
+                logger.info(`[CRON] All students already submitted for assignment ${assignment.id} — skipping`);
+                continue;
+            }
+
+            // Resolve learner IDs → student user IDs
+            const learners = await prisma.learner.findMany({
+                where: { id: { in: pendingLearnerIds }, archived: false },
+                select: { admissionNumber: true },
+            });
+
+            const usernameCandidates = learners.flatMap((l) => [
+                l.admissionNumber,
+                l.admissionNumber.replace(/\//g, '-'),
+            ]);
+
+            const studentUsers = await prisma.user.findMany({
+                where: {
+                    username: { in: usernameCandidates },
+                    role: 'STUDENT',
+                    archived: false,
+                    status: 'ACTIVE',
+                },
+                select: { id: true },
+            });
+
+            const learnerUserIds = studentUsers.map((u) => u.id);
+
+            if (learnerUserIds.length === 0) continue;
+
+            await LMSNotificationService.onAssignmentDueTomorrow(assignment, learnerUserIds);
+
+            logger.info(
+                `[CRON] Due-tomorrow reminder sent for assignment "${assignment.title}" to ${learnerUserIds.length} student(s)`,
+            );
+        } catch (err: any) {
+            logger.error(
+                `[CRON] Failed to process due-tomorrow reminders for assignment ${assignment.id}:`,
+                err?.message ?? err,
+            );
+        }
+    }
+}
 
 async function startCronWorker() {
     try {
@@ -96,6 +210,15 @@ async function startCronWorker() {
         cron.schedule('*/5 * * * *', () => {
             approvalEngineService.processExpiredRequests().catch(err => {
                 logger.error('[CRON] Approval expiry processing error:', err);
+            });
+        });
+
+        // ── LMS Assignment Due Tomorrow Reminders ─────────────────────────────
+        // Daily at 8:00 PM EAT (17:00 UTC) — remind students about assignments due tomorrow
+        cron.schedule('0 17 * * *', () => {
+            logger.info('[CRON] Sending assignment due-tomorrow reminders');
+            sendAssignmentDueTomorrowReminders().catch(err => {
+                logger.error('[CRON] Assignment due-tomorrow reminder error:', err);
             });
         });
 

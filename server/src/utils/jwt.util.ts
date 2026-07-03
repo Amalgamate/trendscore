@@ -24,13 +24,16 @@ interface User {
 }
 
 export const generateAccessToken = (user: User): string => {
+  const roles = Array.from(new Set([
+    user.role,
+    ...(user.roles && user.roles.length > 0 ? user.roles : []),
+  ])) as Role[];
+
   const payload: JWTPayload = {
     userId: user.id,
     email: user.email,
     role: user.role as Role,
-    roles: (user.roles && user.roles.length > 0
-      ? user.roles
-      : [user.role]) as Role[],
+    roles,
     institutionType: user.institutionType,
   };
 
