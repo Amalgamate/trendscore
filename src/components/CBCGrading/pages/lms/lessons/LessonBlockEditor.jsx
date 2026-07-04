@@ -19,6 +19,7 @@ import {
   Loader,
 } from 'lucide-react';
 import { lmsAPI } from '../../../../../services/api/lms.api';
+import FileUploadEditor from './FileUploadEditor';
 
 const BLOCK_TYPES = [
   { type: 'HEADING', label: 'Heading', icon: '📝' },
@@ -60,88 +61,7 @@ function TextBlockEditor({ block, onChange }) {
 }
 
 function UrlBlockEditor({ block, onChange, label = 'URL' }) {
-  const [isFile, setIsFile] = useState(false);
-  const fileInputRef = useRef(null);
-
-  const handleFileSelect = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // For now, store file name. In production, upload to cloud storage
-      onChange({
-        ...block,
-        content: {
-          ...block.content,
-          url: file.name,
-          fileName: file.name,
-          fileSize: file.size,
-          fileMime: file.type,
-        },
-      });
-    }
-  };
-
-  return (
-    <div className="space-y-2">
-      <div className="flex gap-2">
-        <button
-          onClick={() => setIsFile(false)}
-          className={`px-3 py-1 rounded text-sm font-medium transition ${
-            !isFile
-              ? 'bg-[#ff7900] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          URL
-        </button>
-        <button
-          onClick={() => setIsFile(true)}
-          className={`px-3 py-1 rounded text-sm font-medium transition ${
-            isFile
-              ? 'bg-[#ff7900] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          Upload File
-        </button>
-      </div>
-
-      {!isFile ? (
-        <input
-          type="text"
-          value={block.content?.url || ''}
-          onChange={(e) =>
-            onChange({ ...block, content: { ...block.content, url: e.target.value } })
-          }
-          placeholder={`Enter ${label} (URL)...`}
-          className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ff7900]"
-        />
-      ) : (
-        <div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            onChange={handleFileSelect}
-            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
-            className="hidden"
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full px-3 py-2 border-2 border-dashed border-[#ff7900] rounded-lg text-[#ff7900] hover:bg-[#ff7900]/5 transition font-medium text-sm"
-          >
-            📎 Choose File (PDF, Word, Excel)
-          </button>
-          {block.content?.fileName && (
-            <p className="mt-2 text-sm text-gray-600">
-              Selected: <span className="font-medium">{block.content.fileName}</span>
-              <span className="text-xs text-gray-500 ml-2">
-                ({(block.content.fileSize / 1024).toFixed(1)} KB)
-              </span>
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
+  return <FileUploadEditor block={block} onChange={onChange} label={label} />;
 }
 
 function QuizBlockEditor({ block, onChange }) {
