@@ -234,7 +234,7 @@ export const handleCallback = async (req: Request, res: Response) => {
 
                 // ── Marketplace hook: try to complete purchase if no invoiceId ────────
                 // (Marketplace purchases don't have invoiceId, so this branch executes for them)
-                if (!transaction.invoiceId) {
+                if (!transaction.invoiceId && checkoutRequestId) {
                     try {
                         await LMSMarketplaceService.completeByCheckoutRequestId(
                             checkoutRequestId,

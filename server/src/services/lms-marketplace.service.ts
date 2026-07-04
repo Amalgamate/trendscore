@@ -6,6 +6,43 @@ import logger from '../utils/logger';
 import { redisCacheService } from './redis-cache.service';
 import { MarketplaceListing, MarketplacePurchase } from '@prisma/client';
 
+const marketplaceErrorMessages: Record<string, string> = {
+  SCHOOL_ID_REQUIRED: 'School context is required',
+  INVALID_LISTING_TITLE: 'Listing title is required',
+  RESOURCE_NOT_FOUND: 'Learning resource not found',
+  INVALID_PRICE_FOR_PAID_LISTING: 'Paid listings require a positive price',
+  CREATE_LISTING_ERROR: 'Failed to create marketplace listing',
+  LISTING_NOT_FOUND: 'Marketplace listing not found',
+  LISTING_SCHOOL_MISMATCH: 'Listing does not belong to this school',
+  LISTING_NOT_PENDING_APPROVAL: 'Listing is not pending approval',
+  APPROVE_LISTING_ERROR: 'Failed to approve marketplace listing',
+  REJECT_LISTING_ERROR: 'Failed to reject marketplace listing',
+  BROWSE_LISTINGS_ERROR: 'Failed to browse marketplace listings',
+  GET_LISTING_ERROR: 'Failed to retrieve marketplace listing',
+  GET_MY_LISTINGS_ERROR: 'Failed to retrieve marketplace listings',
+  LISTING_NOT_PUBLISHED: 'Listing is not published',
+  DUPLICATE_PURCHASE: 'Resource has already been purchased',
+  STK_PUSH_FAILED: 'Failed to initiate M-Pesa payment',
+  INITIATE_PURCHASE_ERROR: 'Failed to initiate marketplace purchase',
+  GET_MY_PURCHASES_ERROR: 'Failed to retrieve marketplace purchases',
+  PURCHASE_NOT_FOUND: 'Marketplace purchase not found',
+  PURCHASE_NOT_YOURS: 'Marketplace purchase does not belong to you',
+  LMS_PURCHASE_REQUIRED: 'Purchase must be completed before download',
+  DOWNLOAD_LIMIT_EXCEEDED: 'Download limit exceeded',
+  ACCESS_EXPIRED: 'Purchase access has expired',
+  RESOURCE_URL_NOT_AVAILABLE: 'Resource file URL is not available',
+  DOWNLOAD_ERROR: 'Failed to download purchased resource',
+  INVALID_RATING: 'Rating must be between 1 and 5',
+  CANNOT_RATE_INCOMPLETE_PURCHASE: 'Only completed purchases can be rated',
+  RATE_RESOURCE_ERROR: 'Failed to rate marketplace resource',
+  GET_SELLER_BALANCE_ERROR: 'Failed to retrieve seller balance',
+  GET_ANALYTICS_ERROR: 'Failed to retrieve marketplace analytics',
+};
+
+function marketplaceError(statusCode: number, code: string): ApiError {
+  return new ApiError(statusCode, marketplaceErrorMessages[code] ?? code).withCode(code);
+}
+
 /**
  * LMS Marketplace Service
  * 
@@ -41,12 +78,12 @@ class LMSMarketplaceServiceImpl {
     try {
       const schoolId = data.schoolId;
       if (!schoolId) {
-        throw new ApiError(400).withCode('SCHOOL_ID_REQUIRED');
+        throw marketplaceError(400, 'SCHOOL_ID_REQUIRED');
       }
 
       // Validate title
       if (!data.title || data.title.trim().length === 0) {
-        throw new ApiError(400).withCode('INVALID_LISTING_TITLE');
+        throw marketplaceError(400, 'INVALID_LISTING_TITLE');
       }
 
       // Validate resourceId exists
@@ -54,16 +91,16 @@ class LMSMarketplaceServiceImpl {
         where: { id: data.resourceId },
       });
       if (!resource) {
-        throw new ApiError(404).withCode('RESOURCE_NOT_FOUND');
+        throw marketplaceError(404, 'RESOURCE_NOT_FOUND');
       }
 
       // Validate price for paid listings
       if (data.listingType === 'PAID' && (!data.price || data.price <= 0)) {
-        throw new ApiError(400).withCode('INVALID_PRICE_FOR_PAID_LISTING');
+        throw marketplaceError(400, 'INVALID_PRICE_FOR_PAID_LISTING');
       }
 
       // Get school settings for default revenue share %
-      const settings = await prisma.lmsSettings.findUnique({
+      const settings = await prisma.lMSSettings.findUnique({
         where: { schoolId },
         select: { marketplaceRevenuePct: true },
       });
@@ -93,7 +130,7 @@ class LMSMarketplaceServiceImpl {
     } catch (error: any) {
       if (error instanceof ApiError) throw error;
       logger.error('[Marketplace] createListing error:', error);
-      throw new ApiError(500).withCode('CREATE_LISTING_ERROR');
+      throw marketplaceError(500, 'CREATE_LISTING_ERROR');
     }
   }
 
@@ -114,15 +151,15 @@ class LMSMarketplaceServiceImpl {
       });
 
       if (!listing) {
-        throw new ApiError(404).withCode('LISTING_NOT_FOUND');
+        throw marketplaceError(404, 'LISTING_NOT_FOUND');
       }
 
       if (listing.schoolId !== schoolId) {
-        throw new ApiError(403).withCode('LISTING_SCHOOL_MISMATCH');
+        throw marketplaceError(403, 'LISTING_SCHOOL_MISMATCH');
       }
 
       if (listing.status !== 'PENDING_APPROVAL') {
-        throw new ApiError(409).withCode('LISTING_NOT_PENDING_APPROVAL');
+        throw marketplaceError(409, 'LISTING_NOT_PENDING_APPROVAL');
       }
 
       const updated = await prisma.marketplaceListing.update({
@@ -147,7 +184,7 @@ class LMSMarketplaceServiceImpl {
     } catch (error: any) {
       if (error instanceof ApiError) throw error;
       logger.error('[Marketplace] approveListing error:', error);
-      throw new ApiError(500).withCode('APPROVE_LISTING_ERROR');
+      throw marketplaceError(500, 'APPROVE_LISTING_ERROR');
     }
   }
 
@@ -167,15 +204,15 @@ class LMSMarketplaceServiceImpl {
       });
 
       if (!listing) {
-        throw new ApiError(404).withCode('LISTING_NOT_FOUND');
+        throw marketplaceError(404, 'LISTING_NOT_FOUND');
       }
 
       if (listing.schoolId !== schoolId) {
-        throw new ApiError(403).withCode('LISTING_SCHOOL_MISMATCH');
+        throw marketplaceError(403, 'LISTING_SCHOOL_MISMATCH');
       }
 
       if (listing.status !== 'PENDING_APPROVAL') {
-        throw new ApiError(409).withCode('LISTING_NOT_PENDING_APPROVAL');
+        throw marketplaceError(409, 'LISTING_NOT_PENDING_APPROVAL');
       }
 
       const updated = await prisma.marketplaceListing.update({
@@ -199,7 +236,7 @@ class LMSMarketplaceServiceImpl {
     } catch (error: any) {
       if (error instanceof ApiError) throw error;
       logger.error('[Marketplace] rejectListing error:', error);
-      throw new ApiError(500).withCode('REJECT_LISTING_ERROR');
+      throw marketplaceError(500, 'REJECT_LISTING_ERROR');
     }
   }
 
@@ -231,7 +268,7 @@ class LMSMarketplaceServiceImpl {
       const cacheKey = `lms:marketplace:${filterHash}`;
 
       // Try cache (3 min TTL)
-      const cached = await cacheService.get(cacheKey);
+      const cached = await redisCacheService.get<{ listings: MarketplaceListing[]; total: number; pages: number }>(cacheKey);
       if (cached) {
         return cached;
       }
@@ -281,12 +318,12 @@ class LMSMarketplaceServiceImpl {
       };
 
       // Cache for 3 minutes
-      await cacheService.set(cacheKey, result, 180);
+      await redisCacheService.set(cacheKey, result, 180);
 
       return result;
     } catch (error: any) {
       logger.error('[Marketplace] browseListings error:', error);
-      throw new ApiError(500).withCode('BROWSE_LISTINGS_ERROR');
+      throw marketplaceError(500, 'BROWSE_LISTINGS_ERROR');
     }
   }
 
@@ -301,18 +338,18 @@ class LMSMarketplaceServiceImpl {
       });
 
       if (!listing) {
-        throw new ApiError(404).withCode('LISTING_NOT_FOUND');
+        throw marketplaceError(404, 'LISTING_NOT_FOUND');
       }
 
       if (listing.schoolId !== schoolId) {
-        throw new ApiError(403).withCode('LISTING_SCHOOL_MISMATCH');
+        throw marketplaceError(403, 'LISTING_SCHOOL_MISMATCH');
       }
 
       return listing;
     } catch (error: any) {
       if (error instanceof ApiError) throw error;
       logger.error('[Marketplace] getListingDetail error:', error);
-      throw new ApiError(500).withCode('GET_LISTING_ERROR');
+      throw marketplaceError(500, 'GET_LISTING_ERROR');
     }
   }
 
@@ -333,7 +370,7 @@ class LMSMarketplaceServiceImpl {
       return listings;
     } catch (error: any) {
       logger.error('[Marketplace] getMyListings error:', error);
-      throw new ApiError(500).withCode('GET_MY_LISTINGS_ERROR');
+      throw marketplaceError(500, 'GET_MY_LISTINGS_ERROR');
     }
   }
 
@@ -382,15 +419,15 @@ class LMSMarketplaceServiceImpl {
       });
 
       if (!listing) {
-        throw new ApiError(404).withCode('LISTING_NOT_FOUND');
+        throw marketplaceError(404, 'LISTING_NOT_FOUND');
       }
 
       if (listing.schoolId !== schoolId) {
-        throw new ApiError(403).withCode('LISTING_SCHOOL_MISMATCH');
+        throw marketplaceError(403, 'LISTING_SCHOOL_MISMATCH');
       }
 
       if (listing.status !== 'PUBLISHED') {
-        throw new ApiError(409).withCode('LISTING_NOT_PUBLISHED');
+        throw marketplaceError(409, 'LISTING_NOT_PUBLISHED');
       }
 
       // Check for duplicate purchase
@@ -403,7 +440,7 @@ class LMSMarketplaceServiceImpl {
       });
 
       if (existing) {
-        throw new ApiError(409).withCode('DUPLICATE_PURCHASE');
+        throw marketplaceError(409, 'DUPLICATE_PURCHASE');
       }
 
       // Compute revenue split
@@ -422,7 +459,17 @@ class LMSMarketplaceServiceImpl {
       });
 
       if (!stkResult.success) {
-        throw new ApiError(500).withCode('STK_PUSH_FAILED');
+        throw marketplaceError(500, 'STK_PUSH_FAILED');
+      }
+
+      const checkoutRequestId = 'checkoutRequestId' in stkResult
+        ? stkResult.checkoutRequestId
+        : 'externalId' in stkResult
+          ? stkResult.externalId
+          : undefined;
+
+      if (!checkoutRequestId) {
+        throw marketplaceError(500, 'STK_PUSH_FAILED');
       }
 
       // Create pending purchase
@@ -433,7 +480,7 @@ class LMSMarketplaceServiceImpl {
           schoolId: listing.schoolId,
           amount: listing.price,
           currency: listing.currency,
-          transactionId: stkResult.checkoutRequestId,
+          transactionId: checkoutRequestId,
           sellerEarnings,
           platformFee,
           status: 'PENDING',
@@ -444,17 +491,17 @@ class LMSMarketplaceServiceImpl {
 
       logger.info(
         `[Marketplace] Purchase initiated: ${purchase.id} | ` +
-        `listing: ${listingId} | buyer: ${buyerId} | checkoutRequestId: ${stkResult.checkoutRequestId}`,
+        `listing: ${listingId} | buyer: ${buyerId} | checkoutRequestId: ${checkoutRequestId}`,
       );
 
       return {
         purchaseId: purchase.id,
-        checkoutRequestId: stkResult.checkoutRequestId,
+        checkoutRequestId,
       };
     } catch (error: any) {
       if (error instanceof ApiError) throw error;
       logger.error('[Marketplace] initiatePurchase error:', error);
-      throw new ApiError(500).withCode('INITIATE_PURCHASE_ERROR');
+      throw marketplaceError(500, 'INITIATE_PURCHASE_ERROR');
     }
   }
 
@@ -566,7 +613,7 @@ class LMSMarketplaceServiceImpl {
       return purchases;
     } catch (error: any) {
       logger.error('[Marketplace] getMyPurchases error:', error);
-      throw new ApiError(500).withCode('GET_MY_PURCHASES_ERROR');
+      throw marketplaceError(500, 'GET_MY_PURCHASES_ERROR');
     }
   }
 
@@ -583,23 +630,23 @@ class LMSMarketplaceServiceImpl {
       });
 
       if (!purchase) {
-        throw new ApiError(404).withCode('PURCHASE_NOT_FOUND');
+        throw marketplaceError(404, 'PURCHASE_NOT_FOUND');
       }
 
       if (purchase.buyerId !== buyerId) {
-        throw new ApiError(403).withCode('PURCHASE_NOT_YOURS');
+        throw marketplaceError(403, 'PURCHASE_NOT_YOURS');
       }
 
       if (purchase.status !== 'COMPLETED') {
-        throw new ApiError(402).withCode('LMS_PURCHASE_REQUIRED');
+        throw marketplaceError(402, 'LMS_PURCHASE_REQUIRED');
       }
 
       if (purchase.downloadCount >= purchase.maxDownloads) {
-        throw new ApiError(429).withCode('DOWNLOAD_LIMIT_EXCEEDED');
+        throw marketplaceError(429, 'DOWNLOAD_LIMIT_EXCEEDED');
       }
 
       if (purchase.accessExpiresAt && new Date() > purchase.accessExpiresAt) {
-        throw new ApiError(410).withCode('ACCESS_EXPIRED');
+        throw marketplaceError(410, 'ACCESS_EXPIRED');
       }
 
       // Increment download count
@@ -611,7 +658,7 @@ class LMSMarketplaceServiceImpl {
       // Return resource URL (could be signed Cloudinary URL)
       const resourceUrl = purchase.listing.resource?.fileUrl || purchase.listing.resource?.externalUrl;
       if (!resourceUrl) {
-        throw new ApiError(500).withCode('RESOURCE_URL_NOT_AVAILABLE');
+        throw marketplaceError(500, 'RESOURCE_URL_NOT_AVAILABLE');
       }
 
       logger.info(`[Marketplace] Resource downloaded: ${purchaseId} by ${buyerId}`);
@@ -619,7 +666,7 @@ class LMSMarketplaceServiceImpl {
     } catch (error: any) {
       if (error instanceof ApiError) throw error;
       logger.error('[Marketplace] downloadPurchasedResource error:', error);
-      throw new ApiError(500).withCode('DOWNLOAD_ERROR');
+      throw marketplaceError(500, 'DOWNLOAD_ERROR');
     }
   }
 
@@ -634,7 +681,7 @@ class LMSMarketplaceServiceImpl {
   ): Promise<MarketplaceListing> {
     try {
       if (rating < 1 || rating > 5) {
-        throw new ApiError(400).withCode('INVALID_RATING');
+        throw marketplaceError(400, 'INVALID_RATING');
       }
 
       const purchase = await prisma.marketplacePurchase.findUnique({
@@ -643,15 +690,15 @@ class LMSMarketplaceServiceImpl {
       });
 
       if (!purchase) {
-        throw new ApiError(404).withCode('PURCHASE_NOT_FOUND');
+        throw marketplaceError(404, 'PURCHASE_NOT_FOUND');
       }
 
       if (purchase.buyerId !== buyerId) {
-        throw new ApiError(403).withCode('PURCHASE_NOT_YOURS');
+        throw marketplaceError(403, 'PURCHASE_NOT_YOURS');
       }
 
       if (purchase.status !== 'COMPLETED') {
-        throw new ApiError(409).withCode('CANNOT_RATE_INCOMPLETE_PURCHASE');
+        throw marketplaceError(409, 'CANNOT_RATE_INCOMPLETE_PURCHASE');
       }
 
       const listing = purchase.listing;
@@ -679,7 +726,7 @@ class LMSMarketplaceServiceImpl {
     } catch (error: any) {
       if (error instanceof ApiError) throw error;
       logger.error('[Marketplace] rateResource error:', error);
-      throw new ApiError(500).withCode('RATE_RESOURCE_ERROR');
+      throw marketplaceError(500, 'RATE_RESOURCE_ERROR');
     }
   }
 
@@ -706,7 +753,7 @@ class LMSMarketplaceServiceImpl {
       return result._sum.sellerEarnings ?? 0;
     } catch (error: any) {
       logger.error('[Marketplace] getSellerBalance error:', error);
-      throw new ApiError(500).withCode('GET_SELLER_BALANCE_ERROR');
+      throw marketplaceError(500, 'GET_SELLER_BALANCE_ERROR');
     }
   }
 
@@ -760,7 +807,7 @@ class LMSMarketplaceServiceImpl {
       return { totalSales, revenueEarned, topListings, totalDownloads };
     } catch (error: any) {
       logger.error('[Marketplace] getMarketplaceAnalytics error:', error);
-      throw new ApiError(500).withCode('GET_ANALYTICS_ERROR');
+      throw marketplaceError(500, 'GET_ANALYTICS_ERROR');
     }
   }
 
@@ -791,11 +838,10 @@ class LMSMarketplaceServiceImpl {
       await prisma.auditLog.create({
         data: {
           action,
-          resourceId,
-          resourceType: 'MARKETPLACE_LISTING',
-          actorId,
-          schoolId,
-          metadata: metadata ? JSON.stringify(metadata) : null,
+          userId: actorId,
+          method: 'SERVICE',
+          path: 'lms.marketplace',
+          params: JSON.stringify({ resourceId, schoolId, metadata: metadata ?? null }),
         },
       });
     } catch (error: any) {

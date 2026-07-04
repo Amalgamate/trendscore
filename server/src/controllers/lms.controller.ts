@@ -1906,7 +1906,7 @@ export const getStudentAssignments = async (req: AuthRequest, res: Response): Pr
       return;
     }
 
-    const result = await lmsService.getStudentAssignments(userId, schoolId);
+    const result = await lmsService.getStudentAssignments(userId);
     res.json({ success: true, data: result });
   } catch (error: any) {
     if (error instanceof ApiError) {
