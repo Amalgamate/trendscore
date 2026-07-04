@@ -19,7 +19,7 @@ import {
   Loader,
 } from 'lucide-react';
 import { lmsAPI } from '../../../../../services/api/lms.api';
-import FileUploadEditor from './FileUploadEditor';
+import FileUploadEditor from '../shared/FileUploadEditor';
 
 const BLOCK_TYPES = [
   { type: 'HEADING', label: 'Heading', icon: '📝' },
