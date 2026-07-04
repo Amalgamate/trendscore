@@ -339,7 +339,13 @@ export default function AssignmentsPage({ onNavigate }) {
 
   const handleCreateNew = () => {
     if (onNavigate) {
-      onNavigate('learning-lesson-builder', { mode: 'create' });
+      onNavigate('learning-assignment-create');
+    }
+  };
+
+  const handleEditAssignment = (assignment) => {
+    if (onNavigate) {
+      onNavigate('learning-assignment-edit', { assignmentId: assignment.id });
     }
   };
 
@@ -473,7 +479,7 @@ export default function AssignmentsPage({ onNavigate }) {
           assignments={assignments}
           loading={loading}
           onView={handleViewAssignment}
-          onEdit={handleViewAssignment}
+          onEdit={handleEditAssignment}
           onPublish={handlePublish}
           onClose={handleClose}
           onDelete={handleDelete}

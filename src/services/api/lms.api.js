@@ -96,12 +96,12 @@ export const lmsAPI = {
   deleteLesson: async (id) =>
     fetchWithAuth(`/lms/lessons/${id}`, { method: 'DELETE' }),
   publishLesson: async (id) =>
-    fetchWithAuth(`/lms/lessons/${id}/publish`, { method: 'POST' }),
+    fetchWithAuth(`/lms/lessons/${id}/publish`, { method: 'PUT' }),
   archiveLesson: async (id) =>
     fetchWithAuth(`/lms/lessons/${id}/archive`, { method: 'POST' }),
-  getLessonWithBlocks: async (id) => fetchWithAuth(`/lms/lessons/${id}/blocks`),
+  getLessonWithBlocks: async (id) => fetchWithAuth(`/lms/lessons/${id}`),
   upsertLessonBlocks: async (id, blocks) =>
-    fetchWithAuth(`/lms/lessons/${id}/blocks`, { method: 'PUT', body: JSON.stringify({ blocks }) }),
+    fetchWithAuth(`/lms/lessons/${id}/blocks`, { method: 'POST', body: JSON.stringify({ blocks }) }),
 
   // ─── Resources (Revision Library) ─────────────────────────────────────────
   getResources: async (params = {}) => {

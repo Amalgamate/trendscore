@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useSchoolData } from '../../../../contexts/SchoolDataContext';
 
-const LMSAssignments = () => {
+const LMSAssignments = ({ onNavigate }) => {
   const { classes } = useSchoolData();
   const [activeTab, setActiveTab] = useState('active');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -85,7 +85,10 @@ const LMSAssignments = () => {
           <p className="text-gray-500 mt-1">Create, distribute, and grade student assignments seamlessly.</p>
         </div>
         <button 
-          onClick={() => setShowCreateModal(true)}
+          onClick={() => {
+            if (onNavigate) onNavigate('learning-assignment-create');
+            else setShowCreateModal(true);
+          }}
           className="bg-brand-purple text-white px-5 py-2.5 rounded-lg font-medium hover:bg-purple-800 transition-colors shadow-m hover:shadow-lg flex items-center gap-2"
         >
           <Plus size={20} />
@@ -236,7 +239,10 @@ const LMSAssignments = () => {
                          </button>
                        )}
                        {assignment.status === 'draft' && (
-                         <button className="text-xs bg-brand-purple text-white hover:bg-purple-800 px-3 py-1.5 rounded font-medium transition-colors">
+                         <button
+                           onClick={() => onNavigate?.('learning-assignment-edit', { assignmentId: assignment.id })}
+                           className="text-xs bg-brand-purple text-white hover:bg-purple-800 px-3 py-1.5 rounded font-medium transition-colors"
+                         >
                            Edit & Publish
                          </button>
                        )}

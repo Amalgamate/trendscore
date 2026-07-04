@@ -156,6 +156,7 @@ const BiometricManager = lazy(() => import('../pages/biometric/BiometricManager'
 // LMS Module
 const LMSManager = lazy(() => import('../pages/LMSManager'));
 const AssignmentsPage = lazy(() => import('../pages/lms/assignments/AssignmentsPage'));
+const AssignmentBuilder = lazy(() => import('../pages/lms/assignments/AssignmentBuilder'));
 // LMS Digital Learning Hub — Phase 1+
 const LMSDashboard = lazy(() => import('../pages/LMSDashboard'));
 const LMSPlaceholder = lazy(() => import('../pages/lms/LMSPlaceholder'));
@@ -703,7 +704,7 @@ const PageRouter = ({
           case 'learning-hub-library':
             return <LearningHubPage />;
           case 'learning-hub-assignments':
-            return <LMSAssignments />;
+            return <LMSAssignments onNavigate={handleNavigate} />;
 
           // LMS Module
           case 'lms-courses': return <LMSManager currentPage={currentPage} />;
@@ -717,6 +718,8 @@ const PageRouter = ({
             if (effectiveRole === 'STUDENT') return <StudentLearningTab onNavigate={handleNavigate} />;
             return <LMSDashboard user={user} onNavigate={handleNavigate} />;
           case 'learning-assignments': return <AssignmentsPage onNavigate={handleNavigate} />;
+          case 'learning-assignment-create': return <AssignmentBuilder onNavigate={handleNavigate} />;
+          case 'learning-assignment-edit': return <AssignmentBuilder assignmentId={pageParams?.assignmentId || pageParams?.id} onNavigate={handleNavigate} />;
           case 'learning-lessons': return <LMSLessonList onNavigate={handleNavigate} user={user} />;
           case 'learning-lesson-builder': return <LMSLessonBuilderPage lessonId={pageParams?.lessonId} onNavigate={handleNavigate} pageParams={pageParams} />;
           case 'learning-interactive': return <LMSPlaceholder title="Interactive Learning" description="Interactive learning content and activities are being prepared for the Digital Learning Hub." />;

@@ -229,6 +229,22 @@ function BlockEditor({ block, onChange }) {
   }
 }
 
+const isTemporaryBlockId = (id) => (
+  typeof id === 'string' && (id.startsWith('new-') || id.startsWith('dup-') || id.startsWith('assignment-'))
+);
+
+const normalizeBlocksForSave = (blocks) => blocks.map((block, index) => {
+  const normalized = {
+    type: block.type,
+    order: index + 1,
+    content: block.content || {},
+  };
+  if (block.id && !isTemporaryBlockId(block.id)) {
+    normalized.id = block.id;
+  }
+  return normalized;
+});
+
 // ─── Main Block Editor Component ───────────────────────────────────────────
 
 export default function LessonBlockEditor({ lessonId, blocks, onBlocksUpdate }) {
@@ -238,13 +254,17 @@ export default function LessonBlockEditor({ lessonId, blocks, onBlocksUpdate }) 
   const [saving, setSaving] = useState(false);
   const autoSaveTimer = useRef(null);
 
+  useEffect(() => {
+    setLocalBlocks(blocks || []);
+  }, [blocks]);
+
   // Auto-save every 30 seconds
   useEffect(() => {
     autoSaveTimer.current = setInterval(() => {
       if (lessonId && localBlocks.length > 0) {
         setSaving(true);
         lmsAPI
-          .upsertLessonBlocks?.(lessonId, localBlocks)
+          .upsertLessonBlocks?.(lessonId, normalizeBlocksForSave(localBlocks))
           .then(() => {
             setSaving(false);
           })
@@ -277,7 +297,9 @@ export default function LessonBlockEditor({ lessonId, blocks, onBlocksUpdate }) 
   };
 
   const handleDeleteBlock = (id) => {
-    const updated = localBlocks.filter((b) => b.id !== id);
+    const updated = localBlocks
+      .filter((b) => b.id !== id)
+      .map((block, index) => ({ ...block, order: index + 1 }));
     setLocalBlocks(updated);
     onBlocksUpdate?.(updated);
   };

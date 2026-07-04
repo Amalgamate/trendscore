@@ -55,8 +55,9 @@ const DEFAULT_FORM_DATA = {
 
 // ─── AssignmentBuilder Component ─────────────────────────────────────────────
 
-export default function AssignmentBuilder() {
-  const { id } = useParams();
+export default function AssignmentBuilder({ assignmentId, onNavigate }) {
+  const params = useParams();
+  const id = assignmentId || params.id || params.assignmentId;
   const navigate = useNavigate();
   const { showSuccess, showError } = useNotifications();
   const fileInputRef = useRef(null);
@@ -202,6 +203,14 @@ export default function AssignmentBuilder() {
 
   // ─── Save Handlers ──────────────────────────────────────────────────────────
 
+  const returnToAssignments = useCallback(() => {
+    if (onNavigate) {
+      onNavigate('learning-assignments');
+      return;
+    }
+    navigate('/app/learning/assignments');
+  }, [navigate, onNavigate]);
+
   const handleSaveDraft = async () => {
     if (!validateForm()) {
       showError('Please fill in all required fields');
@@ -220,7 +229,7 @@ export default function AssignmentBuilder() {
         showSuccess('Assignment draft saved successfully');
       }
 
-      navigate('/app/learning/assignments');
+      returnToAssignments();
     } catch (error) {
       console.error('Failed to save draft:', error);
       showError(error?.response?.data?.message || 'Failed to save draft');
@@ -256,7 +265,7 @@ export default function AssignmentBuilder() {
       // Then publish
       await lmsAPI.publishAssignment(assignmentId);
       showSuccess('Assignment published successfully');
-      navigate('/app/learning/assignments');
+      returnToAssignments();
     } catch (error) {
       console.error('Failed to publish:', error);
       showError(error?.response?.data?.message || 'Failed to publish assignment');
@@ -266,7 +275,7 @@ export default function AssignmentBuilder() {
   };
 
   const handleCancel = () => {
-    navigate('/app/learning/assignments');
+    returnToAssignments();
   };
 
   // ─── Render Loading State ───────────────────────────────────────────────────

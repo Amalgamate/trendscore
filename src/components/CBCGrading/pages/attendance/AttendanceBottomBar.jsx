@@ -13,10 +13,9 @@ export function AttendanceBottomBar({ stats, onSave, isSaving, disabled }) {
 
   return (
     <div className={cn(
-      'fixed bottom-0 left-0 right-0 z-50',
+      'sticky bottom-16 left-0 right-0 z-40 md:bottom-0',
       'bg-white/95 backdrop-blur-sm border-t border-gray-200',
-      'px-4 pb-safe pt-3',
-      // On desktop, offset for sidebar — handled by parent padding
+      'px-4 pb-safe pt-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]',
     )}>
       <div className="max-w-2xl mx-auto flex items-center gap-3">
         {/* Live counters */}

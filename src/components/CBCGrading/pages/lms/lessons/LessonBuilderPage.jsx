@@ -10,7 +10,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Plus,
   Save,
   Send,
   AlertCircle,
@@ -18,9 +17,9 @@ import {
   X,
 } from 'lucide-react';
 import { lmsAPI } from '../../../../../services/api/lms.api';
-import { usePermissions } from '../../../../../hooks/usePermissions';
 import { Skeleton } from '../../../../ui';
 import LessonBlockEditor from './LessonBlockEditor';
+import LessonAssignmentsSection from './LessonAssignmentsSection';
 
 // ─── Lesson Metadata Form ──────────────────────────────────────────────────
 
@@ -44,6 +43,27 @@ function LessonMetadataForm({ lesson, onUpdate, onSave, loading, error }) {
       } finally {
         setSaving(false);
       }
+    }
+  };
+
+  const handleCreateLesson = async () => {
+    if (!form.title?.trim()) {
+      alert('Please enter a lesson title');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await lmsAPI.createLesson?.(form);
+      if (res?.success) {
+        onUpdate?.(res.data);
+        onSave?.(res.data);
+      }
+    } catch (err) {
+      console.error('Create lesson failed:', err);
+      alert('Failed to create lesson');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -177,7 +197,27 @@ function LessonMetadataForm({ lesson, onUpdate, onSave, loading, error }) {
         </label>
       </div>
 
-      {saving && (
+      {!lesson && (
+        <button
+          onClick={handleCreateLesson}
+          disabled={saving}
+          className="w-full mt-4 px-4 py-2 bg-[#ff7900] text-white rounded-lg hover:bg-[#ff7900]/90 transition disabled:opacity-50 font-medium text-sm flex items-center justify-center gap-2"
+        >
+          {saving ? (
+            <>
+              <RefreshCw size={16} className="animate-spin" />
+              Creating...
+            </>
+          ) : (
+            <>
+              <Save size={16} />
+              Create Lesson
+            </>
+          )}
+        </button>
+      )}
+
+      {saving && lesson && (
         <div className="text-xs text-amber-600 flex items-center gap-1">
           <RefreshCw size={12} className="animate-spin" />
           Saving...
@@ -189,9 +229,8 @@ function LessonMetadataForm({ lesson, onUpdate, onSave, loading, error }) {
 
 // ─── Main Component ────────────────────────────────────────────────────────
 
-export default function LessonBuilderPage({ pageParams, onNavigate }) {
-  const { user } = usePermissions();
-  const lessonId = pageParams?.lessonId;
+export default function LessonBuilderPage({ lessonId: propLessonId, pageParams, onNavigate }) {
+  const lessonId = propLessonId || pageParams?.lessonId;
 
   // State
   const [lesson, setLesson] = useState(null);
@@ -298,14 +337,26 @@ export default function LessonBuilderPage({ pageParams, onNavigate }) {
           <LessonMetadataForm
             lesson={lesson}
             onUpdate={handleMetadataUpdate}
+            onSave={(newLesson) => {
+              setLesson(newLesson);
+              // Lesson created, blocks editor will now show
+            }}
             loading={loading}
             error={error}
           />
         </div>
 
         {/* Block Editor (3/4 width) */}
-        <div className="col-span-2 bg-white border border-slate-200 rounded-lg p-4">
-          <h3 className="font-semibold text-slate-900 mb-4">Lesson Content</h3>
+        <div className="col-span-2 space-y-4">
+          <LessonAssignmentsSection
+            lesson={lesson}
+            blocks={blocks}
+            onBlocksUpdate={handleBlocksUpdate}
+            onNavigate={onNavigate}
+          />
+
+          <div className="bg-white border border-slate-200 rounded-lg p-4">
+            <h3 className="font-semibold text-slate-900 mb-4">Lesson Content</h3>
           {lesson ? (
             <LessonBlockEditor
               lessonId={lesson.id}
@@ -317,6 +368,7 @@ export default function LessonBuilderPage({ pageParams, onNavigate }) {
               Create a lesson first by filling in the details on the left
             </p>
           )}
+          </div>
         </div>
       </div>
     </div>
