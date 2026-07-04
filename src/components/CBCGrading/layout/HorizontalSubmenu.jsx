@@ -8,7 +8,6 @@ const flattenLeafItems = (items = []) =>
 
 const PASTEL_PALETTE = {
   'Assessments':        'text-emerald-700 bg-emerald-50',
-  'Assessment Matrix':  'text-purple-700  bg-purple-50',
   'Detailed Reports':   'text-amber-700   bg-amber-50',
   'Reports':            'text-amber-700   bg-amber-50',
   'Core Competencies':  'text-sky-700     bg-sky-50',

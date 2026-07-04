@@ -30,6 +30,30 @@ async function invalidateSummativeResultCache(testId: string): Promise<void> {
   ]);
 }
 
+function isPlaceholderZeroSummativeResult(result: any): boolean {
+  return Number(result?.marksObtained) === 0
+    && result?.percentage == null
+    && !result?.grade
+    && !result?.status
+    && !result?.cbcGrade
+    && result?.rawScore == null
+    && !result?.rubricRating
+    && !result?.gradeCode
+    && result?.achievementLevel == null
+    && !result?.competencyBand
+    && !result?.gradeDescription
+    && !result?.assessmentStatusCode;
+}
+
+function normalizeSummativeResultForResponse<T extends Record<string, any>>(result: T): T {
+  if (!isPlaceholderZeroSummativeResult(result)) return result;
+  return {
+    ...result,
+    marksObtained: null,
+    rawScore: null,
+  };
+}
+
 type LearningAreaContext = {
   learningAreaId?: string;
   learningArea?: string;
@@ -1740,6 +1764,7 @@ export const getTestResults = async (req: Request, res: Response) => {
       }));
     }
 
+    results = results.map(normalizeSummativeResultForResponse);
     await redisCacheService.set(cacheKey, results, RESULTS_CACHE_TTL);
 
     res.json({
@@ -1933,7 +1958,7 @@ export const getBulkSummativeResults = async (req: AuthRequest, res: Response) =
               totalMarks: row.test_total_marks,
               testType: row.test_test_type
             }
-          }));
+          })).map(normalizeSummativeResultForResponse);
         }
       }
     } catch (error: any) {
@@ -2040,8 +2065,10 @@ export const getBulkSummativeResults = async (req: AuthRequest, res: Response) =
           totalMarks: row.test_total_marks,
           testType: row.test_test_type
         }
-      }));
+      })).map(normalizeSummativeResultForResponse);
     }
+
+    results = results.map(normalizeSummativeResultForResponse);
 
     results = await filterSummativeResultsBySecondarySelection(results as any[]);
 

@@ -936,16 +936,16 @@ const SecondaryAdminDashboard = ({ learners = [], pagination, teachers = [], use
                   <Activity className="text-violet-300" size={30} />
                 </div>
                 <h3 className="text-lg font-medium text-slate-900">Synchronizing…</h3>
-                <p className="text-sm text-slate-500 max-w-xs">Connecting to the assessment matrix.</p>
+                <p className="text-sm text-slate-500 max-w-xs">Connecting to detailed assessment reports.</p>
               </div>
             )}
           </div>
           <div className="p-6 bg-violet-50 border-t border-violet-100">
             <button
-              onClick={() => { setShowUnAssessedSheet(false); onNavigate('assess-summary-report'); }}
+              onClick={() => { setShowUnAssessedSheet(false); onNavigate('assess-summative-report'); }}
               className="w-full flex items-center justify-center gap-2 py-3 bg-violet-700 text-white rounded-xl font-semibold hover:bg-violet-800 transition shadow-lg shadow-violet-700/20"
             >
-              Open Full Assessment Matrix <ChevronRight size={17} />
+              Open Detailed Summative Reports <ChevronRight size={17} />
             </button>
           </div>
         </div>

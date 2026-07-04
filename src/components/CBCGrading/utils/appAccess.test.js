@@ -36,6 +36,14 @@ describe('appAccess', () => {
     expect(hasPageAccess({ role: 'SUPER_ADMIN' }, 'inventory-items')).toBe(true);
   });
 
+  it('keeps the new LMS pages open for schools with the legacy LMS entitlement', () => {
+    const user = { role: 'SUPER_ADMIN', enabledApps: ['lms'] };
+
+    expect(hasAppAccess(user, 'lms-professional')).toBe(true);
+    expect(hasPageAccess(user, 'learning-dashboard')).toBe(true);
+    expect(hasPageAccess(user, 'learning-lessons')).toBe(true);
+  });
+
   it('lets super admins open every settings page regardless of package modules', () => {
     const superAdmin = { role: 'SUPER_ADMIN', enabledApps: ['school-settings'] };
     const schoolAdmin = { role: 'ADMIN', enabledApps: ['school-settings'] };

@@ -68,7 +68,7 @@ export const assessmentAPI = {
     return fetchWithAuth(`/assessments/summative/results/learner/${learnerId}${queryString ? `?${queryString}` : ''}`);
   },
   async getTestResults(testId) {
-    return cachedFetch(`results:${testId}`, () => fetchWithAuth(`/assessments/summative/results/test/${testId}`), TTL.SHORT);
+    return fetchWithAuth(`/assessments/summative/results/test/${testId}`);
   },
   async uploadBulk(formData) {
     return fetchWithAuth('/bulk/assessments/upload', { method: 'POST', body: formData, headers: {} });

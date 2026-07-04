@@ -196,7 +196,6 @@ export const allNavSections = [
                 items: [
                     { id: 'assess-mobile-dashboard',      label: 'Assessment Overview', path: 'assess-mobile-dashboard',      permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'assess-summative-assessment', label: 'Summative Assessments', path: 'assess-summative-assessment', permission: 'ACCESS_ASSESSMENT_MODULE' },
-                    { id: 'assess-summary-report',       label: 'Assessment Matrix', path: 'assess-summary-report',      permission: 'ACCESS_ASSESSMENT_MODULE' },
                 ]
             },
             {

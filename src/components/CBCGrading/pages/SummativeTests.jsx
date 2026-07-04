@@ -581,7 +581,7 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
         <div className="flex items-center justify-center py-20">
           <div className="flex flex-col items-center">
             <Loader className="animate-spin text-brand-purple mb-4" size={40} />
-            <p className="text-slate-400 font-semibold uppercase tracking-widest text-[10px]">Synchronizing Assessment Matrix...</p>
+            <p className="text-slate-400 font-semibold uppercase tracking-widest text-[10px]">Synchronizing Summative Tests...</p>
           </div>
         </div>
       ) : Object.keys(groupedData).length > 0 ? (

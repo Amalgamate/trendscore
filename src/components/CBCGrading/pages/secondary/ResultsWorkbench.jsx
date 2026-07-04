@@ -14,7 +14,7 @@ const contentByVariant = {
   },
   subject: {
     title: 'Subject Analysis Workbench',
-    description: 'Inspect learning area performance trends and compare outcomes using matrix and detailed reports.',
+    description: 'Inspect learning area performance trends and compare outcomes using detailed reports.',
     icon: Grid,
   },
   forecast: {
@@ -71,12 +71,6 @@ const ResultsWorkbench = ({ variant = 'mean', pageParams = {}, onNavigate }) => 
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ActionCard
-          icon={Grid}
-          title="Assessment Matrix"
-          description="Open the matrix report to compare performance distribution."
-          onClick={() => onNavigate?.('assess-summary-report', pageParams)}
-        />
         <ActionCard
           icon={FileText}
           title="Detailed Summative Reports"

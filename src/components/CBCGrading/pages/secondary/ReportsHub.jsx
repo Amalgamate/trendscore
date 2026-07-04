@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, BarChart3, FileText, Grid, TrendingUp } from "lucide-react";
+import { ArrowRight, BarChart3, FileText, TrendingUp } from "lucide-react";
 
 const Card = ({ title, description, onClick, icon: Icon }) => (
   <button
@@ -38,12 +38,6 @@ const ReportsHub = ({ onNavigate }) => {
           onClick={() => onNavigate?.('assess-termly-report')}
         />
         <Card
-          icon={Grid}
-          title="Assessment Matrix"
-          description="Summary matrix across assessments."
-          onClick={() => onNavigate?.('assess-summary-report')}
-        />
-        <Card
           icon={TrendingUp}
           title="Summative Detailed Reports"
           description="Per-subject and per-learner analysis."
@@ -61,4 +55,3 @@ const ReportsHub = ({ onNavigate }) => {
 };
 
 export default ReportsHub;
-

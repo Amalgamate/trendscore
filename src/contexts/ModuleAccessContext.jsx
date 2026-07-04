@@ -57,7 +57,9 @@ export const ModuleAccessProvider = ({ user, children }) => {
     isModuleEnabled: (slug) => {
       if (!slug) return true;
       if (!modules.length) return true;
-      return activeSet.has(slug);
+      if (activeSet.has(slug)) return true;
+      if (slug === 'lms-professional') return activeSet.has('lms');
+      return false;
     },
   }), [activeSet, activeSlugs, loading, modules, packages, refreshModules]);
 
@@ -69,4 +71,3 @@ export const ModuleAccessProvider = ({ user, children }) => {
 };
 
 export const useModuleAccess = () => useContext(ModuleAccessContext);
-

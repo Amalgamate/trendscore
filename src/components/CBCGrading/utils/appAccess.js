@@ -316,7 +316,9 @@ export const hasAppAccess = (user, slug) => {
 
   const enabledApps = user?.enabledApps || user?.activeModules || user?.school?.enabledApps || user?.school?.activeModules;
   if (!Array.isArray(enabledApps) || enabledApps.length === 0) return true;
-  return enabledApps.includes(slug);
+  if (enabledApps.includes(slug)) return true;
+  if (slug === 'lms-professional') return enabledApps.includes('lms');
+  return false;
 };
 
 export const hasPageAccess = (user, page) => {
