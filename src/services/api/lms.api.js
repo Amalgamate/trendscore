@@ -47,8 +47,101 @@ export const lmsAPI = {
   },
   getDashboardStats: async () => fetchWithAuth('/lms/dashboard/stats'),
 
+  // ─── Assignments ───────────────────────────────────────────────────────────
+  getAssignments: async (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return fetchWithAuth(`/lms/assignments${queryString ? `?${queryString}` : ''}`);
+  },
+  getAssignment: async (id) => fetchWithAuth(`/lms/assignments/${id}`),
+  createAssignment: async (data) =>
+    fetchWithAuth('/lms/assignments', { method: 'POST', body: JSON.stringify(data) }),
+  updateAssignment: async (id, data) =>
+    fetchWithAuth(`/lms/assignments/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteAssignment: async (id) =>
+    fetchWithAuth(`/lms/assignments/${id}`, { method: 'DELETE' }),
+  publishAssignment: async (id) =>
+    fetchWithAuth(`/lms/assignments/${id}/publish`, { method: 'POST' }),
+  closeAssignment: async (id) =>
+    fetchWithAuth(`/lms/assignments/${id}/close`, { method: 'POST' }),
+
+  // ─── Submissions ────────────────────────────────────────────────────────────
+  getSubmissions: async (assignmentId, params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return fetchWithAuth(`/lms/assignments/${assignmentId}/submissions${queryString ? `?${queryString}` : ''}`);
+  },
+  getMySubmissions: async (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return fetchWithAuth(`/lms/submissions/mine${queryString ? `?${queryString}` : ''}`);
+  },
+  submitAssignment: async (assignmentId, formData) =>
+    fetchWithAuth(`/lms/assignments/${assignmentId}/submissions`, {
+      method: 'POST',
+      body: formData,
+      // Do NOT set Content-Type — browser sets it with boundary for multipart
+      headers: {},
+    }),
+  markSubmission: async (submissionId, data) =>
+    fetchWithAuth(`/lms/submissions/${submissionId}/mark`, { method: 'POST', body: JSON.stringify(data) }),
+
+  // ─── Lessons ───────────────────────────────────────────────────────────────
+  getLessons: async (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return fetchWithAuth(`/lms/lessons${queryString ? `?${queryString}` : ''}`);
+  },
+  getLesson: async (id) => fetchWithAuth(`/lms/lessons/${id}`),
+  createLesson: async (data) =>
+    fetchWithAuth('/lms/lessons', { method: 'POST', body: JSON.stringify(data) }),
+  updateLesson: async (id, data) =>
+    fetchWithAuth(`/lms/lessons/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteLesson: async (id) =>
+    fetchWithAuth(`/lms/lessons/${id}`, { method: 'DELETE' }),
+  publishLesson: async (id) =>
+    fetchWithAuth(`/lms/lessons/${id}/publish`, { method: 'POST' }),
+  archiveLesson: async (id) =>
+    fetchWithAuth(`/lms/lessons/${id}/archive`, { method: 'POST' }),
+  getLessonWithBlocks: async (id) => fetchWithAuth(`/lms/lessons/${id}/blocks`),
+  upsertLessonBlocks: async (id, blocks) =>
+    fetchWithAuth(`/lms/lessons/${id}/blocks`, { method: 'PUT', body: JSON.stringify({ blocks }) }),
+
+  // ─── Resources (Revision Library) ─────────────────────────────────────────
+  getResources: async (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return fetchWithAuth(`/lms/resources${queryString ? `?${queryString}` : ''}`);
+  },
+  getResource: async (id) => fetchWithAuth(`/lms/resources/${id}`),
+  createResource: async (formData) =>
+    fetchWithAuth('/lms/resources', {
+      method: 'POST',
+      body: formData,
+      // Do NOT set Content-Type — browser sets it with boundary for multipart
+      headers: {},
+    }),
+  updateResource: async (id, data) =>
+    fetchWithAuth(`/lms/resources/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteResource: async (id) =>
+    fetchWithAuth(`/lms/resources/${id}`, { method: 'DELETE' }),
+  downloadResource: async (id) =>
+    fetchWithAuth(`/lms/resources/${id}/download`, { method: 'POST' }),
+  toggleBookmark: async (id) =>
+    fetchWithAuth(`/lms/resources/${id}/bookmark`, { method: 'POST' }),
+
   // ─── Settings ──────────────────────────────────────────────────────────────
   getSettings: async () => fetchWithAuth('/lms/settings'),
   updateSettings: async (data) =>
     fetchWithAuth('/lms/settings', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // ─── Analytics & Insights ─────────────────────────────────────────────────
+  getAnalyticsOverview: async () => fetchWithAuth('/lms/analytics/overview'),
+  getAnalytics: async (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return fetchWithAuth(`/lms/analytics${queryString ? `?${queryString}` : ''}`);
+  },
+
+  // ─── Student Portal ────────────────────────────────────────────────────────
+  /** Returns the list of courses the authenticated learner is enrolled in */
+  getStudentCourses: async () => fetchWithAuth('/lms/my-courses'),
+  /** Returns detail + lessons for a single enrolled course */
+  getStudentCourseDetail: async (courseId) => fetchWithAuth(`/lms/my-courses/${courseId}`),
+  /** Returns assignments for the authenticated learner */
+  getStudentAssignments: async () => fetchWithAuth('/lms/my-assignments'),
 };

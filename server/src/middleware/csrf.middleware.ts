@@ -11,7 +11,7 @@ export const issueCsrfToken = (req: Request, res: Response) => {
 };
 
 export const requireCsrf = (req: Request, res: Response, next: NextFunction) => {
-  if (process.env.NODE_ENV === 'development') {
+  if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
     return next();
   }
   const key = String(req.ip || req.headers['x-forwarded-for'] || 'local');

@@ -236,16 +236,17 @@ export const allNavSections = [
     {
         id: 'digital-learning',
         label: 'Learning',
-        icon: GraduationCap,
+        icon: BookOpen,
         app: 'lms-professional',
         permission: 'ACCESS_LMS',
         items: [
             { id: 'learning-dashboard',    label: 'Dashboard',         path: 'learning-dashboard',    permission: 'ACCESS_LMS'             },
             { id: 'learning-assignments',  label: 'Assignments',       path: 'learning-assignments',  permission: 'ACCESS_LMS'             },
             { id: 'learning-lessons',      label: 'Lessons',           path: 'learning-lessons',      permission: 'ACCESS_LMS'             },
+            { id: 'learning-interactive',  label: 'Interactive',       path: 'learning-interactive',  permission: 'ACCESS_LMS'             },
             { id: 'learning-revision',     label: 'Revision Library',  path: 'learning-revision',     permission: 'ACCESS_LMS'             },
             { id: 'learning-analytics',    label: 'Analytics',         path: 'learning-analytics',    permission: 'ANALYTICS_LEARNING'     },
-            { id: 'learning-settings',     label: 'Settings',          path: 'learning-settings',     permission: 'LEARNING_MANAGE'        },
+            { id: 'learning-settings',     label: 'Settings',          path: 'learning-settings',     permission: 'SCHOOL_SETTINGS'        },
             { id: 'learning-marketplace',  label: 'Marketplace',       path: 'learning-marketplace',  permission: 'MARKETPLACE_PURCHASE', app: 'lms-enterprise' },
         ]
     },
@@ -361,7 +362,7 @@ export const allNavSections = [
     {
         id: 'lms',
         label: 'Learning Management',
-        icon: PlayCircle,
+        icon: BookOpen,
         app: 'lms',
         permission: 'ACCESS_LMS',
         items: [
@@ -767,7 +768,7 @@ export const useNavigation = () => {
             schoolSections: role === 'PARENT'
                 ? parentSchoolSectionsFromNav(nav)
                 : nav.filter(s => SECONDARY_SCHOOL_SECTIONS.includes(s.id)),
-            lmsSection:          null, // Learning Management hidden until ready
+            lmsSection:          find('digital-learning'),
             studentLmsSection:   null,
             backOfficeSections:  nav.filter(s => SECONDARY_BACKOFFICE_SECTIONS.includes(s.id)),
             docsCenterSection:   find('docs-center'),
@@ -812,7 +813,7 @@ export const useNavigation = () => {
             schoolSections: role === 'PARENT'
                 ? parentSchoolSectionsFromNav(nav)
                 : nav.filter(s => TERTIARY_SCHOOL_SECTIONS.includes(s.id)),
-            lmsSection:          null, // Learning Management hidden until ready
+            lmsSection:          find('digital-learning'),
             studentLmsSection:   null,
             backOfficeSections:  nav.filter(s => TERTIARY_BACKOFFICE_SECTIONS.includes(s.id)),
             docsCenterSection:   find('docs-center'),
@@ -894,7 +895,7 @@ export const useNavigation = () => {
     }, [can, role, isRole, labels, accessUser, isModuleEnabled]);
 
     const dashboardSection = navSections.find(s => s.id === 'dashboard');
-    const lmsSection = navSections.find(s => s.id === 'lms');
+    const lmsSection = navSections.find(s => s.id === 'digital-learning');
     const studentLmsSection = useMemo(() => {
         if (role !== 'STUDENT') return null;
         return {

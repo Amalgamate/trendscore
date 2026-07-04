@@ -158,6 +158,15 @@ const PREFETCH_MAP = {
   'settings-school':      () => import('../pages/settings/SchoolSettings'),
   'settings-users':       () => import('../pages/settings/UserManagement'),
   'planner-duty-roster':  () => import('../pages/planner/DutyRosterPage'),
+  'learning-dashboard':   () => import('../pages/LMSDashboard'),
+  'learning-assignments': () => import('../pages/lms/assignments/AssignmentsPage'),
+  'learning-lessons':     () => import('../pages/lms/lessons/LessonList'),
+  'learning-lesson-builder': () => import('../pages/lms/lessons/LessonBuilderPage'),
+  'learning-interactive': () => import('../pages/lms/LMSPlaceholder'),
+  'learning-revision':    () => import('../pages/lms/revision/RevisionLibraryPage'),
+  'learning-analytics':   () => import('../pages/lms/LMSPlaceholder'),
+  'learning-settings':    () => import('../pages/lms/settings/LMSSettingsPage'),
+  'learning-marketplace': () => import('../pages/lms/LMSPlaceholder'),
 };
 
 const prefetch = (path) => {

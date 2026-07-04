@@ -4,6 +4,7 @@ import prisma from '../config/database';
 import messageService from '../services/message.service';
 import { resolveOrganicPayment, applyToSpecificInvoice, normalizePhone, applyAmountToInvoiceFields, resolveInvoiceStatus } from '../services/payment-resolver.service';
 import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
+import { LMSMarketplaceService } from '../services/lms-marketplace.service';
 
 import logger from '../utils/logger';
 export const initiatePayment = async (req: Request, res: Response) => {
@@ -228,6 +229,19 @@ export const handleCallback = async (req: Request, res: Response) => {
                         });
                     } catch (notifErr) {
                         logger.error('[MpesaCallback] SMS error:', notifErr);
+                    }
+                }
+
+                // ── Marketplace hook: try to complete purchase if no invoiceId ────────
+                // (Marketplace purchases don't have invoiceId, so this branch executes for them)
+                if (!transaction.invoiceId) {
+                    try {
+                        await LMSMarketplaceService.completeByCheckoutRequestId(
+                            checkoutRequestId,
+                            { success: true, resultCode, resultDesc, receipt }
+                        );
+                    } catch (err: any) {
+                        logger.error('[MpesaCallback] Marketplace completion hook error (non-fatal):', err?.message ?? err);
                     }
                 }
 

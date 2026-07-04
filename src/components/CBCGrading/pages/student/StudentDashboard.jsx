@@ -1,505 +1,1238 @@
 /**
- * Student Dashboard
- * Modern learner-focused dashboard with courses, assignments, progress, and achievements
+ * Student Dashboard – Desktop Redesign
+ * Mirrors the Teacher Dashboard's card-based SaaS layout.
+ * Brand palette: Navy #06285a · Orange #ff7900 · Purple #030b82
+ *
+ * Features:
+ *  - Stat tiles row (assignments, attendance, GPA, messages)
+ *  - Continue Learning: real enrolled-course progress (GET /lms/my-courses)
+ *  - Download assignments panel (GET /lms/my-assignments)
+ *  - Report card panel (from dashboardAPI.getStudentMetrics)
+ *  - Marketplace for past papers — real listings (GET /lms/marketplace) with a
+ *    real M-Pesa STK push purchase flow (POST /lms/marketplace/:id/purchase),
+ *    polled to completion via GET /lms/marketplace/my-purchases.
+ *    If the school hasn't enabled the marketplace add-on (lms-enterprise),
+ *    the panel degrades to a friendly "not enabled" state instead of erroring.
  */
 
 import React, { useEffect, useState } from 'react';
-import { dashboardAPI } from '../../../../services/api';
-import {
-  AppCard,
-  EmptyState
-} from '@/design-system/components';
-import DashboardSummary from '../dashboard/DashboardSummary';
-import { DashboardSection, DashboardSectionControls, useDashboardSections } from '../dashboard/DashboardSections';
-import { useImpersonation } from '../../../../contexts/ImpersonationContext';
-
 import {
   AlertTriangle,
+  ArrowUpRight,
+  Award,
+  BarChart2,
   BookOpen,
   CheckCircle2,
-  BarChart3,
-  Zap,
+  ChevronRight,
+  ChevronDown,
+  ClipboardList,
+  CreditCard,
+  Download,
+  FileText,
+  Info,
+  Lock,
+  MessageSquare,
+  Phone,
+  RefreshCw,
+  Search,
+  ShoppingCart,
+  Star,
+  Trash2,
   TrendingUp,
-  AlertCircle,
-  Info
+  X,
+  XCircle,
+  Zap,
 } from 'lucide-react';
+import { dashboardAPI, lmsAPI, marketplaceAPI } from '../../../../services/api';
+import { GreetingToast } from '../dashboard/DashboardSummary';
+import { useImpersonation } from '../../../../contexts/ImpersonationContext';
 
-const StudentDashboard = ({ user, onNavigate }) => {
-  const [loading, setLoading] = useState(true);
-  const [metrics, setMetrics] = useState(null);
-  const [apiError, setApiError] = useState(null);
-  const [noLearnerRecord, setNoLearnerRecord] = useState(false);
+/* ─── Helpers ──────────────────────────────────────────────────────────────── */
+const fmt     = (v) => Number(v || 0).toLocaleString();
+const pct     = (v) => `${Math.round(Number(v || 0))}%`;
+const fmtDate = (v) => {
+  if (!v) return '';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(d);
+};
 
-  const { isImpersonating } = useImpersonation();
+/* ─── Skeleton ──────────────────────────────────────────────────────────────── */
+const Skeleton = ({ className = '' }) => (
+  <div className={`animate-pulse rounded-lg bg-slate-200/80 ${className}`} />
+);
 
-  const userId = user?.id || user?.userId;
-  const sectionControls = useDashboardSections('student', [
-    { id: 'executive-summary', label: 'Executive Summary', description: 'Progress, courses, scores, submissions' },
-    { id: 'courses-deadlines', label: 'Courses & Deadlines', description: 'Courses and upcoming work' },
-    { id: 'assignments-performance', label: 'Assignments & Performance', description: 'Submission and quiz performance' },
-    { id: 'attendance-achievements', label: 'Attendance & Achievements', description: 'Attendance and earned badges' },
-    { id: 'learning-insights', label: 'Learning Insights', description: 'Personalized recommendations' },
-  ]);
-
-  const loadMetrics = async () => {
-    try {
-      setLoading(true);
-      setApiError(null);
-      setNoLearnerRecord(false);
-      const response = await dashboardAPI.getStudentMetrics?.() || { success: true, data: {} };
-      if (response.success) {
-        setMetrics(response.data);
-      } else {
-        setApiError(response.message || 'Failed to load dashboard data');
-      }
-    } catch (error) {
-      console.error('Failed to load student metrics:', error);
-      // If the student account has no linked learner record (common for test/demo accounts
-      // or admin impersonation sessions), show an empty dashboard shell instead of hard error.
-      const isLearnerNotFound =
-        error?.response?.status === 404 ||
-        error?.response?.status === 403 ||
-        (error?.message || '').toLowerCase().includes('learner record not found') ||
-        (error?.message || '').toLowerCase().includes('unauthorized student');
-
-      if (isLearnerNotFound) {
-        setNoLearnerRecord(true);
-        setMetrics({});   // empty shell — all arrays/stats default to empty/zero
-      } else {
-        setApiError(error.message || 'Could not reach the server.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadMetrics();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
-
-  const formatDate = (value) => {
-    if (!value) return 'No date';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return 'No date';
-    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-
-  const activeCourses = (metrics?.courses || []).map((course) => ({
-    id: course.id || course.courseId,
-    name: course.name || course.title || course.subject || 'Course',
-    teacher: course.teacher || course.subject || 'Assigned course',
-    progress: Number(course.progress ?? course.progressPercent ?? 0),
-  }));
-
-  const assignments = (metrics?.assignments || []).map((assignment) => ({
-    id: assignment.id,
-    course: assignment.course || assignment.courseTitle || 'Course',
-    title: assignment.title || 'Assignment',
-    dueDate: formatDate(assignment.dueDate || assignment.date),
-    submitted: Boolean(assignment.submitted || assignment.status === 'submitted'),
-    grade: assignment.grade,
-    status: assignment.status,
-  }));
-
-  const upcomingDeadlines = (metrics?.upcomingDeadlines || [])
-    .map((deadline) => ({
-      id: deadline.id,
-      course: deadline.course || deadline.courseTitle || 'Course',
-      type: deadline.type || 'Assignment',
-      title: deadline.title || 'Deadline',
-      date: formatDate(deadline.dueDate || deadline.date),
-      daysLeft: deadline.daysLeft,
-      priority: deadline.priority || 'medium',
-    }));
-
-  const quizPerformance = (metrics?.subjects || metrics?.recentSubjects || []).map((item) => ({
-    id: item.id,
-    course: item.course || item.subject || item.learningArea || item.name || 'Subject',
-    quiz: item.quiz || item.title || item.name || 'Assessment',
-    score: Number(item.score ?? item.percentage ?? 0),
-    date: formatDate(item.date || item.createdAt),
-  }));
-
-  const achievements = (metrics?.achievements || []).map((achievement) => ({
-    id: achievement.id,
-    name: achievement.name || achievement.title || 'Achievement',
-    description: achievement.description || '',
-    icon: achievement.icon || 'achievement',
-    earned: Boolean(achievement.earned),
-  }));
-
-  const getProgressColor = (progress) => {
-    if (progress >= 80) return 'text-emerald-600 bg-emerald-50';
-    if (progress >= 60) return 'text-amber-600 bg-amber-50';
-    return 'text-rose-600 bg-rose-50';
-  };
-
-  const getScoreColor = (score) => {
-    if (score >= 90) return 'text-emerald-600 bg-emerald-50';
-    if (score >= 80) return 'text-blue-600 bg-blue-50';
-    if (score >= 70) return 'text-amber-600 bg-amber-50';
-    return 'text-rose-600 bg-rose-50';
-  };
-
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case 'high': return 'border-rose-200 bg-rose-50';
-      case 'medium': return 'border-amber-200 bg-amber-50';
-      default: return 'border-slate-200 bg-white';
-    }
-  };
-
-  const getPriorityBadge = (priority) => {
-    switch (priority) {
-      case 'high': return <span className="text-xs font-semibold text-rose-700 bg-rose-100 px-2 py-1 rounded">Urgent</span>;
-      case 'medium': return <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-1 rounded">Soon</span>;
-      default: return null;
-    }
-  };
-
-  if (loading) {
-    return <div className="animate-pulse space-y-6"><div className="h-96 bg-gray-200 rounded-xl" /></div>;
-  }
-
-  if (apiError && !metrics) {
-    return (
-      <EmptyState
-        icon={<AlertTriangle size={48} />}
-        title="Dashboard unavailable"
-        description={apiError}
-        action={{
-          label: 'Retry',
-          onClick: loadMetrics
-        }}
+/* ─── Radial ring ────────────────────────────────────────────────────────────── */
+const RadialRing = ({ value = 0, size = 56, stroke = 5, color = '#ff7900', bg = '#e2e8f0' }) => {
+  const r    = (size - stroke * 2) / 2;
+  const circ = 2 * Math.PI * r;
+  const dash = (value / 100) * circ;
+  return (
+    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={bg} strokeWidth={stroke} />
+      <circle
+        cx={size / 2} cy={size / 2} r={r}
+        fill="none" stroke={color} strokeWidth={stroke}
+        strokeDasharray={`${dash} ${circ}`}
+        strokeLinecap="round"
       />
-    );
-  }
+    </svg>
+  );
+};
 
-  const overallProgress = activeCourses.length > 0
-    ? Math.round(activeCourses.reduce((sum, c) => sum + c.progress, 0) / activeCourses.length)
-    : 0;
-  const avgQuizScore = quizPerformance.length > 0
-    ? Math.round(quizPerformance.reduce((sum, q) => sum + q.score, 0) / quizPerformance.length)
-    : 0;
-  const submittedCount = assignments.filter(a => a.submitted).length;
+/* ─── Mini sparkline bars ────────────────────────────────────────────────────── */
+const SparkBars = ({ values = [60, 80, 50, 90, 70, 85, 75], color = '#ff7900', height = 28 }) => (
+  <svg width={56} height={height} viewBox={`0 0 56 ${height}`} fill="none" className="shrink-0">
+    {values.map((v, i) => {
+      const barH = (v / 100) * height;
+      return (
+        <rect key={i} x={i * 8} y={height - barH} width={5} height={barH} rx={2}
+          fill={color} opacity={0.6 + i * 0.04} />
+      );
+    })}
+  </svg>
+);
 
-  // Live attendance data from API
-  const attendanceRate   = metrics?.stats?.attendanceRate ?? metrics?.stats?.attendance ?? null;
-  const attendancePresent = metrics?.stats?.attendancePresent ?? null;
-  const attendanceAbsent  = metrics?.stats?.attendanceAbsent  ?? null;
-  const attendanceTotal   = metrics?.stats?.attendanceTotal   ?? null;
-  const hasAttendance = attendanceTotal !== null && attendanceTotal > 0;
+/* ─── Section header ─────────────────────────────────────────────────────────── */
+const SectionHeader = ({ title, action, icon: Icon }) => (
+  <div className="flex items-center justify-between gap-3 mb-3">
+    <div className="flex items-center gap-2">
+      {Icon && <Icon size={14} className="text-[#ff7900]" />}
+      <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[#06285a]">{title}</p>
+    </div>
+    {action}
+  </div>
+);
 
-  const getAttendanceBadge = (rate) => {
-    if (rate === null) return null;
-    if (rate >= 90) return { label: 'Excellent attendance!', color: 'text-emerald-600' };
-    if (rate >= 75) return { label: 'Good attendance',       color: 'text-amber-600'  };
-    return               { label: 'Needs improvement',       color: 'text-rose-600'   };
+/* ─── Card / Panel wrappers ──────────────────────────────────────────────────── */
+const Card = ({ children, className = '', style }) => (
+  <div className={`rounded-xl border border-slate-100 bg-white ${className}`} style={style}>
+    {children}
+  </div>
+);
+const Panel = ({ children, className = '', title, icon, action }) => (
+  <Card className={`p-4 ${className}`}>
+    {title && <SectionHeader title={title} icon={icon} action={action} />}
+    {children}
+  </Card>
+);
+
+/* ─── Stat Tile ──────────────────────────────────────────────────────────────── */
+const StatTile = ({ label, value, sub, icon: Icon, accent, spark, onClick, loading }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="group relative flex flex-col justify-between overflow-hidden rounded-xl border border-slate-100 bg-white p-4 text-left transition-all duration-200 hover:border-[#ff7900]/40 hover:shadow-[0_4px_24px_rgba(255,121,0,0.10)] focus:outline-none"
+    style={{ minHeight: 120 }}
+  >
+    <div className="absolute left-0 top-0 h-full w-[3px] rounded-l-xl transition-all duration-300 group-hover:w-[5px]" style={{ background: accent }} />
+    <div className="flex items-start justify-between gap-2 pl-2">
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</p>
+        <p className="mt-1 truncate text-2xl font-black text-[#06285a] leading-none">
+          {loading ? <span className="text-slate-300">···</span> : value}
+        </p>
+        {sub && <p className="mt-1 truncate text-[11px] font-medium text-slate-500">{sub}</p>}
+      </div>
+      <div
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-transform duration-200 group-hover:scale-110"
+        style={{ background: `${accent}18` }}
+      >
+        <Icon size={18} style={{ color: accent }} />
+      </div>
+    </div>
+    <div className="mt-3 flex items-center justify-between pl-2">
+      {spark && <SparkBars color={accent} />}
+      <ArrowUpRight size={13} className="ml-auto text-slate-300 transition-colors group-hover:text-[#ff7900]" />
+    </div>
+  </button>
+);
+
+/* ─── Empty panel ────────────────────────────────────────────────────────────── */
+const EmptyPanel = ({ icon: Icon, title, subtitle }) => (
+  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-center">
+    <Icon size={26} className="mb-2 text-slate-300" />
+    <p className="text-sm font-semibold text-slate-400">{title}</p>
+    {subtitle && <p className="mt-1 max-w-xs text-[11px] text-slate-400">{subtitle}</p>}
+  </div>
+);
+
+/* ─── Assignment Row ─────────────────────────────────────────────────────────── */
+const AssignmentRow = ({ item, index }) => (
+  <div className="group flex w-full items-center gap-3 rounded-xl border border-slate-100 bg-white p-3 transition-all duration-200 hover:border-[#ff7900]/30 hover:bg-[#fff8f2]">
+    <div
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white"
+      style={{ background: index % 2 ? '#ff7900' : '#06285a' }}
+    >
+      <ClipboardList size={14} />
+    </div>
+    <div className="min-w-0 flex-1">
+      <p className="truncate text-sm font-semibold text-[#06285a]">{item.title}</p>
+      <p className="mt-0.5 truncate text-[11px] text-slate-500">
+        {[item.subject, item.teacher].filter(Boolean).join(' · ')}
+      </p>
+    </div>
+    <div className="flex shrink-0 items-center gap-2">
+      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+        Due {fmtDate(item.rawDue) || item.dueDate}
+      </span>
+      {item.fileUrl ? (
+        <a
+          href={item.fileUrl}
+          download
+          onClick={(e) => e.stopPropagation()}
+          className="flex items-center gap-1 rounded-lg bg-[#ff7900] px-2.5 py-1 text-[10px] font-black text-white transition hover:opacity-90"
+        >
+          <Download size={10} /> Download
+        </a>
+      ) : (
+        <span className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-400">
+          <Download size={10} /> No file
+        </span>
+      )}
+      {item.submitted && (
+        <CheckCircle2 size={14} className="text-emerald-500" />
+      )}
+    </div>
+  </div>
+);
+
+/* ─── Report Card Grade Row ──────────────────────────────────────────────────── */
+const GradeRow = ({ subject, score, grade, comment }) => {
+  const color = score >= 80 ? '#10b981' : score >= 60 ? '#ff7900' : '#ef4444';
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-black text-sm text-white"
+        style={{ background: 'linear-gradient(135deg,#06285a 60%,#030b82)' }}>
+        {subject.slice(0, 2).toUpperCase()}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-bold text-[#06285a]">{subject}</p>
+        {comment && <p className="mt-0.5 truncate text-[11px] text-slate-500">{comment}</p>}
+      </div>
+      <div className="flex shrink-0 flex-col items-end gap-0.5">
+        <span className="text-lg font-black" style={{ color }}>{grade}</span>
+        <span className="text-[10px] font-bold text-slate-400">{pct(score)}</span>
+      </div>
+      <RadialRing value={score} size={36} stroke={3} color={color} />
+    </div>
+  );
+};
+
+/* ─── Course Progress Card (real enrollment + progress data) ────────────────── */
+const CourseProgressCard = ({ course, onNavigate }) => {
+  const p = Number(course.progressPercent || 0);
+  const done = p >= 100;
+  const color = done ? '#10b981' : p >= 40 ? '#ff7900' : '#8b5cf6';
+  return (
+    <button
+      type="button"
+      onClick={() => onNavigate('student-course-view', { courseId: course.courseId })}
+      className="group flex w-64 shrink-0 flex-col gap-3 rounded-xl border border-slate-100 bg-white p-4 text-left transition-all duration-200 hover:border-[#ff7900]/40 hover:shadow-[0_4px_20px_rgba(255,121,0,0.10)]"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-bold text-[#06285a]">{course.title}</p>
+          <p className="mt-0.5 truncate text-[11px] text-slate-500">
+            {[course.subject, course.grade].filter(Boolean).join(' · ') || 'Course'}
+          </p>
+        </div>
+        <RadialRing value={p} size={40} stroke={4} color={color} />
+      </div>
+      {course.description && (
+        <p className="line-clamp-2 text-[11px] text-slate-500">{course.description}</p>
+      )}
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+        <div className="h-full rounded-full transition-all" style={{ width: `${p}%`, background: color }} />
+      </div>
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-semibold text-slate-400">
+          {course.completedItems ?? 0}/{course.totalItems ?? 0} items
+        </p>
+        <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider transition-colors" style={{ color }}>
+          {done ? 'Review' : p > 0 ? 'Continue' : 'Start'} <ChevronRight size={11} />
+        </span>
+      </div>
+    </button>
+  );
+};
+
+/* ─── Marketplace Listing Card (real /lms/marketplace data) ─────────────────── */
+const LISTING_TYPE_LABEL = { FREE: 'Free resource', PAID: 'Paid', BUNDLE: 'Bundle', SUBSCRIPTION: 'Subscription' };
+
+const PaperCard = ({ paper, onAddToCart, inCart }) => {
+  const isFree = Number(paper.price) === 0;
+  const sellerName = paper.seller
+    ? `${paper.seller.firstName ?? ''} ${paper.seller.lastName ?? ''}`.trim()
+    : '';
+  return (
+    <div className="group flex flex-col gap-3 rounded-xl border border-slate-100 bg-white p-4 transition-all duration-200 hover:border-[#ff7900]/30 hover:shadow-[0_4px_20px_rgba(255,121,0,0.08)]">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#06285a]/8">
+          <FileText size={18} className="text-[#06285a]" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-bold text-[#06285a]">{paper.title}</p>
+          <p className="mt-0.5 truncate text-[11px] text-slate-500">
+            {[LISTING_TYPE_LABEL[paper.listingType] || paper.listingType, sellerName && `by ${sellerName}`]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+        </div>
+        {paper.rating ? (
+          <div className="flex shrink-0 items-center gap-0.5">
+            <Star size={10} className="text-[#ff7900]" fill="#ff7900" />
+            <span className="text-[10px] font-bold text-slate-500">{Number(paper.rating).toFixed(1)}</span>
+          </div>
+        ) : null}
+      </div>
+      {paper.description && (
+        <p className="line-clamp-2 text-[11px] text-slate-500">{paper.description}</p>
+      )}
+      <div className="flex items-center justify-between">
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-base font-black text-[#06285a]">
+            {isFree ? 'FREE' : `KES ${fmt(paper.price)}`}
+          </span>
+          {paper.purchaseCount > 0 && (
+            <span className="text-[10px] text-slate-400">· {fmt(paper.purchaseCount)} sold</span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => onAddToCart(paper)}
+          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-black transition-all duration-200 ${
+            inCart
+              ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+              : 'bg-[#ff7900] text-white hover:opacity-90'
+          }`}
+        >
+          {inCart ? <CheckCircle2 size={12} /> : <ShoppingCart size={12} />}
+          {inCart ? 'Added' : 'Add to Cart'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ─── M-Pesa Checkout Modal (real STK push + polling) ────────────────────────
+ * Flow:
+ *  1. form        — collect phone number
+ *  2. submitting  — POST /lms/marketplace/:id/purchase for each cart item
+ *  3. waiting     — poll GET /lms/marketplace/my-purchases until each
+ *                   purchase's status leaves PENDING (Safaricom callback
+ *                   updates it asynchronously server-side)
+ *  4. success / partial / error — final outcome + real download links
+ * ────────────────────────────────────────────────────────────────────────── */
+const POLL_INTERVAL_MS = 3000;
+const POLL_MAX_ATTEMPTS = 14; // ~42s of polling before we give up and let them check later
+
+const MpesaCheckoutModal = ({ cart, user, onClose, onSuccess }) => {
+  const [phone, setPhone] = useState(user?.phone || user?.phoneNumber || '');
+  const [step, setStep] = useState('form'); // form | submitting | waiting | success | partial | error
+  const [results, setResults] = useState([]); // [{ item, purchaseId?, status, error? }]
+  const [attempts, setAttempts] = useState(0);
+  const [downloadState, setDownloadState] = useState({}); // purchaseId -> 'loading' | 'error' | url
+
+  const total = cart.reduce((s, i) => s + Number(i.price || 0), 0);
+
+  const handlePay = async () => {
+    if (!phone) return;
+    setStep('submitting');
+
+    const initiated = [];
+    for (const item of cart) {
+      try {
+        const res = await marketplaceAPI.initiatePurchase(
+          item.id,
+          phone,
+          user?.firstName || '',
+          user?.lastName || ''
+        );
+        if (res?.success && res?.data?.purchaseId) {
+          initiated.push({ item, purchaseId: res.data.purchaseId, status: 'pending' });
+        } else {
+          initiated.push({ item, status: 'failed', error: res?.message || 'Could not start the M-Pesa push' });
+        }
+      } catch (err) {
+        initiated.push({ item, status: 'failed', error: err?.message || 'Request failed' });
+      }
+    }
+
+    setResults(initiated);
+    setAttempts(0);
+    setStep(initiated.some((r) => r.status === 'pending') ? 'waiting' : 'error');
   };
-  const attendanceBadge = getAttendanceBadge(attendanceRate);
 
-  const attendanceColorClass = attendanceRate === null
-    ? 'text-gray-400'
-    : attendanceRate >= 90 ? 'text-emerald-600'
-    : attendanceRate >= 75 ? 'text-amber-600'
-    : 'text-rose-600';
+  // Poll for STK push completion
+  useEffect(() => {
+    if (step !== 'waiting') return undefined;
+    let cancelled = false;
 
-  const attendanceBorderClass = attendanceRate === null
-    ? 'border-slate-200 bg-slate-50'
-    : attendanceRate >= 90 ? 'border-emerald-200 bg-emerald-50'
-    : attendanceRate >= 75 ? 'border-amber-200 bg-amber-50'
-    : 'border-rose-200 bg-rose-50';
+    const tick = async () => {
+      try {
+        const res = await marketplaceAPI.getMyPurchases();
+        const purchases = res?.data || [];
+        const statusById = Object.fromEntries(purchases.map((p) => [p.id, p.status]));
+        if (cancelled) return;
+        setResults((prev) =>
+          prev.map((r) => {
+            if (r.status !== 'pending') return r;
+            const s = statusById[r.purchaseId];
+            if (s === 'COMPLETED') return { ...r, status: 'completed' };
+            if (s === 'FAILED') return { ...r, status: 'failed', error: 'Payment failed or was cancelled on your phone' };
+            return r;
+          })
+        );
+      } catch {
+        // transient network hiccup — keep polling silently
+      }
+      if (!cancelled) setAttempts((a) => a + 1);
+    };
+
+    tick();
+    const interval = setInterval(tick, POLL_INTERVAL_MS);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [step]);
+
+  // Resolve final state once nothing is pending, or we've polled long enough
+  useEffect(() => {
+    if (step !== 'waiting' || results.length === 0) return;
+    const stillPending = results.some((r) => r.status === 'pending');
+    const anyCompleted = results.some((r) => r.status === 'completed');
+    if (!stillPending) {
+      setStep(anyCompleted ? (results.every((r) => r.status === 'completed') ? 'success' : 'partial') : 'error');
+    } else if (attempts >= POLL_MAX_ATTEMPTS) {
+      setStep(anyCompleted ? 'partial' : 'error');
+    }
+  }, [results, attempts, step]);
+
+  const handleDownload = async (purchaseId) => {
+    setDownloadState((prev) => ({ ...prev, [purchaseId]: 'loading' }));
+    try {
+      const res = await marketplaceAPI.downloadPurchasedResource(purchaseId);
+      const url = res?.data?.url;
+      if (url) {
+        window.open(url, '_blank', 'noopener');
+        setDownloadState((prev) => ({ ...prev, [purchaseId]: 'ready' }));
+      } else {
+        setDownloadState((prev) => ({ ...prev, [purchaseId]: 'error' }));
+      }
+    } catch {
+      setDownloadState((prev) => ({ ...prev, [purchaseId]: 'error' }));
+    }
+  };
 
   return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={step === 'waiting' || step === 'submitting' ? undefined : onClose}>
+      <div
+        className="relative w-full max-w-sm rounded-2xl border border-slate-100 bg-white p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {step !== 'waiting' && step !== 'submitting' && (
+          <button type="button" onClick={onClose}
+            className="absolute right-4 top-4 rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+            <X size={16} />
+          </button>
+        )}
+
+        {step === 'form' && (
+          <>
+            <div className="mb-5 flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#4caf50]/10">
+                <Phone size={20} className="text-[#4caf50]" />
+              </div>
+              <div>
+                <p className="text-sm font-black text-[#06285a]">M-Pesa Payment</p>
+                <p className="text-[11px] text-slate-500">STK Push to your number</p>
+              </div>
+            </div>
+
+            <div className="mb-4 space-y-1.5 rounded-xl border border-slate-100 bg-slate-50 p-3">
+              {cart.map((item) => (
+                <div key={item.id} className="flex items-center justify-between">
+                  <p className="min-w-0 flex-1 truncate text-[11px] text-slate-600">{item.title}</p>
+                  <p className="shrink-0 text-[11px] font-black text-[#06285a]">
+                    {Number(item.price) === 0 ? 'FREE' : `KES ${fmt(item.price)}`}
+                  </p>
+                </div>
+              ))}
+              <div className="flex items-center justify-between border-t border-slate-200 pt-1.5">
+                <p className="text-[11px] font-black uppercase text-slate-500">Total</p>
+                <p className="text-sm font-black text-[#ff7900]">KES {fmt(total)}</p>
+              </div>
+            </div>
+
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-widest text-slate-500">
+              M-Pesa Number
+            </label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="e.g. 0712345678"
+              className="mb-4 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-[#06285a] outline-none transition focus:border-[#ff7900] focus:ring-2 focus:ring-[#ff7900]/20"
+            />
+
+            <button
+              type="button"
+              onClick={handlePay}
+              disabled={!phone}
+              className="w-full rounded-xl bg-[#4caf50] py-3 text-sm font-black text-white transition hover:opacity-90 disabled:opacity-40"
+            >
+              Pay KES {fmt(total)} via M-Pesa
+            </button>
+            <p className="mt-3 text-center text-[10px] text-slate-400">
+              You will receive an STK push on your phone to confirm payment.
+            </p>
+          </>
+        )}
+
+        {step === 'submitting' && (
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <RefreshCw size={36} className="mb-4 animate-spin text-[#4caf50]" />
+            <p className="text-base font-black text-[#06285a]">Sending STK push…</p>
+            <p className="mt-2 text-[12px] text-slate-500">Contacting M-Pesa for {cart.length} item{cart.length > 1 ? 's' : ''}.</p>
+          </div>
+        )}
+
+        {step === 'waiting' && (
+          <div className="py-6 text-center">
+            <RefreshCw size={32} className="mx-auto mb-3 animate-spin text-[#4caf50]" />
+            <p className="text-base font-black text-[#06285a]">Waiting for payment…</p>
+            <p className="mt-1 mb-4 text-[12px] text-slate-500">Check your phone and enter your M-Pesa PIN.</p>
+            <div className="space-y-1.5 text-left">
+              {results.map((r) => (
+                <div key={r.item.id} className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                  <p className="min-w-0 flex-1 truncate text-[11px] text-slate-600">{r.item.title}</p>
+                  {r.status === 'pending' && <RefreshCw size={12} className="shrink-0 animate-spin text-slate-400" />}
+                  {r.status === 'completed' && <CheckCircle2 size={14} className="shrink-0 text-emerald-500" />}
+                  {r.status === 'failed' && <XCircle size={14} className="shrink-0 text-red-400" />}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {(step === 'success' || step === 'partial' || step === 'error') && (
+          <div className="py-4 text-center">
+            {step === 'success' && (
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 mx-auto">
+                <CheckCircle2 size={36} className="text-emerald-500" />
+              </div>
+            )}
+            {step === 'partial' && (
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 mx-auto">
+                <AlertTriangle size={32} className="text-amber-500" />
+              </div>
+            )}
+            {step === 'error' && (
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-50 mx-auto">
+                <XCircle size={32} className="text-red-500" />
+              </div>
+            )}
+
+            <p className="text-base font-black text-[#06285a]">
+              {step === 'success' && 'Payment Successful!'}
+              {step === 'partial' && 'Some payments went through'}
+              {step === 'error' && 'Payment did not complete'}
+            </p>
+            <p className="mt-1 mb-4 text-[12px] text-slate-500">
+              {step === 'error'
+                ? 'No STK push was confirmed. You can try again — nothing was charged.'
+                : 'Download your completed items below.'}
+            </p>
+
+            <div className="space-y-1.5 text-left">
+              {results.map((r) => (
+                <div key={r.item.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                  <p className="min-w-0 flex-1 truncate text-[11px] text-slate-600">{r.item.title}</p>
+                  {r.status === 'completed' ? (
+                    <button
+                      type="button"
+                      onClick={() => handleDownload(r.purchaseId)}
+                      className="flex shrink-0 items-center gap-1 rounded-lg bg-[#ff7900] px-2 py-1 text-[10px] font-black text-white transition hover:opacity-90"
+                    >
+                      {downloadState[r.purchaseId] === 'loading' ? (
+                        <RefreshCw size={10} className="animate-spin" />
+                      ) : (
+                        <Download size={10} />
+                      )}
+                      {downloadState[r.purchaseId] === 'error' ? 'Retry' : 'Download'}
+                    </button>
+                  ) : (
+                    <span className="shrink-0 text-[10px] font-semibold text-red-400">
+                      {r.error || 'Not completed'}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={step === 'error' ? () => setStep('form') : onSuccess}
+              className="mt-5 w-full rounded-xl bg-[#06285a] py-2.5 text-sm font-black text-white transition hover:opacity-90"
+            >
+              {step === 'error' ? 'Try Again' : 'Done'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ─── Cart Drawer ────────────────────────────────────────────────────────────── */
+const CartDrawer = ({ cart, onRemove, onClose, onCheckout }) => {
+  const total = cart.reduce((s, i) => s + Number(i.price || 0), 0);
+  return (
+    <div className="fixed inset-0 z-[999] flex justify-end" onClick={onClose}>
+      <div
+        className="flex h-full w-80 flex-col border-l border-slate-200 bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-slate-100 p-4">
+          <div className="flex items-center gap-2">
+            <ShoppingCart size={16} className="text-[#ff7900]" />
+            <p className="text-sm font-black text-[#06285a]">Cart ({cart.length})</p>
+          </div>
+          <button type="button" onClick={onClose}
+            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          {cart.length === 0 ? (
+            <EmptyPanel icon={ShoppingCart} title="Your cart is empty" />
+          ) : (
+            <div className="space-y-2">
+              {cart.map((item) => (
+                <div key={item.id} className="flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
+                  <FileText size={14} className="shrink-0 text-[#06285a]" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-semibold text-[#06285a]">{item.title}</p>
+                    <p className="text-[10px] text-slate-500">{Number(item.price) === 0 ? 'FREE' : `KES ${fmt(item.price)}`}</p>
+                  </div>
+                  <button type="button" onClick={() => onRemove(item.id)}
+                    className="shrink-0 rounded-lg p-1 text-slate-400 transition hover:bg-slate-200 hover:text-red-500">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {cart.length > 0 && (
+          <div className="space-y-3 border-t border-slate-100 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Total</p>
+              <p className="text-lg font-black text-[#ff7900]">KES {fmt(total)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={onCheckout}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#ff7900] py-3 text-sm font-black text-white transition hover:opacity-90"
+            >
+              <CreditCard size={16} /> Checkout via M-Pesa
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const MARKETPLACE_TYPES = ['All', 'FREE', 'PAID', 'BUNDLE', 'SUBSCRIPTION'];
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   MAIN COMPONENT
+═══════════════════════════════════════════════════════════════════════════════ */
+const StudentDashboard = ({ user, onNavigate }) => {
+  const [loading, setLoading]         = useState(true);
+  const [metrics, setMetrics]         = useState(null);
+  const [assignments, setAssignments] = useState([]);
+  const [reportCard, setReportCard]   = useState(null);
+  const [apiError, setApiError]       = useState(null);
+  const [refreshing, setRefreshing]   = useState(false);
+  const [noLearnerRecord, setNoLearnerRecord] = useState(false);
+
+  /* ── Courses (real enrollment + progress) ────────────────────────────────── */
+  const [courses, setCourses]               = useState([]);
+  const [coursesLoading, setCoursesLoading] = useState(true);
+
+  /* ── Marketplace (real listings) ─────────────────────────────────────────── */
+  const [listings, setListings]                   = useState([]);
+  const [marketplaceLoading, setMarketplaceLoading] = useState(true);
+  const [marketplaceUnavailable, setMarketplaceUnavailable] = useState(false);
+  const [search, setSearch]         = useState('');
+  const [typeFilter, setTypeFilter] = useState('All');
+
+  /* ── Cart state ─────────────────────────────────────────────────────────── */
+  const [cart, setCart]                 = useState([]);
+  const [cartOpen, setCartOpen]         = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+
+  /* ── Report card expand ──────────────────────────────────────────────────── */
+  const [reportExpanded, setReportExpanded] = useState(false);
+
+  const { isImpersonating } = useImpersonation();
+  const userId = user?.id || user?.userId;
+
+  const loadData = async () => {
+    try {
+      setRefreshing(true);
+      setApiError(null);
+      setNoLearnerRecord(false);
+
+      // Fetch dashboard stats + student assignments + enrolled courses concurrently
+      const [metricsRes, assignRes, coursesRes] = await Promise.allSettled([
+        dashboardAPI.getStudentMetrics?.() ?? Promise.resolve({ success: true, data: {} }),
+        lmsAPI.getStudentAssignments(),
+        lmsAPI.getStudentCourses(),
+      ]);
+
+      if (metricsRes.status === 'fulfilled' && metricsRes.value?.success) {
+        setMetrics(metricsRes.value.data);
+      } else if (metricsRes.status === 'rejected') {
+        const err = metricsRes.reason;
+        const isLearnerNotFound =
+          err?.response?.status === 404 ||
+          err?.response?.status === 403 ||
+          (err?.message || '').toLowerCase().includes('learner record not found') ||
+          (err?.message || '').toLowerCase().includes('unauthorized student');
+        if (isLearnerNotFound) {
+          setNoLearnerRecord(true);
+          setMetrics({});
+        } else {
+          setApiError(err?.message || 'Could not reach the server.');
+        }
+      }
+
+      if (assignRes.status === 'fulfilled' && assignRes.value?.success) {
+        // Normalise API shape → AssignmentRow shape
+        const raw = assignRes.value.data ?? [];
+        setAssignments(
+          raw.map((a) => ({
+            id:        a.id,
+            title:     a.title,
+            subject:   a.course?.title ?? a.subject ?? '',
+            teacher:   a.course?.createdBy
+                         ? `${a.course.createdBy.firstName ?? ''} ${a.course.createdBy.lastName ?? ''}`.trim()
+                         : '',
+            rawDue:    a.dueDate ?? null,
+            dueDate:   fmtDate(a.dueDate),
+            submitted:  (a.submissions ?? []).length > 0,
+            fileUrl:   a.fileUrl ?? null,
+          }))
+        );
+      }
+
+      if (coursesRes.status === 'fulfilled' && coursesRes.value?.success) {
+        setCourses(coursesRes.value.data ?? []);
+      }
+      setCoursesLoading(false);
+
+      // Report card: derive from metrics if available
+      if (metricsRes.status === 'fulfilled' && metricsRes.value?.data?.reportCard) {
+        setReportCard(metricsRes.value.data.reportCard);
+      }
+    } catch (error) {
+      setApiError(error.message || 'Could not reach the server.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => { loadData(); }, [userId]); // eslint-disable-line
+
+  /* ── Marketplace: fetch real listings (debounced by search/type) ─────────── */
+  useEffect(() => {
+    let active = true;
+    setMarketplaceLoading(true);
+    const handle = setTimeout(async () => {
+      try {
+        const params = { limit: 8 };
+        if (search) params.search = search;
+        if (typeFilter !== 'All') params.type = typeFilter;
+        const res = await marketplaceAPI.browseListings(params);
+        if (!active) return;
+        if (res?.success !== false) {
+          setListings(res.listings ?? res.data?.listings ?? []);
+          setMarketplaceUnavailable(false);
+        } else {
+          setListings([]);
+        }
+      } catch (err) {
+        if (!active) return;
+        const status = err?.response?.status;
+        const msg = (err?.message || '').toLowerCase();
+        if (status === 403 || msg.includes('enterprise') || msg.includes('not available') || msg.includes('app')) {
+          setMarketplaceUnavailable(true);
+        }
+        setListings([]);
+      } finally {
+        if (active) setMarketplaceLoading(false);
+      }
+    }, 350);
+    return () => { active = false; clearTimeout(handle); };
+  }, [search, typeFilter]);
+
+  /* ── Derived metrics ─────────────────────────────────────────────────────── */
+  const attendanceRate = metrics?.stats?.attendanceRate ?? metrics?.stats?.attendance ?? 0;
+  const submittedCount = assignments.filter(a => a.submitted).length;
+  const pendingCount   = assignments.length - submittedCount;
+  const messages       = metrics?.stats?.messages ?? 0;
+
+  // Report card derived values
+  const reportSubjects = reportCard?.subjects ?? [];
+  const avgScore = reportSubjects.length
+    ? Math.round(reportSubjects.reduce((s, r) => s + (r.score ?? 0), 0) / reportSubjects.length)
+    : (metrics?.stats?.avgScore ?? 0);
+  const reportTerm     = reportCard?.term ?? '';
+  const reportGrade    = reportCard?.grade ?? '--';
+  const reportPosition = reportCard?.position ?? '--';
+  const reportOutOf    = reportCard?.outOf ?? '--';
+  const reportGpa      = reportCard?.gpa ?? '--';
+
+  /* ── Marketplace / cart helpers ───────────────────────────────────────────── */
+  const addToCart      = (paper) => { if (!cart.find(i => i.id === paper.id)) setCart(c => [...c, paper]); };
+  const removeFromCart = (id)    => setCart(c => c.filter(i => i.id !== id));
+  const isInCart       = (id)    => cart.some(i => i.id === id);
+
+  const handleCheckoutSuccess = () => {
+    setCheckoutOpen(false);
+    setCartOpen(false);
+    setCart([]);
+  };
+
+  /* ── Stat tiles ──────────────────────────────────────────────────────────── */
+  const statTiles = [
+    { label: 'Assignments', value: fmt(assignments.length), sub: `${pendingCount} pending`, icon: ClipboardList, accent: '#030b82', spark: true,  onClick: () => onNavigate('student-assignments') },
+    { label: 'Attendance',  value: attendanceRate ? pct(attendanceRate) : '--', sub: 'Current term', icon: CheckCircle2, accent: '#ff7900', spark: true,  onClick: () => onNavigate('attendance-analytics') },
+    { label: 'Avg Score',   value: avgScore ? `${avgScore}%` : '--', sub: reportTerm || 'Current term', icon: TrendingUp, accent: '#8b5cf6', spark: false, onClick: () => setReportExpanded(true) },
+    { label: 'Messages',    value: fmt(messages),  sub: 'Inbox',               icon: MessageSquare, accent: '#06285a',  spark: false, onClick: () => onNavigate('communication') },
+  ];
+
+  /* ── Error state ─────────────────────────────────────────────────────────── */
+  if (apiError && !metrics && !loading) return (
     <div className="space-y-6">
-      {/* Impersonation notice — shown when the student account has no learner record */}
+      <GreetingToast user={user} fallbackName="Student" description="Student Dashboard" onNavigate={onNavigate} />
+      <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 p-12 text-center">
+        <AlertTriangle size={36} className="mb-3 text-[#ff7900]" />
+        <h2 className="text-lg font-black text-[#06285a]">Dashboard unavailable</h2>
+        <p className="mt-2 text-sm text-slate-500">{apiError}</p>
+        <button type="button" onClick={loadData}
+          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#ff7900] px-5 py-2.5 text-sm font-black text-[#06285a] transition hover:opacity-90">
+          <RefreshCw size={14} /> Retry
+        </button>
+      </div>
+    </div>
+  );
+
+  /* ── Loading skeleton ────────────────────────────────────────────────────── */
+  if (loading && !metrics) return (
+    <div className="space-y-4">
+      <Skeleton className="h-16 w-full" />
+      <div className="grid grid-cols-4 gap-3">
+        {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-[120px]" />)}
+      </div>
+      <div className="grid grid-cols-[1fr_1fr_22rem] gap-4">
+        <Skeleton className="h-72" />
+        <Skeleton className="h-72" />
+        <div className="space-y-3"><Skeleton className="h-40" /><Skeleton className="h-28" /></div>
+      </div>
+    </div>
+  );
+
+  /* ── Main render ─────────────────────────────────────────────────────────── */
+  return (
+    <div className="space-y-4 pb-8">
+      {/* Overlays */}
+      {cartOpen && (
+        <CartDrawer cart={cart} onRemove={removeFromCart} onClose={() => setCartOpen(false)}
+          onCheckout={() => { setCartOpen(false); setCheckoutOpen(true); }} />
+      )}
+      {checkoutOpen && (
+        <MpesaCheckoutModal cart={cart} user={user} onClose={() => setCheckoutOpen(false)} onSuccess={handleCheckoutSuccess} />
+      )}
+
+      {/* Impersonation notice */}
       {noLearnerRecord && isImpersonating && (
-        <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <Info size={18} className="mt-0.5 shrink-0 text-amber-500" />
           <div>
             <span className="font-semibold">Preview mode — no learner record found.</span>
-            {' '}This student account isn't linked to a learner profile yet, so dashboard data is unavailable.
-            Enrol the student via the Learners module to populate real data.
+            {' '}This student account isn't linked to a learner profile yet.
           </div>
         </div>
       )}
-      <DashboardSection id="executive-summary" controls={sectionControls}>
-      <DashboardSummary
-        title="Executive Summary"
-        description="Your learning progress and workload at a glance."
-        items={[
-          {
-            label: 'Overall Progress',
-            value: `${overallProgress}%`,
-            subvalue: 'course completion',
-            icon: <TrendingUp size={26} />,
-            tone: 'indigo',
-            onClick: () => onNavigate('student-progress'),
-          },
-          {
-            label: 'Courses',
-            value: activeCourses.length,
-            subvalue: 'active courses',
-            icon: <BookOpen size={26} />,
-            tone: 'purple',
-            onClick: () => onNavigate('student-courses'),
-          },
-          {
-            label: 'Quiz Score',
-            value: `${avgQuizScore}%`,
-            subvalue: 'average score',
-            icon: <BarChart3 size={26} />,
-            tone: avgQuizScore >= 80 ? 'emerald' : 'amber',
-          },
-          {
-            label: 'Submitted',
-            value: `${submittedCount}/${assignments.length}`,
-            subvalue: 'assignments complete',
-            icon: <CheckCircle2 size={26} />,
-            tone: 'teal',
-            onClick: () => onNavigate('student-assignments'),
-          },
-        ]}
-      />
-      </DashboardSection>
 
-      {/* My Courses & Upcoming Deadlines - Side by Side */}
-      <DashboardSection id="courses-deadlines" controls={sectionControls}>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AppCard 
-          title="My Courses"
-          subtitle={`${activeCourses.length} active courses`}
-        >
-          <div className="space-y-2">
-            {activeCourses.map((course) => (
-              <button
-                key={course.id}
-                onClick={() => onNavigate('student-course-view')}
-                className={`w-full p-4 rounded-lg border transition-all text-left ${getProgressColor(course.progress)}`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h4 className="font-semibold">{course.name}</h4>
-                    <p className="text-xs opacity-75">Teacher: {course.teacher}</p>
-                    <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className={`h-full rounded-full ${course.progress >= 80 ? 'bg-emerald-600' : course.progress >= 60 ? 'bg-amber-600' : 'bg-rose-600'}`}
-                        style={{ width: `${course.progress}%` }}
-                      />
-                    </div>
-                  </div>
-                  <span className="text-sm font-bold ml-2">{course.progress}%</span>
-                </div>
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={() => onNavigate('student-courses')}
-            className="mt-4 w-full px-4 py-2 text-brand-purple text-sm font-semibold hover:bg-brand-purple/5 rounded-lg transition"
-          >
-            View All Courses →
-          </button>
-        </AppCard>
+      {/* Greeting */}
+      <GreetingToast user={user} fallbackName="Student" description="Student Dashboard · Today's Overview" onNavigate={onNavigate} />
 
-        <AppCard 
-          title="Upcoming Deadlines"
-          subtitle={`${upcomingDeadlines.length} deadlines ahead`}
-        >
-          <div className="space-y-2">
-            {upcomingDeadlines.map((deadline) => (
-              <button
-                key={deadline.id}
-                onClick={() => onNavigate('student-assignments')}
-                className={`w-full p-4 rounded-lg border transition-all text-left ${getPriorityColor(deadline.priority)}`}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <p className="text-xs opacity-75 font-semibold">{deadline.course}</p>
-                    <h4 className="font-semibold mt-1">{deadline.title}</h4>
-                    <p className="text-xs opacity-75 mt-1">{deadline.type} • {deadline.date}</p>
-                  </div>
-                  {getPriorityBadge(deadline.priority)}
-                </div>
-                <div className="text-xs font-semibold opacity-75">
-                  {deadline.daysLeft === 0 ? 'Due today' : `${deadline.daysLeft} day${deadline.daysLeft !== 1 ? 's' : ''} left`}
-                </div>
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={() => onNavigate('student-assignments')}
-            className="mt-4 w-full px-4 py-2 text-brand-purple text-sm font-semibold hover:bg-brand-purple/5 rounded-lg transition"
-          >
-            View All Deadlines →
-          </button>
-        </AppCard>
+      {/* Sync indicator */}
+      {refreshing && (
+        <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 py-2">
+          <RefreshCw size={12} className="animate-spin text-blue-500" />
+          <p className="text-[11px] font-bold uppercase tracking-widest text-blue-600">Syncing…</p>
+        </div>
+      )}
+
+      {/* ── Row 1: Stat tiles ─────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {statTiles.map(tile => (
+          <StatTile key={tile.label} {...tile} loading={loading} />
+        ))}
       </div>
-      </DashboardSection>
 
-      {/* Assignments & Quiz Performance - Side by Side */}
-      <DashboardSection id="assignments-performance" controls={sectionControls}>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AppCard 
-          title="Assignments"
-          subtitle={`${submittedCount}/${assignments.length} submitted`}
-        >
-          <div className="space-y-2">
-            {assignments.map((assign) => (
-              <button
-                key={assign.id}
-                onClick={() => onNavigate('student-assignments')}
-                className={`w-full p-4 rounded-lg border transition-all text-left ${assign.submitted ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}
+      {/* ── Row 2: Continue Learning (real enrolled-course progress) ─────────── */}
+      <Panel
+        title="Continue Learning"
+        icon={BookOpen}
+        action={
+          <button type="button" onClick={() => onNavigate('student-courses')}
+            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-[#06285a] transition hover:border-[#ff7900]/40">
+            All Courses <ChevronRight size={10} />
+          </button>
+        }
+      >
+        {coursesLoading ? (
+          <div className="flex gap-3 overflow-x-auto pb-1">
+            {[0, 1, 2].map(i => <Skeleton key={i} className="h-[152px] w-64 shrink-0" />)}
+          </div>
+        ) : courses.length === 0 ? (
+          <EmptyPanel icon={BookOpen} title="You are not enrolled in any courses yet" subtitle="Your teacher will enroll you when a course is available." />
+        ) : (
+          <div className="flex gap-3 overflow-x-auto pb-1">
+            {courses.map(c => (
+              <CourseProgressCard key={c.courseId} course={c} onNavigate={onNavigate} />
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      {/* ── Row 3: Main layout ───────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+
+        {/* LEFT ──────────────────────────────────────────────── */}
+        <div className="space-y-4">
+
+          {/* Assignments + Report Card side by side */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+
+            {/* Assignments Panel */}
+            <Panel
+              title="My Assignments"
+              icon={ClipboardList}
+              action={
+                <button type="button" onClick={() => onNavigate('student-assignments')}
+                  className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-[#06285a] transition hover:border-[#ff7900]/40">
+                  All <ChevronRight size={10} />
+                </button>
+              }
+            >
+              {/* Summary bar */}
+              <div className="mb-3 grid grid-cols-2 gap-2">
+                <div className="flex flex-col items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50 py-2">
+                  <p className="text-lg font-black text-emerald-700">{submittedCount}</p>
+                  <p className="text-[10px] font-bold uppercase text-emerald-600">Submitted</p>
+                </div>
+                <div className="flex flex-col items-center justify-center rounded-xl border border-amber-100 bg-amber-50 py-2">
+                  <p className="text-lg font-black text-amber-700">{pendingCount}</p>
+                  <p className="text-[10px] font-bold uppercase text-amber-600">Pending</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {assignments.length === 0 ? (
+                  <EmptyPanel icon={ClipboardList} title="No assignments yet" />
+                ) : (
+                  assignments.map((a, i) => (
+                    <AssignmentRow key={a.id} item={a} index={i} />
+                  ))
+                )}
+              </div>
+            </Panel>
+
+            {/* Report Card Panel */}
+            <Panel
+              title="Report Card"
+              icon={Award}
+              action={
+                <button type="button"
+                  onClick={() => setReportExpanded(r => !r)}
+                  className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-[#06285a] transition hover:border-[#ff7900]/40">
+                  {reportExpanded ? 'Collapse' : 'Expand'}
+                  <ChevronDown size={10} className={`transition-transform ${reportExpanded ? 'rotate-180' : ''}`} />
+                </button>
+              }
+            >
+              {/* Hero summary tile */}
+              <div
+                className="relative mb-3 overflow-hidden rounded-xl p-4 text-white"
+                style={{ background: 'linear-gradient(135deg,#06285a 0%,#030b82 100%)' }}
               >
+                <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-xs opacity-75">{assign.course}</p>
-                    <h4 className="font-semibold mt-1">{assign.title}</h4>
-                    <p className="text-xs opacity-75 mt-1">Due {assign.dueDate}</p>
-                  </div>
-                  <div className="text-right">
-                    {assign.submitted ? (
-                      <>
-                        <CheckCircle2 size={20} className="text-emerald-600" />
-                        {assign.grade && <p className="text-sm font-bold text-emerald-600 mt-1">{assign.grade}</p>}
-                      </>
-                    ) : (
-                      <AlertCircle size={20} className="text-amber-600" />
+                    {reportTerm && <p className="text-[10px] font-black uppercase tracking-widest text-white/60">{reportTerm}</p>}
+                    <p className="mt-1 text-4xl font-black text-white">{reportGrade}</p>
+                    {reportPosition !== '--' && (
+                      <p className="text-[12px] font-medium text-white/70">
+                        Position {reportPosition} of {reportOutOf}
+                      </p>
                     )}
                   </div>
-                </div>
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={() => onNavigate('student-assignments')}
-            className="mt-4 w-full px-4 py-2 text-brand-purple text-sm font-semibold hover:bg-brand-purple/5 rounded-lg transition"
-          >
-            View All Assignments →
-          </button>
-        </AppCard>
-
-        <AppCard 
-          title="Quiz Performance"
-          subtitle={`Average: ${avgQuizScore}%`}
-        >
-          <div className="space-y-2">
-            {quizPerformance.map((quiz) => (
-              <button
-                key={quiz.id}
-                onClick={() => onNavigate('student-quizzes')}
-                className={`w-full p-4 rounded-lg border transition-all text-left ${getScoreColor(quiz.score)}`}
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs opacity-75">{quiz.course}</p>
-                    <h4 className="font-semibold mt-1">{quiz.quiz}</h4>
-                    <p className="text-xs opacity-75 mt-1">{quiz.date}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-2xl font-bold">{quiz.score}%</p>
+                  <div className="flex flex-col items-end gap-2">
+                    <RadialRing value={avgScore} size={52} stroke={5} color="#ff7900" bg="rgba(255,255,255,0.15)" />
+                    <p className="text-[10px] font-bold text-white/70">{avgScore}% avg</p>
                   </div>
                 </div>
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={() => onNavigate('student-quizzes')}
-            className="mt-4 w-full px-4 py-2 text-brand-purple text-sm font-semibold hover:bg-brand-purple/5 rounded-lg transition"
-          >
-            View All Quizzes →
-          </button>
-        </AppCard>
-      </div>
-      </DashboardSection>
-
-      {/* Attendance & Achievements - Side by Side */}
-      <DashboardSection id="attendance-achievements" controls={sectionControls}>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AppCard 
-          title="Attendance"
-          subtitle="Current term"
-        >
-          <div className="space-y-2">
-            <button
-              onClick={() => onNavigate('attendance-analytics')}
-              className={`w-full p-6 rounded-lg border text-center hover:shadow-md transition ${attendanceBorderClass}`}
-            >
-              <div className="flex items-center justify-center mb-3">
-                <CheckCircle2 size={32} className={attendanceColorClass} />
+                <div className="mt-3 flex items-center justify-between border-t border-white/10 pt-2">
+                  <div className="text-center">
+                    <p className="text-base font-black text-white">{reportGpa}</p>
+                    <p className="text-[10px] text-white/50">GPA</p>
+                  </div>
+                  <div className="h-8 w-px bg-white/10" />
+                  <div className="text-center">
+                    <p className="text-base font-black text-white">{reportSubjects.length || '--'}</p>
+                    <p className="text-[10px] text-white/50">Subjects</p>
+                  </div>
+                  <div className="h-8 w-px bg-white/10" />
+                  <div className="text-center">
+                    <p className="text-base font-black text-white">{reportPosition}</p>
+                    <p className="text-[10px] text-white/50">Position</p>
+                  </div>
+                </div>
               </div>
-              <p className={`text-4xl font-bold ${attendanceColorClass}`}>
-                {hasAttendance ? `${attendanceRate}%` : '--'}
-              </p>
-              {hasAttendance ? (
-                <p className={`text-sm mt-2 ${attendanceColorClass}`}>
-                  {attendancePresent} day{attendancePresent !== 1 ? 's' : ''} present
-                  {attendanceAbsent > 0 ? ` • ${attendanceAbsent} absent` : ''}
-                </p>
+
+              {/* Subject grades (live data when available, empty state otherwise) */}
+              {reportSubjects.length > 0 ? (
+                <>
+                  <div className={`space-y-2 overflow-hidden transition-all duration-300 ${reportExpanded ? '' : 'max-h-[180px]'}`}>
+                    {reportSubjects.map((s, i) => (
+                      <GradeRow key={i} {...s} />
+                    ))}
+                  </div>
+                  {!reportExpanded && (
+                    <div className="mt-1 flex justify-center">
+                      <button type="button" onClick={() => setReportExpanded(true)}
+                        className="mt-1 text-[11px] font-black text-[#ff7900] hover:underline">
+                        Show all {reportSubjects.length} subjects ↓
+                      </button>
+                    </div>
+                  )}
+                </>
               ) : (
-                <p className="text-sm text-gray-400 mt-2">No attendance data yet</p>
+                <EmptyPanel icon={Award} title="No report card data yet" />
               )}
-              {attendanceBadge && (
-                <p className={`text-xs font-semibold mt-3 ${attendanceBadge.color}`}>
-                  {attendanceBadge.label}
-                </p>
-              )}
-            </button>
-          </div>
-          <button
-            onClick={() => onNavigate('attendance-analytics')}
-            className="mt-4 w-full px-4 py-2 text-brand-purple text-sm font-semibold hover:bg-brand-purple/5 rounded-lg transition"
-          >
-            View Attendance Details →
-          </button>
-        </AppCard>
 
-        <AppCard 
-          title="Achievements"
-          subtitle={`${achievements.filter(a => a.earned).length}/${achievements.length} badges earned`}
-        >
-          <div className="grid grid-cols-2 gap-3">
-            {achievements.map((achievement) => (
-              <button
-                key={achievement.id}
-                onClick={() => onNavigate('student-profile')}
-                className={`p-4 rounded-lg border transition-all text-center ${
-                  achievement.earned 
-                    ? 'border-brand-purple/30 bg-brand-purple/5 hover:shadow-md' 
-                    : 'border-gray-200 bg-gray-50 opacity-60'
-                }`}
-              >
-                <p className="text-3xl mb-2">{achievement.icon}</p>
-                <h4 className="text-xs font-semibold text-gray-900">{achievement.name}</h4>
-                <p className="text-xs text-gray-500 mt-1">{achievement.description}</p>
+              {/* PDF download */}
+              <button type="button"
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-[#06285a]/20 bg-[#06285a]/5 py-2.5 text-[11px] font-black uppercase tracking-wider text-[#06285a] transition hover:bg-[#06285a]/10">
+                <Download size={13} /> Download Report Card (PDF)
               </button>
-            ))}
+            </Panel>
           </div>
-          <button
-            onClick={() => onNavigate('student-profile')}
-            className="mt-4 w-full px-4 py-2 text-brand-purple text-sm font-semibold hover:bg-brand-purple/5 rounded-lg transition"
+
+          {/* Past Papers Marketplace — real listings + real M-Pesa checkout */}
+          <Panel
+            title="Past Papers Marketplace"
+            icon={BookOpen}
+            action={
+              !marketplaceUnavailable && (
+                <button
+                  type="button"
+                  onClick={() => setCartOpen(true)}
+                  className="relative flex items-center gap-1.5 rounded-lg bg-[#ff7900] px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white transition hover:opacity-90"
+                >
+                  <ShoppingCart size={10} /> Cart
+                  {cart.length > 0 && (
+                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-white text-[8px] font-black text-[#ff7900]">
+                      {cart.length}
+                    </span>
+                  )}
+                </button>
+              )
+            }
           >
-            View All Achievements →
-          </button>
-        </AppCard>
-      </div>
-      </DashboardSection>
+            {marketplaceUnavailable ? (
+              <EmptyPanel
+                icon={Lock}
+                title="Marketplace isn't enabled for your school yet"
+                subtitle="Ask your school admin to enable the LMS marketplace add-on to buy and sell past papers and revision resources."
+              />
+            ) : (
+              <>
+                {/* Search + filters */}
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <div className="relative min-w-[160px] flex-1">
+                    <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search papers…"
+                      className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-8 pr-3 text-xs font-semibold text-[#06285a] outline-none transition focus:border-[#ff7900] focus:ring-2 focus:ring-[#ff7900]/20"
+                    />
+                  </div>
+                  <select
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value)}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-[#06285a] outline-none transition focus:border-[#ff7900]"
+                  >
+                    {MARKETPLACE_TYPES.map(t => <option key={t} value={t}>{t === 'All' ? 'All Types' : (LISTING_TYPE_LABEL[t] || t)}</option>)}
+                  </select>
+                </div>
 
-      {/* Learning Insights Placeholder */}
-      <DashboardSection id="learning-insights" controls={sectionControls}>
-      <AppCard 
-        title="Learning Insights"
-        subtitle="AI-powered recommendations"
-      >
-        <div className="p-8 rounded-lg border border-slate-200 bg-gradient-to-br from-brand-purple/5 to-brand-teal/5 text-center">
-          <Zap size={40} className="mx-auto text-gray-400 mb-3" />
-          <p className="text-gray-600">Personalized learning insights coming soon</p>
-          <p className="text-xs text-gray-500 mt-2">We're analyzing your learning patterns to provide tailored recommendations and improvement suggestions</p>
+                {marketplaceLoading ? (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-[124px]" />)}
+                  </div>
+                ) : listings.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {listings.map(paper => (
+                      <PaperCard
+                        key={paper.id}
+                        paper={paper}
+                        onAddToCart={addToCart}
+                        inCart={isInCart(paper.id)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyPanel icon={Search} title="No papers match your search" />
+                )}
+
+                {/* Checkout CTA bar */}
+                {cart.length > 0 && (
+                  <div className="mt-4 flex items-center justify-between rounded-xl border border-[#ff7900]/30 bg-[#fff8f2] px-4 py-3">
+                    <p className="text-sm font-bold text-[#06285a]">
+                      {cart.length} item{cart.length > 1 ? 's' : ''} in cart · KES {fmt(cart.reduce((s, i) => s + Number(i.price || 0), 0))}
+                    </p>
+                    <button type="button"
+                      onClick={() => setCheckoutOpen(true)}
+                      className="flex items-center gap-2 rounded-xl bg-[#ff7900] px-4 py-2 text-xs font-black text-white transition hover:opacity-90">
+                      <CreditCard size={13} /> Pay via M-Pesa
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </Panel>
         </div>
-      </AppCard>
-      </DashboardSection>
 
-      <DashboardSectionControls {...sectionControls} />
+        {/* RIGHT SIDEBAR ──────────────────────────────────────── */}
+        <div className="space-y-4">
+
+          {/* Quick Actions */}
+          <Panel title="Quick Actions" icon={Zap}>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: 'My Courses',   icon: BookOpen,     to: 'student-courses',   orange: true  },
+                { label: 'Assignments',  icon: ClipboardList, to: 'student-assignments', orange: false },
+                { label: 'Past Papers',  icon: FileText,      to: null,                orange: false },
+                { label: 'My Progress',  icon: BarChart2,     to: 'student-progress',  orange: true  },
+              ].map(({ label, icon: Icon, to, orange }) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => to && onNavigate(to)}
+                  className="group flex items-center gap-2 rounded-xl border p-3 text-left text-xs font-bold transition-all duration-200"
+                  style={{
+                    borderColor: orange ? '#ff7900' : 'rgba(6,40,90,0.15)',
+                    background:  orange ? '#ff7900' : 'white',
+                    color: '#06285a',
+                  }}
+                >
+                  <Icon size={14} className="shrink-0" />
+                  <span className="truncate">{label}</span>
+                </button>
+              ))}
+            </div>
+          </Panel>
+
+          {/* Attendance glance */}
+          <div className="overflow-hidden rounded-xl p-4"
+            style={{ background: 'linear-gradient(135deg,#06285a 0%,#030b82 100%)' }}>
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-white/60">Attendance</p>
+                <p className="mt-1 text-2xl font-black text-white">{attendanceRate ? pct(attendanceRate) : '--'}</p>
+                <p className="text-[11px] font-medium text-white/60">Current Term</p>
+              </div>
+              <RadialRing value={Number(attendanceRate || 0)} size={56} stroke={5} color="#ff7900" bg="rgba(255,255,255,0.15)" />
+            </div>
+            <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-3">
+              <div className="text-center">
+                <p className="text-base font-black text-white">{submittedCount}</p>
+                <p className="text-[10px] text-white/50">Submitted</p>
+              </div>
+              <div className="h-8 w-px bg-white/10" />
+              <div className="text-center">
+                <p className="text-base font-black text-white">{pendingCount}</p>
+                <p className="text-[10px] text-white/50">Pending</p>
+              </div>
+              <div className="h-8 w-px bg-white/10" />
+              <div className="text-center">
+                <p className="text-base font-black text-white">{reportGrade}</p>
+                <p className="text-[10px] text-white/50">Grade</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Subject performance */}
+          <Panel title="Subject Performance" icon={TrendingUp}>
+            <div className="space-y-2">
+              {reportSubjects.length > 0 ? (
+                <div className="space-y-2">
+                  {reportSubjects.slice(0, 4).map((s, i) => {
+                    const color = s.score >= 80 ? '#10b981' : s.score >= 60 ? '#ff7900' : '#ef4444';
+                    return (
+                      <div key={i} className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3">
+                        <div
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-center font-black text-[10px] text-white"
+                          style={{ background: i === 0 ? '#ff7900' : i === 1 ? '#06285a' : i === 2 ? '#8b5cf6' : '#64748b' }}
+                        >
+                          {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-bold text-[#06285a]">{s.subject}</p>
+                          <p className="text-[11px] text-slate-500">{s.grade} · {pct(s.score)}</p>
+                        </div>
+                        <TrendingUp size={14} className="shrink-0" style={{ color }} />
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <EmptyPanel icon={TrendingUp} title="No subject data yet" />
+              )}
+            </div>
+          </Panel>
+
+          {/* Cart shortcut — only when cart has items */}
+          {cart.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setCartOpen(true)}
+              className="group flex w-full items-center gap-3 rounded-xl border border-[#ff7900]/30 bg-[#fff8f2] p-4 text-left transition-all duration-200 hover:border-[#ff7900]/60"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#ff7900]">
+                <ShoppingCart size={18} className="text-white" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-black text-[#06285a]">{cart.length} paper{cart.length > 1 ? 's' : ''} in cart</p>
+                <p className="text-[11px] text-slate-500">KES {fmt(cart.reduce((s, i) => s + Number(i.price || 0), 0))} total</p>
+              </div>
+              <ChevronRight size={14} className="text-slate-300 transition-colors group-hover:text-[#ff7900]" />
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 };

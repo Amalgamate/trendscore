@@ -35,6 +35,7 @@ import { noticesAPI } from './notices.api';
 import { aiAPI } from './ai.api';
 import { schemeOfWorkAPI } from './schemeofwork.api';
 import { lmsAPI } from './lms.api';
+import { marketplaceAPI } from './marketplace.api';
 
 import { plannerAPI } from './planner.api';
 import { idTemplateAPI } from './idTemplate.api';
@@ -85,6 +86,7 @@ export { noticesAPI };
 export { aiAPI };
 export { schemeOfWorkAPI };
 export { lmsAPI };
+export { marketplaceAPI };
 export { plannerAPI as planner };
 export { idTemplateAPI };
 export { transportAPI };
@@ -165,6 +167,7 @@ const api = {
   ai: aiAPI,
   schemesOfWork: schemeOfWorkAPI,
   lms: lmsAPI,
+  marketplace: marketplaceAPI,
   planner: plannerAPI,
   idTemplates: idTemplateAPI,
   transport: transportAPI,

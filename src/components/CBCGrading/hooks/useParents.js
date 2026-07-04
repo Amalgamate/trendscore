@@ -38,8 +38,6 @@ export const useParents = (options = {}) => {
           email: parent.email,
           phone: parent.phone || 'N/A',
           relationship: 'Parent/Guardian',
-          occupation: 'N/A', // TODO: Add occupation field to backend
-          county: 'Nairobi', // TODO: Add county field to backend
           status: parent.status,
           createdAt: parent.createdAt,
           learners: parent.learners || [],

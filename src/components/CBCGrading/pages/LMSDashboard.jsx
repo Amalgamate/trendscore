@@ -33,8 +33,8 @@ const LMSDashboard = ({
                 apiCall('/lms/enrollments?page=1&limit=5')
             ]);
 
-            setStats(statsResponse?.data?.data || {});
-            setRecentEnrollments(enrollmentsResponse?.data?.data || []);
+            setStats(statsResponse?.data || {});
+            setRecentEnrollments(enrollmentsResponse?.data?.enrollments || []);
         } catch (error) {
             console.error('Failed to load dashboard data:', error);
             setStats({});

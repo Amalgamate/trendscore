@@ -21,9 +21,13 @@ import { requireApp } from '../middleware/requireApp';
 import { requireCsrf } from '../middleware/csrf.middleware';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
 import upload from '../middleware/upload.middleware';
+import { authenticate } from '../middleware/auth.middleware';
 import * as lmsController from '../controllers/lms.controller';
 
 const router = Router();
+
+// Apply JWT authentication to all LMS routes
+router.use(authenticate);
 
 // ─── AI rate limit preset (10 req / min per client) ────────────────────────
 const aiRateLimit = rateLimit({ windowMs: 60_000, maxRequests: 10 });
@@ -348,6 +352,13 @@ enterpriseRouter.post(
 );
 
 enterpriseRouter.post(
+  '/marketplace/purchases/:id/download',
+  requirePermission('MARKETPLACE_PURCHASE'),
+  requireCsrf,
+  lmsController.downloadPurchase
+);
+
+enterpriseRouter.post(
   '/marketplace/:id/rate',
   requirePermission('MARKETPLACE_PURCHASE'),
   requireCsrf,
@@ -492,6 +503,92 @@ router.put(
   requirePermission('LEARNING_MANAGE'),
   requireCsrf,
   lmsController.updateLmsSettings
+);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DASHBOARD & ENROLLMENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** GET /api/lms/dashboard/stats — dashboard overview stats */
+router.get(
+  '/dashboard/stats',
+  requirePermission('LEARNING_VIEW'),
+  lmsController.getLMSDashboardStats
+);
+
+/** GET /api/lms/enrollments — search/list enrollments */
+router.get(
+  '/enrollments',
+  requirePermission('LEARNING_VIEW'),
+  lmsController.getEnrollments
+);
+
+/** POST /api/lms/enrollments — enroll a learner */
+router.post(
+  '/enrollments',
+  requirePermission('MANAGE_ENROLLMENTS'),
+  requireCsrf,
+  lmsController.enrollLearner
+);
+
+/** DELETE /api/lms/enrollments/:id — unenroll a learner */
+router.delete(
+  '/enrollments/:id',
+  requirePermission('MANAGE_ENROLLMENTS'),
+  requireCsrf,
+  lmsController.unenrollLearner
+);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// STUDENT PORTAL SPECIFIC ROUTES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** GET /api/lms/my-courses — active student's courses */
+router.get(
+  '/my-courses',
+  requirePermission('LEARNING_VIEW'),
+  lmsController.getStudentCourses
+);
+
+/** GET /api/lms/my-courses/:courseId — progress details of a course */
+router.get(
+  '/my-courses/:courseId',
+  requirePermission('LEARNING_VIEW'),
+  lmsController.getStudentCourseDetail
+);
+
+/** GET /api/lms/my-assignments — assignments across student's courses */
+router.get(
+  '/my-assignments',
+  requirePermission('LEARNING_VIEW'),
+  lmsController.getStudentAssignments
+);
+
+/** PUT /api/lms/my-progress — update student course progress */
+router.put(
+  '/my-progress',
+  requirePermission('LEARNING_VIEW'),
+  requireCsrf,
+  lmsController.updateStudentProgress
+);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COURSES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** POST /api/lms/courses — create a new course */
+router.post(
+  '/courses',
+  requirePermission('LESSON_CREATE'),
+  requireCsrf,
+  lmsController.createCourse
+);
+
+/** GET /api/lms/courses/:id — retrieve course by ID */
+router.get(
+  '/courses/:id',
+  requirePermission('LEARNING_VIEW'),
+  lmsController.getCourseById
 );
 
 // ═══════════════════════════════════════════════════════════════════════════════

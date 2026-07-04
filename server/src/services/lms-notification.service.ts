@@ -423,4 +423,79 @@ export class LMSNotificationService {
       );
     }
   }
+
+  /**
+   * Notify seller of listing approval.
+   */
+  static async onMarketplaceListingApproved(
+    listing: any,
+    approverId: string,
+  ): Promise<void> {
+    try {
+      const { title, sellerId } = listing;
+
+      await NotificationService.createNotification({
+        userId: sellerId,
+        title: 'Listing Approved',
+        message: `Your listing "${title}" has been approved and is now available in the marketplace.`,
+        type: NotificationType.SUCCESS,
+        link: `/app/learning/marketplace/listings`,
+      });
+    } catch (err: any) {
+      console.error(
+        '[LMSNotificationService] onMarketplaceListingApproved error:',
+        err?.message ?? err,
+      );
+    }
+  }
+
+  /**
+   * Notify seller of listing rejection.
+   */
+  static async onMarketplaceListingRejected(
+    listing: any,
+    reason: string,
+  ): Promise<void> {
+    try {
+      const { title, sellerId } = listing;
+
+      await NotificationService.createNotification({
+        userId: sellerId,
+        title: 'Listing Rejected',
+        message: `Your listing "${title}" was rejected. Reason: ${reason}. Please review and resubmit.`,
+        type: NotificationType.WARNING,
+        link: `/app/learning/marketplace/listings`,
+      });
+    } catch (err: any) {
+      console.error(
+        '[LMSNotificationService] onMarketplaceListingRejected error:',
+        err?.message ?? err,
+      );
+    }
+  }
+
+  /**
+   * Notify buyer of purchase failure.
+   */
+  static async onMarketplacePurchaseFailed(
+    purchase: MarketplacePurchase,
+    reason?: string,
+  ): Promise<void> {
+    try {
+      const { buyerId } = purchase;
+
+      await NotificationService.createNotification({
+        userId: buyerId,
+        title: 'Purchase Failed',
+        message: `Your purchase could not be completed. ${reason ? `Reason: ${reason}` : 'Please try again.'}`,
+        type: NotificationType.ERROR,
+        link: `/app/learning/marketplace`,
+      });
+    } catch (err: any) {
+      console.error(
+        '[LMSNotificationService] onMarketplacePurchaseFailed error:',
+        err?.message ?? err,
+      );
+    }
+  }
 }

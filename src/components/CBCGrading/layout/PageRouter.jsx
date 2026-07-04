@@ -155,17 +155,23 @@ const BiometricManager = lazy(() => import('../pages/biometric/BiometricManager'
 
 // LMS Module
 const LMSManager = lazy(() => import('../pages/LMSManager'));
-const LMSAssignments = lazy(() => import('../pages/lms/LMSAssignments'));
+const AssignmentsPage = lazy(() => import('../pages/lms/assignments/AssignmentsPage'));
 // LMS Digital Learning Hub — Phase 1+
 const LMSDashboard = lazy(() => import('../pages/LMSDashboard'));
 const LMSPlaceholder = lazy(() => import('../pages/lms/LMSPlaceholder'));
 const LMSSettingsPage = lazy(() => import('../pages/lms/settings/LMSSettingsPage'));
+const LMSLessonList = lazy(() => import('../pages/lms/lessons/LessonList'));
+const LMSLessonBuilderPage = lazy(() => import('../pages/lms/lessons/LessonBuilderPage'));
+const LMSRevisionLibraryPage = lazy(() => import('../pages/lms/revision/RevisionLibraryPage'));
+const MarketplacePage = lazy(() => import('../pages/lms/MarketplacePage'));
+const MarketplaceCreatePage = lazy(() => import('../pages/lms/MarketplaceCreatePage'));
 
 // Student Portal
 const MyCourses = lazy(() => import('../pages/student/MyCourses'));
 const CourseViewer = lazy(() => import('../pages/student/CourseViewer'));
 const MyAssignments = lazy(() => import('../pages/student/MyAssignments'));
 const MyProgress = lazy(() => import('../pages/student/MyProgress'));
+const StudentLearningTab = lazy(() => import('../pages/student/StudentLearningTab'));
 
 // Mobile Components
 const MobileUserManagement = lazy(() => import('../dashboard/mobile/MobileUserManagement'));
@@ -707,12 +713,16 @@ const PageRouter = ({
           case 'lms-reports': return <LMSManager currentPage={currentPage} />;
 
           // LMS Digital Learning Hub
-          case 'learning-dashboard': return <LMSDashboard user={user} onNavigate={handleNavigate} />;
-          case 'learning-assignments': return <LMSAssignments user={user} onNavigate={handleNavigate} />;
-          case 'learning-lessons': return <LMSPlaceholder title="Lessons" description="Lesson planning and delivery tools are being prepared for the Digital Learning Hub." />;
-          case 'learning-lesson-builder': return <LMSPlaceholder title="Lesson Builder" description="Interactive lesson authoring is being prepared for the Digital Learning Hub." />;
-          case 'learning-revision': return <LMSPlaceholder title="Revision Library" description="Revision materials and learner practice content are being prepared for the Digital Learning Hub." />;
-          case 'learning-marketplace': return <LMSPlaceholder title="Content Marketplace" description="Curated learning resources and shared school content are being prepared for the Digital Learning Hub." />;
+          case 'learning-dashboard': 
+            if (effectiveRole === 'STUDENT') return <StudentLearningTab onNavigate={handleNavigate} />;
+            return <LMSDashboard user={user} onNavigate={handleNavigate} />;
+          case 'learning-assignments': return <AssignmentsPage onNavigate={handleNavigate} />;
+          case 'learning-lessons': return <LMSLessonList onNavigate={handleNavigate} user={user} />;
+          case 'learning-lesson-builder': return <LMSLessonBuilderPage lessonId={pageParams?.lessonId} onNavigate={handleNavigate} pageParams={pageParams} />;
+          case 'learning-interactive': return <LMSPlaceholder title="Interactive Learning" description="Interactive learning content and activities are being prepared for the Digital Learning Hub." />;
+          case 'learning-revision': return <LMSRevisionLibraryPage onNavigate={handleNavigate} />;
+          case 'learning-marketplace': return <MarketplacePage onNavigate={handleNavigate} />;
+          case 'learning-marketplace-create': return <MarketplaceCreatePage onNavigate={handleNavigate} pageParams={pageParams} />;
           case 'learning-analytics': return <LMSPlaceholder title="Learning Analytics" description="Learning engagement and progress analytics are being prepared for the Digital Learning Hub." />;
           case 'learning-settings': return <LMSSettingsPage user={user} onNavigate={handleNavigate} />;
 

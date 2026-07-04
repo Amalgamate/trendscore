@@ -7,7 +7,7 @@ import {
   Home, Mail, Calendar, Users, GraduationCap, UserCheck,
   TrendingUp, Settings, BookOpen, Users2, Truck, Fingerprint,
   CreditCard, PieChart, Package, HelpCircle, Receipt, FileText,
-  ClipboardList, BarChart3, Award, BookMarked, PlayCircle, Activity, Wrench
+  ClipboardList, BarChart3, Award, BookMarked, Activity, Wrench
 } from 'lucide-react';
 
 export const secondaryNavSections = [
@@ -125,7 +125,7 @@ export const secondaryNavSections = [
   {
     id: 'lms',
     label: 'Learning Management',
-    icon: PlayCircle,
+    icon: BookOpen,
     permission: 'ACCESS_LMS',
     items: [
       { id: 'lms-courses',     label: 'Courses',           path: 'lms-courses',     permission: 'ACCESS_LMS' },

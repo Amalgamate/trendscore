@@ -128,7 +128,7 @@ router.use('/id-templates', idTemplateRoutes);
 router.use('/transport', requireApp('transport'), transportRoutes);
 router.use('/user-notifications', userNotificationRoutes);
 router.use('/changelogs', changelogRoutes);
-router.use('/lms', requireApp('lms'), lmsRoutes);
+router.use('/lms', requireApp('lms-professional'), lmsRoutes);
 router.use('/tertiary', requireApp('tertiary-modules'), requireInstitutionType('TERTIARY'), tertiaryRoutes);
 router.use('/secondary', requireApp('exams'), requireInstitutionType('SECONDARY'), secondaryRoutes);
 router.use('/settings/system-logs', systemLogsRoutes);
