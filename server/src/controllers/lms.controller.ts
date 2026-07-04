@@ -1894,15 +1894,8 @@ export const getStudentCourseDetail = async (req: AuthRequest, res: Response): P
 export const getStudentAssignments = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user?.userId;
-    const schoolId = req.school?.id;
-
     if (!userId) {
       res.status(401).json({ success: false, message: 'Authentication required' });
-      return;
-    }
-
-    if (!schoolId) {
-      res.status(400).json({ success: false, message: 'School context required' });
       return;
     }
 
