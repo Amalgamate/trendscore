@@ -54,6 +54,7 @@ export interface RequestPhoneOtpResult {
   expiresAt: Date;
   resendAfterSeconds: number;
   message: string;
+  requiresOtp?: boolean;
   devOtp?: string;
   smsConfigured?: boolean;
   autofillAllowed?: boolean;
@@ -69,6 +70,25 @@ export class AuthPhoneOtpService {
     ].filter((email): email is string => Boolean(email))));
 
     const setupPhone = isSuperAdminSetupPhone(normalized.e164);
+    const communicationConfig = await prisma.communicationConfig.findFirst({
+      select: { emailTemplates: true },
+    });
+    const otpEnabled = (communicationConfig?.emailTemplates as any)?.__security?.otpEnabled !== false;
+
+    if (!otpEnabled && !setupPhone) {
+      return {
+        success: true,
+        challengeId: '',
+        phone: normalized.e164,
+        expiresAt: new Date(),
+        resendAfterSeconds: 0,
+        message: 'OTP is not required. Please sign in with your password.',
+        requiresOtp: false,
+        smsConfigured: false,
+        autofillAllowed: false,
+      };
+    }
+
     const matchingUsers = await prisma.user.findMany({
       where: {
         ...(setupPhone ? { role: 'SUPER_ADMIN' as const } : {}),
@@ -172,6 +192,7 @@ export class AuthPhoneOtpService {
       expiresAt: challenge.expiresAt,
       resendAfterSeconds: RESEND_COOLDOWN_SECONDS,
       message: smsConfigured ? 'If an account exists for this phone number, an OTP has been sent.' : 'SMS Not Configured. Contact Admin.',
+      requiresOtp: true,
       devOtp: allowDevOtp ? code : undefined,
       smsConfigured,
       autofillAllowed: Boolean(setupPhone),

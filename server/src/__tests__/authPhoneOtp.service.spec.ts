@@ -113,7 +113,7 @@ describe('AuthPhoneOtpService', () => {
       requiresUserVerification: true,
     });
     mockedPrisma.communicationConfig.findFirst.mockResolvedValue({
-      emailTemplates: { __security: { otpEnabled: false } },
+      emailTemplates: { __security: { otpEnabled: true } },
     });
     mockedPrisma.user.update.mockResolvedValue({});
     mockedPrisma.auditLog.create.mockResolvedValue({});
@@ -209,6 +209,28 @@ describe('AuthPhoneOtpService', () => {
     expect(result.autofillAllowed).toBe(false);
     expect(result.message).toBe('SMS Not Configured. Contact Admin.');
     expect(result.devOtp).toBeUndefined();
+  });
+
+  it('returns password-only mode without creating a challenge when OTP is disabled', async () => {
+    mockedPrisma.communicationConfig.findFirst.mockResolvedValue({
+      emailTemplates: { __security: { otpEnabled: false } },
+    });
+
+    const result = await service.requestParentOtp({ phone: '0712345678' });
+
+    expect(result).toMatchObject({
+      success: true,
+      challengeId: '',
+      phone: '+254712345678',
+      resendAfterSeconds: 0,
+      requiresOtp: false,
+      smsConfigured: false,
+      autofillAllowed: false,
+      message: 'OTP is not required. Please sign in with your password.',
+    });
+    expect(mockedPrisma.user.findMany).not.toHaveBeenCalled();
+    expect(mockedPrisma.authOtpChallenge.create).not.toHaveBeenCalled();
+    expect(mockedSms.isAvailable).not.toHaveBeenCalled();
   });
 
   it('does not expose devOtp in production for normal users', async () => {
@@ -307,7 +329,7 @@ describe('AuthPhoneOtpService', () => {
       success: true,
       token: 'access.jwt',
       refreshToken: 'refresh.jwt',
-      requiresOtp: false,
+      requiresOtp: true,
       mustChangePassword: false,
       message: 'Login successful',
     });

@@ -107,6 +107,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
     resendAfterSeconds: 0,
     smsConfigured: null,
     autofillAllowed: false,
+    requiresOtp: true,
   });
   const [loginMode, setLoginMode] = useState('standard'); // 'standard' | 'phoneOtp' | 'student'
 
@@ -371,13 +372,22 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
 
       setPhoneOtp(prev => ({
         ...prev,
-        challengeId: result.challengeId,
+        challengeId: result.challengeId || '',
         expiresAt: result.expiresAt || null,
         resendAfterSeconds: result.resendAfterSeconds || 60,
         code: result.devOtp || '',
         smsConfigured: result.smsConfigured ?? null,
         autofillAllowed: result.autofillAllowed || false,
+        requiresOtp: result.requiresOtp !== false,
       }));
+
+      if (result.requiresOtp === false) {
+        setPhoneOtpCooldown(0);
+        setPhoneOtpStep('verify');
+        setPhonePasswordFallback(true);
+        toast.success(result.message || 'Enter your password to sign in.');
+        return;
+      }
 
       // If SMS is not configured and autofill isn't allowed (i.e., not super-admin), show clear message and stop
       if (result.smsConfigured === false && !result.autofillAllowed) {
@@ -1043,7 +1053,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
                             setPhoneOtpStep('request');
                             setPhonePasswordFallback(false);
                             setLoginBgRole(null);
-                            setPhoneOtp(prev => ({ ...prev, code: '' }));
+                            setPhoneOtp(prev => ({ ...prev, code: '', requiresOtp: true }));
                           }}
                           className="ml-1 text-sm font-semibold text-[#F47C20]"
                         >
@@ -1051,7 +1061,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
                         </button>
                       </div>
 
-                      {!phonePasswordFallback && (
+                      {phoneOtp.requiresOtp !== false && !phonePasswordFallback && (
                         <div className="mt-4">
                           <Label className="text-xs font-bold tracking-wider text-slate-400 block mb-2 uppercase">Enter OTP</Label>
                           <div className="mt-2 grid grid-cols-6 gap-1.5">
@@ -1107,17 +1117,19 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
                         </div>
                       )}
 
-                      <div className="mt-5 text-center text-sm font-medium text-slate-500">
-                        Didn't receive OTP?{' '}
-                        <button
-                          type="button"
-                          onClick={handlePhoneOtpRequest}
-                          disabled={isPhoneOtpLoading || phoneOtpCooldown > 0}
-                          className="font-bold text-[#F47C20] disabled:text-orange-300"
-                        >
-                          {phoneOtpCooldown > 0 ? `Resend in ${formattedCooldown}` : 'Resend'}
-                        </button>
-                      </div>
+                      {phoneOtp.requiresOtp !== false && (
+                        <div className="mt-5 text-center text-sm font-medium text-slate-500">
+                          Didn't receive OTP?{' '}
+                          <button
+                            type="button"
+                            onClick={handlePhoneOtpRequest}
+                            disabled={isPhoneOtpLoading || phoneOtpCooldown > 0}
+                            className="font-bold text-[#F47C20] disabled:text-orange-300"
+                          >
+                            {phoneOtpCooldown > 0 ? `Resend in ${formattedCooldown}` : 'Resend'}
+                          </button>
+                        </div>
+                      )}
                     </>
                   )}
 
@@ -1134,7 +1146,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
                     </Button>
                   )}
 
-                  {phoneOtpStep === 'verify' && (
+                  {phoneOtp.requiresOtp !== false && phoneOtpStep === 'verify' && (
                     <>
                       <div className="my-5 flex items-center gap-4 text-xs font-medium text-slate-400">
                         <span className="h-px flex-1 bg-slate-200" />
@@ -1476,7 +1488,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
                     {errors.phone && <p className="text-red-600 text-[10px] font-medium uppercase ml-1">{errors.phone}</p>}
                   </div>
 
-                  {phoneOtpStep === 'verify' && (
+                  {phoneOtp.requiresOtp !== false && phoneOtpStep === 'verify' && (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between ml-1">
                         <Label htmlFor="parent-phone-code" className="text-gray-700 font-medium">Code</Label>
@@ -1508,7 +1520,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
                     </div>
                   )}
 
-                  {phoneOtpStep === 'verify' && (
+                  {phoneOtp.requiresOtp !== false && phoneOtpStep === 'verify' && (
                     <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2">
                       <button
                         type="button"
