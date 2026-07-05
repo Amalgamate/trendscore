@@ -1849,7 +1849,9 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       worksheet.getRow(tableHeaderRow).values = headers;
 
       reportData.rows.forEach((row) => {
-        const subjectValues = reportData.subjects.map((subj) => row.subjectScores[subj] ?? '-');
+        const subjectValues = reportData.subjects.map((subj) => (
+          row.subjectScores?.[subj] === undefined ? '-' : Number(row.subjectScores[subj])
+        ));
         worksheet.addRow([
           row.position,
           `${row.learner.firstName} ${row.learner.lastName}`,
@@ -2957,14 +2959,13 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           }
         }
 
-        // 4. Aggregate Data for Broadsheet
-        // Critical fairness rule:
-        // Every learner must be graded out of the SAME full subject/test denominator.
-        // Missing subjects therefore contribute 0 marks but still count in totalMax.
-        const expectedTotalMax = targetTests.reduce(
-          (sum, t) => sum + (Number(t?.totalMarks) || 100),
-          0
-        );
+        const subjectsRaw = Array.from(new Set(targetTests.map(t => getCanonicalLearningAreaName(t.learningArea)).filter(Boolean))).sort();
+        const subjectMaxScores = subjectsRaw.reduce((acc, subject) => {
+          acc[subject] = targetTests
+            .filter((test) => getCanonicalLearningAreaName(test.learningArea) === subject)
+            .reduce((sum, test) => sum + (Number(test?.totalMarks) || 100), 0);
+          return acc;
+        }, {});
 
         const broadsheetData = targetLearners.map(learner => {
           const learnerAllowedSubjects = allowedSubjectsByLearner.get(learner.id);
@@ -2974,23 +2975,32 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
             return areaName ? learnerAllowedSubjects.has(areaName) : true;
           });
 
-          // Aggregates
-          const totalScore = learnerResults.reduce((sum, r) => sum + (r.score || 0), 0);
-          const totalMax = (!learnerAllowedSubjects || learnerAllowedSubjects.size === 0)
-            ? expectedTotalMax
-            : targetTests
-                .filter((t) => learnerAllowedSubjects.has(getCanonicalLearningAreaKey(t.learningArea)))
-                .reduce((sum, t) => sum + (Number(t?.totalMarks) || 100), 0);
-          const averagePct = totalMax > 0 ? (totalScore / totalMax) * 100 : 0;
-          const { grade, remark } = getCBCGrade(averagePct);
-
-          // Subject Breakdown
-          const subjectScores = {};
+          const rawSubjectScores = {};
           learnerResults.forEach(r => {
             const area = getCanonicalLearningAreaName(r.learningArea || 'General');
-            if (!subjectScores[area]) subjectScores[area] = 0;
-            subjectScores[area] += (r.score || 0);
+            if (!rawSubjectScores[area]) rawSubjectScores[area] = 0;
+            rawSubjectScores[area] += (Number(r.score) || 0);
           });
+
+          // One visible subject column must always be out of 100, even when
+          // "All Test Groups" includes multiple tests for the same subject.
+          const visibleSubjects = subjectsRaw.filter((subject) => {
+            if (!learnerAllowedSubjects || learnerAllowedSubjects.size === 0) return true;
+            return learnerAllowedSubjects.has(getCanonicalLearningAreaKey(subject));
+          });
+
+          const subjectScores = visibleSubjects.reduce((acc, subject) => {
+            const subjectMax = subjectMaxScores[subject] || 0;
+            const rawScore = rawSubjectScores[subject] || 0;
+            const normalizedScore = subjectMax > 0 ? (rawScore / subjectMax) * 100 : 0;
+            acc[subject] = parseFloat(Math.min(100, Math.max(0, normalizedScore)).toFixed(1));
+            return acc;
+          }, {});
+
+          const totalScore = visibleSubjects.reduce((sum, subject) => sum + (Number(subjectScores[subject]) || 0), 0);
+          const totalMax = visibleSubjects.length * 100;
+          const averagePct = visibleSubjects.length > 0 ? totalScore / visibleSubjects.length : 0;
+          const { grade, remark } = getCBCGrade(averagePct);
 
           return {
             learner,
@@ -3004,23 +3014,14 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           };
         });
 
-        const subjectsRaw = Array.from(new Set(targetTests.map(t => getCanonicalLearningAreaName(t.learningArea)).filter(Boolean))).sort();
-        const subjectMaxScores = subjectsRaw.reduce((acc, subject) => {
-          acc[subject] = targetTests
-            .filter((test) => getCanonicalLearningAreaName(test.learningArea) === subject)
-            .reduce((sum, test) => sum + (Number(test?.totalMarks) || 100), 0);
-          return acc;
-        }, {});
         const subjectSummaries = subjectsRaw.reduce((acc, subject) => {
-          const subjectMax = subjectMaxScores[subject] || 0;
           const values = broadsheetData.map((row) => Number(row.subjectScores?.[subject]) || 0);
           const total = values.reduce((sum, value) => sum + value, 0);
           const mean = values.length > 0 ? total / values.length : 0;
-          const averagePct = subjectMax > 0 ? (mean / subjectMax) * 100 : 0;
           acc[subject] = {
             total: parseFloat(total.toFixed(1)),
             mean: parseFloat(mean.toFixed(1)),
-            averagePct: parseFloat(averagePct.toFixed(1)),
+            averagePct: parseFloat(mean.toFixed(1)),
           };
           return acc;
         }, {});
@@ -3034,10 +3035,8 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
         broadsheetData.forEach((d) => {
           let pts = 0;
           subjects.forEach((subj) => {
-            const subjectMax = subjectMaxScores[subj] || 0;
-            if (subjectMax > 0) {
-              const subjectScore = Number(d.subjectScores?.[subj]) || 0;
-              const subjectPct = (subjectScore / subjectMax) * 100;
+            if (d.subjectScores?.[subj] !== undefined) {
+              const subjectPct = Number(d.subjectScores[subj]) || 0;
               const { points } = getCBCGrade(subjectPct);
               if (typeof points === 'number') pts += points;
             }
@@ -3943,7 +3942,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                           </td>
                           {reportData.subjects.map(subj => (
                             <td key={`${row.learner.id}-${subj}`} style={{ ...cellBorder, padding: '4px', textAlign: 'center' }}>
-                              {row.subjectScores[subj] || '-'}
+                              {row.subjectScores?.[subj] === undefined ? '-' : formatBroadsheetNumber(row.subjectScores[subj], 1)}
                             </td>
                           ))}
                           <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold' }}>{Math.round(row.totalScore)}</td>
