@@ -3003,12 +3003,10 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           const missingSubjectScores = {};
           const subjectScores = visibleSubjects.reduce((acc, subject) => {
             const expectedTests = expectedSubjectTests[subject] || [];
-            const expectedGroups = new Set(expectedTests.map((test) => test.group).filter(Boolean));
-            const shouldRequireCompleteAggregate = expectedGroups.size > 1 || selectedTestGroups.length > 1;
             const completedTests = completedSubjectTests[subject] || new Set();
             const hasMissingSelectedTest = expectedTests.some((test) => !completedTests.has(test.id));
 
-            if (shouldRequireCompleteAggregate && hasMissingSelectedTest) {
+            if (hasMissingSelectedTest) {
               missingSubjectScores[subject] = true;
               return acc;
             }
