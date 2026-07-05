@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
+import { Home } from 'lucide-react';
 import { useNavigation } from '../hooks/useNavigation';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -201,6 +202,19 @@ const HorizontalSubmenu = ({ currentPage, onNavigate }) => {
   return (
     <div className="border-b border-gray-200 bg-gray-100/95 backdrop-blur-md">
       <div className="app-layout-row flex items-center gap-1 overflow-x-auto custom-scrollbar whitespace-nowrap py-2">
+        <button
+          type="button"
+          onClick={() => onNavigate('dashboard')}
+          title="Home"
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-all ${
+            currentPage === 'dashboard'
+              ? 'bg-blue-50 text-blue-700'
+              : 'text-blue-600 hover:bg-blue-50 hover:text-blue-700'
+          }`}
+        >
+          <Home size={16} />
+        </button>
+        <span className="h-4 w-px bg-gray-200 mx-2" />
         <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mr-2">
           {activeSection.label}
         </span>

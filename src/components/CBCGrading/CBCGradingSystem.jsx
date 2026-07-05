@@ -2,7 +2,6 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import Sidebar from './layout/Sidebar';
 import Header from './layout/Header';
 import HorizontalSubmenu from './layout/HorizontalSubmenu';
-import QuickActions from './shared/QuickActions';
 import MobileAppShell from './layout/MobileAppShell';
 import MobileBottomNav from './dashboard/mobile/MobileBottomNav';
 import PageRouter from './layout/PageRouter';
@@ -700,11 +699,6 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
         {!(user?.role === 'ACCOUNTANT' && currentPage === 'finance-dashboard') && (
           <>
             <Header user={accessUser} onLogout={handleLogout} onNavigate={handleNavigate} brandingSettings={brandingSettings} />
-            {String(accessUser?.role || '').toUpperCase() === 'SUPER_ADMIN' && (
-              <div className="sticky top-[var(--app-header-height)] z-40">
-                <QuickActions onNavigate={handleNavigate} currentPage={currentPage} user={accessUser} />
-              </div>
-            )}
             <HorizontalSubmenu currentPage={currentPage} onNavigate={handleNavigate} />
           </>
         )}
