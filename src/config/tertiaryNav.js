@@ -72,7 +72,7 @@ export const tertiaryNavSections = [
   // ── Assessment ────────────────────────────────────────────────────────────
   {
     id: 'tertiary-assessment',
-    label: 'Assessment',
+    label: 'Assessments',
     icon: TrendingUp,
     comingSoon: true,
     permission: 'ACCESS_ASSESSMENT_MODULE',
@@ -81,6 +81,19 @@ export const tertiaryNavSections = [
       { id: 'tert-exams',      label: 'Exams (70%)',      path: 'tert-exams',       permission: 'ACCESS_ASSESSMENT_MODULE', comingSoon: true },
       { id: 'tert-mark-entry', label: 'Mark Entry',       path: 'tert-mark-entry',  permission: 'ACCESS_ASSESSMENT_MODULE', comingSoon: true },
       { id: 'tert-grade-sheet',label: 'Grade Sheets',     path: 'tert-grade-sheet', permission: 'ACCESS_ASSESSMENT_MODULE', comingSoon: true },
+      {
+        id: 'group-reports',
+        label: 'Reports',
+        type: 'group',
+        icon: FileText,
+        items: [
+          { id: 'tert-assessment-learner-report-card', label: 'Learners Report Card', path: 'assess-termly-report', permission: 'ACCESS_ASSESSMENT_MODULE' },
+          { id: 'tert-assessment-stream-sheet',        label: 'Stream Sheet',          path: 'assess-summative-report', params: { reportType: 'STREAM_REPORT' }, permission: 'ACCESS_ASSESSMENT_MODULE' },
+          { id: 'tert-assessment-grade-sheet',         label: 'Grade Sheet',           path: 'assess-summative-report', params: { reportType: 'GRADE_REPORT' },  permission: 'ACCESS_ASSESSMENT_MODULE' },
+          { id: 'tert-assessment-performance-analysis', label: 'Performance Analysis', path: 'academic-section-analysis', permission: 'VIEW_ALL_REPORTS' },
+          { id: 'tert-assessment-learner-insights',    label: 'Learner Insights',      path: 'academic-learner-risk', permission: 'VIEW_ALL_REPORTS' },
+        ],
+      },
     ],
   },
 

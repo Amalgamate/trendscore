@@ -26,18 +26,17 @@ import {
     Shirt, ClipboardList, Video, PlayCircle, Gift, Wrench, Activity, Brain, MoreHorizontal
 } from 'lucide-react';
 
-const focusModules = ['dashboard', 'communications', 'planner', 'learners', 'teachers', 'assessment', 'digital-learning', 'academic-intelligence', 'learning-hub', 'attendance', 'docs-center', 'settings', 'hr', 'finance', 'inventory', 'transport'];
+const focusModules = ['dashboard', 'communications', 'planner', 'learners', 'teachers', 'assessment', 'digital-learning', 'learning-hub', 'attendance', 'docs-center', 'settings', 'hr', 'finance', 'inventory', 'transport'];
 
 const RESTRICTED_SIDEBAR_HOSTS = new Set([
     'kambigarba-cs.trendscore.co.ke',
     'merti-cs.trendscore.co.ke'
 ]);
-const RESTRICTED_SIDEBAR_SECTION_IDS = new Set(['learners', 'teachers', 'assessment', 'academic-intelligence', 'planner', 'communications', 'settings']);
+const RESTRICTED_SIDEBAR_SECTION_IDS = new Set(['learners', 'teachers', 'assessment', 'planner', 'communications', 'settings']);
 const RESTRICTED_SIDEBAR_SECTION_LABELS = {
     learners: 'Students',
     teachers: 'Tutors',
     assessment: 'Assessments',
-    'academic-intelligence': 'Reports & Growth',
     planner: 'Planner',
     communications: 'Communications',
     settings: 'Settings'
@@ -183,7 +182,7 @@ export const allNavSections = [
     // },
     {
         id: 'assessment',
-        label: 'Assessment',
+        label: 'Assessments',
         icon: TrendingUp,
         app: 'gradebook',
         permission: 'ACCESS_ASSESSMENT_MODULE',
@@ -217,6 +216,19 @@ export const allNavSections = [
                     { id: 'assess-core-competencies', label: 'Core Competencies', path: 'assess-core-competencies', permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'assess-values',            label: 'National Values',   path: 'assess-values',            permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'assess-cocurricular',      label: 'Co-Curricular',     path: 'assess-cocurricular',      permission: 'ACCESS_ASSESSMENT_MODULE' },
+                ]
+            },
+            {
+                id: 'group-reports',
+                label: 'Reports',
+                type: 'group',
+                icon: FileText,
+                items: [
+                    { id: 'assessment-learner-report-card', label: 'Learners Report Card', path: 'assess-termly-report', permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'assessment-stream-sheet',        label: 'Stream Sheet',          path: 'assess-summative-report', params: { reportType: 'STREAM_REPORT' }, permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'assessment-grade-sheet',         label: 'Grade Sheet',           path: 'assess-summative-report', params: { reportType: 'GRADE_REPORT' },  permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'assessment-performance-analysis', label: 'Performance Analysis', path: 'academic-section-analysis', permission: 'VIEW_ALL_REPORTS' },
+                    { id: 'assessment-learner-insights',    label: 'Learner Insights',      path: 'academic-learner-risk', permission: 'VIEW_ALL_REPORTS' },
                 ]
             },
             {
@@ -878,7 +890,7 @@ export const useNavigation = () => {
             let label = section.label;
             if (section.id === 'learners') label = labels.students;
             if (section.id === 'teachers') label = labels.teachers;
-            if (section.id === 'assessment') label = labels.subjects || 'Learner Analytics';
+            if (section.id === 'assessment') label = 'Assessments';
 
             return {
                 ...section,
@@ -929,10 +941,10 @@ export const useNavigation = () => {
             return hasAcademics ? existing : [...existing, academicsSection];
         }
         if (role === 'ACCOUNTANT') {
-            return navSections.filter(s => ['learners', 'assessment', 'academic-intelligence', 'attendance'].includes(s.id));
+            return navSections.filter(s => ['learners', 'assessment', 'attendance'].includes(s.id));
         }
         return navSections.filter(s => 
-            ['learners', 'teachers', 'assessment', 'digital-learning', 'academic-intelligence', 'planner', 'timetable', 'learning-hub', 'attendance', 'facilities'].includes(s.id)
+            ['learners', 'teachers', 'assessment', 'digital-learning', 'planner', 'timetable', 'learning-hub', 'attendance', 'facilities'].includes(s.id)
         );
     }, [navSections, role]);
 
@@ -1051,6 +1063,14 @@ export const useNavigation = () => {
  * Home, Academics, Finance, Operations, Communication, Insights, More
  */
 export const groupNavigationByCategory = (nav) => {
+    const appendUniqueSections = (target, sections = []) => {
+        sections.filter(Boolean).forEach((section) => {
+            if (!target.some((existing) => existing.id === section.id)) {
+                target.push(section);
+            }
+        });
+    };
+
     const groups = {
         home: { id: 'home', label: 'Home', icon: nav.dashboardSection?.icon, items: [] },
         academics: { id: 'academics', label: 'Academics', items: [] },
@@ -1068,13 +1088,13 @@ export const groupNavigationByCategory = (nav) => {
 
     // Populate Academics
     if (nav.schoolSections && nav.schoolSections.length > 0) {
-        groups.academics.items.push(...nav.schoolSections);
+        appendUniqueSections(groups.academics.items, nav.schoolSections);
     }
     if (nav.lmsSection) {
-        groups.academics.items.push(nav.lmsSection);
+        appendUniqueSections(groups.academics.items, [nav.lmsSection]);
     }
     if (nav.studentLmsSection) {
-        groups.academics.items.push(nav.studentLmsSection);
+        appendUniqueSections(groups.academics.items, [nav.studentLmsSection]);
     }
 
     // Populate Finance

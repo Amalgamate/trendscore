@@ -81,7 +81,7 @@ export const secondaryNavSections = [
   // ── Assessment ────────────────────────────────────────────────────────────
   {
     id: 'secondary-assessment',
-    label: 'Assessment',
+    label: 'Assessments',
     icon: TrendingUp,
     permission: 'ACCESS_ASSESSMENT_MODULE',
     items: [
@@ -90,6 +90,19 @@ export const secondaryNavSections = [
       { id: 'sec-mid-term',    label: 'Mid-term Exams', path: 'sec-mark-entry',  params: { defaultTestType: 'MID_TERM' }, permission: 'ACCESS_ASSESSMENT_MODULE' },
       { id: 'sec-end-term',    label: 'End-term Exams', path: 'sec-mark-entry',  params: { defaultTestType: 'END_TERM' }, permission: 'ACCESS_ASSESSMENT_MODULE' },
       { id: 'sec-kcse-mock',   label: 'Mock Exams',     path: 'sec-mark-entry',  params: { defaultTestType: 'MOCK' },     permission: 'ACCESS_ASSESSMENT_MODULE' },
+      {
+        id: 'group-reports',
+        label: 'Reports',
+        type: 'group',
+        icon: FileText,
+        items: [
+          { id: 'sec-assessment-learner-report-card', label: 'Learners Report Card', path: 'assess-termly-report', permission: 'ACCESS_ASSESSMENT_MODULE' },
+          { id: 'sec-assessment-stream-sheet',        label: 'Stream Sheet',          path: 'assess-summative-report', params: { reportType: 'STREAM_REPORT' }, permission: 'ACCESS_ASSESSMENT_MODULE' },
+          { id: 'sec-assessment-grade-sheet',         label: 'Grade Sheet',           path: 'assess-summative-report', params: { reportType: 'GRADE_REPORT' },  permission: 'ACCESS_ASSESSMENT_MODULE' },
+          { id: 'sec-assessment-performance-analysis', label: 'Performance Analysis', path: 'academic-section-analysis', permission: 'VIEW_ALL_REPORTS' },
+          { id: 'sec-assessment-learner-insights',    label: 'Learner Insights',      path: 'academic-learner-risk', permission: 'VIEW_ALL_REPORTS' },
+        ],
+      },
     ],
   },
 
