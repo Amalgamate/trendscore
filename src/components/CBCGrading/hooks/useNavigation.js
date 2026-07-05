@@ -26,7 +26,17 @@ import {
     Shirt, ClipboardList, Video, PlayCircle, Gift, Wrench, Activity, Brain, MoreHorizontal
 } from 'lucide-react';
 
-const focusModules = ['dashboard', 'communications', 'planner', 'learners', 'teachers', 'assessment', 'digital-learning', 'learning-hub', 'attendance', 'docs-center', 'settings', 'hr', 'finance', 'inventory', 'transport'];
+const focusModules = ['dashboard', 'learners', 'teachers', 'attendance', 'assessment', 'finance', 'communications', 'planner', 'digital-learning', 'learning-hub', 'docs-center', 'settings', 'hr', 'inventory', 'transport'];
+const SCHOOL_SECTION_ORDER = ['learners', 'students', 'teachers', 'lecturers', 'attendance', 'assessment', 'secondary-assessment', 'tertiary-assessment'];
+
+const orderSectionsById = (sections = [], preferredOrder = SCHOOL_SECTION_ORDER) => {
+    const orderIndex = new Map(preferredOrder.map((id, index) => [id, index]));
+    return [...sections].sort((a, b) => {
+        const aIndex = orderIndex.has(a.id) ? orderIndex.get(a.id) : Number.MAX_SAFE_INTEGER;
+        const bIndex = orderIndex.has(b.id) ? orderIndex.get(b.id) : Number.MAX_SAFE_INTEGER;
+        return aIndex - bIndex;
+    });
+};
 
 const RESTRICTED_SIDEBAR_HOSTS = new Set([
     'kambigarba-cs.trendscore.co.ke',
@@ -778,7 +788,7 @@ export const useNavigation = () => {
             communicationSection: find('communications'),
             schoolSections: role === 'PARENT'
                 ? parentSchoolSectionsFromNav(nav)
-                : nav.filter(s => SECONDARY_SCHOOL_SECTIONS.includes(s.id)),
+                : orderSectionsById(nav.filter(s => SECONDARY_SCHOOL_SECTIONS.includes(s.id)), SECONDARY_SCHOOL_SECTIONS),
             lmsSection:          find('digital-learning'),
             studentLmsSection:   null,
             backOfficeSections:  nav.filter(s => SECONDARY_BACKOFFICE_SECTIONS.includes(s.id)),
@@ -823,7 +833,7 @@ export const useNavigation = () => {
             communicationSection: find('communications'),
             schoolSections: role === 'PARENT'
                 ? parentSchoolSectionsFromNav(nav)
-                : nav.filter(s => TERTIARY_SCHOOL_SECTIONS.includes(s.id)),
+                : orderSectionsById(nav.filter(s => TERTIARY_SCHOOL_SECTIONS.includes(s.id)), TERTIARY_SCHOOL_SECTIONS),
             lmsSection:          find('digital-learning'),
             studentLmsSection:   null,
             backOfficeSections:  nav.filter(s => TERTIARY_BACKOFFICE_SECTIONS.includes(s.id)),
@@ -941,11 +951,11 @@ export const useNavigation = () => {
             return hasAcademics ? existing : [...existing, academicsSection];
         }
         if (role === 'ACCOUNTANT') {
-            return navSections.filter(s => ['learners', 'assessment', 'attendance'].includes(s.id));
+            return orderSectionsById(navSections.filter(s => ['learners', 'assessment', 'attendance'].includes(s.id)));
         }
-        return navSections.filter(s => 
+        return orderSectionsById(navSections.filter(s =>
             ['learners', 'teachers', 'assessment', 'digital-learning', 'planner', 'timetable', 'learning-hub', 'attendance', 'facilities'].includes(s.id)
-        );
+        ));
     }, [navSections, role]);
 
     const backOfficeSections = useMemo(() => {

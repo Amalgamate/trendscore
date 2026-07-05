@@ -270,7 +270,7 @@ export const secondaryNavSections = [
 ];
 
 // ── Secondary-specific category groupings ─────────────────────────────────────
-export const SECONDARY_SCHOOL_SECTIONS   = ['students', 'teachers', 'secondary-academics', 'secondary-assessment', 'attendance'];
+export const SECONDARY_SCHOOL_SECTIONS   = ['students', 'teachers', 'attendance', 'secondary-assessment', 'secondary-academics'];
 export const SECONDARY_RESULTS_SECTIONS  = ['secondary-results'];
 export const SECONDARY_BACKOFFICE_SECTIONS = ['finance', 'hr', 'transport', 'inventory'];
 export const SECONDARY_SYSTEM_SECTIONS   = ['settings'];

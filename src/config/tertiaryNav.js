@@ -264,7 +264,7 @@ export const tertiaryNavSections = [
 ];
 
 // ── Tertiary category groupings ───────────────────────────────────────────────
-export const TERTIARY_SCHOOL_SECTIONS     = ['students', 'lecturers', 'tertiary-programs', 'tertiary-assessment', 'attendance'];
+export const TERTIARY_SCHOOL_SECTIONS     = ['students', 'lecturers', 'attendance', 'tertiary-assessment', 'tertiary-programs'];
 export const TERTIARY_RESULTS_SECTIONS    = ['tertiary-results', 'student-affairs'];
 export const TERTIARY_BACKOFFICE_SECTIONS = ['finance', 'hr', 'inventory'];
 export const TERTIARY_SYSTEM_SECTIONS     = ['settings'];
