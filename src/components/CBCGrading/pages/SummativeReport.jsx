@@ -2960,12 +2960,24 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
         }
 
         const subjectsRaw = Array.from(new Set(targetTests.map(t => getCanonicalLearningAreaName(t.learningArea)).filter(Boolean))).sort();
-        const subjectMaxScores = subjectsRaw.reduce((acc, subject) => {
-          acc[subject] = targetTests
-            .filter((test) => getCanonicalLearningAreaName(test.learningArea) === subject)
-            .reduce((sum, test) => sum + (Number(test?.totalMarks) || 100), 0);
-          return acc;
-        }, {});
+        const learnerById = new Map(targetLearners.map((learner) => [learner.id, learner]));
+        const subjectMaxByStream = {};
+        const seenStreamSubjectTests = new Set();
+
+        Object.values(allResultsMap).flat().forEach((result) => {
+          const learner = learnerById.get(result.learnerId);
+          const streamKey = String(learner?.stream || 'ALL').trim() || 'ALL';
+          const subject = getCanonicalLearningAreaName(result.learningArea || result.test?.learningArea || 'General');
+          const testId = result.testId || result.test?.id;
+          if (!subject || !testId) return;
+
+          const key = `${streamKey}::${subject}::${testId}`;
+          if (seenStreamSubjectTests.has(key)) return;
+          seenStreamSubjectTests.add(key);
+
+          if (!subjectMaxByStream[streamKey]) subjectMaxByStream[streamKey] = {};
+          subjectMaxByStream[streamKey][subject] = (subjectMaxByStream[streamKey][subject] || 0) + (Number(result.totalMarks || result.test?.totalMarks) || 100);
+        });
 
         const broadsheetData = targetLearners.map(learner => {
           const learnerAllowedSubjects = allowedSubjectsByLearner.get(learner.id);
@@ -2989,8 +3001,10 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
             return learnerAllowedSubjects.has(getCanonicalLearningAreaKey(subject));
           });
 
+          const streamKey = String(learner.stream || 'ALL').trim() || 'ALL';
+          const streamSubjectMaxScores = subjectMaxByStream[streamKey] || {};
           const subjectScores = visibleSubjects.reduce((acc, subject) => {
-            const subjectMax = subjectMaxScores[subject] || 0;
+            const subjectMax = streamSubjectMaxScores[subject] || 0;
             const rawScore = rawSubjectScores[subject] || 0;
             const normalizedScore = subjectMax > 0 ? (rawScore / subjectMax) * 100 : 0;
             acc[subject] = parseFloat(Math.min(100, Math.max(0, normalizedScore)).toFixed(1));
