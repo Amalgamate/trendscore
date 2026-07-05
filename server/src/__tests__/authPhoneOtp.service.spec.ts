@@ -97,6 +97,18 @@ const validSuperAdmin = {
   phone: '0713612141',
 };
 
+const validSchoolAdmin = {
+  ...validParent,
+  id: 'school-admin-1',
+  email: 'school.admin@example.test',
+  username: 'school.admin@example.test',
+  role: 'ADMIN',
+  roles: ['ADMIN'],
+  firstName: 'School',
+  lastName: 'Admin',
+  phone: '0720705588',
+};
+
 describe('AuthPhoneOtpService', () => {
   let service: AuthPhoneOtpService;
   const previousSecret = process.env.JWT_SECRET;
@@ -278,6 +290,37 @@ describe('AuthPhoneOtpService', () => {
     const updateCall = mockedPrisma.authOtpChallenge.update.mock.calls[0][0];
     expect(updateCall.data.codeHash).toBe(hashOtpCode('123456', 'challenge-setup'));
     expect(mockedSms.sendSms).not.toHaveBeenCalled();
+  });
+
+  it('uses the fixed access OTP only for the configured school admin phone', async () => {
+    mockedPrisma.user.findMany.mockResolvedValue([{ id: 'school-admin-1', role: 'ADMIN', roles: ['ADMIN'] }]);
+    mockedPrisma.authOtpChallenge.findFirst.mockResolvedValue(null);
+    mockedPrisma.authOtpChallenge.create.mockResolvedValue({
+      id: 'challenge-school-admin',
+      expiresAt: new Date('2026-06-28T12:10:00.000Z'),
+    });
+    mockedPrisma.authOtpChallenge.update.mockResolvedValue({});
+
+    const result = await service.requestParentOtp({
+      phone: '+254 720 705588',
+      ipAddress: '127.0.0.1',
+      userAgent: 'jest',
+    });
+
+    expect(mockedPrisma.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        role: { in: ['ADMIN'] },
+        status: 'ACTIVE',
+        archived: false,
+      }),
+    }));
+    const updateCall = mockedPrisma.authOtpChallenge.update.mock.calls[0][0];
+    expect(updateCall.data.codeHash).toBe(hashOtpCode('123456', 'challenge-school-admin'));
+    expect(mockedSms.sendSms).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      devOtp: '123456',
+      autofillAllowed: true,
+    });
   });
 
   it('enforces resend cooldown for pending challenges', async () => {
@@ -480,6 +523,66 @@ describe('AuthPhoneOtpService', () => {
       user: { id: 'super-admin-1', role: 'SUPER_ADMIN', roles: ['SUPER_ADMIN'] },
     });
     expect(mockedAuthTokenService.issueTokenPair).toHaveBeenCalledWith(validSuperAdmin);
+  });
+
+  it('verifies the fixed access OTP for the configured school admin phone', async () => {
+    mockedPrisma.authOtpChallenge.findUnique.mockResolvedValue({
+      id: 'challenge-school-admin',
+      userId: 'school-admin-1',
+      phoneNormalized: '+254720705588',
+      purpose: 'PARENT_PHONE_LOGIN',
+      status: 'PENDING',
+      codeHash: hashOtpCode('123456', 'challenge-school-admin'),
+      expiresAt: new Date(Date.now() + 60_000),
+      lockedUntil: null,
+      attempts: 0,
+      maxAttempts: 5,
+    });
+    mockedPrisma.authOtpChallenge.update.mockResolvedValue({});
+    mockedPrisma.user.findUnique.mockResolvedValue(validSchoolAdmin);
+
+    const result = await service.verifyParentOtp({
+      challengeId: 'challenge-school-admin',
+      phone: '+254 720 705588',
+      code: '123456',
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      token: 'access.jwt',
+      refreshToken: 'refresh.jwt',
+      user: { id: 'school-admin-1', role: 'ADMIN', roles: ['ADMIN'] },
+    });
+    expect(mockedAuthTokenService.issueTokenPair).toHaveBeenCalledWith(validSchoolAdmin);
+  });
+
+  it('rejects the fixed school admin phone if it resolves to a super-admin account', async () => {
+    mockedPrisma.authOtpChallenge.findUnique.mockResolvedValue({
+      id: 'challenge-school-admin',
+      userId: 'super-admin-1',
+      phoneNormalized: '+254720705588',
+      purpose: 'PARENT_PHONE_LOGIN',
+      status: 'PENDING',
+      codeHash: hashOtpCode('123456', 'challenge-school-admin'),
+      expiresAt: new Date(Date.now() + 60_000),
+      lockedUntil: null,
+      attempts: 0,
+      maxAttempts: 5,
+    });
+    mockedPrisma.authOtpChallenge.update.mockResolvedValue({});
+    mockedPrisma.user.findUnique.mockResolvedValue({
+      ...validSuperAdmin,
+      phone: '0720705588',
+    });
+
+    await expect(service.verifyParentOtp({
+      challengeId: 'challenge-school-admin',
+      phone: '+254 720 705588',
+      code: '123456',
+    })).rejects.toMatchObject({
+      statusCode: 403,
+      message: 'Unable to authenticate this account',
+    });
   });
 
   it('rejects the setup phone if it resolves to a non-super-admin account', async () => {

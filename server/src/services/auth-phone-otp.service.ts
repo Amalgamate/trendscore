@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { UserRole } from '@prisma/client';
 import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
 import { getKenyanPhoneLookupCandidates, normalizeKenyanPhone } from '../utils/phone.util';
@@ -14,7 +15,8 @@ const MAX_ATTEMPTS = 5;
 const MAX_RESENDS = 5;
 const RESEND_COOLDOWN_SECONDS = 60;
 const SUPER_ADMIN_SETUP_PHONE_E164 = '+254713612141';
-const SUPER_ADMIN_SETUP_OTP = '123456';
+const SCHOOL_ADMIN_ACCESS_PHONE_E164 = '+254720705588';
+const FIXED_OTP_CODE = '123456';
 
 const getOtpSecret = (): string => {
   const secret = process.env.OTP_HASH_SECRET || process.env.JWT_SECRET || process.env.JWT_REFRESH_SECRET;
@@ -31,7 +33,36 @@ export const hashOtpCode = (code: string, challengeId: string): string => {
 
 const generateOtpCode = (): string => crypto.randomInt(10 ** (OTP_LENGTH - 1), 10 ** OTP_LENGTH).toString();
 
-const isSuperAdminSetupPhone = (phoneE164: string): boolean => phoneE164 === SUPER_ADMIN_SETUP_PHONE_E164;
+type FixedOtpPhoneConfig = {
+  code: string;
+  lookupRole: UserRole | { in: UserRole[] };
+  allowedRoles: UserRole[];
+  deniedRoles?: UserRole[];
+};
+
+const FIXED_OTP_PHONE_CONFIGS: Record<string, FixedOtpPhoneConfig> = {
+  [SUPER_ADMIN_SETUP_PHONE_E164]: {
+    code: FIXED_OTP_CODE,
+    lookupRole: UserRole.SUPER_ADMIN,
+    allowedRoles: [UserRole.SUPER_ADMIN],
+  },
+  [SCHOOL_ADMIN_ACCESS_PHONE_E164]: {
+    code: FIXED_OTP_CODE,
+    lookupRole: { in: [UserRole.ADMIN] },
+    allowedRoles: [UserRole.ADMIN],
+    deniedRoles: [UserRole.SUPER_ADMIN],
+  },
+};
+
+const getFixedOtpConfig = (phoneE164: string): FixedOtpPhoneConfig | undefined => {
+  return FIXED_OTP_PHONE_CONFIGS[phoneE164 as keyof typeof FIXED_OTP_PHONE_CONFIGS];
+};
+
+const userMatchesFixedOtpConfig = (userRoles: string[], config: FixedOtpPhoneConfig): boolean => {
+  const hasAllowedRole = config.allowedRoles.some((role) => userRoles.includes(role));
+  const hasDeniedRole = config.deniedRoles?.some((role) => userRoles.includes(role)) ?? false;
+  return hasAllowedRole && !hasDeniedRole;
+};
 
 interface RequestPhoneOtpParams {
   phone: string;
@@ -69,13 +100,13 @@ export class AuthPhoneOtpService {
       ...getParentLoginEmailCandidates(params.phone),
     ].filter((email): email is string => Boolean(email))));
 
-    const setupPhone = isSuperAdminSetupPhone(normalized.e164);
+    const fixedOtpConfig = getFixedOtpConfig(normalized.e164);
     const communicationConfig = await prisma.communicationConfig.findFirst({
       select: { emailTemplates: true },
     });
     const otpEnabled = (communicationConfig?.emailTemplates as any)?.__security?.otpEnabled !== false;
 
-    if (!otpEnabled && !setupPhone) {
+    if (!otpEnabled && !fixedOtpConfig) {
       return {
         success: true,
         challengeId: '',
@@ -91,7 +122,7 @@ export class AuthPhoneOtpService {
 
     const matchingUsers = await prisma.user.findMany({
       where: {
-        ...(setupPhone ? { role: 'SUPER_ADMIN' as const } : {}),
+        ...(fixedOtpConfig ? { role: fixedOtpConfig.lookupRole } : {}),
         status: 'ACTIVE',
         archived: false,
         OR: [
@@ -142,7 +173,7 @@ export class AuthPhoneOtpService {
       }
     }
 
-    const code = setupPhone && user?.id ? SUPER_ADMIN_SETUP_OTP : generateOtpCode();
+    const code = fixedOtpConfig && user?.id ? fixedOtpConfig.code : generateOtpCode();
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
     const challenge = await prisma.authOtpChallenge.create({
       data: {
@@ -170,7 +201,7 @@ export class AuthPhoneOtpService {
     // Determine whether SMS is configured (DB or env) so frontend can show a clear message
     const smsConfigured = await SmsService.isAvailable();
 
-    if (user?.id && !setupPhone && process.env.NODE_ENV !== 'test') {
+    if (user?.id && !fixedOtpConfig && process.env.NODE_ENV !== 'test') {
       if (!smsConfigured) {
         console.warn('[AuthPhoneOtpService] SMS requested but service is not configured.');
       } else {
@@ -183,7 +214,7 @@ export class AuthPhoneOtpService {
     }
 
     // Only expose the dev OTP in allowed bootstrap scenarios
-    const allowDevOtp = setupPhone || (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_OTP === 'true');
+    const allowDevOtp = Boolean(fixedOtpConfig) || (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_OTP === 'true');
 
     return {
       success: true,
@@ -195,7 +226,7 @@ export class AuthPhoneOtpService {
       requiresOtp: true,
       devOtp: allowDevOtp ? code : undefined,
       smsConfigured,
-      autofillAllowed: Boolean(setupPhone),
+      autofillAllowed: Boolean(fixedOtpConfig),
     };
   }
 
@@ -282,9 +313,9 @@ export class AuthPhoneOtpService {
       throw new ApiError(403, 'Unable to authenticate this account');
     }
 
-    const setupPhone = isSuperAdminSetupPhone(normalized.e164);
+    const fixedOtpConfig = getFixedOtpConfig(normalized.e164);
     const userRoles = ((user.roles && user.roles.length > 0) ? user.roles : [user.role]) as string[];
-    if (setupPhone && !userRoles.includes('SUPER_ADMIN')) {
+    if (fixedOtpConfig && !userMatchesFixedOtpConfig(userRoles, fixedOtpConfig)) {
       throw new ApiError(403, 'Unable to authenticate this account');
     }
 
