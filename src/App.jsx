@@ -13,6 +13,7 @@ import { ModuleAccessProvider } from './contexts/ModuleAccessContext';
 import FeeApprovalReminder from './components/CBCGrading/layout/FeeApprovalReminder';
 import axiosInstance from './services/api/axiosConfig';
 import { useBootstrapStore } from './store/useBootstrapStore';
+import { useUIStore } from './store/useUIStore';
 import { resolveDashboardPage } from './components/CBCGrading/utils/appAccess';
 
 import ErrorBoundary from './components/common/ErrorBoundary';
@@ -293,11 +294,13 @@ function AppContent() {
     // Always clear bootstrap and UI state on login. The incoming user may
     // have a different institutionType and stale cached data must not bleed
     // through. The bootstrap store will refill during the splash screen.
+    const landingPage = resolveDashboardPage(userData);
     clearBootstrap();
     localStorage.removeItem('cbc_ui_state');
     localStorage.removeItem('cbc_current_page');
     localStorage.removeItem('cbc_page_params');
     localStorage.removeItem('cbc_expanded_sections');
+    useUIStore.getState().resetUI(landingPage);
 
     login(userData, token, refreshToken);
 
@@ -311,12 +314,13 @@ function AppContent() {
       try {
         localStorage.setItem('cbc_ui_state', JSON.stringify({
           state: {
-            currentPage: resolveDashboardPage(userData),
+            currentPage: landingPage,
             pageParams: {},
             sidebarOpen: true,
           },
           version: 0,
         }));
+        window.history.replaceState({ appPage: landingPage, appParams: {} }, '', window.location.href);
       } catch {
         // Storage can be unavailable in restricted browser modes.
       }

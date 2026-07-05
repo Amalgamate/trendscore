@@ -5,11 +5,10 @@ import { persist } from 'zustand/middleware';
  * useUIStore
  * Manages global UI state: navigation, sidebar, layout preferences, and in-app history.
  *
- * PERF NOTE: currentPage is persisted so users land on their last page after
- * a refresh. However we guard against loading a persisted page when there is
- * no valid auth token — that causes an immediate 401, a token-refresh round-
- * trip, and then a second API call, all before any data renders. The
- * sanitisePersistedPage helper resets to 'dashboard' when no token exists.
+ * PERF NOTE: currentPage is persisted so refreshes keep users on the page
+ * they are actively using. Login handlers must explicitly reset this store so
+ * a new session starts at the role's dashboard instead of an old restricted
+ * page from a previous user.
  */
 
 function sanitisePersistedPage(page) {
@@ -55,10 +54,10 @@ export const useUIStore = create(
 
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
-      resetUI: () => set({
-        currentPage: 'dashboard',
+      resetUI: (page = 'dashboard') => set({
+        currentPage: page,
         pageParams: {},
-        historyStack: ['dashboard'],
+        historyStack: [page],
         historyIndex: 0,
         sidebarOpen: true
       })
@@ -84,4 +83,3 @@ export const useUIStore = create(
     }
   )
 );
-
