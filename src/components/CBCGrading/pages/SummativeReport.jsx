@@ -1713,11 +1713,13 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     if (!data?.rows?.length || !data?.subjects?.length) return [];
 
     const rows = data.rows;
+    const completeRows = rows.filter((row) => !row.hasMissingAggregate);
+    const summaryRows = completeRows.length > 0 ? completeRows : rows;
     const subjects = data.subjects;
     const summaries = data.subjectSummaries || {};
-    const totalScore = rows.reduce((sum, row) => sum + (Number(row.totalScore) || 0), 0);
-    const meanTotal = totalScore / rows.length;
-    const meanAveragePct = rows.reduce((sum, row) => sum + (Number(row.averagePct) || 0), 0) / rows.length;
+    const totalScore = summaryRows.reduce((sum, row) => sum + (Number(row.totalScore) || 0), 0);
+    const meanTotal = totalScore / summaryRows.length;
+    const meanAveragePct = summaryRows.reduce((sum, row) => sum + (Number(row.averagePct) || 0), 0) / summaryRows.length;
 
     const getGradeForPct = (pct) => {
       const value = parseFloat(pct);
@@ -1758,7 +1760,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
         total: '-',
         average: String(overallGrade.points),
         meanPts: (() => {
-          const validPts = rows.map((r) => r.meritPoints).filter((p) => typeof p === 'number');
+          const validPts = completeRows.map((r) => r.meritPoints).filter((p) => typeof p === 'number');
           if (!validPts.length) return '-';
           return String(Math.round(validPts.reduce((a, b) => a + b, 0) / validPts.length));
         })(),
@@ -1849,15 +1851,16 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       worksheet.getRow(tableHeaderRow).values = headers;
 
       reportData.rows.forEach((row) => {
-        const subjectValues = reportData.subjects.map((subj) => (
-          row.subjectScores?.[subj] === undefined ? '-' : Number(row.subjectScores[subj])
-        ));
+        const subjectValues = reportData.subjects.map((subj) => {
+          if (row.missingSubjectScores?.[subj]) return 'X';
+          return row.subjectScores?.[subj] === undefined ? '-' : Number(row.subjectScores[subj]);
+        });
         worksheet.addRow([
-          row.position,
+          row.position ?? '',
           `${row.learner.firstName} ${row.learner.lastName}`,
           ...subjectValues,
-          Math.round(row.totalScore),
-          Number(row.averagePct) / 100,
+          row.hasMissingAggregate ? 'INC' : Math.round(row.totalScore),
+          row.hasMissingAggregate ? 'INC' : Number(row.averagePct) / 100,
           row.grade || '',
           row.meritPoints ?? ''
         ]);
@@ -2960,24 +2963,17 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
         }
 
         const subjectsRaw = Array.from(new Set(targetTests.map(t => getCanonicalLearningAreaName(t.learningArea)).filter(Boolean))).sort();
-        const learnerById = new Map(targetLearners.map((learner) => [learner.id, learner]));
-        const subjectMaxByStream = {};
-        const seenStreamSubjectTests = new Set();
-
-        Object.values(allResultsMap).flat().forEach((result) => {
-          const learner = learnerById.get(result.learnerId);
-          const streamKey = String(learner?.stream || 'ALL').trim() || 'ALL';
-          const subject = getCanonicalLearningAreaName(result.learningArea || result.test?.learningArea || 'General');
-          const testId = result.testId || result.test?.id;
-          if (!subject || !testId) return;
-
-          const key = `${streamKey}::${subject}::${testId}`;
-          if (seenStreamSubjectTests.has(key)) return;
-          seenStreamSubjectTests.add(key);
-
-          if (!subjectMaxByStream[streamKey]) subjectMaxByStream[streamKey] = {};
-          subjectMaxByStream[streamKey][subject] = (subjectMaxByStream[streamKey][subject] || 0) + (Number(result.totalMarks || result.test?.totalMarks) || 100);
-        });
+        const expectedSubjectTests = targetTests.reduce((acc, test) => {
+          const subject = getCanonicalLearningAreaName(test.learningArea);
+          if (!subject) return acc;
+          if (!acc[subject]) acc[subject] = [];
+          acc[subject].push({
+            id: test.id,
+            group: getTestGroup(test),
+            totalMarks: Number(test.totalMarks) || 100
+          });
+          return acc;
+        }, {});
 
         const broadsheetData = targetLearners.map(learner => {
           const learnerAllowedSubjects = allowedSubjectsByLearner.get(learner.id);
@@ -2988,10 +2984,13 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           });
 
           const rawSubjectScores = {};
+          const completedSubjectTests = {};
           learnerResults.forEach(r => {
             const area = getCanonicalLearningAreaName(r.learningArea || 'General');
             if (!rawSubjectScores[area]) rawSubjectScores[area] = 0;
             rawSubjectScores[area] += (Number(r.score) || 0);
+            if (!completedSubjectTests[area]) completedSubjectTests[area] = new Set();
+            completedSubjectTests[area].add(r.testId || r.test?.id);
           });
 
           // One visible subject column must always be out of 100, even when
@@ -3001,20 +3000,37 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
             return learnerAllowedSubjects.has(getCanonicalLearningAreaKey(subject));
           });
 
-          const streamKey = String(learner.stream || 'ALL').trim() || 'ALL';
-          const streamSubjectMaxScores = subjectMaxByStream[streamKey] || {};
+          const missingSubjectScores = {};
           const subjectScores = visibleSubjects.reduce((acc, subject) => {
-            const subjectMax = streamSubjectMaxScores[subject] || 0;
+            const expectedTests = expectedSubjectTests[subject] || [];
+            const expectedGroups = new Set(expectedTests.map((test) => test.group).filter(Boolean));
+            const shouldRequireCompleteAggregate = expectedGroups.size > 1 || selectedTestGroups.length > 1;
+            const completedTests = completedSubjectTests[subject] || new Set();
+            const hasMissingSelectedTest = expectedTests.some((test) => !completedTests.has(test.id));
+
+            if (shouldRequireCompleteAggregate && hasMissingSelectedTest) {
+              missingSubjectScores[subject] = true;
+              return acc;
+            }
+
+            const subjectMax = expectedTests.reduce((sum, test) => sum + test.totalMarks, 0);
             const rawScore = rawSubjectScores[subject] || 0;
             const normalizedScore = subjectMax > 0 ? (rawScore / subjectMax) * 100 : 0;
             acc[subject] = parseFloat(Math.min(100, Math.max(0, normalizedScore)).toFixed(1));
             return acc;
           }, {});
 
-          const totalScore = visibleSubjects.reduce((sum, subject) => sum + (Number(subjectScores[subject]) || 0), 0);
-          const totalMax = visibleSubjects.length * 100;
-          const averagePct = visibleSubjects.length > 0 ? totalScore / visibleSubjects.length : 0;
-          const { grade, remark } = getCBCGrade(averagePct);
+          const scoredSubjects = visibleSubjects.filter((subject) => subjectScores[subject] !== undefined);
+          const missingSubjectCount = visibleSubjects.length - scoredSubjects.length;
+          const hasMissingAggregate = missingSubjectCount > 0;
+          const totalScore = scoredSubjects.reduce((sum, subject) => sum + (Number(subjectScores[subject]) || 0), 0);
+          const totalMax = scoredSubjects.length * 100;
+          const averagePct = scoredSubjects.length > 0 ? totalScore / scoredSubjects.length : 0;
+          const { grade, remark } = hasMissingAggregate
+            ? { grade: 'INC', remark: 'Missing selected assessment scores' }
+            : scoredSubjects.length > 0
+              ? getCBCGrade(averagePct)
+              : { grade: '—', remark: 'No assessed subjects' };
 
           return {
             learner,
@@ -3024,18 +3040,26 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
             averagePct: parseFloat(averagePct.toFixed(1)),
             grade,
             remark,
-            subjectScores
+            subjectScores,
+            missingSubjectScores,
+            assessedSubjectCount: scoredSubjects.length,
+            missingSubjectCount,
+            hasMissingAggregate
           };
         });
 
         const subjectSummaries = subjectsRaw.reduce((acc, subject) => {
-          const values = broadsheetData.map((row) => Number(row.subjectScores?.[subject]) || 0);
+          const values = broadsheetData
+            .filter((row) => !row.missingSubjectScores?.[subject] && row.subjectScores?.[subject] !== undefined)
+            .map((row) => Number(row.subjectScores[subject]) || 0);
           const total = values.reduce((sum, value) => sum + value, 0);
           const mean = values.length > 0 ? total / values.length : 0;
           acc[subject] = {
             total: parseFloat(total.toFixed(1)),
             mean: parseFloat(mean.toFixed(1)),
             averagePct: parseFloat(mean.toFixed(1)),
+            assessedCount: values.length,
+            missingCount: broadsheetData.length - values.length,
           };
           return acc;
         }, {});
@@ -3047,6 +3071,11 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
 
         // 5. Compute per-learner merit points (sum of CBC points per subject)
         broadsheetData.forEach((d) => {
+          if (d.hasMissingAggregate) {
+            d.meritPoints = null;
+            return;
+          }
+
           let pts = 0;
           subjects.forEach((subj) => {
             if (d.subjectScores?.[subj] !== undefined) {
@@ -3060,11 +3089,19 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
 
         // 5b. Ranking — primary: merit points desc, secondary: average % desc
         broadsheetData.sort((a, b) =>
-          b.meritPoints !== a.meritPoints
+          a.hasMissingAggregate !== b.hasMissingAggregate
+            ? a.hasMissingAggregate ? 1 : -1
+            : b.meritPoints !== a.meritPoints
             ? b.meritPoints - a.meritPoints
-            : b.averagePct - a.averagePct
+            : b.assessedSubjectCount !== a.assessedSubjectCount
+              ? b.assessedSubjectCount - a.assessedSubjectCount
+              : b.averagePct - a.averagePct
         );
-        const rankedData = broadsheetData.map((d, index) => ({ ...d, position: index + 1 }));
+        let nextPosition = 1;
+        const rankedData = broadsheetData.map((d) => ({
+          ...d,
+          position: d.hasMissingAggregate ? null : nextPosition++
+        }));
 
         setReportData({
           type: selectedType,
@@ -3950,22 +3987,22 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                     <tbody>
                       {reportData.rows.map((row, idx) => (
                         <tr key={row.learner.id} style={{ backgroundColor: idx % 2 === 0 ? 'white' : '#f8fafc' }}>
-                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center' }}>{row.position}</td>
+                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center' }}>{row.position ?? '-'}</td>
                           <td style={{ ...cellBorder, padding: '4px', fontWeight: 'bold' }}>
                             {row.learner.firstName} {row.learner.lastName}
                           </td>
                           {reportData.subjects.map(subj => (
                             <td key={`${row.learner.id}-${subj}`} style={{ ...cellBorder, padding: '4px', textAlign: 'center' }}>
-                              {row.subjectScores?.[subj] === undefined ? '-' : formatBroadsheetNumber(row.subjectScores[subj], 1)}
+                              {row.missingSubjectScores?.[subj] ? 'X' : row.subjectScores?.[subj] === undefined ? '-' : formatBroadsheetNumber(row.subjectScores[subj], 1)}
                             </td>
                           ))}
-                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold' }}>{Math.round(row.totalScore)}</td>
-                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold' }}>{row.averagePct}%</td>
+                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold' }}>{row.hasMissingAggregate ? 'INC' : Math.round(row.totalScore)}</td>
+                          <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold' }}>{row.hasMissingAggregate ? 'INC' : `${row.averagePct}%`}</td>
                           <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold', color: row.grade?.includes('EE') ? 'green' : row.grade?.includes('ME') ? 'blue' : 'orange' }}>
                             {row.grade}
                           </td>
                           <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: '900', color: '#1e3a8a', backgroundColor: idx % 2 === 0 ? '#eff6ff' : '#e0f2fe' }}>
-                            {row.meritPoints ?? '-'}
+                            {row.hasMissingAggregate ? 'INC' : row.meritPoints ?? '-'}
                           </td>
                         </tr>
                       ))}
