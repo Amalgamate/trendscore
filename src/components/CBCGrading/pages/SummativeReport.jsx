@@ -1859,6 +1859,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
 
       reportData.rows.forEach((row) => {
         const subjectValues = reportData.subjects.map((subj) => {
+          if (row.subjectDisplayCodes?.[subj]) return row.subjectDisplayCodes[subj];
           if (row.missingSubjectScores?.[subj]) return 'X';
           return row.subjectScores?.[subj] === undefined ? '-' : Number(row.subjectScores[subj]);
         });
@@ -2992,12 +2993,16 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
 
           const rawSubjectScores = {};
           const completedSubjectTests = {};
+          const subjectDisplayCodes = {};
           learnerResults.forEach(r => {
             const area = getCanonicalLearningAreaName(r.learningArea || 'General');
             if (!rawSubjectScores[area]) rawSubjectScores[area] = 0;
             rawSubjectScores[area] += (Number(r.score) || 0);
             if (!completedSubjectTests[area]) completedSubjectTests[area] = new Set();
             completedSubjectTests[area].add(r.testId || r.test?.id);
+            if (r.assessmentStatusCode) {
+              subjectDisplayCodes[area] = String(r.assessmentStatusCode).toUpperCase();
+            }
           });
 
           // One visible subject column must always be out of 100, even when
@@ -3015,6 +3020,8 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
 
             if (hasMissingSelectedTest) {
               missingSubjectScores[subject] = true;
+              subjectDisplayCodes[subject] = subjectDisplayCodes[subject] || 'X';
+              acc[subject] = 0;
               return acc;
             }
 
@@ -3027,7 +3034,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
 
           const scoredSubjects = visibleSubjects.filter((subject) => subjectScores[subject] !== undefined);
           const missingSubjectCount = visibleSubjects.length - scoredSubjects.length;
-          const hasMissingAggregate = missingSubjectCount > 0;
+          const hasMissingAggregate = false;
           const totalScore = scoredSubjects.reduce((sum, subject) => sum + (Number(subjectScores[subject]) || 0), 0);
           const totalMax = scoredSubjects.length * 100;
           const averagePct = scoredSubjects.length > 0 ? totalScore / scoredSubjects.length : 0;
@@ -3046,6 +3053,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
             grade,
             remark,
             subjectScores,
+            subjectDisplayCodes,
             missingSubjectScores,
             assessedSubjectCount: scoredSubjects.length,
             missingSubjectCount,
@@ -3055,7 +3063,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
 
         const subjectSummaries = subjectsRaw.reduce((acc, subject) => {
           const values = broadsheetData
-            .filter((row) => !row.missingSubjectScores?.[subject] && row.subjectScores?.[subject] !== undefined)
+            .filter((row) => row.subjectScores?.[subject] !== undefined)
             .map((row) => Number(row.subjectScores[subject]) || 0);
           const total = values.reduce((sum, value) => sum + value, 0);
           const mean = values.length > 0 ? total / values.length : 0;
@@ -4002,7 +4010,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                           </td>
                           {reportData.subjects.map(subj => (
                             <td key={`${row.learner.id}-${subj}`} style={{ ...cellBorder, padding: '4px', textAlign: 'center' }}>
-                              {row.missingSubjectScores?.[subj] ? 'X' : row.subjectScores?.[subj] === undefined ? '-' : formatBroadsheetNumber(row.subjectScores[subj], 1)}
+                              {row.subjectDisplayCodes?.[subj] || (row.missingSubjectScores?.[subj] ? 'X' : row.subjectScores?.[subj] === undefined ? '-' : formatBroadsheetNumber(row.subjectScores[subj], 1))}
                             </td>
                           ))}
                           <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold' }}>{row.hasMissingAggregate ? 'INC' : Math.round(row.totalScore)}</td>

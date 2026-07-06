@@ -2178,9 +2178,33 @@ export const recordSummativeResultsBulk = async (req: AuthRequest, res: Response
     // ── 1. Fetch test + grading scale ─────────────────────────────────────────
     const test = await prisma.summativeTest.findUnique({
       where: { id: testId },
-      select: { id: true, totalMarks: true, passMarks: true, scaleId: true, grade: true, learningAreaId: true, learningArea: true }
+      select: {
+        id: true,
+        totalMarks: true,
+        passMarks: true,
+        scaleId: true,
+        grade: true,
+        learningAreaId: true,
+        learningArea: true,
+        status: true,
+        locked: true,
+      }
     });
     if (!test) return res.status(404).json({ success: false, message: 'Test not found' });
+
+    if (test.status === 'LOCKED' || test.locked === true) {
+      return res.status(423).json({
+        success: false,
+        message: 'This assessment is locked. Request a score unlock before making corrections.'
+      });
+    }
+
+    const userRoles = new Set([
+      req.user?.role,
+      ...((req.user?.roles || []) as string[]),
+    ].filter(Boolean));
+    const canManageAnyResult = ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM']
+      .some(role => userRoles.has(role));
 
     let gradingSystem;
     if (test.scaleId) {
@@ -2286,10 +2310,10 @@ export const recordSummativeResultsBulk = async (req: AuthRequest, res: Response
       const adminStatus = entry.kind === 'status' ? getAssessmentStatusDetails(entry.statusCode) : null;
 
       const existing = existingMap.get(item.learnerId);
-      const canUpdate = !existing || existing.recordedBy === recordedBy;
+      const canUpdate = !existing || canManageAnyResult || existing.recordedBy === recordedBy || userRoles.has('TEACHER');
 
       if (existing && !canUpdate) {
-        skipped.push({ learnerId: item.learnerId, reason: 'Record owned by another teacher' });
+        skipped.push({ learnerId: item.learnerId, reason: 'Record owned by another teacher. Request a score unlock or ask an academic lead to correct it.' });
         continue;
       }
 
@@ -2389,7 +2413,7 @@ export const recordSummativeResultsBulk = async (req: AuthRequest, res: Response
       message: `Successfully recorded ${savedResults.length} of ${results.length} results`
     };
     if (skipped.length > 0) {
-      response.warnings = `${skipped.length} entries were skipped due to validation errors`;
+      response.warnings = `${skipped.length} entries were skipped`;
       response.skipped = skipped;
     }
 

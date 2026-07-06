@@ -274,7 +274,7 @@ router.post(
   '/summative/results/bulk',
   authenticate,
   checkSubjectOwnership({ required: false }),
-  rateLimit({ windowMs: 60_000, maxRequests: 10 }),
+  rateLimit({ windowMs: 60_000, maxRequests: 60 }),
   // NOTE: checkNotLocked is NOT applied here because the testId comes from
   // the request body, not params, and checkNotLocked only reads req.params.
   // The controller's own test lookup handles the "not found" case cleanly.

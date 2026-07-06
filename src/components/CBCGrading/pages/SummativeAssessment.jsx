@@ -1043,10 +1043,14 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
           }));
 
         if (resultsToSave.length > 0) {
-          await assessmentAPI.recordBulkResults({
+          const autoSaveResponse = await assessmentAPI.recordBulkResults({
             testId: selectedTestId,
             results: resultsToSave
           });
+          if (autoSaveResponse?.skipped?.length) {
+            console.warn('[AutoSave] Some entries were skipped:', autoSaveResponse.skipped);
+            toast.error(`${autoSaveResponse.skipped.length} result${autoSaveResponse.skipped.length === 1 ? '' : 's'} were not auto-saved. Use Save Marks to review.`);
+          }
           setLastBackendSave(new Date());
           setIsDraft(false);
           // Keep draft cache for conflict recovery instead of deleting it silently.
@@ -1428,7 +1432,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
       }
 
       // Send bulk request
-      await assessmentAPI.recordBulkResults({
+      const saveResponse = await assessmentAPI.recordBulkResults({
         testId: selectedTestId,
         results: resultsToSave
       });
@@ -1465,9 +1469,18 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
 
       // Dismiss loading toast and show success
       toast.dismiss(saveToastId);
-      toast.success(`✅ Saved marks for ${resultsToSave.length} learner${resultsToSave.length !== 1 ? 's' : ''}!`, {
-        duration: 4000,
-      });
+      if (saveResponse?.skipped?.length) {
+        const firstSkipped = saveResponse.skipped[0];
+        toast.error(
+          `Saved ${resultsToSave.length - saveResponse.skipped.length} of ${resultsToSave.length}. ` +
+          `${saveResponse.skipped.length} skipped${firstSkipped?.reason ? `: ${firstSkipped.reason}` : '.'}`,
+          { duration: 8000 }
+        );
+      } else {
+        toast.success(`✅ Saved marks for ${resultsToSave.length} learner${resultsToSave.length !== 1 ? 's' : ''}!`, {
+          duration: 4000,
+        });
+      }
 
       // If a class teacher (not the named subject teacher) just entered marks,
       // surface a persistent reminder toast so the action is consciously noted.

@@ -587,7 +587,7 @@ const SummativeAssessmentMobile = ({
 
     setSaving(true);
     try {
-      await assessmentAPI.recordBulkResults({
+      const saveResponse = await assessmentAPI.recordBulkResults({
         testId: selectedTest.id,
         results: resultsToSave,
       });
@@ -599,7 +599,16 @@ const SummativeAssessmentMobile = ({
         [selectedTest.id]: Array.isArray(updatedRows) ? updatedRows : [],
       }));
       setSavedMarks(new Set(resultsToSave.map((row) => row.learnerId)));
-      showSuccess(final ? 'Marks published for reports' : 'Draft marks saved');
+      if (saveResponse?.skipped?.length) {
+        const savedCount = Math.max(0, resultsToSave.length - saveResponse.skipped.length);
+        const firstSkipped = saveResponse.skipped[0];
+        showError(
+          `Saved ${savedCount} of ${resultsToSave.length}. ` +
+          `${saveResponse.skipped.length} skipped${firstSkipped?.reason ? `: ${firstSkipped.reason}` : '.'}`
+        );
+      } else {
+        showSuccess(final ? 'Marks published for reports' : 'Draft marks saved');
+      }
       return true;
     } catch (error) {
       showError(`Failed to save marks: ${error.message || 'Please try again.'}`);
