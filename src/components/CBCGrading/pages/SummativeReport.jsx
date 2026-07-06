@@ -3092,15 +3092,19 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           d.meritPoints = pts;
         });
 
-        // 5b. Ranking — primary: merit points desc, secondary: average % desc
+        // 5b. Ranking — primary: average/total performance, points as tie-breaker
         broadsheetData.sort((a, b) =>
           a.hasMissingAggregate !== b.hasMissingAggregate
             ? a.hasMissingAggregate ? 1 : -1
+            : b.averagePct !== a.averagePct
+            ? b.averagePct - a.averagePct
+            : b.totalScore !== a.totalScore
+            ? b.totalScore - a.totalScore
             : b.meritPoints !== a.meritPoints
-            ? b.meritPoints - a.meritPoints
+            ? (b.meritPoints ?? -1) - (a.meritPoints ?? -1)
             : b.assessedSubjectCount !== a.assessedSubjectCount
               ? b.assessedSubjectCount - a.assessedSubjectCount
-              : b.averagePct - a.averagePct
+              : 0
         );
         let nextPosition = 1;
         const rankedData = broadsheetData.map((d) => ({
