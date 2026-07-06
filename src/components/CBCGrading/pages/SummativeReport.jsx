@@ -234,7 +234,7 @@ const makeCBCGrader = (ranges) => {
     for (const r of sorted) {
       const min = r.minPercentage ?? r.minScore ?? r.min ?? 0;
       if (pct >= min) {
-        const grade = r.label || r.grade || r.gradeName || 'BE1';
+        const grade = r.summativeGrade || r.rubricRating || r.label || r.grade || r.gradeName || 'BE1';
         return {
           grade,
           remark: r.parentBand ? `${r.parentBand} (${grade})` : (r.description || r.remark || grade),
@@ -245,7 +245,7 @@ const makeCBCGrader = (ranges) => {
     }
     // Below all ranges
     const last = sorted[sorted.length - 1];
-    const grade = last?.label || last?.grade || 'BE1';
+    const grade = last?.summativeGrade || last?.rubricRating || last?.label || last?.grade || 'BE1';
     return {
       grade,
       remark: last?.description || last?.remark || grade,
@@ -254,10 +254,6 @@ const makeCBCGrader = (ranges) => {
     };
   };
 };
-
-// Module-level fallback — used by any call-site that runs before the
-// parent component has fetched the DB ranges (e.g. the Grading Key table).
-const getCBCGrade = makeCBCGrader(null);
 
 // ============================================================================
 // PATHWAY & MESSAGING UTILITIES
@@ -1059,16 +1055,27 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
         // response is { data: [ { type, ranges: [...] } ] } or similar
         const systems = Array.isArray(response?.data) ? response.data
           : Array.isArray(response) ? response : [];
-        const cbcSystem = systems.find(
+        const activeSystems = systems.filter(s => s?.active !== false);
+        const summativeSystem = activeSystems.find(
+          s => (s.type || '').toUpperCase() === 'SUMMATIVE' && s.isDefault !== false
+        ) || activeSystems.find(
+          s => (s.type || '').toUpperCase() === 'SUMMATIVE'
+        );
+        const cbcSystem = activeSystems.find(
+          s => (s.type || s.name || '').toUpperCase().includes('CBC') && s.isDefault !== false
+        ) || activeSystems.find(
           s => (s.type || s.name || '').toUpperCase().includes('CBC')
         );
-        const ranges = cbcSystem?.ranges || cbcSystem?.gradingRanges || [];
+        const selectedSystem = summativeSystem || cbcSystem;
+        const ranges = selectedSystem?.ranges || selectedSystem?.gradingRanges || [];
         if (ranges.length > 0) setGradingRanges(ranges);
       })
       .catch(() => {
         // Non-fatal: component falls back to DEFAULT_CBC_RANGES silently
       });
   }, []);
+
+  const getConfiguredCBCGrade = useMemo(() => makeCBCGrader(gradingRanges), [gradingRanges]);
 
   // Custom Tick component for wrapping long learning area names in charts
   const CustomXAxisTick = ({ x, y, payload }) => {
@@ -1724,7 +1731,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     const getGradeForPct = (pct) => {
       const value = parseFloat(pct);
       if (isNaN(value) || value <= 0) return { grade: '—', points: '—' };
-      const result = getCBCGrade(value);
+      const result = getConfiguredCBCGrade(value);
       return { grade: result.grade, points: result.points };
     };
 
@@ -1954,7 +1961,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     const totalMarks = results.reduce((sum, r) => sum + (r.score || 0), 0);
     const maxPossibleMarks = results.reduce((sum, r) => sum + (r.totalMarks || 0), 0);
     const averageScore = row.averageScore || row.averagePct || (maxPossibleMarks > 0 ? ((totalMarks / maxPossibleMarks) * 100).toFixed(1) : 0);
-    const { grade: overallGrade } = getCBCGrade(parseFloat(averageScore));
+    const { grade: overallGrade } = getConfiguredCBCGrade(parseFloat(averageScore));
 
     const processedSmsTests = new Set();
     const { pathways, recommended } = calculatePathwayInsights(results);
@@ -1970,7 +1977,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     const subjectsList = Object.entries(subjects).map(([name, detail]) => {
       const shortName = getAbbreviatedName(name);
       const pct = detail.total > 0 ? Math.round((detail.score / detail.total) * 100) : 0;
-      const { grade } = getCBCGrade(pct);
+      const { grade } = getConfiguredCBCGrade(pct);
       return `${shortName}: ${pct}% ${grade.replace(/\d+/g, '')}`;
     }).join('\n');
 
@@ -2101,7 +2108,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     const tableRows = Object.keys(areaSummary).map(area => {
       const summary = areaSummary[area];
       const percentage = summary.total > 0 ? (summary.score / summary.total) * 100 : 0;
-      const { grade } = getCBCGrade(percentage);
+      const { grade } = getConfiguredCBCGrade(percentage);
       return {
         area,
         pct: Math.round(percentage),
@@ -2112,7 +2119,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     const totalMarks = results.reduce((sum, r) => sum + (r.score || 0), 0);
     const maxPossibleMarks = results.reduce((sum, r) => sum + (r.totalMarks || 0), 0);
     const averageScore = row.averageScore || (maxPossibleMarks > 0 ? ((totalMarks / maxPossibleMarks) * 100).toFixed(1) : 0);
-    const { grade: overallGrade } = getCBCGrade(parseFloat(averageScore));
+    const { grade: overallGrade } = getConfiguredCBCGrade(parseFloat(averageScore));
 
     const subjectsListText = tableRows.map(r => {
       const name = getAbbreviatedName(r.area).toUpperCase().padEnd(10).slice(0, 10);
@@ -2717,7 +2724,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
             return {
               category,
               averagePercentage: avg,
-              grade: getCBCGrade(avg)?.grade || '—',
+              grade: getConfiguredCBCGrade(avg)?.grade || '—',
               subjectCount: values.subjectCount,
             };
           });
@@ -2825,7 +2832,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
             const score = r.score !== undefined ? r.score : r.marksObtained;
             const totalMarks = r.totalMarks || test.totalMarks || 100;
             const percentage = totalMarks > 0 ? (score / totalMarks) * 100 : 0;
-            const { grade, remark } = getCBCGrade(percentage);
+            const { grade, remark } = getConfiguredCBCGrade(percentage);
 
             const rawArea = r.learningArea || test.learningArea || 'General';
             const refinedArea = getRefinedLearningArea(rawArea, test.title);
@@ -3027,7 +3034,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           const { grade, remark } = hasMissingAggregate
             ? { grade: 'INC', remark: 'Missing selected assessment scores' }
             : scoredSubjects.length > 0
-              ? getCBCGrade(averagePct)
+              ? getConfiguredCBCGrade(averagePct)
               : { grade: '—', remark: 'No assessed subjects' };
 
           return {
@@ -3078,7 +3085,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           subjects.forEach((subj) => {
             if (d.subjectScores?.[subj] !== undefined) {
               const subjectPct = Number(d.subjectScores[subj]) || 0;
-              const { points } = getCBCGrade(subjectPct);
+              const { points } = getConfiguredCBCGrade(subjectPct);
               if (typeof points === 'number') pts += points;
             }
           });
@@ -3203,7 +3210,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
 
         Object.values(learnerMap).forEach(l => {
           const avg = l.max > 0 ? (l.score / l.max * 100) : 0;
-          const { grade } = getCBCGrade(avg);
+          const { grade } = getConfiguredCBCGrade(avg);
           const simpleGrade = grade.substring(0, 2);
           if (gradeDist[simpleGrade] !== undefined) gradeDist[simpleGrade]++;
         });
