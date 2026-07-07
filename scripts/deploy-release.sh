@@ -67,6 +67,7 @@ BACKEND_IMAGE_BASE="${BACKEND_IMAGE_BASE:-$(jq -r '.defaults.backend_image' "${M
 CONSOLE_IMAGE_BASE="${CONSOLE_IMAGE_BASE:-$(jq -r '.defaults.console_image' "${MANIFEST_PATH}")}"
 HEALTH_HOST="${HEALTH_HOST:-$(jq -r '.defaults.health_host' "${MANIFEST_PATH}")}"
 BACKUP_RETENTION_COUNT="${BACKUP_RETENTION_COUNT:-5}"
+SUMMATIVE_SERIES_MIGRATION="20260707121500_allow_multiple_summative_series"
 
 FRONTEND_IMAGE="${FRONTEND_IMAGE_BASE}:${IMAGE_TAG}"
 BACKEND_IMAGE="${BACKEND_IMAGE_BASE}:${IMAGE_TAG}"
@@ -531,12 +532,44 @@ pull_images() {
   compose_with_pinned_images "${kind}" "${project}" "${env_file}" pull backend frontend
 }
 
+repair_summative_series_migration() {
+  local kind="$1"
+  local project="${2:-}"
+  local env_file="${3:-}"
+
+  log "━━ Repair summative series migration preconditions ━━"
+
+  compose_with_pinned_images "${kind}" "${project}" "${env_file}" run -T --no-deps --rm backend sh -lc "
+    set -e
+    npx prisma migrate resolve --rolled-back ${SUMMATIVE_SERIES_MIGRATION} >/tmp/summative-series-resolve.log 2>&1 || true
+    cat >/tmp/repair-summative-series.sql <<'SQL'
+WITH ranked AS (
+  SELECT
+    id,
+    ROW_NUMBER() OVER (
+      PARTITION BY grade, \"learningArea\", term, \"academicYear\", \"testType\", title
+      ORDER BY \"createdAt\" DESC, id DESC
+    ) AS rn
+  FROM \"summative_tests\"
+  WHERE title IS NOT NULL
+)
+UPDATE \"summative_tests\" st
+SET title = LEFT(st.title, 450) || ' (duplicate ' || LEFT(st.id, 8) || ')'
+FROM ranked
+WHERE st.id = ranked.id
+  AND ranked.rn > 1;
+SQL
+    npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-summative-series.sql
+  " < /dev/null
+}
+
 run_migrations() {
   local kind="$1"
   local project="${2:-}"
   local env_file="${3:-}"
 
   log "━━ Migrations (prisma migrate deploy) ━━"
+  repair_summative_series_migration "${kind}" "${project}" "${env_file}" || return 1
 
   if [[ "${kind}" == "main" ]]; then
     compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
