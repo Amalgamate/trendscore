@@ -924,6 +924,7 @@ model SummativeTest {
   learningAreaRef LearningArea?      @relation(fields: [learningAreaId], references: [id])
   scale           GradingSystem?     @relation(fields: [scaleId], references: [id])
   submittedByUser User?              @relation("SubmittedTests", fields: [submittedBy], references: [id])
+  @@unique([grade, learningArea, term, academicYear, testType, title], map: "summative_tests_series_unique_key")
   @@index([testType])
   @@index([grade, learningArea, term])
   @@index([learningAreaId])

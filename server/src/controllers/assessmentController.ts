@@ -88,6 +88,18 @@ const SUMMATIVE_TEST_TYPE_ALIASES: Record<string, SummativeTestType> = {
   OTHER: 'OTHER',
 };
 
+function isSummativeTestDuplicateError(error: any): boolean {
+  const message = String(error?.message || '');
+  const constraint = String(error?.meta?.target || error?.meta?.constraint || '');
+
+  return error?.code === 'P2002'
+    || error?.code === '23505'
+    || constraint.includes('summative_tests_grade_learningArea_term_academicYear_testTy_key')
+    || constraint.includes('summative_tests_series_unique_key')
+    || message.includes('summative_tests_grade_learningArea_term_academicYear_testTy_key')
+    || message.includes('summative_tests_series_unique_key');
+}
+
 function normalizeSummativeTestType(rawType: unknown): SummativeTestType {
   const normalized = String(rawType || 'ASSESSMENT')
     .trim()
@@ -851,10 +863,10 @@ export const createSummativeTest = async (req: AuthRequest, res: Response) => {
       });
 
     } catch (error: any) {
-      if (error.code === 'P2002') {
+      if (isSummativeTestDuplicateError(error)) {
         return res.status(409).json({
           success: false,
-          message: `A test already exists for "${resolvedLearningArea}" in this grade/term/year combination. Use a different series name or test type.`,
+          message: `A test already exists for "${resolvedLearningArea}" with this exact series, grade, term, year, and test type.`,
           error: 'Duplicate Test Found'
         });
       }
@@ -990,7 +1002,7 @@ export const generateTestsBulk = async (req: AuthRequest, res: Response) => {
 
         createdTests.push(test);
       } catch (err: any) {
-        if (err.code === 'P2002') {
+        if (isSummativeTestDuplicateError(err)) {
           duplicateCount++;
         } else {
           throw err;
@@ -1003,7 +1015,7 @@ export const generateTestsBulk = async (req: AuthRequest, res: Response) => {
 
     let resultMessage = `Successfully generated ${createdTests.length} tests.`;
     if (duplicateCount > 0) {
-      resultMessage += ` Skipped ${duplicateCount} duplicate tests (already exist for this grade/term/year).`;
+      resultMessage += ` Skipped ${duplicateCount} exact duplicate tests (same series, grade, subject, term, year, and type).`;
     }
 
     res.status(201).json({
