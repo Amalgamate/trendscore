@@ -1,3 +1,5 @@
+import summativeTestTypes from '../../../../server/src/shared/summativeTestTypes.json';
+
 const TEST_TYPE_PRIORITY = {
   OPENER: 1,
   MID_TERM: 2,
@@ -24,6 +26,8 @@ const TEST_TYPE_LABELS = {
   OTHER: 'Other',
 };
 
+const SUMMATIVE_TEST_TYPE_ALIASES = summativeTestTypes.aliases;
+
 export const normalizeTestType = (rawType) => {
   if (!rawType || !String(rawType).trim()) return null;
 
@@ -34,27 +38,11 @@ export const normalizeTestType = (rawType) => {
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '');
 
-  if (
-    normalized === 'MIDTERM' ||
-    normalized === 'MID_TERM' ||
-    normalized.includes('MID_TERM')
-  ) return 'MID_TERM';
+  if (SUMMATIVE_TEST_TYPE_ALIASES[normalized]) return SUMMATIVE_TEST_TYPE_ALIASES[normalized];
 
-  if (
-    normalized === 'END_OF_TERM' ||
-    normalized === 'END_TERM' ||
-    normalized === 'ENDTERM' ||
-    normalized.includes('END_OF_TERM') ||
-    normalized.includes('END_TERM')
-  ) return 'END_TERM';
-
-  if (
-    normalized === 'OPENER' ||
-    normalized === 'OPENING' ||
-    normalized.includes('OPENER') ||
-    normalized.includes('OPENING')
-  ) return 'OPENER';
-
+  if (normalized.includes('MID_TERM')) return 'MID_TERM';
+  if (normalized.includes('END_OF_TERM') || normalized.includes('END_TERM')) return 'END_TERM';
+  if (normalized.includes('OPENER') || normalized.includes('OPENING') || normalized.includes('OPEN')) return 'OPENER';
   if (normalized.includes('MONTH')) return 'MONTHLY';
   if (normalized.includes('WEEK')) return 'WEEKLY';
   if (normalized.includes('CAT')) return 'CAT';
@@ -108,17 +96,6 @@ export const compareTestTypes = (a, b) => {
   return normalizedA.localeCompare(normalizedB);
 };
 
-export const CANONICAL_TEST_TYPE_OPTIONS = [
-  { value: 'OPENER', label: 'Opener Exam' },
-  { value: 'MID_TERM', label: 'Midterm Assessment' },
-  { value: 'END_TERM', label: 'End of Term Exam' },
-  { value: 'CAT', label: 'CAT' },
-  { value: 'ASSESSMENT', label: 'Assessment' },
-  { value: 'OTHER', label: 'Other' },
-  { value: 'MONTHLY', label: 'Monthly Assessment' },
-  { value: 'WEEKLY', label: 'Weekly Test' },
-  { value: 'MOCK', label: 'Mock Exam' },
-  { value: 'RANDOM', label: 'Random Assessment' },
-];
+export const CANONICAL_TEST_TYPE_OPTIONS = summativeTestTypes.options;
 
 export const CANONICAL_TEST_TYPE_VALUES = CANONICAL_TEST_TYPE_OPTIONS.map((option) => option.value);

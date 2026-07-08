@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { assessmentAPI, gradingAPI, configAPI, seniorPathwayAPI } from '../services/api';
 import { getLearningAreasByGrade } from '../constants/learningAreas';
 import { useSchoolData } from '../contexts/SchoolDataContext';
-import { normalizeTestType } from '../components/CBCGrading/utils/testType';
+import { CANONICAL_TEST_TYPE_OPTIONS, normalizeTestType } from '../components/CBCGrading/utils/testType';
 
 /** Returns the persisted institutionType without triggering a re-render cycle */
 const getStoredInstitutionType = () => {
@@ -14,16 +14,7 @@ const getStoredInstitutionType = () => {
   }
 };
 
-const TEST_TYPES = [
-  { value: 'OPENER', label: 'Opener' },
-  { value: 'MID_TERM', label: 'Midterm' },
-  { value: 'END_TERM', label: 'End Term' },
-  { value: 'MONTHLY', label: 'Monthly' },
-  { value: 'WEEKLY', label: 'Weekly' },
-  { value: 'CAT', label: 'CAT' },
-  { value: 'MOCK', label: 'Mock Exam' },
-  { value: 'RANDOM', label: 'Random' }
-];
+const TEST_TYPES = CANONICAL_TEST_TYPE_OPTIONS;
 
 const DEFAULT_FORM_DATA = {
   title: '',

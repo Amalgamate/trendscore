@@ -3,8 +3,9 @@ import prisma from '../config/database';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { gradingService } from '../services/grading.service';
 import { auditService } from '../services/audit.service';
-import { AssessmentStatus, CurriculumType, FormativeAssessmentType, Prisma, Term, SummativeTestType } from '@prisma/client';
+import { AssessmentStatus, CurriculumType, FormativeAssessmentType, Prisma, Term } from '@prisma/client';
 import { getInstitutionType } from '../utils/institutionNormalizer';
+import { getSummativeTestTypeVariants, normalizeSummativeTestType } from '../utils/summativeTestType';
 import { aiAssistantService } from '../services/ai-assistant.service';
 import { detailedToGeneralRating } from '../utils/rubric.util';
 import { redisCacheService } from '../services/redis-cache.service';
@@ -70,24 +71,6 @@ const MAX_SUMMATIVE_TOTAL_MARKS = 100;
 
 type SummativeWithTestArea = { learnerId: string; test?: { learningAreaId?: string | null } | null };
 
-const SUMMATIVE_TEST_TYPE_ALIASES: Record<string, SummativeTestType> = {
-  OPENER: 'OPENER',
-  OPENING: 'OPENER',
-  MIDTERM: 'MID_TERM',
-  MID_TERM: 'MID_TERM',
-  ENDTERM: 'END_TERM',
-  END_TERM: 'END_TERM',
-  END_OF_TERM: 'END_TERM',
-  CAT: 'CAT',
-  ASSESSMENT: 'ASSESSMENT',
-  MONTHLY: 'MONTHLY',
-  WEEKLY: 'WEEKLY',
-  RANDOM: 'RANDOM',
-  MOCK: 'MOCK',
-  MOCK_EXAM: 'MOCK',
-  OTHER: 'OTHER',
-};
-
 function isSummativeTestDuplicateError(error: any): boolean {
   const message = String(error?.message || '');
   const constraint = String(error?.meta?.target || error?.meta?.constraint || '');
@@ -98,27 +81,6 @@ function isSummativeTestDuplicateError(error: any): boolean {
     || constraint.includes('summative_tests_series_unique_key')
     || message.includes('summative_tests_grade_learningArea_term_academicYear_testTy_key')
     || message.includes('summative_tests_series_unique_key');
-}
-
-function normalizeSummativeTestType(rawType: unknown): SummativeTestType {
-  const normalized = String(rawType || 'ASSESSMENT')
-    .trim()
-    .toUpperCase()
-    .replace(/[\s-]+/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '');
-
-  if (SUMMATIVE_TEST_TYPE_ALIASES[normalized]) return SUMMATIVE_TEST_TYPE_ALIASES[normalized];
-  if (normalized.includes('MOCK')) return 'MOCK';
-  if (normalized.includes('MONTH')) return 'MONTHLY';
-  if (normalized.includes('WEEK')) return 'WEEKLY';
-  if (normalized.includes('RANDOM')) return 'RANDOM';
-  if (normalized.includes('ASSESS')) return 'ASSESSMENT';
-  if (normalized.includes('MID_TERM') || normalized === 'MID') return 'MID_TERM';
-  if (normalized.includes('END_TERM')) return 'END_TERM';
-  if (normalized.includes('OPEN')) return 'OPENER';
-  if (normalized.includes('CAT')) return 'CAT';
-  return 'ASSESSMENT';
 }
 
 async function filterSummativeResultsBySecondarySelection<T extends SummativeWithTestArea>(results: T[]): Promise<T[]> {
@@ -1820,17 +1782,7 @@ export const getBulkSummativeResults = async (req: AuthRequest, res: Response) =
       .toUpperCase()
       .replace(/\s+/g, '_');
 
-    // Normalize testType: UI sends OPENER/MIDTERM/END_TERM but schema defines MID_TERM/END_TERM.
-    // Build a set of accepted values for the IN filter — ONLY include valid Prisma enum values.
-    const normalizeTestType = (raw: string): string[] => {
-      const v = raw.toUpperCase().replace(/[\s-]+/g, '_');
-      // Only return values that exist in the Prisma enum definition
-      if (v === 'MID_TERM' || v === 'MIDTERM')  return ['MID_TERM']; // DB may have MIDTERM, fallback query handles it
-      if (v === 'END_OF_TERM' || v === 'END_TERM') return ['END_TERM'];
-      if (v === 'OPENER' || v === 'CAT' || v === 'ASSESSMENT' || v === 'OTHER') return [v];
-      return [v]; // Unknown type — let query handle it, fallback will catch errors
-    };
-    const testTypeFilter = testType ? normalizeTestType(String(testType)) : null;
+    const testTypeFilter = testType ? getSummativeTestTypeVariants(String(testType)) : null;
 
     const whereClause: any = {
       learner: {

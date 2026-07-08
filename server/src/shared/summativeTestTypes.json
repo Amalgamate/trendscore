@@ -1,0 +1,31 @@
+{
+  "options": [
+    { "value": "OPENER", "label": "Opener Exam" },
+    { "value": "MID_TERM", "label": "Midterm Assessment" },
+    { "value": "END_TERM", "label": "End of Term Exam" },
+    { "value": "CAT", "label": "CAT" },
+    { "value": "ASSESSMENT", "label": "Assessment" },
+    { "value": "OTHER", "label": "Other" },
+    { "value": "MONTHLY", "label": "Monthly Assessment" },
+    { "value": "WEEKLY", "label": "Weekly Test" },
+    { "value": "MOCK", "label": "Mock Exam" },
+    { "value": "RANDOM", "label": "Random Assessment" }
+  ],
+  "aliases": {
+    "OPENER": "OPENER",
+    "OPENING": "OPENER",
+    "MIDTERM": "MID_TERM",
+    "MID_TERM": "MID_TERM",
+    "ENDTERM": "END_TERM",
+    "END_TERM": "END_TERM",
+    "END_OF_TERM": "END_TERM",
+    "CAT": "CAT",
+    "ASSESSMENT": "ASSESSMENT",
+    "MONTHLY": "MONTHLY",
+    "WEEKLY": "WEEKLY",
+    "RANDOM": "RANDOM",
+    "MOCK": "MOCK",
+    "MOCK_EXAM": "MOCK",
+    "OTHER": "OTHER"
+  }
+}
