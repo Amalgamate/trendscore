@@ -609,6 +609,81 @@ function SchoolPulse({ metrics, children = [] }) {
 
 
 
+function ParentBetaCard({ title, summary, icon: Icon, betaEnabled, onNavigate, target }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4 h-full">
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className="w-full flex items-center justify-between gap-3 text-left"
+      >
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-bold text-gray-900">{title}</h3>
+            <BetaBadge />
+          </div>
+          <p className="text-xs text-gray-500 mt-1 truncate">
+            {betaEnabled ? summary : 'Inactive for parent accounts'}
+          </p>
+        </div>
+        <ChevronDown
+          size={18}
+          className={`text-gray-400 flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {expanded && (
+        <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-[#4F46E5]/10 text-[#4F46E5] flex items-center justify-center flex-shrink-0">
+              <Icon size={16} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-gray-900">{summary}</p>
+              <button
+                type="button"
+                onClick={() => betaEnabled ? onNavigate(target) : inactiveBetaNotice(title)}
+                disabled={!betaEnabled}
+                className="text-xs text-[#4F46E5] font-semibold mt-2 flex items-center gap-1 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {betaEnabled ? 'Open' : 'Inactive'} <ArrowRight size={10} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AlumniClubsCard({ onNavigate, betaEnabled }) {
+  return (
+    <ParentBetaCard
+      title="Alumni & Clubs"
+      summary="Clubs and alumni activities are being prepared."
+      icon={Music}
+      betaEnabled={betaEnabled}
+      onNavigate={onNavigate}
+      target="comm-notices"
+    />
+  );
+}
+
+function SchoolGalleryCard({ onNavigate, betaEnabled }) {
+  return (
+    <ParentBetaCard
+      title="School Gallery"
+      summary="School moments and gallery updates are being prepared."
+      icon={TreePine}
+      betaEnabled={betaEnabled}
+      onNavigate={onNavigate}
+      target="comm-notices"
+    />
+  );
+}
+
 // ─── Latest Newsletter ────────────────────────────────────────────────────────
 // ⚠️ NO_ENDPOINT: Newsletter module does not exist yet.
 // TODO: Create /api/newsletters returning { id, title, date, excerpt, url }[]
