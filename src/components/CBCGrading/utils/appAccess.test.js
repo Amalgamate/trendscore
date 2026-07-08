@@ -13,6 +13,7 @@ describe('appAccess', () => {
     expect(getRequiredAppForPage('planner-calendar')).toBe('planner');
     expect(getRequiredAppForPage('planner-timetable')).toBe('timetable');
     expect(getRequiredAppForPage('assess-summative-report')).toBe('exams');
+    expect(getRequiredAppForPage('assess-summary-report')).toBe('gradebook');
     expect(getRequiredAppForPage('inventory-items')).toBe('inventory');
   });
 

@@ -34,7 +34,7 @@ const PAGE_APP_REQUIREMENTS = {
   'assess-performance-scale': 'gradebook',
   'assess-summative-report': 'exams',
   'assess-custom-reports': 'exams',
-  'assess-summary-report': 'exams',
+  'assess-summary-report': 'gradebook',
   'assess-subject-analysis': 'exams',
   'assess-print-center': 'exams',
   'assess-termly-report': 'exams',

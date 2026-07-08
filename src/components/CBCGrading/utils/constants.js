@@ -185,7 +185,7 @@ export const PAGE_TITLES = {
   'assess-summative-tests': 'Summative Tests',
   'assess-summative-assessment': 'Summative Assessment',
   'assess-summative-report': 'Summative Report',
-  'assess-summary-report': 'Summary Report',
+  'assess-summary-report': 'Assessment Matrix',
   'assess-termly-report': 'Termly Report',
   'assess-learning-areas': 'Learning Areas',
   'assess-performance-scale': 'Performance Scale',
