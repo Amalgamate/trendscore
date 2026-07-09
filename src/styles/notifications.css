@@ -43,11 +43,34 @@
   animation: wiggle 1s ease-in-out infinite;
 }
 
+.bell-buzz {
+  animation: bell-buzz-pop 0.7s ease-in-out 2;
+}
+
+.bell-buzz-approval {
+  box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.55);
+  animation: bell-buzz-pop 0.7s ease-in-out 2, bell-approval-ring 1.4s ease-out 1;
+}
+
 @keyframes wiggle {
   0%, 100% { transform: rotate(0deg); }
   25% { transform: rotate(15deg); }
   50% { transform: rotate(-15deg); }
   75% { transform: rotate(10deg); }
+}
+
+@keyframes bell-buzz-pop {
+  0%, 100% { transform: scale(1); }
+  20% { transform: scale(1.12) rotate(-5deg); }
+  40% { transform: scale(0.96) rotate(5deg); }
+  60% { transform: scale(1.08) rotate(-3deg); }
+  80% { transform: scale(1.02) rotate(2deg); }
+}
+
+@keyframes bell-approval-ring {
+  0% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.55); }
+  70% { box-shadow: 0 0 0 14px rgba(124, 58, 237, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0); }
 }
 
 /* Custom scrollbar for notification dropdown */
@@ -66,4 +89,16 @@
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #CBD5E1;
+}
+
+@media (max-width: 640px) {
+  .notification-popover-content {
+    position: fixed !important;
+    top: calc(var(--app-header-height, 64px) + 0.75rem) !important;
+    left: 50% !important;
+    right: auto !important;
+    width: min(calc(100vw - 1.5rem), 24rem) !important;
+    max-height: calc(100vh - var(--app-header-height, 64px) - 1.5rem);
+    transform: translateX(-50%) !important;
+  }
 }

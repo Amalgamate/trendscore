@@ -25,6 +25,7 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
   const [, setLoadingBirthdays] = useState(false);
   const [readNotificationKeys, setReadNotificationKeys] = useState(() => new Set());
   const [reminderCycle, setReminderCycle] = useState(0);
+  const [bellBuzzing, setBellBuzzing] = useState(false);
   const [clockInState, setClockInState] = useState(() => getCurrentUserClockInStatus(user));
   const [activeTermLabel, setActiveTermLabel] = useState('');
   const [activeTermMeta, setActiveTermMeta] = useState({ isFallback: false });
@@ -35,6 +36,8 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
   const { 
     unreadNotifications: systemNotifications, 
     unreadCount: systemUnreadCount,
+    lastBuzzAt,
+    lastBuzzType,
     markAsRead,
     markAllAsRead: markAllSystemAsRead
   } = useUserNotifications();
@@ -175,6 +178,13 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
   // Combined totals for the UI badge
   const totalUnreadCount = notificationItems.length + systemUnreadCount;
 
+  useEffect(() => {
+    if (!lastBuzzAt) return undefined;
+    setBellBuzzing(true);
+    const timer = setTimeout(() => setBellBuzzing(false), 1400);
+    return () => clearTimeout(timer);
+  }, [lastBuzzAt]);
+
   const markAllNotificationsAsRead = () => {
     setReadNotificationKeys((prev) => {
       const next = new Set(prev);
@@ -183,6 +193,15 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
     });
     markAllSystemAsRead();
     setShowUnreadReminder(false);
+  };
+
+  const markLocalNotificationAsRead = (key) => {
+    if (!key) return;
+    setReadNotificationKeys((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
   };
 
   const snoozeReminder = () => {
@@ -194,8 +213,8 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
     setReminderCycle((prev) => prev + 1);
   };
 
-  const handleNotificationClick = (type, params = {}) => {
-    markAllNotificationsAsRead();
+  const handleNotificationClick = (type, params = {}, key) => {
+    markLocalNotificationAsRead(key);
     setShowNotifications(false);
     if (onNavigate) {
       if (type === 'birthday') {
@@ -438,7 +457,9 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
               size="icon"
               className={cn(
                 "relative h-10 w-10 text-gray-600 hover:text-brand-purple hover:bg-brand-purple/5 transition-all outline-none ring-0",
-                totalUnreadCount > 0 && "ripple-bell"
+                totalUnreadCount > 0 && "ripple-bell",
+                bellBuzzing && "bell-buzz",
+                bellBuzzing && lastBuzzType === 'APPROVAL' && "bell-buzz-approval"
               )}
             >
               <Bell size={20} className={cn(totalUnreadCount > 0 && "animate-wiggle")} />
@@ -452,7 +473,7 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
               )}
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-96 p-0 overflow-hidden" align="end">
+          <PopoverContent className="notification-popover-content w-96 p-0 overflow-hidden" align="end">
             <div className="p-4 border-b border-gray-50 bg-gray-50/50 flex justify-between items-center">
               <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-tight">Notifications</h3>
               {totalUnreadCount > 0 && (
@@ -476,7 +497,7 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
                       {birthdayNotificationItems.map((b) => (
                         <button
                           key={b.id}
-                          onClick={() => handleNotificationClick('birthday')}
+                          onClick={() => handleNotificationClick('birthday', {}, b.key)}
                           className="w-full text-left p-3 hover:bg-gray-50 rounded-lg transition-all flex items-start gap-3 group"
                         >
                           <div className={cn(
@@ -509,7 +530,7 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
                       {noticeNotificationItems.map((n) => (
                         <button
                           key={n.id}
-                          onClick={() => handleNotificationClick('comm-notices', { activeTab: 'notices', noticeId: n.id })}
+                          onClick={() => handleNotificationClick('comm-notices', { activeTab: 'notices', noticeId: n.id }, n.key)}
                           className="w-full text-left p-3 hover:bg-gray-50 rounded-lg transition-all group"
                         >
                           <p className="text-sm font-medium text-gray-900 group-hover:text-brand-purple transition-colors line-clamp-1">{n.title}</p>
@@ -522,12 +543,14 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
                   {systemNotifications.length > 0 && (
                     <div className="space-y-1 pt-2 border-t border-gray-50 mt-2">
                       <div className="px-3 py-2 text-[10px] font-semibold text-amber-600 uppercase tracking-widest flex items-center gap-2">
-                        <Zap size={14} /> Priority Alerts
+                        <Zap size={14} /> Approvals & Alerts
                       </div>
                       {systemNotifications.map((n) => {
                         const isGit = n.type === 'GIT_UPDATE';
+                        const isApproval = n.type === 'APPROVAL';
                         const dotCls = n.type === 'SUCCESS' ? 'bg-emerald-500'
                           : n.type === 'ERROR' ? 'bg-rose-500'
+                          : isApproval ? 'bg-violet-500'
                           : isGit ? 'bg-indigo-500'
                           : 'bg-amber-500';
                         return (
@@ -542,6 +565,8 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
                         >
                           {isGit
                             ? <GitBranch size={14} className="text-indigo-400 mt-1 flex-shrink-0" />
+                            : isApproval
+                              ? <ClipboardList size={14} className="text-violet-500 mt-1 flex-shrink-0" />
                             : <div className={`w-2 h-2 mt-2 rounded-full shrink-0 ${dotCls}`} />}
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-gray-900 line-clamp-1">{n.title}</p>
@@ -615,7 +640,7 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
                 <Button variant="outline" size="sm" onClick={snoozeReminder} className="h-8 text-[9px] font-semibold uppercase flex-1 border-gray-200">
                   Snooze
                 </Button>
-                <Button size="sm" onClick={() => { setShowUnreadReminder(false); setShowNotifications(true); markAllNotificationsAsRead(); }} className="h-8 text-[9px] font-semibold uppercase w-full bg-brand-purple hover:bg-brand-purple/90 shadow-lg">
+                <Button size="sm" onClick={() => { setShowUnreadReminder(false); setShowNotifications(true); }} className="h-8 text-[9px] font-semibold uppercase w-full bg-brand-purple hover:bg-brand-purple/90 shadow-lg">
                   Review Now
                 </Button>
               </div>

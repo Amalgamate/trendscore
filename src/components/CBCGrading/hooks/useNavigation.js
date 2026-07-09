@@ -209,27 +209,6 @@ export const allNavSections = [
                 ]
             },
             {
-                id: 'group-formative',
-                label: 'Formative',
-                type: 'group',
-                icon: CheckSquare,
-                items: [
-                    { id: 'assess-formative',        label: 'Formative Assessments', path: 'assess-formative',        permission: 'ACCESS_ASSESSMENT_MODULE' },
-                    { id: 'assess-formative-report', label: 'Formative Reports',     path: 'assess-formative-report', permission: 'ACCESS_ASSESSMENT_MODULE' },
-                ]
-            },
-            {
-                id: 'group-holistic',
-                label: 'CBC Holistic',
-                type: 'group',
-                icon: BookOpen,
-                items: [
-                    { id: 'assess-core-competencies', label: 'Core Competencies', path: 'assess-core-competencies', permission: 'ACCESS_ASSESSMENT_MODULE' },
-                    { id: 'assess-values',            label: 'National Values',   path: 'assess-values',            permission: 'ACCESS_ASSESSMENT_MODULE' },
-                    { id: 'assess-cocurricular',      label: 'Co-Curricular',     path: 'assess-cocurricular',      permission: 'ACCESS_ASSESSMENT_MODULE' },
-                ]
-            },
-            {
                 id: 'group-reports',
                 label: 'Reports',
                 type: 'group',

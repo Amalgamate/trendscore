@@ -7,7 +7,7 @@ import {
   ApprovalStep,
 } from '@prisma/client';
 import prisma from '../config/database';
-import { NotificationService, NotificationType } from './notification.service';
+import { NotificationService } from './notification.service';
 import { auditService } from './audit.service';
 import { WorkflowService } from './workflow.service';
 
@@ -251,7 +251,10 @@ export class ApprovalEngineService {
     if (step.approverType === 'ROLE') {
       const users = await prisma.user.findMany({
         where: {
-          role: { in: step.approverRoles as any[] },
+          OR: [
+            { role: { in: step.approverRoles as any[] } },
+            { roles: { hasSome: step.approverRoles as any[] } },
+          ],
           status: 'ACTIVE',
           archived: false,
         },
@@ -666,17 +669,19 @@ export class ApprovalEngineService {
 
     await Promise.all(
       approverIds.map(approverId =>
-        NotificationService.createNotification({
+        NotificationService.createApprovalNotification({
           userId: approverId,
+          requestId: request.id,
+          event: 'PENDING_APPROVAL',
           title: 'New Approval Request',
           message: `New ${request.requestType} request from ${requesterName}`,
-          type: NotificationType.APPROVAL,
           link: `/app/settings-approvals?requestId=${request.id}`,
           showAsPopup: true,
           metadata: {
-            requestId: request.id,
             module: request.module,
             requestType: request.requestType,
+            status: request.status,
+            currentStepNumber: request.currentStepNumber,
           },
         }).catch(err =>
           console.warn(`[ApprovalEngine] Notification failed for approver ${approverId}:`, err?.message)
@@ -696,12 +701,14 @@ export class ApprovalEngineService {
   ): Promise<void> {
     let title: string;
     let message: string;
+    let event: 'REQUEST_APPROVED' | 'REQUEST_REJECTED' | 'REQUEST_EXPIRED' | 'REQUEST_OVERRIDDEN';
 
     switch (action) {
       case 'APPROVE':
       case 'APPROVED':
         title = 'Request Approved';
         message = `Your ${request.requestType} request has been approved.`;
+        event = 'REQUEST_APPROVED';
         break;
       case 'REJECT':
       case 'REJECTED':
@@ -709,27 +716,34 @@ export class ApprovalEngineService {
         message = comment
           ? `Your ${request.requestType} request was rejected. Reason: ${comment}`
           : `Your ${request.requestType} request has been rejected.`;
+        event = 'REQUEST_REJECTED';
         break;
       case 'EXPIRED':
         title = 'Unlock Expired';
         message = `Your score unlock has expired. Scores have been re-locked.`;
+        event = 'REQUEST_EXPIRED';
         break;
       case 'OVERRIDE':
         title = 'Request Overridden';
         message = `Your ${request.requestType} request has been overridden by an administrator.`;
+        event = 'REQUEST_OVERRIDDEN';
         break;
       default:
         return;
     }
 
-    await NotificationService.createNotification({
+    await NotificationService.createApprovalNotification({
       userId: request.requestedById,
+      requestId: request.id,
+      event,
       title,
       message,
-      type: NotificationType.APPROVAL,
       link: `/app/settings-approvals?requestId=${request.id}`,
       showAsPopup: false,
-      metadata: { requestId: request.id, requestType: request.requestType },
+      metadata: {
+        requestType: request.requestType,
+        status: request.status,
+      },
     }).catch(err =>
       console.warn('[ApprovalEngine] notifyRequester notification failed:', err?.message)
     );

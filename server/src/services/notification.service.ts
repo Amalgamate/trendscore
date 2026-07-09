@@ -37,6 +37,18 @@ interface CreateNotificationParams {
   metadata?: Record<string, any>;
 }
 
+const APPROVAL_NOTIFICATION_LINK = (requestId: string) => `/app/settings-approvals?requestId=${requestId}`;
+
+const getRequesterName = (request: {
+  requestedBy?: { firstName?: string | null; lastName?: string | null } | null;
+}) => {
+  const name = [request.requestedBy?.firstName, request.requestedBy?.lastName]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+  return name || 'A user';
+};
+
 export class NotificationService {
   /**
    * Create a notification and emit real-time event
@@ -90,7 +102,10 @@ export class NotificationService {
   static async notifyRoles(roles: string[], params: Omit<CreateNotificationParams, 'userId'>) {
     const users = await prisma.user.findMany({
       where: {
-        role: { in: roles as any },
+        OR: [
+          { role: { in: roles as any } },
+          { roles: { hasSome: roles as any } },
+        ],
         status: 'ACTIVE',
         archived: false
       },
@@ -102,6 +117,108 @@ export class NotificationService {
     );
 
     return notifications;
+  }
+
+  /**
+   * Create an approval notification once for a user/request/event.
+   *
+   * Approval records are operational tasks, so they must always land in the
+   * central bell table. The metadata tuple lets submit-time, step-advance, and
+   * fetch-time sync paths share one dedupe rule without adding a schema change.
+   */
+  static async createApprovalNotification(params: {
+    userId: string;
+    requestId: string;
+    event: 'PENDING_APPROVAL' | 'REQUEST_APPROVED' | 'REQUEST_REJECTED' | 'REQUEST_EXPIRED' | 'REQUEST_OVERRIDDEN';
+    title: string;
+    message: string;
+    link?: string;
+    showAsPopup?: boolean;
+    metadata?: Record<string, any>;
+  }) {
+    const existing = await prisma.userNotification.findMany({
+      where: {
+        userId: params.userId,
+        type: NotificationType.APPROVAL,
+      },
+      select: { id: true, isRead: true, metadata: true },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    const existingNotification = existing.find((notification) => {
+      const metadata = notification.metadata as Record<string, any> | null;
+      return metadata?.requestId === params.requestId && metadata?.event === params.event;
+    });
+
+    if (existingNotification) {
+      if (params.event === 'PENDING_APPROVAL' && existingNotification.isRead) {
+        return prisma.userNotification.update({
+          where: { id: existingNotification.id },
+          data: { isRead: false, readAt: null },
+        });
+      }
+      return null;
+    }
+
+    return this.createNotification({
+      userId: params.userId,
+      title: params.title,
+      message: params.message,
+      type: NotificationType.APPROVAL,
+      link: params.link || APPROVAL_NOTIFICATION_LINK(params.requestId),
+      showAsPopup: params.showAsPopup ?? false,
+      metadata: {
+        ...(params.metadata || {}),
+        kind: 'APPROVAL_ENGINE',
+        requestId: params.requestId,
+        event: params.event,
+      },
+    });
+  }
+
+  /**
+   * Force-sync pending approval assignments into the central bell table.
+   *
+   * This covers approvals that were created before real-time notification
+   * wiring, missed a non-blocking notification write, or advanced while the
+   * user's browser/socket was offline. Fetching the bell becomes the safety net.
+   */
+  static async syncApprovalNotificationsForUser(userId: string) {
+    const requests = await prisma.approvalRequest.findMany({
+      where: {
+        status: 'PENDING',
+        resolvedApproverIds: { has: userId },
+      },
+      include: {
+        requestedBy: {
+          select: { firstName: true, lastName: true },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 50,
+    });
+
+    await Promise.all(
+      requests.map((request) =>
+        this.createApprovalNotification({
+          userId,
+          requestId: request.id,
+          event: 'PENDING_APPROVAL',
+          title: 'Approval Needed',
+          message: `${getRequesterName(request)} submitted a ${request.requestType.replace(/_/g, ' ').toLowerCase()} request.`,
+          showAsPopup: true,
+          metadata: {
+            module: request.module,
+            requestType: request.requestType,
+            status: request.status,
+            currentStepNumber: request.currentStepNumber,
+          },
+        }).catch((err) =>
+          console.warn(`[NotificationService] Approval sync failed for user ${userId}, request ${request.id}:`, err?.message)
+        )
+      )
+    );
   }
 
   /**
@@ -117,6 +234,8 @@ export class NotificationService {
    * the derived `unreadCount`; the server just supplies the raw records.
    */
   static async getUserNotifications(userId: string, limit = 30) {
+    await this.syncApprovalNotificationsForUser(userId);
+
     return prisma.userNotification.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },

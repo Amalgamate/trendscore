@@ -50,7 +50,10 @@ const UserNotificationContext = createContext(null);
 export const UserNotificationProvider = ({ children }) => {
   const { user, isAuthenticated } = useAuth();
   const [notifications, setNotifications] = useState([]);
+  const [lastBuzzAt, setLastBuzzAt] = useState(0);
+  const [lastBuzzType, setLastBuzzType] = useState('');
   const audioRef = useRef(null);
+  const notificationIdsRef = useRef(new Set());
 
   // ── Derived state — always accurate, never drifts ────────────────────────
   const unreadNotifications = useMemo(
@@ -61,6 +64,10 @@ export const UserNotificationProvider = ({ children }) => {
 
   // ── Audio ─────────────────────────────────────────────────────────────────
   const playBeep = useCallback(() => {
+    if ('vibrate' in navigator) {
+      navigator.vibrate?.([80, 40, 80]);
+    }
+
     audioRef.current?.play().catch(() => {
       // Autoplay policy — silent failure is acceptable
     });
@@ -80,6 +87,7 @@ export const UserNotificationProvider = ({ children }) => {
     try {
       const resp = await api.userNotifications.getAll();
       if (resp.success && Array.isArray(resp.data)) {
+        notificationIdsRef.current = new Set(resp.data.map((n) => n.id).filter(Boolean));
         setNotifications(resp.data);
       }
     } catch (err) {
@@ -103,11 +111,13 @@ export const UserNotificationProvider = ({ children }) => {
 
     socket.on('notification:new', (notification) => {
       console.log('[Notifications] Real-time notification received:', notification.id);
+      if (!notification?.id || notificationIdsRef.current.has(notification.id)) return;
+      notificationIdsRef.current.add(notification.id);
       setNotifications((prev) => {
-        // Deduplicate: skip if this ID already exists in state
-        if (prev.some((n) => n.id === notification.id)) return prev;
         return [{ ...notification, isRead: false }, ...prev];
       });
+      setLastBuzzAt(Date.now());
+      setLastBuzzType(notification.type || '');
       playBeep();
       showBrowserNotification(notification.title, notification.message);
     });
@@ -218,6 +228,8 @@ export const UserNotificationProvider = ({ children }) => {
       notifications,
       unreadNotifications,
       unreadCount,
+      lastBuzzAt,
+      lastBuzzType,
       markAsRead,
       markAllAsRead,
       fetchNotifications,
@@ -226,6 +238,8 @@ export const UserNotificationProvider = ({ children }) => {
       notifications,
       unreadNotifications,
       unreadCount,
+      lastBuzzAt,
+      lastBuzzType,
       markAsRead,
       markAllAsRead,
       fetchNotifications,

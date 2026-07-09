@@ -2,6 +2,7 @@ import { AssessmentStatus, UserRole } from '@prisma/client';
 import prisma from '../config/database';
 import { auditService } from './audit.service';
 import { SmsService } from './sms.service';
+import { NotificationService, NotificationType } from './notification.service';
 
 // ============================================
 // TYPE DEFINITIONS
@@ -810,9 +811,43 @@ export class WorkflowService {
    * Notify approvers of pending submission
    */
   private async notifyApprovers(assessment: any, submitter: any): Promise<void> {
-    // TODO: Implement notification system
-    // For now, just log
-    console.log(`Notification: Assessment ${assessment.id} submitted by ${submitter.firstName} for approval`);
+    const approvers = await prisma.user.findMany({
+      where: {
+        OR: [
+          { role: { in: WORKFLOW_PERMISSIONS.approve as any } },
+          { roles: { hasSome: WORKFLOW_PERMISSIONS.approve as any } },
+        ],
+        status: 'ACTIVE',
+        archived: false,
+        id: { not: submitter.id },
+      },
+      select: { id: true },
+    });
+
+    const assessmentType = this.getAssessmentTypeLabel(assessment);
+    const title = `${assessmentType} approval needed`;
+    const message = `${submitter.firstName} ${submitter.lastName} submitted "${this.getAssessmentTitle(assessment)}" for approval.`;
+
+    await Promise.all(
+      approvers.map((approver) =>
+        NotificationService.createNotification({
+          userId: approver.id,
+          title,
+          message,
+          type: NotificationType.APPROVAL,
+          link: this.getAssessmentLink(assessment),
+          showAsPopup: true,
+          metadata: {
+            kind: 'ASSESSMENT_WORKFLOW_APPROVAL',
+            assessmentId: assessment.id,
+            assessmentType: this.getAssessmentKind(assessment),
+            submittedBy: submitter.id,
+          },
+        }).catch((err) =>
+          console.warn(`[WorkflowService] Approval notification failed for ${approver.id}:`, err?.message)
+        )
+      )
+    );
   }
 
   /**
@@ -824,9 +859,53 @@ export class WorkflowService {
     status: 'approved' | 'rejected',
     reason?: string
   ): Promise<void> {
-    // TODO: Implement notification system
-    // For now, just log
-    console.log(`Notification: Assessment ${assessment.id} ${status} by ${approver.firstName}. Reason: ${reason || 'N/A'}`);
+    const recipientId = assessment.submittedBy || assessment.teacherId || assessment.createdBy;
+    if (!recipientId || recipientId === approver.id) return;
+
+    const approved = status === 'approved';
+    const assessmentType = this.getAssessmentTypeLabel(assessment);
+    const title = `${assessmentType} ${approved ? 'approved' : 'rejected'}`;
+    const message = approved
+      ? `${approver.firstName} ${approver.lastName} approved "${this.getAssessmentTitle(assessment)}".`
+      : `${approver.firstName} ${approver.lastName} rejected "${this.getAssessmentTitle(assessment)}"${reason ? `: ${reason}` : '.'}`;
+
+    await NotificationService.createNotification({
+      userId: recipientId,
+      title,
+      message,
+      type: approved ? NotificationType.SUCCESS : NotificationType.WARNING,
+      link: this.getAssessmentLink(assessment),
+      showAsPopup: false,
+      metadata: {
+        kind: 'ASSESSMENT_WORKFLOW_OUTCOME',
+        assessmentId: assessment.id,
+        assessmentType: this.getAssessmentKind(assessment),
+        status,
+        approverId: approver.id,
+      },
+    }).catch((err) =>
+      console.warn('[WorkflowService] Approval outcome notification failed:', err?.message)
+    );
+  }
+
+  private getAssessmentTitle(assessment: any): string {
+    return assessment.title || assessment.learningArea || `Assessment ${assessment.id}`;
+  }
+
+  private getAssessmentTypeLabel(assessment: any): string {
+    return this.getAssessmentKind(assessment) === 'summative' ? 'Summative test' : 'Formative assessment';
+  }
+
+  private getAssessmentLink(assessment: any): string {
+    return this.getAssessmentKind(assessment) === 'summative'
+      ? `/app/assess-summative-tests?testId=${assessment.id}`
+      : `/app/assess-formative?assessmentId=${assessment.id}`;
+  }
+
+  private getAssessmentKind(assessment: any): 'formative' | 'summative' {
+    return assessment.totalMarks !== undefined || assessment.testDate !== undefined
+      ? 'summative'
+      : 'formative';
   }
 
   /**
