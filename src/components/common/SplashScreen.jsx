@@ -86,7 +86,7 @@ const SplashScreen = ({ onReady }) => {
             <polygon points="88,150 150,158 172,150 150,142" fill="none" stroke="#ffffff" strokeWidth="1.2" strokeLinejoin="round" opacity="0.8" />
           </svg>
         </div>
-        <div className="splash-brand-name">Treads CORE</div>
+        <div className="splash-brand-name">Trends Core</div>
       </div>
     </div>
   );

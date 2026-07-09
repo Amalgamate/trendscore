@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { Eye, EyeOff, Pin, PinOff, RotateCcw, SlidersHorizontal, X } from 'lucide-react';
 
-const STORAGE_PREFIX = 'treadscore.dashboard.sections.';
+const STORAGE_PREFIX = 'trendscore.dashboard.sections.';
+const LEGACY_STORAGE_PREFIX = 'treadscore.dashboard.sections.';
 
 const buildDefaultState = (sections) =>
   sections.reduce((acc, section) => {
@@ -26,6 +27,7 @@ const mergeState = (sections, storedState = {}) => {
 
 export const useDashboardSections = (dashboardId, sections) => {
   const storageKey = `${STORAGE_PREFIX}${dashboardId}`;
+  const legacyStorageKey = `${LEGACY_STORAGE_PREFIX}${dashboardId}`;
   const sectionSignature = JSON.stringify(
     sections.map(({ id, label, description, defaultVisible, defaultPinned }) => ({
       id,
@@ -40,7 +42,8 @@ export const useDashboardSections = (dashboardId, sections) => {
   const [sectionState, setSectionState] = useState(() => {
     if (typeof window === 'undefined') return buildDefaultState(stableSections);
     try {
-      const stored = JSON.parse(window.localStorage.getItem(storageKey) || '{}');
+      const storedValue = window.localStorage.getItem(storageKey) || window.localStorage.getItem(legacyStorageKey);
+      const stored = JSON.parse(storedValue || '{}');
       return mergeState(stableSections, stored);
     } catch {
       return buildDefaultState(stableSections);
@@ -54,7 +57,10 @@ export const useDashboardSections = (dashboardId, sections) => {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(storageKey, JSON.stringify(sectionState));
-  }, [sectionState, storageKey]);
+    if (legacyStorageKey !== storageKey) {
+      window.localStorage.removeItem(legacyStorageKey);
+    }
+  }, [legacyStorageKey, sectionState, storageKey]);
 
   const toggleVisible = (id) => {
     setSectionState((current) => ({

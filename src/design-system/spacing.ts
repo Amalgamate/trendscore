@@ -1,5 +1,5 @@
 /**
- * TreadSCORE Unified Spacing System
+ * Trends Core Unified Spacing System
  * Consistent padding, margins, and gaps throughout the application
  */
 

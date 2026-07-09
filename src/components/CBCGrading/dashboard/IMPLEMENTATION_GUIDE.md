@@ -2,7 +2,7 @@
 
 ## Overview
 
-The TreadSCORE Dashboard Widget Framework is a configuration-driven system that replaces hardcoded dashboard components with a flexible, extensible widget registry and configuration system. This allows dashboards to be easily customized, extended, and maintained.
+The Trends Core Dashboard Widget Framework is a configuration-driven system that replaces hardcoded dashboard components with a flexible, extensible widget registry and configuration system. This allows dashboards to be easily customized, extended, and maintained.
 
 ## Architecture
 

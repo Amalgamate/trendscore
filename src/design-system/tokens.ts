@@ -1,5 +1,5 @@
 /**
- * TreadSCORE Design System Tokens
+ * Trends Core Design System Tokens
  * Central export for all design tokens and utilities
  *
  * This file re-exports all design system modules and provides

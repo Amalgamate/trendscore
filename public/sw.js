@@ -1,5 +1,5 @@
 /**
- * TreadSCORE Service Worker
+ * Trends Core Service Worker
  *
  * Strategy:
  *  - App shell (HTML, JS, CSS chunks): Cache-first with network fallback
@@ -129,7 +129,7 @@ async function shellFirst(request) {
     }
     return response;
   } catch {
-    return cached || new Response('<h1>Offline</h1><p>TreadSCORE is not available offline yet. Please reconnect.</p>', {
+    return cached || new Response('<h1>Offline</h1><p>Trends Core is not available offline yet. Please reconnect.</p>', {
       status: 503,
       headers: { 'Content-Type': 'text/html' },
     });
@@ -140,10 +140,10 @@ async function shellFirst(request) {
 self.addEventListener('push', (event) => {
   if (!event.data) return;
   let data = {};
-  try { data = event.data.json(); } catch { data = { title: 'TreadSCORE', body: event.data.text() }; }
+  try { data = event.data.json(); } catch { data = { title: 'Trends Core', body: event.data.text() }; }
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'TreadSCORE', {
+    self.registration.showNotification(data.title || 'Trends Core', {
       body: data.body || '',
       icon: '/branding/logo.png',
       badge: '/branding/favicon.png',

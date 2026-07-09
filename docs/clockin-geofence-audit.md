@@ -9,56 +9,56 @@
 
 ## 2. Existing Database Support
 ### Staff attendance / clock-in storage
-- Prisma model: `StaffAttendanceLog` in [schema.prisma](file:///c:/Amalgamate/Projects/TreadSCORE/server/prisma/schema.prisma#L1842-L1857)
+- Prisma model: `StaffAttendanceLog` in [schema.prisma](file:///c:/Amalgamate/Projects/TrendSCORE/server/prisma/schema.prisma#L1842-L1857)
   - Fields: `userId`, `date`, `clockInAt`, `clockOutAt?`, `source?`, `metadata Json?`
   - Constraint: `@@unique([userId, date])`
 - Migration mismatch: the DB table includes `schoolId`, but Prisma model does not.
-  - Migration: [20260307053430_add_staff_attendance_log/migration.sql](file:///c:/Amalgamate/Projects/TreadSCORE/server/prisma/migrations/20260307053430_add_staff_attendance_log/migration.sql#L1-L30)
+  - Migration: [20260307053430_add_staff_attendance_log/migration.sql](file:///c:/Amalgamate/Projects/TrendSCORE/server/prisma/migrations/20260307053430_add_staff_attendance_log/migration.sql#L1-L30)
   - Risk: Prisma cannot read/write `schoolId`; any future “per school campus geofence” capability will require schema alignment.
 
 ### School GPS storage
-- Prisma `School` includes `latitude Float?` and `longitude Float?` in [schema.prisma](file:///c:/Amalgamate/Projects/TreadSCORE/server/prisma/schema.prisma#L129-L195)
+- Prisma `School` includes `latitude Float?` and `longitude Float?` in [schema.prisma](file:///c:/Amalgamate/Projects/TrendSCORE/server/prisma/schema.prisma#L129-L195)
 - No DB support exists for:
   - Geofence radius
   - Geofence enforcement mode (strict/soft/off)
   - Per-campus / per-branch coordinates
 
 ### Audit logging storage
-- Prisma `AuditLog` in [schema.prisma](file:///c:/Amalgamate/Projects/TreadSCORE/server/prisma/schema.prisma#L2243-L2258)
+- Prisma `AuditLog` in [schema.prisma](file:///c:/Amalgamate/Projects/TrendSCORE/server/prisma/schema.prisma#L2243-L2258)
   - Captures: `action`, user identity, `ipAddress`, `method`, `path`, `params`, `createdAt`
   - Does not capture request body, response status, or a domain-specific “clock-in attempt outcome”.
 
 ## 3. Existing APIs
 ### Staff clock-in endpoints (HR module)
-- Routes: [hr.routes.ts](file:///c:/Amalgamate/Projects/TreadSCORE/server/src/routes/hr.routes.ts#L69-L90)
+- Routes: [hr.routes.ts](file:///c:/Amalgamate/Projects/TrendSCORE/server/src/routes/hr.routes.ts#L69-L90)
   - `POST /api/hr/attendance/clock-in` (auth + rate limit + auditLog)
   - `POST /api/hr/attendance/clock-out` (auth + rate limit + auditLog)
   - `GET /api/hr/attendance/today` (auth + rate limit)
-- Service persistence: [hr.service.ts](file:///c:/Amalgamate/Projects/TreadSCORE/server/src/services/hr.service.ts#L628-L735)
+- Service persistence: [hr.service.ts](file:///c:/Amalgamate/Projects/TrendSCORE/server/src/services/hr.service.ts#L628-L735)
   - `clockInStaff(...)` upserts by `(userId, date)` and stores `source` + `metadata` JSON.
   - No server-side geofence/distance logic.
   - No validation of location payload (none is expected); payload is treated as `any`.
 
 ### Learner attendance endpoints (not staff clock-in)
-- Routes: [attendance.routes.ts](file:///c:/Amalgamate/Projects/TreadSCORE/server/src/routes/attendance.routes.ts#L1-L127)
+- Routes: [attendance.routes.ts](file:///c:/Amalgamate/Projects/TrendSCORE/server/src/routes/attendance.routes.ts#L1-L127)
   - Includes request validation via Zod + `validate(...)` middleware.
   - Includes `auditLog(...)` for attendance marking actions.
   - No geolocation usage.
 
 ### Biometric attendance ingestion (related to staff attendance records)
-- Public webhook: [biometric.routes.ts](file:///c:/Amalgamate/Projects/TreadSCORE/server/src/routes/biometric.routes.ts#L44-L53)
-- Staff ingestion writes `StaffAttendanceLog` on `IN`/`OUT`: [biometric.service.ts](file:///c:/Amalgamate/Projects/TreadSCORE/server/src/services/biometric.service.ts#L156-L199)
+- Public webhook: [biometric.routes.ts](file:///c:/Amalgamate/Projects/TrendSCORE/server/src/routes/biometric.routes.ts#L44-L53)
+- Staff ingestion writes `StaffAttendanceLog` on `IN`/`OUT`: [biometric.service.ts](file:///c:/Amalgamate/Projects/TrendSCORE/server/src/services/biometric.service.ts#L156-L199)
   - No geofence enforcement or device-location verification.
 
 ## 4. Existing UI
 ### School GPS configuration
 - School Settings page supports capturing and saving GPS coordinates:
   - “Get GPS Location” uses `navigator.geolocation.getCurrentPosition(...)` and persists `latitude`/`longitude` via `PUT /schools`.
-  - File: [SchoolSettings.jsx](file:///c:/Amalgamate/Projects/TreadSCORE/src/components/CBCGrading/pages/settings/SchoolSettings.jsx#L209-L356)
+  - File: [SchoolSettings.jsx](file:///c:/Amalgamate/Projects/TrendSCORE/src/components/CBCGrading/pages/settings/SchoolSettings.jsx#L209-L356)
 
 ### Staff clock-in UX
 - Mobile Owner/Admin dashboard contains current geofence-based clock-in experience:
-  - File: [OwnerMobileDashboard.jsx](file:///c:/Amalgamate/Projects/TreadSCORE/src/components/CBCGrading/dashboard/mobile/OwnerMobileDashboard.jsx#L19-L173)
+  - File: [OwnerMobileDashboard.jsx](file:///c:/Amalgamate/Projects/TrendSCORE/src/components/CBCGrading/dashboard/mobile/OwnerMobileDashboard.jsx#L19-L173)
   - Implements a Haversine calculation (`haversineMetres(...)`) and compares against a hard-coded radius:
     - `const GEOFENCE_RADIUS_M = 5;`
   - Uses `navigator.geolocation.watchPosition(...)` with `{ enableHighAccuracy: true }`
@@ -66,21 +66,21 @@
 
 ### Teacher/staff dashboard integration
 - A teacher dashboard widget slot exists but is stubbed:
-  - Widget config references `WIDGET_IDS.CLOCK_IN_STATUS`: [RoleDashboardConfig.ts](file:///c:/Amalgamate/Projects/TreadSCORE/src/components/CBCGrading/dashboard/configs/RoleDashboardConfig.ts#L207-L278)
-  - Widget component is placeholder: [ClockInStatusWidget.tsx](file:///c:/Amalgamate/Projects/TreadSCORE/src/components/CBCGrading/dashboard/widgets/teacher/ClockInStatusWidget.tsx#L1-L9)
+  - Widget config references `WIDGET_IDS.CLOCK_IN_STATUS`: [RoleDashboardConfig.ts](file:///c:/Amalgamate/Projects/TrendSCORE/src/components/CBCGrading/dashboard/configs/RoleDashboardConfig.ts#L207-L278)
+  - Widget component is placeholder: [ClockInStatusWidget.tsx](file:///c:/Amalgamate/Projects/TrendSCORE/src/components/CBCGrading/dashboard/widgets/teacher/ClockInStatusWidget.tsx#L1-L9)
 
 ### Client-side clock-in state handling
 - Client util stores clock-in state in localStorage and syncs to backend:
-  - File: [teacherClockIn.js](file:///c:/Amalgamate/Projects/TreadSCORE/src/utils/teacherClockIn.js#L1-L186)
-  - Clock-in/out calls: `hrAPI.clockInStaff(...)` / `hrAPI.clockOutStaff(...)` via [hr.api.js](file:///c:/Amalgamate/Projects/TreadSCORE/src/services/api/hr.api.js#L1-L14)
+  - File: [teacherClockIn.js](file:///c:/Amalgamate/Projects/TrendSCORE/src/utils/teacherClockIn.js#L1-L186)
+  - Clock-in/out calls: `hrAPI.clockInStaff(...)` / `hrAPI.clockOutStaff(...)` via [hr.api.js](file:///c:/Amalgamate/Projects/TrendSCORE/src/services/api/hr.api.js#L1-L14)
   - Geolocation is not captured or sent as part of the clock-in payload.
 
 ## 5. Existing Security
 ### What is already present
-- Auth is required for HR clock-in/out endpoints: [hr.routes.ts](file:///c:/Amalgamate/Projects/TreadSCORE/server/src/routes/hr.routes.ts#L69-L90)
+- Auth is required for HR clock-in/out endpoints: [hr.routes.ts](file:///c:/Amalgamate/Projects/TrendSCORE/server/src/routes/hr.routes.ts#L69-L90)
 - Rate limiting exists for clock-in/out calls.
 - DB audit middleware logs clock-in/out requests:
-  - [permissions.middleware.ts](file:///c:/Amalgamate/Projects/TreadSCORE/server/src/middleware/permissions.middleware.ts#L319-L343)
+  - [permissions.middleware.ts](file:///c:/Amalgamate/Projects/TrendSCORE/server/src/middleware/permissions.middleware.ts#L319-L343)
 
 ### What is not present (critical for strict geofence)
 - No server-side enforcement of distance-to-school.
@@ -195,26 +195,25 @@
 
 ## Files Reviewed
 ### Backend
-- [schema.prisma](file:///c:/Amalgamate/Projects/TreadSCORE/server/prisma/schema.prisma)
-- [20260307053430_add_staff_attendance_log/migration.sql](file:///c:/Amalgamate/Projects/TreadSCORE/server/prisma/migrations/20260307053430_add_staff_attendance_log/migration.sql)
-- [hr.routes.ts](file:///c:/Amalgamate/Projects/TreadSCORE/server/src/routes/hr.routes.ts)
-- [hr.service.ts](file:///c:/Amalgamate/Projects/TreadSCORE/server/src/services/hr.service.ts)
-- [permissions.middleware.ts](file:///c:/Amalgamate/Projects/TreadSCORE/server/src/middleware/permissions.middleware.ts)
-- [school.routes.ts](file:///c:/Amalgamate/Projects/TreadSCORE/server/src/routes/school.routes.ts)
-- [school.controller.ts](file:///c:/Amalgamate/Projects/TreadSCORE/server/src/controllers/school.controller.ts)
-- [attendance.routes.ts](file:///c:/Amalgamate/Projects/TreadSCORE/server/src/routes/attendance.routes.ts)
-- [biometric.routes.ts](file:///c:/Amalgamate/Projects/TreadSCORE/server/src/routes/biometric.routes.ts)
-- [biometric.service.ts](file:///c:/Amalgamate/Projects/TreadSCORE/server/src/services/biometric.service.ts)
+- [schema.prisma](file:///c:/Amalgamate/Projects/TrendSCORE/server/prisma/schema.prisma)
+- [20260307053430_add_staff_attendance_log/migration.sql](file:///c:/Amalgamate/Projects/TrendSCORE/server/prisma/migrations/20260307053430_add_staff_attendance_log/migration.sql)
+- [hr.routes.ts](file:///c:/Amalgamate/Projects/TrendSCORE/server/src/routes/hr.routes.ts)
+- [hr.service.ts](file:///c:/Amalgamate/Projects/TrendSCORE/server/src/services/hr.service.ts)
+- [permissions.middleware.ts](file:///c:/Amalgamate/Projects/TrendSCORE/server/src/middleware/permissions.middleware.ts)
+- [school.routes.ts](file:///c:/Amalgamate/Projects/TrendSCORE/server/src/routes/school.routes.ts)
+- [school.controller.ts](file:///c:/Amalgamate/Projects/TrendSCORE/server/src/controllers/school.controller.ts)
+- [attendance.routes.ts](file:///c:/Amalgamate/Projects/TrendSCORE/server/src/routes/attendance.routes.ts)
+- [biometric.routes.ts](file:///c:/Amalgamate/Projects/TrendSCORE/server/src/routes/biometric.routes.ts)
+- [biometric.service.ts](file:///c:/Amalgamate/Projects/TrendSCORE/server/src/services/biometric.service.ts)
 
 ### Frontend
-- [OwnerMobileDashboard.jsx](file:///c:/Amalgamate/Projects/TreadSCORE/src/components/CBCGrading/dashboard/mobile/OwnerMobileDashboard.jsx)
-- [SchoolSettings.jsx](file:///c:/Amalgamate/Projects/TreadSCORE/src/components/CBCGrading/pages/settings/SchoolSettings.jsx)
-- [teacherClockIn.js](file:///c:/Amalgamate/Projects/TreadSCORE/src/utils/teacherClockIn.js)
-- [hr.api.js](file:///c:/Amalgamate/Projects/TreadSCORE/src/services/api/hr.api.js)
-- [ClockInStatusWidget.tsx](file:///c:/Amalgamate/Projects/TreadSCORE/src/components/CBCGrading/dashboard/widgets/teacher/ClockInStatusWidget.tsx)
-- [RoleDashboardConfig.ts](file:///c:/Amalgamate/Projects/TreadSCORE/src/components/CBCGrading/dashboard/configs/RoleDashboardConfig.ts)
-- [WidgetRegistry.ts](file:///c:/Amalgamate/Projects/TreadSCORE/src/components/CBCGrading/dashboard/WidgetRegistry.ts)
-- [DashboardResponsiveWrapper.jsx](file:///c:/Amalgamate/Projects/TreadSCORE/src/components/CBCGrading/DashboardResponsiveWrapper.jsx)
-- [PageRouter.jsx](file:///c:/Amalgamate/Projects/TreadSCORE/src/components/CBCGrading/layout/PageRouter.jsx)
-- [DashboardSummary.jsx](file:///c:/Amalgamate/Projects/TreadSCORE/src/components/CBCGrading/pages/dashboard/DashboardSummary.jsx)
-
+- [OwnerMobileDashboard.jsx](file:///c:/Amalgamate/Projects/TrendSCORE/src/components/CBCGrading/dashboard/mobile/OwnerMobileDashboard.jsx)
+- [SchoolSettings.jsx](file:///c:/Amalgamate/Projects/TrendSCORE/src/components/CBCGrading/pages/settings/SchoolSettings.jsx)
+- [teacherClockIn.js](file:///c:/Amalgamate/Projects/TrendSCORE/src/utils/teacherClockIn.js)
+- [hr.api.js](file:///c:/Amalgamate/Projects/TrendSCORE/src/services/api/hr.api.js)
+- [ClockInStatusWidget.tsx](file:///c:/Amalgamate/Projects/TrendSCORE/src/components/CBCGrading/dashboard/widgets/teacher/ClockInStatusWidget.tsx)
+- [RoleDashboardConfig.ts](file:///c:/Amalgamate/Projects/TrendSCORE/src/components/CBCGrading/dashboard/configs/RoleDashboardConfig.ts)
+- [WidgetRegistry.ts](file:///c:/Amalgamate/Projects/TrendSCORE/src/components/CBCGrading/dashboard/WidgetRegistry.ts)
+- [DashboardResponsiveWrapper.jsx](file:///c:/Amalgamate/Projects/TrendSCORE/src/components/CBCGrading/DashboardResponsiveWrapper.jsx)
+- [PageRouter.jsx](file:///c:/Amalgamate/Projects/TrendSCORE/src/components/CBCGrading/layout/PageRouter.jsx)
+- [DashboardSummary.jsx](file:///c:/Amalgamate/Projects/TrendSCORE/src/components/CBCGrading/pages/dashboard/DashboardSummary.jsx)

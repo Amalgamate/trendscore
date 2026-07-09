@@ -50,7 +50,7 @@ const FinanceMiniBar = ({ user, brandingSettings, onNavigate }) => {
   const schoolName =
     brandingSettings?.schoolName ||
     brandingSettings?.name ||
-    'TreadSCORE';
+    'Trends Core';
 
   // Close dropdown when clicking outside
   useEffect(() => {

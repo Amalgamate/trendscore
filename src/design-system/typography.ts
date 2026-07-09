@@ -1,5 +1,5 @@
 /**
- * TreadSCORE Typography System
+ * Trends Core Typography System
  * Standardized font scales, weights, and styles
  */
 

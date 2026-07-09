@@ -1,5 +1,5 @@
 /**
- * TreadSCORE Unified Color System
+ * Trends Core Unified Color System
  * All colors used across the application for consistency
  */
 

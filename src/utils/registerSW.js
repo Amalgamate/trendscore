@@ -1,5 +1,5 @@
 /**
- * Service Worker registration for TreadSCORE PWA
+ * Service Worker registration for Trends Core PWA
  *
  * Registers /sw.js in production (and optionally in dev with VITE_SW_DEV=true).
  * Handles update detection and notifies the app via a custom event.

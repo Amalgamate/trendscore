@@ -1195,7 +1195,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
           <div className="w-full max-w-[18.5rem] mx-auto pb-2 pt-6">
             <div className="h-px w-full bg-slate-200/60" />
             <p className="mt-3 text-left text-[10px] font-medium text-slate-400 tracking-wide">
-              &copy; 2026 &bull; A product of Treads Core
+              &copy; 2026 &bull; A product of Trends Core
             </p>
           </div>
         </div>

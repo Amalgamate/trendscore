@@ -1,5 +1,5 @@
 /**
- * TreadSCORE Design System Components
+ * Trends Core Design System Components
  * Reusable components built on the unified design system
  */
 

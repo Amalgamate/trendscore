@@ -1,5 +1,5 @@
 /**
- * TreadSCORE Design System - Main Entry Point
+ * Trends Core Design System - Main Entry Point
  * 
  * This package provides:
  * - Unified design tokens (colors, spacing, typography, radius, shadows)
