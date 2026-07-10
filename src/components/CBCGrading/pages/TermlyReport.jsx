@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { FileText, Printer, Edit3, User, ArrowRight, Filter, MessageSquarePlus } from 'lucide-react';
+import { FileText, Printer, Edit3, User, ArrowRight, MessageSquarePlus } from 'lucide-react';
 import { generatePDFWithLetterhead } from '../../../utils/simplePdfGenerator';
 import { useNotifications } from '../hooks/useNotifications';
 import api from '../../../services/api';
@@ -14,6 +14,7 @@ import { useAssessmentSetup } from '../hooks/useAssessmentSetup';
 import { useLearnerSelection } from '../hooks/useLearnerSelection';
 import TermlyReportTemplate from '../templates/TermlyReportTemplate';
 import TermlyReportCommentsForm from '../../../pages/assessments/TermlyReportCommentsForm';
+import { getAcademicYearOptions } from '../utils/academicYear';
 
 const TermlyReport = ({ learners, brandingSettings, user, pageParams = {} }) => {
   const { showSuccess, showError } = useNotifications();
@@ -162,8 +163,8 @@ const TermlyReport = ({ learners, brandingSettings, user, pageParams = {} }) => 
 
       {/* SETUP VIEW */}
       {viewMode === 'setup' && (
-        <div className="bg-white rounded-xl shadow-lg p-8 border border-gray-100 max-w-3xl mx-auto mt-8">
-          <div className="text-center mb-8">
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200 max-w-5xl mx-auto mt-8 overflow-hidden">
+          <div className="border-b border-slate-100 px-6 py-6 text-center bg-slate-50">
             <div className="w-16 h-16 bg-brand-purple/10 rounded-full flex items-center justify-center mx-auto mb-4 text-brand-purple">
               <FileText size={32} />
             </div>
@@ -171,46 +172,24 @@ const TermlyReport = ({ learners, brandingSettings, user, pageParams = {} }) => 
             <p className="text-gray-500">Select a learner to generate the official end of term report card</p>
           </div>
 
-          <div className="space-y-6 mb-8">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Select Learner</label>
+          <div className="px-4 md:px-6 py-4 flex flex-wrap justify-center gap-3 items-start">
+            <select
+              value={selectedGrade || ''}
+              onChange={(e) => {
+                setSelectedGrade(e.target.value);
+                setSelectedLearnerId('');
+              }}
+              className="h-11 px-3 py-2 border border-slate-300 rounded text-sm focus:ring-1 focus:ring-brand-purple focus:border-brand-purple outline-none flex-1 md:flex-none md:w-40 min-w-[140px]"
+            >
+              <option value="">All Grades</option>
+              {grades.map(grade => (
+                <option key={grade.value} value={grade.value}>
+                  {grade.label}
+                </option>
+              ))}
+            </select>
 
-              {/* Grade Filter Pills */}
-              <div className="flex items-center gap-2 mb-3 overflow-x-auto pb-2 -mx-2 px-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
-                <div className="flex items-center justify-center min-w-[24px] text-gray-400">
-                  <Filter size={14} />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedGrade('');
-                    setSelectedLearnerId('');
-                  }}
-                  className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-medium transition-all ${!selectedGrade
-                    ? 'bg-brand-purple text-white shadow-md ring-2 ring-brand-purple/20'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
-                    }`}
-                >
-                  All Grades
-                </button>
-                {grades.map(grade => (
-                  <button
-                    type="button"
-                    key={grade.value}
-                    onClick={() => {
-                      setSelectedGrade(grade.value);
-                      setSelectedLearnerId(''); // Clear selection on filter change
-                    }}
-                    className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-medium transition-all ${selectedGrade === grade.value
-                      ? 'bg-brand-purple text-white shadow-md ring-2 ring-brand-purple/20'
-                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
-                      }`}
-                  >
-                    {grade.label}
-                  </button>
-                ))}
-              </div>
-
+            <div className="flex-1 min-w-[260px] md:min-w-[320px]">
               <SmartLearnerSearch
                 learners={filteredLearners}
                 selectedLearnerId={selectedLearnerId}
@@ -219,27 +198,30 @@ const TermlyReport = ({ learners, brandingSettings, user, pageParams = {} }) => 
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Select Term
-              </label>
-              <select
-                value={selectedTerm}
-                onChange={(e) => setSelectedTerm(e.target.value)}
-                className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-purple focus:border-brand-purple"
-              >
-                {terms.map(t => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
-            </div>
-          </div>
+            <select
+              value={selectedTerm}
+              onChange={(e) => setSelectedTerm(e.target.value)}
+              className="h-11 px-3 py-2 border border-slate-300 rounded text-sm focus:ring-1 focus:ring-brand-purple focus:border-brand-purple outline-none flex-1 md:flex-none md:w-32 min-w-[120px]"
+            >
+              {terms.map(t => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
 
-          <div className="flex justify-end pt-6 border-t border-gray-100">
+            <select
+              value={setup.academicYear}
+              onChange={(e) => setup.setSelectedAcademicYear(parseInt(e.target.value, 10))}
+              className="h-11 px-3 py-2 border border-slate-300 rounded text-sm focus:ring-1 focus:ring-brand-purple focus:border-brand-purple outline-none flex-1 md:flex-none md:w-28 min-w-[110px]"
+            >
+              {getAcademicYearOptions().map(y => (
+                <option key={y.value} value={y.value}>{y.label}</option>
+              ))}
+            </select>
+
             <button
               onClick={handleGenerateReport}
               disabled={!selectedLearnerId || loading}
-              className="flex items-center gap-2 px-8 py-3 bg-brand-purple text-white rounded-xl hover:opacity-90 transition-all font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+              className="h-11 flex items-center justify-center gap-2 px-6 bg-brand-purple text-white rounded hover:opacity-90 transition-all font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex-1 md:flex-none min-w-[190px]"
             >
               {loading ? 'Generating...' : 'Generate Report Card'}
               <ArrowRight size={20} />

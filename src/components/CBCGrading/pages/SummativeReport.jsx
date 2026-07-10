@@ -1028,13 +1028,21 @@ const SUMMATIVE_REPORT_TYPES = [
   { value: 'LEARNER_REPORT', label: 'Summative Learner Sheet' },
 ];
 
+const DEFAULT_SUMMATIVE_REPORT_TYPE = 'GRADE_REPORT';
+const getSummativeReportType = (value) => (
+  SUMMATIVE_REPORT_TYPES.some((type) => type.value === value)
+    ? value
+    : DEFAULT_SUMMATIVE_REPORT_TYPE
+);
+
 const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pageParams = {}, onNavigate }) => {
   const { showSuccess, showError, showInfo, showToast, toastMessage, toastType, hideNotification } = useNotifications();
 
   // Use centralized hooks for assessment state management
   const setup = useAssessmentSetup({ defaultTerm: getCurrentTerm() });
 
-  const [selectedType, setSelectedType] = useState('LEARNER_REPORT');
+  const initialReportType = getSummativeReportType(pageParams?.reportType);
+  const [selectedType, setSelectedType] = useState(initialReportType);
   const [selectedTestGroups, setSelectedTestGroups] = useState([]);
   const [selectedTestIds, setSelectedTestIds] = useState([]);
   const [streamConfigs, setStreamConfigs] = useState([]);
@@ -1194,7 +1202,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     }
     setSelectedType(stagedType);
     setSelectedGrade(stagedGrade);
-    setSelectedStream(stagedStream);
+    setSelectedStream(stagedType === 'GRADE_REPORT' ? '' : stagedStream);
     setSelectedTerm(stagedTerm);
     setSelectedTestGroups(stagedTestGroups);
     setSelectedTestIds(stagedTestIds);
@@ -1257,7 +1265,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
   const [selectedTerm, setSelectedTerm] = useState(getCurrentTerm());
 
   // Staged filter state - filters only apply when button is clicked
-  const [stagedType, setStagedType] = useState('LEARNER_REPORT');
+  const [stagedType, setStagedType] = useState(initialReportType);
   const [stagedGrade, setStagedGrade] = useState('');
   const [stagedStream, setStagedStream] = useState('');
   const [stagedTerm, setStagedTerm] = useState(getCurrentTerm());
@@ -1314,8 +1322,12 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       setStagedAcademicYear(Number(pageParams.academicYear));
       setup.setSelectedAcademicYear(Number(pageParams.academicYear));
     }
-    if (pageParams?.reportType && SUMMATIVE_REPORT_TYPES.some((type) => type.value === pageParams.reportType)) {
-      setStagedType(pageParams.reportType);
+    const reportTypeFromContext = getSummativeReportType(pageParams?.reportType);
+    setStagedType(reportTypeFromContext);
+    setSelectedType(reportTypeFromContext);
+    if (reportTypeFromContext === 'GRADE_REPORT') {
+      setStagedStream('');
+      setSelectedStream('');
     }
   }, [pageParams, setup]);
 
@@ -1497,6 +1509,9 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     const groups = Array.from(groupsSet);
     return groups.sort(compareTestGroups);
   }, [availableTests]);
+
+  const stagedTypeConfig = SUMMATIVE_REPORT_TYPES.find(t => t.value === stagedType);
+  const showStreamFilter = stagedType !== 'GRADE_REPORT';
 
   const groupDateStampMap = useMemo(() => {
     const map = {};
@@ -3270,16 +3285,20 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
         <div className="border-b border-slate-100 px-6 py-3 flex justify-center items-center bg-slate-50">
           <div className="text-xs text-slate-500 flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
             <span className="font-semibold text-brand-teal uppercase tracking-wider">
-              {SUMMATIVE_REPORT_TYPES.find(t => t.value === stagedType)?.label || 'Summative Report'}
+              {stagedTypeConfig?.label || 'Summative Report'}
             </span>
             <span className="text-slate-300">•</span>
             <span className="font-medium">
               {stagedGrade ? (stagedGrade === 'all' ? 'All Grades' : normalize(stagedGrade).replace('_', ' ')) : 'Grade Not Selected'}
             </span>
-            <span className="text-slate-300">•</span>
-            <span>
-              {stagedStream ? (stagedStream === 'all' ? 'All Streams' : stagedStream) : 'All Streams'}
-            </span>
+            {showStreamFilter && (
+              <>
+                <span className="text-slate-300">•</span>
+                <span>
+                  {stagedStream ? (stagedStream === 'all' ? 'All Streams' : stagedStream) : 'All Streams'}
+                </span>
+              </>
+            )}
             <span className="text-slate-300">•</span>
             <span>
               {terms?.find(t => t.value === stagedTerm)?.label || stagedTerm}
@@ -3293,27 +3312,9 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
 
         {/* Single Row Filter Bar */}
         <div className="border-t border-slate-200 px-4 md:px-6 py-3.5 flex flex-wrap justify-center gap-3 items-center w-full max-w-[1200px] mx-auto">
-          {/* Type Selector */}
-          <select
-            value={stagedType}
-            onChange={(e) => {
-              const nextType = e.target.value;
-              setStagedType(nextType);
-              setStagedTestIds([]);
-              setStagedSubjectNames([]);
-              if (nextType === 'CUSTOM_REPORT') {
-                if (typeof onNavigate === 'function') onNavigate('assess-custom-reports');
-                else showInfo('Custom reports page is unavailable in this context.');
-              }
-            }}
-            className="h-9 px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-brand-teal focus:border-brand-teal outline-none flex-1 md:flex-none min-w-[140px]"
-          >
-            {SUMMATIVE_REPORT_TYPES.map(t => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
+          <div className="h-9 px-3 py-1.5 rounded border border-brand-teal/20 bg-brand-teal/5 text-brand-teal text-xs font-semibold uppercase tracking-wide flex items-center flex-1 md:flex-none min-w-[150px]">
+            {stagedTypeConfig?.label || 'Summative Report'}
+          </div>
 
           {/* Grade Selector */}
           <select
@@ -3350,19 +3351,21 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           </select>
 
           {/* Stream Selector */}
-          <select
-            value={stagedStream}
-            onChange={(e) => setStagedStream(e.target.value)}
-            className="h-9 px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-brand-teal focus:border-brand-teal outline-none flex-1 md:flex-none md:w-20 min-w-[100px]"
-          >
-            <option value="">Stream</option>
-            <option value="all">All</option>
-            {availableStreams?.map(s => (
-              <option key={s.id || s.name} value={s.value || s.name}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+          {showStreamFilter && (
+            <select
+              value={stagedStream}
+              onChange={(e) => setStagedStream(e.target.value)}
+              className="h-9 px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-brand-teal focus:border-brand-teal outline-none flex-1 md:flex-none md:w-20 min-w-[100px]"
+            >
+              <option value="">Stream</option>
+              <option value="all">All</option>
+              {availableStreams?.map(s => (
+                <option key={s.id || s.name} value={s.value || s.name}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          )}
 
           {/* Term Selector */}
           <select
