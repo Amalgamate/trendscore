@@ -184,9 +184,10 @@ export const PAGE_TITLES = {
   'assess-formative-report': 'Formative Report',
   'assess-summative-tests': 'Summative Tests',
   'assess-summative-assessment': 'Summative Assessment',
-  'assess-summative-report': 'Summative Report',
+  'assess-learner-reports': 'Learner Reports',
+  'assess-summative-report': 'Summative Sheets',
   'assess-summary-report': 'Assessment Matrix',
-  'assess-termly-report': 'Termly Report',
+  'assess-termly-report': 'Official Report Card',
   'assess-learning-areas': 'Learning Areas',
   'assess-performance-scale': 'Performance Scale',
 

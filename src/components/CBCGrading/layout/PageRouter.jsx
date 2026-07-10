@@ -35,6 +35,7 @@ const MobileAssessmentsDashboard = lazy(() => import('../pages/MobileAssessments
 const SummativeTestsRouter = lazy(() => import('../pages/SummativeTestsRouter'));
 const SummativeAssessmentRouter = lazy(() => import('../pages/SummativeAssessmentRouter'));
 const SummativeReport = lazy(() => import('../pages/SummativeReport'));
+const LearnerReportsPage = lazy(() => import('../pages/LearnerReportsPage'));
 const CustomReportsPage = lazy(() => import('../pages/CustomReportsPage'));
 const TermlyReport = lazy(() => import('../pages/TermlyReport'));
 const ValuesAssessment = lazy(() => import('../pages/ValuesAssessment'));
@@ -155,6 +156,7 @@ const BiometricManager = lazy(() => import('../pages/biometric/BiometricManager'
 
 // LMS Module
 const LMSManager = lazy(() => import('../pages/LMSManager'));
+const LMSAssignments = lazy(() => import('../pages/lms/LMSAssignments'));
 const AssignmentsPage = lazy(() => import('../pages/lms/assignments/AssignmentsPage'));
 const AssignmentBuilder = lazy(() => import('../pages/lms/assignments/AssignmentBuilder'));
 // LMS Digital Learning Hub — Phase 1+
@@ -611,6 +613,7 @@ const PageRouter = ({
           case 'assess-formative-report': return <ErrorBoundary><FormativeReport learners={learners} brandingSettings={brandingSettings} user={user} /></ErrorBoundary>;
           case 'assess-summative-tests': return <ErrorBoundary><SummativeTestsRouter onNavigate={handleNavigate} onBack={() => handleNavigate('assess-mobile-dashboard')} defaultTestType={pageParams.defaultTestType} /></ErrorBoundary>;
           case 'assess-summative-assessment': return <ErrorBoundary><SummativeAssessmentRouter learners={learners} initialTestId={pageParams.initialTestId} defaultTestType={pageParams.defaultTestType} onBack={() => handleNavigate('assess-mobile-dashboard')} onNavigate={handleNavigate} brandingSettings={brandingSettings} /></ErrorBoundary>;
+          case 'assess-learner-reports': return <ErrorBoundary><LearnerReportsPage onNavigate={handleNavigate} pageParams={pageParams} /></ErrorBoundary>;
           case 'assess-summative-report': return <ErrorBoundary><SummativeReport learners={learners} onFetchLearners={fetchLearners} brandingSettings={brandingSettings} user={user} pageParams={pageParams} onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'assess-summary-report': return <ErrorBoundary><SummaryReportPage pageParams={pageParams} /></ErrorBoundary>;
           case 'assess-termly-report': return <ErrorBoundary><TermlyReport learners={learners} brandingSettings={brandingSettings} user={user} pageParams={pageParams} /></ErrorBoundary>;

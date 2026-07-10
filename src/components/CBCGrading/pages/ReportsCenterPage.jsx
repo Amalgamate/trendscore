@@ -24,9 +24,9 @@ const reportSections = [
     label: 'Academic Reports',
     accent: 'from-indigo-500 to-sky-500',
     reports: [
-      { title: 'Report Cards', path: 'sec-report-cards', icon: GraduationCap, color: 'text-indigo-600 bg-indigo-50 border-indigo-100', permissionLabel: 'Term packets' },
-      { title: 'Termly Reports', path: 'assess-termly-report', icon: FileText, color: 'text-fuchsia-600 bg-fuchsia-50 border-fuchsia-100', permissionLabel: 'Learner profiles' },
-      { title: 'Summative Results', path: 'assess-summative-report', icon: BarChart3, color: 'text-sky-600 bg-sky-50 border-sky-100', permissionLabel: 'Exams' },
+      { title: 'Report Card Hub', path: 'sec-report-cards', icon: GraduationCap, color: 'text-indigo-600 bg-indigo-50 border-indigo-100', permissionLabel: 'Term packets' },
+      { title: 'Learner Reports', path: 'assess-learner-reports', icon: FileText, color: 'text-fuchsia-600 bg-fuchsia-50 border-fuchsia-100', permissionLabel: 'Report cards and sheets' },
+      { title: 'Summative Sheets', path: 'assess-summative-report', icon: BarChart3, color: 'text-sky-600 bg-sky-50 border-sky-100', permissionLabel: 'Exam sheets' },
       { title: 'Formative Report', path: 'assess-formative-report', icon: BookOpenCheck, color: 'text-violet-600 bg-violet-50 border-violet-100', permissionLabel: 'CBC ratings' },
       { title: 'Summary Report', path: 'assess-summary-report', icon: ClipboardList, color: 'text-blue-600 bg-blue-50 border-blue-100', permissionLabel: 'Class summaries' },
       { title: 'Custom Reports', path: 'assess-custom-reports', icon: FileSpreadsheet, color: 'text-cyan-700 bg-cyan-50 border-cyan-100', permissionLabel: 'Builder' },

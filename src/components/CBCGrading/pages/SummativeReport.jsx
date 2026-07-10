@@ -1025,7 +1025,7 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
 const SUMMATIVE_REPORT_TYPES = [
   { value: 'GRADE_REPORT', label: 'Grade Sheet' },
   { value: 'STREAM_REPORT', label: 'Stream Sheet' },
-  { value: 'LEARNER_REPORT', label: 'Learner Sheet' },
+  { value: 'LEARNER_REPORT', label: 'Summative Learner Sheet' },
 ];
 
 const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pageParams = {}, onNavigate }) => {
@@ -1617,7 +1617,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
   const handleExportPDF = async () => {
     if (!reportData) {
       showError(
-        'No report data to export. Please generate a report first by clicking the "Generate Report" button.'
+        'No report data to export. Please generate a summative learner sheet first.'
       );
       return;
     }
@@ -3697,7 +3697,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                   <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Printer size={32} />
                   </div>
-                  <h2 className="text-2xl font-semibold text-slate-900 uppercase tracking-tight">Bulk Summary Reports</h2>
+                  <h2 className="text-2xl font-semibold text-slate-900 uppercase tracking-tight">Bulk Summative Learner Sheets</h2>
                   <p className="text-slate-500 font-medium mt-1 uppercase text-sm">
                     GRADE: {selectedGrade} | STREAM: {selectedStream} | {reportData.rows.length} STUDENTS SELECTED
                   </p>
@@ -3868,7 +3868,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                           className="w-full justify-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition shadow-md flex items-center gap-2 font-medium uppercase text-[10px]"
                         >
                           {isBulkPrinting ? <Loader className="animate-spin" size={14} /> : <Printer size={14} />}
-                          {isBulkPrinting ? 'Processing...' : 'Download Combined PDF'}
+                          {isBulkPrinting ? 'Processing...' : 'Print / Save Combined PDF'}
                         </button>
                         {isBulkPrinting && (
                           <button

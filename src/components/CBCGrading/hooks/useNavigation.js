@@ -214,7 +214,7 @@ export const allNavSections = [
                 type: 'group',
                 icon: FileText,
                 items: [
-                    { id: 'assessment-learner-report-card', label: 'Learners Report Card', path: 'assess-termly-report', permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'assessment-learner-reports', label: 'Learner Reports', path: 'assess-learner-reports', permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'assessment-stream-sheet',        label: 'Stream Sheet',          path: 'assess-summative-report', params: { reportType: 'STREAM_REPORT' }, permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'assessment-grade-sheet',         label: 'Grade Sheet',           path: 'assess-summative-report', params: { reportType: 'GRADE_REPORT' },  permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'assessment-performance-analysis', label: 'Performance Analysis', path: 'academic-section-analysis', permission: 'VIEW_ALL_REPORTS' },
@@ -292,8 +292,7 @@ export const allNavSections = [
                 items: [
                     { id: 'academic-grade-sheet',         label: 'Grade Sheet',       path: 'assess-summative-report',     params: { reportType: 'GRADE_REPORT' },   permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'academic-stream-sheet',        label: 'Stream Sheet',      path: 'assess-summative-report',     params: { reportType: 'STREAM_REPORT' },  permission: 'ACCESS_ASSESSMENT_MODULE' },
-                    { id: 'academic-learner-sheet',       label: 'Learner Sheet',     path: 'assess-summative-report',     params: { reportType: 'LEARNER_REPORT' }, permission: 'ACCESS_ASSESSMENT_MODULE' },
-                    { id: 'academic-report-cards',         label: 'Report Cards',         path: 'assess-termly-report',           permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'academic-learner-reports',       label: 'Learner Reports', path: 'assess-learner-reports', permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'academic-print-center',         label: 'Print Center',         path: 'assess-print-center',            permission: 'ACCESS_ASSESSMENT_MODULE' },
                 ]
             },
@@ -313,9 +312,9 @@ export const allNavSections = [
                 icon: GraduationCap,
                 items: [
                     { id: 'reports-academic-dashboard', label: 'Analytics Dashboards', path: 'academic-intelligence', permission: 'VIEW_ALL_REPORTS' },
-                    { id: 'reports-report-cards', label: 'Report Cards', path: 'sec-report-cards', permission: 'DOWNLOAD_REPORTS' },
-                    { id: 'reports-termly', label: 'Termly Reports', path: 'assess-termly-report', permission: 'ACCESS_ASSESSMENT_MODULE' },
-                    { id: 'reports-summative', label: 'Summative Results', path: 'assess-summative-report', permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'reports-report-cards', label: 'Report Card Hub', path: 'sec-report-cards', permission: 'DOWNLOAD_REPORTS' },
+                    { id: 'reports-termly', label: 'Learner Reports', path: 'assess-learner-reports', permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'reports-summative', label: 'Summative Sheets', path: 'assess-summative-report', permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'reports-formative', label: 'Formative Reports', path: 'assess-formative-report', permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'reports-custom', label: 'Custom Reports', path: 'assess-custom-reports', permission: 'ACCESS_ASSESSMENT_MODULE' },
                 ],

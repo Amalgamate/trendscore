@@ -96,7 +96,7 @@ export const secondaryNavSections = [
         type: 'group',
         icon: FileText,
         items: [
-          { id: 'sec-assessment-learner-report-card', label: 'Learners Report Card', path: 'assess-termly-report', permission: 'ACCESS_ASSESSMENT_MODULE' },
+          { id: 'sec-assessment-learner-reports', label: 'Learner Reports', path: 'assess-learner-reports', permission: 'ACCESS_ASSESSMENT_MODULE' },
           { id: 'sec-assessment-stream-sheet',        label: 'Stream Sheet',          path: 'assess-summative-report', params: { reportType: 'STREAM_REPORT' }, permission: 'ACCESS_ASSESSMENT_MODULE' },
           { id: 'sec-assessment-grade-sheet',         label: 'Grade Sheet',           path: 'assess-summative-report', params: { reportType: 'GRADE_REPORT' },  permission: 'ACCESS_ASSESSMENT_MODULE' },
           { id: 'sec-assessment-performance-analysis', label: 'Performance Analysis', path: 'academic-section-analysis', permission: 'VIEW_ALL_REPORTS' },
@@ -116,7 +116,7 @@ export const secondaryNavSections = [
       { id: 'sec-mean-grades',      label: 'Mean Grades',       path: 'sec-mean-grades',      permission: 'VIEW_ALL_REPORTS' },
       { id: 'sec-rankings',         label: 'Class Rankings',    path: 'sec-rankings',          permission: 'VIEW_ALL_REPORTS' },
       { id: 'sec-subject-analysis', label: 'Subject Intelligence', path: 'sec-subject-analysis', permission: 'VIEW_ALL_REPORTS' },
-      { id: 'sec-report-cards',     label: 'Report Cards',      path: 'sec-report-cards',     permission: 'DOWNLOAD_REPORTS' },
+      { id: 'sec-report-cards',     label: 'Report Card Hub',   path: 'sec-report-cards',     permission: 'DOWNLOAD_REPORTS' },
       { id: 'sec-kcse-prediction',  label: 'Performance Forecast', path: 'sec-kcse-prediction',  permission: 'VIEW_ALL_REPORTS' },
     ],
   },

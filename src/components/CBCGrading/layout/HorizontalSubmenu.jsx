@@ -15,6 +15,7 @@ const PASTEL_PALETTE = {
   'National Values':    'text-rose-700    bg-rose-50',
   'Co-Curricular':      'text-teal-700    bg-teal-50',
   'Termly Report':      'text-fuchsia-700 bg-fuchsia-50',
+  'Official Report Card': 'text-fuchsia-700 bg-fuchsia-50',
   'Learning Areas':     'text-indigo-700  bg-indigo-50',
   'Students List':      'text-blue-700    bg-blue-50',
   'Admissions':         'text-emerald-700 bg-emerald-50',

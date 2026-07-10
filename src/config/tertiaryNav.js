@@ -87,7 +87,7 @@ export const tertiaryNavSections = [
         type: 'group',
         icon: FileText,
         items: [
-          { id: 'tert-assessment-learner-report-card', label: 'Learners Report Card', path: 'assess-termly-report', permission: 'ACCESS_ASSESSMENT_MODULE' },
+          { id: 'tert-assessment-learner-reports', label: 'Learner Reports', path: 'assess-learner-reports', permission: 'ACCESS_ASSESSMENT_MODULE' },
           { id: 'tert-assessment-stream-sheet',        label: 'Stream Sheet',          path: 'assess-summative-report', params: { reportType: 'STREAM_REPORT' }, permission: 'ACCESS_ASSESSMENT_MODULE' },
           { id: 'tert-assessment-grade-sheet',         label: 'Grade Sheet',           path: 'assess-summative-report', params: { reportType: 'GRADE_REPORT' },  permission: 'ACCESS_ASSESSMENT_MODULE' },
           { id: 'tert-assessment-performance-analysis', label: 'Performance Analysis', path: 'academic-section-analysis', permission: 'VIEW_ALL_REPORTS' },

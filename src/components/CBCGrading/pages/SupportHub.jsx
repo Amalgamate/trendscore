@@ -155,7 +155,7 @@ const SupportHub = () => {
         },
         {
           title: 'Generating CBC Reports',
-          content: 'Formative Reports: Shows rubric ratings across all learning areas for selected term. Summative Reports: Displays test scores, grades, percentages. Termly Reports: Comprehensive report combining formative assessments, summative tests, attendance, teacher comments, and head teacher remarks. Select learner → Generate → Download PDF or Print.'
+          content: 'Formative Reports: Shows rubric ratings across all learning areas for selected term. Summative Sheets: Displays test scores, grades, percentages for compact learner, grade, and stream outputs. Official Report Cards: Comprehensive parent-facing reports combining formative assessments, summative tests, attendance, teacher comments, and head teacher remarks. Select learner → Generate → Download PDF or Print.'
         },
         {
           title: 'Grade Level Learning Areas',

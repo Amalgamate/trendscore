@@ -33,14 +33,14 @@ const ReportsHub = ({ onNavigate }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card
           icon={FileText}
-          title="Termly Report"
-          description="Generate learner termly reports (supports pathway/category metadata)."
-          onClick={() => onNavigate?.('assess-termly-report')}
+          title="Learner Reports"
+          description="Choose between official report cards and compact summative learner sheets."
+          onClick={() => onNavigate?.('assess-learner-reports')}
         />
         <Card
           icon={TrendingUp}
-          title="Summative Detailed Reports"
-          description="Per-subject and per-learner analysis."
+          title="Summative Sheets"
+          description="Generate compact learner, grade, and stream performance sheets."
           onClick={() => onNavigate?.('assess-summative-report')}
         />
         <Card

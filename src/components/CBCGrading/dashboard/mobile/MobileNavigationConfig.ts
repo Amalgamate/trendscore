@@ -239,7 +239,7 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         label: 'Assess',
         icon: FileText,
         path: 'assess-mobile-dashboard',
-        activePaths: ['assess-mobile-dashboard', 'assess-summative-assessment', 'assess-summative-tests', 'assess-summary-report', 'assess-termly-report'],
+        activePaths: ['assess-mobile-dashboard', 'assess-summative-assessment', 'assess-summative-tests', 'assess-summary-report', 'assess-learner-reports', 'assess-termly-report'],
         color: 'text-blue-600'
       },
       {
@@ -284,7 +284,7 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         label: 'Assess',
         icon: FileText,
         path: 'assess-mobile-dashboard',
-        activePaths: ['assess-mobile-dashboard', 'assess-summative-assessment', 'assess-summative-tests', 'assess-summary-report', 'assess-termly-report'],
+        activePaths: ['assess-mobile-dashboard', 'assess-summative-assessment', 'assess-summative-tests', 'assess-summary-report', 'assess-learner-reports', 'assess-termly-report'],
         color: 'text-blue-600'
       },
       {

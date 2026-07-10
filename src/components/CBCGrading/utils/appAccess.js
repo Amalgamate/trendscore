@@ -29,6 +29,7 @@ const PAGE_APP_REQUIREMENTS = {
   'assess-formative-report': 'gradebook',
   'assess-summative-tests': 'gradebook',
   'assess-summative-assessment': 'gradebook',
+  'assess-learner-reports': 'exams',
   'assess-values': 'gradebook',
   'assess-cocurricular': 'gradebook',
   'assess-core-competencies': 'gradebook',

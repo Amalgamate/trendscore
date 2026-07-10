@@ -3,7 +3,7 @@
  * Now with PDF Download functionality!
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { FileText, Printer, Edit3, User, ArrowRight, Filter, MessageSquarePlus } from 'lucide-react';
 import { generatePDFWithLetterhead } from '../../../utils/simplePdfGenerator';
 import { useNotifications } from '../hooks/useNotifications';
@@ -20,16 +20,24 @@ const TermlyReport = ({ learners, brandingSettings, user, pageParams = {} }) => 
 
   // Use centralized hooks for assessment state management
   const setup = useAssessmentSetup({ defaultTerm: 'TERM_1' });
-  const selection = useLearnerSelection(learners || [], { status: ['ACTIVE', 'Active'] });
 
   // Use grades, terms, and selection from setup/selection hooks
-  const grades = setup.grades || [];
+  const grades = useMemo(() => setup.grades || [], [setup.grades]);
   const setSelectedGrade = setup.updateGrade;
   const selectedGrade = setup.selectedGrade;
   const setSelectedTerm = setup.updateTerm;
   const selectedTerm = setup.selectedTerm;
   const terms = setup.terms;
-  const academicYear = setup.academicYear;
+  const selectedGradeLabel = selectedGrade
+    ? grades.find(g => g.value === selectedGrade)?.label
+    : '';
+  const learnerSearchPlaceholder = selectedGradeLabel
+    ? `Search in ${selectedGradeLabel}...`
+    : 'Search all learners...';
+  const selection = useLearnerSelection(learners || [], {
+    grade: selectedGrade,
+    status: ['ACTIVE', 'Active']
+  });
   const filteredLearners = selection.filteredLearners;
   const selectedLearnerId = selection.selectedLearnerId;
   const setSelectedLearnerId = selection.selectLearner;
@@ -132,7 +140,7 @@ const TermlyReport = ({ learners, brandingSettings, user, pageParams = {} }) => 
         { onProgress }
       );
       if (result.success) {
-        showSuccess('Report downloaded successfully!');
+        showSuccess('Report card downloaded successfully!');
         return { success: true };
       } else {
         throw new Error(result.error || 'PDF generation failed');
@@ -159,8 +167,8 @@ const TermlyReport = ({ learners, brandingSettings, user, pageParams = {} }) => 
             <div className="w-16 h-16 bg-brand-purple/10 rounded-full flex items-center justify-center mx-auto mb-4 text-brand-purple">
               <FileText size={32} />
             </div>
-            <h2 className="text-2xl font-medium text-gray-800">Termly Report</h2>
-            <p className="text-gray-500">Select a learner to generate their end of term report</p>
+            <h2 className="text-2xl font-medium text-gray-800">Official Termly Report Card</h2>
+            <p className="text-gray-500">Select a learner to generate the official end of term report card</p>
           </div>
 
           <div className="space-y-6 mb-8">
@@ -172,8 +180,22 @@ const TermlyReport = ({ learners, brandingSettings, user, pageParams = {} }) => 
                 <div className="flex items-center justify-center min-w-[24px] text-gray-400">
                   <Filter size={14} />
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedGrade('');
+                    setSelectedLearnerId('');
+                  }}
+                  className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-medium transition-all ${!selectedGrade
+                    ? 'bg-brand-purple text-white shadow-md ring-2 ring-brand-purple/20'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
+                    }`}
+                >
+                  All Grades
+                </button>
                 {grades.map(grade => (
                   <button
+                    type="button"
                     key={grade.value}
                     onClick={() => {
                       setSelectedGrade(grade.value);
@@ -193,7 +215,7 @@ const TermlyReport = ({ learners, brandingSettings, user, pageParams = {} }) => 
                 learners={filteredLearners}
                 selectedLearnerId={selectedLearnerId}
                 onSelect={setSelectedLearnerId}
-                placeholder={selectedGrade === 'all' ? "Search all learners..." : `Search in ${grades.find(g => g.value === selectedGrade)?.label}...`}
+                placeholder={learnerSearchPlaceholder}
               />
             </div>
 
@@ -219,7 +241,7 @@ const TermlyReport = ({ learners, brandingSettings, user, pageParams = {} }) => 
               disabled={!selectedLearnerId || loading}
               className="flex items-center gap-2 px-8 py-3 bg-brand-purple text-white rounded-xl hover:opacity-90 transition-all font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
-              {loading ? 'Generating...' : 'Generate Report'}
+              {loading ? 'Generating...' : 'Generate Report Card'}
               <ArrowRight size={20} />
             </button>
           </div>
@@ -268,14 +290,14 @@ const TermlyReport = ({ learners, brandingSettings, user, pageParams = {} }) => 
 
               <DownloadReportButton
                 onDownload={handleDownloadPDF}
-                label="PDF"
+                label="Save PDF"
                 className="px-4 py-2 bg-brand-teal text-white rounded-lg hover:bg-brand-teal/90 transition shadow-sm font-semibold text-sm flex items-center gap-2"
               />
 
               <button
                 onClick={handlePrint}
                 className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition"
-                title="Print Report"
+                title="Print report card"
               >
                 <Printer size={20} />
               </button>

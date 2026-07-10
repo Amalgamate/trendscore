@@ -85,8 +85,8 @@ const ResultsWorkbench = ({ variant = 'mean', pageParams = {}, onNavigate }) => 
         />
         <ActionCard
           icon={LineChart}
-          title="Termly Report"
-          description="Generate termly outputs and use them for trend interpretation."
+          title="Official Report Card"
+          description="Generate detailed termly report cards and use them for trend interpretation."
           onClick={() => onNavigate?.('assess-termly-report', pageParams)}
         />
       </div>

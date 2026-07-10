@@ -12,6 +12,7 @@ describe('appAccess', () => {
   it('maps guarded pages to the correct app slug', () => {
     expect(getRequiredAppForPage('planner-calendar')).toBe('planner');
     expect(getRequiredAppForPage('planner-timetable')).toBe('timetable');
+    expect(getRequiredAppForPage('assess-learner-reports')).toBe('exams');
     expect(getRequiredAppForPage('assess-summative-report')).toBe('exams');
     expect(getRequiredAppForPage('assess-summary-report')).toBe('gradebook');
     expect(getRequiredAppForPage('inventory-items')).toBe('inventory');
