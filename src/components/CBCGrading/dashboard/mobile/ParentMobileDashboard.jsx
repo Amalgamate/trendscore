@@ -8,8 +8,13 @@ import { dashboardAPI } from '../../../../services/api';
 import { Users, CheckCircle2, AlertTriangle, MessageSquare, ChevronRight } from 'lucide-react';
 import { GreetingToast } from '../../pages/dashboard/DashboardSummary';
 import ParentChildProfile from '../../pages/parent/ParentChildProfile';
+import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
+import { hasPageAccess } from '../../utils/appAccess';
 
 const ParentMobileDashboard = ({ user, onNavigate }) => {
+  const { activeSlugs } = useModuleAccess();
+  const accessUser = { ...(user || {}), enabledApps: activeSlugs };
+  const showFees = hasPageAccess(accessUser, 'parent-portal-fees');
   const [metrics, setMetrics]       = useState(null);
   const [loading, setLoading]       = useState(true);
   const [selectedChild, setSelectedChild] = useState(null);
@@ -51,9 +56,9 @@ const ParentMobileDashboard = ({ user, onNavigate }) => {
   const parentMetrics = [
     { label: 'Children',          value: childrenCount,                          icon: Users,        color: 'bg-blue-50 text-blue-600'    },
     { label: 'Attendance',        value: `${avgAttendance}%`,                    icon: CheckCircle2, color: 'bg-emerald-50 text-emerald-600' },
-    { label: 'Outstanding Fees',  value: `KES ${totalBalance.toLocaleString()}`, icon: AlertTriangle,color: 'bg-amber-50 text-amber-600'   },
+    showFees ? { label: 'Outstanding Fees',  value: `KES ${totalBalance.toLocaleString()}`, icon: AlertTriangle,color: 'bg-amber-50 text-amber-600'   } : null,
     { label: 'Messages',          value: messageCount,                           icon: MessageSquare,color: 'bg-violet-50 text-violet-600'  },
-  ];
+  ].filter(Boolean);
 
   return (
     <div className="min-h-full pb-20 text-white">
@@ -94,7 +99,7 @@ const ParentMobileDashboard = ({ user, onNavigate }) => {
                 <p className="text-xs text-gray-500">{child.grade} · {child.className || child.admissionNumber}</p>
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="text-[10px] text-emerald-600 font-semibold">{child.attendanceRate ?? 0}% attendance</span>
-                  {Number(child.feeBalance) > 0 && (
+                  {showFees && Number(child.feeBalance) > 0 && (
                     <span className="text-[10px] text-rose-600 font-semibold">KES {Number(child.feeBalance).toLocaleString()} due</span>
                   )}
                 </div>
@@ -122,12 +127,14 @@ const ParentMobileDashboard = ({ user, onNavigate }) => {
           >
             View Children
           </button>
-          <button
-            onClick={() => onNavigate('parent-portal-fees')}
-            className="ts-mobile-action-solid p-3 rounded-lg text-xs font-semibold transition"
-          >
-            Fees
-          </button>
+          {showFees && (
+            <button
+              onClick={() => onNavigate('parent-portal-fees')}
+              className="ts-mobile-action-solid p-3 rounded-lg text-xs font-semibold transition"
+            >
+              Fees
+            </button>
+          )}
           <button
             onClick={() => onNavigate('parent-portal-attendance')}
             className="ts-mobile-action-solid p-3 rounded-lg text-xs font-semibold transition"

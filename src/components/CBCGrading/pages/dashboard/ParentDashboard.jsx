@@ -10,6 +10,8 @@ import { dashboardAPI } from '../../../../services/api';
 import { useRolePreview } from '../../../../contexts/RolePreviewContext';
 import EditStudentModal from '../parent/EditStudentModal';
 import MobilePortalAppBar from '../../layout/MobilePortalAppBar';
+import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
+import { hasPageAccess } from '../../utils/appAccess';
 import {
   Wallet, BarChart3, ClipboardCheck, FileText as FileTextIcon,
   MessageSquare,
@@ -92,7 +94,7 @@ function MobileGreeting({ user, metrics, onNavigate }) {
 }
 
 // ─── Hero Summary Card ────────────────────────────────────────────────────────
-function HeroCard({ metrics, loading, onNavigate }) {
+function HeroCard({ metrics, loading, onNavigate, showFees }) {
   const stats = metrics?.stats || {};
   const children = metrics?.children || [];
   const messages = metrics?.messages || [];
@@ -111,47 +113,55 @@ function HeroCard({ metrics, loading, onNavigate }) {
       <div className="absolute -right-12 -top-12 h-36 w-36 rounded-full bg-white/10" />
       <div className="absolute -bottom-16 left-8 h-40 w-40 rounded-full bg-sky-300/20" />
       <div className="relative flex flex-col xl:flex-row xl:items-stretch xl:divide-x divide-white/15">
-        {/* Balance side */}
+        {/* Summary side */}
         <div className="flex-1 p-4 sm:p-6 min-w-0">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-bold text-blue-100 uppercase tracking-wider mb-1">Total Outstanding Balance</p>
+              <p className="text-[10px] font-bold text-blue-100 uppercase tracking-wider mb-1">
+                {showFees ? 'Total Outstanding Balance' : 'Family Overview'}
+              </p>
               <p className="text-xs text-blue-100/90">
                 Across {children.length} child{children.length !== 1 ? 'ren' : ''}
               </p>
             </div>
-            <button
-              onClick={() => setBalVisible(v => !v)}
-              className="h-9 w-9 rounded-full bg-white/15 text-white hover:bg-white/25 transition-colors flex items-center justify-center flex-shrink-0"
-              aria-label={balVisible ? 'Hide balance' : 'Show balance'}
-            >
-              {balVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
+            {showFees && (
+              <button
+                onClick={() => setBalVisible(v => !v)}
+                className="h-9 w-9 rounded-full bg-white/15 text-white hover:bg-white/25 transition-colors flex items-center justify-center flex-shrink-0"
+                aria-label={balVisible ? 'Hide balance' : 'Show balance'}
+              >
+                {balVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            )}
           </div>
           {loading ? <Skeleton className="h-10 w-48 mb-3" /> : (
             <div className="mt-3 mb-4">
               <p className="text-3xl sm:text-4xl font-black tracking-tight">
-                {balVisible ? `KES ${fmt(totalBalance)}` : 'KES ••••••'}
+                {showFees ? (balVisible ? `KES ${fmt(totalBalance)}` : 'KES ••••••') : `${children.length} Children`}
               </p>
               <p className="text-xs text-blue-100 mt-1">
-                {totalBalance > 0 ? 'Tap Pay Fees to clear the balance.' : 'All balances are cleared.'}
+                {showFees
+                  ? (totalBalance > 0 ? 'Tap Pay Fees to clear the balance.' : 'All balances are cleared.')
+                  : 'Track children, attendance, results and messages from one place.'}
               </p>
             </div>
           )}
-          <div className="grid grid-cols-1 sm:flex sm:flex-row gap-3">
-            <button
-              onClick={() => onNavigate('parent-portal-fees')}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white text-blue-700 text-sm font-bold rounded-xl hover:bg-blue-50 transition-colors"
-            >
-              <Wallet size={14} /> Pay Fees
-            </button>
-            <button
-              onClick={() => onNavigate('fees-statements')}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white/12 text-white text-sm font-bold rounded-xl ring-1 ring-white/20 hover:bg-white/20 transition-colors"
-            >
-              <FileTextIcon size={14} /> View Statement
-            </button>
-          </div>
+          {showFees && (
+            <div className="grid grid-cols-1 sm:flex sm:flex-row gap-3">
+              <button
+                onClick={() => onNavigate('parent-portal-fees')}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white text-blue-700 text-sm font-bold rounded-xl hover:bg-blue-50 transition-colors"
+              >
+                <Wallet size={14} /> Pay Fees
+              </button>
+              <button
+                onClick={() => onNavigate('fees-statements')}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white/12 text-white text-sm font-bold rounded-xl ring-1 ring-white/20 hover:bg-white/20 transition-colors"
+              >
+                <FileTextIcon size={14} /> View Statement
+              </button>
+            </div>
+          )}
         </div>
         {/* Mini stats */}
         <div className="hidden sm:grid sm:grid-cols-3 xl:flex sm:divide-x divide-white/15 border-t xl:border-t-0 border-white/15 bg-white/8 backdrop-blur-sm">
@@ -176,7 +186,7 @@ function HeroCard({ metrics, loading, onNavigate }) {
 }
 
 // ─── Student Card Carousel ────────────────────────────────────────────────────
-function StudentCard({ child, brandingSettings, onNavigate, onEdit }) {
+function StudentCard({ child, brandingSettings, onNavigate, onEdit, showFees }) {
   const balance = Number(child.feeBalance || 0);
   const attendance = Math.round(Number(child.attendanceRate || 0));
 
@@ -225,12 +235,14 @@ function StudentCard({ child, brandingSettings, onNavigate, onEdit }) {
           <p className="text-indigo-200 text-sm mt-0.5">{child.grade} · {child.className || 'Class'}</p>
 
           <div className="grid grid-cols-2 gap-4 mt-5 max-w-sm">
-            <div>
-              <p className="text-indigo-200 text-xs uppercase tracking-wider mb-0.5">Balance</p>
-              <p className={`text-base font-bold ${balance > 0 ? 'text-rose-300' : 'text-emerald-300'}`}>
-                {balance > 0 ? `KES ${fmt(balance)}` : '✓ Cleared'}
-              </p>
-            </div>
+            {showFees && (
+              <div>
+                <p className="text-indigo-200 text-xs uppercase tracking-wider mb-0.5">Balance</p>
+                <p className={`text-base font-bold ${balance > 0 ? 'text-rose-300' : 'text-emerald-300'}`}>
+                  {balance > 0 ? `KES ${fmt(balance)}` : 'Cleared'}
+                </p>
+              </div>
+            )}
             <div>
               <p className="text-indigo-200 text-xs uppercase tracking-wider mb-0.5">Attendance</p>
               <p className="text-base font-bold text-white">{attendance}%</p>
@@ -304,7 +316,7 @@ function MobileStudentTile({ child, brandingSettings, onSelect }) {
   );
 }
 
-function StudentSection({ children, brandingSettings, loading, onNavigate, onEditChild }) {
+function StudentSection({ children, brandingSettings, loading, onNavigate, onEditChild, showFees }) {
   const [active, setActive] = useState(0);
   const [selectedMobileChild, setSelectedMobileChild] = useState(null);
   const timerRef = useRef(null);
@@ -351,6 +363,7 @@ function StudentSection({ children, brandingSettings, loading, onNavigate, onEdi
               brandingSettings={brandingSettings}
               onNavigate={onNavigate}
               onEdit={() => onEditChild(mobileChild)}
+              showFees={showFees}
             />
           </div>
         ) : (
@@ -377,6 +390,7 @@ function StudentSection({ children, brandingSettings, loading, onNavigate, onEdi
           brandingSettings={brandingSettings}
           onNavigate={onNavigate}
           onEdit={() => onEditChild(children[active])}
+          showFees={showFees}
         />
         {children.length > 1 && (
           <>
@@ -758,14 +772,14 @@ function LatestNewsletterCard({ onNavigate, betaEnabled }) {
 }
 
 // ─── Announcements ────────────────────────────────────────────────────────────
-function AnnouncementsCard({ metrics, onNavigate }) {
+function AnnouncementsCard({ metrics, onNavigate, showFees }) {
   const [expanded, setExpanded] = useState(false);
   const notices = (metrics?.notices || []).slice(0, 3);
   const placeholders = [
     { id: 'p1', title: 'Uniform Update', date: '2 hours ago', tag: 'New', icon: School, color: 'bg-blue-50 text-blue-600', tagColor: 'bg-blue-100 text-blue-700' },
     { id: 'p2', title: "Parents' Day 2024", date: '1 day ago', tag: null, icon: GraduationCap, color: 'bg-purple-50 text-purple-600', tagColor: null },
-    { id: 'p3', title: 'Fee Reminder', date: '2 days ago', tag: null, icon: Wallet, color: 'bg-amber-50 text-amber-600', tagColor: null },
-  ];
+    showFees ? { id: 'p3', title: 'Fee Reminder', date: '2 days ago', tag: null, icon: Wallet, color: 'bg-amber-50 text-amber-600', tagColor: null } : null,
+  ].filter(Boolean);
   const items = notices.length > 0 ? notices.map((n, i) => ({
     id: n.id, title: n.title, date: n.timeLabel || 'Published', tag: null,
     icon: placeholders[i % 3]?.icon || Megaphone,
@@ -861,6 +875,8 @@ function FooterUtility({ onNavigate }) {
 
 // ─── Main ParentDashboard ─────────────────────────────────────────────────────
 const ParentDashboard = ({ user, onNavigate, onLogout, brandingSettings }) => {
+  const { activeSlugs } = useModuleAccess();
+  const showFees = hasPageAccess({ ...(user || {}), enabledApps: activeSlugs }, 'parent-portal-fees');
   const rolePreview = useRolePreview();
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState(null);
@@ -952,7 +968,7 @@ const ParentDashboard = ({ user, onNavigate, onLogout, brandingSettings }) => {
       )}
 
       {/* Hero */}
-      <HeroCard metrics={metrics} loading={loading} onNavigate={onNavigate} />
+      <HeroCard metrics={metrics} loading={loading} onNavigate={onNavigate} showFees={showFees} />
 
       {/* Student + Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -962,6 +978,7 @@ const ParentDashboard = ({ user, onNavigate, onLogout, brandingSettings }) => {
           loading={loading}
           onNavigate={onNavigate}
           onEditChild={setEditingChild}
+          showFees={showFees}
         />
         <QuickActions onNavigate={onNavigate} />
       </div>
@@ -974,7 +991,7 @@ const ParentDashboard = ({ user, onNavigate, onLogout, brandingSettings }) => {
         <AlumniClubsCard onNavigate={onNavigate} betaEnabled={betaEnabled} />
         <SchoolGalleryCard onNavigate={onNavigate} betaEnabled={betaEnabled} />
         <LatestNewsletterCard onNavigate={onNavigate} betaEnabled={betaEnabled} />
-        <AnnouncementsCard metrics={metrics} onNavigate={onNavigate} />
+        <AnnouncementsCard metrics={metrics} onNavigate={onNavigate} showFees={showFees} />
       </div>
 
       {/* Footer utility */}

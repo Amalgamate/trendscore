@@ -11,6 +11,8 @@ import {
   AlertCircle, FileText, Pencil,
 } from 'lucide-react';
 import { dashboardAPI } from '../../../../services/api';
+import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
+import { hasPageAccess } from '../../utils/appAccess';
 import ParentChildProfile from '../parent/ParentChildProfile';
 import MobilePortalAppBar from '../../layout/MobilePortalAppBar';
 import EditStudentModal from '../parent/EditStudentModal';
@@ -23,7 +25,7 @@ const getChildPhoto = (child) => child?.photoUrl || child?.profilePicture || chi
 
 // ─── Family Overview Card ──────────────────────────────────────────────────
 
-function FamilyOverviewCard({ metrics, loading, onNavigate }) {
+function FamilyOverviewCard({ metrics, loading, onNavigate, showFees }) {
   const children     = metrics?.children || [];
   const stats        = metrics?.stats    || {};
   const messages     = metrics?.messages || [];
@@ -36,10 +38,12 @@ function FamilyOverviewCard({ metrics, loading, onNavigate }) {
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-white/60 mb-1">
-            Total Outstanding Balance
+            {showFees ? 'Total Outstanding Balance' : 'Family Overview'}
           </p>
           {loading ? (
             <Skeleton className="h-8 w-36 bg-white/20" />
+          ) : !showFees ? (
+            <p className="text-3xl font-bold tracking-tight">{children.length} Children</p>
           ) : (
             <div className="flex items-center gap-2">
               <p className="text-3xl font-bold tracking-tight">
@@ -86,29 +90,31 @@ function FamilyOverviewCard({ metrics, loading, onNavigate }) {
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <button
-          type="button"
-          onClick={() => onNavigate('parent-portal-fees')}
-          className="flex items-center justify-center gap-2 py-2.5 bg-white text-[#3B1FA3] text-sm font-bold rounded-xl hover:bg-white/90 transition-colors"
-        >
-          <CreditCard size={15} /> Pay All Fees
-        </button>
-        <button
-          type="button"
-          onClick={() => onNavigate('fees-statements')}
-          className="flex items-center justify-center gap-2 py-2.5 border border-white/40 text-white text-sm font-bold rounded-xl hover:bg-white/10 transition-colors"
-        >
-          <FileText size={15} /> View Statement
-        </button>
-      </div>
+      {showFees && (
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => onNavigate('parent-portal-fees')}
+            className="flex items-center justify-center gap-2 py-2.5 bg-white text-[#3B1FA3] text-sm font-bold rounded-xl hover:bg-white/90 transition-colors"
+          >
+            <CreditCard size={15} /> Pay All Fees
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate('fees-statements')}
+            className="flex items-center justify-center gap-2 py-2.5 border border-white/40 text-white text-sm font-bold rounded-xl hover:bg-white/10 transition-colors"
+          >
+            <FileText size={15} /> View Statement
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Children Summary Strip ───────────────────────────────────────────────────
 
-function ChildrenSummary({ children, loading, onSelectChild, onEditChild }) {
+function ChildrenSummary({ children, loading, onSelectChild, onEditChild, showFees }) {
   if (loading) {
     return (
       <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
@@ -175,10 +181,14 @@ function ChildrenSummary({ children, loading, onSelectChild, onEditChild }) {
             </div>
             <p className="text-xs font-bold text-gray-900 truncate leading-tight">{child.name?.split(' ')[0]}</p>
             <p className="text-[10px] text-gray-500 truncate mb-2">{child.grade} · {child.className || 'Class'}</p>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Balance</p>
-            <p className={`text-xs font-bold mb-2 ${bal > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-              {bal > 0 ? `KES ${fmt(bal)}` : 'Cleared'}
-            </p>
+            {showFees && (
+              <>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Balance</p>
+                <p className={`text-xs font-bold mb-2 ${bal > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                  {bal > 0 ? `KES ${fmt(bal)}` : 'Cleared'}
+                </p>
+              </>
+            )}
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Attendance</p>
             <div className="flex items-center gap-1.5">
               <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
@@ -233,6 +243,9 @@ function QuickActions({ onNavigate }) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 const ParentPortalHome = ({ user, onNavigate, brandingSettings }) => {
+  const { activeSlugs } = useModuleAccess();
+  const accessUser = { ...(user || {}), enabledApps: activeSlugs };
+  const showFees = hasPageAccess(accessUser, 'parent-portal-fees');
   const [metrics, setMetrics]             = useState(null);
   const [loading, setLoading]             = useState(true);
   const [error, setError]                 = useState(null);
@@ -322,7 +335,7 @@ const ParentPortalHome = ({ user, onNavigate, brandingSettings }) => {
           </div>
         )}
 
-        <FamilyOverviewCard metrics={metrics} loading={loading} onNavigate={onNavigate} />
+        <FamilyOverviewCard metrics={metrics} loading={loading} onNavigate={onNavigate} showFees={showFees} />
 
         <div>
           <div className="flex items-center justify-between mb-3">
@@ -340,6 +353,7 @@ const ParentPortalHome = ({ user, onNavigate, brandingSettings }) => {
             loading={loading}
             onSelectChild={setSelectedChild}
             onEditChild={setEditingChild}
+            showFees={showFees}
           />
         </div>
 

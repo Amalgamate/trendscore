@@ -33,10 +33,9 @@ export const APP_CATALOG = [
 export const MODULE_PACKAGES: Record<ModulePackageId, { name: string; description: string; active: string[]; mandatory: string[] }> = {
   starter: {
     name: 'Starter',
-    description: 'Core school operations for schools starting with fees, attendance, assessment and communication.',
+    description: 'Core school operations for schools starting with student records, attendance, assessment and communication.',
     active: [
       'student-registry',
-      'fee-management',
       'attendance',
       'gradebook',
       'exams',
@@ -52,8 +51,8 @@ export const MODULE_PACKAGES: Record<ModulePackageId, { name: string; descriptio
   },
   standard: {
     name: 'Standard',
-    description: 'Starter plus transport, inventory and approvals.',
-    active: ['transport', 'inventory', 'approvals'],
+    description: 'Starter plus fees, transport, inventory and approvals.',
+    active: ['fee-management', 'transport', 'inventory', 'approvals'],
     mandatory: ['student-registry', 'user-management', 'school-settings'],
   },
   professional: {
@@ -71,10 +70,31 @@ export const MODULE_PACKAGES: Record<ModulePackageId, { name: string; descriptio
 };
 
 const PACKAGE_ORDER: ModulePackageId[] = ['starter', 'standard', 'professional', 'enterprise'];
+const NON_STARTER_ACTIVE_SLUGS = new Set([
+  'transport',
+  'inventory',
+  'approvals',
+  'staff-hr',
+  'payroll',
+  'accounting',
+  'lms',
+  'library',
+  'biometric',
+  'tertiary-modules',
+]);
+const STARTER_CORE_ACTIVE_SLUGS = new Set(MODULE_PACKAGES.starter.active);
 
 export const normalizePackageId = (raw?: string | null): ModulePackageId => {
   const normalized = String(raw || 'starter').toLowerCase();
   return (PACKAGE_ORDER.includes(normalized as ModulePackageId) ? normalized : 'starter') as ModulePackageId;
+};
+
+export const isStarterLikeActiveSlugs = (slugs: string[] = []) => {
+  const normalized = slugs.map((slug) => String(slug || '').trim()).filter(Boolean);
+  if (normalized.length === 0) return false;
+  const hasStarterCore = normalized.some((slug) => STARTER_CORE_ACTIVE_SLUGS.has(slug));
+  const hasNonStarterApp = normalized.some((slug) => NON_STARTER_ACTIVE_SLUGS.has(slug));
+  return hasStarterCore && !hasNonStarterApp;
 };
 
 export const getPackageDefinition = (packageId: ModulePackageId) => {
@@ -208,6 +228,11 @@ export const listSchoolModules = async (schoolId: string) => {
       updatedAt: config.updatedAt,
     }));
 
+  const rawActiveSlugs = modules.filter((module) => module.isActive && module.isVisible).map((module) => module.slug);
+  const activeSlugs = isStarterLikeActiveSlugs(rawActiveSlugs)
+    ? rawActiveSlugs.filter((slug) => slug !== 'fee-management')
+    : rawActiveSlugs;
+
   return {
     packages: Object.fromEntries(
       PACKAGE_ORDER.map((id) => {
@@ -222,6 +247,6 @@ export const listSchoolModules = async (schoolId: string) => {
       }),
     ),
     modules,
-    activeSlugs: modules.filter((module) => module.isActive && module.isVisible).map((module) => module.slug),
+    activeSlugs,
   };
 };

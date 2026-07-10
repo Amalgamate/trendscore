@@ -941,6 +941,7 @@ export const useNavigation = () => {
     const backOfficeSections = useMemo(() => {
         if (role === 'TEACHER') return [];
         if (role === 'PARENT') {
+            if (!hasPageAccess(accessUser, 'parent-portal-fees')) return [];
             // Inject a parent-specific "School Fees" section into the Finance group
             return [
                 {

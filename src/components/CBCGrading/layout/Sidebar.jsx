@@ -26,6 +26,7 @@ import { useNavigation, groupNavigationByCategory } from '../hooks/useNavigation
 import { useInstitutionLabels } from '../../../hooks/useInstitutionLabels';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { getSchoolDisplayName } from '../../../utils/schoolDisplayName';
+import { hasPageAccess } from '../utils/appAccess';
 
 // ─── constants ────────────────────────────────────────────────────────────────
 const SIDEBAR_COLLAPSED_W = 64;
@@ -306,6 +307,12 @@ const Sidebar = React.memo(({
   if (role === 'ACCOUNTANT' && !navData?.isSidebarRestricted) {
     const financeBg = '#080083';
     const financeDark = '#05005f';
+    const accountantNavGroups = ACCOUNTANT_NAV_GROUPS
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) => hasPageAccess(user, item.path)),
+      }))
+      .filter((group) => group.items.length > 0);
     return (
       <aside
         style={{ width: sidebarW, backgroundColor: financeBg }}
@@ -338,7 +345,7 @@ const Sidebar = React.memo(({
         </div>
 
         <nav className={`flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 ${sidebarOpen ? 'custom-scrollbar' : 'hide-scrollbar-completely'}`}>
-          {ACCOUNTANT_NAV_GROUPS.map((group) => (
+          {accountantNavGroups.map((group) => (
             <div key={group.label} className="mb-4 last:mb-0">
               {sidebarOpen && (
                 <div className="px-2 pb-2 pt-1 text-[10px] font-extrabold uppercase tracking-[0.18em] text-white/55">

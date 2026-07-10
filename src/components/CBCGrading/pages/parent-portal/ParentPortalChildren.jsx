@@ -12,6 +12,8 @@ import {
 import { dashboardAPI } from '../../../../services/api';
 import ParentChildProfile from '../parent/ParentChildProfile';
 import { Skeleton } from '../../../ui';
+import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
+import { hasPageAccess } from '../../utils/appAccess';
 
 const getChildPhoto = (child) => child?.photoUrl || child?.profilePicture || child?.photo || child?.imageUrl || null;
 
@@ -29,7 +31,7 @@ function StatPill({ label, value, icon: Icon, colorClass, borderClass }) {
 
 // ─── Child Card ───────────────────────────────────────────────────────────────
 
-function ChildCard({ child, onSelect }) {
+function ChildCard({ child, onSelect, showFees }) {
   const bal            = Number(child.feeBalance || 0);
   const attendance     = Math.round(Number(child.attendanceRate || 0));
   const avgScore       = Math.round(Number(child.averageScore || 0));
@@ -105,18 +107,20 @@ function ChildCard({ child, onSelect }) {
             colorClass="bg-blue-50 text-blue-700"
             borderClass="border-blue-200"
           />
-          <StatPill
-            label="Fee Bal"
-            value={bal > 0 ? `KES ${bal >= 1000 ? Math.round(bal / 1000) + 'K' : bal}` : 'Cleared'}
-            icon={CreditCard}
-            colorClass={bal > 0 ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}
-            borderClass={bal > 0 ? 'border-rose-200' : 'border-emerald-200'}
-          />
+          {showFees && (
+            <StatPill
+              label="Fee Bal"
+              value={bal > 0 ? `KES ${bal >= 1000 ? Math.round(bal / 1000) + 'K' : bal}` : 'Cleared'}
+              icon={CreditCard}
+              colorClass={bal > 0 ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}
+              borderClass={bal > 0 ? 'border-rose-200' : 'border-emerald-200'}
+            />
+          )}
         </div>
 
         <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 px-3 py-2">
           <p className="text-[10px] font-semibold text-blue-800">
-            Tap to open profile, attendance, results, invoices and more.
+            Tap to open profile, attendance, results{showFees ? ', invoices' : ''} and more.
           </p>
           <span className="text-[10px] font-black text-blue-700 flex-shrink-0">Open</span>
         </div>
@@ -140,6 +144,8 @@ function ChildCard({ child, onSelect }) {
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 const ParentPortalChildren = ({ user, onNavigate }) => {
+  const { activeSlugs } = useModuleAccess();
+  const showFees = hasPageAccess({ ...(user || {}), enabledApps: activeSlugs }, 'parent-portal-fees');
   const [children, setChildren]       = useState([]);
   const [selectedChild, setSelectedChild] = useState(null);
   const [loading, setLoading]         = useState(true);
@@ -207,6 +213,7 @@ const ParentPortalChildren = ({ user, onNavigate }) => {
               key={child.id}
               child={child}
               onSelect={setSelectedChild}
+              showFees={showFees}
             />
           ))
         ) : (
@@ -220,9 +227,9 @@ const ParentPortalChildren = ({ user, onNavigate }) => {
         {/* Info note */}
         {!loading && children.length > 0 && (
           <div className="bg-[#3B1FA3]/5 border border-[#3B1FA3]/15 rounded-xl p-3 flex items-start gap-2">
-            <Users size={14} className="text-[#3B1FA3] flex-shrink-0 mt-0.5" />
-            <p className="text-[11px] text-[#3B1FA3]">
-              Tap any child card to see their full profile — attendance records, academic results, fee invoices, and more.
+              <Users size={14} className="text-[#3B1FA3] flex-shrink-0 mt-0.5" />
+              <p className="text-[11px] text-[#3B1FA3]">
+              Tap any child card to see their full profile — attendance records, academic results{showFees ? ', fee invoices' : ''}, and more.
             </p>
           </div>
         )}

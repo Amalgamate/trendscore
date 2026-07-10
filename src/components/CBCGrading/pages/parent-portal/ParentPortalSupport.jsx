@@ -12,6 +12,8 @@ import {
 import { supportAPI } from '../../../../services/supportApi';
 import { PRODUCT_SUPPORT_EMAIL } from '../../../../config/productIdentity';
 import { Skeleton } from '../../../ui';
+import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
+import { hasPageAccess } from '../../utils/appAccess';
 
 // ─── Parent FAQ content ─────────────────────────────────────────────────────
 
@@ -261,7 +263,7 @@ function NewTicketModal({ onClose, onCreated }) {
               type="text"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
-              placeholder="e.g. Unable to make M-Pesa payment"
+              placeholder="e.g. Unable to access a report"
               className="w-full bg-gray-100 rounded-xl px-3 h-10 text-sm outline-none"
             />
           </div>
@@ -312,6 +314,10 @@ function NewTicketModal({ onClose, onCreated }) {
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 const ParentPortalSupport = ({ onNavigate }) => {
+  const { activeSlugs } = useModuleAccess();
+  const visibleFaqs = hasPageAccess({ enabledApps: activeSlugs }, 'parent-portal-fees')
+    ? FAQS
+    : FAQS.filter((faq) => !/fee|fees|payment|balance/i.test(`${faq.q} ${faq.a}`));
   const [tab, setTab] = useState('faq'); // 'faq' | 'tickets'
   const [openFaqIndex, setOpenFaqIndex] = useState(null);
   const [tickets, setTickets] = useState([]);
@@ -382,7 +388,7 @@ const ParentPortalSupport = ({ onNavigate }) => {
       <div className="px-4 py-4 space-y-2.5">
         {tab === 'faq' ? (
           <>
-            {FAQS.map((item, i) => (
+            {visibleFaqs.map((item, i) => (
               <FaqItem
                 key={i}
                 item={item}

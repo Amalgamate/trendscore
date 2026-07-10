@@ -16,11 +16,14 @@ import TeacherDashboard from './TeacherDashboard';
 import ParentDashboard from './ParentDashboard';
 import AccountantDashboard from './AccountantDashboard';
 import ReceptionistDashboard from './ReceptionistDashboard';
+import StarterDashboard from './StarterDashboard';
 import MobileDashboard from '../../dashboard/MobileDashboard';
 import StudentDashboard from '../student/StudentDashboard';
 import ComingSoon from '../../shared/ComingSoon';
 import useMediaQuery from '../../hooks/useMediaQuery';
 import { MOBILE_MEDIA_QUERY } from '../../../../constants/breakpoints';
+import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
+import { isStarterPackageApps } from '../../../../utils/packageAccess';
 
 const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brandingSettings, currentPage = 'dashboard' }) => {
   const { role } = usePermissions();
@@ -28,6 +31,22 @@ const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brand
   const selectedInstitutionType = String(getSelectedInstitutionType() || '').toUpperCase();
   const resolvedInstitutionType = selectedInstitutionType || String(institutionType || '').toUpperCase();
   const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
+  const { activeSlugs } = useModuleAccess();
+  const starterPackage = isStarterPackageApps(activeSlugs);
+  const starterDashboardRoles = ['OWNER', 'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'RECEPTIONIST'];
+
+  if (starterPackage && starterDashboardRoles.includes(role)) {
+    return (
+      <StarterDashboard
+        learners={learners}
+        pagination={pagination}
+        teachers={teachers}
+        user={{ ...(user || {}), enabledApps: activeSlugs }}
+        onNavigate={onNavigate}
+        brandingSettings={brandingSettings}
+      />
+    );
+  }
 
   // Tertiary: whole module is Coming Soon
   if (resolvedInstitutionType === 'TERTIARY') {

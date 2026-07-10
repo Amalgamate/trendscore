@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import api from '../../../../services/api';
 import { cn } from '../../../../utils/cn';
+import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
+import { hasPageAccess } from '../../utils/appAccess';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -63,7 +65,7 @@ function AttendanceDonut({ rate = 0, size = 80 }) {
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
 
-function OverviewTab({ child, onNavigate }) {
+function OverviewTab({ child, showFees }) {
   const bal         = Number(child.feeBalance || 0);
   const attendance  = Math.round(Number(child.attendanceRate || 0));
   const subjects    = child.subjects || child.recentSubjects || [];
@@ -74,33 +76,34 @@ function OverviewTab({ child, onNavigate }) {
   return (
     <div className="space-y-4">
 
-      {/* Outstanding Balance */}
-      <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="flex items-start justify-between mb-3">
-          <div>
-            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Outstanding Balance</p>
-            <p className={`text-2xl font-bold ${bal > 0 ? 'text-gray-900' : 'text-emerald-600'}`}>
-              KES {fmt(bal)}
-            </p>
-            {child.nextPaymentDate && (
-              <p className="text-xs text-gray-500 mt-1">Next Payment Date<br /><span className="font-semibold text-gray-700">{child.nextPaymentDate}</span></p>
+      {showFees && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Outstanding Balance</p>
+              <p className={`text-2xl font-bold ${bal > 0 ? 'text-gray-900' : 'text-emerald-600'}`}>
+                KES {fmt(bal)}
+              </p>
+              {child.nextPaymentDate && (
+                <p className="text-xs text-gray-500 mt-1">Next Payment Date<br /><span className="font-semibold text-gray-700">{child.nextPaymentDate}</span></p>
+              )}
+            </div>
+            {bal > 0 && (
+              <div className="w-9 h-9 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <CreditCard size={16} className="text-amber-600" />
+              </div>
             )}
           </div>
-          {bal > 0 && (
-            <div className="w-9 h-9 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
-              <CreditCard size={16} className="text-amber-600" />
-            </div>
-          )}
+          <div className="grid grid-cols-2 gap-2">
+            <button className="py-2.5 bg-[#3B1FA3] text-white text-xs font-bold rounded-xl hover:bg-[#2d1680] transition flex items-center justify-center gap-1.5">
+              <CreditCard size={13} /> Pay Now
+            </button>
+            <button className="py-2.5 border border-gray-200 text-gray-700 text-xs font-bold rounded-xl hover:bg-gray-50 transition">
+              Statement
+            </button>
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <button className="py-2.5 bg-[#3B1FA3] text-white text-xs font-bold rounded-xl hover:bg-[#2d1680] transition flex items-center justify-center gap-1.5">
-            <CreditCard size={13} /> Pay Now
-          </button>
-          <button className="py-2.5 border border-gray-200 text-gray-700 text-xs font-bold rounded-xl hover:bg-gray-50 transition">
-            Statement
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* Latest Assessment */}
       {subjects.length > 0 && (
@@ -478,7 +481,13 @@ const TABS = [
 ];
 
 export default function ParentChildProfile({ child, onBack, initialTab = 'overview' }) {
-  const [tab, setTab] = useState(initialTab);
+  const { activeSlugs } = useModuleAccess();
+  const showFees = hasPageAccess({ enabledApps: activeSlugs }, 'parent-portal-fees');
+  const visibleTabs = showFees ? TABS : TABS.filter((item) => item.id !== 'fees');
+  const [tab, setTab] = useState(showFees || initialTab !== 'fees' ? initialTab : 'overview');
+  useEffect(() => {
+    if (!showFees && tab === 'fees') setTab('overview');
+  }, [showFees, tab]);
   if (!child) return null;
 
   const isPresent = child.todayStatus === 'PRESENT' || child.isPresent;
@@ -516,7 +525,7 @@ export default function ParentChildProfile({ child, onBack, initialTab = 'overvi
 
         {/* Tabs row */}
         <div className="flex overflow-x-auto scrollbar-none">
-          {TABS.map(({ id, label }) => (
+            {visibleTabs.map(({ id, label }) => (
             <button
               key={id}
               onClick={() => setTab(id)}
@@ -535,10 +544,10 @@ export default function ParentChildProfile({ child, onBack, initialTab = 'overvi
 
       {/* Tab content */}
       <div className="px-4 py-4">
-        {tab === 'overview'   && <OverviewTab   child={child} />}
+        {tab === 'overview'   && <OverviewTab   child={child} showFees={showFees} />}
         {tab === 'results'    && <ResultsTab    learnerId={child.id} subjects={child.subjects} />}
         {tab === 'attendance' && <AttendanceTab learnerId={child.id} />}
-        {tab === 'fees'       && <FeesTab       learnerId={child.id} />}
+        {showFees && tab === 'fees' && <FeesTab learnerId={child.id} />}
         {tab === 'info'       && <InfoTab       child={child} />}
       </div>
 

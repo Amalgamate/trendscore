@@ -1,3 +1,5 @@
+import { getEnabledAppsForUser, hasFeeModuleAccess, isStarterPackageApps } from '../../../utils/packageAccess';
+
 const PAGE_APP_REQUIREMENTS = {
   'planner-calendar': 'planner',
   'annual-planner': 'planner',
@@ -137,6 +139,7 @@ const PAGE_APP_REQUIREMENTS = {
   'fees-reports': 'fee-management',
   'fees-statements': 'fee-management',
   'fees-unmatched': 'fee-management',
+  'parent-portal-fees': 'fee-management',
 
   'settings-school': 'school-settings',
   'settings-branding': 'school-settings',
@@ -314,7 +317,7 @@ export const getRequiredAppForPage = (page) => {
 export const hasAppAccess = (user, slug) => {
   if (!slug) return true;
 
-  const enabledApps = user?.enabledApps || user?.activeModules || user?.school?.enabledApps || user?.school?.activeModules;
+  const enabledApps = getEnabledAppsForUser(user);
   if (!Array.isArray(enabledApps) || enabledApps.length === 0) return true;
   if (enabledApps.includes(slug)) return true;
   if (slug === 'lms-professional') return enabledApps.includes('lms');
@@ -325,6 +328,16 @@ export const hasPageAccess = (user, page) => {
   const normalizedPage = page?.split('?')[0];
   const role = user?.role;
   const allowlist = role ? ROLE_PAGE_ALLOWLIST[role] : null;
+  const requiredApp = getRequiredAppForPage(normalizedPage);
+
+  const enabledApps = getEnabledAppsForUser(user);
+  if (
+    requiredApp === 'fee-management' &&
+    enabledApps.length > 0 &&
+    (!hasFeeModuleAccess(enabledApps) || isStarterPackageApps(enabledApps))
+  ) {
+    return false;
+  }
 
   if (isParentPortalPage(normalizedPage) && !userHasParentPortalAccess(user)) {
     return false;
@@ -342,7 +355,7 @@ export const hasPageAccess = (user, page) => {
     return true;
   }
 
-  return hasAppAccess(user, getRequiredAppForPage(normalizedPage));
+  return hasAppAccess(user, requiredApp);
 };
 
 export { PAGE_APP_REQUIREMENTS };

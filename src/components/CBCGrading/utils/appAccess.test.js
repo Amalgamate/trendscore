@@ -45,14 +45,29 @@ describe('appAccess', () => {
     expect(hasPageAccess(user, 'learning-lessons')).toBe(true);
   });
 
-  it('lets super admins open every settings page regardless of package modules', () => {
+  it('lets super admins open non-fee settings regardless of package modules', () => {
     const superAdmin = { role: 'SUPER_ADMIN', enabledApps: ['school-settings'] };
     const schoolAdmin = { role: 'ADMIN', enabledApps: ['school-settings'] };
 
-    expect(hasPageAccess(superAdmin, 'settings-payment')).toBe(true);
+    expect(hasPageAccess(superAdmin, 'settings-payment')).toBe(false);
     expect(hasPageAccess(superAdmin, 'settings-academic')).toBe(true);
     expect(hasPageAccess(superAdmin, 'settings-system-control')).toBe(true);
     expect(hasPageAccess(schoolAdmin, 'settings-payment')).toBe(false);
+  });
+
+  it('hides fee pages for starter-like module sets', () => {
+    const starterAdmin = {
+      role: 'SUPER_ADMIN',
+      enabledApps: ['student-registry', 'attendance', 'gradebook', 'school-settings', 'fee-management'],
+    };
+    const standardAdmin = {
+      role: 'SUPER_ADMIN',
+      enabledApps: ['student-registry', 'attendance', 'gradebook', 'school-settings', 'fee-management', 'transport'],
+    };
+
+    expect(hasPageAccess(starterAdmin, 'fees-overview')).toBe(false);
+    expect(hasPageAccess(starterAdmin, 'parent-portal-fees')).toBe(false);
+    expect(hasPageAccess(standardAdmin, 'fees-overview')).toBe(true);
   });
 
   it('isolates parent portal pages to parent users or explicit parent permissions', () => {

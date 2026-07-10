@@ -7,6 +7,8 @@
 
 import React from 'react';
 import { getMobileNavConfig } from './MobileNavigationConfig';
+import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
+import { hasPageAccess } from '../../utils/appAccess';
 
 const MOBILE_LABELS = {
   dashboard: 'Home',
@@ -23,9 +25,13 @@ const MOBILE_LABELS = {
  * @param {Function} props.onNavigate  - Navigation callback
  */
 const MobileBottomNav = ({ role, currentPath = 'dashboard', onNavigate }) => {
+  const { activeSlugs } = useModuleAccess();
   const navConfig = getMobileNavConfig(role);
 
   if (!navConfig) return null;
+
+  const accessUser = { role, enabledApps: activeSlugs };
+  const items = navConfig.items.filter((item) => hasPageAccess(accessUser, item.path));
 
   return (
     <div
@@ -37,7 +43,7 @@ const MobileBottomNav = ({ role, currentPath = 'dashboard', onNavigate }) => {
       }}
     >
       <div className="grid grid-cols-5 gap-0 w-full max-w-md mx-auto h-16 overflow-hidden">
-        {navConfig.items.map((item) => {
+        {items.map((item) => {
           const Icon = item.icon;
           const displayLabel = item.shortLabel || MOBILE_LABELS[item.id] || item.label;
           const activePaths = item.activePaths || [];
