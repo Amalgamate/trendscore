@@ -901,49 +901,46 @@ const UserManagement = () => {
         onTabChange={setViewMode}
       />
 
-      <div className="p-6 space-y-5">
-        <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="p-4 space-y-4 lg:p-5">
+        <div className="flex items-center justify-end gap-2 overflow-x-auto pb-1 no-scrollbar">
             <button
               onClick={() => {
                 setEditingUser(null);
                 resetForm();
                 setShowModal(true);
               }}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-sm shadow-blue-600/20 font-medium text-sm"
+              className="inline-flex shrink-0 items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all shadow-sm shadow-blue-600/20 font-semibold text-xs"
             >
-              <UserPlus size={16} />
+              <UserPlus size={14} />
               Add User
             </button>
             {canSyncStudentUsers && (
               <button
                 onClick={handleSyncStudentUsers}
                 disabled={syncingStudentUsers}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all shadow-sm font-medium text-sm ${
+                className={`inline-flex shrink-0 items-center gap-1.5 px-3 py-2 rounded-lg transition-all shadow-sm font-semibold text-xs ${
                   syncingStudentUsers
                     ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
                     : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-600/20'
                 }`}
               >
-                <RefreshCw size={16} className={syncingStudentUsers ? 'animate-spin' : ''} />
+                <RefreshCw size={14} className={syncingStudentUsers ? 'animate-spin' : ''} />
                 {syncingStudentUsers ? 'Syncing...' : 'Sync Students'}
               </button>
             )}
-            <button className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all shadow-sm font-medium text-sm">
-              <Upload size={16} />
+            <button className="inline-flex shrink-0 items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-all shadow-sm font-semibold text-xs">
+              <Upload size={14} />
               Bulk Import
             </button>
-            <button className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all shadow-sm font-medium text-sm">
-              <Mail size={16} />
+            <button className="inline-flex shrink-0 items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-all shadow-sm font-semibold text-xs">
+              <Mail size={14} />
               Invite Users
             </button>
-        </div>
-
-        {canManageVerification && (
-          <div className="flex justify-end">
+            {canManageVerification && (
             <button
               onClick={handleSchoolVerificationToggle}
               disabled={verificationSaving}
-              className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
+              className={`inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-all shadow-sm ${
                 verificationSaving
                   ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
                   : verificationSettings.requiresUserVerification
@@ -959,8 +956,8 @@ const UserManagement = () => {
                   ? 'Disable Verification'
                   : 'Enable Verification'}
             </button>
-          </div>
-        )}
+            )}
+        </div>
 
         {/* ═══════════════════════════════════════════════════════════
             USER LIST VIEW — TWO-COLUMN LAYOUT
@@ -1347,8 +1344,8 @@ const UserManagement = () => {
                       </span>
                     </div>
 
-                    <div className="space-y-2">
-                      <button onClick={() => { setResetTargetUser(selectedDetailUser); setShowResetModal(true); }} className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-purple-200 text-purple-700 hover:bg-purple-50 text-sm font-semibold">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={() => { setResetTargetUser(selectedDetailUser); setShowResetModal(true); }} className="flex min-w-0 items-center justify-center gap-1.5 rounded-lg border border-purple-200 px-2 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-50">
                         <Lock size={15} /> Reset Password
                       </button>
                       <button onClick={async () => {
@@ -1359,10 +1356,10 @@ const UserManagement = () => {
                         } catch (error) {
                           showNotification('Failed to send login details: ' + error.message, 'error');
                         }
-                      }} className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-purple-200 text-purple-700 hover:bg-purple-50 text-sm font-semibold">
+                      }} className="flex min-w-0 items-center justify-center gap-1.5 rounded-lg border border-purple-200 px-2 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-50">
                         <ExternalLink size={15} /> Send Login Details
                       </button>
-                      <button onClick={() => selectedDetailUser.archived ? handleUnarchive(selectedDetailUser.id) : handleArchive(selectedDetailUser.id)} className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-red-200 text-red-700 hover:bg-red-50 text-sm font-semibold">
+                      <button onClick={() => selectedDetailUser.archived ? handleUnarchive(selectedDetailUser.id) : handleArchive(selectedDetailUser.id)} className="col-span-2 flex min-w-0 items-center justify-center gap-1.5 rounded-lg border border-red-200 px-2 py-2 text-xs font-semibold text-red-700 hover:bg-red-50">
                         {selectedDetailUser.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />} {selectedDetailUser.archived ? 'Restore User' : 'Archive User'}
                       </button>
                     </div>
@@ -1383,19 +1380,19 @@ const UserManagement = () => {
         ═══════════════════════════════════════════════════════════ */}
         {viewMode === 'config' && (
           <div className="space-y-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h2 className="text-xl font-bold text-gray-950">Roles & Access</h2>
                 <p className="text-xs text-slate-500 mt-1">Create and manage roles. Define what users can access and what actions they can perform.</p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button className="inline-flex items-center gap-2 rounded-md border border-purple-200 px-4 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-50">
+              <div className="flex shrink-0 items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+                <button className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-purple-200 px-3 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-50">
                   <Users size={14} />
                   Role Templates
                 </button>
                 <button
                   onClick={() => showNotification('Custom role creation needs backend role storage before it can be assigned to users.', 'warning')}
-                  className="inline-flex items-center gap-2 rounded-md bg-purple-700 px-4 py-2 text-xs font-semibold text-white hover:bg-purple-800"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-purple-700 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-800"
                 >
                   <Plus size={14} />
                   Create Role
@@ -1536,16 +1533,16 @@ const UserManagement = () => {
                     </div>
                   </div>
 
-                  <div className="mt-4 space-y-2">
-                    <button onClick={() => openRoleEditor(selectedRoleAccess.value)} className="flex h-9 w-full items-center justify-center gap-2 rounded-md border border-purple-300 text-xs font-semibold text-purple-700 hover:bg-purple-50">
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <button onClick={() => openRoleEditor(selectedRoleAccess.value)} className="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border border-purple-300 px-2 text-xs font-semibold text-purple-700 hover:bg-purple-50">
                       <Edit size={14} />
                       Edit Role
                     </button>
-                    <button onClick={() => showNotification('Role cloning needs backend role storage before it can be assigned to users.', 'warning')} className="flex h-9 w-full items-center justify-center gap-2 rounded-md border border-purple-300 text-xs font-semibold text-purple-700 hover:bg-purple-50">
+                    <button onClick={() => showNotification('Role cloning needs backend role storage before it can be assigned to users.', 'warning')} className="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border border-purple-300 px-2 text-xs font-semibold text-purple-700 hover:bg-purple-50">
                       <Copy size={14} />
                       Clone Role
                     </button>
-                    <button onClick={() => showNotification('Role activation is derived from assigned users in the current system.', 'warning')} className="flex h-9 w-full items-center justify-center gap-2 rounded-md border border-red-300 text-xs font-semibold text-red-600 hover:bg-red-50">
+                    <button onClick={() => showNotification('Role activation is derived from assigned users in the current system.', 'warning')} className="col-span-2 flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border border-red-300 px-2 text-xs font-semibold text-red-600 hover:bg-red-50">
                       <Power size={14} />
                       Deactivate Role
                     </button>
