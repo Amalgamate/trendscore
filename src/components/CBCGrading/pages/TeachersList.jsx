@@ -84,6 +84,22 @@ const TeachersList = ({
     return `${firstName?.charAt(0) || ''}${lastName?.charAt(0) || ''}`.toUpperCase();
   };
 
+  const getSubjectAllocations = (teacher) => {
+    if (Array.isArray(teacher.subjectAssignments) && teacher.subjectAssignments.length > 0) {
+      return teacher.subjectAssignments.map((assignment) => ({
+        id: assignment.id,
+        name: assignment.learningArea?.shortName || assignment.learningArea?.name || 'Learning Area',
+        grade: assignment.grade || assignment.learningArea?.gradeLevel || ''
+      }));
+    }
+
+    if (teacher.subject) {
+      return [{ id: `${teacher.id}-legacy-subject`, name: teacher.subject, grade: '' }];
+    }
+
+    return [];
+  };
+
   const allVisibleSelected = teachers.length > 0 && teachers.every((t) => selectedTeacherIds.includes(t.id));
 
   const handleToggleSelectAll = (checked) => {
@@ -299,77 +315,96 @@ const TeachersList = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {teachers.map((teacher) => (
-                <tr key={teacher.id} onClick={() => onViewTeacher(teacher)} className="hover:bg-gray-50 cursor-pointer transition">
-                  <td className="px-3 py-1.5 border-r border-gray-100" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={selectedTeacherIds.includes(teacher.id)}
-                      onChange={(e) => handleToggleTeacherSelection(teacher.id, e.target.checked)}
-                      aria-label={`Select ${teacher.firstName || ''} ${teacher.lastName || ''}`.trim()}
-                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                  </td>
-                  <td className="px-3 py-1.5 border-r border-gray-100">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-brand-purple/10 text-brand-purple flex items-center justify-center text-xs font-medium">
-                        {teacher.avatar || getInitials(teacher.firstName, teacher.lastName)}
+              {teachers.map((teacher) => {
+                const subjectAllocations = getSubjectAllocations(teacher);
+                return (
+                  <tr key={teacher.id} onClick={() => onViewTeacher(teacher)} className="hover:bg-gray-50 cursor-pointer transition">
+                    <td className="px-3 py-1.5 border-r border-gray-100" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedTeacherIds.includes(teacher.id)}
+                        onChange={(e) => handleToggleTeacherSelection(teacher.id, e.target.checked)}
+                        aria-label={`Select ${teacher.firstName || ''} ${teacher.lastName || ''}`.trim()}
+                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                    </td>
+                    <td className="px-3 py-1.5 border-r border-gray-100">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-brand-purple/10 text-brand-purple flex items-center justify-center text-xs font-medium">
+                          {teacher.avatar || getInitials(teacher.firstName, teacher.lastName)}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-sm">{teacher.firstName} {teacher.lastName}</p>
+                          <p className="text-xs text-gray-500">{teacher.gender}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-semibold text-sm">{teacher.firstName} {teacher.lastName}</p>
-                        <p className="text-xs text-gray-500">{teacher.gender}</p>
+                    </td>
+                    <td className="px-3 py-1.5 text-gray-600 font-mono border-r border-gray-100">{teacher.staffId || '---'}</td>
+                    <td className="px-3 py-1.5 font-semibold border-r border-gray-100">{teacher.role}</td>
+                    <td className="px-3 py-1.5 border-r border-gray-100">
+                      <div className="flex items-start gap-1.5">
+                        <BookOpen size={16} className="mt-0.5 shrink-0 text-brand-teal" />
+                        {subjectAllocations.length > 0 ? (
+                          <div className="flex max-w-[260px] flex-wrap gap-1">
+                            {subjectAllocations.slice(0, 4).map((allocation) => (
+                              <span key={allocation.id} className="inline-flex items-center gap-1 rounded-md border border-teal-100 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700">
+                                {allocation.name}
+                                {allocation.grade && <span className="text-teal-500">{allocation.grade}</span>}
+                              </span>
+                            ))}
+                            {subjectAllocations.length > 4 && (
+                              <span className="inline-flex items-center rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-500">
+                                +{subjectAllocations.length - 4}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs font-medium text-amber-600">No allocation</span>
+                        )}
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-3 py-1.5 text-gray-600 font-mono border-r border-gray-100">{teacher.staffId || '---'}</td>
-                  <td className="px-3 py-1.5 font-semibold border-r border-gray-100">{teacher.role}</td>
-                  <td className="px-3 py-1.5 border-r border-gray-100">
-                    <div className="flex items-center gap-1">
-                      <BookOpen size={16} className="text-brand-teal" />
-                      <span className="text-sm">{teacher.subject}</span>
-                    </div>
-                  </td>
-                  <td className="px-3 py-1.5 border-r border-gray-100">
-                    <p className="text-sm font-semibold">{teacher.email}</p>
-                    <p className="text-xs text-gray-500">{teacher.phone}</p>
-                  </td>
-                  <td className="px-3 py-1.5 border-r border-gray-100">
-                    <StatusBadge status={teacher.status} />
-                  </td>
-                  <td className="px-3 py-1.5 border-r border-gray-100">
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setSelectedTeacherForAssignment(teacher); }}
-                        className="p-1.5 text-brand-purple hover:bg-brand-purple/10 rounded-lg transition"
-                        title="Assign to Grade"
-                      >
-                        <GraduationCap size={16} />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onViewTeacher(teacher); }}
-                        className="p-1.5 text-brand-teal hover:bg-brand-teal/10 rounded-lg transition"
-                        title="View Details"
-                      >
-                        <Eye size={16} />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onEditTeacher(teacher); }}
-                        className="p-1.5 text-brand-purple hover:bg-brand-purple/10 rounded-lg transition"
-                        title="Edit"
-                      >
-                        <Edit size={16} />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onDeleteTeacher(teacher.id); }}
-                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition"
-                        title="Delete"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-3 py-1.5 border-r border-gray-100">
+                      <p className="text-sm font-semibold">{teacher.email}</p>
+                      <p className="text-xs text-gray-500">{teacher.phone}</p>
+                    </td>
+                    <td className="px-3 py-1.5 border-r border-gray-100">
+                      <StatusBadge status={teacher.status} />
+                    </td>
+                    <td className="px-3 py-1.5 border-r border-gray-100">
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setSelectedTeacherForAssignment(teacher); }}
+                          className="p-1.5 text-brand-purple hover:bg-brand-purple/10 rounded-lg transition"
+                          title="Assign to Grade"
+                        >
+                          <GraduationCap size={16} />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onViewTeacher(teacher); }}
+                          className="p-1.5 text-brand-teal hover:bg-brand-teal/10 rounded-lg transition"
+                          title="View Details"
+                        >
+                          <Eye size={16} />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onEditTeacher(teacher); }}
+                          className="p-1.5 text-brand-purple hover:bg-brand-purple/10 rounded-lg transition"
+                          title="Edit"
+                        >
+                          <Edit size={16} />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onDeleteTeacher(teacher.id); }}
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition"
+                          title="Delete"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 

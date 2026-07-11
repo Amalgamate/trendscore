@@ -3,7 +3,7 @@
  * Manages class schedules and timetables
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, AlertCircle, Clock, BookOpen, User, MapPin } from 'lucide-react';
 import { Button, Card, CardContent, Dialog, DialogContent, DialogHeader, DialogTitle, Badge } from '../../../components/ui';
 import api from '../../../services/api';
@@ -80,6 +80,24 @@ const ClassScheduleTab = ({ classData, onRefresh }) => {
       endTime: '08:45',
       room: '',
       teacherId: '',
+      learningAreaId: '',
+      semester: 'TERM_1',
+      academicYear: new Date().getFullYear().toString()
+    });
+    setShowAddForm(true);
+  };
+
+  const handleEmptySlotClick = (day, startTime) => {
+    const slotIndex = TIME_SLOTS.indexOf(startTime);
+    setEditingSchedule(null);
+    setFormData({
+      subject: '',
+      day,
+      startTime,
+      endTime: TIME_SLOTS[slotIndex + 1] || startTime,
+      room: '',
+      teacherId: '',
+      learningAreaId: '',
       semester: 'TERM_1',
       academicYear: new Date().getFullYear().toString()
     });
@@ -168,7 +186,7 @@ const ClassScheduleTab = ({ classData, onRefresh }) => {
                   <div
                     key={`${day}-${time}`}
                     className="p-2 border border-gray-100 min-h-[60px] hover:bg-purple-50 transition-colors cursor-pointer group/cell relative"
-                    onClick={() => schedule && handleEditClick(schedule)}
+                    onClick={() => schedule ? handleEditClick(schedule) : handleEmptySlotClick(day, time)}
                   >
                     {schedule ? (
                       <div className="bg-white border-l-4 border-purple-500 rounded shadow-sm p-1.5 text-[10px] h-full flex flex-col justify-between">
@@ -189,8 +207,9 @@ const ClassScheduleTab = ({ classData, onRefresh }) => {
                         )}
                       </div>
                     ) : (
-                      <div className="text-gray-200 text-xs text-center flex items-center justify-center h-full opacity-0 group-hover/cell:opacity-100 transition-opacity">
+                      <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-[10px] font-medium text-gray-300 opacity-70 transition-opacity group-hover/cell:text-purple-600 group-hover/cell:opacity-100">
                         <Plus size={14} />
+                        <span>Add lesson</span>
                       </div>
                     )}
                   </div>

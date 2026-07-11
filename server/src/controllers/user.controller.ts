@@ -629,6 +629,20 @@ export class UserController {
             select: { id: true, name: true, grade: true, stream: true, academicYear: true, term: true },
             orderBy: [{ academicYear: 'desc' }, { term: 'desc' }]
           },
+          subjectAssignments: {
+            where: { active: true },
+            select: {
+              id: true,
+              grade: true,
+              learningArea: {
+                select: { id: true, name: true, shortName: true, gradeLevel: true }
+              }
+            },
+            orderBy: [
+              { grade: 'asc' },
+              { createdAt: 'asc' }
+            ]
+          },
         },
         orderBy: { createdAt: 'desc' },
         skip,

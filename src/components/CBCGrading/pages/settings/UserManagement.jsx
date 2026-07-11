@@ -3,7 +3,7 @@ import {
   UserPlus, Edit, Trash2, X, Save, Shield, Users, Search,
   Eye, EyeOff, Mail, Archive, ArchiveRestore,
   Lock, Check, AlertCircle, Clock, Activity, BookOpen, MessageCircle, Key, RefreshCw,
-  ExternalLink, Upload,
+  Upload,
   Crown, GraduationCap, Calculator, UserCircle, MoreVertical, LayoutGrid, List,
   Copy, Power, Plus, CheckCircle
 } from 'lucide-react';
@@ -314,7 +314,6 @@ const UserManagement = () => {
   const [editingUser, setEditingUser] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUsers, setSelectedUsers] = useState([]);
-  const [selectedDetailUserId, setSelectedDetailUserId] = useState(null);
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [notification, setNotification] = useState(null);
@@ -829,7 +828,6 @@ const UserManagement = () => {
 
   const activeUsers = users.filter(u => !u.archived);
   const staffRoles = ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN', 'NURSE', 'SECURITY', 'DRIVER', 'COOK', 'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT'];
-  const selectedDetailUser = users.find(u => u.id === selectedDetailUserId) || filteredUsers[0] || null;
   const staffCount = activeUsers.filter(u => staffRoles.includes(u.role)).length;
 
   // ── Activity Log Helpers ──
@@ -1126,7 +1124,7 @@ const UserManagement = () => {
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                           {filteredUsers.map(user => (
-                            <tr key={user.id} onClick={() => setSelectedDetailUserId(user.id)} className={`group cursor-pointer hover:bg-blue-50/30 transition-colors ${selectedDetailUser?.id === user.id ? 'bg-blue-50/60' : user.archived ? 'bg-gray-50/50' : ''}`}>
+                            <tr key={user.id} className={`group hover:bg-blue-50/30 transition-colors ${user.archived ? 'bg-gray-50/50' : ''}`}>
                               <td className="px-4 py-3.5">
                                 <input
                                   type="checkbox"
@@ -1198,7 +1196,6 @@ const UserManagement = () => {
                               </td>
                               <td className="px-4 py-3.5">
                                 <div className="flex justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(event) => event.stopPropagation()}>
-                                  <button onClick={() => setSelectedDetailUserId(user.id)} className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition" title="View"><Eye size={15} /></button>
                                   <button onClick={() => handleEdit(user)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg transition" title="Edit"><Edit size={15} /></button>
                                   {user.phone && (
                                     <button
@@ -1302,76 +1299,6 @@ const UserManagement = () => {
               </div>
             </div>
 
-            {/* ── RIGHT: Selected User Details Panel ── */}
-            <div className="w-full xl:w-80 shrink-0">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                {selectedDetailUser ? (
-                  <div className="p-5 space-y-4">
-                    <div className="flex justify-end">
-                      <button onClick={() => setSelectedDetailUserId(null)} className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded">
-                        <X size={16} />
-                      </button>
-                    </div>
-                    <div className="text-center">
-                      <div className="mx-auto w-20 h-20 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xl font-semibold">
-                        {selectedDetailUser.firstName?.[0]}{selectedDetailUser.lastName?.[0]}
-                      </div>
-                      <h3 className="mt-3 text-lg font-semibold text-gray-900">{selectedDetailUser.firstName} {selectedDetailUser.lastName}</h3>
-                      <span className={`mt-2 inline-flex px-2.5 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-wider border ${selectedDetailUser.role === 'SUPER_ADMIN' ? 'bg-red-50 text-red-700 border-red-100' :
-                        selectedDetailUser.role === 'ADMIN' ? 'bg-purple-50 text-purple-700 border-purple-100' :
-                          selectedDetailUser.role === 'PARENT' ? 'bg-green-50 text-green-700 border-green-100' :
-                            selectedDetailUser.role === 'STUDENT' ? 'bg-orange-50 text-orange-700 border-orange-100' :
-                              'bg-blue-50 text-blue-700 border-blue-100'
-                        }`}>
-                        {getRoleLabel(selectedDetailUser.role)}
-                      </span>
-                    </div>
-
-                    <div className="space-y-2 text-sm text-gray-600 border-y border-gray-100 py-4">
-                      <div className="flex items-center gap-2"><Mail size={14} className="text-gray-400" /><span className="truncate">{selectedDetailUser.email || 'No login issued'}</span></div>
-                      <div className="flex items-center gap-2"><MessageCircle size={14} className="text-gray-400" /><span>{selectedDetailUser.phone || 'No phone number'}</span></div>
-                      <div className="flex items-center gap-2"><Clock size={14} className="text-gray-400" /><span>Joined {formatDate(selectedDetailUser.createdAt)}</span></div>
-                      <div className="flex items-center gap-2"><Shield size={14} className="text-gray-400" /><span>{selectedDetailUser.staffId || selectedDetailUser.admissionNumber || 'No staff/admission ID'}</span></div>
-                    </div>
-
-                    <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
-                      <span className="text-sm font-semibold text-gray-700">Status</span>
-                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium ${selectedDetailUser.archived ? 'bg-gray-100 text-gray-500' :
-                        selectedDetailUser.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                        }`}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                        {selectedDetailUser.archived ? 'Archived' : selectedDetailUser.status}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <button onClick={() => { setResetTargetUser(selectedDetailUser); setShowResetModal(true); }} className="flex min-w-0 items-center justify-center gap-1.5 rounded-lg border border-purple-200 px-2 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-50">
-                        <Lock size={15} /> Reset Password
-                      </button>
-                      <button onClick={async () => {
-                        try {
-                          await userAPI.sendCredentials(selectedDetailUser.id);
-                          showNotification('Login details sent successfully');
-                          addActivityLog('CREDENTIALS_SENT', `Login details sent to ${selectedDetailUser.firstName} ${selectedDetailUser.lastName}`);
-                        } catch (error) {
-                          showNotification('Failed to send login details: ' + error.message, 'error');
-                        }
-                      }} className="flex min-w-0 items-center justify-center gap-1.5 rounded-lg border border-purple-200 px-2 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-50">
-                        <ExternalLink size={15} /> Send Login Details
-                      </button>
-                      <button onClick={() => selectedDetailUser.archived ? handleUnarchive(selectedDetailUser.id) : handleArchive(selectedDetailUser.id)} className="col-span-2 flex min-w-0 items-center justify-center gap-1.5 rounded-lg border border-red-200 px-2 py-2 text-xs font-semibold text-red-700 hover:bg-red-50">
-                        {selectedDetailUser.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />} {selectedDetailUser.archived ? 'Restore User' : 'Archive User'}
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-8 text-center text-sm text-gray-500">
-                    <Users size={40} className="mx-auto text-gray-300 mb-3" />
-                    Select a user to view details.
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
         )}
 

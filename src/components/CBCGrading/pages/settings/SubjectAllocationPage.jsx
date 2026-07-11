@@ -208,7 +208,7 @@ const SubjectAllocationPage = () => {
         ? todaysSchedules.slice(0, 2).map((slot) => `${slot.className} ${slot.startTime}-${slot.endTime}`).join(' • ')
         : relatedSchedules.length > 0
           ? `${relatedSchedules.length} slot(s) configured`
-          : '—';
+          : 'No timetable slot';
 
       return {
         ...area,
@@ -217,8 +217,8 @@ const SubjectAllocationPage = () => {
         timetableSummary,
         currentLesson: currentLesson
           ? `${currentLesson.subject || area.name} (${currentLesson.startTime}-${currentLesson.endTime})`
-          : '—',
-        currentTeacher: currentTeacher || '—'
+          : 'No lesson now',
+        currentTeacher: currentTeacher || 'No current tutor'
       };
     });
   }, [learningAreas, assignments, classSchedules]);
