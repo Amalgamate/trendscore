@@ -34,6 +34,8 @@ const DEFAULT_CONTEXT = {
   assignedGrades: [],
 };
 
+const normalizeGradeCode = (grade) => String(grade || '').trim().replace(/\s+/g, '_').toUpperCase();
+
 export const useTeacherContext = () => {
   const { user } = useAuth();
   const role = user?.role;
@@ -88,8 +90,9 @@ export const useTeacherContext = () => {
     (subjectName, grade) => {
       if (!context || !context.restricted) return true;
       if (!subjectName && !grade) return true;
+      const normalizedGrade = grade ? normalizeGradeCode(grade) : '';
       return context.subjectAssignments.some((a) => {
-        const gradeMatch = !grade || a.grade === grade;
+        const gradeMatch = !grade || normalizeGradeCode(a.grade) === normalizedGrade;
         const nameMatch =
           !subjectName ||
           a.learningAreaName?.toLowerCase() === String(subjectName).toLowerCase();
@@ -105,9 +108,10 @@ export const useTeacherContext = () => {
   const isClassTeacherFor = useCallback(
     (classIdOrGrade) => {
       if (!context || !context.isClassTeacher || !context.classTeacherOf) return false;
+      const normalized = normalizeGradeCode(classIdOrGrade);
       return (
         context.classTeacherOf.id === classIdOrGrade ||
-        context.classTeacherOf.grade === classIdOrGrade
+        normalizeGradeCode(context.classTeacherOf.grade) === normalized
       );
     },
     [context]

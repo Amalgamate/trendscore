@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { classAPI } from '../../../services/api';
+import { classAPI, teacherAPI } from '../../../services/api';
 import { useAuth } from '../../../hooks/useAuth';
+
+const normalizeGradeCode = (grade) => String(grade || '').trim().replace(/\s+/g, '_').toUpperCase();
 
 /**
  * useTeacherWorkload Hook
@@ -12,6 +14,7 @@ export const useTeacherWorkload = () => {
     const [loading, setLoading] = useState(true);
     const [workload, setWorkload] = useState(null);
     const [schedules, setSchedules] = useState([]);
+    const [teacherContext, setTeacherContext] = useState(null);
     const [error, setError] = useState(null);
 
     const teacherId = user?.id || user?.userId;
@@ -25,13 +28,15 @@ export const useTeacherWorkload = () => {
 
         try {
             setLoading(true);
-            const [workloadResp, schedulesResp] = await Promise.all([
+            const [workloadResp, schedulesResp, contextResp] = await Promise.all([
                 classAPI.getTeacherWorkload(teacherId),
-                classAPI.getTeacherSchedules(teacherId)
+                classAPI.getTeacherSchedules(teacherId),
+                teacherAPI.getMyContext()
             ]);
 
             setWorkload(workloadResp.data || workloadResp);
             setSchedules(schedulesResp.data || schedulesResp || []);
+            setTeacherContext(contextResp.data || contextResp || null);
             setError(null);
         } catch (err) {
             console.error('Error fetching teacher workload:', err);
@@ -55,40 +60,63 @@ export const useTeacherWorkload = () => {
             .map((schedule) => schedule?.class?.grade || schedule?.grade)
             .filter(Boolean);
 
-        return [...new Set([...classGrades, ...scheduleGrades])];
-    }, [workload, schedules]);
+        const contextGrades = (teacherContext?.assignedGrades || [])
+            .filter(Boolean);
+
+        return [...new Set([...classGrades, ...scheduleGrades, ...contextGrades].map(normalizeGradeCode).filter(Boolean))];
+    }, [workload, schedules, teacherContext]);
 
     // Check if assigned to a specific grade
     const isAssignedToGrade = useCallback((grade) => {
         if (!isTeacher) return true; // Admin/HoC always "assigned"
-        return assignedGrades.includes(grade);
+        return assignedGrades.includes(normalizeGradeCode(grade));
     }, [isTeacher, assignedGrades]);
 
     // Get subjects for a specific grade
     const getAssignedSubjectsForGrade = useCallback((grade) => {
         if (!isTeacher) return null; // Admin/HoC sees all (null means don't filter)
+        const normalizedGrade = normalizeGradeCode(grade);
+
+        // Class teachers can assess all subjects for their own class/grade.
+        // The mark-entry screen still shows a warning when they enter a subject
+        // where they are not the named subject teacher.
+        const isClassTeacher = teacherContext?.classTeacherOf
+            ? normalizeGradeCode(teacherContext.classTeacherOf.grade) === normalizedGrade
+            : false;
+        if (isClassTeacher) {
+            return null;
+        }
 
         const gradeSchedules = schedules.filter(s =>
-            s.class?.grade === grade || s.grade === grade
+            normalizeGradeCode(s.class?.grade || s.grade) === normalizedGrade
         );
+
+        const contextSubjects = (teacherContext?.subjectAssignments || [])
+            .filter((assignment) => normalizeGradeCode(assignment?.grade) === normalizedGrade)
+            .map((assignment) => assignment?.learningAreaName)
+            .filter(Boolean);
 
         if (gradeSchedules.length > 0) {
             const subjects = gradeSchedules
                 .map((schedule) => schedule?.subject || schedule?.learningArea?.name || schedule?.learningArea?.shortName)
                 .filter(Boolean);
 
-            return subjects.length > 0 ? [...new Set(subjects)] : null;
+            const mergedSubjects = [...new Set([...subjects, ...contextSubjects].filter(Boolean))];
+            return mergedSubjects.length > 0 ? mergedSubjects : null;
+        }
+
+        if (contextSubjects.length > 0) {
+            return [...new Set(contextSubjects)];
         }
 
         // Fallback: If assigned as a class teacher for this grade but no specific subjects are in the schedule
         // In many primary settings, the class teacher handles all subjects
-        const isClassTeacher = assignedGrades.includes(grade);
-        if (isClassTeacher) {
+        if (!teacherContext && assignedGrades.includes(normalizedGrade)) {
             return null; // Return null to allow all subjects
         }
 
         return []; // Truly no assignments for this grade
-    }, [isTeacher, schedules, assignedGrades]);
+    }, [isTeacher, schedules, assignedGrades, teacherContext]);
 
     // Check if the teacher has any assignments at all
     const hasAnyAssignments = useMemo(() => {
@@ -108,6 +136,7 @@ export const useTeacherWorkload = () => {
 
     return {
         workload,
+        teacherContext,
         loading,
         error,
         isTeacher,
