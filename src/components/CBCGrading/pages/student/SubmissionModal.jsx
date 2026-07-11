@@ -2,29 +2,58 @@
  * SubmissionModal — Student assignment submission modal
  */
 import React, { useState } from 'react';
-import { X, Send, Loader, CheckCircle } from 'lucide-react';
-import axiosInstance from '../../../../services/api/axiosConfig';
+import { X, Send, Loader, CheckCircle, Paperclip, Trash2 } from 'lucide-react';
+import { lmsAPI } from '../../../../services/api';
+
+const MAX_FILE_MB = 25;
 
 const SubmissionModal = ({ assignment, onClose, onSubmitted }) => {
   const [content, setContent] = useState('');
-  const [fileUrl, setFileUrl] = useState('');
+  const [files, setFiles] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
 
+  const maxSizeMb = assignment?.maxFileSize || MAX_FILE_MB;
+
+  const handleFilePick = (e) => {
+    const picked = Array.from(e.target.files || []);
+    const tooBig = picked.find((f) => f.size > maxSizeMb * 1024 * 1024);
+    if (tooBig) {
+      setError(`"${tooBig.name}" exceeds the ${maxSizeMb}MB limit.`);
+      e.target.value = '';
+      return;
+    }
+    setError('');
+    setFiles((prev) => [...prev, ...picked]);
+    e.target.value = ''; // allow re-selecting the same file
+  };
+
+  const removeFile = (index) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleSubmit = async () => {
-    if (!content.trim() && !fileUrl.trim()) {
-      setError('Please write your answer or provide a file URL before submitting.');
+    if (!content.trim() && files.length === 0) {
+      setError('Please write your answer or attach a file before submitting.');
       return;
     }
     setSubmitting(true);
     setError('');
     try {
-      await axiosInstance.post(`/lms/assignments/${assignment.id}/submit`, { content, fileUrl });
+      const formData = new FormData();
+      if (content.trim()) formData.append('content', content.trim());
+      files.forEach((f) => formData.append('files', f));
+
+      const response = await lmsAPI.submitAssignment(assignment.id, formData);
+      if (response?.success === false) {
+        setError(response.message || 'Failed to submit. Please try again.');
+        return;
+      }
       setDone(true);
       setTimeout(() => { onSubmitted?.(); onClose(); }, 1800);
     } catch (e) {
-      setError(e.response?.data?.error?.message || 'Failed to submit. Please try again.');
+      setError(e?.message || 'Failed to submit. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -55,12 +84,12 @@ const SubmissionModal = ({ assignment, onClose, onSubmitted }) => {
             {/* Assignment info */}
             <div className="bg-gray-50 rounded-lg px-4 py-3 text-xs space-y-1">
               <div className="flex justify-between">
-                <span className="font-medium text-gray-500 uppercase tracking-wider">Course</span>
-                <span className="font-medium text-gray-800">{assignment.course?.title}</span>
+                <span className="font-medium text-gray-500 uppercase tracking-wider">Class</span>
+                <span className="font-medium text-gray-800">{assignment.class?.name}</span>
               </div>
               <div className="flex justify-between">
                 <span className="font-medium text-gray-500 uppercase tracking-wider">Points</span>
-                <span className="font-medium text-gray-800">{assignment.totalPoints}</span>
+                <span className="font-medium text-gray-800">{assignment.totalMarks}</span>
               </div>
               {assignment.dueDate && (
                 <div className="flex justify-between">
@@ -86,18 +115,32 @@ const SubmissionModal = ({ assignment, onClose, onSubmitted }) => {
               />
             </div>
 
-            {/* File URL */}
+            {/* File attachments */}
             <div>
               <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
-                File URL <span className="normal-case font-medium text-gray-400">(optional — Google Drive, OneDrive, etc.)</span>
+                Attachments <span className="normal-case font-medium text-gray-400">(optional — max {maxSizeMb}MB each)</span>
               </label>
-              <input
-                type="url"
-                value={fileUrl}
-                onChange={e => setFileUrl(e.target.value)}
-                placeholder="https://drive.google.com/…"
-                className="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300 bg-gray-50"
-              />
+              <label className="flex items-center justify-center gap-2 w-full border border-dashed border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-500 cursor-pointer hover:border-purple-300 hover:bg-purple-50/40 transition-colors">
+                <Paperclip size={15} />
+                Click to choose files
+                <input type="file" multiple onChange={handleFilePick} className="hidden" />
+              </label>
+              {files.length > 0 && (
+                <ul className="mt-2 space-y-1.5">
+                  {files.map((f, i) => (
+                    <li key={`${f.name}-${i}`} className="flex items-center justify-between gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+                      <span className="text-xs text-gray-700 truncate">{f.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(i)}
+                        className="p-1 text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             {error && <p className="text-xs text-red-600 font-medium bg-red-50 px-3 py-2 rounded-lg">{error}</p>}

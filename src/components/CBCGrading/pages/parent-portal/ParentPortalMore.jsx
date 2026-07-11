@@ -6,9 +6,11 @@
 import React, { useState } from 'react';
 import {
   ArrowLeft, User, Bell, FileText, HelpCircle,
-  Settings, LogOut, Shield, Eye, Languages, Lock,
-  ChevronRight, ExternalLink, AlertCircle, MessageSquare, Calendar
+  Settings, LogOut, Lock,
+  ChevronRight, ExternalLink, AlertCircle, MessageSquare, Calendar, Mail
 } from 'lucide-react';
+import { authAPI } from '../../../../services/api/auth.api';
+import { useNotifications } from '../../hooks/useNotifications';
 
 // ─── Helper Components ──────────────────────────────────────────────
 
@@ -101,11 +103,32 @@ const ParentPortalMore = ({ user, onNavigate, onLogout }) => {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [smsEnabled, setSmsEnabled] = useState(true);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showChangePasswordConfirm, setShowChangePasswordConfirm] = useState(false);
+  const [sendingReset, setSendingReset] = useState(false);
+  const { showSuccess, showError } = useNotifications();
 
   const handleLogout = () => {
     setShowLogoutConfirm(false);
     if (onLogout) {
       onLogout();
+    }
+  };
+
+  const handleChangePasswordConfirm = async () => {
+    if (!user?.email) {
+      showError('No email on file for your account. Contact the school to update it.');
+      setShowChangePasswordConfirm(false);
+      return;
+    }
+    setSendingReset(true);
+    try {
+      await authAPI.forgotPassword(user.email);
+      showSuccess(`Password reset link sent to ${user.email}`);
+    } catch (e) {
+      showError(e?.message || 'Failed to send reset link. Please try again.');
+    } finally {
+      setSendingReset(false);
+      setShowChangePasswordConfirm(false);
     }
   };
 
@@ -149,13 +172,7 @@ const ParentPortalMore = ({ user, onNavigate, onLogout }) => {
             icon={Lock}
             label="Change Password"
             subtitle="Update your security"
-            action={() => console.log('Change password')}
-          />
-          <MenuItem
-            icon={Shield}
-            label="Privacy & Security"
-            subtitle="Control your data"
-            action={() => console.log('Privacy settings')}
+            action={() => setShowChangePasswordConfirm(true)}
           />
         </MenuSection>
 
@@ -214,24 +231,8 @@ const ParentPortalMore = ({ user, onNavigate, onLogout }) => {
           <MenuItem
             icon={ExternalLink}
             label="Contact School"
-            subtitle="Phone, email, address"
-            action={() => console.log('Contact school')}
-          />
-        </MenuSection>
-
-        {/* App Settings Section */}
-        <MenuSection title="App Settings">
-          <MenuItem
-            icon={Languages}
-            label="Language"
-            subtitle="English"
-            action={() => console.log('Change language')}
-          />
-          <MenuItem
-            icon={Eye}
-            label="Display"
-            subtitle="Light theme"
-            action={() => console.log('Display settings')}
+            subtitle="Email or raise a support ticket"
+            action={() => onNavigate('parent-portal-support')}
           />
         </MenuSection>
 
@@ -253,6 +254,39 @@ const ParentPortalMore = ({ user, onNavigate, onLogout }) => {
           <p className="text-xs text-gray-400 mt-2">© 2024 All rights reserved</p>
         </div>
       </div>
+
+      {/* Change Password Confirmation Modal */}
+      {showChangePasswordConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center sm:justify-center p-4">
+          <div className="bg-white rounded-3xl sm:rounded-3xl p-6 w-full sm:max-w-sm animate-in">
+            <div className="flex items-center justify-center w-12 h-12 mx-auto mb-4 rounded-full bg-brand-purple/10">
+              <Mail size={24} className="text-brand-purple" />
+            </div>
+
+            <h3 className="text-lg font-bold text-gray-900 text-center mb-2">Send Password Reset Link?</h3>
+            <p className="text-sm text-gray-600 text-center mb-6">
+              We'll email a secure reset link to <span className="font-semibold">{user?.email || 'your registered email'}</span>. Use it to set a new password.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowChangePasswordConfirm(false)}
+                disabled={sendingReset}
+                className="flex-1 px-4 py-3 bg-gray-100 text-gray-900 font-semibold rounded-xl hover:bg-gray-200 transition disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleChangePasswordConfirm}
+                disabled={sendingReset}
+                className="flex-1 px-4 py-3 bg-brand-purple text-white font-semibold rounded-xl hover:bg-purple-700 transition disabled:opacity-60"
+              >
+                {sendingReset ? 'Sending…' : 'Send Link'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Logout Confirmation Modal */}
       {showLogoutConfirm && (

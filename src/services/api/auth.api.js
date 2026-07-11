@@ -50,8 +50,17 @@ export const authAPI = {
     }
   },
 
-  resetPassword: async (token, password) =>
-    fetchWithAuth('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, password }) }),
+  resetPassword: async (token, newPassword, passwordConfirm) =>
+    fetchWithAuth('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, newPassword, passwordConfirm: passwordConfirm ?? newPassword }),
+    }),
+
+  /** Send a password-reset email to the given address (unauthenticated — no session required). */
+  forgotPassword: async (email) => {
+    const response = await axiosInstance.post('/auth/forgot-password', { email });
+    return response.data;
+  },
 
   sendOTP: async (data) => {
     try {

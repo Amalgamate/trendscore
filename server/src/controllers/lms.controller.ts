@@ -429,12 +429,21 @@ export const getAssignments = async (req: AuthRequest, res: Response): Promise<v
     const requesterId = req.user?.userId ?? '';
     const role = req.user?.role ?? '';
 
+    const rawLearnerIds = req.query.learnerIds as string | string[] | undefined;
+    const learnerIds = rawLearnerIds
+      ? (Array.isArray(rawLearnerIds) ? rawLearnerIds : rawLearnerIds.split(','))
+          .map((id) => id.trim())
+          .filter(Boolean)
+      : undefined;
+
     const filters = {
       classId: req.query.classId as string | undefined,
       learningAreaId: req.query.learningAreaId as string | undefined,
       termId: req.query.termId as string | undefined,
       status: req.query.status as any,
       category: req.query.category as any,
+      assignmentId: req.query.assignmentId as string | undefined,
+      learnerIds,
       page: req.query.page ? Number(req.query.page) : undefined,
       limit: req.query.limit ? Number(req.query.limit) : undefined,
     };
@@ -796,6 +805,7 @@ export const getMySubmissions = async (req: AuthRequest, res: Response): Promise
     const learnerId = await resolveLearnerId(req);
 
     const filters = {
+      assignmentId: req.query.assignmentId as string | undefined,
       status: req.query.status as any,
     };
 
@@ -1761,12 +1771,53 @@ export const getLMSDashboardStats = async (req: AuthRequest, res: Response): Pro
 /**
  * GET /api/lms/enrollments
  * Get list of enrollments with optional filtering.
+ *
+ * Role scoping: STUDENT is forced to their own learnerId regardless of the
+ * query param; PARENT must supply learnerId and may only query their own
+ * child; TEACHER/HEAD_TEACHER/ADMIN/SUPER_ADMIN are unrestricted.
  */
 export const getEnrollments = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const role = req.user?.role ?? '';
+    const userId = req.user?.userId;
+    let learnerId = req.query.learnerId as string | undefined;
+
+    if (role === 'STUDENT') {
+      if (!userId) {
+        res.status(401).json({ success: false, message: 'Authentication required' });
+        return;
+      }
+      const selfLearner = await lmsService.getStudentLearnerByUserId(userId);
+      learnerId = selfLearner.id; // force scope to self, ignore any query override
+    } else if (role === 'PARENT') {
+      if (!userId) {
+        res.status(401).json({ success: false, message: 'Authentication required' });
+        return;
+      }
+      if (!learnerId) {
+        res.status(400).json({ success: false, message: 'learnerId is required' });
+        return;
+      }
+      const learner = await prisma.learner.findUnique({
+        where: { id: learnerId },
+        select: { parentId: true },
+      });
+      if (!learner) {
+        res.status(404).json({ success: false, message: 'Learner not found', code: 'LMS_LEARNER_NOT_FOUND' });
+        return;
+      }
+      if (learner.parentId !== userId) {
+        res
+          .status(403)
+          .json({ success: false, message: 'Access denied: not your child', code: 'LMS_PARENT_ACCESS_DENIED' });
+        return;
+      }
+    }
+    // TEACHER / HEAD_TEACHER / ADMIN / SUPER_ADMIN: unrestricted
+
     const filters = {
       courseId: req.query.courseId as string | undefined,
-      learnerId: req.query.learnerId as string | undefined,
+      learnerId,
       status: req.query.status as string | undefined,
       page: req.query.page ? Number(req.query.page) : undefined,
       limit: req.query.limit ? Number(req.query.limit) : undefined,
@@ -1775,8 +1826,12 @@ export const getEnrollments = async (req: AuthRequest, res: Response): Promise<v
     const result = await lmsService.getEnrollments(filters);
     res.json({ success: true, data: result });
   } catch (error: any) {
-    console.error('[LMS] getEnrollments error:', error?.message ?? error);
-    res.status(500).json({ success: false, message: 'Failed to retrieve enrollments' });
+    if (error instanceof ApiError) {
+      res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+    } else {
+      console.error('[LMS] getEnrollments error:', error?.message ?? error);
+      res.status(500).json({ success: false, message: 'Failed to retrieve enrollments' });
+    }
   }
 };
 
@@ -1889,17 +1944,26 @@ export const getStudentCourseDetail = async (req: AuthRequest, res: Response): P
 
 /**
  * GET /api/lms/my-assignments
- * Returns assignments across all enrolled courses for the student.
+ * Returns assignments across all enrolled courses for the student, using the
+ * full assignment lifecycle service (LearningAssignment/LearningSubmission)
+ * so the response includes class, learningArea, totalMarks, and mySubmission
+ * (with marks) — not the legacy LMSCourse/LMSContent stub.
  */
 export const getStudentAssignments = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const schoolId = req.school?.id;
+    if (!schoolId) {
+      res.status(400).json({ success: false, message: 'School context is required' });
+      return;
+    }
+
     const userId = req.user?.userId;
     if (!userId) {
       res.status(401).json({ success: false, message: 'Authentication required' });
       return;
     }
 
-    const result = await lmsService.getStudentAssignments(userId);
+    const result = await LMSAssignmentService.getStudentAssignments(userId, schoolId);
     res.json({ success: true, data: result });
   } catch (error: any) {
     if (error instanceof ApiError) {
@@ -1942,6 +2006,67 @@ export const updateStudentProgress = async (req: AuthRequest, res: Response): Pr
     } else {
       console.error('[LMS] updateStudentProgress error:', error?.message ?? error);
       res.status(500).json({ success: false, message: 'Failed to update student progress' });
+    }
+  }
+};
+
+/**
+ * GET /api/lms/progress/:learnerId/:courseId
+ * Content-level progress for a specific learner within a specific legacy
+ * LMSCourse (total content items, completed items, per-item completion).
+ * Uses the pre-existing LMSService.getLearnerProgress implementation, which
+ * was previously unreachable — no route or controller ever called it.
+ *
+ * Access: TEACHER/HEAD_TEACHER/ADMIN/SUPER_ADMIN may view any learner;
+ * STUDENT may only view their own record; PARENT may only view their own
+ * children (Requirement 14.2 pattern, mirrored from getLearnerAnalytics).
+ */
+export const getLearnerProgress = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { learnerId, courseId } = req.params;
+    const role = req.user?.role ?? '';
+    const userId = req.user?.userId;
+
+    if (role === 'STUDENT') {
+      if (!userId) {
+        res.status(401).json({ success: false, message: 'Authentication required' });
+        return;
+      }
+      const selfLearner = await lmsService.getStudentLearnerByUserId(userId);
+      if (selfLearner.id !== learnerId) {
+        res.status(403).json({ success: false, message: 'Access denied: not your own record' });
+        return;
+      }
+    } else if (role === 'PARENT') {
+      if (!userId) {
+        res.status(401).json({ success: false, message: 'Authentication required' });
+        return;
+      }
+      const learner = await prisma.learner.findUnique({
+        where: { id: learnerId },
+        select: { parentId: true },
+      });
+      if (!learner) {
+        res.status(404).json({ success: false, message: 'Learner not found', code: 'LMS_LEARNER_NOT_FOUND' });
+        return;
+      }
+      if (learner.parentId !== userId) {
+        res
+          .status(403)
+          .json({ success: false, message: 'Access denied: not your child', code: 'LMS_PARENT_ACCESS_DENIED' });
+        return;
+      }
+    }
+    // TEACHER / HEAD_TEACHER / ADMIN / SUPER_ADMIN: no extra restriction
+
+    const result = await lmsService.getLearnerProgress(learnerId, courseId);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    if (error instanceof ApiError) {
+      res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+    } else {
+      console.error('[LMS] getLearnerProgress error:', error?.message ?? error);
+      res.status(500).json({ success: false, message: 'Failed to retrieve learner progress' });
     }
   }
 };

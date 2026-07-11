@@ -31,20 +31,20 @@ const MyAssignments = () => {
   const now = new Date();
 
   const filtered = assignments.filter(a => {
-    const sub = a.submission;
+    const sub = a.mySubmission;
     if (tab === 'active') return !sub && (!a.dueDate || new Date(a.dueDate) > now);
-    if (tab === 'submitted') return sub && !sub.grade;
-    if (tab === 'graded') return sub?.grade !== null && sub?.grade !== undefined;
+    if (tab === 'submitted') return sub && (sub.marks === null || sub.marks === undefined);
+    if (tab === 'graded') return sub && sub.marks !== null && sub.marks !== undefined;
     return true;
   });
 
   const counts = {
-    active:    assignments.filter(a => !a.submission && (!a.dueDate || new Date(a.dueDate) > now)).length,
-    submitted: assignments.filter(a => a.submission && (a.submission.grade === null || a.submission.grade === undefined)).length,
-    graded:    assignments.filter(a => a.submission?.grade !== null && a.submission?.grade !== undefined).length,
+    active:    assignments.filter(a => !a.mySubmission && (!a.dueDate || new Date(a.dueDate) > now)).length,
+    submitted: assignments.filter(a => a.mySubmission && (a.mySubmission.marks === null || a.mySubmission.marks === undefined)).length,
+    graded:    assignments.filter(a => a.mySubmission?.marks !== null && a.mySubmission?.marks !== undefined).length,
   };
 
-  const isOverdue = (a) => a.dueDate && new Date(a.dueDate) < now && !a.submission;
+  const isOverdue = (a) => a.dueDate && new Date(a.dueDate) < now && !a.mySubmission;
 
   return (
     <div className="space-y-6">
@@ -95,7 +95,7 @@ const MyAssignments = () => {
               <thead className="border-b border-[color:var(--table-border)]">
                 <tr>
                   <th className="px-5 py-3.5 text-[10px] font-semibold text-[color:var(--table-header-fg)] uppercase tracking-widest">Assignment</th>
-                  <th className="px-5 py-3.5 text-[10px] font-semibold text-[color:var(--table-header-fg)] uppercase tracking-widest">Course</th>
+                  <th className="px-5 py-3.5 text-[10px] font-semibold text-[color:var(--table-header-fg)] uppercase tracking-widest">Class</th>
                   <th className="px-5 py-3.5 text-[10px] font-semibold text-[color:var(--table-header-fg)] uppercase tracking-widest">Due</th>
                   <th className="px-5 py-3.5 text-[10px] font-semibold text-[color:var(--table-header-fg)] uppercase tracking-widest">Points</th>
                   <th className="px-5 py-3.5 text-[10px] font-semibold text-[color:var(--table-header-fg)] uppercase tracking-widest">Status</th>
@@ -107,11 +107,11 @@ const MyAssignments = () => {
                   <tr key={a.id} className="hover:bg-purple-50/20 transition-colors">
                     <td className="px-5 py-4">
                       <p className="text-sm font-medium text-gray-800">{a.title}</p>
-                      {a.description && <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{a.description}</p>}
+                      {a.instructions && <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{a.instructions}</p>}
                     </td>
                     <td className="px-5 py-4">
-                      <p className="text-sm font-medium text-gray-600">{a.course?.title}</p>
-                      <p className="text-xs text-gray-400">{a.course?.subject}</p>
+                      <p className="text-sm font-medium text-gray-600">{a.class?.name}</p>
+                      <p className="text-xs text-gray-400">{a.learningArea?.name}</p>
                     </td>
                     <td className="px-5 py-4">
                       {a.dueDate ? (
@@ -123,18 +123,18 @@ const MyAssignments = () => {
                       ) : <span className="text-xs text-gray-400">No deadline</span>}
                     </td>
                     <td className="px-5 py-4">
-                      {tab === 'graded' && a.submission?.grade !== null ? (
-                        <span className="text-sm font-semibold text-purple-700">{a.submission.grade}/{a.totalPoints}</span>
+                      {tab === 'graded' && a.mySubmission?.marks !== null && a.mySubmission?.marks !== undefined ? (
+                        <span className="text-sm font-semibold text-purple-700">{a.mySubmission.marks}/{a.totalMarks}</span>
                       ) : (
-                        <span className="text-sm font-medium text-gray-600">{a.totalPoints} pts</span>
+                        <span className="text-sm font-medium text-gray-600">{a.totalMarks} pts</span>
                       )}
                     </td>
                     <td className="px-5 py-4">
-                      {!a.submission ? (
+                      {!a.mySubmission ? (
                         <span className={`text-[10px] font-semibold px-2 py-1 rounded-full uppercase tracking-wider ${isOverdue(a) ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
                           {isOverdue(a) ? 'Overdue' : 'Pending'}
                         </span>
-                      ) : a.submission.grade !== null && a.submission.grade !== undefined ? (
+                      ) : a.mySubmission.marks !== null && a.mySubmission.marks !== undefined ? (
                         <span className="text-[10px] font-semibold px-2 py-1 rounded-full uppercase tracking-wider bg-emerald-100 text-emerald-700 flex items-center gap-1 w-fit">
                           <CheckCircle size={10} /> Graded
                         </span>
@@ -145,7 +145,7 @@ const MyAssignments = () => {
                       )}
                     </td>
                     <td className="px-5 py-4">
-                      {!a.submission && (
+                      {!a.mySubmission && (
                         <button
                           onClick={() => setSubmitting(a)}
                           className="px-3 py-1.5 bg-purple-600 text-white text-xs font-semibold rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-1"
@@ -153,13 +153,10 @@ const MyAssignments = () => {
                           <Send size={11} /> Submit
                         </button>
                       )}
-                      {a.submission && (
+                      {a.mySubmission && (
                         <div className="space-y-1">
-                          {a.submission.feedback && (
-                            <p className="text-xs text-gray-500 italic max-w-[200px] line-clamp-2">"{a.submission.feedback}"</p>
-                          )}
                           <span className="text-[10px] text-gray-400 flex items-center gap-1">
-                            <Eye size={10} /> Submitted {new Date(a.submission.submittedAt).toLocaleDateString('en-KE', { month: 'short', day: 'numeric' })}
+                            <Eye size={10} /> Submitted {a.mySubmission.submittedAt ? new Date(a.mySubmission.submittedAt).toLocaleDateString('en-KE', { month: 'short', day: 'numeric' }) : ''}
                           </span>
                         </div>
                       )}

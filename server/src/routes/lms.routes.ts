@@ -572,6 +572,17 @@ router.put(
   lmsController.updateStudentProgress
 );
 
+/**
+ * GET /api/lms/progress/:learnerId/:courseId
+ * Content-level progress for a learner within a specific legacy LMSCourse.
+ * Role scoping (self/own-child/any) is enforced in the controller.
+ */
+router.get(
+  '/progress/:learnerId/:courseId',
+  requirePermission('LEARNING_VIEW'),
+  lmsController.getLearnerProgress
+);
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // COURSES
 // ═══════════════════════════════════════════════════════════════════════════════

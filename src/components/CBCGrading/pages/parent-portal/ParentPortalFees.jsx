@@ -14,8 +14,9 @@ import {
   CheckCircle2, AlertTriangle,
   Users,
 } from 'lucide-react';
-import { dashboardAPI } from '../../../../services/api';
+import { dashboardAPI, feeAPI } from '../../../../services/api';
 import { Skeleton } from '../../../ui';
+import MpesaPaymentModal from '../../shared/MpesaPaymentModal';
 
 const fmt    = (n) => Number(n || 0).toLocaleString();
 
@@ -184,10 +185,7 @@ function Step2EnterAmount({ mode, amount, setAmount, children }) {
 
 // ─── Step 3 — Choose distribution ────────────────────────────────────────────
 
-function Step3Distribution({ mode, amount, strategy, setStrategy, custom, setCustom, children }) {
-  // Must be declared unconditionally (Rules of Hooks)
-  const [selected, setSelected] = useState(null);
-
+function Step3Distribution({ mode, amount, strategy, setStrategy, custom, setCustom, children, selectedChildId, setSelectedChildId }) {
   if (mode === 'one') {
     // (Step 3 for 'one' is child selector)
     return (
@@ -195,10 +193,10 @@ function Step3Distribution({ mode, amount, strategy, setStrategy, custom, setCus
         <div className="px-4 pt-3 pb-1"><StepHeader number={3} title="Select child" /></div>
         {children.map(c => {
           const bal = Number(c.feeBalance || 0);
-          const isSel = selected === c.id;
+          const isSel = selectedChildId === c.id;
           const photoSrc = getChildPhoto(c);
           return (
-            <button key={c.id} onClick={() => setSelected(isSel ? null : c.id)}
+            <button key={c.id} onClick={() => setSelectedChildId(isSel ? null : c.id)}
               className={`w-full flex items-center gap-3 px-4 py-3 border-t border-gray-50 text-left transition-colors ${isSel ? 'bg-[#3B1FA3]/5' : 'hover:bg-gray-50'}`}
             >
               <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${isSel ? 'border-[#3B1FA3] bg-[#3B1FA3]' : 'border-gray-300'}`} />
@@ -275,6 +273,12 @@ const ParentPortalFees = ({ user, onNavigate }) => {
   const [amount, setAmount]     = useState('');
   const [strategy, setStrategy] = useState(null);
   const [custom, setCustom]     = useState({});
+  const [selectedChildId, setSelectedChildId] = useState(null);
+
+  // M-Pesa payment modal state
+  const [payingInvoice, setPayingInvoice]         = useState(null);
+  const [showPaymentModal, setShowPaymentModal]   = useState(false);
+  const [preparingPayment, setPreparingPayment]   = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -292,6 +296,57 @@ const ParentPortalFees = ({ user, onNavigate }) => {
 
   // Determine current step for progress bar
   const step = !payMode ? 0 : payMode === 'full' ? 2 : amount ? (strategy ? 4 : 3) : 2;
+
+  const resetFlow = () => {
+    setPayMode(null);
+    setAmount('');
+    setStrategy(null);
+    setCustom({});
+    setSelectedChildId(null);
+  };
+
+  // Resolve which child's invoice the STK push should be attributed to, and
+  // for how much, then open MpesaPaymentModal. Full/partial payments across
+  // several children are attributed to the first child with an outstanding
+  // balance — MpesaPaymentModal drives a single M-Pesa transaction per push.
+  const handleReviewPay = async () => {
+    setError(null);
+
+    const targetChildId = payMode === 'one'
+      ? selectedChildId
+      : children.find(c => Number(c.feeBalance || 0) > 0)?.id;
+
+    if (!targetChildId) {
+      setError('Select a child to pay for');
+      return;
+    }
+
+    const payAmount = payMode === 'full' ? totalBalance : Number(amount) || 0;
+    if (payAmount <= 0) {
+      setError('Enter a valid amount to pay');
+      return;
+    }
+
+    setPreparingPayment(true);
+    try {
+      const res = await feeAPI.getLearnerInvoices(targetChildId);
+      const invoices = res?.data ?? res ?? [];
+      const list = Array.isArray(invoices) ? invoices : [];
+      const outstanding = list.find((inv) => Number(inv?.balance ?? inv?.outstanding ?? 0) > 0);
+
+      if (!outstanding) {
+        setError('No outstanding invoice found for this child');
+        return;
+      }
+
+      setPayingInvoice({ id: outstanding.id, balance: payAmount });
+      setShowPaymentModal(true);
+    } catch (e) {
+      setError(e?.message || 'Failed to prepare payment');
+    } finally {
+      setPreparingPayment(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[var(--app-page-bg)] pb-20">
@@ -331,15 +386,25 @@ const ParentPortalFees = ({ user, onNavigate }) => {
                 custom={custom}
                 setCustom={setCustom}
                 children={children}
+                selectedChildId={selectedChildId}
+                setSelectedChildId={setSelectedChildId}
               />
             )}
 
             {/* Step 4 — Review & Pay CTA */}
-            {payMode && (payMode === 'full' || (Number(amount) > 0 && strategy)) && (
+            {payMode && (
+              payMode === 'full' ||
+              (payMode === 'partial' && Number(amount) > 0 && strategy) ||
+              (payMode === 'one' && Number(amount) > 0 && selectedChildId)
+            ) && (
               <div className="bg-white border border-gray-200 rounded-xl p-4">
                 <StepHeader number={4} title="Review & Pay" />
-                <button className="w-full py-3.5 bg-[#3B1FA3] text-white text-sm font-bold rounded-xl hover:bg-[#2d1680] transition-colors">
-                  Review Payment
+                <button
+                  onClick={handleReviewPay}
+                  disabled={preparingPayment}
+                  className="w-full py-3.5 bg-[#3B1FA3] text-white text-sm font-bold rounded-xl hover:bg-[#2d1680] transition-colors disabled:opacity-60"
+                >
+                  {preparingPayment ? 'Preparing…' : 'Review Payment'}
                 </button>
               </div>
             )}
@@ -361,6 +426,19 @@ const ParentPortalFees = ({ user, onNavigate }) => {
           </div>
         )}
       </div>
+
+      <MpesaPaymentModal
+        isOpen={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        invoice={payingInvoice}
+        parentPhone={user?.phone || user?.phoneNumber}
+        onPaymentSuccess={() => {
+          setShowPaymentModal(false);
+          setPayingInvoice(null);
+          resetFlow();
+          load();
+        }}
+      />
     </div>
   );
 };

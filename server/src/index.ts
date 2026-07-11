@@ -32,6 +32,27 @@ async function startServer() {
     const io = initializeSocket(httpServer);
     app.set('io', io);
 
+    // Handle listen-time failures (e.g. a stale process still holding the port)
+    // BEFORE calling listen() — otherwise Node throws an unhandled 'error' event
+    // and the process dies with a raw stack trace instead of an actionable message.
+    httpServer.on('error', async (error: NodeJS.ErrnoException) => {
+      if (error.code === 'EADDRINUSE') {
+        logger.error(
+          `❌ Port ${PORT} is already in use. Another process (often a leftover ` +
+          `nodemon/tsx instance from a previous run) is still bound to it.\n` +
+          `   Fix: run "npm run kill-ports" from the project root, or "npm run kill" ` +
+          `from server/, then start the dev server again.`
+        );
+        await prisma.$disconnect().catch(() => {});
+        process.exit(1);
+        return;
+      }
+
+      logger.error(error, '❌ HTTP server error');
+      await prisma.$disconnect().catch(() => {});
+      process.exit(1);
+    });
+
     httpServer.listen(PORT, () => {
       const isDev = process.env.NODE_ENV !== 'production';
 

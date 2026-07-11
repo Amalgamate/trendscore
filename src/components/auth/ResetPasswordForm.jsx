@@ -68,7 +68,7 @@ export default function ResetPasswordForm({ onResetSuccess }) {
         return;
       }
 
-      const response = await authAPI.resetPassword(token, formData.password);
+      const response = await authAPI.resetPassword(token, formData.password, formData.confirmPassword);
 
       if (response.success) {
         onResetSuccess();

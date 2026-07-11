@@ -570,12 +570,41 @@ const ParentLearningTab = ({ user, onNavigate, brandingSettings }) => {
           setFeedback(feedbackItems);
         }
 
-        // Fetch progress for all children
-        const progressPromises = childrenIds.map((learnerId) =>
-          lmsAPI.getLearnerProgress(learnerId, 'current').catch(() => null)
+        // Fetch progress for all children: sum content-level progress across
+        // each learner's active course enrollments (there's no single
+        // "aggregate" endpoint, so we combine per-course results).
+        const progressResults = await Promise.all(
+          childrenIds.map(async (learnerId) => {
+            try {
+              const enrollRes = await lmsAPI.getEnrollments({ learnerId, status: 'ACTIVE' });
+              const enrollments = enrollRes?.data?.enrollments ?? [];
+              if (enrollments.length === 0) {
+                return { learnerId, lessonsCompleted: 0, lessonsTotal: 0 };
+              }
+
+              const perCourse = await Promise.all(
+                enrollments.map((e) =>
+                  lmsAPI.getLearnerProgress(learnerId, e.courseId).catch(() => null)
+                )
+              );
+
+              const totals = perCourse.filter(Boolean).reduce(
+                (acc, r) => {
+                  const d = r?.data ?? r;
+                  acc.completed += d?.completedContent || 0;
+                  acc.total += d?.totalContent || 0;
+                  return acc;
+                },
+                { completed: 0, total: 0 }
+              );
+
+              return { learnerId, lessonsCompleted: totals.completed, lessonsTotal: totals.total };
+            } catch {
+              return { learnerId, lessonsCompleted: 0, lessonsTotal: 0 };
+            }
+          })
         );
-        const progressResults = await Promise.all(progressPromises);
-        setProgress(progressResults.filter(Boolean).map((p) => p?.data || p));
+        setProgress(progressResults);
       }
     } catch (e) {
       setError(e?.message || 'Failed to load learning data');

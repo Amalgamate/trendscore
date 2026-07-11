@@ -15,6 +15,7 @@ import { LMSSettingsService } from './lms-settings.service';
 import { LMSNotificationService } from './lms-notification.service';
 import { auditService } from './audit.service';
 import { documentService } from './document.service';
+import { parentAccessService } from './parent-access.service';
 import { ApiError } from '../utils/error.util';
 import type {
   LearningAssignment,
@@ -66,6 +67,14 @@ export interface AssignmentFilters {
   termId?: string;
   status?: AssignmentStatus;
   category?: AssignmentCategory;
+  /** Filter the list down to a single assignment by id. */
+  assignmentId?: string;
+  /**
+   * Restrict results to assignments visible to these learners' classes.
+   * Primarily used by the PARENT role branch (own children only), but any
+   * caller may narrow further by supplying a subset of learner ids.
+   */
+  learnerIds?: string[];
   page?: number;
   limit?: number;
 }
@@ -267,25 +276,65 @@ export class LMSAssignmentService {
     schoolId: string,
     requesterClassId?: string,
   ): Promise<{ assignments: any[]; pagination: object }> {
-    const { classId, learningAreaId, termId, status, category, page = 1, limit = 20 } = filters;
+    const {
+      classId, learningAreaId, termId, status, category,
+      assignmentId, learnerIds, page = 1, limit = 20,
+    } = filters;
     const skip = (page - 1) * limit;
 
     // Role-scoped base filter
     const where: any = { schoolId, archived: false };
 
+    // Roles that are locked to PUBLISHED-only visibility. The caller-supplied
+    // `status` filter below must not be allowed to override this for them.
+    let lockStatusToPublished = false;
+
     if (role === 'TEACHER' || role === 'HEAD_TEACHER') {
       where.createdById = requesterId;
     } else if (role === 'STUDENT') {
-      where.status = 'PUBLISHED';
+      lockStatusToPublished = true;
       if (requesterClassId) where.classId = requesterClassId;
+    } else if (role === 'PARENT') {
+      // PARENT branch: own children only. Resolve every learner the parent is
+      // permitted to view (direct children + any linked family account),
+      // narrow to a caller-supplied subset if provided, then scope to the
+      // active classes those learners belong to.
+      lockStatusToPublished = true;
+
+      const accessibleLearnerIds = await parentAccessService.getAccessibleLearnerIds(requesterId);
+      const scopedLearnerIds = learnerIds?.length
+        ? learnerIds.filter((id) => accessibleLearnerIds.includes(id))
+        : accessibleLearnerIds;
+
+      if (scopedLearnerIds.length === 0) {
+        return { assignments: [], pagination: { page, limit, total: 0, pages: 0 } };
+      }
+
+      const enrollments = await prisma.classEnrollment.findMany({
+        where: { learnerId: { in: scopedLearnerIds }, active: true, archived: false },
+        select: { classId: true },
+      });
+      const classIds = [...new Set(enrollments.map((e) => e.classId))];
+
+      if (classIds.length === 0) {
+        return { assignments: [], pagination: { page, limit, total: 0, pages: 0 } };
+      }
+
+      where.classId = classIds.length === 1 ? classIds[0] : { in: classIds };
     }
     // ADMIN / SUPER_ADMIN: no extra filter — sees all for school
 
-    // Apply caller-supplied filters
-    if (classId) where.classId = classId;
+    if (lockStatusToPublished) {
+      where.status = 'PUBLISHED';
+    }
+
+    // Apply caller-supplied filters. `classId` and `status` are intentionally
+    // skipped for roles locked above so callers cannot widen their own scope.
+    if (assignmentId) where.id = assignmentId;
+    if (classId && role !== 'PARENT') where.classId = classId;
     if (learningAreaId) where.learningAreaId = learningAreaId;
     if (termId) where.termId = termId;
-    if (status) where.status = status;
+    if (status && !lockStatusToPublished) where.status = status;
     if (category) where.category = category;
 
     const [items, total] = await Promise.all([
@@ -569,21 +618,26 @@ export class LMSAssignmentService {
   }
 
   /**
-   * Get submissions for a specific learner (school-scoped).
-   * Only returns records where learnerId matches the caller.
+   * Get submissions for one or more learners (school-scoped).
+   * Only returns records where learnerId matches the caller (or, for a
+   * PARENT-style caller, one of the learnerIds it has already been
+   * authorized to view — authorization is the caller's responsibility).
    * Requirements: 4.11, 17.5
    */
   static async getMySubmissions(
-    learnerId: string,
-    filters: { status?: SubmissionStatus },
+    learnerId: string | string[],
+    filters: { assignmentId?: string; status?: SubmissionStatus },
     schoolId: string,
   ): Promise<any[]> {
+    const learnerIds = Array.isArray(learnerId) ? learnerId : [learnerId];
+
     const where: any = {
-      learnerId,
+      learnerId: learnerIds.length === 1 ? learnerIds[0] : { in: learnerIds },
       archived: false,
       assignment: { schoolId },
     };
 
+    if (filters.assignmentId) where.assignmentId = filters.assignmentId;
     if (filters.status) where.status = filters.status;
 
     return prisma.learningSubmission.findMany({

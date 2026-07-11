@@ -718,14 +718,12 @@ const StudentDashboard = ({ user, onNavigate }) => {
           raw.map((a) => ({
             id:        a.id,
             title:     a.title,
-            subject:   a.course?.title ?? a.subject ?? '',
-            teacher:   a.course?.createdBy
-                         ? `${a.course.createdBy.firstName ?? ''} ${a.course.createdBy.lastName ?? ''}`.trim()
-                         : '',
+            subject:   a.learningArea?.name ?? '',
+            teacher:   a.class?.name ?? '',
             rawDue:    a.dueDate ?? null,
             dueDate:   fmtDate(a.dueDate),
-            submitted:  (a.submissions ?? []).length > 0,
-            fileUrl:   a.fileUrl ?? null,
+            submitted:  Boolean(a.mySubmission),
+            fileUrl:   null, // list endpoint doesn't return individual file URLs; see assignment detail for files
           }))
         );
       }

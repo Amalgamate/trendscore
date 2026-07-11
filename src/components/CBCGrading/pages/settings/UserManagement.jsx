@@ -1195,7 +1195,7 @@ const UserManagement = () => {
                                 </div>
                               </td>
                               <td className="px-4 py-3.5">
-                                <div className="flex justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(event) => event.stopPropagation()}>
+                                <div className="flex justify-end gap-0.5" onClick={(event) => event.stopPropagation()}>
                                   <button onClick={() => handleEdit(user)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg transition" title="Edit"><Edit size={15} /></button>
                                   {user.phone && (
                                     <button

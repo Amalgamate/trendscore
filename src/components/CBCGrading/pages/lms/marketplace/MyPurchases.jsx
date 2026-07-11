@@ -12,6 +12,7 @@ import {
   Clock,
   XCircle,
   AlertCircle,
+  ShoppingCart,
 } from 'lucide-react';
 import { marketplaceAPI } from '../../../../../services/api/marketplace.api';
 import EmptyState from '../../../shared/EmptyState';

@@ -71,7 +71,7 @@ export const lmsAPI = {
   },
   getMySubmissions: async (params = {}) => {
     const queryString = new URLSearchParams(params).toString();
-    return fetchWithAuth(`/lms/submissions/mine${queryString ? `?${queryString}` : ''}`);
+    return fetchWithAuth(`/lms/submissions/my${queryString ? `?${queryString}` : ''}`);
   },
   submitAssignment: async (assignmentId, formData) =>
     fetchWithAuth(`/lms/assignments/${assignmentId}/submissions`, {
