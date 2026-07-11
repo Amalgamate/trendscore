@@ -14,6 +14,30 @@ const safeParseDate = (dateVal: any, defaultDate: Date): Date => {
   return isNaN(d.getTime()) ? defaultDate : d;
 };
 
+const generateClassCode = async (): Promise<string> => {
+  const existingCodes = await prisma.class.findMany({
+    where: { classCode: { startsWith: 'CLS-' } },
+    select: { classCode: true },
+  });
+
+  const maxNumber = existingCodes.reduce((max, item) => {
+    const match = /^CLS-(\d+)$/.exec(item.classCode || '');
+    return match ? Math.max(max, Number(match[1])) : max;
+  }, 0);
+
+  let counter = maxNumber + 1;
+  while (true) {
+    const classCode = `CLS-${String(counter).padStart(5, '0')}`;
+    const existing = await prisma.class.findUnique({
+      where: { classCode },
+      select: { id: true },
+    });
+
+    if (!existing) return classCode;
+    counter++;
+  }
+};
+
 const GRADE_OPTIONS = [
   'PLAYGROUP', 'PP1', 'PP2',
   'GRADE_1', 'GRADE_2', 'GRADE_3',
@@ -227,8 +251,7 @@ export const seedClasses = async (req: AuthRequest, res: Response) => {
     });
 
     if (!existing) {
-      const totalClasses = await prisma.class.count();
-      const classCode = `CLS-${String(totalClasses + 1).padStart(5, '0')}`;
+      const classCode = await generateClassCode();
 
       const newClass = await prisma.class.create({
         data: { classCode, name, grade, institutionType, stream, academicYear: year, term, active: true },

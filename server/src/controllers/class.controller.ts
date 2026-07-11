@@ -12,6 +12,11 @@ import { configService } from '../services/config.service';
 import { getInstitutionType } from '../utils/institutionNormalizer';
 
 export class ClassController {
+  private normalizeCapacity(value: any, fallback = 40): number {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallback;
+  }
+
   private async generateClassCode(): Promise<string> {
     const totalClasses = await prisma.class.count();
     const nextNumber = totalClasses + 1;
@@ -194,7 +199,7 @@ export class ClassController {
 
     const classCode = await this.generateClassCode();
     const newClass = await prisma.class.create({
-      data: { classCode, name: finalName, grade: grade as string, institutionType, stream: finalStream as any, teacherId, academicYear: finalYear, term: finalTerm as Term, capacity, room },
+      data: { classCode, name: finalName, grade: grade as string, institutionType, stream: finalStream as any, teacherId, academicYear: finalYear, term: finalTerm as Term, capacity: this.normalizeCapacity(capacity), room },
       include: { teacher: { select: { id: true, firstName: true, lastName: true } } }
     });
 
@@ -211,7 +216,7 @@ export class ClassController {
     const updateData: any = {};
     if (name) updateData.name = name;
     if (teacherId !== undefined) updateData.teacherId = teacherId;
-    if (capacity) updateData.capacity = capacity;
+    if (capacity !== undefined) updateData.capacity = this.normalizeCapacity(capacity, classData.capacity);
     if (room !== undefined) updateData.room = room;
     if (active !== undefined) updateData.active = active;
 

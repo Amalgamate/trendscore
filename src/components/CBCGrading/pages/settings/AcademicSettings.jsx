@@ -362,7 +362,7 @@ const AcademicSettings = () => {
     grade: '',
     stream: '',
     teacherId: '',
-    capacity: 40,
+    capacity: '40',
     room: '',
     academicYear: new Date().getFullYear(),
     term: 'TERM_1',
@@ -551,7 +551,7 @@ const AcademicSettings = () => {
         grade: classItem.grade || '',
         stream: classItem.stream || '',
         teacherId: classItem.teacherId || '',
-        capacity: classItem.capacity || 40,
+        capacity: classItem.capacity != null ? String(classItem.capacity) : '40',
         room: classItem.room || '',
         academicYear: classItem.academicYear || new Date().getFullYear(),
         term: classItem.term || 'TERM_1',
@@ -564,7 +564,7 @@ const AcademicSettings = () => {
         grade: '',
         stream: '',
         teacherId: '',
-        capacity: 40,
+        capacity: '40',
         room: '',
         academicYear: new Date().getFullYear(),
         term: 'TERM_1',
@@ -609,10 +609,17 @@ const AcademicSettings = () => {
       return;
     }
 
+    const capacityValue = classFormData.capacity === '' ? 40 : Number(classFormData.capacity);
+    if (!Number.isFinite(capacityValue) || capacityValue <= 0) {
+      showError('Capacity must be a positive number');
+      return;
+    }
+
     try {
       setSubmitting(true);
       const payload = {
-        ...classFormData
+        ...classFormData,
+        capacity: Math.trunc(capacityValue)
       };
 
       if (editingClass) {
@@ -625,7 +632,7 @@ const AcademicSettings = () => {
 
       setShowClassModal(false);
       setEditingClass(null);
-      setClassFormData({ name: '', grade: '', stream: '', teacherId: '', capacity: 40, room: '', academicYear: new Date().getFullYear(), term: 'TERM_1', active: true });
+      setClassFormData({ name: '', grade: '', stream: '', teacherId: '', capacity: '40', room: '', academicYear: new Date().getFullYear(), term: 'TERM_1', active: true });
       await loadConfigs();
       refreshBus.emit('classes');
     } catch (error) {
@@ -1106,8 +1113,8 @@ const AcademicSettings = () => {
                   classConfigs.map(classItem => {
                     const teacher = teachers.find(t => t.id === classItem.teacherId);
                     const enrolled = classItem._count?.enrollments || 0;
-                    const capacity = classItem.capacity || 40;
-                    const pct = Math.min(Math.round((enrolled / capacity) * 100), 100);
+                    const capacity = Number(classItem.capacity) || 0;
+                    const pct = capacity > 0 ? Math.min(Math.round((enrolled / capacity) * 100), 100) : 0;
                     const barColor = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-amber-400' : 'bg-emerald-500';
                     return (
                       <tr key={classItem.id} className="border-b hover:bg-gray-50">
@@ -1117,7 +1124,7 @@ const AcademicSettings = () => {
                         <td className="p-4 text-sm">{teacher ? `${teacher.firstName} ${teacher.lastName}` : '-'}</td>
                         <td className="p-4">
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-gray-800 w-14 shrink-0">{enrolled}/{capacity}</span>
+                            <span className="text-sm font-medium text-gray-800 w-14 shrink-0">{enrolled}/{capacity || '-'}</span>
                             <div className="flex-1 bg-gray-100 rounded-full h-1.5 overflow-hidden min-w-[60px]">
                               <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
                             </div>
@@ -1504,9 +1511,9 @@ const AcademicSettings = () => {
                   <input
                     type="number"
                     value={classFormData.capacity}
-                    onChange={(e) => setClassFormData({ ...classFormData, capacity: parseInt(e.target.value) || 40 })}
+                    onChange={(e) => setClassFormData({ ...classFormData, capacity: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    min="1"
+                    step="1"
                   />
                 </div>
 

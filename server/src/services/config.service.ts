@@ -77,6 +77,35 @@ interface TermConfiguration {
 // ============================================
 
 export class ConfigService {
+  private normalizeClassCapacity(value: any): number {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 40;
+  }
+
+  private async generateClassCode(): Promise<string> {
+    const existingCodes = await prisma.class.findMany({
+      where: { classCode: { startsWith: 'CLS-' } },
+      select: { classCode: true }
+    });
+
+    const maxNumber = existingCodes.reduce((max, item) => {
+      const match = /^CLS-(\d+)$/.exec(item.classCode || '');
+      return match ? Math.max(max, Number(match[1])) : max;
+    }, 0);
+
+    let counter = maxNumber + 1;
+    while (true) {
+      const classCode = `CLS-${String(counter).padStart(5, '0')}`;
+      const existing = await prisma.class.findUnique({
+        where: { classCode },
+        select: { id: true }
+      });
+
+      if (!existing) return classCode;
+      counter++;
+    }
+  }
+
 
   /**
    * Get term configuration
@@ -391,7 +420,6 @@ export class ConfigService {
   async upsertClass(data: any): Promise<any> {
     const { id, ...classData } = data;
     const parsedAcademicYear = Number(classData.academicYear);
-    const parsedCapacity = Number(classData.capacity);
 
     const normalizedData = {
       ...classData,
@@ -400,7 +428,7 @@ export class ConfigService {
       teacherId: typeof classData.teacherId === 'string' ? (classData.teacherId.trim() || null) : (classData.teacherId || null),
       room: typeof classData.room === 'string' ? (classData.room.trim() || null) : (classData.room || null),
       academicYear: Number.isFinite(parsedAcademicYear) ? parsedAcademicYear : new Date().getFullYear(),
-      capacity: Number.isFinite(parsedCapacity) && parsedCapacity > 0 ? parsedCapacity : 40,
+      capacity: this.normalizeClassCapacity(classData.capacity),
       term: classData.term || 'TERM_1',
       active: typeof classData.active === 'boolean' ? classData.active : true
     };
@@ -414,8 +442,7 @@ export class ConfigService {
         }
       });
     } else {
-      const totalClasses = await prisma.class.count();
-      const classCode = `CLS-${String(totalClasses + 1).padStart(5, '0')}`;
+      const classCode = await this.generateClassCode();
 
       return await prisma.class.create({
         data: {

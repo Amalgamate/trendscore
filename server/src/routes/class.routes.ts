@@ -37,13 +37,13 @@ const createClassSchema = z.object({
     'Grade 10', 'Grade 11', 'Grade 12'
   ]),
   classTeacherId: z.string().min(1).optional(),
-  capacity: z.number().int().min(1).max(200).optional()
+  capacity: z.coerce.number().int().min(1).optional()
 });
 
 const updateClassSchema = z.object({
   name: z.string().min(2).max(100).optional(),
   classTeacherId: z.string().min(1).optional(),
-  capacity: z.number().int().min(1).max(200).optional()
+  capacity: z.coerce.number().int().min(1).optional()
 });
 
 // authenticate is applied in index.ts — do NOT add authenticate here
