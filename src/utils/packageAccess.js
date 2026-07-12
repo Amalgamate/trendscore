@@ -44,6 +44,16 @@ export const isStarterPackageApps = (apps) => {
   return hasStarterCore && !hasNonStarterApp;
 };
 
+export const getActiveModuleSlugs = (modules) => (
+  Array.isArray(modules)
+    ? modules
+        .filter((module) => module?.isActive !== false && module?.isVisible !== false)
+        .map((module) => module?.slug)
+    : []
+);
+
+export const isStarterPackageModules = (modules) => isStarterPackageApps(getActiveModuleSlugs(modules));
+
 export const isStarterPackageUser = (user) => isStarterPackageApps(getEnabledAppsForUser(user));
 
 export const hasFeeModuleAccess = (apps) => normalizeEnabledApps(apps).includes('fee-management');

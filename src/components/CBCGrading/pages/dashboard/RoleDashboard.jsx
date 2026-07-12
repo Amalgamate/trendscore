@@ -23,7 +23,7 @@ import ComingSoon from '../../shared/ComingSoon';
 import useMediaQuery from '../../hooks/useMediaQuery';
 import { MOBILE_MEDIA_QUERY } from '../../../../constants/breakpoints';
 import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
-import { isStarterPackageApps } from '../../../../utils/packageAccess';
+import { isStarterPackageApps, isStarterPackageModules } from '../../../../utils/packageAccess';
 
 const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brandingSettings, currentPage = 'dashboard' }) => {
   const { role } = usePermissions();
@@ -31,8 +31,8 @@ const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brand
   const selectedInstitutionType = String(getSelectedInstitutionType() || '').toUpperCase();
   const resolvedInstitutionType = selectedInstitutionType || String(institutionType || '').toUpperCase();
   const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
-  const { activeSlugs } = useModuleAccess();
-  const starterPackage = isStarterPackageApps(activeSlugs);
+  const { activeSlugs, modules } = useModuleAccess();
+  const starterPackage = isStarterPackageApps(activeSlugs) || isStarterPackageModules(modules);
   const starterDashboardRoles = ['OWNER', 'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'RECEPTIONIST'];
 
   if (starterPackage && starterDashboardRoles.includes(role)) {
