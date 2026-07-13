@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   BookOpen,
   CalendarDays,
@@ -10,6 +10,7 @@ import {
   Users,
 } from 'lucide-react';
 import { hasPageAccess } from '../../utils/appAccess';
+import { dashboardAPI } from '../../../../services/api/dashboard.api';
 
 const formatNumber = (value) => Number(value || 0).toLocaleString();
 
@@ -30,39 +31,57 @@ const StarterDashboard = ({
   onNavigate,
   brandingSettings,
 }) => {
+  const [liveMetrics, setLiveMetrics] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+
+    dashboardAPI.getStarterMetrics()
+      .then((response) => {
+        if (active) setLiveMetrics(response?.data || response || null);
+      })
+      .catch((error) => {
+        console.error('Failed to load starter dashboard metrics:', error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const stats = useMemo(() => {
     const totalLearners = Number(pagination?.total || learners.length || 0);
     return [
       {
         label: 'Students',
-        value: formatNumber(totalLearners),
+        value: formatNumber(liveMetrics?.students ?? totalLearners),
         detail: 'Active student records',
         icon: Users,
         tone: 'bg-blue-50 text-blue-700 border-blue-100',
       },
       {
         label: 'Staff',
-        value: formatNumber(teachers.length),
+        value: formatNumber(liveMetrics?.staff ?? teachers.length),
         detail: 'Teaching team records',
         icon: GraduationCap,
         tone: 'bg-violet-50 text-violet-700 border-violet-100',
       },
       {
         label: 'Grades',
-        value: formatNumber(uniqueCount(learners, 'grade')),
+        value: formatNumber(liveMetrics?.grades ?? uniqueCount(learners, 'grade')),
         detail: 'Grades with students',
         icon: BookOpen,
         tone: 'bg-emerald-50 text-emerald-700 border-emerald-100',
       },
       {
         label: 'Streams',
-        value: formatNumber(uniqueCount(learners, 'stream')),
+        value: formatNumber(liveMetrics?.streams ?? uniqueCount(learners, 'stream')),
         detail: 'Class streams in use',
         icon: CheckSquare,
         tone: 'bg-amber-50 text-amber-700 border-amber-100',
       },
     ];
-  }, [learners, pagination?.total, teachers.length]);
+  }, [learners, liveMetrics, pagination?.total, teachers.length]);
 
   const accessUser = user || {};
   const actions = [
@@ -75,29 +94,16 @@ const StarterDashboard = ({
   ].filter((action) => hasPageAccess(accessUser, action.path));
 
   const schoolName = brandingSettings?.schoolName || brandingSettings?.name || 'School Portal';
+  const firstName = String(user?.firstName || user?.name || '').trim().split(/\s+/)[0] || 'there';
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
   return (
     <div className="min-h-full bg-slate-100 px-4 py-4 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-7xl flex-col gap-4">
-        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-brand-purple">Starter Package</p>
-              <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950">{schoolName}</h1>
-              <p className="mt-1 max-w-2xl text-sm font-medium text-slate-500">
-                A focused workspace for the essentials: students, attendance, assessments, communication and setup.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onNavigate?.('learners-admissions')}
-              disabled={!hasPageAccess(accessUser, 'learners-admissions')}
-              className="inline-flex items-center justify-center gap-2 rounded-md bg-brand-purple px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <UserPlus size={16} />
-              Add Student
-            </button>
-          </div>
+        <section className="rounded-lg border border-slate-200 bg-white px-5 py-4 shadow-sm">
+          <h1 className="text-xl font-black tracking-tight text-slate-950">{greeting}, {firstName}</h1>
+          <p className="mt-1 text-sm font-medium text-slate-500">{schoolName}</p>
         </section>
 
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

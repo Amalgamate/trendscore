@@ -11,6 +11,8 @@ const buildQuery = (params = {}) => {
 };
 
 export const dashboardAPI = {
+  getStarterMetrics: async () =>
+    fetchWithAuth('/dashboard/starter'),
   getSecondaryMetrics: async () =>
     fetchWithAuth('/dashboard/secondary'),
   getAdminMetrics: async (filter = 'today', options = {}) => {

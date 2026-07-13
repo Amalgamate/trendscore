@@ -14,6 +14,7 @@
 
 import { Router } from 'express';
 import { DashboardController } from '../controllers/dashboard.controller';
+import { getStarterDashboardMetrics } from '../controllers/starter-dashboard.controller';
 import { requireRole } from '../middleware/permissions.middleware';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
 import { asyncHandler } from '../utils/async.util';
@@ -22,6 +23,18 @@ const router = Router();
 const dashboardController = new DashboardController();
 
 // authenticate is applied in index.ts — do NOT add router.use(authenticate) here
+
+/**
+ * @route   GET /api/dashboard/starter
+ * @desc    Get lightweight, authoritative starter dashboard counts
+ * @access  Starter dashboard administration roles
+ */
+router.get(
+  '/starter',
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'RECEPTIONIST']),
+  rateLimit({ windowMs: 60_000, maxRequests: 100 }),
+  asyncHandler(getStarterDashboardMetrics)
+);
 
 /**
  * @route   GET /api/dashboard/secondary
