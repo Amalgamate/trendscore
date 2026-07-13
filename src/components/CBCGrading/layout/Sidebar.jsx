@@ -192,8 +192,8 @@ const ACCOUNTANT_NAV_GROUPS = [
   {
     label: 'Communication',
     items: [
+      { label: 'Inbox', path: 'comm-messages', icon: Mail },
       { label: 'Notices & Announcements', path: 'comm-notices', icon: Mail },
-      { label: 'Messages', path: 'comm-messages', icon: Mail },
       { label: 'Message History', path: 'comm-history', icon: FileText },
     ],
   },

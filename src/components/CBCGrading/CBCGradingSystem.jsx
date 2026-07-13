@@ -202,17 +202,19 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
 
   // ── Navigation ────────────────────────────────────────────────────────────
   const handleNavigate = useCallback((page, params = {}) => {
-    const allowedPage = getAllowedPage(page);
+    // Communications opens on the inbox; notices remain a separate destination.
+    const requestedPage = page === 'communication' ? 'comm-messages' : page;
+    const allowedPage = getAllowedPage(requestedPage);
     if (params.learner) setEditingLearner(params.learner);
     if (allowedPage === 'learners-admissions' && !params.learner && !params.learnerId) {
       localStorage.removeItem('admission-form-draft');
       setEditingLearner(null);
     }
     if (params.teacher) setEditingTeacher(params.teacher);
-    setCurrentPage(allowedPage, allowedPage === page ? params : {});
+    setCurrentPage(allowedPage, allowedPage === requestedPage ? params : {});
     try {
       const newUrl = `${window.location.pathname}${window.location.search}#/app#${allowedPage}`;
-      window.history.pushState({ appPage: allowedPage, appParams: allowedPage === page ? params : {} }, '', newUrl);
+      window.history.pushState({ appPage: allowedPage, appParams: allowedPage === requestedPage ? params : {} }, '', newUrl);
     } catch (e) {
       console.error('History push failed:', e);
     }

@@ -199,7 +199,6 @@ const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
     ? pageParams.activeTab
     : 'notices';
   const noticeTabs = [
-    { id: 'notices', label: 'Notices & Updates', icon: Megaphone, color: 'text-teal-700', active: 'border-teal-600' },
     { id: 'birthdays', label: "This Week's Birthdays", icon: Gift, color: 'text-purple-700', active: 'border-purple-600' },
   ];
 
