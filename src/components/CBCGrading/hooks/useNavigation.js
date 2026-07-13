@@ -7,7 +7,6 @@ import { hasPageAccess } from '../utils/appAccess';
 import {
   secondaryNavSections,
   SECONDARY_SCHOOL_SECTIONS,
-  SECONDARY_PATHWAY_SECTIONS,
   SECONDARY_RESULTS_SECTIONS,
   SECONDARY_BACKOFFICE_SECTIONS,
   SECONDARY_SYSTEM_SECTIONS,
@@ -24,10 +23,10 @@ import {
     TrendingUp, Zap, CheckSquare, Settings, BookOpen,
     Users2, Truck, Fingerprint, CreditCard, PieChart, BarChart3, AlertCircle,
     Package, Building2, HelpCircle, Receipt, FileText,
-    Shirt, ClipboardList, Video, PlayCircle, Gift, Wrench, Activity, Brain, MoreHorizontal, Award
+    Shirt, ClipboardList, Video, PlayCircle, Gift, Wrench, Activity, Brain, MoreHorizontal
 } from 'lucide-react';
 
-const focusModules = ['dashboard', 'learners', 'teachers', 'attendance', 'assessment', 'finance', 'communications', 'planner', 'digital-learning', 'learning-hub', 'docs-center', 'settings', 'hr', 'inventory', 'transport', 'pathway-planner'];
+const focusModules = ['dashboard', 'learners', 'teachers', 'attendance', 'assessment', 'finance', 'communications', 'planner', 'digital-learning', 'learning-hub', 'docs-center', 'settings', 'hr', 'inventory', 'transport'];
 const SCHOOL_SECTION_ORDER = ['learners', 'students', 'teachers', 'lecturers', 'attendance', 'assessment', 'secondary-assessment', 'tertiary-assessment'];
 
 const orderSectionsById = (sections = [], preferredOrder = SCHOOL_SECTION_ORDER) => {
@@ -233,21 +232,6 @@ export const allNavSections = [
                     { id: 'assess-performance-scale', label: 'Performance Scale', path: 'assess-performance-scale', permission: 'MANAGE_LEARNING_AREAS' }
                 ]
             }
-        ]
-    },
-    // ── Pathway Planner ───────────────────────────────────────────────────────
-    // Available to PRIMARY_CBC (Grade 7-9 planning) and SECONDARY (Grade 10-12 execution).
-    // Gated by ACADEMIC_SETTINGS permission — same as assessment configuration items.
-    {
-        id: 'pathway-planner',
-        label: 'Pathway Planner',
-        icon: Award,
-        permission: null,  // section visible to all — items filtered individually
-        items: [
-            { id: 'sec-pathway-overview',   label: 'Progress Overview',    path: 'sec-pathway-overview',   permission: 'VIEW_ALL_LEARNERS'      },
-            { id: 'sec-pathway-counsellor', label: 'Counsellor Workbench', path: 'sec-pathway-counsellor', permission: 'VIEW_ALL_LEARNERS'      },
-            { id: 'sec-pathways',           label: 'Pathway Catalogue',    path: 'sec-pathways',           permission: 'VIEW_ACADEMIC_SETTINGS' },
-            { id: 'sec-subjects',           label: 'Subject Catalog',      path: 'sec-subjects',           permission: 'ACADEMIC_SETTINGS'      },
         ]
     },
     {
@@ -769,8 +753,6 @@ export const useNavigation = () => {
                     items: [
                         { id: 'student-courses', label: 'My Courses', path: 'student-courses', permission: null },
                         { id: 'student-assignments', label: 'My Assignments', path: 'student-assignments', permission: null },
-                        { id: 'student-results', label: 'My Results', path: 'student-results', permission: null },
-                        { id: 'student-pathway-planner', label: 'Pathway Planner', path: 'student-pathway-planner', permission: null },
                         { id: 'student-quizzes', label: 'Quizzes & Progress', path: 'student-quizzes', permission: null }
                     ]
                 },
@@ -816,8 +798,6 @@ export const useNavigation = () => {
                     items: [
                         { id: 'student-courses', label: 'My Courses', path: 'student-courses', permission: null },
                         { id: 'student-assignments', label: 'My Assignments', path: 'student-assignments', permission: null },
-                        { id: 'student-results', label: 'My Results', path: 'student-results', permission: null },
-                        { id: 'student-pathway-planner', label: 'Pathway Planner', path: 'student-pathway-planner', permission: null },
                         { id: 'student-quizzes', label: 'Quizzes & Progress', path: 'student-quizzes', permission: null }
                     ]
                 },
