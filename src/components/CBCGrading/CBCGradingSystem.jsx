@@ -699,7 +699,7 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
         {!(user?.role === 'ACCOUNTANT' && currentPage === 'finance-dashboard') && (
           <>
             <Header user={accessUser} onLogout={handleLogout} onNavigate={handleNavigate} brandingSettings={brandingSettings} />
-            <HorizontalSubmenu currentPage={currentPage} onNavigate={handleNavigate} />
+            <HorizontalSubmenu currentPage={currentPage} pageParams={pageParams} onNavigate={handleNavigate} />
           </>
         )}
         <main ref={mainContentRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[var(--app-page-bg)]">

@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { Home } from 'lucide-react';
+import { Home, Megaphone, Gift, Rocket } from 'lucide-react';
 import { useNavigation } from '../hooks/useNavigation';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -173,7 +173,7 @@ const GroupDropdown = ({ group, currentPage, onNavigate, color }) => {
   );
 };
 
-const HorizontalSubmenu = ({ currentPage, onNavigate }) => {
+const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
   const { navSections } = useNavigation();
 
   const activeSection = useMemo(() => {
@@ -194,6 +194,15 @@ const HorizontalSubmenu = ({ currentPage, onNavigate }) => {
     () => flattenLeafItems(activeSection?.items || []).filter(i => !i.greyedOut),
     [activeSection]
   );
+
+  const noticesTab = ['notices', 'birthdays', 'changelog'].includes(pageParams?.activeTab)
+    ? pageParams.activeTab
+    : 'notices';
+  const noticeTabs = [
+    { id: 'notices', label: 'School Notices', icon: Megaphone, color: 'text-teal-700', active: 'border-teal-600' },
+    { id: 'birthdays', label: "This Week's Birthdays", icon: Gift, color: 'text-purple-700', active: 'border-purple-600' },
+    { id: 'changelog', label: "What's New", icon: Rocket, color: 'text-indigo-700', active: 'border-indigo-600' },
+  ];
 
   if (!activeSection) return null;
   if (activeSection.hideHorizontalSubmenu) return null;
@@ -253,6 +262,27 @@ const HorizontalSubmenu = ({ currentPage, onNavigate }) => {
                 {idx < flatItems.length - 1 && <span className="h-4 w-px bg-gray-300" />}
               </React.Fragment>
             ))}
+
+        {currentPage === 'comm-notices' && (
+          <>
+            <span className="mx-1 h-4 w-px bg-gray-200" />
+            {noticeTabs.map(({ id, label, icon: Icon, color, active }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onNavigate('comm-notices', { activeTab: id })}
+                className={`flex items-center gap-1.5 border-b-2 px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  noticesTab === id
+                    ? `${color} ${active}`
+                    : 'border-transparent text-gray-700 hover:bg-gray-100 hover:text-gray-900'
+                }`}
+              >
+                <Icon size={14} />
+                {label}
+              </button>
+            ))}
+          </>
+        )}
 
       </div>
     </div>
