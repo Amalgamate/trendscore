@@ -417,6 +417,15 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
     }
   };
 
+  const handleUsePhonePassword = () => {
+    if (!validatePhoneOtpRequest()) return;
+
+    setPhoneOtpStep('verify');
+    setPhonePasswordFallback(true);
+    setPhoneOtpCooldown(0);
+    setErrors({});
+  };
+
   const handlePhoneOtpVerify = async (e) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     if (!validatePhoneOtpVerify()) return;
@@ -1594,6 +1603,15 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
                       phoneOtpStep === 'request' ? 'Send Code' : phonePasswordFallback ? 'Sign In' : 'Verify & Sign In'
                     )}
                   </Button>
+                  {phoneOtpStep === 'request' && (
+                    <button
+                      type="button"
+                      onClick={handleUsePhonePassword}
+                      className="w-full text-center text-sm font-semibold text-brand-purple hover:underline"
+                    >
+                      Use password instead
+                    </button>
+                  )}
             </form>
             )} {/* end loginMode !== 'student' ternary */}
             </>
