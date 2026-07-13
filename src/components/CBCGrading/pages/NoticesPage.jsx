@@ -608,7 +608,7 @@ const NoticesPage = ({ initialTab }) => {
       {/* Tabs Section */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col">
-          <TabsList className="hidden lg:flex w-full rounded-none bg-white border-b border-gray-200 p-0 h-auto justify-start">
+          <TabsList className="hidden">
             <TabsTrigger
               value="notices"
               className="rounded-none border-b-2 border-transparent data-[state=active]:border-brand-teal data-[state=active]:bg-transparent data-[state=active]:shadow-none px-6 py-4 flex items-center gap-2"
