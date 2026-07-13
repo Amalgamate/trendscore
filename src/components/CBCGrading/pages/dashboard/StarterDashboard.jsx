@@ -93,7 +93,6 @@ const StarterDashboard = ({
     { label: 'School Settings', path: 'settings-school', icon: Settings, description: 'Manage school profile' },
   ].filter((action) => hasPageAccess(accessUser, action.path));
 
-  const schoolName = brandingSettings?.schoolName || brandingSettings?.name || 'School Portal';
   const firstName = String(user?.firstName || user?.name || '').trim().split(/\s+/)[0] || 'there';
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -103,7 +102,6 @@ const StarterDashboard = ({
       <div className="mx-auto flex max-w-7xl flex-col gap-4">
         <section className="rounded-lg border border-slate-200 bg-white px-5 py-4 shadow-sm">
           <h1 className="text-xl font-black tracking-tight text-slate-950">{greeting}, {firstName}</h1>
-          <p className="mt-1 text-sm font-medium text-slate-500">{schoolName}</p>
         </section>
 
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
