@@ -414,7 +414,6 @@ function StudentSection({ children, brandingSettings, loading, onNavigate, onEdi
 
 // ─── Quick Actions ────────────────────────────────────────────────────────────
 function QuickActions({ onNavigate }) {
-  const [expanded, setExpanded] = useState(false);
   const actions = [
     { label: 'Academic Reports', sub: 'View performance', icon: BarChart3, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', path: 'parent-portal-results' },
     { label: 'Attendance', sub: 'View records', icon: ClipboardCheck, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200', path: 'parent-portal-attendance' },
@@ -422,52 +421,42 @@ function QuickActions({ onNavigate }) {
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5">
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        className="w-full flex items-center justify-between gap-3 text-left"
-      >
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-sm font-bold text-gray-900">Quick Actions</h3>
           <p className="text-xs text-gray-500 mt-1 truncate">
             {actions.length} shortcuts · Academic reports and attendance
           </p>
         </div>
-        <ChevronDown
-          size={18}
-          className={`text-gray-400 flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
-        />
-      </button>
+      </div>
 
-      {expanded && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-          {actions.map((a) => {
-            const Icon = a.icon;
-            return (
-              <button
-                key={a.label}
-                onClick={() => onNavigate(a.path)}
-                className="flex items-center gap-4 p-4 rounded-xl hover:bg-gray-50 border border-gray-100 transition-all text-left group min-h-[74px]"
-              >
-                <div className={`w-11 h-11 rounded-lg ${a.bg} ${a.border} border flex items-center justify-center flex-shrink-0`}>
-                  <Icon size={18} className={a.color} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+        {actions.map((a) => {
+          const Icon = a.icon;
+          return (
+            <button
+              key={a.label}
+              onClick={() => onNavigate(a.path)}
+              className="flex items-center gap-4 p-4 rounded-xl hover:bg-gray-50 border border-gray-100 transition-all text-left group min-h-[74px]"
+            >
+              <div className={`w-11 h-11 rounded-lg ${a.bg} ${a.border} border flex items-center justify-center flex-shrink-0`}>
+                <Icon size={18} className={a.color} />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <p className="text-xs font-semibold text-gray-800 leading-tight truncate">{a.label}</p>
+                  {a.beta && (
+                    <span className={`flex-shrink-0 rounded-full border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide ${a.beta}`}>
+                      Beta
+                    </span>
+                  )}
                 </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <p className="text-xs font-semibold text-gray-800 leading-tight truncate">{a.label}</p>
-                    {a.beta && (
-                      <span className={`flex-shrink-0 rounded-full border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide ${a.beta}`}>
-                        Beta
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-gray-400 leading-tight mt-0.5">{a.sub}</p>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
+                <p className="text-[10px] text-gray-400 leading-tight mt-0.5">{a.sub}</p>
+              </div>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

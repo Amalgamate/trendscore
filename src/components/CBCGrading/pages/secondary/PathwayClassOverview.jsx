@@ -12,6 +12,7 @@ import {
   CheckCircle2, Loader2,
 } from 'lucide-react';
 import { classAPI, pathwayPlannerAPI } from '../../../../services/api';
+import { PathwayGuideWelcome } from './PathwayGuide';
 
 const STATUS_COLORS = {
   NONE:      '#9ca3af',
@@ -206,6 +207,7 @@ const PathwayClassOverview = ({ onNavigate, user }) => {
 
   return (
     <div className="p-6 space-y-4">
+      <PathwayGuideWelcome user={user} onNavigate={onNavigate} />
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-black text-gray-900">{junior ? 'Junior Transition Centre' : 'Senior Pathway Progress Centre'}</h1>

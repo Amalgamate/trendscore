@@ -591,6 +591,20 @@ const ParentPortalPathway = ({ onNavigate }) => {
     <div className="min-h-screen bg-[var(--app-page-bg)] pb-20">
       <div className="pt-1 space-y-3">
 
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2.5">
+          <div>
+            <p className="text-xs font-black text-indigo-900">New to pathway planning?</p>
+            <p className="text-[10px] text-indigo-700">Follow a simple guide for supporting your child.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate?.('pathway-guide')}
+            className="shrink-0 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-[10px] font-black text-indigo-700 hover:bg-indigo-100"
+          >
+            Pathway Guide
+          </button>
+        </div>
+
         {error && (
           <div className="bg-rose-50 border border-rose-200 rounded-xl p-3" role="alert">
             <p className="text-xs text-rose-700">{error}</p>

@@ -504,16 +504,27 @@ const PathwayPlanner = ({ user, onNavigate, brandingSettings }) => {
 
       {/* ── Header ── */}
       <div className="bg-[#06285a] px-4 pt-6 pb-10">
-        <p className="text-white/60 text-[11px] font-semibold uppercase tracking-wider mb-0.5">
-          My Future
-        </p>
-        <h1 className="text-white text-2xl font-black">Pathway Planner</h1>
-        {grade && (
-          <p className="text-white/60 text-[11px] mt-1">
-            {String(grade).replace('GRADE_', 'Grade ').replace('GRADE', 'Grade ')}
-            {isSecondaryStudent ? ' · Senior Secondary' : ' · Junior Secondary'}
-          </p>
-        )}
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-white/60 text-[11px] font-semibold uppercase tracking-wider mb-0.5">
+              My Future
+            </p>
+            <h1 className="text-white text-2xl font-black">Pathway Planner</h1>
+            {grade && (
+              <p className="text-white/60 text-[11px] mt-1">
+                {String(grade).replace('GRADE_', 'Grade ').replace('GRADE', 'Grade ')}
+                {isSecondaryStudent ? ' · Senior Secondary' : ' · Junior Secondary'}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate?.('pathway-guide')}
+            className="shrink-0 rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-[10px] font-black text-white hover:bg-white/20"
+          >
+            Pathway Guide
+          </button>
+        </div>
       </div>
 
       <div className="px-4 -mt-6 space-y-4">

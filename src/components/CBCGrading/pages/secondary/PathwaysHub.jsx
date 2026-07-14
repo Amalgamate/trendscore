@@ -19,6 +19,7 @@ import api, { assessmentAPI, seniorPathwayAPI, pathwayPlannerAPI } from '../../.
 import { configAPI } from '../../../../services/api/config.api';
 import EmptyState from '../../shared/EmptyState';
 import PathwayAdminConsole from './PathwayAdminConsole';
+import { PathwayGuideWelcome } from './PathwayGuide';
 
 const Pill = ({ children, className = '' }) => (
   <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest ${className}`}>
@@ -480,7 +481,7 @@ const uniqueSubjects = (subjects = []) => {
   });
 };
 
-const PathwaysHub = ({ initialMode = 'overview', adminTab, menuAction, menuActionRequest, user }) => {
+const PathwaysHub = ({ initialMode = 'overview', adminTab, menuAction, menuActionRequest, onNavigate, user }) => {
   const [loading, setLoading] = useState(true);
   const [pathways, setPathways] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -688,6 +689,7 @@ const PathwaysHub = ({ initialMode = 'overview', adminTab, menuAction, menuActio
 
   return (
     <div className="p-6 space-y-4">
+      <PathwayGuideWelcome user={user} onNavigate={onNavigate} />
       <div className="-mt-2 flex flex-wrap items-center justify-between gap-2">
         <button
           type="button"
@@ -697,16 +699,26 @@ const PathwaysHub = ({ initialMode = 'overview', adminTab, menuAction, menuActio
           <ArrowLeft size={16} />
           Back
         </button>
-        {mode === 'overview' && ['SUPER_ADMIN', 'ADMIN'].includes(String(user?.role || '').toUpperCase()) && (
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
-            onClick={seedStarterData}
-            disabled={seedingStarterData}
-            className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold uppercase tracking-widest text-white hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-60"
+            onClick={() => onNavigate?.('pathway-guide')}
+            className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
           >
-            {seedingStarterData ? 'Setting up…' : 'Set up starter data'}
+            <BookOpen size={16} />
+            Pathway guide
           </button>
-        )}
+          {mode === 'overview' && ['SUPER_ADMIN', 'ADMIN'].includes(String(user?.role || '').toUpperCase()) && (
+            <button
+              type="button"
+              onClick={seedStarterData}
+              disabled={seedingStarterData}
+              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold uppercase tracking-widest text-white hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-60"
+            >
+              {seedingStarterData ? 'Setting up…' : 'Set up starter data'}
+            </button>
+          )}
+        </div>
       </div>
 
       {starterDataMessage && (

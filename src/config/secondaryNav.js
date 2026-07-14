@@ -86,6 +86,7 @@ export const secondaryNavSections = [
       { id: 'pathways-admin-overview', label: 'Overview',             path: 'pathways-admin',         params: { tab: 'dashboard' }, permission: 'MANAGE_PATHWAY_CATALOG' },
       { id: 'sec-pathway-overview',   label: 'Progress Dashboard',   path: 'sec-pathway-overview',   permission: 'VIEW_ALL_LEARNERS'      },
       { id: 'sec-pathway-counsellor', label: 'Counsellor Workbench', path: 'sec-pathway-counsellor', permission: 'VIEW_ALL_LEARNERS'      },
+      { id: 'pathway-guide',          label: 'Guide',                path: 'pathway-guide',          permission: null                     },
       {
         id: 'pathway-catalogues',
         label: 'Catalogues',

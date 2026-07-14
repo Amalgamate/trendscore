@@ -544,6 +544,7 @@ export const allNavSections = [
             { id: 'pathways-admin-overview', label: 'Overview',             path: 'pathways-admin',         params: { tab: 'dashboard' }, permission: 'MANAGE_PATHWAY_CATALOG' },
             { id: 'sec-pathway-overview',   label: 'Transition Readiness', path: 'sec-pathway-overview',   permission: 'VIEW_ALL_LEARNERS'      },
             { id: 'sec-pathway-counsellor', label: 'Transition Cases',     path: 'sec-pathway-counsellor', permission: 'VIEW_ALL_LEARNERS'      },
+            { id: 'pathway-guide',          label: 'Guide',                path: 'pathway-guide',          permission: null                     },
             {
                 id: 'pathway-catalogues',
                 label: 'Catalogues',

@@ -103,6 +103,7 @@ const PathwaysHub = lazy(() => import('../pages/secondary/PathwaysHub'));
 const SubjectManagement = lazy(() => import('../pages/secondary/SubjectManagement'));
 const PathwayCounsellorWorkbench = lazy(() => import('../pages/secondary/PathwayCounsellorWorkbench'));
 const PathwayClassOverview = lazy(() => import('../pages/secondary/PathwayClassOverview'));
+const PathwayGuide = lazy(() => import('../pages/secondary/PathwayGuide'));
 const FormGroups = lazy(() => import('../pages/secondary/FormGroups'));
 const ReportsHub = lazy(() => import('../pages/secondary/ReportsHub'));
 const ResultsWorkbench = lazy(() => import('../pages/secondary/ResultsWorkbench'));
@@ -864,12 +865,13 @@ const PageRouter = ({
 
           case 'system-maintenance': return <SystemMaintenancePage />;
 
-          case 'sec-pathways':            return <PathwaysHub menuAction={pageParams?.action} menuActionRequest={pageParams} user={user} />;
-          case 'sec-school-catalogue':    return <PathwaysHub initialMode="schools" user={user} />;
-          case 'pathways-admin':          return <PathwaysHub initialMode="admin" adminTab={pageParams?.tab} user={user} />;
+          case 'sec-pathways':            return <PathwaysHub menuAction={pageParams?.action} menuActionRequest={pageParams} onNavigate={handleNavigate} user={user} />;
+          case 'sec-school-catalogue':    return <PathwaysHub initialMode="schools" onNavigate={handleNavigate} user={user} />;
+          case 'pathways-admin':          return <PathwaysHub initialMode="admin" adminTab={pageParams?.tab} onNavigate={handleNavigate} user={user} />;
           case 'sec-subjects':            return <SubjectManagement />;
           case 'sec-pathway-counsellor':  return <PathwayCounsellorWorkbench onNavigate={handleNavigate} initialClassId={pageParams?.classId} user={user} />;
           case 'sec-pathway-overview':    return <PathwayClassOverview onNavigate={handleNavigate} user={user} />;
+          case 'pathway-guide':           return <PathwayGuide onNavigate={handleNavigate} user={user} />;
           case 'sec-form-groups':         return <FormGroups />;
           case 'sec-schemes':         return <PlannerLayout currentPage="planner-schemes" onNavigate={handleNavigate} />;
           case 'sec-mark-entry':      return <ErrorBoundary><SummativeAssessmentRouter learners={learners} defaultTestType={pageParams.defaultTestType} onBack={() => handleNavigate('dashboard')} onNavigate={handleNavigate} brandingSettings={brandingSettings} /></ErrorBoundary>;

@@ -163,6 +163,7 @@ const ROLE_PAGE_ALLOWLIST = {
     'student-profile',
     'student-pathway-planner',
     'student-career-explorer',
+    'pathway-guide',
     'settings-profile'
   ]),
   PARENT: new Set([
@@ -180,6 +181,7 @@ const ROLE_PAGE_ALLOWLIST = {
     'fees-statements',
     'events-calendar',
     'learner-profile',
+    'pathway-guide',
     'settings-profile'
   ])
 };
@@ -310,6 +312,7 @@ const INSTITUTION_AGNOSTIC_PAGES = new Set([
   'sec-pathways',
   'sec-school-catalogue',
   'pathways-admin',
+  'pathway-guide',
   'parent-portal-pathway',
   'parent-portal-schools',
   'student-pathway-planner',
