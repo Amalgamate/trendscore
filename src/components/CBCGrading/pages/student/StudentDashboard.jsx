@@ -811,7 +811,8 @@ const StudentDashboard = ({ user, onNavigate }) => {
   const statTiles = [
     { label: 'Assignments', value: fmt(assignments.length), sub: `${pendingCount} pending`, icon: ClipboardList, accent: '#030b82', spark: true,  onClick: () => onNavigate('student-assignments') },
     { label: 'Attendance',  value: attendanceRate ? pct(attendanceRate) : '--', sub: 'Current term', icon: CheckCircle2, accent: '#ff7900', spark: true,  onClick: () => onNavigate('attendance-analytics') },
-    { label: 'Avg Score',   value: avgScore ? `${avgScore}%` : '--', sub: reportTerm || 'Current term', icon: TrendingUp, accent: '#8b5cf6', spark: false, onClick: () => setReportExpanded(true) },
+    { label: 'Avg Score',   value: avgScore ? `${avgScore}%` : '--', sub: reportTerm || 'Current term', icon: TrendingUp, accent: '#8b5cf6', spark: false, onClick: () => onNavigate('student-results') },
+    { label: 'My Pathway',  value: 'Explore',               sub: 'Your future',   icon: Zap,          accent: '#059669', spark: false, onClick: () => onNavigate('student-pathway-planner') },
     { label: 'Messages',    value: fmt(messages),  sub: 'Inbox',               icon: MessageSquare, accent: '#06285a',  spark: false, onClick: () => onNavigate('communication') },
   ];
 
@@ -1028,11 +1029,20 @@ const StudentDashboard = ({ user, onNavigate }) => {
                 <EmptyPanel icon={Award} title="No report card data yet" />
               )}
 
-              {/* PDF download */}
-              <button type="button"
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-[#06285a]/20 bg-[#06285a]/5 py-2.5 text-[11px] font-black uppercase tracking-wider text-[#06285a] transition hover:bg-[#06285a]/10">
-                <Download size={13} /> Download Report Card (PDF)
-              </button>
+              {/* PDF download + full results link */}
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => onNavigate('student-results')}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-[#030b82]/30 bg-[#030b82]/5 py-2.5 text-[11px] font-black uppercase tracking-wider text-[#030b82] transition hover:bg-[#030b82]/10"
+                >
+                  <BarChart2 size={13} /> View My Results
+                </button>
+                <button type="button"
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-[#06285a]/20 bg-[#06285a]/5 py-2.5 text-[11px] font-black uppercase tracking-wider text-[#06285a] transition hover:bg-[#06285a]/10">
+                  <Download size={13} /> Download PDF
+                </button>
+              </div>
             </Panel>
           </div>
 

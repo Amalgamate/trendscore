@@ -359,7 +359,7 @@ enterpriseRouter.post(
 );
 
 enterpriseRouter.post(
-  '/marketplace/:id/rate',
+  '/marketplace/purchases/:id/rate',
   requirePermission('MARKETPLACE_PURCHASE'),
   requireCsrf,
   lmsController.rateResource
@@ -562,6 +562,18 @@ router.get(
   '/my-assignments',
   requirePermission('LEARNING_VIEW'),
   lmsController.getStudentAssignments
+);
+
+/**
+ * GET /api/lms/children/:learnerId/assignments
+ * Parent-facing: assignments for one of the parent's children, with submission
+ * status per assignment. Also accessible by the student themselves and staff.
+ * Batch 4, Assessment UX Overhaul.
+ */
+router.get(
+  '/children/:learnerId/assignments',
+  requirePermission('LEARNING_VIEW'),
+  lmsController.getChildAssignments
 );
 
 /** PUT /api/lms/my-progress — update student course progress */

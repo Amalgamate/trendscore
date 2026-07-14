@@ -94,10 +94,15 @@ const ParentPortalAttendance = lazy(() => import('../pages/parent-portal/ParentP
 const ParentPortalTransport = lazy(() => import('../pages/parent-portal/ParentPortalTransport'));
 const ParentPortalDocuments = lazy(() => import('../pages/parent-portal/ParentPortalDocuments'));
 const ParentPortalSupport = lazy(() => import('../pages/parent-portal/ParentPortalSupport'));
+const ParentPortalHomework = lazy(() => import('../pages/parent-portal/ParentPortalHomework'));
+const ParentPortalPathway = lazy(() => import('../pages/parent-portal/ParentPortalPathway'));
+const ParentPortalSchools = lazy(() => import('../pages/parent-portal/ParentPortalSchools'));
 const UniformAllocationPage = lazy(() => import('../pages/UniformAllocationPage'));
 const IDPrintingPage = lazy(() => import('../pages/IDPrintingPage'));
 const PathwaysHub = lazy(() => import('../pages/secondary/PathwaysHub'));
 const SubjectManagement = lazy(() => import('../pages/secondary/SubjectManagement'));
+const PathwayCounsellorWorkbench = lazy(() => import('../pages/secondary/PathwayCounsellorWorkbench'));
+const PathwayClassOverview = lazy(() => import('../pages/secondary/PathwayClassOverview'));
 const FormGroups = lazy(() => import('../pages/secondary/FormGroups'));
 const ReportsHub = lazy(() => import('../pages/secondary/ReportsHub'));
 const ResultsWorkbench = lazy(() => import('../pages/secondary/ResultsWorkbench'));
@@ -168,6 +173,7 @@ const LMSLessonBuilderPage = lazy(() => import('../pages/lms/lessons/LessonBuild
 const LMSRevisionLibraryPage = lazy(() => import('../pages/lms/revision/RevisionLibraryPage'));
 const MarketplacePage = lazy(() => import('../pages/lms/MarketplacePage'));
 const MarketplaceCreatePage = lazy(() => import('../pages/lms/MarketplaceCreatePage'));
+const LearningAnalyticsPage = lazy(() => import('../pages/lms/analytics/LearningAnalyticsPage'));
 
 // Student Portal
 const MyCourses = lazy(() => import('../pages/student/MyCourses'));
@@ -175,6 +181,9 @@ const CourseViewer = lazy(() => import('../pages/student/CourseViewer'));
 const MyAssignments = lazy(() => import('../pages/student/MyAssignments'));
 const MyProgress = lazy(() => import('../pages/student/MyProgress'));
 const StudentLearningTab = lazy(() => import('../pages/student/StudentLearningTab'));
+const MyResults = lazy(() => import('../pages/student/MyResults'));
+const PathwayPlanner = lazy(() => import('../pages/student/PathwayPlanner'));
+const CareerExplorer = lazy(() => import('../pages/student/CareerExplorer'));
 
 // Mobile Components
 const MobileUserManagement = lazy(() => import('../dashboard/mobile/MobileUserManagement'));
@@ -276,6 +285,9 @@ const PARENT_PORTAL_TITLES = {
   'parent-portal-transport': 'Transport',
   'parent-portal-documents': 'Documents',
   'parent-portal-support': 'Support',
+  'parent-portal-homework': 'Homework',
+  'parent-portal-pathway':  'Pathway Planner',
+  'parent-portal-schools':  'School Shortlist',
   'fees-statements': 'Student Statements',
 };
 
@@ -592,6 +604,12 @@ const PageRouter = ({
             return renderParentPortalShell(<ParentPortalDocuments onNavigate={handleNavigate} />);
           case 'parent-portal-support':
             return renderParentPortalShell(<ParentPortalSupport onNavigate={handleNavigate} />);
+          case 'parent-portal-homework':
+            return renderParentPortalShell(<ParentPortalHomework onNavigate={handleNavigate} />);
+          case 'parent-portal-pathway':
+            return renderParentPortalShell(<ParentPortalPathway onNavigate={handleNavigate} />);
+          case 'parent-portal-schools':
+            return renderParentPortalShell(<ParentPortalSchools onNavigate={handleNavigate} />);
 
           // Others
           case 'timetable': return <PlannerLayout currentPage="planner-timetable" onNavigate={handleNavigate} />;
@@ -729,12 +747,15 @@ const PageRouter = ({
           case 'learning-revision': return <LMSRevisionLibraryPage onNavigate={handleNavigate} />;
           case 'learning-marketplace': return <MarketplacePage onNavigate={handleNavigate} />;
           case 'learning-marketplace-create': return <MarketplaceCreatePage onNavigate={handleNavigate} pageParams={pageParams} />;
-          case 'learning-analytics': return <LMSPlaceholder title="Learning Analytics" description="Learning engagement and progress analytics are being prepared for the Digital Learning Hub." />;
+          case 'learning-analytics': return <LearningAnalyticsPage />;
           case 'learning-settings': return <LMSSettingsPage user={user} onNavigate={handleNavigate} />;
 
           // Student Portal
           case 'student-courses': return <ErrorBoundary><MyCourses onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'student-assignments': return <ErrorBoundary><MyAssignments onNavigate={handleNavigate} /></ErrorBoundary>;
+          case 'student-results': return <ErrorBoundary><MyResults user={user} onNavigate={handleNavigate} /></ErrorBoundary>;
+          case 'student-pathway-planner': return <ErrorBoundary><PathwayPlanner user={user} onNavigate={handleNavigate} brandingSettings={brandingSettings} /></ErrorBoundary>;
+          case 'student-career-explorer': return <ErrorBoundary><CareerExplorer user={user} onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'student-quizzes':
           case 'student-progress': return <ErrorBoundary><MyProgress onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'student-profile':
@@ -786,7 +807,7 @@ const PageRouter = ({
           case 'inventory-assets': return <AssetRegister />;
           case 'inventory-class-assignments': return <AssetAssignments />;
 
-          case 'docs-center': return <DocumentCenter />;
+          case 'docs-center': return <DocumentCenter initialCategory={pageParams?.category} />;
 
           case 'fees-structure': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="structure" />;
           case 'fees-types': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="types" />;
@@ -843,10 +864,13 @@ const PageRouter = ({
 
           case 'system-maintenance': return <SystemMaintenancePage />;
 
-          // Secondary School modules
-          case 'sec-pathways':        return <PathwaysHub />;
-          case 'sec-subjects':        return <SubjectManagement />;
-          case 'sec-form-groups':     return <FormGroups />;
+          case 'sec-pathways':            return <PathwaysHub menuAction={pageParams?.action} menuActionRequest={pageParams} user={user} />;
+          case 'sec-school-catalogue':    return <PathwaysHub initialMode="schools" user={user} />;
+          case 'pathways-admin':          return <PathwaysHub initialMode="admin" adminTab={pageParams?.tab} user={user} />;
+          case 'sec-subjects':            return <SubjectManagement />;
+          case 'sec-pathway-counsellor':  return <PathwayCounsellorWorkbench onNavigate={handleNavigate} initialClassId={pageParams?.classId} user={user} />;
+          case 'sec-pathway-overview':    return <PathwayClassOverview onNavigate={handleNavigate} user={user} />;
+          case 'sec-form-groups':         return <FormGroups />;
           case 'sec-schemes':         return <PlannerLayout currentPage="planner-schemes" onNavigate={handleNavigate} />;
           case 'sec-mark-entry':      return <ErrorBoundary><SummativeAssessmentRouter learners={learners} defaultTestType={pageParams.defaultTestType} onBack={() => handleNavigate('dashboard')} onNavigate={handleNavigate} brandingSettings={brandingSettings} /></ErrorBoundary>;
           case 'sec-cats':            return <ErrorBoundary><SummativeAssessmentRouter learners={learners} defaultTestType="CAT" onBack={() => handleNavigate('dashboard')} onNavigate={handleNavigate} brandingSettings={brandingSettings} /></ErrorBoundary>;

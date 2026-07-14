@@ -54,6 +54,8 @@ import mpesaRoutes from './mpesa.routes';
 import gitNotificationRoutes from './gitNotification.routes';
 import secondaryRoutes from './secondary.routes';
 import seniorPathwayRoutes from './seniorPathway.routes';
+import pathwayPlannerRoutes from './pathwayPlanner.routes';
+import careerRoutes, { learnerCareerRouter } from './career.routes';
 import dutyRosterRoutes from './dutyRoster.routes';
 import systemLogsRoutes from './systemLogs.routes';
 import approvalRoutes from './approval.routes';
@@ -102,9 +104,19 @@ router.use('/cbc', requireApp('gradebook'), cbcRoutes);
 router.use('/grading', requireApp('gradebook'), gradingRoutes);
 router.use('/config', configRoutes);
 router.use('/learning-areas', learningAreaRoutes);
-router.use('/pathways', requireInstitutionType('SECONDARY'), pathwayRoutes);
-router.use('/pathways', requireInstitutionType('SECONDARY'), pathwayRecommendationRoutes);
-router.use('/senior-pathways', requireInstitutionType('SECONDARY'), seniorPathwayRoutes);
+router.use('/pathways', pathwayRoutes);
+// Transition recommendations use Grade 7–9 evidence in PRIMARY_CBC and remain
+// readable later as historical evidence. Route-level stage guards enforce the
+// learner workflow; the senior catalogue stays SECONDARY-only above.
+router.use('/pathways', pathwayRecommendationRoutes);
+// Catalogue and combinations are shared transition-planning reference data.
+// Secondary execution operations carry their own institution/stage guards.
+router.use('/senior-pathways', seniorPathwayRoutes);
+// Pathway Planner is available to ALL institution types (PRIMARY_CBC Grade 7-9 planning
+// + SECONDARY Grade 10-12 execution). Individual controllers validate grade eligibility.
+router.use('/pathway-planner', pathwayPlannerRoutes);
+router.use('/careers', careerRoutes);
+router.use('/learners/:learnerId', learnerCareerRouter);
 router.use('/workflow', workflowRoutes);
 router.use('/approvals', approvalRoutes);
 router.use('/approval-workflows', approvalWorkflowRoutes);

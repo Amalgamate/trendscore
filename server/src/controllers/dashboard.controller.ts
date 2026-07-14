@@ -2518,9 +2518,14 @@ export class DashboardController {
                     grade: r.grade,
                     title: r.test.title
                 }));
-                const homeworkCount = child.formativeAssessments.filter(a => a.type === 'ASSIGNMENT').length
-                    || Math.min(5, child.formativeAssessments.length);
-                const newMessages = Math.min(3, Math.max(0, child.formativeAssessments.length - 1));
+                // homeworkCount: real count of LearningAssignment records is fetched
+                // by the dedicated GET /api/lms/children/:learnerId/assignments endpoint
+                // (Batch 4). Dashboard payload carries 0 here until that endpoint is
+                // consumed by the frontend — no fabricated fallback.
+                const homeworkCount = 0;
+                // newMessages: real messaging is not yet wired to this dashboard.
+                // Return 0 rather than a fabricated heuristic.
+                const newMessages = 0;
 
                 return {
                     id: child.id, 

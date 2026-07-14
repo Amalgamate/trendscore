@@ -24,6 +24,8 @@ import { LMSResourceService } from '../services/lms-resource.service';
 import { LMSMarketplaceService } from '../services/lms-marketplace.service';
 import { LMSAnalyticsService } from '../services/lms-analytics.service';
 import { LMSService } from '../services/lms.service';
+import { LMSAIService } from '../services/lms-ai.service';
+import { LMSAchievementsService } from '../services/lms-achievements.service';
 import { ApiError } from '../utils/error.util';
 import prisma from '../config/database';
 
@@ -66,6 +68,15 @@ async function resolveLearnerId(req: AuthRequest): Promise<string> {
 }
 
 const NOT_IMPLEMENTED = { success: false, message: 'Not implemented yet' };
+
+function isZodError(err: any): boolean {
+  return Boolean(err && (err.name === 'ZodError' || Array.isArray(err.issues)));
+}
+
+function zodMessage(err: any): string {
+  const issue = err?.issues?.[0];
+  return issue?.message || 'Invalid request payload';
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LESSONS
@@ -1052,12 +1063,24 @@ export const browseListings = async (req: AuthRequest, res: Response): Promise<v
       res.status(400).json({ success: false, message: 'School context is required' });
       return;
     }
-    const { listingType, minPrice, maxPrice, page, limit } = req.query;
+    // Accept both legacy and UI-friendly query param names.
+    const {
+      listingType,
+      type,
+      minPrice,
+      priceMin,
+      maxPrice,
+      priceMax,
+      search,
+      page,
+      limit,
+    } = req.query as any;
     const result = await LMSMarketplaceService.browseListings(
       {
-        ...(listingType && { listingType: listingType as any }),
-        ...(minPrice !== undefined && { minPrice: Number(minPrice) }),
-        ...(maxPrice !== undefined && { maxPrice: Number(maxPrice) }),
+        ...(search && { search: String(search) }),
+        ...((type || listingType) && { type: String(type || listingType) }),
+        ...((priceMin ?? minPrice) !== undefined && { priceMin: Number(priceMin ?? minPrice) }),
+        ...((priceMax ?? maxPrice) !== undefined && { priceMax: Number(priceMax ?? maxPrice) }),
         ...(page !== undefined && { page: Number(page) }),
         ...(limit !== undefined && { limit: Number(limit) }),
       },
@@ -1183,10 +1206,7 @@ export const initiatePurchase = async (req: AuthRequest, res: Response): Promise
       return;
     }
     const { phone, firstName, lastName } = req.body ?? {};
-    if (!phone) {
-      res.status(400).json({ success: false, message: 'phone is required' });
-      return;
-    }
+    // NOTE: phone is only required for PAID listings. The service enforces this.
     const result = await LMSMarketplaceService.initiatePurchase(
       req.params.id,
       buyerId,
@@ -1278,6 +1298,7 @@ export const rateResource = async (req: AuthRequest, res: Response): Promise<voi
       return;
     }
     const { rating } = req.body ?? {};
+    // Route param is the purchaseId (POST /api/lms/marketplace/purchases/:id/rate)
     const listing = await LMSMarketplaceService.rateResource(req.params.id, Number(rating), buyerId);
     res.status(200).json({ success: true, data: listing });
   } catch (error: any) {
@@ -1314,39 +1335,240 @@ export const downloadPurchase = async (req: AuthRequest, res: Response): Promise
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const aiAsk = (_req: AuthRequest, res: Response): void => {
-  res.status(501).json(NOT_IMPLEMENTED);
+  void (async () => {
+    try {
+      const schoolId = _req.school?.id;
+      const userId = _req.user?.userId;
+      if (!schoolId) {
+        res.status(400).json({ success: false, message: 'School context is required' });
+        return;
+      }
+      if (!userId) {
+        res.status(401).json({ success: false, message: 'Authentication required' });
+        return;
+      }
+
+      const data = await LMSAIService.ask(_req.body, { schoolId, userId });
+      res.status(200).json({ success: true, data });
+    } catch (error: any) {
+      if (isZodError(error)) {
+        res.status(400).json({ success: false, message: zodMessage(error), code: 'LMS_AI_INVALID_INPUT' });
+      } else if (error instanceof ApiError) {
+        res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+      } else {
+        console.error('[LMS] aiAsk error:', error?.message ?? error);
+        res.status(500).json({ success: false, message: 'AI request failed' });
+      }
+    }
+  })();
 };
 
-export const aiSimplify = (_req: AuthRequest, res: Response): void => {
-  res.status(501).json(NOT_IMPLEMENTED);
+export const aiSimplify = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const schoolId = req.school?.id;
+    const userId = req.user?.userId;
+    if (!schoolId) {
+      res.status(400).json({ success: false, message: 'School context is required' });
+      return;
+    }
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+    const data = await LMSAIService.simplify(req.body, { schoolId, userId });
+    res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    if (isZodError(error)) {
+      res.status(400).json({ success: false, message: zodMessage(error), code: 'LMS_AI_INVALID_INPUT' });
+    } else if (error instanceof ApiError) {
+      res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+    } else {
+      console.error('[LMS] aiSimplify error:', error?.message ?? error);
+      res.status(500).json({ success: false, message: 'AI request failed' });
+    }
+  }
 };
 
-export const aiFlashcards = (_req: AuthRequest, res: Response): void => {
-  res.status(501).json(NOT_IMPLEMENTED);
+export const aiFlashcards = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const schoolId = req.school?.id;
+    const userId = req.user?.userId;
+    if (!schoolId) {
+      res.status(400).json({ success: false, message: 'School context is required' });
+      return;
+    }
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+    const data = await LMSAIService.flashcards(req.body, { schoolId, userId });
+    res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    if (isZodError(error)) {
+      res.status(400).json({ success: false, message: zodMessage(error), code: 'LMS_AI_INVALID_INPUT' });
+    } else if (error instanceof ApiError) {
+      res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+    } else {
+      console.error('[LMS] aiFlashcards error:', error?.message ?? error);
+      res.status(500).json({ success: false, message: 'AI request failed' });
+    }
+  }
 };
 
-export const aiPractice = (_req: AuthRequest, res: Response): void => {
-  res.status(501).json(NOT_IMPLEMENTED);
+export const aiPractice = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const schoolId = req.school?.id;
+    const userId = req.user?.userId;
+    if (!schoolId) {
+      res.status(400).json({ success: false, message: 'School context is required' });
+      return;
+    }
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+    const data = await LMSAIService.practice(req.body, { schoolId, userId });
+    res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    if (isZodError(error)) {
+      res.status(400).json({ success: false, message: zodMessage(error), code: 'LMS_AI_INVALID_INPUT' });
+    } else if (error instanceof ApiError) {
+      res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+    } else {
+      console.error('[LMS] aiPractice error:', error?.message ?? error);
+      res.status(500).json({ success: false, message: 'AI request failed' });
+    }
+  }
 };
 
-export const aiExplainMistake = (_req: AuthRequest, res: Response): void => {
-  res.status(501).json(NOT_IMPLEMENTED);
+export const aiExplainMistake = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const schoolId = req.school?.id;
+    const userId = req.user?.userId;
+    if (!schoolId) {
+      res.status(400).json({ success: false, message: 'School context is required' });
+      return;
+    }
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+    const data = await LMSAIService.explainMistake(req.body, { schoolId, userId });
+    res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    if (isZodError(error)) {
+      res.status(400).json({ success: false, message: zodMessage(error), code: 'LMS_AI_INVALID_INPUT' });
+    } else if (error instanceof ApiError) {
+      res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+    } else {
+      console.error('[LMS] aiExplainMistake error:', error?.message ?? error);
+      res.status(500).json({ success: false, message: 'AI request failed' });
+    }
+  }
 };
 
-export const aiGenerateAssignment = (_req: AuthRequest, res: Response): void => {
-  res.status(501).json(NOT_IMPLEMENTED);
+export const aiGenerateAssignment = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const schoolId = req.school?.id;
+    const userId = req.user?.userId;
+    if (!schoolId) {
+      res.status(400).json({ success: false, message: 'School context is required' });
+      return;
+    }
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+    const data = await LMSAIService.generateAssignment(req.body, { schoolId, userId });
+    res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    if (isZodError(error)) {
+      res.status(400).json({ success: false, message: zodMessage(error), code: 'LMS_AI_INVALID_INPUT' });
+    } else if (error instanceof ApiError) {
+      res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+    } else {
+      console.error('[LMS] aiGenerateAssignment error:', error?.message ?? error);
+      res.status(500).json({ success: false, message: 'AI request failed' });
+    }
+  }
 };
 
-export const aiGenerateLessonPlan = (_req: AuthRequest, res: Response): void => {
-  res.status(501).json(NOT_IMPLEMENTED);
+export const aiGenerateLessonPlan = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const schoolId = req.school?.id;
+    const userId = req.user?.userId;
+    if (!schoolId) {
+      res.status(400).json({ success: false, message: 'School context is required' });
+      return;
+    }
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+    const data = await LMSAIService.generateLessonPlan(req.body, { schoolId, userId });
+    res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    if (isZodError(error)) {
+      res.status(400).json({ success: false, message: zodMessage(error), code: 'LMS_AI_INVALID_INPUT' });
+    } else if (error instanceof ApiError) {
+      res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+    } else {
+      console.error('[LMS] aiGenerateLessonPlan error:', error?.message ?? error);
+      res.status(500).json({ success: false, message: 'AI request failed' });
+    }
+  }
 };
 
-export const aiGenerateRubric = (_req: AuthRequest, res: Response): void => {
-  res.status(501).json(NOT_IMPLEMENTED);
+export const aiGenerateRubric = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const schoolId = req.school?.id;
+    const userId = req.user?.userId;
+    if (!schoolId) {
+      res.status(400).json({ success: false, message: 'School context is required' });
+      return;
+    }
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+    const data = await LMSAIService.generateRubric(req.body, { schoolId, userId });
+    res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    if (isZodError(error)) {
+      res.status(400).json({ success: false, message: zodMessage(error), code: 'LMS_AI_INVALID_INPUT' });
+    } else if (error instanceof ApiError) {
+      res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+    } else {
+      console.error('[LMS] aiGenerateRubric error:', error?.message ?? error);
+      res.status(500).json({ success: false, message: 'AI request failed' });
+    }
+  }
 };
 
-export const aiQuestionBank = (_req: AuthRequest, res: Response): void => {
-  res.status(501).json(NOT_IMPLEMENTED);
+export const aiQuestionBank = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const schoolId = req.school?.id;
+    const userId = req.user?.userId;
+    if (!schoolId) {
+      res.status(400).json({ success: false, message: 'School context is required' });
+      return;
+    }
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+    const data = await LMSAIService.questionBank(req.body, { schoolId, userId });
+    res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    if (isZodError(error)) {
+      res.status(400).json({ success: false, message: zodMessage(error), code: 'LMS_AI_INVALID_INPUT' });
+    } else if (error instanceof ApiError) {
+      res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+    } else {
+      console.error('[LMS] aiQuestionBank error:', error?.message ?? error);
+      res.status(500).json({ success: false, message: 'AI request failed' });
+    }
+  }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1971,6 +2193,74 @@ export const getStudentAssignments = async (req: AuthRequest, res: Response): Pr
     } else {
       console.error('[LMS] getStudentAssignments error:', error?.message ?? error);
       res.status(500).json({ success: false, message: 'Failed to retrieve student assignments' });
+    }
+  }
+};
+
+/**
+ * GET /api/lms/children/:learnerId/assignments
+ * Returns published assignments (with submission status) for one of the
+ * authenticated parent's children, or the authenticated student's own record.
+ *
+ * PARENT → own children only (via parentAccessService).
+ * STUDENT → self only.
+ * Staff roles → unrestricted (useful for teacher/admin views of a learner).
+ *
+ * Batch 4, Assessment UX Overhaul.
+ */
+export const getChildAssignments = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { learnerId } = req.params;
+    const role   = req.user?.role ?? '';
+    const userId = req.user?.userId;
+    const schoolId = req.school?.id;
+
+    if (!schoolId) {
+      res.status(400).json({ success: false, message: 'School context is required' });
+      return;
+    }
+
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+
+    // ── Access control ───────────────────────────────────────────────────
+    if (role === 'STUDENT') {
+      const selfLearner = await lmsService.getStudentLearnerByUserId(userId);
+      if (selfLearner.id !== learnerId) {
+        res.status(403).json({ success: false, message: 'Access denied: not your own record' });
+        return;
+      }
+    } else if (role === 'PARENT') {
+      const learner = await prisma.learner.findUnique({
+        where: { id: learnerId },
+        select: { parentId: true },
+      });
+      if (!learner) {
+        res.status(404).json({ success: false, message: 'Learner not found' });
+        return;
+      }
+      if (learner.parentId !== userId) {
+        // Also allow access via parentAccessService (linked family accounts)
+        const { parentAccessService: pas } = await import('../services/parent-access.service');
+        const accessible = await pas.getAccessibleLearnerIds(userId);
+        if (!accessible.includes(learnerId)) {
+          res.status(403).json({ success: false, message: 'Access denied: not your child' });
+          return;
+        }
+      }
+    }
+    // TEACHER / HEAD_TEACHER / ADMIN / SUPER_ADMIN: no extra restriction
+
+    const result = await LMSAssignmentService.getChildAssignments(learnerId, schoolId);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    if (error instanceof ApiError) {
+      res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+    } else {
+      console.error('[LMS] getChildAssignments error:', error?.message ?? error);
+      res.status(500).json({ success: false, message: 'Failed to retrieve child assignments' });
     }
   }
 };

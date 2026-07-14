@@ -9,11 +9,55 @@ import { Term } from '@prisma/client';
 import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
 import { gradingService } from '../services/grading.service';
+import { parentAccessService } from '../services/parent-access.service';
 import { getInstitutionType } from '../utils/institutionNormalizer';
 import * as reportService from '../services/report.service';
 
 import logger from '../utils/logger';
 const CATEGORY_BUCKETS = ['STEM', 'SOCIAL', 'ARTS'] as const;
+
+/**
+ * Canonical grading vocabulary for this module (Batch 1, Assessment UX Overhaul):
+ * `cbcGrade` (the school-configured CBC band, e.g. EE/ME/AE/BE) is the PRIMARY
+ * grade shown to parents/students. `percentage` is supporting detail only.
+ * Legacy 8-4-4-style letter grades must not be computed or displayed for CBC
+ * learners — use `cbcGrade`/`gradeCode` wherever a grade badge is needed.
+ */
+
+/**
+ * Verify the requester is allowed to view this learner's assessment data.
+ * STUDENT → self only. PARENT → own children only (via parentAccessService,
+ * which also covers linked family accounts). All other roles (TEACHER,
+ * HEAD_TEACHER, ADMIN, SUPER_ADMIN, HEAD_OF_CURRICULUM) are unrestricted.
+ * Throws ApiError(401/403) if access is not permitted.
+ */
+async function assertLearnerAccess(req: AuthRequest, learnerId: string): Promise<void> {
+  const role = req.user?.role ?? '';
+  const userId = req.user?.userId;
+
+  if (role === 'STUDENT') {
+    if (!userId) throw new ApiError(401, 'Authentication required');
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { username: true } });
+    const selfLearner = user?.username
+      ? await prisma.learner.findUnique({ where: { admissionNumber: user.username }, select: { id: true } })
+      : null;
+    if (!selfLearner || selfLearner.id !== learnerId) {
+      throw new ApiError(403, 'Access denied: not your own record');
+    }
+    return;
+  }
+
+  if (role === 'PARENT') {
+    if (!userId) throw new ApiError(401, 'Authentication required');
+    const accessibleLearnerIds = await parentAccessService.getAccessibleLearnerIds(userId);
+    if (!accessibleLearnerIds.includes(learnerId)) {
+      throw new ApiError(403, 'Access denied: not your child');
+    }
+    return;
+  }
+
+  // TEACHER / HEAD_TEACHER / ADMIN / SUPER_ADMIN / HEAD_OF_CURRICULUM: unrestricted
+}
 
 type SummativeWithTestArea = { learnerId: string; test?: { learningAreaId?: string | null } | null };
 
@@ -75,6 +119,8 @@ export const reportController = {
       if (!term || !academicYear) {
         throw new ApiError(400, 'Term and academic year are required');
       }
+
+      await assertLearnerAccess(req, learnerId);
 
       const learner = await prisma.learner.findUnique({
         where: { id: learnerId },
@@ -156,6 +202,8 @@ export const reportController = {
       if (!term || !academicYear) {
         throw new ApiError(400, 'Term and academic year are required');
       }
+
+      await assertLearnerAccess(req, learnerId);
 
       const learner = await prisma.learner.findUnique({
         where: { id: learnerId },
@@ -248,6 +296,8 @@ export const reportController = {
         throw new ApiError(400, 'Term and academic year are required');
       }
 
+      await assertLearnerAccess(req, learnerId);
+
       const report = await reportService.generateTermlyReport(
         learnerId,
         term as Term,
@@ -338,6 +388,8 @@ export const reportController = {
         throw new ApiError(400, 'Academic year is required');
       }
 
+      await assertLearnerAccess(req, learnerId);
+
       const yearValue = parseInt(academicYear as string);
 
       const learner = await prisma.learner.findUnique({
@@ -404,6 +456,9 @@ export const reportController = {
           totalMarks: r.test.totalMarks,
           percentage: r.percentage,
           grade: r.grade,
+          cbcGrade: (r as any).cbcGrade ?? null,
+          teacherComment: (r as any).teacherComment ?? null,
+          remarks: (r as any).remarks ?? null,
           status: r.status
         });
       }

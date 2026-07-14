@@ -2,31 +2,19 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Folder, FileText, Search,
     File, Image, FileSpreadsheet, Trash2,
-    Download, RefreshCw, Grid, List, Plus, ChevronDown
+    Download, RefreshCw, Grid, List, Plus
 } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 import { useDocuments } from '../hooks/useDocuments';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import ProfileLayout from '../shared/ProfileLayout';
-import { Popover, PopoverContent, PopoverTrigger } from '../../ui/popover';
-import { Button } from '../../ui/button';
 
-// Simple icon placeholders
-const UsersIcon = ({ size, className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
-);
-const GraduationCapIcon = ({ size, className }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 10v6M2 10l10-5 10 5-10 5z" /><path d="M6 12v5c3 3 9 3 12 0v-5" /></svg>
-);
-
-const DocumentCenter = () => {
+const DocumentCenter = ({ initialCategory = 'all' }) => {
     const {
         documents,
-        categories,
         loading,
         uploadProgress,
         fetchDocuments,
-        fetchCategories,
         uploadDocument,
         deleteDocument
     } = useDocuments();
@@ -37,7 +25,6 @@ const DocumentCenter = () => {
     const [viewMode, setViewMode] = useState('grid');
     const [showConfirmDialog, setShowConfirmDialog] = useState(false);
     const [documentToDelete, setDocumentToDelete] = useState(null);
-    const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
     const fileInputRef = useRef(null);
 
     const listQueryParams = useMemo(() => {
@@ -48,27 +35,12 @@ const DocumentCenter = () => {
     }, [activeCategory, searchQuery]);
 
     useEffect(() => {
-        fetchCategories();
-    }, [fetchCategories]);
-
-    useEffect(() => {
         fetchDocuments(listQueryParams);
     }, [fetchDocuments, listQueryParams]);
 
-    const uiCategories = [
-        { id: 'all', label: 'All Records', icon: Folder },
-        { id: 'students', label: 'Student Files', icon: GraduationCapIcon },
-        { id: 'staff', label: 'Staff Records', icon: UsersIcon },
-        { id: 'finance', label: 'Financial Docs', icon: FileSpreadsheet },
-        { id: 'reports', label: 'Academic Reports', icon: FileText },
-        ...categories
-            .filter(c => !['general', 'academic', 'finance', 'hr', 'marketing'].includes(c))
-            .map(c => ({ id: c, label: c.charAt(0).toUpperCase() + c.slice(1), icon: Folder }))
-    ];
-
-    const activeCategoryMeta =
-        uiCategories.find((c) => c.id === activeCategory) || uiCategories[0];
-    const ActiveCategoryIcon = activeCategoryMeta?.icon || Folder;
+    useEffect(() => {
+        if (initialCategory) setActiveCategory(initialCategory);
+    }, [initialCategory]);
 
     const [isDragging, setIsDragging] = useState(false);
 
@@ -171,55 +143,6 @@ const DocumentCenter = () => {
                 >
                     {/* Inner Toolbar */}
                     <div className="p-4 border-b border-gray-50 flex flex-wrap items-center justify-between gap-3">
-                        <Popover open={categoryMenuOpen} onOpenChange={setCategoryMenuOpen}>
-                            <PopoverTrigger asChild>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="min-w-[11rem] justify-between gap-2 border-slate-200 font-medium text-gray-800"
-                                    aria-expanded={categoryMenuOpen}
-                                    aria-haspopup="dialog"
-                                >
-                                    <span className="flex items-center gap-2 truncate">
-                                        <ActiveCategoryIcon size={18} className="shrink-0 text-brand-teal" />
-                                        <span className="truncate">{activeCategoryMeta?.label}</span>
-                                    </span>
-                                    <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent
-                                align="start"
-                                className="w-64 p-2 border border-slate-200 shadow-none"
-                                sideOffset={6}
-                            >
-                                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest px-2 py-1.5">
-                                    Categories
-                                </p>
-                                <div className="max-h-[min(60vh,320px)] overflow-y-auto space-y-0.5">
-                                    {uiCategories.map((cat) => (
-                                        <button
-                                            key={cat.id}
-                                            type="button"
-                                            onClick={() => {
-                                                setActiveCategory(cat.id);
-                                                setCategoryMenuOpen(false);
-                                            }}
-                                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-left transition ${activeCategory === cat.id
-                                                ? 'bg-brand-teal/10 text-brand-teal'
-                                                : 'text-gray-600 hover:bg-gray-50'
-                                                }`}
-                                        >
-                                            <cat.icon size={18} className="shrink-0" />
-                                            <span className="flex-1 truncate">{cat.label}</span>
-                                            {activeCategory === cat.id && (
-                                                <span className="w-1.5 h-1.5 shrink-0 rounded-full bg-brand-teal" />
-                                            )}
-                                        </button>
-                                    ))}
-                                </div>
-                            </PopoverContent>
-                        </Popover>
-
                         <div className="relative flex-1 min-w-[200px] max-w-md">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                             <input

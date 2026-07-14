@@ -38,6 +38,7 @@ export const marketplaceAPI = {
     fetchWithAuth(`/lms/marketplace/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
 
   // ─── Purchases (Buyer) ─────────────────────────────────────────────────────
+  // For FREE listings, `phone` may be omitted (no STK push is initiated).
   initiatePurchase: async (listingId, phone, firstName, lastName) =>
     fetchWithAuth(`/lms/marketplace/${listingId}/purchase`, {
       method: 'POST',
@@ -50,9 +51,9 @@ export const marketplaceAPI = {
   downloadPurchasedResource: async (purchaseId) =>
     fetchWithAuth(`/lms/marketplace/purchases/${purchaseId}/download`, { method: 'POST' }),
 
-  // Server route is POST /lms/marketplace/:id/rate — :id is the LISTING id, not the purchase id
-  rateResource: async (listingId, rating) =>
-    fetchWithAuth(`/lms/marketplace/${listingId}/rate`, {
+  // Rate a completed purchase (server route: POST /lms/marketplace/purchases/:id/rate)
+  ratePurchase: async (purchaseId, rating) =>
+    fetchWithAuth(`/lms/marketplace/purchases/${purchaseId}/rate`, {
       method: 'POST',
       body: JSON.stringify({ rating }),
     }),

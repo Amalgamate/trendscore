@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   ShieldAlert, RefreshCcw, Database, AlertTriangle, CheckCircle2, 
-  Trash2, Loader2, ArrowLeft, Info, Eraser, UploadCloud, Users, GraduationCap, WalletCards
+  Trash2, Loader2, Info, Eraser, UploadCloud, Users, GraduationCap, WalletCards
 } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 import api from '../../../services/api';
@@ -10,6 +10,7 @@ import BackupSettings from './settings/BackupSettings';
 import BulkOperationsModal from '../shared/bulk/BulkOperationsModal';
 import FeeImportModal from '../shared/FeeImportModal';
 import ModuleTabNav from '../shared/ModuleTabNav';
+import SettingsPageShell from '../shared/SettingsPageShell';
 
 const SystemMaintenancePage = () => {
   const navigateTo = usePageNavigation();
@@ -257,24 +258,20 @@ const SystemMaintenancePage = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-[var(--app-page-bg)]">
+    <SettingsPageShell
+      title="System Maintenance"
+      description="Protect school data, process approved imports, and manage controlled reset operations."
+      width="wide"
+    >
       <ModuleTabNav
         sectionLabel="SYSTEM MAINTENANCE"
+        variant="dropdown"
         tabs={tabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}
       />
 
-      <div className="p-6 max-w-4xl mx-auto">
-      <div className="mb-4 flex justify-start">
-        <button 
-          onClick={() => navigateTo('FINANCE_DASHBOARD')}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back
-        </button>
-      </div>
+      <div className="space-y-6">
 
       {activeTab === 'restore' && <BackupSettings />}
       {activeTab === 'imports' && renderImportsTab()}
@@ -482,7 +479,7 @@ const SystemMaintenancePage = () => {
           </div>
         </div>
       )}
-    </div>
+    </SettingsPageShell>
   );
 };
 

@@ -16,6 +16,8 @@
 import { Router } from 'express';
 import { pathwayController } from '../controllers/pathway.controller';
 import { requireRole, auditLog } from '../middleware/permissions.middleware';
+import { requireInstitutionType } from '../middleware/requireInstitutionType.middleware';
+import { requireLearnerPathwayStage } from '../middleware/pathwayStage.middleware';
 
 const router = Router();
 
@@ -72,6 +74,8 @@ router.get('/learner/:learnerId', pathwayController.getLearnerPathwayAndSubjects
  */
 router.post(
   '/learner/:learnerId/pathway',
+  requireInstitutionType('SECONDARY'),
+  requireLearnerPathwayStage(['SENIOR_EXECUTION']),
   requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM']),
   auditLog('SET_LEARNER_PATHWAY'),
   pathwayController.setLearnerPathway
@@ -84,6 +88,8 @@ router.post(
  */
 router.post(
   '/learner/:learnerId/subjects',
+  requireInstitutionType('SECONDARY'),
+  requireLearnerPathwayStage(['SENIOR_EXECUTION']),
   requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM']),
   auditLog('SET_LEARNER_SUBJECTS'),
   pathwayController.setLearnerSubjects

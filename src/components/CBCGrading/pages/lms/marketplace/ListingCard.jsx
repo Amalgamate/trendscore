@@ -98,8 +98,8 @@ export default function ListingCard({ listing, onPurchase }) {
           onClick={() => onPurchase(listing)}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-lg hover:bg-purple-700 transition whitespace-nowrap"
         >
-          <ShoppingCart size={14} />
-          Buy
+          {listingType === 'FREE' ? <Download size={14} /> : <ShoppingCart size={14} />}
+          {listingType === 'FREE' ? 'Get' : 'Buy'}
         </button>
       </div>
     </div>

@@ -77,6 +77,7 @@ const BiometricManager = ({ currentPage }) => {
     <div className="min-h-screen bg-[var(--app-page-bg)]">
       <ModuleTabNav
         sectionLabel="BIOMETRICS"
+        variant="dropdown"
         tabs={tabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}

@@ -253,6 +253,93 @@ export const completeSchoolSetup = async (req: AuthRequest, res: Response) => {
 };
 
 /**
+ * POST /api/assessments/setup/transition-demo
+ * Creates clearly labelled synthetic baseline scores for existing Grade 7–9
+ * learners. It never changes an existing result.
+ */
+export const seedTransitionDemoScores = async (req: AuthRequest, res: Response) => {
+  const userId = req.user?.userId;
+  if (!userId) throw new ApiError(401, 'User ID required');
+
+  const academicYear = Number(req.body?.academicYear || new Date().getFullYear());
+  const term = (req.body?.term || 'TERM_1') as Term;
+  const grades = ['GRADE_7', 'GRADE_8', 'GRADE_9'];
+  const learners = await prisma.learner.findMany({
+    where: { grade: { in: grades }, archived: false },
+    select: { id: true, admissionNumber: true, grade: true },
+  });
+
+  let testsCreated = 0;
+  let scoresCreated = 0;
+  const scoreFor = (learnerId: string, area: string) => {
+    const value = `${learnerId}:${area}`.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+    return 58 + (value % 35);
+  };
+
+  for (const grade of grades) {
+    const gradeLearners = learners.filter((learner) => learner.grade === grade);
+    if (!gradeLearners.length) continue;
+
+    for (const learningArea of LEARNING_AREAS_CONFIG[grade]) {
+      const title = `Local demo transition baseline — ${learningArea}`;
+      let test = await prisma.summativeTest.findFirst({
+        where: { grade, learningArea, term, academicYear, title, archived: false },
+      });
+      if (!test) {
+        test = await prisma.summativeTest.create({
+          data: {
+            title,
+            learningArea,
+            grade,
+            term,
+            academicYear,
+            testDate: new Date(),
+            totalMarks: 100,
+            passMarks: 40,
+            createdBy: userId,
+            status: 'PUBLISHED',
+            published: true,
+            active: true,
+            testType: 'ASSESSMENT',
+            description: 'Synthetic local-demo data for the Junior Transition Centre.',
+          },
+        });
+        testsCreated++;
+      }
+
+      const existingResults = await prisma.summativeResult.findMany({
+        where: { testId: test.id, learnerId: { in: gradeLearners.map((learner) => learner.id) } },
+        select: { learnerId: true },
+      });
+      const existingLearnerIds = new Set(existingResults.map((result) => result.learnerId));
+      const rows = gradeLearners
+        .filter((learner) => !existingLearnerIds.has(learner.id))
+        .map((learner) => {
+          const marks = scoreFor(learner.id, learningArea);
+          return {
+            testId: test.id,
+            learnerId: learner.id,
+            marksObtained: marks,
+            rawScore: marks,
+            percentage: marks,
+            grade: marks >= 80 ? 'A' : marks >= 60 ? 'B' : 'C',
+            remarks: 'Synthetic local-demo transition baseline score.',
+            recordedBy: userId,
+          };
+        });
+      if (rows.length) {
+        await prisma.summativeResult.createMany({ data: rows, skipDuplicates: true });
+        scoresCreated += rows.length;
+      }
+    }
+  }
+
+  await redisCacheService.deleteByPrefix('tests:');
+  await redisCacheService.deleteByPrefix('grading:');
+  res.json({ success: true, message: 'Local transition demo scores seeded', data: { learners: learners.length, testsCreated, scoresCreated } });
+};
+
+/**
  * POST /api/assessments/setup/reset
  */
 export const resetAssessments = async (req: AuthRequest, res: Response) => {
@@ -295,4 +382,4 @@ export const resetAssessments = async (req: AuthRequest, res: Response) => {
   }
 };
 
-export default { bulkCreateGradingScales, bulkCreateSummativeTests, completeSchoolSetup, resetAssessments };
+export default { bulkCreateGradingScales, bulkCreateSummativeTests, completeSchoolSetup, seedTransitionDemoScores, resetAssessments };

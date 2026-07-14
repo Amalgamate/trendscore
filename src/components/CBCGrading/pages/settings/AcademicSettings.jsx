@@ -19,6 +19,7 @@ import HierarchicalLearningAreas from './HierarchicalLearningAreas';
 import SubjectAllocationPage from './SubjectAllocationPage';
 import PerformanceLevelManager from './PerformanceLevelManager';
 import Toast from '../../shared/Toast';
+import SettingsPageShell from '../../shared/SettingsPageShell';
 
 const AcademicSettings = () => {
   const { grades: dynamicGrades } = useSchoolData();
@@ -802,10 +803,11 @@ const AcademicSettings = () => {
   ];
 
   return (
-    <div className="space-y-6">
+    <SettingsPageShell width="wide">
       {/* Tabs */}
       <ModuleTabNav
         sectionLabel="ACADEMICS"
+        variant="dropdown"
         tabs={ACADEMIC_TABS}
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -1755,7 +1757,7 @@ const AcademicSettings = () => {
         type={toastType}
         onClose={hideNotification}
       />
-    </div>
+    </SettingsPageShell>
   );
 };
 

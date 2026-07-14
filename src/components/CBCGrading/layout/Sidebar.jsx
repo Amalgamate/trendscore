@@ -165,9 +165,9 @@ const PREFETCH_MAP = {
   'learning-lesson-builder': () => import('../pages/lms/lessons/LessonBuilderPage'),
   'learning-interactive': () => import('../pages/lms/LMSPlaceholder'),
   'learning-revision':    () => import('../pages/lms/revision/RevisionLibraryPage'),
-  'learning-analytics':   () => import('../pages/lms/LMSPlaceholder'),
+  'learning-analytics':   () => import('../pages/lms/analytics/LearningAnalyticsPage'),
   'learning-settings':    () => import('../pages/lms/settings/LMSSettingsPage'),
-  'learning-marketplace': () => import('../pages/lms/LMSPlaceholder'),
+  'learning-marketplace': () => import('../pages/lms/MarketplacePage'),
 };
 
 const prefetch = (path) => {
@@ -555,6 +555,7 @@ const NavSection = React.memo(({
   isBottom = false,
 }) => {
   const hasChildren = (section.items?.length || 0) > 0;
+  const hideChildrenInSidebar = hasChildren && section.hideChildrenInSidebar;
 
   const isChildActive = useMemo(() => {
     if (!hasChildren) return false;
@@ -574,12 +575,12 @@ const NavSection = React.memo(({
     if (isChildActive && isSettings) setIsExpanded(true);
   }, [isChildActive, isSettings]);
 
-  if (!hasChildren) {
+  if (!hasChildren || hideChildrenInSidebar) {
     return (
       <SingleItem
         section={section}
         currentPage={currentPage}
-        onNavigate={onNavigate}
+        onNavigate={hideChildrenInSidebar ? () => handleSectionClick(section) : onNavigate}
         sidebarOpen={sidebarOpen}
         accentColor={accentColor}
       />

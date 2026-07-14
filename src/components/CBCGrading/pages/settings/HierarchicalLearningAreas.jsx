@@ -91,7 +91,7 @@ const HierarchicalLearningAreas = ({
           <p className="text-slate-500 font-semibold">No learning areas added yet</p>
         </div>
       ) : (
-        <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
           <table className="w-full text-left border-collapse [&_th]:border-b [&_th]:border-slate-200 [&_td]:border-b [&_td]:border-slate-100">
             <thead>
               <tr className="bg-[color:var(--table-header-bg)]">

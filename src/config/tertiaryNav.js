@@ -126,6 +126,23 @@ export const tertiaryNavSections = [
     ],
   },
 
+  // ── Digital Learning (Professional LMS) ───────────────────────────────────
+  {
+    id: 'digital-learning',
+    label: 'Learning',
+    icon: BookOpen,
+    permission: 'ACCESS_LMS',
+    items: [
+      { id: 'learning-dashboard',    label: 'Dashboard',        path: 'learning-dashboard',    permission: 'ACCESS_LMS' },
+      { id: 'learning-assignments',  label: 'Assignments',      path: 'learning-assignments',  permission: 'ACCESS_LMS' },
+      { id: 'learning-lessons',      label: 'Lessons',          path: 'learning-lessons',      permission: 'ACCESS_LMS' },
+      { id: 'learning-revision',     label: 'Revision Library', path: 'learning-revision',     permission: 'ACCESS_LMS' },
+      { id: 'learning-analytics',    label: 'Analytics',        path: 'learning-analytics',    permission: 'ANALYTICS_LEARNING' },
+      { id: 'learning-settings',     label: 'Settings',         path: 'learning-settings',     permission: 'SCHOOL_SETTINGS' },
+      { id: 'learning-marketplace',  label: 'Marketplace',      path: 'learning-marketplace',  permission: 'MARKETPLACE_PURCHASE' },
+    ],
+  },
+
   // ── LMS ───────────────────────────────────────────────────────────────────
   {
     id: 'lms',
@@ -233,7 +250,13 @@ export const tertiaryNavSections = [
     label: 'Document Center',
     icon: FileText,
     permission: null,
-    items: [],
+    items: [
+      { id: 'docs-all',      label: 'All Records',      path: 'docs-center', params: { category: 'all' },      permission: null },
+      { id: 'docs-students', label: 'Student Files',    path: 'docs-center', params: { category: 'students' }, permission: null },
+      { id: 'docs-staff',    label: 'Staff Records',    path: 'docs-center', params: { category: 'staff' },    permission: null },
+      { id: 'docs-finance',  label: 'Financial Docs',   path: 'docs-center', params: { category: 'finance' },  permission: null },
+      { id: 'docs-reports',  label: 'Academic Reports', path: 'docs-center', params: { category: 'reports' },  permission: null },
+    ],
   },
 
   // ── System ────────────────────────────────────────────────────────────────
@@ -243,15 +266,25 @@ export const tertiaryNavSections = [
     icon: Settings,
     permission: 'SCHOOL_SETTINGS',
     items: [
-      { id: 'settings-school',        label: 'Institution Settings',   path: 'settings-school',        permission: 'SCHOOL_SETTINGS'   },
-      { id: 'settings-modules',       label: 'Modules & Package',      path: 'settings-modules',       permission: 'SCHOOL_SETTINGS'   },
-      { id: 'settings-academic',      label: 'Academic Settings',      path: 'settings-academic',      permission: 'ACADEMIC_SETTINGS' },
-      { id: 'settings-communication', label: 'Communication Settings', path: 'settings-communication', permission: 'SCHOOL_SETTINGS'   },
-      { id: 'settings-users',         label: 'User Management',        path: 'settings-users',         permission: 'EDIT_USER'         },
-      { id: 'settings-approvals',     label: 'Approvals',              path: 'settings-approvals',     permission: 'SCHOOL_SETTINGS'   },
-      { id: 'settings-system-logs',   label: 'System Logs',            path: 'settings-system-logs',    permission: 'SYSTEM_SETTINGS', icon: Activity },
-      { id: 'settings-system-control',label: 'System Control',          path: 'settings-system-control', permission: 'SYSTEM_SETTINGS', icon: Wrench   },
-      { id: 'system-maintenance',     label: 'Backup, Restore & Reset', path: 'system-maintenance',      permission: 'SYSTEM_SETTINGS', icon: Wrench },
+      { id: 'settings-school-group', label: 'School', type: 'group', items: [
+        { id: 'settings-school', label: 'Institution Settings', path: 'settings-school', permission: 'SCHOOL_SETTINGS' },
+        { id: 'settings-modules', label: 'Modules & Package', path: 'settings-modules', permission: 'SCHOOL_SETTINGS' },
+      ]},
+      { id: 'settings-academics-group', label: 'Academics', type: 'group', items: [
+        { id: 'settings-academic', label: 'Academic Settings', path: 'settings-academic', permission: 'ACADEMIC_SETTINGS' },
+      ]},
+      { id: 'settings-operations-group', label: 'Operations', type: 'group', items: [
+        { id: 'settings-communication', label: 'Communication Settings', path: 'settings-communication', permission: 'SCHOOL_SETTINGS' },
+      ]},
+      { id: 'settings-people-group', label: 'People & Approvals', type: 'group', items: [
+        { id: 'settings-users', label: 'User Management', path: 'settings-users', permission: 'EDIT_USER' },
+        { id: 'settings-approvals', label: 'Approvals', path: 'settings-approvals', permission: 'SCHOOL_SETTINGS' },
+      ]},
+      { id: 'settings-system-group', label: 'System', type: 'group', items: [
+        { id: 'settings-system-logs', label: 'System Logs', path: 'settings-system-logs', permission: 'SYSTEM_SETTINGS', icon: Activity },
+        { id: 'settings-system-control', label: 'System Control', path: 'settings-system-control', permission: 'SYSTEM_SETTINGS', icon: Wrench },
+        { id: 'system-maintenance', label: 'Backup, Restore & Reset', path: 'system-maintenance', permission: 'SYSTEM_SETTINGS', icon: Wrench },
+      ]},
     ],
   },
   // {

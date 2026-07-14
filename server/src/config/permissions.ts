@@ -34,6 +34,18 @@ export const PERMISSIONS = {
   TRANSFER_LEARNER: ['SUPER_ADMIN', 'ADMIN'],
 
   // ============================================
+  // PATHWAY DECISION CENTRE
+  // HEAD_OF_CURRICULUM is the explicit counsellor proxy until a dedicated
+  // COUNSELLOR account role is approved and introduced across the product.
+  // ============================================
+  VIEW_PATHWAY_CASES: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER'],
+  COUNSEL_PATHWAY: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'],
+  APPROVE_PATHWAY: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'],
+  LOCK_PATHWAY: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
+  MANAGE_PATHWAY_CATALOG: ['SUPER_ADMIN', 'ADMIN'],
+  MANAGE_PATHWAY_OFFERINGS: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'],
+
+  // ============================================
   // ASSESSMENTS
   // ============================================
   ACCESS_ASSESSMENT_MODULE: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER'], // Full assessment module access

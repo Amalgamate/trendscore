@@ -44,7 +44,8 @@ export default function MarketplacePage({ onNavigate }) {
   const [error, setError] = useState(null);
 
   // Permission checks
-  const canSell = can('MARKETPLACE_CREATE_LISTING') || can('LEARNING_MANAGE');
+  // Sellers are users who can publish marketplace listings
+  const canSell = can('MARKETPLACE_PUBLISH') || can('LEARNING_MANAGE');
   const canApprove = can('MARKETPLACE_APPROVE') || can('LEARNING_MANAGE');
 
   const handleCreateListing = () => {

@@ -13,6 +13,7 @@ import prisma from '../config/database';
 import { redisCacheService } from './redis-cache.service';
 import { LMSSettingsService } from './lms-settings.service';
 import { LMSNotificationService } from './lms-notification.service';
+import { LMSAchievementsService } from './lms-achievements.service';
 import { auditService } from './audit.service';
 import { documentService } from './document.service';
 import { parentAccessService } from './parent-access.service';
@@ -521,6 +522,9 @@ export class LMSAssignmentService {
       console.error('[LMSAssignmentService] createSubmission notification error:', err?.message),
     );
 
+    // Fire-and-forget: achievement awarding
+    void LMSAchievementsService.onAssignmentSubmitted({ learnerId, schoolId, assignmentId }).catch(() => undefined);
+
     return submission;
   }
 
@@ -730,6 +734,17 @@ export class LMSAssignmentService {
       console.error('[LMSAssignmentService] markSubmission notification error:', err?.message),
     );
 
+    // Fire-and-forget: perfect score achievement
+    if (totalMarks !== null && marks === totalMarks) {
+      void LMSAchievementsService.onPerfectScore({
+        learnerId: marked.learnerId,
+        schoolId,
+        submissionId: marked.id,
+        marks,
+        totalMarks,
+      }).catch(() => undefined);
+    }
+
     // 5. Optionally sync to gradebook
     if (submission.assignment.gradebookSync) {
       void LMSAssignmentService._syncMarkToGradebook(marked, submission.assignment, markerId)
@@ -902,5 +917,92 @@ export class LMSAssignmentService {
       submissions: undefined, // Remove array, use mySubmission instead
     }));
   }
-}
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // Parent-facing: assignments for a specific child learner
+  // Batch 4, Assessment UX Overhaul
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Get published assignments for a specific learner, with that learner's
+   * submission status attached to each. Intended for the parent portal.
+   *
+   * Authorization (PARENT → own children only, STUDENT → self only) is the
+   * caller's responsibility — this method trusts the learnerId it receives.
+   *
+   * Returns an array where each item includes:
+   *   - assignment metadata (title, dueDate, totalMarks, learningArea, class)
+   *   - mySubmission (latest submission for this learner, or null)
+   *   - statusSummary: 'NOT_SUBMITTED' | 'SUBMITTED' | 'LATE' | 'MARKED'
+   *   - isOverdue: boolean (dueDate in the past, no submitted submission)
+   */
+  static async getChildAssignments(
+    learnerId: string,
+    schoolId: string,
+  ): Promise<any[]> {
+    // 1. Get the learner's active class enrollment
+    const enrollment = await prisma.classEnrollment.findFirst({
+      where: { learnerId, active: true, archived: false },
+      select: { classId: true },
+    });
+
+    if (!enrollment) return [];
+
+    // 2. Fetch published assignments for the learner's class
+    const assignments = await prisma.learningAssignment.findMany({
+      where: {
+        schoolId,
+        classId: enrollment.classId,
+        status: 'PUBLISHED',
+        archived: false,
+      },
+      include: {
+        learningArea: { select: { id: true, name: true } },
+        class: { select: { id: true, name: true } },
+        submissions: {
+          where: { learnerId },
+          select: {
+            id: true,
+            status: true,
+            marks: true,
+            submittedAt: true,
+            markedAt: true,
+            attemptNumber: true,
+            feedback: true,
+          },
+          orderBy: { attemptNumber: 'desc' },
+          take: 1,
+        },
+        _count: { select: { submissions: true, files: true } },
+      },
+      orderBy: { dueDate: 'asc' },
+    });
+
+    const now = new Date();
+
+    // 3. Transform: compute statusSummary and isOverdue
+    return assignments.map((assignment) => {
+      const submission = assignment.submissions[0] ?? null;
+      const isOverdue = !!assignment.dueDate && assignment.dueDate < now && !submission;
+
+      let statusSummary: 'NOT_SUBMITTED' | 'SUBMITTED' | 'LATE' | 'MARKED';
+      if (!submission) {
+        statusSummary = 'NOT_SUBMITTED';
+      } else if (submission.status === 'MARKED') {
+        statusSummary = 'MARKED';
+      } else if (submission.status === 'LATE') {
+        statusSummary = 'LATE';
+      } else {
+        statusSummary = 'SUBMITTED';
+      }
+
+      return {
+        ...assignment,
+        mySubmission: submission,
+        submissions: undefined,
+        statusSummary,
+        isOverdue,
+      };
+    });
+  }
+}

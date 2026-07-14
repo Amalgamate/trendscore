@@ -1,5 +1,18 @@
+/**
+ * pathway-transition-decision.service.ts
+ *
+ * Persists and retrieves learner pathway transition decisions using
+ * the Prisma-managed LearnerPathwayRecommendation model.
+ *
+ * Previously used a raw-SQL auto-created table (ensureDecisionTable).
+ * Now fully type-safe and migration-tracked via Prisma.
+ *
+ * Phase 0, Pathway Planner.
+ */
+
 import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
+import type { Prisma } from '@prisma/client';
 
 type SaveDecisionInput = {
   learnerId: string;
@@ -10,89 +23,51 @@ type SaveDecisionInput = {
   parentPreference?: string | null;
   finalApprovedPathway?: string | null;
   mismatchWarning?: string | null;
-  analysisPayload?: any;
+  analysisPayload?: Prisma.InputJsonValue | null;
   updatedBy?: string | null;
 };
 
-let tableReady = false;
-
-async function ensureDecisionTable() {
-  if (tableReady) return;
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS learner_pathway_recommendations (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      "learnerId" TEXT NOT NULL,
-      "recommendedPathway" TEXT NOT NULL,
-      "confidenceScore" DOUBLE PRECISION NOT NULL DEFAULT 0,
-      "learnerInterest" TEXT NULL,
-      "teacherRecommendation" TEXT NULL,
-      "parentPreference" TEXT NULL,
-      "finalApprovedPathway" TEXT NULL,
-      "mismatchWarning" TEXT NULL,
-      "analysisPayload" JSONB NULL,
-      "updatedBy" TEXT NULL,
-      "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-  await prisma.$executeRawUnsafe(`
-    CREATE INDEX IF NOT EXISTS lpr_learner_idx
-    ON learner_pathway_recommendations ("learnerId", "createdAt" DESC);
-  `);
-  tableReady = true;
-}
-
 export async function saveTransitionDecision(input: SaveDecisionInput) {
-  await ensureDecisionTable();
   const learner = await prisma.learner.findUnique({
     where: { id: input.learnerId },
     select: { id: true },
   });
   if (!learner) throw new ApiError(404, 'Learner not found');
 
-  const rows = await prisma.$queryRawUnsafe<any[]>(`
-    INSERT INTO learner_pathway_recommendations (
-      "learnerId",
-      "recommendedPathway",
-      "confidenceScore",
-      "learnerInterest",
-      "teacherRecommendation",
-      "parentPreference",
-      "finalApprovedPathway",
-      "mismatchWarning",
-      "analysisPayload",
-      "updatedBy",
-      "updatedAt"
-    )
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
-    RETURNING *;
-  `, input.learnerId, input.recommendedPathway, input.confidenceScore, input.learnerInterest || null, input.teacherRecommendation || null, input.parentPreference || null, input.finalApprovedPathway || null, input.mismatchWarning || null, input.analysisPayload || null, input.updatedBy || null);
-
-  return rows?.[0] || null;
+  return prisma.learnerPathwayRecommendation.create({
+    data: {
+      learnerId:             input.learnerId,
+      recommendedPathway:    input.recommendedPathway,
+      confidenceScore:       input.confidenceScore,
+      learnerInterest:       input.learnerInterest   ?? null,
+      teacherRecommendation: input.teacherRecommendation ?? null,
+      parentPreference:      input.parentPreference  ?? null,
+      finalApprovedPathway:  input.finalApprovedPathway ?? null,
+      mismatchWarning:       input.mismatchWarning   ?? null,
+      analysisPayload:       input.analysisPayload   ?? undefined,
+      updatedBy:             input.updatedBy         ?? null,
+    },
+  });
 }
 
 export async function getTransitionDecisionHistory(learnerId: string) {
-  await ensureDecisionTable();
-  const rows = await prisma.$queryRawUnsafe<any[]>(`
-    SELECT *
-    FROM learner_pathway_recommendations
-    WHERE "learnerId" = $1
-    ORDER BY "createdAt" DESC
-    LIMIT 30;
-  `, learnerId);
-  return rows || [];
+  return prisma.learnerPathwayRecommendation.findMany({
+    where:   { learnerId },
+    orderBy: { createdAt: 'desc' },
+    take:    30,
+  });
 }
 
 export async function hasFinalizedTransitionDecision(learnerId: string): Promise<boolean> {
-  await ensureDecisionTable();
-  const rows = await prisma.$queryRawUnsafe<Array<{ id: string }>>(`
-    SELECT id
-    FROM learner_pathway_recommendations
-    WHERE "learnerId" = $1
-      AND "finalApprovedPathway" IS NOT NULL
-      AND TRIM("finalApprovedPathway") <> ''
-    ORDER BY "createdAt" DESC
-    LIMIT 1;
-  `, learnerId);
-  return rows.length > 0;
+  const row = await prisma.learnerPathwayRecommendation.findFirst({
+    where: {
+      learnerId,
+      finalApprovedPathway: { not: null },
+      // Also exclude empty strings that may have been written by the old raw-SQL path
+      NOT: { finalApprovedPathway: '' },
+    },
+    orderBy: { createdAt: 'desc' },
+    select:  { id: true },
+  });
+  return row !== null;
 }

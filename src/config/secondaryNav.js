@@ -70,11 +70,48 @@ export const secondaryNavSections = [
     icon: BookMarked,
     permission: null,
     items: [
-      { id: 'sec-pathways',    label: 'CBC Pathways (SS)',  path: 'sec-pathways',    permission: 'ACADEMIC_SETTINGS' },
-      { id: 'sec-subjects',    label: 'Subject Catalog',    path: 'sec-subjects',    permission: 'ACADEMIC_SETTINGS' },
-      { id: 'sec-form-groups', label: 'Grade Streams',      path: 'sec-form-groups', permission: 'MANAGE_FACILITIES' },
-      { id: 'sec-timetable',   label: 'Timetable',          path: 'planner-timetable', permission: 'ACCESS_TIMETABLE' },
-      { id: 'sec-schemes',     label: 'Schemes of Work',    path: 'planner-schemes', permission: null, icon: ClipboardList },
+      { id: 'sec-form-groups', label: 'Grade Streams',   path: 'sec-form-groups',   permission: 'MANAGE_FACILITIES' },
+      { id: 'sec-timetable',   label: 'Timetable',       path: 'planner-timetable', permission: 'ACCESS_TIMETABLE' },
+      { id: 'sec-schemes',     label: 'Schemes of Work', path: 'planner-schemes',   permission: null, icon: ClipboardList },
+    ],
+  },
+
+  // ── Pathway Planner ───────────────────────────────────────────────────────
+  {
+    id: 'pathway-planner',
+    label: 'Senior Pathway Progress Centre',
+    icon: Award,
+    permission: null,
+    items: [
+      { id: 'pathways-admin-overview', label: 'Overview',             path: 'pathways-admin',         params: { tab: 'dashboard' }, permission: 'MANAGE_PATHWAY_CATALOG' },
+      { id: 'sec-pathway-overview',   label: 'Progress Dashboard',   path: 'sec-pathway-overview',   permission: 'VIEW_ALL_LEARNERS'      },
+      { id: 'sec-pathway-counsellor', label: 'Counsellor Workbench', path: 'sec-pathway-counsellor', permission: 'VIEW_ALL_LEARNERS'      },
+      {
+        id: 'pathway-catalogues',
+        label: 'Catalogues',
+        type: 'group',
+        items: [
+          { id: 'sec-pathways',         label: 'Pathway Catalogue', path: 'sec-pathways',         permission: 'VIEW_ACADEMIC_SETTINGS' },
+          { id: 'sec-school-catalogue', label: 'School Catalogue',  path: 'sec-school-catalogue', permission: 'VIEW_ACADEMIC_SETTINGS' },
+          { id: 'sec-subjects',         label: 'Subject Catalog',   path: 'sec-subjects',         permission: 'ACADEMIC_SETTINGS'      },
+        ],
+      },
+      {
+        id: 'pathway-administration',
+        label: 'Configurations',
+        type: 'group',
+        items: [
+          { id: 'pathways-admin-content',     label: 'Content',        path: 'pathways-admin', params: { tab: 'content' },     permission: 'MANAGE_PATHWAY_CATALOG' },
+          { id: 'pathways-admin-schools',     label: 'Senior Schools', path: 'pathways-admin', params: { tab: 'schools' },     permission: 'MANAGE_PATHWAY_CATALOG' },
+          { id: 'pathways-admin-corrections', label: 'Corrections',    path: 'pathways-admin', params: { tab: 'corrections' }, permission: 'MANAGE_PATHWAY_CATALOG' },
+          { id: 'pathways-admin-rules',       label: 'Rules',          path: 'pathways-admin', params: { tab: 'rules' },       permission: 'MANAGE_PATHWAY_CATALOG' },
+          { id: 'pathways-admin-imports',     label: 'Imports',        path: 'pathways-admin', params: { tab: 'imports' },     permission: 'MANAGE_PATHWAY_CATALOG' },
+          { id: 'pathways-admin-quality',     label: 'Data Quality',   path: 'pathways-admin', params: { tab: 'quality' },     permission: 'MANAGE_PATHWAY_CATALOG' },
+          { id: 'pathways-admin-analytics',   label: 'Analytics',      path: 'pathways-admin', params: { tab: 'analytics' },   permission: 'MANAGE_PATHWAY_CATALOG' },
+          { id: 'pathways-admin-history',     label: 'History',        path: 'pathways-admin', params: { tab: 'history' },     permission: 'MANAGE_PATHWAY_CATALOG' },
+          { id: 'pathways-admin-audit',       label: 'Audit',          path: 'pathways-admin', params: { tab: 'audit' },       permission: 'MANAGE_PATHWAY_CATALOG' },
+        ],
+      },
     ],
   },
 
@@ -131,6 +168,23 @@ export const secondaryNavSections = [
       { id: 'attendance-daily',   label: 'Daily Attendance',   path: 'attendance-daily',   permission: 'MARK_ATTENDANCE' },
       { id: 'attendance-reports', label: 'Attendance Reports', path: 'attendance-reports', permission: 'GENERATE_ATTENDANCE_REPORTS' },
       { id: 'attendance-configuration', label: 'Configuration', path: 'attendance-configuration', permission: 'VIEW_ALL_ATTENDANCE' },
+    ],
+  },
+
+  // ── Digital Learning (Professional LMS) ───────────────────────────────────
+  {
+    id: 'digital-learning',
+    label: 'Learning',
+    icon: BookOpen,
+    permission: 'ACCESS_LMS',
+    items: [
+      { id: 'learning-dashboard',    label: 'Dashboard',        path: 'learning-dashboard',    permission: 'ACCESS_LMS' },
+      { id: 'learning-assignments',  label: 'Assignments',      path: 'learning-assignments',  permission: 'ACCESS_LMS' },
+      { id: 'learning-lessons',      label: 'Lessons',          path: 'learning-lessons',      permission: 'ACCESS_LMS' },
+      { id: 'learning-revision',     label: 'Revision Library', path: 'learning-revision',     permission: 'ACCESS_LMS' },
+      { id: 'learning-analytics',    label: 'Analytics',        path: 'learning-analytics',    permission: 'ANALYTICS_LEARNING' },
+      { id: 'learning-settings',     label: 'Settings',         path: 'learning-settings',     permission: 'SCHOOL_SETTINGS' },
+      { id: 'learning-marketplace',  label: 'Marketplace',      path: 'learning-marketplace',  permission: 'MARKETPLACE_PURCHASE' },
     ],
   },
 
@@ -239,7 +293,13 @@ export const secondaryNavSections = [
     label: 'Document Center',
     icon: FileText,
     permission: null,
-    items: [],
+    items: [
+      { id: 'docs-all',      label: 'All Records',      path: 'docs-center', params: { category: 'all' },      permission: null },
+      { id: 'docs-students', label: 'Student Files',    path: 'docs-center', params: { category: 'students' }, permission: null },
+      { id: 'docs-staff',    label: 'Staff Records',    path: 'docs-center', params: { category: 'staff' },    permission: null },
+      { id: 'docs-finance',  label: 'Financial Docs',   path: 'docs-center', params: { category: 'finance' },  permission: null },
+      { id: 'docs-reports',  label: 'Academic Reports', path: 'docs-center', params: { category: 'reports' },  permission: null },
+    ],
   },
 
   // ── System ────────────────────────────────────────────────────────────────
@@ -249,15 +309,25 @@ export const secondaryNavSections = [
     icon: Settings,
     permission: 'SCHOOL_SETTINGS',
     items: [
-      { id: 'settings-school',        label: 'School Settings',        path: 'settings-school',        permission: 'SCHOOL_SETTINGS'   },
-      { id: 'settings-modules',       label: 'Modules & Package',      path: 'settings-modules',       permission: 'SCHOOL_SETTINGS'   },
-      { id: 'settings-academic',      label: 'Academic Settings',      path: 'settings-academic',      permission: 'ACADEMIC_SETTINGS' },
-      { id: 'settings-communication', label: 'Communication Settings', path: 'settings-communication', permission: 'SCHOOL_SETTINGS'   },
-      { id: 'settings-users',         label: 'User Management',        path: 'settings-users',         permission: 'EDIT_USER'         },
-      { id: 'settings-approvals',     label: 'Approvals',              path: 'settings-approvals',     permission: 'SCHOOL_SETTINGS'   },
-      { id: 'settings-system-logs',   label: 'System Logs',            path: 'settings-system-logs',    permission: 'SYSTEM_SETTINGS', icon: Activity },
-      { id: 'settings-system-control',label: 'System Control',          path: 'settings-system-control', permission: 'SYSTEM_SETTINGS', icon: Wrench   },
-      { id: 'system-maintenance',     label: 'Backup, Restore & Reset', path: 'system-maintenance',      permission: 'SYSTEM_SETTINGS', icon: Wrench },
+      { id: 'settings-school-group', label: 'School', type: 'group', items: [
+        { id: 'settings-school', label: 'School Settings', path: 'settings-school', permission: 'SCHOOL_SETTINGS' },
+        { id: 'settings-modules', label: 'Modules & Package', path: 'settings-modules', permission: 'SCHOOL_SETTINGS' },
+      ]},
+      { id: 'settings-academics-group', label: 'Academics', type: 'group', items: [
+        { id: 'settings-academic', label: 'Academic Settings', path: 'settings-academic', permission: 'ACADEMIC_SETTINGS' },
+      ]},
+      { id: 'settings-operations-group', label: 'Operations', type: 'group', items: [
+        { id: 'settings-communication', label: 'Communication Settings', path: 'settings-communication', permission: 'SCHOOL_SETTINGS' },
+      ]},
+      { id: 'settings-people-group', label: 'People & Approvals', type: 'group', items: [
+        { id: 'settings-users', label: 'User Management', path: 'settings-users', permission: 'EDIT_USER' },
+        { id: 'settings-approvals', label: 'Approvals', path: 'settings-approvals', permission: 'SCHOOL_SETTINGS' },
+      ]},
+      { id: 'settings-system-group', label: 'System', type: 'group', items: [
+        { id: 'settings-system-logs', label: 'System Logs', path: 'settings-system-logs', permission: 'SYSTEM_SETTINGS', icon: Activity },
+        { id: 'settings-system-control', label: 'System Control', path: 'settings-system-control', permission: 'SYSTEM_SETTINGS', icon: Wrench },
+        { id: 'system-maintenance', label: 'Backup, Restore & Reset', path: 'system-maintenance', permission: 'SYSTEM_SETTINGS', icon: Wrench },
+      ]},
     ],
   },
   // {
@@ -270,7 +340,8 @@ export const secondaryNavSections = [
 ];
 
 // ── Secondary-specific category groupings ─────────────────────────────────────
-export const SECONDARY_SCHOOL_SECTIONS   = ['students', 'teachers', 'attendance', 'secondary-assessment', 'secondary-academics'];
-export const SECONDARY_RESULTS_SECTIONS  = ['secondary-results'];
+export const SECONDARY_SCHOOL_SECTIONS     = ['students', 'teachers', 'attendance', 'secondary-assessment', 'secondary-academics', 'pathway-planner'];
+export const SECONDARY_PATHWAY_SECTIONS    = ['pathway-planner'];  // kept for reference
+export const SECONDARY_RESULTS_SECTIONS    = ['secondary-results'];
 export const SECONDARY_BACKOFFICE_SECTIONS = ['finance', 'hr', 'transport', 'inventory'];
-export const SECONDARY_SYSTEM_SECTIONS   = ['settings'];
+export const SECONDARY_SYSTEM_SECTIONS     = ['settings'];

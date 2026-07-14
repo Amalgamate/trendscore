@@ -79,6 +79,10 @@ export const PERMISSIONS = {
   USER_ROLES_SETTINGS: SUPER_ADMIN_ROLES,
   BETA_REVIEWER: [...SUPER_ADMIN_ROLES, 'ADMIN'],
   VIEW_ACADEMIC_SETTINGS: [...SUPER_ADMIN_ROLES, 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'],
+  // Pathway Decision Centre — mirrors the server authorization matrix so
+  // system administrators are not incorrectly filtered out of its UI.
+  MANAGE_PATHWAY_CATALOG: [...SUPER_ADMIN_ROLES, 'ADMIN'],
+  MANAGE_PATHWAY_OFFERINGS: [...SUPER_ADMIN_ROLES, 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'],
   MANAGE_LEARNING_AREAS: [...SUPER_ADMIN_ROLES, 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'], // Head teacher can manage learning areas
   MANAGE_FACILITIES: [...SUPER_ADMIN_ROLES, 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'], // Head teacher can manage classes and facilities
 

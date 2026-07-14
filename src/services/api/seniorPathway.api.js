@@ -29,4 +29,29 @@ export const seniorPathwayAPI = {
     fetchWithAuth(`/senior-pathways/selections/${selectionId}/submit`, {
       method: 'POST',
     }),
+
+  approveSelection: async (selectionId) =>
+    fetchWithAuth(`/senior-pathways/selections/${selectionId}/approve`, {
+      method: 'POST',
+    }),
+
+  requestRevision: async (selectionId, reason) =>
+    fetchWithAuth(`/senior-pathways/selections/${selectionId}/request-revision`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+
+  lockSelection: async (selectionId) =>
+    fetchWithAuth(`/senior-pathways/selections/${selectionId}/lock`, {
+      method: 'POST',
+    }),
+
+  getSearchCriteria: async (learnerId) =>
+    fetchWithAuth(`/senior-pathways/learners/${learnerId}/search-criteria`),
+
+  updateSearchCriteria: async (learnerId, payload) =>
+    fetchWithAuth(`/senior-pathways/learners/${learnerId}/search-criteria`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
 };

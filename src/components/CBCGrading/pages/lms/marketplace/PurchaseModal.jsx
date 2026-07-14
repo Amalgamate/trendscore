@@ -17,6 +17,7 @@ import { useAuth } from '../../../../../hooks/useAuth';
 
 export default function PurchaseModal({ listing, onClose, onSuccess, onError }) {
   const { user } = useAuth();
+  const isFree = listing?.listingType === 'FREE' || Number(listing?.price || 0) <= 0;
   const [phone, setPhone] = useState(user?.phone || '');
   const [firstName, setFirstName] = useState(user?.firstName || '');
   const [lastName, setLastName] = useState(user?.lastName || '');
@@ -28,8 +29,9 @@ export default function PurchaseModal({ listing, onClose, onSuccess, onError }) 
     e.preventDefault();
     setError(null);
 
-    if (!phone || !phone.match(/^254\d{9}$/)) {
-      setError('Please enter a valid Kenyan phone number (254...)')  ;
+    // Paid listings require a valid M-Pesa phone number; FREE listings do not.
+    if (!isFree && (!phone || !phone.match(/^254\d{9}$/))) {
+      setError('Please enter a valid Kenyan phone number (254...)');
       return;
     }
 
@@ -37,13 +39,23 @@ export default function PurchaseModal({ listing, onClose, onSuccess, onError }) 
       setLoading(true);
       const res = await marketplaceAPI.initiatePurchase(
         listing.id,
-        phone,
+        isFree ? undefined : phone,
         firstName,
         lastName
       );
       const data = res?.data ?? {};
 
       if (data.success) {
+        // For free listings we can auto-download after access is granted.
+        if (isFree && data.data?.purchaseId) {
+          try {
+            const dl = await marketplaceAPI.downloadPurchasedResource(data.data.purchaseId);
+            const url = dl?.data?.data?.url;
+            if (url) window.open(url, '_blank');
+          } catch (dlErr) {
+            // Non-fatal: user can still download later from "My Purchases"
+          }
+        }
         setSuccess(true);
         setTimeout(() => {
           onSuccess();
@@ -119,22 +131,28 @@ export default function PurchaseModal({ listing, onClose, onSuccess, onError }) 
           )}
 
           {/* Phone Number */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              <Phone size={16} className="inline mr-1" />
-              Phone Number (M-Pesa)
-            </label>
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="254712345678"
-              disabled={loading}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-300 disabled:bg-gray-50"
-              required
-            />
-            <p className="text-xs text-gray-500 mt-1">Format: 254712345678 (Kenyan number)</p>
-          </div>
+          {!isFree ? (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                <Phone size={16} className="inline mr-1" />
+                Phone Number (M-Pesa)
+              </label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="254712345678"
+                disabled={loading}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-300 disabled:bg-gray-50"
+                required
+              />
+              <p className="text-xs text-gray-500 mt-1">Format: 254712345678 (Kenyan number)</p>
+            </div>
+          ) : (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-800">
+              This is a free resource. You'll get access immediately and the download will start.
+            </div>
+          )}
 
           {/* Name Fields */}
           <div className="grid grid-cols-2 gap-3">
@@ -183,14 +201,16 @@ export default function PurchaseModal({ listing, onClose, onSuccess, onError }) 
               ) : (
                 <>
                   <DollarSign size={18} />
-                  Pay KES {listing.price.toLocaleString()}
+                  {isFree ? 'Get Access' : `Pay KES ${listing.price.toLocaleString()}`}
                 </>
               )}
             </button>
           </div>
 
           <p className="text-xs text-gray-500 text-center">
-            You'll receive an M-Pesa prompt on your phone to complete the payment.
+            {isFree
+              ? "You'll be redirected to download immediately."
+              : "You'll receive an M-Pesa prompt on your phone to complete the payment."}
           </p>
         </form>
       </div>

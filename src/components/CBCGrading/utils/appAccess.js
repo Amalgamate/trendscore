@@ -161,6 +161,8 @@ const ROLE_PAGE_ALLOWLIST = {
     'student-quizzes',
     'student-course-view',
     'student-profile',
+    'student-pathway-planner',
+    'student-career-explorer',
     'settings-profile'
   ]),
   PARENT: new Set([
@@ -250,8 +252,6 @@ export const resolveDashboardPage = (user) => {
 };
 
 const SECONDARY_ONLY_PAGES = new Set([
-  'sec-pathways',
-  'sec-subjects',
   'sec-form-groups',
   'sec-schemes',
   'sec-mark-entry',
@@ -264,6 +264,8 @@ const SECONDARY_ONLY_PAGES = new Set([
   'sec-subject-analysis',
   'sec-report-cards',
   'sec-kcse-prediction',
+  // sec-pathways is available in transition planning; sec-subjects remains secondary-only.
+  'sec-subjects',
 ]);
 
 const TERTIARY_ONLY_PAGES = new Set([
@@ -300,6 +302,18 @@ const INSTITUTION_AGNOSTIC_PAGES = new Set([
   'comm-notices',
   'comm-messages',
   'comm-history',
+  // ── Pathway Planner — available in ALL institution types ──────────────────
+  // Grade 7-9 (PRIMARY_CBC) → pathway planning and school selection
+  // Grade 10-12 (SECONDARY) → subject combination execution
+  'sec-pathway-counsellor',
+  'sec-pathway-overview',
+  'sec-pathways',
+  'sec-school-catalogue',
+  'pathways-admin',
+  'parent-portal-pathway',
+  'parent-portal-schools',
+  'student-pathway-planner',
+  'student-career-explorer',
 ]);
 
 const isInstitutionPageAllowed = (institutionTypeRaw, page) => {

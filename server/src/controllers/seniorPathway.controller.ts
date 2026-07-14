@@ -5,6 +5,46 @@ import { ApiError } from '../utils/error.util';
 import { seedSeniorOfficialCatalog } from '../services/senior-pathway-catalog.seed';
 import { validateSeniorPathwaySelection } from '../services/senior-pathway-rule-engine.service';
 import { previewLegacyPathwaySelection } from '../services/legacy-pathway-selection-adapter.service';
+import { NotificationService, NotificationType } from '../services/notification.service';
+
+// ─── Notification helper (fire-and-forget) ────────────────────────────────────
+// Mirrors pathwayPlanner.controller.ts's notifyLearnerAndParent — kept local
+// here since this controller only resolves a selection's learnerId after a
+// lookup, not on every request the way pathwayPlanner does.
+async function notifyLearnerAndParent(
+  learnerId: string,
+  title: string,
+  message: string,
+  link = '/app/student-pathway-planner',
+) {
+  try {
+    const learner = await prisma.learner.findUnique({
+      where: { id: learnerId },
+      select: { admissionNumber: true, parentId: true },
+    });
+    if (!learner) return;
+
+    const studentUser = learner.admissionNumber
+      ? await prisma.user.findUnique({
+          where: { username: learner.admissionNumber },
+          select: { id: true },
+        })
+      : null;
+
+    const targets: string[] = [
+      ...(studentUser ? [studentUser.id] : []),
+      ...(learner.parentId ? [learner.parentId] : []),
+    ];
+
+    await Promise.allSettled(
+      targets.map(userId =>
+        NotificationService.createNotification({ userId, title, message, type: NotificationType.INFO, link })
+      )
+    );
+  } catch {
+    // Notifications are non-critical — never block the main operation
+  }
+}
 
 const resolveSchoolId = (req: AuthRequest) => req.school?.id || null;
 const resolveUserId = (req: AuthRequest) => req.user?.userId || null;
@@ -311,7 +351,49 @@ export const seniorPathwayController = {
     await prisma.pathwaySelectionHistory.create({
       data: { selectionId: id, action: 'SUBMITTED', actorId: resolveUserId(req), reason: req.body?.reason ?? null },
     });
+
+    void notifyLearnerAndParent(
+      row.learnerId,
+      'Pathway selection submitted',
+      'Your subject combination has been submitted for review. You will be notified once your teacher or counsellor responds.',
+    );
+
     res.json({ success: true, message: 'Selection submitted for review', data: row });
+  },
+
+  requestRevision: async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+    const approverRole = String(req.body?.approverRole || req.user?.role || 'ADMIN');
+    const reason = req.body?.reason ? String(req.body.reason) : null;
+    if (!reason?.trim()) throw new ApiError(400, 'A reason is required when returning a selection for revision');
+
+    const existing = await prisma.learnerPathwaySelection.findUnique({ where: { id }, select: { id: true, learnerId: true, locked: true } });
+    if (!existing) throw new ApiError(404, 'Selection not found');
+    if (existing.locked) throw new ApiError(409, 'Locked selections cannot be returned for revision');
+
+    const [row] = await prisma.$transaction([
+      prisma.learnerPathwaySelection.update({ where: { id }, data: { status: 'REJECTED' } }),
+      prisma.pathwayApproval.create({
+        data: {
+          selectionId: id,
+          approverRole,
+          approverId: resolveUserId(req),
+          status: 'REJECTED',
+          comment: reason,
+        },
+      }),
+      prisma.pathwaySelectionHistory.create({
+        data: { selectionId: id, action: 'RETURNED_FOR_REVISION', actorId: resolveUserId(req), reason },
+      }),
+    ]);
+
+    void notifyLearnerAndParent(
+      row.learnerId,
+      'Pathway selection returned for revision',
+      `Your counsellor has asked you to revise your subject combination: "${reason}". Please review and resubmit.`,
+    );
+
+    res.json({ success: true, message: 'Selection returned for revision', data: row });
   },
 
   approveSelection: async (req: AuthRequest, res: Response) => {
@@ -334,6 +416,13 @@ export const seniorPathwayController = {
         data: { selectionId: id, action: 'APPROVED', actorId: resolveUserId(req), reason: comment },
       }),
     ]);
+
+    void notifyLearnerAndParent(
+      row.learnerId,
+      'Pathway selection approved',
+      'Your subject combination has been approved. Your school head will lock it once the senior school selection window closes.',
+    );
+
     res.json({ success: true, message: 'Selection approved', data: row });
   },
 
@@ -355,6 +444,13 @@ export const seniorPathwayController = {
     await prisma.pathwaySelectionHistory.create({
       data: { selectionId: id, action: 'LOCKED', actorId: resolveUserId(req), reason: req.body?.reason ?? null },
     });
+
+    void notifyLearnerAndParent(
+      row.learnerId,
+      'Pathway selection locked',
+      'Your senior school subject combination is now locked and final. Your pathway journey begins here!',
+    );
+
     res.json({ success: true, message: 'Selection locked', data: row });
   },
 
@@ -371,5 +467,46 @@ export const seniorPathwayController = {
     const { learnerId } = req.params;
     const preview = await previewLegacyPathwaySelection(prisma as any, learnerId);
     res.json({ success: true, data: preview });
+  },
+
+  getSearchCriteria: async (req: AuthRequest, res: Response) => {
+    const { learnerId } = req.params;
+    const criteria = await prisma.learnerSchoolSearchCriteria.findUnique({ where: { learnerId } });
+    res.json({ success: true, data: criteria });
+  },
+
+  updateSearchCriteria: async (req: AuthRequest, res: Response) => {
+    const { learnerId } = req.params;
+    const { budgetBand, boardingPreference, preferredCounties, faithPreference, notes } = req.body ?? {};
+
+    const VALID_BUDGET_BANDS = ['LOW', 'MEDIUM', 'HIGH'];
+    const VALID_BOARDING = ['DAY', 'BOARDING', 'EITHER'];
+    if (budgetBand !== undefined && budgetBand !== null && !VALID_BUDGET_BANDS.includes(budgetBand)) {
+      throw new ApiError(422, `budgetBand must be one of: ${VALID_BUDGET_BANDS.join(', ')}`);
+    }
+    if (boardingPreference !== undefined && boardingPreference !== null && !VALID_BOARDING.includes(boardingPreference)) {
+      throw new ApiError(422, `boardingPreference must be one of: ${VALID_BOARDING.join(', ')}`);
+    }
+
+    const row = await prisma.learnerSchoolSearchCriteria.upsert({
+      where: { learnerId },
+      update: {
+        ...(budgetBand !== undefined && { budgetBand }),
+        ...(boardingPreference !== undefined && { boardingPreference }),
+        ...(Array.isArray(preferredCounties) && { preferredCounties: preferredCounties.map(String) }),
+        ...(faithPreference !== undefined && { faithPreference }),
+        ...(notes !== undefined && { notes }),
+      },
+      create: {
+        learnerId,
+        budgetBand: budgetBand ?? null,
+        boardingPreference: boardingPreference ?? null,
+        preferredCounties: Array.isArray(preferredCounties) ? preferredCounties.map(String) : [],
+        faithPreference: faithPreference ?? null,
+        notes: notes ?? null,
+      },
+    });
+
+    res.json({ success: true, message: 'School search criteria saved', data: row });
   },
 };

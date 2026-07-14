@@ -8,6 +8,7 @@ import { toast } from 'react-hot-toast';
 import { useNotifications } from '../../hooks/useNotifications';
 import axiosInstance from '../../../../services/api/axiosConfig';
 import { PRODUCT_DISPLAY_NAME } from '../../../../config/productIdentity';
+import SettingsPageShell from '../../shared/SettingsPageShell';
 
 const cleanSchoolName = (value) => String(value || '').trim();
 
@@ -400,7 +401,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-12">
+    <SettingsPageShell width="wide">
       {/* Header with Save Button */}
       <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm mb-6">
         <div>
@@ -901,7 +902,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
           </div>
         </div>
       </div>
-    </div>
+    </SettingsPageShell>
   );
 };
 

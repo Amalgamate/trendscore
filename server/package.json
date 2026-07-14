@@ -25,6 +25,7 @@
     "seed:backfill-streams-classes": "ts-node prisma/seeders/seed-streams-classes.ts",
     "seed:timetable": "tsx prisma/seed-timetable.ts",
     "seed:timetable:verify": "tsx prisma/verify-timetable.ts",
+    "seed:careers": "ts-node prisma/seed-careers.ts",
     "backfill:fee-journal": "ts-node scripts/backfill-fee-payments-to-journal.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

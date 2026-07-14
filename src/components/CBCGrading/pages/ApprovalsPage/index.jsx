@@ -97,6 +97,7 @@ export function ApprovalsPage() {
     <div>
       <ModuleTabNav
         sectionLabel="APPROVALS"
+        variant="dropdown"
         tabs={visibleTabs}
         activeTab={activeTab}
         onTabChange={setActiveTab}

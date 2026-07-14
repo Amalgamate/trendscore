@@ -14,7 +14,8 @@ import {
   Settings,
   MessageSquare,
   Award,
-  BookOpen
+  BookOpen,
+  Compass,
 } from 'lucide-react';
 
 export type RoleType = 'OWNER' | 'SUPER_ADMIN' | 'ADMIN' | 'ACCOUNTANT' | 'TEACHER' | 'PARENT' | 'HEAD_TEACHER' | 'STUDENT';
@@ -325,18 +326,19 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         color: 'text-blue-600'
       },
       {
-        id: 'fees',
-        label: 'Fees',
-        icon: Wallet,
-        path: 'parent-portal-fees',
-        color: 'text-amber-600'
+        id: 'pathway',
+        label: 'Pathway',
+        icon: Compass,
+        path: 'parent-portal-pathway',
+        activePaths: ['parent-portal-pathway', 'parent-portal-schools'],
+        color: 'text-violet-600'
       },
       {
         id: 'messages',
         label: 'Messages',
         icon: MessageSquare,
         path: 'parent-portal-messages',
-        color: 'text-violet-600'
+        color: 'text-indigo-600'
       },
       {
         id: 'more',
@@ -374,10 +376,10 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         color: 'text-emerald-600'
       },
       {
-        id: 'achievements',
-        label: 'Progress',
-        icon: Award,
-        path: 'student-profile',
+        id: 'pathway',
+        label: 'Pathway',
+        icon: Compass,
+        path: 'student-pathway-planner',
         color: 'text-violet-600'
       },
       {

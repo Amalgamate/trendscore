@@ -3,6 +3,7 @@ import { Check, Lock, Package, RefreshCw, Save, ShieldCheck, ToggleLeft, ToggleR
 import toast from 'react-hot-toast';
 import { schoolAPI } from '../../../../services/api';
 import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
+import SettingsPageShell from '../../shared/SettingsPageShell';
 
 const categoryOrder = ['Core', 'Academics', 'Finance', 'Communication', 'Operations', 'HR', 'Administration'];
 
@@ -101,8 +102,8 @@ const ModuleSettingsPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--app-page-bg)] p-4 md:p-6">
-      <div className="mx-auto max-w-6xl space-y-5">
+    <SettingsPageShell width="wide">
+      <div className="space-y-5">
         <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-end md:justify-between">
           <div>
             <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
@@ -223,7 +224,7 @@ const ModuleSettingsPage = () => {
           </div>
         )}
       </div>
-    </div>
+    </SettingsPageShell>
   );
 };
 

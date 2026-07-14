@@ -80,6 +80,8 @@ export const assessmentAPI = {
     fetchWithAuth('/assessments/setup/create-tests', { method: 'POST', body: JSON.stringify(data) }),
   completeSchoolSetup: async (data) =>
     fetchWithAuth('/assessments/setup/complete', { method: 'POST', body: JSON.stringify(data) }),
+  seedTransitionDemoScores: async (data = {}) =>
+    fetchWithAuth('/assessments/setup/transition-demo', { method: 'POST', body: JSON.stringify(data) }),
   resetAssessments: async (data) =>
     fetchWithAuth('/assessments/setup/reset', { method: 'POST', body: JSON.stringify(data) }),
 };

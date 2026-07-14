@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Activity, RefreshCw, ShieldAlert } from 'lucide-react';
 import { systemLogsAPI } from '../../../../services/api';
+import SettingsPageShell from '../../shared/SettingsPageShell';
 
 const formatTimeAgo = (iso) => {
   const now = Date.now();
@@ -70,36 +71,12 @@ const SystemLogsPage = () => {
   }, [filter, logs]);
 
   return (
-    <div className="space-y-5 p-4 md:p-6">
-      <div className="rounded-xl border border-gray-200 bg-white p-4 md:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-xl md:text-2xl font-semibold text-gray-900">System Logs</h1>
-            <p className="text-sm text-gray-600 mt-1">
-              Live activity feed in plain language for school administrators.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                checked={autoRefresh}
-                onChange={(e) => setAutoRefresh(e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              Auto refresh
-            </label>
-            <button
-              onClick={() => loadLogs(true)}
-              disabled={refreshing}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
-          </div>
-        </div>
-
+    <SettingsPageShell
+      title="System Logs"
+      description="Live activity feed in plain language for school administrators."
+      actions={<div className="flex items-center gap-2"><label className="inline-flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />Auto refresh</label><button onClick={() => loadLogs(true)} disabled={refreshing} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"><RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Refresh</button></div>}
+    >
+      <div className="surface-panel p-4 md:p-5">
         <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="rounded-lg border border-gray-200 p-3">
             <p className="text-xs text-gray-500 uppercase tracking-wide">Total Events</p>
@@ -137,7 +114,7 @@ const SystemLogsPage = () => {
         </div>
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white">
+      <div className="surface-panel">
         {loading ? (
           <div className="p-6 text-sm text-gray-600">Loading system logs...</div>
         ) : error ? (
@@ -184,7 +161,7 @@ const SystemLogsPage = () => {
           </div>
         )}
       </div>
-    </div>
+    </SettingsPageShell>
   );
 };
 

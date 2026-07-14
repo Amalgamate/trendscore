@@ -23,10 +23,10 @@ import {
     TrendingUp, Zap, CheckSquare, Settings, BookOpen,
     Users2, Truck, Fingerprint, CreditCard, PieChart, BarChart3, AlertCircle,
     Package, Building2, HelpCircle, Receipt, FileText,
-    Shirt, ClipboardList, Video, PlayCircle, Gift, Wrench, Activity, Brain, MoreHorizontal
+    Shirt, ClipboardList, Video, PlayCircle, Gift, Wrench, Activity, Brain, MoreHorizontal, Award
 } from 'lucide-react';
 
-const focusModules = ['dashboard', 'learners', 'teachers', 'attendance', 'assessment', 'finance', 'communications', 'planner', 'digital-learning', 'learning-hub', 'docs-center', 'settings', 'hr', 'inventory', 'transport'];
+const focusModules = ['dashboard', 'learners', 'teachers', 'attendance', 'assessment', 'finance', 'communications', 'planner', 'digital-learning', 'learning-hub', 'docs-center', 'settings', 'hr', 'inventory', 'transport', 'pathway-planner'];
 const SCHOOL_SECTION_ORDER = ['learners', 'students', 'teachers', 'lecturers', 'attendance', 'assessment', 'secondary-assessment', 'tertiary-assessment'];
 
 const orderSectionsById = (sections = [], preferredOrder = SCHOOL_SECTION_ORDER) => {
@@ -391,7 +391,13 @@ export const allNavSections = [
         label: 'Document Center',
         icon: FileText,
         permission: null,
-        items: []
+        items: [
+            { id: 'docs-all',      label: 'All Records',      path: 'docs-center', params: { category: 'all' },      permission: null },
+            { id: 'docs-students', label: 'Student Files',    path: 'docs-center', params: { category: 'students' }, permission: null },
+            { id: 'docs-staff',    label: 'Staff Records',    path: 'docs-center', params: { category: 'staff' },    permission: null },
+            { id: 'docs-finance',  label: 'Financial Docs',   path: 'docs-center', params: { category: 'finance' },  permission: null },
+            { id: 'docs-reports',  label: 'Academic Reports', path: 'docs-center', params: { category: 'reports' },  permission: null },
+        ]
     },
     {
         id: 'hr',
@@ -527,6 +533,45 @@ export const allNavSections = [
     //     permission: null,
     //     items: []
     // },
+
+    // ── Pathway Planner — available to all institution types ─────────────────
+    {
+        id: 'pathway-planner',
+        label: 'Junior Transition Centre',
+        icon: Award,
+        permission: null,
+        items: [
+            { id: 'pathways-admin-overview', label: 'Overview',             path: 'pathways-admin',         params: { tab: 'dashboard' }, permission: 'MANAGE_PATHWAY_CATALOG' },
+            { id: 'sec-pathway-overview',   label: 'Transition Readiness', path: 'sec-pathway-overview',   permission: 'VIEW_ALL_LEARNERS'      },
+            { id: 'sec-pathway-counsellor', label: 'Transition Cases',     path: 'sec-pathway-counsellor', permission: 'VIEW_ALL_LEARNERS'      },
+            {
+                id: 'pathway-catalogues',
+                label: 'Catalogues',
+                type: 'group',
+                items: [
+                    { id: 'sec-pathways',         label: 'Pathway Catalogue', path: 'sec-pathways',         permission: 'VIEW_ACADEMIC_SETTINGS' },
+                    { id: 'sec-school-catalogue', label: 'School Catalogue',  path: 'sec-school-catalogue', permission: 'VIEW_ACADEMIC_SETTINGS' },
+                ],
+            },
+            {
+                id: 'pathway-administration',
+                label: 'Configurations',
+                type: 'group',
+                items: [
+                    { id: 'pathways-admin-content',     label: 'Content',        path: 'pathways-admin', params: { tab: 'content' },     permission: 'MANAGE_PATHWAY_CATALOG' },
+                    { id: 'pathways-admin-schools',     label: 'Senior Schools', path: 'pathways-admin', params: { tab: 'schools' },     permission: 'MANAGE_PATHWAY_CATALOG' },
+                    { id: 'pathways-admin-corrections', label: 'Corrections',    path: 'pathways-admin', params: { tab: 'corrections' }, permission: 'MANAGE_PATHWAY_CATALOG' },
+                    { id: 'pathways-admin-rules',       label: 'Rules',          path: 'pathways-admin', params: { tab: 'rules' },       permission: 'MANAGE_PATHWAY_CATALOG' },
+                    { id: 'pathways-admin-imports',     label: 'Imports',        path: 'pathways-admin', params: { tab: 'imports' },     permission: 'MANAGE_PATHWAY_CATALOG' },
+                    { id: 'pathways-admin-quality',     label: 'Data Quality',   path: 'pathways-admin', params: { tab: 'quality' },     permission: 'MANAGE_PATHWAY_CATALOG' },
+                    { id: 'pathways-admin-analytics',   label: 'Analytics',      path: 'pathways-admin', params: { tab: 'analytics' },   permission: 'MANAGE_PATHWAY_CATALOG' },
+                    { id: 'pathways-admin-history',     label: 'History',        path: 'pathways-admin', params: { tab: 'history' },     permission: 'MANAGE_PATHWAY_CATALOG' },
+                    { id: 'pathways-admin-audit',       label: 'Audit',          path: 'pathways-admin', params: { tab: 'audit' },       permission: 'MANAGE_PATHWAY_CATALOG' },
+                ],
+            },
+        ],
+    },
+
     {
         id: 'facilities',
         label: 'The Campus',
@@ -543,16 +588,26 @@ export const allNavSections = [
         icon: Settings,
         permission: 'SCHOOL_SETTINGS',
         items: [
-            { id: 'settings-school',         label: 'School Settings',         path: 'settings-school',         permission: 'SCHOOL_SETTINGS'   },
-            { id: 'settings-modules',        label: 'Modules & Package',       path: 'settings-modules',        permission: 'SCHOOL_SETTINGS'   },
-            { id: 'settings-academic',       label: 'Academic Settings',       path: 'settings-academic',       permission: 'ACADEMIC_SETTINGS' },
-            { id: 'settings-communication',  label: 'Communication Settings',  path: 'settings-communication',  permission: 'SCHOOL_SETTINGS'   },
-            { id: 'settings-payment',        label: 'Payment Settings',        path: 'settings-payment',        permission: 'SCHOOL_SETTINGS'   },
-            { id: 'settings-users',          label: 'User Management',         path: 'settings-users',          permission: 'EDIT_USER'         },
-            { id: 'settings-approvals',      label: 'Approvals',               path: 'settings-approvals',      permission: 'SCHOOL_SETTINGS'   },
-            { id: 'settings-system-logs',    label: 'System Logs',             path: 'settings-system-logs',    permission: 'SYSTEM_SETTINGS', icon: Activity },
-            { id: 'settings-system-control', label: 'System Control',          path: 'settings-system-control', permission: 'SYSTEM_SETTINGS', icon: Wrench   },
-            { id: 'system-maintenance',      label: 'Backup, Restore & Reset', path: 'system-maintenance',      permission: 'SYSTEM_SETTINGS', icon: Wrench }
+            { id: 'settings-school-group', label: 'School', type: 'group', items: [
+                { id: 'settings-school', label: 'School Settings', path: 'settings-school', permission: 'SCHOOL_SETTINGS' },
+                { id: 'settings-modules', label: 'Modules & Package', path: 'settings-modules', permission: 'SCHOOL_SETTINGS' },
+            ]},
+            { id: 'settings-academics-group', label: 'Academics', type: 'group', items: [
+                { id: 'settings-academic', label: 'Academic Settings', path: 'settings-academic', permission: 'ACADEMIC_SETTINGS' },
+            ]},
+            { id: 'settings-operations-group', label: 'Operations', type: 'group', items: [
+                { id: 'settings-communication', label: 'Communication Settings', path: 'settings-communication', permission: 'SCHOOL_SETTINGS' },
+                { id: 'settings-payment', label: 'Payment Settings', path: 'settings-payment', permission: 'SCHOOL_SETTINGS' },
+            ]},
+            { id: 'settings-people-group', label: 'People & Approvals', type: 'group', items: [
+                { id: 'settings-users', label: 'User Management', path: 'settings-users', permission: 'EDIT_USER' },
+                { id: 'settings-approvals', label: 'Approvals', path: 'settings-approvals', permission: 'SCHOOL_SETTINGS' },
+            ]},
+            { id: 'settings-system-group', label: 'System', type: 'group', items: [
+                { id: 'settings-system-logs', label: 'System Logs', path: 'settings-system-logs', permission: 'SYSTEM_SETTINGS', icon: Activity },
+                { id: 'settings-system-control', label: 'System Control', path: 'settings-system-control', permission: 'SYSTEM_SETTINGS', icon: Wrench },
+                { id: 'system-maintenance', label: 'Backup, Restore & Reset', path: 'system-maintenance', permission: 'SYSTEM_SETTINGS', icon: Wrench },
+            ]},
         ]
     }
 ];
@@ -753,7 +808,9 @@ export const useNavigation = () => {
                     items: [
                         { id: 'student-courses', label: 'My Courses', path: 'student-courses', permission: null },
                         { id: 'student-assignments', label: 'My Assignments', path: 'student-assignments', permission: null },
-                        { id: 'student-quizzes', label: 'Quizzes & Progress', path: 'student-quizzes', permission: null }
+                        { id: 'student-quizzes', label: 'Quizzes & Progress', path: 'student-quizzes', permission: null },
+                        { id: 'student-pathway-planner', label: 'My Pathway', path: 'student-pathway-planner', permission: null },
+                        { id: 'student-career-explorer', label: 'Career Explorer', path: 'student-career-explorer', permission: null },
                     ]
                 },
                 backOfficeSections: [],
@@ -798,7 +855,9 @@ export const useNavigation = () => {
                     items: [
                         { id: 'student-courses', label: 'My Courses', path: 'student-courses', permission: null },
                         { id: 'student-assignments', label: 'My Assignments', path: 'student-assignments', permission: null },
-                        { id: 'student-quizzes', label: 'Quizzes & Progress', path: 'student-quizzes', permission: null }
+                        { id: 'student-quizzes', label: 'Quizzes & Progress', path: 'student-quizzes', permission: null },
+                        { id: 'student-pathway-planner', label: 'My Pathway', path: 'student-pathway-planner', permission: null },
+                        { id: 'student-career-explorer', label: 'Career Explorer', path: 'student-career-explorer', permission: null },
                     ]
                 },
                 backOfficeSections: [],
@@ -866,7 +925,6 @@ export const useNavigation = () => {
 
         let built = allNavSections.filter(section => {
             if (!focusModules.includes(section.id)) return false;
-            if (section.id === 'settings') return false;
             if (role === 'STUDENT' && section.id === 'lms') return false;
             if (section.permission && !can(section.permission)) return false;
             if (section.items.length > 0) {
@@ -905,7 +963,9 @@ export const useNavigation = () => {
             items: [
                 { id: 'student-courses', label: 'My Courses', path: 'student-courses', permission: null },
                 { id: 'student-assignments', label: 'My Assignments', path: 'student-assignments', permission: null },
-                { id: 'student-quizzes', label: 'Quizzes & Progress', path: 'student-quizzes', permission: null }
+                { id: 'student-quizzes', label: 'Quizzes & Progress', path: 'student-quizzes', permission: null },
+                { id: 'student-pathway-planner', label: 'My Pathway', path: 'student-pathway-planner', permission: null },
+                { id: 'student-career-explorer', label: 'Career Explorer', path: 'student-career-explorer', permission: null },
             ]
         };
     }, [role]);
@@ -933,7 +993,7 @@ export const useNavigation = () => {
             return orderSectionsById(navSections.filter(s => ['learners', 'assessment', 'attendance'].includes(s.id)));
         }
         return orderSectionsById(navSections.filter(s =>
-            ['learners', 'teachers', 'assessment', 'digital-learning', 'planner', 'timetable', 'learning-hub', 'attendance', 'facilities'].includes(s.id)
+            ['learners', 'teachers', 'assessment', 'digital-learning', 'planner', 'timetable', 'learning-hub', 'attendance', 'facilities', 'pathway-planner'].includes(s.id)
         ));
     }, [navSections, role]);
 

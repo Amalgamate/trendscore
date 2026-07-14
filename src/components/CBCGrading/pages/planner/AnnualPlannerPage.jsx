@@ -473,6 +473,7 @@ export default function AnnualPlannerPage() {
       <div className="print:hidden">
         <ModuleTabNav
           sectionLabel="ANNUAL PLANNER"
+          variant="dropdown"
           tabs={plannerTabs}
           activeTab={activeTab}
           onTabChange={setActiveTab}

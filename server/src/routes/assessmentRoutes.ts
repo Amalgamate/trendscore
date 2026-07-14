@@ -344,6 +344,15 @@ router.post(
 );
 
 router.post(
+  '/setup/transition-demo',
+  authenticate,
+  requireRole(['SUPER_ADMIN']),
+  rateLimit({ windowMs: 60_000, maxRequests: 5 }),
+  auditLog('SEED_TRANSITION_DEMO_SCORES'),
+  setupController.seedTransitionDemoScores
+);
+
+router.post(
   '/setup/reset',
   authenticate,
   requireRole(['SUPER_ADMIN']),

@@ -1,11 +1,17 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { Home, Megaphone, Gift } from 'lucide-react';
+import { Home, Gift } from 'lucide-react';
 import { useNavigation } from '../hooks/useNavigation';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 const flattenLeafItems = (items = []) =>
   items.flatMap((item) => (item.type === 'group' ? (item.items || []) : [item]));
+
+const isItemActive = (item, currentPage, pageParams = {}) => {
+  if (currentPage !== item.path) return false;
+  const params = item.params || {};
+  return Object.entries(params).every(([key, value]) => pageParams?.[key] === value);
+};
 
 const PASTEL_PALETTE = {
   'Assessments':        'text-emerald-700 bg-emerald-50',
@@ -49,8 +55,8 @@ const GROUP_COLORS = [
 ];
 
 // ── single flat tab button ─────────────────────────────────────────────────────
-const NavItem = ({ item, currentPage, onNavigate, idx }) => {
-  const isActive = currentPage === item.path;
+const NavItem = ({ item, currentPage, pageParams, onNavigate, idx }) => {
+  const isActive = isItemActive(item, currentPage, pageParams);
   const colors = PASTEL_PALETTE[item.label] || COLOR_CYCLE[idx % COLOR_CYCLE.length];
   const [fg, bg] = colors.trim().split(/\s+/);
 
@@ -74,14 +80,14 @@ const NavItem = ({ item, currentPage, onNavigate, idx }) => {
 
 // ── group → portal dropdown ───────────────────────────────────────────────────
 // Uses a portal so the menu escapes any overflow:hidden/auto parent containers.
-const GroupDropdown = ({ group, currentPage, onNavigate, color }) => {
+const GroupDropdown = ({ group, currentPage, pageParams, onNavigate, color }) => {
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const btnRef = useRef(null);
   const menuRef = useRef(null);
 
   const items = (group.items || []).filter(i => !i.greyedOut);
-  const isAnyActive = items.some(i => i.path === currentPage);
+  const isAnyActive = items.some((item) => isItemActive(item, currentPage, pageParams));
 
   const handleToggle = () => {
     if (!open && btnRef.current) {
@@ -124,7 +130,7 @@ const GroupDropdown = ({ group, currentPage, onNavigate, color }) => {
       className="min-w-[190px] rounded-md border border-gray-200 bg-white p-1 shadow-lg"
     >
       {items.map((item, i) => {
-        const isActive = currentPage === item.path;
+        const isActive = isItemActive(item, currentPage, pageParams);
         return (
           <button
             key={item.id || item.path || i}
@@ -237,6 +243,7 @@ const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
                     <GroupDropdown
                       group={item}
                       currentPage={currentPage}
+                      pageParams={pageParams}
                       onNavigate={onNavigate}
                       color={GROUP_COLORS[idx % GROUP_COLORS.length]}
                     />
@@ -247,7 +254,7 @@ const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
               if (!item.greyedOut) {
                 return (
                   <React.Fragment key={item.id || item.path || idx}>
-                    <NavItem item={item} currentPage={currentPage} onNavigate={onNavigate} idx={idx} />
+                    <NavItem item={item} currentPage={currentPage} pageParams={pageParams} onNavigate={onNavigate} idx={idx} />
                     {!isLast && <span className="h-4 w-px bg-gray-200" />}
                   </React.Fragment>
                 );
@@ -256,7 +263,7 @@ const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
             })
           : flatItems.map((item, idx) => (
               <React.Fragment key={item.id || item.path || idx}>
-                <NavItem item={item} currentPage={currentPage} onNavigate={onNavigate} idx={idx} />
+                <NavItem item={item} currentPage={currentPage} pageParams={pageParams} onNavigate={onNavigate} idx={idx} />
                 {idx < flatItems.length - 1 && <span className="h-4 w-px bg-gray-300" />}
               </React.Fragment>
             ))}

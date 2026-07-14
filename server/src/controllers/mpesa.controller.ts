@@ -251,6 +251,18 @@ export const handleCallback = async (req: Request, res: Response) => {
                     where: { id: transaction.id },
                     data: { status: 'FAILED', resultCode, resultDesc }
                 });
+
+                if (!transaction.invoiceId && checkoutRequestId) {
+                    try {
+                        await LMSMarketplaceService.completeByCheckoutRequestId(
+                            checkoutRequestId,
+                            { success: false, resultCode, resultDesc }
+                        );
+                    } catch (err: any) {
+                        logger.error('[MpesaCallback] Marketplace completion hook error (non-fatal):', err?.message ?? err);
+                    }
+                }
+
                 logger.info(`[MpesaCallback] STK failed: ${resultDesc}`);
             }
 

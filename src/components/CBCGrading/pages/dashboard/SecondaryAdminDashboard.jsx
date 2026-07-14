@@ -179,10 +179,12 @@ const SecondaryAdminDashboard = ({ learners = [], pagination, teachers = [], use
   ].filter(s => hasPageAccess(user, s.path));
 
   const visibleOperations = [
-    { label: 'Register New Student',   icon: Users,         page: 'learners-admissions' },
-    { label: 'Manage Staff Directory', icon: GraduationCap, page: 'teachers-list' },
-    { label: 'Academic Term Settings', icon: BookOpen,      page: 'settings-academic' },
-    { label: 'Financial Statements',   icon: FileText,      page: 'accounting-reports' },
+    { label: 'Register New Student',        icon: Users,         page: 'learners-admissions' },
+    { label: 'Manage Staff Directory',      icon: GraduationCap, page: 'teachers-list' },
+    { label: 'Academic Term Settings',      icon: BookOpen,      page: 'settings-academic' },
+    { label: 'Financial Statements',        icon: FileText,      page: 'accounting-reports' },
+    { label: 'Pathway Progress Overview',   icon: TrendingUp,    page: 'sec-pathway-overview' },
+    { label: 'Pathway Counsellor Workbench',icon: Activity,      page: 'sec-pathway-counsellor' },
   ].filter(a => hasPageAccess(user, a.page));
 
   /* ── Data loading ──────────────────────────────────────────────────────── */

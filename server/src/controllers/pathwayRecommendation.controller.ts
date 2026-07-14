@@ -5,6 +5,24 @@ import { recommendSeniorPathwayAndSubjects } from '../services/pathway-recommend
 import { buildGrade9TransitionReadiness } from '../services/pathway-transition.service';
 import { getTransitionDecisionHistory, saveTransitionDecision } from '../services/pathway-transition-decision.service';
 import { Term } from '@prisma/client';
+import prisma from '../config/database';
+import { NotificationService, NotificationType } from '../services/notification.service';
+
+async function notifyRecommendationReady(learnerId: string, pathway: string) {
+  try {
+    const learner = await prisma.learner.findUnique({ where: { id: learnerId }, select: { admissionNumber: true, parentId: true } });
+    if (!learner) return;
+    const student = learner.admissionNumber ? await prisma.user.findUnique({ where: { username: learner.admissionNumber }, select: { id: true } }) : null;
+    const recipients = [...new Set([student?.id, learner.parentId].filter(Boolean) as string[])];
+    await Promise.allSettled(recipients.map((userId) => NotificationService.createNotification({
+      userId,
+      title: 'Pathway recommendation ready',
+      message: `The ${pathway.replace(/_/g, ' ')} recommendation is ready to review.`,
+      type: NotificationType.INFO,
+      link: '/app/student-pathway-planner',
+    })));
+  } catch { /* Recommendation persistence remains authoritative. */ }
+}
 
 export const pathwayRecommendationController = {
   recommendForLearner: async (req: AuthRequest, res: Response) => {
@@ -63,6 +81,8 @@ export const pathwayRecommendationController = {
       analysisPayload: body.analysisPayload || null,
       updatedBy: req.user?.userId || null,
     });
+
+    await notifyRecommendationReady(learnerId, String(body.recommendedPathway));
 
     res.status(201).json({ success: true, data: row });
   },

@@ -19,6 +19,7 @@ import {
   Database,
 } from 'lucide-react';
 import { authAPI } from '../../../../services/api';
+import SettingsPageShell from '../../shared/SettingsPageShell';
 
 function clearLocalSessionAndRedirect() {
   localStorage.removeItem('token');
@@ -166,16 +167,11 @@ const SystemControlPage = () => {
   };
 
   return (
-    <div className="space-y-6 p-4 md:p-6 max-w-3xl">
-
-      {/* Page header */}
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <h1 className="text-xl font-bold text-gray-900">System Control</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Administrative operations for session management and server cache.
-          These actions are irreversible — use with caution.
-        </p>
-      </div>
+    <SettingsPageShell
+      title="System Control"
+      description="Administrative operations for session management and server cache. These actions are irreversible — use with caution."
+      width="focused"
+    >
 
       {/* Action 1 — Logout all users */}
       <ActionCard
@@ -229,7 +225,7 @@ const SystemControlPage = () => {
           onCancel={() => setConfirm(null)}
         />
       )}
-    </div>
+    </SettingsPageShell>
   );
 };
 

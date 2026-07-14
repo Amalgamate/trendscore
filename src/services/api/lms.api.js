@@ -131,7 +131,40 @@ export const lmsAPI = {
     fetchWithAuth('/lms/settings', { method: 'PUT', body: JSON.stringify(data) }),
 
   // ─── Analytics & Insights ─────────────────────────────────────────────────
-  getAnalyticsOverview: async () => fetchWithAuth('/lms/analytics/overview'),
+  /**
+   * GET /api/lms/analytics/overview?termId=...
+   * NOTE: termId is required by the backend.
+   */
+  getAnalyticsOverview: async (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return fetchWithAuth(`/lms/analytics/overview${queryString ? `?${queryString}` : ''}`);
+  },
+
+  /** GET /api/lms/analytics/assignments?termId=... */
+  getAssignmentAnalytics: async (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return fetchWithAuth(`/lms/analytics/assignments${queryString ? `?${queryString}` : ''}`);
+  },
+
+  /** GET /api/lms/analytics/lessons */
+  getLessonEngagementStats: async () => fetchWithAuth('/lms/analytics/lessons'),
+
+  /** GET /api/lms/analytics/class/:classId?termId=... */
+  getClassAnalytics: async (classId, params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return fetchWithAuth(`/lms/analytics/class/${classId}${queryString ? `?${queryString}` : ''}`);
+  },
+
+  /** GET /api/lms/analytics/learner/:learnerId?termId=... */
+  getLearnerAnalytics: async (learnerId, params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return fetchWithAuth(`/lms/analytics/learner/${learnerId}${queryString ? `?${queryString}` : ''}`);
+  },
+
+  /** GET /api/lms/analytics/leaderboard (currently 501 until backend is wired) */
+  getLeaderboard: async () => fetchWithAuth('/lms/analytics/leaderboard'),
+
+  // Legacy placeholder (there is no generic GET /api/lms/analytics endpoint)
   getAnalytics: async (params = {}) => {
     const queryString = new URLSearchParams(params).toString();
     return fetchWithAuth(`/lms/analytics${queryString ? `?${queryString}` : ''}`);
@@ -144,4 +177,11 @@ export const lmsAPI = {
   getStudentCourseDetail: async (courseId) => fetchWithAuth(`/lms/my-courses/${courseId}`),
   /** Returns assignments for the authenticated learner */
   getStudentAssignments: async () => fetchWithAuth('/lms/my-assignments'),
+
+  /**
+   * Returns published assignments (with submission status) for a specific child.
+   * For use by the parent portal — the server enforces own-children-only access.
+   */
+  getChildAssignments: async (learnerId) =>
+    fetchWithAuth(`/lms/children/${learnerId}/assignments`),
 };

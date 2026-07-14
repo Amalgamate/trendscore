@@ -70,7 +70,7 @@ export default function MyPurchases({ onNavigate, onError, onSuccess }) {
   const handleRate = async (purchaseId, rating) => {
     try {
       setRatingState((prev) => ({ ...prev, [purchaseId]: 'loading' }));
-      await marketplaceAPI.rateResource(purchaseId, rating);
+      await marketplaceAPI.ratePurchase(purchaseId, rating);
       onSuccess('Rating submitted');
       setRatingState((prev) => ({ ...prev, [purchaseId]: 'done' }));
       setTimeout(() => {
@@ -141,7 +141,7 @@ export default function MyPurchases({ onNavigate, onError, onSuccess }) {
                     </div>
 
                     {/* Rating Section */}
-                    {ratingState[purchase.id] !== 'done' && !purchase.listing?.ratingCount && (
+                    {ratingState[purchase.id] !== 'done' && !purchase.ratingGiven && (
                       <div className="mt-3 flex items-center gap-2">
                         <span className="text-xs text-gray-600">Rate this resource:</span>
                         <div className="flex gap-1">

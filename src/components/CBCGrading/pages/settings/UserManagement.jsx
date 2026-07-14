@@ -890,6 +890,7 @@ const UserManagement = () => {
 
       <ModuleTabNav
         sectionLabel="USER MANAGEMENT"
+        variant="dropdown"
         tabs={[
           { id: 'list', label: 'User List', icon: <Users size={13} /> },
           { id: 'config', label: 'System Roles', icon: <Shield size={13} /> },

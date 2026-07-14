@@ -185,121 +185,42 @@ function OverviewTab({ child, showFees }) {
   );
 }
 
-// ─── Results Tab (child-level: subject rows with progress bars) ───────────────
-// Uses child.subjects from dashboard payload first (no extra API call needed).
-// Falls back to reportAPI.getLearnerAnalytics if subjects are empty.
+// ─── Results Tab — uses shared hook + components from results/ResultsShared ────
+import { useLearnerResults, scoreColor } from '../results/useLearnerResults';
+import {
+  ResultsLoadingState,
+  ResultsErrorState,
+  ResultsEmptyState,
+  TermAccordion,
+} from '../results/ResultsShared';
 
-function ResultsTab({ learnerId, subjects: dashboardSubjects }) {
-  const [subjects, setSubjects]   = useState(dashboardSubjects || []);
-  const [overall, setOverall]     = useState(null);
-  const [classRank, setClassRank] = useState(null);
-  const [classSize, setClassSize] = useState(null);
-  const [loading, setLoading]     = useState(!dashboardSubjects?.length);
-  const [error, setError]         = useState(null);
+function ResultsTab({ learnerId }) {
+  const year = String(new Date().getFullYear());
+  const { loading, error, summary } = useLearnerResults(learnerId, year);
 
-  const load = useCallback(async () => {
-    if (dashboardSubjects?.length) return; // already have real data
-    setLoading(true); setError(null);
-    try {
-      const r = await api.reports.getLearnerAnalytics(learnerId);
-      const data = r?.data || r;
-      const subs = data?.subjects || data?.learningAreas || data?.assessments || [];
-      setSubjects(subs);
-      setOverall(data?.overallGrade || data?.performanceLevel || null);
-      setClassRank(data?.classRank || null);
-      setClassSize(data?.classSize || null);
-    } catch {
-      setError('Assessment records unavailable.');
-    } finally { setLoading(false); }
-  }, [learnerId, dashboardSubjects]);
+  if (loading) return <ResultsLoadingState />;
+  if (error)   return <ResultsErrorState message={error} />;
+  if (!summary.hasData) return <ResultsEmptyState />;
 
-  useEffect(() => { load(); }, [load]);
-
-  // Compute avg from real subject scores
-  const avgNum = subjects.length > 0
-    ? Math.round(subjects.reduce((s, sub) => s + Number(sub.score ?? sub.percentage ?? sub.marks ?? 0), 0) / subjects.length)
-    : null;
-
-  if (loading) return <div className="flex justify-center py-12"><Loader2 size={22} className="animate-spin text-[#3B1FA3]" /></div>;
-
-  if (error && subjects.length === 0) {
-    return (
-      <div className="bg-white border border-dashed border-gray-200 rounded-xl p-8 text-center">
-        <GraduationCap size={28} className="mx-auto mb-2 text-gray-300 opacity-40" />
-        <p className="text-sm font-semibold text-gray-600 mb-1">No results available</p>
-        <p className="text-xs text-gray-400">{error}</p>
-      </div>
-    );
-  }
+  const latest    = summary.terms[summary.terms.length - 1];
+  const latestAvg = latest?.avg ?? null;
 
   return (
     <div className="space-y-4">
-      {/* Snapshot row */}
-      {(overall || avgNum != null) && (
+      {/* Latest-term snapshot */}
+      {latestAvg != null && (
         <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-[10px] text-gray-500 mb-0.5">Overall Average</p>
-              <p className="text-2xl font-bold text-emerald-600">{avgNum != null ? `${avgNum}%` : overall}</p>
-              <p className="text-[10px] text-gray-500">{avgNum >= 70 ? 'Very Good' : avgNum >= 50 ? 'Average' : 'Needs Work'}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] text-gray-500 mb-0.5">Class Rank</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {classRank && classSize ? `${classRank} / ${classSize}` : '—'}
-              </p>
-              {classRank && classSize && (
-                <p className="text-[10px] text-gray-500">Top {Math.round((classRank / classSize) * 100)}%</p>
-              )}
-            </div>
-          </div>
+          <p className="text-[10px] text-gray-500 mb-1">{latest.term.replace('_', ' ')} — Overall Average</p>
+          <p className={`text-2xl font-bold ${scoreColor(latestAvg)}`}>{latestAvg}%</p>
+          <p className="text-[10px] text-gray-500 mt-0.5">
+            {latestAvg >= 70 ? 'Very Good' : latestAvg >= 50 ? 'Average' : 'Needs Work'}
+          </p>
         </div>
       )}
-
-      {/* Subject rows */}
-      {subjects.length > 0 ? (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <div className="flex items-center justify-between px-4 pt-3 pb-2">
-            <p className="text-sm font-bold text-gray-900">Subject Performance</p>
-          </div>
-          <div className="divide-y divide-gray-50">
-            {subjects.map((s, i) => {
-              const score = s.score ?? s.percentage ?? s.marks;
-              const n     = score != null ? Math.round(Number(score)) : null;
-              const color = n >= 70 ? 'text-emerald-600' : n >= 50 ? 'text-amber-500' : 'text-rose-600';
-              const bar   = n >= 70 ? 'bg-emerald-500' : n >= 50 ? 'bg-amber-400' : 'bg-rose-500';
-              return (
-                <div key={s.id || i} className="px-4 py-3">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <p className="text-sm font-medium text-gray-900 truncate max-w-[180px]">
-                      {s.name || s.subject || s.learningArea || s.title}
-                    </p>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {n != null ? (
-                        <span className={`text-sm font-bold ${color}`}>{n}%</span>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
-                      <ChevronRight size={14} className="text-gray-300" />
-                    </div>
-                  </div>
-                  {n != null && (
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className={`h-full ${bar} rounded-full`} style={{ width: `${Math.min(n, 100)}%` }} />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        <div className="bg-white border border-dashed border-gray-200 rounded-xl p-8 text-center">
-          <GraduationCap size={28} className="mx-auto mb-2 text-gray-300 opacity-40" />
-          <p className="text-sm font-semibold text-gray-600 mb-1">No subject results yet</p>
-          <p className="text-xs text-gray-400">Results will appear once assessments are entered by the teacher.</p>
-        </div>
-      )}
+      {/* Per-term accordions — latest first */}
+      {[...summary.terms].reverse().map((term, i) => (
+        <TermAccordion key={term.term} term={term} defaultOpen={i === 0} highlight={i === 0} />
+      ))}
     </div>
   );
 }
@@ -545,7 +466,7 @@ export default function ParentChildProfile({ child, onBack, initialTab = 'overvi
       {/* Tab content */}
       <div className="px-4 py-4">
         {tab === 'overview'   && <OverviewTab   child={child} showFees={showFees} />}
-        {tab === 'results'    && <ResultsTab    learnerId={child.id} subjects={child.subjects} />}
+        {tab === 'results'    && <ResultsTab    learnerId={child.id} />}
         {tab === 'attendance' && <AttendanceTab learnerId={child.id} />}
         {showFees && tab === 'fees' && <FeesTab learnerId={child.id} />}
         {tab === 'info'       && <InfoTab       child={child} />}

@@ -15,6 +15,7 @@ import prisma from '../config/database';
 import { redisCacheService } from './redis-cache.service';
 import { LMSNotificationService } from './lms-notification.service';
 import { auditService } from './audit.service';
+import { LMSAchievementsService } from './lms-achievements.service';
 import { ApiError } from '../utils/error.util';
 import type {
   LearningLesson,
@@ -578,6 +579,11 @@ export class LMSLessonService {
 
     // Invalidate learner progress cache
     await redisCacheService.deleteByPrefix(`lms:progress:${learnerId}:`);
+
+    // Fire-and-forget: award achievements when a lesson reaches 100% for the first time
+    if (percentComplete === 100 && !alreadyComplete) {
+      void LMSAchievementsService.onLessonCompleted({ learnerId, schoolId, lessonId }).catch(() => undefined);
+    }
 
     return progress;
   }

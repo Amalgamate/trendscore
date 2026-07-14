@@ -45,6 +45,8 @@ import { mpesaAPI } from './mpesa.api';
 import { systemLogsAPI } from './systemLogs.api';
 import { pathwayAPI } from './pathway.api';
 import { seniorPathwayAPI } from './seniorPathway.api';
+import { pathwayPlannerAPI } from './pathwayPlanner.api';
+import { careerAPI } from './career.api';
 import { chatAPI } from './chat.api';
 import { approvalAPI } from './approval.api';
 
@@ -94,6 +96,8 @@ export { mpesaAPI };
 export { systemLogsAPI };
 export { pathwayAPI };
 export { seniorPathwayAPI };
+export { pathwayPlannerAPI };
+export { careerAPI };
 export { approvalAPI };
 
 const api = {
@@ -176,6 +180,8 @@ const api = {
   systemLogs: systemLogsAPI,
   pathways: pathwayAPI,
   seniorPathways: seniorPathwayAPI,
+  pathwayPlanner: pathwayPlannerAPI,
+  careers: careerAPI,
   chat: chatAPI,
   approvals: approvalAPI,
   gitNotifications: {

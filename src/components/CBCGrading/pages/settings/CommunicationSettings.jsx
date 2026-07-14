@@ -561,6 +561,7 @@ const CommunicationSettings = () => {
       {/* Tabs */}
       <ModuleTabNav
         sectionLabel="COMMUNICATION"
+        variant="dropdown"
         tabs={COMM_TABS}
         activeTab={activeTab}
         onTabChange={(tab) => {

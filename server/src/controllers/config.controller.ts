@@ -239,6 +239,7 @@ export const seedClasses = async (req: AuthRequest, res: Response) => {
 
   const results = [];
   let skipped = 0;
+  const classesByGrade = new Map<string, string>();
   for (const grade of grades) {
     const stream = 'A';
     const name =
@@ -257,9 +258,34 @@ export const seedClasses = async (req: AuthRequest, res: Response) => {
         data: { classCode, name, grade, institutionType, stream, academicYear: year, term, active: true },
       });
       results.push(newClass);
+      classesByGrade.set(grade, newClass.id);
     } else {
       skipped++;
+      classesByGrade.set(grade, existing.id);
     }
+  }
+
+  // A seeded class structure should be immediately useful. Attach only eligible
+  // learners who have no active class enrollment; existing class assignments are
+  // intentionally preserved.
+  const eligibleLearners = await prisma.learner.findMany({
+    where: { grade: { in: [...grades] }, archived: false },
+    select: { id: true, grade: true },
+  });
+  const existingEnrollmentRows = eligibleLearners.length
+    ? await prisma.classEnrollment.findMany({
+        where: { learnerId: { in: eligibleLearners.map((learner) => learner.id) }, active: true },
+        select: { learnerId: true },
+      })
+    : [];
+  const enrolledLearnerIds = new Set(existingEnrollmentRows.map((enrollment) => enrollment.learnerId));
+  const enrollmentRows = eligibleLearners
+    .filter((learner) => !enrolledLearnerIds.has(learner.id))
+    .map((learner) => ({ classId: classesByGrade.get(learner.grade), learnerId: learner.id }))
+    .filter((enrollment): enrollment is { classId: string; learnerId: string } => Boolean(enrollment.classId));
+
+  if (enrollmentRows.length) {
+    await prisma.classEnrollment.createMany({ data: enrollmentRows, skipDuplicates: true });
   }
 
   res.json({
@@ -267,6 +293,7 @@ export const seedClasses = async (req: AuthRequest, res: Response) => {
     message: `Seeded ${results.length} classes for ${institutionType} — ${year} ${term}`,
     created: results.length,
     skipped,
+    enrolled: enrollmentRows.length,
     data: results,
   });
 };

@@ -8,7 +8,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   CreditCard, BarChart2, Users,
   ChevronRight, Eye,
-  AlertCircle, FileText, Pencil,
+  AlertCircle, FileText, Pencil, BookOpen, Compass,
 } from 'lucide-react';
 import { dashboardAPI } from '../../../../services/api';
 import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
@@ -207,13 +207,15 @@ function ChildrenSummary({ children, loading, onSelectChild, onEditChild, showFe
 
 function QuickActions({ onNavigate }) {
   const actions = [
-    { label: 'Academic Reports', icon: BarChart2, path: 'parent-portal-results', color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Attendance', icon: Users,         path: 'parent-portal-attendance', color: 'text-blue-600',     bg: 'bg-blue-50'      },
+    { label: 'Academic Reports', icon: BarChart2,  path: 'parent-portal-results',  color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { label: 'Homework',         icon: BookOpen,   path: 'parent-portal-homework', color: 'text-indigo-600',  bg: 'bg-indigo-50'  },
+    { label: 'Pathway Planner',  icon: Compass,    path: 'parent-portal-pathway',  color: 'text-violet-600',  bg: 'bg-violet-50'  },
+    { label: 'School Shortlist', icon: Users,      path: 'parent-portal-schools',  color: 'text-rose-600',    bg: 'bg-rose-50'    },
   ];
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-4">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         {actions.map((a) => {
           const Icon = a.icon;
           return (
