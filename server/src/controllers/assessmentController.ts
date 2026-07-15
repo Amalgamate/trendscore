@@ -764,6 +764,29 @@ export const createSummativeTest = async (req: AuthRequest, res: Response) => {
     const resolvedLearningAreaId = resolvedArea.id;
 
     const resolvedTestType = normalizeSummativeTestType(testType);
+    const requestedTestDate = testDate ? new Date(testDate) : new Date();
+
+    // A grade may extend an existing assessment cycle with another subject, but
+    // must not create a second Opener, Midterm, or End-term cycle for the same
+    // term and year. The date is the stable cycle identifier used by reports.
+    const existingCycle = await prisma.summativeTest.findFirst({
+      where: {
+        grade: String(grade),
+        term: normalizedTerm,
+        academicYear: parseInt(academicYear),
+        testType: resolvedTestType,
+        archived: false
+      },
+      select: { testDate: true }
+    });
+    if (existingCycle?.testDate &&
+      existingCycle.testDate.toISOString().slice(0, 10) !== requestedTestDate.toISOString().slice(0, 10)) {
+      return res.status(409).json({
+        success: false,
+        message: `A ${resolvedTestType.replace(/_/g, ' ').toLowerCase()} cycle already exists for this grade, term, and year. Add subjects to the existing cycle instead.`,
+        error: 'Assessment cycle already exists'
+      });
+    }
 
     // Build title: if the provided title already contains the subject name,
     // use it as-is to avoid doubling up ("Maths End Term" → "Maths End Term - Maths - …")
@@ -790,7 +813,7 @@ export const createSummativeTest = async (req: AuthRequest, res: Response) => {
           testType: resolvedTestType,
           term: normalizedTerm,
           academicYear: parseInt(academicYear),
-          testDate: testDate ? new Date(testDate) : new Date(),
+          testDate: requestedTestDate,
           totalMarks: normalizedMarks.totalMarks,
           passMarks: normalizedMarks.passMarks,
           description,
@@ -891,6 +914,28 @@ export const generateTestsBulk = async (req: AuthRequest, res: Response) => {
       .replace(/\s+/g, '_') as 'TERM_1' | 'TERM_2' | 'TERM_3';
 
     const resolvedTestType = normalizeSummativeTestType(testType);
+    const requestedTestDate = testDate ? new Date(testDate) : new Date();
+
+    // Keep one assessment cycle per grade, term, year and test type. Multiple
+    // subjects are created below only when they share this same cycle date.
+    const existingCycle = await prisma.summativeTest.findFirst({
+      where: {
+        grade: String(grade),
+        term: normalizedTerm,
+        academicYear: parseInt(academicYear),
+        testType: resolvedTestType,
+        archived: false
+      },
+      select: { testDate: true }
+    });
+    if (existingCycle?.testDate &&
+      existingCycle.testDate.toISOString().slice(0, 10) !== requestedTestDate.toISOString().slice(0, 10)) {
+      return res.status(409).json({
+        success: false,
+        message: `A ${resolvedTestType.replace(/_/g, ' ').toLowerCase()} cycle already exists for this grade, term, and year. Add subjects to the existing cycle instead.`,
+        error: 'Assessment cycle already exists'
+      });
+    }
 
     const gradingSystems = await prisma.gradingSystem.findMany({
       where: {
@@ -947,7 +992,7 @@ export const generateTestsBulk = async (req: AuthRequest, res: Response) => {
             testType: resolvedTestType,
             term: normalizedTerm,
             academicYear: parseInt(academicYear),
-            testDate: testDate ? new Date(testDate) : new Date(),
+            testDate: requestedTestDate,
             totalMarks: normalizedMarks.totalMarks,
             passMarks: normalizedMarks.passMarks,
             duration: duration ? parseInt(String(duration)) : undefined,
