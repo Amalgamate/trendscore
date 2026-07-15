@@ -38,6 +38,7 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       API_URL: ${API_URL:-http://localhost:5000/api}
+      CLOUDINARY_URL: ${CLOUDINARY_URL:-}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       HTTPS_ONLY: ${HTTPS_ONLY:-false}
       NODE_ENV: production

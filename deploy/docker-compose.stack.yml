@@ -55,6 +55,7 @@ services:
       FRONTEND_URL: ${FRONTEND_URL}
       API_URL: ${API_URL}
       CORS_ORIGIN: ${CORS_ORIGIN}
+      CLOUDINARY_URL: ${CLOUDINARY_URL:-}
       ENABLE_DEV_ROUTES: "false"
       RATE_LIMIT_ENABLED: "true"
       REDIS_HOST: redis
