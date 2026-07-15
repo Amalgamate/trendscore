@@ -128,6 +128,17 @@ const getInitials = (name) => {
   return words.slice(0, 2).map((word) => word[0]).join('').toUpperCase();
 };
 
+const getSectionBadgeClass = (section, collapsed = false) => {
+  const tone = section.badgeTone === 'green'
+    ? 'bg-emerald-500 text-white shadow-[0_0_8px_rgba(16,185,129,0.5)]'
+    : 'bg-red-500 text-white shadow-sm';
+  const size = collapsed
+    ? 'px-1 py-0.5 text-[7px]'
+    : 'px-1.5 py-0.5 text-[8px]';
+
+  return `rounded ${tone} ${size} font-black tracking-wide`;
+};
+
 // ─── Route → chunk prefetch map ──────────────────────────────────────────────
 const PREFETCH_MAP = {
   'learners-list':        () => import('../pages/LearnersList'),
@@ -542,8 +553,8 @@ const SingleItem = ({ section, currentPage, onNavigate, sidebarOpen, accentColor
       {sidebarOpen && <span className="text-sm font-semibold truncate">{section.label}</span>}
       {section.badge && (
         <span className={sidebarOpen
-          ? 'ml-auto rounded bg-red-500 px-1.5 py-0.5 text-[8px] font-black tracking-wide text-white shadow-sm'
-          : 'absolute right-1 top-1 rounded bg-red-500 px-1 py-0.5 text-[7px] font-black tracking-wide text-white shadow-sm'}
+          ? `ml-auto ${getSectionBadgeClass(section)}`
+          : `absolute right-1 top-1 ${getSectionBadgeClass(section, true)}`}
         >
           {section.badge}
         </span>
@@ -651,7 +662,7 @@ const NavSection = React.memo(({
               </span>
               <span className="text-sm font-semibold truncate text-left flex-1">{section.label}</span>
               {section.badge && (
-                <span className="rounded bg-red-500 px-1.5 py-0.5 text-[8px] font-black tracking-wide text-white shadow-sm">
+                <span className={getSectionBadgeClass(section)}>
                   {section.badge}
                 </span>
               )}
@@ -687,7 +698,7 @@ const NavSection = React.memo(({
             </span>
           </div>
           {section.badge && (
-            <span className="absolute right-1 top-1 rounded bg-red-500 px-1 py-0.5 text-[7px] font-black tracking-wide text-white shadow-sm">
+            <span className={`absolute right-1 top-1 ${getSectionBadgeClass(section, true)}`}>
               {section.badge}
             </span>
           )}

@@ -351,6 +351,8 @@ export const allNavSections = [
         icon: BookOpen,
         app: 'lms',
         permission: 'ACCESS_LEARNING_HUB',
+        badge: 'Beta',
+        badgeTone: 'green',
         items: [
             { id: 'learning-hub-materials',    label: 'Class Materials',  path: 'learning-hub-materials',    permission: null },
             { id: 'learning-hub-assignments',  label: 'Assignments',      path: 'learning-hub-assignments',  permission: null },
