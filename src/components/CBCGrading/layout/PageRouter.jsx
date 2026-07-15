@@ -162,7 +162,6 @@ const BiometricManager = lazy(() => import('../pages/biometric/BiometricManager'
 
 // LMS Module
 const LMSManager = lazy(() => import('../pages/LMSManager'));
-const LMSAssignments = lazy(() => import('../pages/lms/LMSAssignments'));
 const AssignmentsPage = lazy(() => import('../pages/lms/assignments/AssignmentsPage'));
 const AssignmentBuilder = lazy(() => import('../pages/lms/assignments/AssignmentBuilder'));
 // LMS Digital Learning Hub — Phase 1+
@@ -726,7 +725,7 @@ const PageRouter = ({
           case 'learning-hub-library':
             return <LearningHubPage />;
           case 'learning-hub-assignments':
-            return <LMSAssignments onNavigate={handleNavigate} />;
+            return <AssignmentsPage onNavigate={handleNavigate} />;
 
           // LMS Module
           case 'lms-courses': return <LMSManager currentPage={currentPage} />;

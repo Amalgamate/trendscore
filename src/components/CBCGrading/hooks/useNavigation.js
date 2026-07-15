@@ -355,7 +355,7 @@ export const allNavSections = [
         permission: 'ACCESS_LEARNING_HUB',
         items: [
             { id: 'learning-hub-materials',    label: 'Class Materials',  path: 'learning-hub-materials',    permission: null },
-            { id: 'learning-hub-assignments',  label: 'Assignments',      path: 'learning-hub-assignments',  permission: null },
+            { id: 'learning-hub-assignments',  label: 'Assignments',      path: 'learning-assignments',  permission: null },
             { id: 'learning-hub-lesson-plans', label: 'Lesson Plans',     path: 'learning-hub-lesson-plans', permission: 'ACCESS_LEARNING_HUB' },
             { id: 'coding-playground',         label: 'Coding Playground',path: 'coding-playground',         permission: null },
             { id: 'learning-hub-library',      label: 'Resource Library', path: 'learning-hub-library',      permission: null, app: 'library' }

@@ -57,6 +57,19 @@ const HIDDEN_HORIZONTAL_PATHS = new Set([
   'learners-id-print',
 ]);
 
+// Full-page create/edit/builder screens that are one level below a visible nav
+// tab (e.g. "Create Assignment" lives under the "Assignments" tab) but are not
+// themselves listed as leaf nav items. Without this map, the section lookup
+// below fails to find a match and the whole horizontal bar disappears while
+// on these pages. Mapping each to its parent tab's path keeps the bar visible
+// and highlights the tab the page logically belongs to.
+const CHILD_PAGE_PARENT = {
+  'learning-assignment-create': 'learning-assignments',
+  'learning-assignment-edit':   'learning-assignments',
+  'learning-lesson-builder':    'learning-lessons',
+  'learning-marketplace-create': 'learning-marketplace',
+};
+
 const GROUP_COLORS = [
   { trigger: 'text-indigo-700',  activeBg: 'bg-indigo-50',  dot: 'bg-indigo-500',  hover: 'hover:bg-indigo-50'  },
   { trigger: 'text-purple-700',  activeBg: 'bg-purple-50',  dot: 'bg-purple-500',  hover: 'hover:bg-purple-50'  },
@@ -196,14 +209,18 @@ const GroupDropdown = ({ group, currentPage, pageParams, onNavigate, color }) =>
 const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
   const { navSections } = useNavigation();
 
+  // Resolve orphaned builder/create/edit pages to the tab they logically
+  // belong under (see CHILD_PAGE_PARENT above) so the bar doesn't vanish.
+  const resolvedPage = CHILD_PAGE_PARENT[currentPage] || currentPage;
+
   const activeSection = useMemo(() => {
     const byPage = (navSections || []).find((section) => {
       const leaves = flattenLeafItems(section.items || []);
-      return leaves.some((leaf) => leaf.path === currentPage);
+      return leaves.some((leaf) => leaf.path === resolvedPage);
     });
     if (byPage) return byPage;
-    return (navSections || []).find((s) => s.id === currentPage) || null;
-  }, [navSections, currentPage]);
+    return (navSections || []).find((s) => s.id === resolvedPage) || null;
+  }, [navSections, resolvedPage]);
 
   const hasGroups = useMemo(
     () => (activeSection?.items || []).some(i => i.type === 'group'),
@@ -265,7 +282,7 @@ const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
                   <React.Fragment key={item.id || idx}>
                     <GroupDropdown
                       group={item}
-                      currentPage={currentPage}
+                      currentPage={resolvedPage}
                       pageParams={pageParams}
                       onNavigate={onNavigate}
                       color={GROUP_COLORS[idx % GROUP_COLORS.length]}
@@ -277,7 +294,7 @@ const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
               if (!item.greyedOut) {
                 return (
                   <React.Fragment key={item.id || item.path || idx}>
-                    <NavItem item={item} currentPage={currentPage} pageParams={pageParams} onNavigate={onNavigate} idx={idx} />
+                    <NavItem item={item} currentPage={resolvedPage} pageParams={pageParams} onNavigate={onNavigate} idx={idx} />
                     {!isLast && <span className="h-4 w-px bg-gray-200" />}
                   </React.Fragment>
                 );
@@ -286,7 +303,7 @@ const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
             })
           : flatItems.map((item, idx) => (
               <React.Fragment key={item.id || item.path || idx}>
-                <NavItem item={item} currentPage={currentPage} pageParams={pageParams} onNavigate={onNavigate} idx={idx} />
+                <NavItem item={item} currentPage={resolvedPage} pageParams={pageParams} onNavigate={onNavigate} idx={idx} />
                 {idx < flatItems.length - 1 && <span className="h-4 w-px bg-gray-300" />}
               </React.Fragment>
             ))}

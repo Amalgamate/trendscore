@@ -15,6 +15,7 @@ import {
   Calendar,
   Clock,
   AlertCircle,
+  ArrowLeft,
 } from 'lucide-react';
 import { useNotifications } from '../../../hooks/useNotifications';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -294,13 +295,24 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-12">
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-        <div className="max-w-5xl mx-auto px-4 py-6">
-          <h1 className="text-2xl font-bold text-gray-950 dark:text-white">
-            {id ? 'Edit Assignment' : 'Create Assignment'}
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            {id ? 'Update assignment details' : 'Build a rich assignment with instructions, rubric, and files'}
-          </p>
+        <div className="max-w-5xl mx-auto px-4 py-6 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={returnToAssignments}
+            className="p-2 -ml-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300 transition-colors flex-shrink-0"
+            aria-label="Back to Assignments"
+            title="Back to Assignments"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-950 dark:text-white">
+              {id ? 'Edit Assignment' : 'Create Assignment'}
+            </h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              {id ? 'Update assignment details' : 'Build a rich assignment with instructions, rubric, and files'}
+            </p>
+          </div>
         </div>
       </div>
 

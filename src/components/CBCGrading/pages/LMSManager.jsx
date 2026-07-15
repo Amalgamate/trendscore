@@ -79,8 +79,8 @@ const LMSManager = ({ currentPage = 'lms-courses' }) => {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-medium text-gray-900">Learning Management System</h1>
-                    <p className="text-gray-600">Manage courses, content, and learner progress</p>
+                    <h1 className="text-2xl font-medium text-gray-900">Digital Learning Hub</h1>
+                    <p className="text-gray-600">Learning Area courses, lesson materials and learner progress across PP1 – Grade 9</p>
                 </div>
                 {canCreateCourses && (
                     <Button
@@ -105,7 +105,7 @@ const LMSManager = ({ currentPage = 'lms-courses' }) => {
                             <div className="flex items-center gap-3">
                                 <BookOpen className="h-8 w-8 text-blue-600" />
                                 <div>
-                                    <p className="text-sm font-medium text-gray-600">Total Courses</p>
+                                    <p className="text-sm font-medium text-gray-600">Learning Area Courses</p>
                                     <p className="text-2xl font-medium text-gray-900">{stats.totalCourses}</p>
                                 </div>
                             </div>
@@ -117,7 +117,7 @@ const LMSManager = ({ currentPage = 'lms-courses' }) => {
                             <div className="flex items-center gap-3">
                                 <Users className="h-8 w-8 text-green-600" />
                                 <div>
-                                    <p className="text-sm font-medium text-gray-600">Active Enrollments</p>
+                                    <p className="text-sm font-medium text-gray-600">Learners Enrolled</p>
                                     <p className="text-2xl font-medium text-gray-900">{stats.activeEnrollments}</p>
                                 </div>
                             </div>
@@ -129,7 +129,7 @@ const LMSManager = ({ currentPage = 'lms-courses' }) => {
                             <div className="flex items-center gap-3">
                                 <Video className="h-8 w-8 text-purple-600" />
                                 <div>
-                                    <p className="text-sm font-medium text-gray-600">Content Items</p>
+                                    <p className="text-sm font-medium text-gray-600">Lesson Materials</p>
                                     <p className="text-2xl font-medium text-gray-900">{stats.totalContent}</p>
                                 </div>
                             </div>
@@ -141,7 +141,7 @@ const LMSManager = ({ currentPage = 'lms-courses' }) => {
                             <div className="flex items-center gap-3">
                                 <BarChart3 className="h-8 w-8 text-orange-600" />
                                 <div>
-                                    <p className="text-sm font-medium text-gray-600">Total Enrollments</p>
+                                    <p className="text-sm font-medium text-gray-600">All-Time Enrollments</p>
                                     <p className="text-2xl font-medium text-gray-900">{stats.totalEnrollments}</p>
                                 </div>
                             </div>

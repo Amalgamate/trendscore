@@ -141,7 +141,7 @@ function TodaysHomework({ assignments, loading, onSelectChild }) {
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-gray-900 truncate">{a.title}</p>
               <p className="text-[10px] text-gray-500">
-                {child?.name?.split(' ')[0]} · {a.learningArea || a.subject}
+                {child?.name?.split(' ')[0]} · {a.learningArea?.name || a.learningArea || a.subject}
               </p>
             </div>
             <div className="text-right flex-shrink-0">
@@ -547,28 +547,44 @@ const ParentLearningTab = ({ user, onNavigate, brandingSettings }) => {
       const childrenIds = children.map((c) => c.id).filter(Boolean);
 
       if (childrenIds.length > 0) {
-        // Fetch assignments for all children
-        const assignmentsRes = await lmsAPI.getAssignments({ learnerIds: childrenIds.join(',') });
-        if (assignmentsRes?.success) {
-          setAssignments(assignmentsRes.data || []);
-        }
+        // Fetch each child's assignments (with that child's submission status
+        // already attached) via the parent-scoped endpoint. getAssignments +
+        // getMySubmissions are self-scoped for STUDENT accounts and cannot
+        // serve a multi-child parent view — getMySubmissions in particular
+        // resolves the *authenticated user's own* learner record server-side,
+        // which 404s for a PARENT account regardless of any learnerIds filter.
+        const childResults = await Promise.all(
+          children.map((child) =>
+            lmsAPI.getChildAssignments(child.id)
+              .then((res) => (res?.success ? (res.data || []).map((a) => ({ ...a, child })) : []))
+              .catch(() => [])
+          )
+        );
+        const combinedAssignments = childResults.flat();
+        setAssignments(combinedAssignments);
 
-        // Fetch submissions for all children
-        const submissionsRes = await lmsAPI.getMySubmissions({ learnerIds: childrenIds.join(',') });
-        if (submissionsRes?.success) {
-          setSubmissions(submissionsRes.data || []);
-          // Extract feedback from marked submissions
-          const feedbackItems = (submissionsRes.data || [])
-            .filter((s) => s.feedback && s.status === 'MARKED')
-            .map((s) => ({
-              id: s.id,
-              feedback: s.feedback,
-              assignment: s.assignment,
-              child: s.child || s.learner,
-              teacher: s.marker || s.teacher,
-            }));
-          setFeedback(feedbackItems);
-        }
+        const withSubmission = combinedAssignments.filter((a) => a.mySubmission);
+        setSubmissions(
+          withSubmission.map((a) => ({
+            id: a.mySubmission.id,
+            status: a.mySubmission.status,
+            marks: a.mySubmission.marks,
+            feedback: a.mySubmission.feedback,
+            submittedAt: a.mySubmission.submittedAt,
+            assignment: { title: a.title, totalMarks: a.totalMarks },
+            child: a.child,
+          }))
+        );
+        setFeedback(
+          withSubmission
+            .filter((a) => a.mySubmission.feedback && a.mySubmission.status === 'MARKED')
+            .map((a) => ({
+              id: a.mySubmission.id,
+              feedback: a.mySubmission.feedback,
+              assignment: { title: a.title },
+              child: a.child,
+            }))
+        );
 
         // Fetch progress for all children: sum content-level progress across
         // each learner's active course enrollments (there's no single
