@@ -2731,6 +2731,7 @@ model LearningLesson {
   description    String?      @db.Text
   coverImageUrl  String?
   estimatedMins  Int?
+  dueDate        DateTime?
   status         LessonStatus @default(DRAFT)
   publishedAt    DateTime?
   allowComments  Boolean      @default(true)

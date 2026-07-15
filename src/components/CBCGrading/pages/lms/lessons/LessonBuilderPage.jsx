@@ -244,6 +244,21 @@ function LessonMetadataForm({ lesson, onUpdate, onSave, loading, error }) {
         />
       </div>
 
+      <div>
+        <label className="block text-sm font-medium text-slate-900 mb-1">
+          Due Date <span className="text-rose-600">*</span>
+        </label>
+        <input
+          type="date"
+          value={form.dueDate ? String(form.dueDate).slice(0, 10) : ''}
+          onChange={(e) => handleChange('dueDate', e.target.value)}
+          onBlur={(e) => handleBlurSave('dueDate', e.target.value)}
+          min={new Date().toISOString().slice(0, 10)}
+          className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ff7900]"
+        />
+        <p className="mt-1 text-xs text-slate-500">Required before publishing. Draft lessons can be saved without it.</p>
+      </div>
+
       {/* Toggles */}
       <div className="space-y-2 pt-2">
         <label className="flex items-center gap-3 cursor-pointer">

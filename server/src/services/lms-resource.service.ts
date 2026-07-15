@@ -62,11 +62,11 @@ export interface CreateResourceInput {
   externalUrl?: string;
   thumbnailUrl?: string;
   topic?: string;
-  term?: number;
-  year?: number;
+  term?: number | string;
+  year?: number | string;
   difficulty?: DifficultyLevel;
   language?: string;
-  tags?: string[];
+  tags?: string[] | string;
   isPublic?: boolean;
 }
 
@@ -114,12 +114,23 @@ export class LMSResourceService {
     file?: Express.Multer.File,
   ): Promise<LearningResource> {
     const { title, learningAreaId, resourceType, schoolId } = data;
+    const term = LMSResourceService.parseOptionalInteger(data.term, 'Term');
+    const year = LMSResourceService.parseOptionalInteger(data.year, 'Year');
+    const tags = LMSResourceService.parseOptionalTags(data.tags);
 
     if (!title || !learningAreaId || !resourceType) {
       throw new ApiError(
         422,
         'Missing required fields: title, learningAreaId, resourceType',
       ).withCode('LMS_RESOURCE_MISSING_FIELDS');
+    }
+
+    if (!SUPPORTED_RESOURCE_TYPES.includes(resourceType)) {
+      throw new ApiError(422, 'Resource type is invalid').withCode('LMS_RESOURCE_INVALID_TYPE');
+    }
+
+    if (data.difficulty && !SUPPORTED_DIFFICULTIES.includes(data.difficulty)) {
+      throw new ApiError(422, 'Difficulty is invalid').withCode('LMS_RESOURCE_INVALID_DIFFICULTY');
     }
 
     // Upload file to Cloudinary when provided
@@ -150,11 +161,11 @@ export class LMSResourceService {
         ...(data.externalUrl !== undefined && { externalUrl: data.externalUrl }),
         ...(data.thumbnailUrl !== undefined && { thumbnailUrl: data.thumbnailUrl }),
         ...(data.topic !== undefined && { topic: data.topic }),
-        ...(data.term !== undefined && { term: data.term }),
-        ...(data.year !== undefined && { year: data.year }),
+        ...(term !== undefined && { term }),
+        ...(year !== undefined && { year }),
         ...(data.difficulty !== undefined && { difficulty: data.difficulty }),
         ...(data.language !== undefined && { language: data.language }),
-        ...(data.tags !== undefined && { tags: data.tags }),
+        ...(tags !== undefined && { tags }),
         ...(data.isPublic !== undefined && { isPublic: data.isPublic }),
         ...(fileUrl !== undefined && { fileUrl }),
         ...(fileType !== undefined && { fileType }),
@@ -301,6 +312,18 @@ export class LMSResourceService {
       throw new ApiError(404, 'Resource not found').withCode('LMS_RESOURCE_NOT_FOUND');
     }
 
+    const term = LMSResourceService.parseOptionalInteger(data.term, 'Term');
+    const year = LMSResourceService.parseOptionalInteger(data.year, 'Year');
+    const tags = LMSResourceService.parseOptionalTags(data.tags);
+
+    if (data.resourceType && !SUPPORTED_RESOURCE_TYPES.includes(data.resourceType)) {
+      throw new ApiError(422, 'Resource type is invalid').withCode('LMS_RESOURCE_INVALID_TYPE');
+    }
+
+    if (data.difficulty && !SUPPORTED_DIFFICULTIES.includes(data.difficulty)) {
+      throw new ApiError(422, 'Difficulty is invalid').withCode('LMS_RESOURCE_INVALID_DIFFICULTY');
+    }
+
     const updated = await prisma.learningResource.update({
       where: { id, schoolId },
       data: {
@@ -312,11 +335,11 @@ export class LMSResourceService {
         ...(data.externalUrl !== undefined && { externalUrl: data.externalUrl }),
         ...(data.thumbnailUrl !== undefined && { thumbnailUrl: data.thumbnailUrl }),
         ...(data.topic !== undefined && { topic: data.topic }),
-        ...(data.term !== undefined && { term: data.term }),
-        ...(data.year !== undefined && { year: data.year }),
+        ...(term !== undefined && { term }),
+        ...(year !== undefined && { year }),
         ...(data.difficulty !== undefined && { difficulty: data.difficulty }),
         ...(data.language !== undefined && { language: data.language }),
-        ...(data.tags !== undefined && { tags: data.tags }),
+        ...(tags !== undefined && { tags }),
         ...(data.isPublic !== undefined && { isPublic: data.isPublic }),
       },
     });
@@ -461,9 +484,36 @@ export class LMSResourceService {
     });
     return true;
   }
+
+  private static parseOptionalInteger(
+    value: number | string | null | undefined,
+    label: string,
+  ): number | null | undefined {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      throw new ApiError(422, `${label} must be a positive whole number`);
+    }
+    return parsed;
+  }
+
+  private static parseOptionalTags(value: string[] | string | undefined): string[] | undefined {
+    if (value === undefined) return undefined;
+    const tags = Array.isArray(value) ? value : value.split(',');
+    return tags.map((tag) => tag.trim()).filter(Boolean);
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const SUPPORTED_RESOURCE_TYPES: string[] = [
+  'NOTES', 'PAST_PAPER', 'SCHEME', 'WORKSHEET', 'PROJECT',
+  'EXPERIMENT', 'CBC_ACTIVITY', 'HOLIDAY_PACKAGE', 'VIDEO', 'OTHER',
+];
+
+const SUPPORTED_DIFFICULTIES: string[] = ['EASY', 'MEDIUM', 'HARD'];
 
 /**
  * Extract a Cloudinary public_id from a secure_url.

@@ -81,6 +81,7 @@ export interface CreateLessonInput {
   description?: string;
   coverImageUrl?: string;
   estimatedMins?: number;
+  dueDate?: Date;
   allowComments?: boolean;
   allowQuestions?: boolean;
   allowDownload?: boolean;
@@ -202,6 +203,8 @@ export class LMSLessonService {
       estimatedMins = parsed;
     }
 
+    const dueDate = LMSLessonService.parseOptionalDueDate(data.dueDate);
+
     const lesson = await prisma.learningLesson.create({
       data: {
         title,
@@ -215,6 +218,7 @@ export class LMSLessonService {
         description: data.description,
         coverImageUrl: data.coverImageUrl,
         estimatedMins,
+        dueDate,
         allowComments: data.allowComments ?? false,
         allowQuestions: data.allowQuestions ?? false,
         allowDownload: data.allowDownload ?? false,
@@ -235,6 +239,10 @@ export class LMSLessonService {
     schoolId: string,
     data: UpdateLessonInput,
   ): Promise<LearningLesson> {
+    const dueDate = data.dueDate === undefined
+      ? undefined
+      : LMSLessonService.parseOptionalDueDate(data.dueDate);
+
     return prisma.learningLesson.update({
       where: { id, schoolId },
       data: {
@@ -246,6 +254,7 @@ export class LMSLessonService {
         ...(data.description !== undefined && { description: data.description }),
         ...(data.coverImageUrl !== undefined && { coverImageUrl: data.coverImageUrl }),
         ...(data.estimatedMins !== undefined && { estimatedMins: data.estimatedMins }),
+        ...(dueDate !== undefined && { dueDate }),
         ...(data.allowComments !== undefined && { allowComments: data.allowComments }),
         ...(data.allowQuestions !== undefined && { allowQuestions: data.allowQuestions }),
         ...(data.allowDownload !== undefined && { allowDownload: data.allowDownload }),
@@ -355,10 +364,10 @@ export class LMSLessonService {
       throw new ApiError(404, 'Lesson not found').withCode('LMS_LESSON_NOT_FOUND');
     }
 
-    if (!lesson.title || !lesson.classId || !lesson.learningAreaId || !lesson.termId) {
+    if (!lesson.title || !lesson.classId || !lesson.learningAreaId || !lesson.termId || !lesson.dueDate) {
       throw new ApiError(
         422,
-        'Lesson must have title, classId, learningAreaId, and termId before publishing',
+        'Lesson must have title, classId, learningAreaId, termId, and due date before publishing',
       );
     }
 
@@ -390,6 +399,16 @@ export class LMSLessonService {
     ]);
 
     return published;
+  }
+
+  private static parseOptionalDueDate(value: unknown): Date | null | undefined {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+    const dueDate = value instanceof Date ? value : new Date(String(value));
+    if (Number.isNaN(dueDate.getTime())) {
+      throw new ApiError(422, 'Due date is invalid');
+    }
+    return dueDate;
   }
 
   /**

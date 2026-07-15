@@ -20,17 +20,17 @@ import { cn } from '../../../../../utils/cn';
 const RESOURCE_TYPES = [
   'NOTES',
   'PAST_PAPER',
+  'SCHEME',
   'WORKSHEET',
+  'PROJECT',
+  'EXPERIMENT',
+  'CBC_ACTIVITY',
+  'HOLIDAY_PACKAGE',
   'VIDEO',
-  'AUDIO',
-  'PRESENTATION',
-  'EBOOK',
-  'FLASHCARD_SET',
-  'PRACTICE_QUESTIONS',
   'OTHER',
 ];
 
-const DIFFICULTY_LEVELS = ['BEGINNER', 'INTERMEDIATE', 'ADVANCED'];
+const DIFFICULTY_LEVELS = ['EASY', 'MEDIUM', 'HARD'];
 
 const TERMS = [1, 2, 3];
 
