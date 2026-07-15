@@ -89,6 +89,9 @@ export const lmsAPI = {
     return fetchWithAuth(`/lms/lessons${queryString ? `?${queryString}` : ''}`);
   },
   getLesson: async (id) => fetchWithAuth(`/lms/lessons/${id}`),
+  // Kept as an explicit alias for the lesson builder, whose endpoint returns
+  // the lesson together with ordered content blocks.
+  getLessonWithBlocks: async (id) => fetchWithAuth(`/lms/lessons/${id}`),
   createLesson: async (data) =>
     fetchWithAuth('/lms/lessons', { method: 'POST', body: JSON.stringify(data) }),
   updateLesson: async (id, data) =>

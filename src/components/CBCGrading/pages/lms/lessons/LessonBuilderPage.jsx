@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { lmsAPI } from '../../../../../services/api/lms.api';
+import { configAPI } from '../../../../../services/api/config.api';
 import { Skeleton } from '../../../../ui';
 import LessonBlockEditor from './LessonBlockEditor';
 import LessonAssignmentsSection from './LessonAssignmentsSection';
@@ -26,6 +27,43 @@ import LessonAssignmentsSection from './LessonAssignmentsSection';
 function LessonMetadataForm({ lesson, onUpdate, onSave, loading, error }) {
   const [form, setForm] = useState(lesson || {});
   const [saving, setSaving] = useState(false);
+  const [options, setOptions] = useState({ classes: [], learningAreas: [], terms: [], streams: [] });
+  const [optionsError, setOptionsError] = useState('');
+
+  useEffect(() => {
+    setForm(lesson || {});
+  }, [lesson?.id]);
+
+  useEffect(() => {
+    let active = true;
+    const unwrap = (response) => response?.data || response || [];
+
+    Promise.all([
+      configAPI.getClasses(),
+      configAPI.getLearningAreas(),
+      configAPI.getTermConfigs(),
+      configAPI.getStreamConfigs?.() || Promise.resolve([]),
+    ])
+      .then(([classes, learningAreas, terms, streams]) => {
+        if (!active) return;
+        const termOptions = unwrap(terms);
+        setOptions({
+          classes: unwrap(classes),
+          learningAreas: unwrap(learningAreas),
+          terms: termOptions,
+          streams: unwrap(streams),
+        });
+        if (!lesson) {
+          const activeTerm = termOptions.find((term) => term.isActive);
+          if (activeTerm) setForm((current) => ({ ...current, termId: current.termId || activeTerm.id }));
+        }
+      })
+      .catch(() => {
+        if (active) setOptionsError('Could not load classes, subjects, and terms. Please refresh and try again.');
+      });
+
+    return () => { active = false; };
+  }, [lesson?.id]);
 
   const handleChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -47,21 +85,27 @@ function LessonMetadataForm({ lesson, onUpdate, onSave, loading, error }) {
   };
 
   const handleCreateLesson = async () => {
-    if (!form.title?.trim()) {
-      alert('Please enter a lesson title');
+    if (!form.title?.trim() || !form.classId || !form.learningAreaId || !form.termId) {
+      alert('Please enter a title and select a class, subject, and term');
       return;
     }
 
     setSaving(true);
     try {
-      const res = await lmsAPI.createLesson?.(form);
+      const estimatedMins = form.estimatedMins === '' || form.estimatedMins === undefined
+        ? undefined
+        : Number(form.estimatedMins);
+      const res = await lmsAPI.createLesson?.({
+        ...form,
+        estimatedMins: Number.isInteger(estimatedMins) && estimatedMins >= 0 ? estimatedMins : undefined,
+      });
       if (res?.success) {
         onUpdate?.(res.data);
         onSave?.(res.data);
       }
     } catch (err) {
       console.error('Create lesson failed:', err);
-      alert('Failed to create lesson');
+      alert(err?.message || 'Failed to create lesson');
     } finally {
       setSaving(false);
     }
@@ -83,6 +127,12 @@ function LessonMetadataForm({ lesson, onUpdate, onSave, loading, error }) {
         <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-2">
           <AlertCircle size={16} className="text-rose-600" />
           <p className="text-sm text-rose-700">{error}</p>
+        </div>
+      )}
+      {optionsError && (
+        <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg flex items-center gap-2">
+          <AlertCircle size={16} className="text-rose-600" />
+          <p className="text-sm text-rose-700">{optionsError}</p>
         </div>
       )}
 
@@ -122,23 +172,60 @@ function LessonMetadataForm({ lesson, onUpdate, onSave, loading, error }) {
           <label className="block text-sm font-medium text-slate-900 mb-1">
             Class *
           </label>
-          <input
-            type="text"
-            value={form.class?.name || 'Class'}
-            disabled
-            className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-600"
-          />
+          <select
+            value={form.classId || ''}
+            onChange={(e) => handleChange('classId', e.target.value)}
+            onBlur={(e) => handleBlurSave('classId', e.target.value)}
+            disabled={Boolean(lesson)}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-700 disabled:bg-slate-50 disabled:text-slate-600"
+          >
+            <option value="">Select class</option>
+            {options.classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-900 mb-1">
             Subject *
           </label>
-          <input
-            type="text"
-            value={form.learningArea?.name || 'Subject'}
-            disabled
-            className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-600"
-          />
+          <select
+            value={form.learningAreaId || ''}
+            onChange={(e) => handleChange('learningAreaId', e.target.value)}
+            onBlur={(e) => handleBlurSave('learningAreaId', e.target.value)}
+            disabled={Boolean(lesson)}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-700 disabled:bg-slate-50 disabled:text-slate-600"
+          >
+            <option value="">Select subject</option>
+            {options.learningAreas.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-900 mb-1">Term *</label>
+          <select
+            value={form.termId || ''}
+            onChange={(e) => handleChange('termId', e.target.value)}
+            onBlur={(e) => handleBlurSave('termId', e.target.value)}
+            disabled={Boolean(lesson)}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-700 disabled:bg-slate-50 disabled:text-slate-600"
+          >
+            <option value="">Select term</option>
+            {options.terms.map((item) => <option key={item.id} value={item.id}>{item.term ? `Term ${item.term} — ${item.academicYear}` : item.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-900 mb-1">Stream (optional)</label>
+          <select
+            value={form.streamId || ''}
+            onChange={(e) => handleChange('streamId', e.target.value)}
+            onBlur={(e) => handleBlurSave('streamId', e.target.value)}
+            disabled={Boolean(lesson)}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-700 disabled:bg-slate-50 disabled:text-slate-600"
+          >
+            <option value="">All streams</option>
+            {options.streams.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
         </div>
       </div>
 

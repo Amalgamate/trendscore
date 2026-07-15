@@ -187,6 +187,21 @@ export class LMSLessonService {
     }
 
     const lesson = await prisma.learningLesson.create({
+    // Browser number inputs arrive as strings. Treat an empty optional field
+    // as unset and reject invalid values with a client error instead of letting
+    // Prisma return a generic 500.
+    const estimatedMinsInput = data.estimatedMins as unknown;
+    let estimatedMins: number | undefined;
+    if (estimatedMinsInput !== undefined && estimatedMinsInput !== null && estimatedMinsInput !== '') {
+      const parsed = typeof estimatedMinsInput === 'number'
+        ? estimatedMinsInput
+        : Number(estimatedMinsInput);
+      if (!Number.isInteger(parsed) || parsed < 0) {
+        throw new ApiError(422, 'Estimated minutes must be a non-negative whole number');
+      }
+      estimatedMins = parsed;
+    }
+
       data: {
         title,
         classId,
@@ -198,7 +213,7 @@ export class LMSLessonService {
         streamId: data.streamId,
         description: data.description,
         coverImageUrl: data.coverImageUrl,
-        estimatedMins: data.estimatedMins,
+        estimatedMins,
         allowComments: data.allowComments ?? false,
         allowQuestions: data.allowQuestions ?? false,
         allowDownload: data.allowDownload ?? false,
