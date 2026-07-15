@@ -248,10 +248,31 @@ export function AttendanceReportsV2({ learners: propLearners }) {
     return classes[0];
   }, [isTeacher, classes]);
 
+  // The attendance endpoint already joins each record's learner.  Reports must
+  // not depend solely on the app-shell learner prop, which can be paginated or
+  // still empty when this page loads.  Merge both sources so captured records
+  // always remain reportable for every school.
+  const reportLearners = useMemo(() => {
+    const learnersById = new Map();
+    (propLearners || []).forEach((learner) => {
+      if (learner?.id) learnersById.set(learner.id, learner);
+    });
+    (attendanceRecords || []).forEach((record) => {
+      const learner = record?.learner;
+      if (learner?.id) {
+        learnersById.set(learner.id, {
+          ...(learnersById.get(learner.id) || {}),
+          ...learner,
+        });
+      }
+    });
+    return Array.from(learnersById.values());
+  }, [propLearners, attendanceRecords]);
+
   const scopedLearners = useMemo(() => {
-    if (!isTeacher || !assignedClass) return propLearners || [];
-    return (propLearners || []).filter(learner => learnerMatchesClass(learner, assignedClass));
-  }, [isTeacher, assignedClass, propLearners]);
+    if (!isTeacher || !assignedClass) return reportLearners;
+    return reportLearners.filter(learner => learnerMatchesClass(learner, assignedClass));
+  }, [isTeacher, assignedClass, reportLearners]);
 
   const availableGrades = useMemo(() => {
     const learnerGrades = [...new Set((scopedLearners || []).map(learner => learner.grade).filter(Boolean))];
