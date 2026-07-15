@@ -26,6 +26,18 @@ export const requireApp = (slug: string) => {
         include: { app: true },
       });
 
+      // The Learning UI uses `lms-professional` as its capability identifier,
+      // while the school package catalog stores the enabled module as `lms`.
+      // Treat an enabled, visible legacy LMS module as satisfying the
+      // professional Learning Hub gate so the UI and API cannot disagree.
+      if (slug === 'lms-professional') {
+        const legacyLmsConfig = await prisma.schoolAppConfig.findFirst({
+          where: { schoolId, app: { slug: 'lms' } },
+          include: { app: true },
+        });
+        if (legacyLmsConfig?.isActive && legacyLmsConfig.isVisible) return next();
+      }
+
       if (!config) return next();
       if (slug === 'fee-management') {
         const activeConfigs = await prisma.schoolAppConfig.findMany({

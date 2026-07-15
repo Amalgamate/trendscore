@@ -25,6 +25,7 @@ export const APP_CATALOG = [
   { slug: 'payroll', name: 'Payroll', description: 'Payroll processing and staff compensation.', category: 'HR', icon: 'receipt', sortOrder: 170, dependencies: ['staff-hr'] },
   { slug: 'accounting', name: 'Accounting', description: 'Expenses, chart of accounts, journals and reconciliations.', category: 'Finance', icon: 'landmark', sortOrder: 180 },
   { slug: 'lms', name: 'Learning Management', description: 'Courses, content, enrollments and learner progress.', category: 'Academics', icon: 'play-circle', sortOrder: 190 },
+  { slug: 'lms-professional', name: 'Learning Hub', description: 'Assignments, lessons, revision library, progress tracking and learning analytics.', category: 'Academics', icon: 'book-open', sortOrder: 191 },
   { slug: 'library', name: 'Library', description: 'Book catalog, circulation and library fees.', category: 'Academics', icon: 'library', sortOrder: 200 },
   { slug: 'biometric', name: 'Biometric Attendance', description: 'Biometric devices, logs and attendance authority.', category: 'Operations', icon: 'fingerprint', sortOrder: 210 },
   { slug: 'tertiary-modules', name: 'Tertiary Modules', description: 'Programs, departments, units and tertiary workflows.', category: 'Academics', icon: 'graduation-cap', sortOrder: 220 },
@@ -58,7 +59,7 @@ export const MODULE_PACKAGES: Record<ModulePackageId, { name: string; descriptio
   professional: {
     name: 'Professional',
     description: 'Standard plus HR, accounting, LMS, library and biometric support.',
-    active: ['staff-hr', 'payroll', 'accounting', 'lms', 'library', 'biometric'],
+    active: ['staff-hr', 'payroll', 'accounting', 'lms', 'lms-professional', 'library', 'biometric'],
     mandatory: ['student-registry', 'user-management', 'school-settings'],
   },
   enterprise: {

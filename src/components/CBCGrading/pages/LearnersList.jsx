@@ -3,7 +3,7 @@
  */
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Upload, Eye, Edit, Trash2, LogOut, ChevronLeft, ChevronRight, Search, RefreshCw, Users, MoreVertical, MessageCircle, MessageSquare, X, Loader2, Send, Filter } from 'lucide-react';
+import { Upload, Eye, Edit, Trash2, LogOut, ChevronLeft, ChevronRight, Search, RefreshCw, Users, MoreVertical, MessageCircle, MessageSquare, X, Loader2, Send, Filter, Plus } from 'lucide-react';
 import StatusBadge from '../shared/StatusBadge';
 import EmptyState from '../shared/EmptyState';
 import { usePermissions } from '../../../hooks/usePermissions';
@@ -446,6 +446,16 @@ const LearnersList = ({
 
             {canCreateLearner ? (
               <>
+                {isMobile && (
+                  <button
+                    type="button"
+                    onClick={onAddLearner}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-md bg-brand-purple px-3 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-brand-purple/90 active:scale-[0.98]"
+                  >
+                    <Plus size={15} />
+                    Add Student
+                  </button>
+                )}
                 <div className="relative">
                   <button
                     onClick={() => setShowQuickActions(!showQuickActions)}
