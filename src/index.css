@@ -170,9 +170,15 @@
     margin-right: calc(var(--app-gutter-x) * -1);
   }
 
+  .horizontal-menu-shell {
+    background-color: #f7f8fa;
+    border-color: #e5e7eb;
+  }
+
   .surface-panel {
     @apply bg-white border border-gray-200 rounded-lg shadow-sm;
     background-color: #ffffff;
+    background-image: none;
     border-color: rgba(203, 213, 225, 0.9);
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
   }
@@ -182,7 +188,41 @@
   }
 
   .surface-panel-interactive {
-    @apply transition-colors hover:border-brand-purple/20;
+    position: relative;
+    isolation: isolate;
+    transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+  }
+
+  .surface-panel-interactive::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    padding: 1px;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 180ms ease;
+    background: linear-gradient(120deg, rgba(79, 70, 229, 0.7), rgba(59, 130, 246, 0.38), rgba(16, 185, 129, 0.52));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
+
+  .surface-panel-interactive:hover {
+    transform: translateY(-2px);
+    background-color: #ffffff;
+    background-image: none;
+    border-color: transparent;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.09), 0 0 0 3px rgba(79, 70, 229, 0.07);
+  }
+
+  .surface-panel-interactive:hover::after {
+    opacity: 1;
+  }
+
+  .surface-panel-interactive:focus-within {
+    border-color: rgba(79, 70, 229, 0.42);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
   }
 
   .app-layout-content [class~="bg-white"][class*="rounded"]:not(button):not(input):not(select):not(textarea),

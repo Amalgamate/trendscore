@@ -21,6 +21,17 @@ import {
 } from '../../ui/dropdown-menu';
 import { cn } from '../../../utils/cn';
 
+const TAB_TONES = [
+  'text-indigo-700 bg-indigo-50',
+  'text-violet-700 bg-violet-50',
+  'text-emerald-700 bg-emerald-50',
+  'text-amber-700 bg-amber-50',
+  'text-sky-700 bg-sky-50',
+  'text-rose-700 bg-rose-50',
+  'text-teal-700 bg-teal-50',
+  'text-fuchsia-700 bg-fuchsia-50',
+];
+
 const ModuleTabNav = ({
   tabs = [],
   activeTab,
@@ -36,7 +47,7 @@ const ModuleTabNav = ({
 
   if (variant === 'dropdown') {
     return (
-      <div className={`sticky top-0 z-30 border-b border-gray-200 bg-gray-100/95 backdrop-blur-md ${flushToShell ? 'module-tab-nav-shell' : ''} ${className}`}>
+      <div className={`horizontal-menu-shell sticky top-0 z-30 border-b border-gray-200 bg-gray-100/95 backdrop-blur-md ${flushToShell ? 'module-tab-nav-shell' : ''} ${className}`}>
         <div className="app-layout-row flex items-center gap-2 py-2">
           {sectionLabel && (
             <>
@@ -51,7 +62,7 @@ const ModuleTabNav = ({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="inline-flex min-w-[13rem] max-w-full items-center justify-between gap-2 rounded-md bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-blue-700 transition hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                className="inline-flex min-w-[13rem] max-w-full items-center justify-between gap-2 rounded-md bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-100 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
               >
                 <span className="flex min-w-0 items-center gap-1.5">
                   {ActiveIcon && (
@@ -71,9 +82,10 @@ const ModuleTabNav = ({
             </DropdownMenuTrigger>
 
             <DropdownMenuContent align="start" className="w-64 p-1">
-              {tabs.map((tab) => {
+              {tabs.map((tab, index) => {
                 const isActive = activeTab === tab.id;
                 const Icon = tab.icon;
+                const tone = TAB_TONES[index % TAB_TONES.length];
                 return (
                   <button
                     key={tab.id}
@@ -88,10 +100,10 @@ const ModuleTabNav = ({
                       'flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-xs font-medium transition',
                       'focus-visible:outline-none focus-visible:bg-gray-100',
                       isActive
-                        ? 'bg-blue-50 text-blue-700'
-                        : tab.disabled
-                          ? 'cursor-not-allowed text-gray-300'
-                          : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
+                        ? `${tone} font-semibold ring-1 ring-current/10`
+                      : tab.disabled
+                        ? 'cursor-not-allowed text-gray-300'
+                        : `${tone} hover:opacity-90`
                     )}
                   >
                     {Icon && (
@@ -119,7 +131,7 @@ const ModuleTabNav = ({
   }
 
   return (
-    <div className={`sticky top-0 z-30 border-b border-gray-200 bg-gray-100/95 backdrop-blur-md ${flushToShell ? 'module-tab-nav-shell' : ''} ${className}`}>
+    <div className={`horizontal-menu-shell sticky top-0 z-30 border-b border-gray-200 bg-gray-100/95 backdrop-blur-md ${flushToShell ? 'module-tab-nav-shell' : ''} ${className}`}>
       <div className="app-layout-row flex items-center gap-1 overflow-x-auto custom-scrollbar whitespace-nowrap py-2">
         {sectionLabel && (
           <>
@@ -130,9 +142,10 @@ const ModuleTabNav = ({
           </>
         )}
 
-        {tabs.map((tab) => {
+        {tabs.map((tab, index) => {
           const isActive = activeTab === tab.id;
           const Icon = tab.icon;
+          const tone = TAB_TONES[index % TAB_TONES.length];
           return (
             <button
               key={tab.id}
@@ -143,13 +156,13 @@ const ModuleTabNav = ({
                 // ── core layout — matches HorizontalSubmenu NavItem ──────────
                 'flex items-center gap-1.5 whitespace-nowrap',
                 'rounded-md px-2.5 py-1.5 text-xs font-medium',
-                'transition-all focus-visible:outline-none',
+                'transition-all hover:opacity-90 focus-visible:outline-none',
                 // ── state variants ────────────────────────────────────────────
                 isActive
-                  ? 'text-blue-700 bg-blue-50'
+                  ? `${tone} font-semibold ring-1 ring-current/10 shadow-sm`
                   : tab.disabled
                     ? 'text-gray-300 cursor-not-allowed'
-                    : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100',
+                    : tone,
               ].join(' ')}
             >
               {Icon && (

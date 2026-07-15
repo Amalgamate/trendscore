@@ -50,17 +50,18 @@ export const AppCard: React.FC<AppCardProps> = ({
   };
 
   const style = variantStyles[variant];
+  const usesStandardSurface = variant === 'default';
 
   return (
     <div
       onClick={onClick}
-      className={`app-card ${className}`}
+      className={`app-card ${usesStandardSurface ? 'surface-panel' : ''} ${onClick ? 'surface-panel-interactive' : ''} ${className}`}
       style={{
         borderRadius: TOKENS.radius.card.default,
         padding: TOKENS.spacing.card.md,
-        backgroundColor: style.background,
-        border: style.border,
-        boxShadow: style.shadow,
+        backgroundColor: usesStandardSurface ? undefined : style.background,
+        border: usesStandardSurface ? undefined : style.border,
+        boxShadow: usesStandardSurface ? undefined : style.shadow,
         cursor: onClick ? 'pointer' : 'default',
         transition: `all ${TOKENS.transitions.base}`,
       }}

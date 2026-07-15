@@ -9,10 +9,17 @@ import { useAuth } from '../../../../hooks/useAuth';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+const STAT_TONES = {
+    blue: 'bg-blue-50 text-blue-600 border-blue-100',
+    purple: 'bg-purple-50 text-purple-600 border-purple-100',
+    orange: 'bg-orange-50 text-orange-600 border-orange-100',
+    emerald: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+};
+
 const StatCard = ({ title, value, icon: Icon, color, sub }) => (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+    <div className="surface-panel surface-panel-interactive p-6 rounded-2xl">
         <div className="flex justify-between items-start mb-4">
-            <div className={`p-3 rounded-xl bg-${color}-50 text-${color}-600`}><Icon size={24} /></div>
+            <div className={`p-3 rounded-xl border ${STAT_TONES[color] || STAT_TONES.blue}`}><Icon size={24} /></div>
         </div>
         <h3 className="text-gray-500 text-sm font-medium mb-1">{title}</h3>
         <p className="text-2xl font-medium text-gray-900">{value}</p>

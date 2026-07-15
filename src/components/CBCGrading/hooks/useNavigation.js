@@ -150,8 +150,8 @@ export const allNavSections = [
         app: 'planner',
         permission: null,
         items: [
-            { id: 'planner-calendar', label: 'Calendar', path: 'planner-calendar', permission: null },
             { id: 'planner-timetable', label: 'Timetable', path: 'planner-timetable', permission: 'ACCESS_TIMETABLE', app: 'timetable' },
+            { id: 'planner-calendar', label: 'Calendar', path: 'planner-calendar', permission: null },
             { id: 'planner-duty-roster', label: 'Duty Roster', path: 'planner-duty-roster', permission: null, app: 'planner' },
             { id: 'planner-schemes', label: 'Schemes of Work', path: 'planner-schemes', permission: null, icon: ClipboardList, app: 'curriculum' },
         ]
@@ -538,6 +538,7 @@ export const allNavSections = [
     {
         id: 'pathway-planner',
         label: 'Junior Transition Centre',
+        badge: 'BETA',
         icon: Award,
         permission: null,
         items: [

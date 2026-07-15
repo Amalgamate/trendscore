@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { Home, Gift } from 'lucide-react';
+import { Home, Gift, Plus } from 'lucide-react';
 import { useNavigation } from '../hooks/useNavigation';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -30,6 +30,11 @@ const PASTEL_PALETTE = {
   'School Settings':    'text-indigo-700  bg-indigo-50',
   'Academic Settings':  'text-purple-700  bg-purple-50',
   'Branding':           'text-emerald-700 bg-emerald-50',
+  'Mark Entry':         'text-indigo-700  bg-indigo-50',
+  'CATs':               'text-violet-700  bg-violet-50',
+  'Mid-term Exams':     'text-emerald-700 bg-emerald-50',
+  'End-term Exams':     'text-amber-700   bg-amber-50',
+  'Mock Exams':         'text-sky-700     bg-sky-50',
 };
 
 const COLOR_CYCLE = [
@@ -42,6 +47,15 @@ const COLOR_CYCLE = [
   'text-teal-700    bg-teal-50',
   'text-fuchsia-700 bg-fuchsia-50',
 ];
+
+// These specialised learner operations remain available in the sidebar but do
+// not belong in the horizontal learner menu.
+const HIDDEN_HORIZONTAL_PATHS = new Set([
+  'learners-admissions',
+  'learners-promotion',
+  'learners-uniform',
+  'learners-id-print',
+]);
 
 const GROUP_COLORS = [
   { trigger: 'text-indigo-700',  activeBg: 'bg-indigo-50',  dot: 'bg-indigo-500',  hover: 'hover:bg-indigo-50'  },
@@ -65,12 +79,12 @@ const NavItem = ({ item, currentPage, pageParams, onNavigate, idx }) => {
       type="button"
       onClick={() => !item.comingSoon && onNavigate(item.path, item.params)}
       disabled={!!item.comingSoon}
-      className={`text-xs font-medium px-2.5 py-1.5 rounded-md transition-all ${
+      className={`text-xs font-medium px-2.5 py-1.5 rounded-md transition-all hover:opacity-90 ${
         isActive
-          ? `${fg} ${bg}`
+          ? `${fg} ${bg} font-semibold ring-1 ring-current/10 shadow-sm`
           : item.comingSoon
             ? 'text-gray-300 cursor-not-allowed'
-            : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
+            : `${fg} ${bg}`
       }`}
     >
       {item.label}
@@ -161,8 +175,8 @@ const GroupDropdown = ({ group, currentPage, pageParams, onNavigate, color }) =>
         onClick={handleToggle}
         className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-all ${
           isAnyActive
-            ? `${color.trigger} ${color.activeBg}`
-            : `text-gray-700 hover:text-gray-900 ${color.hover}`
+            ? `${color.trigger} ${color.activeBg} font-semibold ring-1 ring-current/10 shadow-sm`
+            : `${color.trigger} ${color.activeBg} hover:opacity-90`
         }`}
       >
         {group.label}
@@ -197,9 +211,15 @@ const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
   );
 
   const flatItems = useMemo(
-    () => flattenLeafItems(activeSection?.items || []).filter(i => !i.greyedOut),
+    () => flattenLeafItems(activeSection?.items || []).filter(i => !i.greyedOut && !HIDDEN_HORIZONTAL_PATHS.has(i.path)),
     [activeSection]
   );
+
+  const canAddLearner = useMemo(
+    () => flattenLeafItems(activeSection?.items || []).some((item) => item.path === 'learners-admissions'),
+    [activeSection]
+  );
+  const showLearnerAddAction = activeSection?.id === 'learners' && currentPage === 'learners-list' && canAddLearner;
 
   const noticesTab = ['notices', 'birthdays', 'changelog'].includes(pageParams?.activeTab)
     ? pageParams.activeTab
@@ -211,10 +231,11 @@ const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
   if (!activeSection) return null;
   if (activeSection.hideHorizontalSubmenu) return null;
   if (hasGroups && !(activeSection.items || []).length) return null;
-  if (!hasGroups && !flatItems.length) return null;
+  // A single destination does not need a second navigation row.
+  if (!hasGroups && flatItems.length < 2) return null;
 
   return (
-    <div className="border-b border-gray-200 bg-gray-100/95 backdrop-blur-md">
+    <div className="horizontal-menu-shell border-b border-gray-200 bg-gray-100/95 backdrop-blur-md">
       <div className="app-layout-row flex items-center gap-1 overflow-x-auto custom-scrollbar whitespace-nowrap py-2">
         <button
           type="button"
@@ -267,6 +288,17 @@ const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
                 {idx < flatItems.length - 1 && <span className="h-4 w-px bg-gray-300" />}
               </React.Fragment>
             ))}
+
+        {showLearnerAddAction && (
+          <button
+            type="button"
+            onClick={() => onNavigate('learners-admissions')}
+            className="ml-auto inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-brand-purple px-2.5 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-brand-purple/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-purple/30"
+          >
+            <Plus size={14} />
+            Add Student
+          </button>
+        )}
 
         {currentPage === 'comm-notices' && (
           <>

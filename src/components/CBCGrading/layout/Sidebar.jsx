@@ -540,6 +540,14 @@ const SingleItem = ({ section, currentPage, onNavigate, sidebarOpen, accentColor
         <section.icon size={18} className={!sidebarOpen ? `${getCollapsedIconColor(section.id, isActive)} transition-all duration-300` : ''} />
       </span>
       {sidebarOpen && <span className="text-sm font-semibold truncate">{section.label}</span>}
+      {section.badge && (
+        <span className={sidebarOpen
+          ? 'ml-auto rounded bg-red-500 px-1.5 py-0.5 text-[8px] font-black tracking-wide text-white shadow-sm'
+          : 'absolute right-1 top-1 rounded bg-red-500 px-1 py-0.5 text-[7px] font-black tracking-wide text-white shadow-sm'}
+        >
+          {section.badge}
+        </span>
+      )}
     </button>
   );
 };
@@ -642,6 +650,11 @@ const NavSection = React.memo(({
                 <section.icon size={18} className={isSettings ? 'text-white' : undefined} />
               </span>
               <span className="text-sm font-semibold truncate text-left flex-1">{section.label}</span>
+              {section.badge && (
+                <span className="rounded bg-red-500 px-1.5 py-0.5 text-[8px] font-black tracking-wide text-white shadow-sm">
+                  {section.badge}
+                </span>
+              )}
               {isSettings && (
                 <ChevronDown size={14} className={`transition-transform duration-200 text-white/40 ${isExpanded ? 'rotate-180' : ''}`} />
               )}
@@ -673,6 +686,11 @@ const NavSection = React.memo(({
               <section.icon size={18} className={`${getCollapsedIconColor(section.id, isActive)} transition-all duration-300`} />
             </span>
           </div>
+          {section.badge && (
+            <span className="absolute right-1 top-1 rounded bg-red-500 px-1 py-0.5 text-[7px] font-black tracking-wide text-white shadow-sm">
+              {section.badge}
+            </span>
+          )}
         </button>
       )}
     </div>

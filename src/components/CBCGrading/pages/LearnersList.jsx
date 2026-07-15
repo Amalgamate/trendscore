@@ -3,7 +3,7 @@
  */
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Plus, Upload, Eye, Edit, Trash2, LogOut, Lock, ChevronLeft, ChevronRight, Search, RefreshCw, Users, MoreVertical, MessageCircle, MessageSquare, X, Loader2, Send, Filter } from 'lucide-react';
+import { Upload, Eye, Edit, Trash2, LogOut, ChevronLeft, ChevronRight, Search, RefreshCw, Users, MoreVertical, MessageCircle, MessageSquare, X, Loader2, Send, Filter } from 'lucide-react';
 import StatusBadge from '../shared/StatusBadge';
 import EmptyState from '../shared/EmptyState';
 import { usePermissions } from '../../../hooks/usePermissions';
@@ -476,25 +476,8 @@ const LearnersList = ({
                   )}
                 </div>
 
-                <button
-                  onClick={onAddLearner}
-                  className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition shadow-sm font-medium"
-                >
-                  <Plus size={18} />
-                  <span className="inline">Add Student</span>
-                </button>
               </>
-            ) : (
-              <div className="relative group w-full md:w-auto">
-                <button
-                  disabled
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-400 border border-gray-200 rounded-lg cursor-not-allowed"
-                >
-                  <Lock size={18} />
-                  <span>Add Student</span>
-                </button>
-              </div>
-            )}
+            ) : null}
           </div>
         </div>
       </div>

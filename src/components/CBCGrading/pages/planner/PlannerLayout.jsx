@@ -13,7 +13,7 @@ const PlannerLayout = ({ currentPage, onNavigate }) => {
             case 'planner-timetable':
                 return <TimetablePage />;
             default:
-                return <CalendarView />;
+                return <TimetablePage />;
         }
     };
 
