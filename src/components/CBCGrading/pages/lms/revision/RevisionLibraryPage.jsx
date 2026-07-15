@@ -158,7 +158,7 @@ export default function RevisionLibraryPage({ onNavigate }) {
       const params = {
         page,
         limit: PAGE_SIZE,
-        ...(search.trim()            && { search: search.trim() }),
+        ...(search.trim()            && { query: search.trim() }),
         ...(filterClass !== 'all'    && { classId: filterClass }),
         ...(filterSubject !== 'all'  && { learningAreaId: filterSubject }),
         ...(filterTopic.trim()       && { topic: filterTopic.trim() }),
@@ -170,11 +170,19 @@ export default function RevisionLibraryPage({ onNavigate }) {
       };
 
       const res = await lmsAPI.getResources(params);
-      const data = res?.data ?? res ?? {};
+      // The LMS endpoint returns { success, data: { resources, pagination } }.
+      // fetchWithAuth unwraps the HTTP response but preserves that envelope.
+      const result = res?.data ?? res ?? {};
 
-      setResources(Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : []);
+      setResources(
+        Array.isArray(result.resources)
+          ? result.resources
+          : Array.isArray(result)
+            ? result
+            : [],
+      );
 
-      const m = data.meta ?? data.pagination;
+      const m = result.meta ?? result.pagination;
       if (m) {
         setPagination({ page: m.page ?? page, total: m.total ?? 0, pages: m.pages ?? m.totalPages ?? 1 });
       } else {
