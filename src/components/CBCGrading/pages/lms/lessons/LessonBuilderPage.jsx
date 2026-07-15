@@ -14,7 +14,7 @@ import {
   Send,
   AlertCircle,
   RefreshCw,
-  X,
+  ArrowLeft,
 } from 'lucide-react';
 import { lmsAPI } from '../../../../../services/api/lms.api';
 import { configAPI } from '../../../../../services/api/config.api';
@@ -394,9 +394,19 @@ export default function LessonBuilderPage({ lessonId: propLessonId, pageParams, 
     <div className="space-y-6 pb-8">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-slate-900">
-          {lesson ? `Edit: ${lesson.title}` : 'Create Lesson'}
-        </h2>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleBack}
+            className="p-2 -ml-2 rounded-lg hover:bg-slate-100 transition flex-shrink-0"
+            aria-label="Back to Lessons"
+            title="Back to Lessons"
+          >
+            <ArrowLeft size={20} className="text-slate-600" />
+          </button>
+          <h2 className="text-2xl font-bold text-slate-900">
+            {lesson ? `Edit: ${lesson.title}` : 'Create Lesson'}
+          </h2>
+        </div>
         <div className="flex items-center gap-2">
           {lesson && lesson.status === 'DRAFT' && (
             <button
@@ -408,12 +418,6 @@ export default function LessonBuilderPage({ lessonId: propLessonId, pageParams, 
               {publishing ? 'Publishing...' : 'Publish'}
             </button>
           )}
-          <button
-            onClick={handleBack}
-            className="p-2 rounded-lg hover:bg-slate-100 transition"
-          >
-            <X size={20} className="text-slate-600" />
-          </button>
         </div>
       </div>
 

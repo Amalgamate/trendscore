@@ -450,6 +450,165 @@ function FlashcardsBlock({ content }) {
   );
 }
 
+// ─── Gallery Block ──────────────────────────────────────────────────────────
+
+function GalleryBlock({ content }) {
+  const images = (content.images || []).filter((img) => img?.url);
+  const [activeIdx, setActiveIdx] = useState(0);
+  if (!images.length) return null;
+
+  return (
+    <div className="space-y-3">
+      <figure className="space-y-2">
+        <img
+          src={images[activeIdx].url}
+          alt={images[activeIdx].caption || `Image ${activeIdx + 1}`}
+          className="w-full max-h-96 object-contain rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800"
+          onError={(e) => { e.target.style.display = 'none'; }}
+        />
+        {images[activeIdx].caption && (
+          <figcaption className="text-center text-xs text-gray-500 dark:text-gray-400 italic">
+            {images[activeIdx].caption}
+          </figcaption>
+        )}
+      </figure>
+      {images.length > 1 && (
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {images.map((img, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => setActiveIdx(idx)}
+              className={cn(
+                'flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition',
+                idx === activeIdx ? 'border-brand-purple' : 'border-transparent opacity-70 hover:opacity-100',
+              )}
+              aria-label={`Show image ${idx + 1}`}
+            >
+              <img src={img.url} alt="" className="w-full h-full object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Timeline Block ─────────────────────────────────────────────────────────
+
+function TimelineBlock({ content }) {
+  const events = content.events || [];
+  if (!events.length) return null;
+
+  return (
+    <div className="space-y-0">
+      {events.map((ev, idx) => (
+        <div key={idx} className="flex gap-4">
+          <div className="flex flex-col items-center flex-shrink-0">
+            <span className="w-3 h-3 rounded-full bg-brand-purple mt-1.5" />
+            {idx < events.length - 1 && (
+              <span className="flex-1 w-px bg-gray-200 dark:bg-gray-700 my-1" />
+            )}
+          </div>
+          <div className={cn('pb-6', idx === events.length - 1 && 'pb-0')}>
+            {ev.date && (
+              <p className="text-xs font-bold text-brand-purple uppercase tracking-wide mb-0.5">
+                {ev.date}
+              </p>
+            )}
+            {ev.title && (
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">{ev.title}</p>
+            )}
+            {ev.description && (
+              <p className="text-sm text-gray-600 dark:text-gray-300 mt-1 whitespace-pre-wrap">
+                {ev.description}
+              </p>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Accordion Block ────────────────────────────────────────────────────────
+
+function AccordionBlock({ content }) {
+  const [openIndex, setOpenIndex] = useState(0);
+  const items = content.items || [];
+  if (!items.length) return null;
+
+  return (
+    <div className="space-y-2">
+      {items.map((item, idx) => (
+        <div key={idx} className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setOpenIndex(openIndex === idx ? null : idx)}
+            className="w-full flex items-center justify-between px-4 py-3 text-left bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+            aria-expanded={openIndex === idx}
+          >
+            <span className="text-sm font-semibold text-gray-900 dark:text-white pr-2">
+              {item.title}
+            </span>
+            {openIndex === idx
+              ? <ChevronUp size={16} className="text-gray-400 flex-shrink-0" />
+              : <ChevronDown size={16} className="text-gray-400 flex-shrink-0" />}
+          </button>
+          {openIndex === idx && item.content && (
+            <div className="px-4 py-3 bg-gray-50 dark:bg-gray-900/40 border-t border-gray-200 dark:border-gray-700">
+              <p className="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap">{item.content}</p>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Table Block ────────────────────────────────────────────────────────────
+
+function TableBlock({ content }) {
+  const headers = content.headers || [];
+  const rows = content.rows || [];
+  if (!rows.length) return null;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-sm">
+        {headers.length > 0 && (
+          <thead>
+            <tr>
+              {headers.map((h, idx) => (
+                <th
+                  key={idx}
+                  className="border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-2 text-left font-semibold text-gray-900 dark:text-white"
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+        )}
+        <tbody>
+          {rows.map((row, rIdx) => (
+            <tr key={rIdx}>
+              {row.map((cell, cIdx) => (
+                <td
+                  key={cIdx}
+                  className="border border-gray-200 dark:border-gray-700 px-3 py-2 text-gray-700 dark:text-gray-200"
+                >
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ─── Block Renderer Map ─────────────────────────────────────────────────────
 // TEACHER_NOTES intentionally omitted — never rendered for students
 
@@ -457,10 +616,14 @@ const BLOCK_RENDERERS = {
   HEADING:            HeadingBlock,
   PARAGRAPH:          ParagraphBlock,
   IMAGE:              ImageBlock,
+  GALLERY:            GalleryBlock,
   VIDEO:              VideoBlock,
   AUDIO:              AudioBlock,
   QUIZ:               QuizBlock,
   FLASHCARDS:         FlashcardsBlock,
+  TIMELINE:           TimelineBlock,
+  ACCORDION:          AccordionBlock,
+  TABLE:              TableBlock,
   PDF:                PDFBlock,
   CODE:               CodeBlock,
   FORMULA:            FormulaBlock,

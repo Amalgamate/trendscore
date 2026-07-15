@@ -17,7 +17,8 @@
  */
 
 import React, { useState, useRef } from 'react';
-import { Upload, X } from 'lucide-react';
+import { Upload, X, Loader2, AlertCircle } from 'lucide-react';
+import { lmsAPI } from '../../../../../services/api/lms.api';
 
 export default function FileUploadEditor({
   block,
@@ -26,22 +27,40 @@ export default function FileUploadEditor({
   acceptTypes = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx',
 }) {
   const [isFile, setIsFile] = useState(!!block?.content?.fileName);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
   const fileInputRef = useRef(null);
 
-  const handleFileSelect = (e) => {
+  const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (!file) return;
+
+    setUploadError(null);
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await lmsAPI.uploadLessonMedia(formData);
+      const uploaded = res?.data ?? res;
+
       onChange({
         ...block,
         content: {
           ...block.content,
-          url: file.name,
-          fileName: file.name,
-          fileSize: file.size,
+          url: uploaded.url,
+          fileName: uploaded.fileName || file.name,
+          fileSize: uploaded.fileSize ?? file.size,
           fileMime: file.type,
           uploadedAt: new Date().toISOString(),
         },
       });
+    } catch (err) {
+      console.error('[FileUploadEditor] Upload failed:', err);
+      setUploadError(err?.response?.data?.message || err?.message || 'Upload failed. Please try again.');
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -122,13 +141,23 @@ export default function FileUploadEditor({
           {!block?.content?.fileName ? (
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="w-full px-4 py-6 border-2 border-dashed border-[#ff7900] rounded-lg text-[#ff7900] hover:bg-[#ff7900]/5 transition font-medium text-sm flex flex-col items-center justify-center gap-2"
+              disabled={isUploading}
+              className="w-full px-4 py-6 border-2 border-dashed border-[#ff7900] rounded-lg text-[#ff7900] hover:bg-[#ff7900]/5 transition font-medium text-sm flex flex-col items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <Upload size={24} />
-              <span>Choose File</span>
-              <span className="text-xs text-[#ff7900]/70">
-                PDF, Word, Excel, PowerPoint
-              </span>
+              {isUploading ? (
+                <>
+                  <Loader2 size={24} className="animate-spin" />
+                  <span>Uploading…</span>
+                </>
+              ) : (
+                <>
+                  <Upload size={24} />
+                  <span>Choose File</span>
+                  <span className="text-xs text-[#ff7900]/70">
+                    Image, Video, Audio, PDF
+                  </span>
+                </>
+              )}
             </button>
           ) : (
             <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
@@ -159,6 +188,13 @@ export default function FileUploadEditor({
                 Change File
               </button>
             </div>
+          )}
+
+          {uploadError && (
+            <p className="text-xs text-red-600 flex items-center gap-1">
+              <AlertCircle size={12} />
+              {uploadError}
+            </p>
           )}
         </div>
       )}

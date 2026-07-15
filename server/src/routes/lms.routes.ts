@@ -121,6 +121,19 @@ router.put(
   lmsController.endLessonSession
 );
 
+/**
+ * POST /api/lms/lessons/media — upload a single media file (image/video/audio/
+ * pdf/diagram) for use inside a lesson block. Returns a hosted URL that the
+ * block editor sets onto content.url before saving via /lessons/:id/blocks.
+ */
+router.post(
+  '/lessons/media',
+  requirePermission('LESSON_CREATE'),
+  requireCsrf,
+  upload.single('file'),
+  lmsController.uploadLessonMedia
+);
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ASSIGNMENTS
 // ═══════════════════════════════════════════════════════════════════════════════

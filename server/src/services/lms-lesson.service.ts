@@ -16,6 +16,7 @@ import { redisCacheService } from './redis-cache.service';
 import { LMSNotificationService } from './lms-notification.service';
 import { auditService } from './audit.service';
 import { LMSAchievementsService } from './lms-achievements.service';
+import { documentService } from './document.service';
 import { ApiError } from '../utils/error.util';
 import type {
   LearningLesson,
@@ -186,11 +187,10 @@ export class LMSLessonService {
       );
     }
 
-    const lesson = await prisma.learningLesson.create({
     // Browser number inputs arrive as strings. Treat an empty optional field
     // as unset and reject invalid values with a client error instead of letting
     // Prisma return a generic 500.
-    const estimatedMinsInput = data.estimatedMins as unknown;
+    const estimatedMinsInput: any = data.estimatedMins;
     let estimatedMins: number | undefined;
     if (estimatedMinsInput !== undefined && estimatedMinsInput !== null && estimatedMinsInput !== '') {
       const parsed = typeof estimatedMinsInput === 'number'
@@ -202,6 +202,7 @@ export class LMSLessonService {
       estimatedMins = parsed;
     }
 
+    const lesson = await prisma.learningLesson.create({
       data: {
         title,
         classId,
@@ -413,6 +414,38 @@ export class LMSLessonService {
 
     await invalidateLessonCache(schoolId);
     return archived;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // BLOCK MEDIA UPLOAD
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Upload a single media file (image/video/audio/pdf/diagram) for use inside
+   * a lesson content block, and return the hosted Cloudinary URL plus basic
+   * file metadata.
+   *
+   * This does NOT persist anything to a LessonBlock — the caller (frontend
+   * block editor) is responsible for taking the returned `url` and setting it
+   * on the relevant block's `content.url` before saving via upsertBlocks().
+   */
+  static async uploadBlockMedia(
+    file: Express.Multer.File,
+    schoolId: string,
+  ): Promise<{ url: string; fileName: string; fileSize: number; fileType: string }> {
+    if (!file) {
+      throw new ApiError(422, 'No file provided').withCode('LMS_BLOCK_MEDIA_MISSING_FILE');
+    }
+
+    const folder = `lms/lessons/${schoolId}/blocks`;
+    const result = await documentService.uploadFile(file, { folder, resourceType: 'auto' });
+
+    return {
+      url: result.url,
+      fileName: file.originalname,
+      fileSize: result.size,
+      fileType: result.format,
+    };
   }
 
   // ══════════════════════════════════════════════════════════════════════════

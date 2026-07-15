@@ -64,46 +64,524 @@ function UrlBlockEditor({ block, onChange, label = 'URL' }) {
   return <FileUploadEditor block={block} onChange={onChange} label={label} />;
 }
 
+// QuizBlockEditor — builds real multiple-choice questions with a marked
+// correct answer, matching the shape the student QuizBlock viewer expects:
+// { questions: [{ question, choices: [...], correctIndex }] }
 function QuizBlockEditor({ block, onChange }) {
-  const [questions, setQuestions] = useState(block.content?.questions || []);
+  const questions = block.content?.questions || [];
+
+  const commit = (updated) => {
+    onChange({ ...block, content: { ...block.content, questions: updated } });
+  };
+
+  const handleAddQuestion = () => {
+    commit([...questions, { question: '', choices: ['', ''], correctIndex: 0 }]);
+  };
+
+  const handleRemoveQuestion = (qIdx) => {
+    commit(questions.filter((_, i) => i !== qIdx));
+  };
+
+  const handleQuestionText = (qIdx, text) => {
+    const updated = questions.map((q, i) => (i === qIdx ? { ...q, question: text } : q));
+    commit(updated);
+  };
+
+  const handleChoiceText = (qIdx, cIdx, text) => {
+    const updated = questions.map((q, i) => {
+      if (i !== qIdx) return q;
+      const choices = [...(q.choices || [])];
+      choices[cIdx] = text;
+      return { ...q, choices };
+    });
+    commit(updated);
+  };
+
+  const handleAddChoice = (qIdx) => {
+    const updated = questions.map((q, i) =>
+      i === qIdx ? { ...q, choices: [...(q.choices || []), ''] } : q,
+    );
+    commit(updated);
+  };
+
+  const handleRemoveChoice = (qIdx, cIdx) => {
+    const updated = questions.map((q, i) => {
+      if (i !== qIdx) return q;
+      const choices = (q.choices || []).filter((_, idx) => idx !== cIdx);
+      let correctIndex = q.correctIndex ?? 0;
+      if (correctIndex === cIdx) correctIndex = 0;
+      else if (correctIndex > cIdx) correctIndex -= 1;
+      return { ...q, choices, correctIndex };
+    });
+    commit(updated);
+  };
+
+  const handleSetCorrect = (qIdx, cIdx) => {
+    const updated = questions.map((q, i) => (i === qIdx ? { ...q, correctIndex: cIdx } : q));
+    commit(updated);
+  };
 
   return (
-    <div className="space-y-2">
-      {questions.map((q, i) => (
-        <div key={i} className="flex gap-2">
-          <input
-            type="text"
-            value={q}
-            onChange={(e) => {
-              const updated = [...questions];
-              updated[i] = e.target.value;
-              setQuestions(updated);
-              onChange({ ...block, content: { ...block.content, questions: updated } });
-            }}
-            placeholder={`Question ${i + 1}`}
-            className="flex-1 px-2 py-1 border border-slate-200 rounded text-sm"
-          />
-          <button
-            onClick={() => {
-              const updated = questions.filter((_, idx) => idx !== i);
-              setQuestions(updated);
-              onChange({ ...block, content: { ...block.content, questions: updated } });
-            }}
-            className="p-1 rounded hover:bg-rose-100 text-rose-600"
-          >
-            <Trash2 size={14} />
-          </button>
+    <div className="space-y-4">
+      {questions.map((q, qIdx) => (
+        <div key={qIdx} className="p-3 border border-slate-200 rounded-lg bg-slate-50 space-y-2">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={q.question || ''}
+              onChange={(e) => handleQuestionText(qIdx, e.target.value)}
+              placeholder={`Question ${qIdx + 1}`}
+              className="flex-1 px-2 py-1.5 border border-slate-200 rounded text-sm font-medium"
+            />
+            <button
+              onClick={() => handleRemoveQuestion(qIdx)}
+              className="p-1.5 rounded hover:bg-rose-100 text-rose-600 flex-shrink-0"
+              title="Remove question"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+
+          <div className="space-y-1.5 pl-1">
+            <p className="text-xs text-slate-500 font-medium">Choices (select the correct one)</p>
+            {(q.choices || []).map((choice, cIdx) => (
+              <div key={cIdx} className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name={`quiz-${block.id}-correct-${qIdx}`}
+                  checked={(q.correctIndex ?? 0) === cIdx}
+                  onChange={() => handleSetCorrect(qIdx, cIdx)}
+                  className="flex-shrink-0 accent-[#ff7900]"
+                  title="Mark as correct answer"
+                />
+                <input
+                  type="text"
+                  value={choice}
+                  onChange={(e) => handleChoiceText(qIdx, cIdx, e.target.value)}
+                  placeholder={`Choice ${cIdx + 1}`}
+                  className="flex-1 px-2 py-1 border border-slate-200 rounded text-sm"
+                />
+                <button
+                  onClick={() => handleRemoveChoice(qIdx, cIdx)}
+                  disabled={(q.choices || []).length <= 2}
+                  className="p-1 rounded hover:bg-rose-100 text-rose-600 disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
+                  title="Remove choice"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={() => handleAddChoice(qIdx)}
+              className="text-xs text-[#ff7900] hover:text-[#ff7900]/80 font-medium"
+            >
+              + Add Choice
+            </button>
+          </div>
         </div>
       ))}
       <button
-        onClick={() => {
-          const updated = [...questions, ''];
-          setQuestions(updated);
-          onChange({ ...block, content: { ...block.content, questions: updated } });
-        }}
+        onClick={handleAddQuestion}
         className="text-sm text-[#ff7900] hover:text-[#ff7900]/80 font-medium"
       >
         + Add Question
+      </button>
+    </div>
+  );
+}
+
+// PracticeQuestionsBlockEditor — question + free-text answer pairs, matching
+// the student PracticeQuestionsBlock accordion viewer: { question, answer }
+function PracticeQuestionsBlockEditor({ block, onChange }) {
+  const questions = block.content?.questions || [];
+
+  const commit = (updated) => {
+    onChange({ ...block, content: { ...block.content, questions: updated } });
+  };
+
+  return (
+    <div className="space-y-3">
+      {questions.map((q, i) => (
+        <div key={i} className="p-3 border border-slate-200 rounded-lg bg-slate-50 space-y-2">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={q.question || ''}
+              onChange={(e) => {
+                const updated = questions.map((item, idx) =>
+                  idx === i ? { ...item, question: e.target.value } : item,
+                );
+                commit(updated);
+              }}
+              placeholder={`Question ${i + 1}`}
+              className="flex-1 px-2 py-1.5 border border-slate-200 rounded text-sm font-medium"
+            />
+            <button
+              onClick={() => commit(questions.filter((_, idx) => idx !== i))}
+              className="p-1.5 rounded hover:bg-rose-100 text-rose-600 flex-shrink-0"
+              title="Remove question"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+          <textarea
+            value={q.answer || ''}
+            onChange={(e) => {
+              const updated = questions.map((item, idx) =>
+                idx === i ? { ...item, answer: e.target.value } : item,
+              );
+              commit(updated);
+            }}
+            placeholder="Answer (shown when student expands the question)"
+            rows={2}
+            className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+          />
+        </div>
+      ))}
+      <button
+        onClick={() => commit([...questions, { question: '', answer: '' }])}
+        className="text-sm text-[#ff7900] hover:text-[#ff7900]/80 font-medium"
+      >
+        + Add Question
+      </button>
+    </div>
+  );
+}
+
+// GalleryBlockEditor — a list of uploaded images with optional captions,
+// matching { images: [{ url, caption }] }
+function GalleryBlockEditor({ block, onChange }) {
+  const images = block.content?.images || [];
+
+  const commit = (updated) => {
+    onChange({ ...block, content: { ...block.content, images: updated } });
+  };
+
+  return (
+    <div className="space-y-3">
+      {images.map((img, idx) => (
+        <div key={idx} className="p-3 border border-slate-200 rounded-lg bg-slate-50 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-slate-500">Image {idx + 1}</p>
+            <button
+              onClick={() => commit(images.filter((_, i) => i !== idx))}
+              className="p-1 rounded hover:bg-rose-100 text-rose-600"
+              title="Remove image"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+          <FileUploadEditor
+            block={{ content: { url: img.url } }}
+            onChange={(updated) => {
+              const url = updated.content?.url || '';
+              commit(images.map((item, i) => (i === idx ? { ...item, url } : item)));
+            }}
+            label="Image"
+            acceptTypes="image/*"
+          />
+          <input
+            type="text"
+            value={img.caption || ''}
+            onChange={(e) => {
+              const caption = e.target.value;
+              commit(images.map((item, i) => (i === idx ? { ...item, caption } : item)));
+            }}
+            placeholder="Caption (optional)"
+            className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+          />
+        </div>
+      ))}
+      <button
+        onClick={() => commit([...images, { url: '', caption: '' }])}
+        className="text-sm text-[#ff7900] hover:text-[#ff7900]/80 font-medium"
+      >
+        + Add Image
+      </button>
+    </div>
+  );
+}
+
+// TimelineBlockEditor — ordered events, matching { events: [{ date, title, description }] }
+function TimelineBlockEditor({ block, onChange }) {
+  const events = block.content?.events || [];
+
+  const commit = (updated) => {
+    onChange({ ...block, content: { ...block.content, events: updated } });
+  };
+
+  return (
+    <div className="space-y-3">
+      {events.map((ev, idx) => (
+        <div key={idx} className="p-3 border border-slate-200 rounded-lg bg-slate-50 space-y-2">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={ev.date || ''}
+              onChange={(e) => {
+                const date = e.target.value;
+                commit(events.map((item, i) => (i === idx ? { ...item, date } : item)));
+              }}
+              placeholder="Date / period (e.g. 1963)"
+              className="w-32 flex-shrink-0 px-2 py-1.5 border border-slate-200 rounded text-sm"
+            />
+            <input
+              type="text"
+              value={ev.title || ''}
+              onChange={(e) => {
+                const title = e.target.value;
+                commit(events.map((item, i) => (i === idx ? { ...item, title } : item)));
+              }}
+              placeholder="Event title"
+              className="flex-1 px-2 py-1.5 border border-slate-200 rounded text-sm font-medium"
+            />
+            <button
+              onClick={() => commit(events.filter((_, i) => i !== idx))}
+              className="p-1.5 rounded hover:bg-rose-100 text-rose-600 flex-shrink-0"
+              title="Remove event"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+          <textarea
+            value={ev.description || ''}
+            onChange={(e) => {
+              const description = e.target.value;
+              commit(events.map((item, i) => (i === idx ? { ...item, description } : item)));
+            }}
+            placeholder="Description (optional)"
+            rows={2}
+            className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+          />
+        </div>
+      ))}
+      <button
+        onClick={() => commit([...events, { date: '', title: '', description: '' }])}
+        className="text-sm text-[#ff7900] hover:text-[#ff7900]/80 font-medium"
+      >
+        + Add Event
+      </button>
+    </div>
+  );
+}
+
+// AccordionBlockEditor — collapsible sections, matching { items: [{ title, content }] }
+function AccordionBlockEditor({ block, onChange }) {
+  const items = block.content?.items || [];
+
+  const commit = (updated) => {
+    onChange({ ...block, content: { ...block.content, items: updated } });
+  };
+
+  return (
+    <div className="space-y-3">
+      {items.map((item, idx) => (
+        <div key={idx} className="p-3 border border-slate-200 rounded-lg bg-slate-50 space-y-2">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={item.title || ''}
+              onChange={(e) => {
+                const title = e.target.value;
+                commit(items.map((it, i) => (i === idx ? { ...it, title } : it)));
+              }}
+              placeholder={`Section ${idx + 1} title`}
+              className="flex-1 px-2 py-1.5 border border-slate-200 rounded text-sm font-medium"
+            />
+            <button
+              onClick={() => commit(items.filter((_, i) => i !== idx))}
+              className="p-1.5 rounded hover:bg-rose-100 text-rose-600 flex-shrink-0"
+              title="Remove section"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+          <textarea
+            value={item.content || ''}
+            onChange={(e) => {
+              const content = e.target.value;
+              commit(items.map((it, i) => (i === idx ? { ...it, content } : it)));
+            }}
+            placeholder="Section content"
+            rows={2}
+            className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+          />
+        </div>
+      ))}
+      <button
+        onClick={() => commit([...items, { title: '', content: '' }])}
+        className="text-sm text-[#ff7900] hover:text-[#ff7900]/80 font-medium"
+      >
+        + Add Section
+      </button>
+    </div>
+  );
+}
+
+// TableBlockEditor — simple grid editor, matching { headers: [...], rows: [[...]] }
+function TableBlockEditor({ block, onChange }) {
+  const headers = block.content?.headers || ['Column 1', 'Column 2'];
+  const rows = block.content?.rows || [['', '']];
+
+  const commit = (updatedHeaders, updatedRows) => {
+    onChange({ ...block, content: { ...block.content, headers: updatedHeaders, rows: updatedRows } });
+  };
+
+  const handleHeaderChange = (colIdx, text) => {
+    commit(headers.map((h, i) => (i === colIdx ? text : h)), rows);
+  };
+
+  const handleCellChange = (rowIdx, colIdx, text) => {
+    const updatedRows = rows.map((row, r) =>
+      r === rowIdx ? row.map((cell, c) => (c === colIdx ? text : cell)) : row,
+    );
+    commit(headers, updatedRows);
+  };
+
+  const handleAddColumn = () => {
+    const updatedHeaders = [...headers, `Column ${headers.length + 1}`];
+    const updatedRows = rows.map((row) => [...row, '']);
+    commit(updatedHeaders, updatedRows);
+  };
+
+  const handleRemoveColumn = (colIdx) => {
+    const updatedHeaders = headers.filter((_, i) => i !== colIdx);
+    const updatedRows = rows.map((row) => row.filter((_, i) => i !== colIdx));
+    commit(updatedHeaders, updatedRows);
+  };
+
+  const handleAddRow = () => {
+    commit(headers, [...rows, headers.map(() => '')]);
+  };
+
+  const handleRemoveRow = (rowIdx) => {
+    commit(headers, rows.filter((_, i) => i !== rowIdx));
+  };
+
+  return (
+    <div className="space-y-2 overflow-x-auto">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr>
+            {headers.map((h, colIdx) => (
+              <th key={colIdx} className="border border-slate-200 p-1">
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={h}
+                    onChange={(e) => handleHeaderChange(colIdx, e.target.value)}
+                    className="flex-1 px-1.5 py-1 border border-slate-200 rounded text-xs font-semibold min-w-[80px]"
+                  />
+                  <button
+                    onClick={() => handleRemoveColumn(colIdx)}
+                    disabled={headers.length <= 1}
+                    className="p-0.5 rounded hover:bg-rose-100 text-rose-600 disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
+                    title="Remove column"
+                  >
+                    <Trash2 size={10} />
+                  </button>
+                </div>
+              </th>
+            ))}
+            <th className="border border-slate-200 p-1 w-8" />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIdx) => (
+            <tr key={rowIdx}>
+              {row.map((cell, colIdx) => (
+                <td key={colIdx} className="border border-slate-200 p-1">
+                  <input
+                    type="text"
+                    value={cell}
+                    onChange={(e) => handleCellChange(rowIdx, colIdx, e.target.value)}
+                    className="w-full px-1.5 py-1 border-none text-xs min-w-[80px]"
+                  />
+                </td>
+              ))}
+              <td className="border border-slate-200 p-1 text-center">
+                <button
+                  onClick={() => handleRemoveRow(rowIdx)}
+                  disabled={rows.length <= 1}
+                  className="p-0.5 rounded hover:bg-rose-100 text-rose-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Remove row"
+                >
+                  <Trash2 size={10} />
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="flex gap-3">
+        <button onClick={handleAddRow} className="text-xs text-[#ff7900] hover:text-[#ff7900]/80 font-medium">
+          + Add Row
+        </button>
+        <button onClick={handleAddColumn} className="text-xs text-[#ff7900] hover:text-[#ff7900]/80 font-medium">
+          + Add Column
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// FlashcardsBlockEditor — front/back card pairs, matching { cards: [{ front, back }] }
+function FlashcardsBlockEditor({ block, onChange }) {
+  const cards = block.content?.cards || [];
+
+  const commit = (updated) => {
+    onChange({ ...block, content: { ...block.content, cards: updated } });
+  };
+
+  return (
+    <div className="space-y-3">
+      {cards.map((card, idx) => (
+        <div key={idx} className="p-3 border border-slate-200 rounded-lg bg-slate-50 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-slate-500">Card {idx + 1}</p>
+            <button
+              onClick={() => commit(cards.filter((_, i) => i !== idx))}
+              className="p-1 rounded hover:bg-rose-100 text-rose-600"
+              title="Remove card"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <p className="text-xs text-slate-500 font-medium mb-1">Front</p>
+              <textarea
+                value={card.front || ''}
+                onChange={(e) => {
+                  const front = e.target.value;
+                  commit(cards.map((c, i) => (i === idx ? { ...c, front } : c)));
+                }}
+                placeholder="Question or term"
+                rows={2}
+                className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+              />
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 font-medium mb-1">Back</p>
+              <textarea
+                value={card.back || ''}
+                onChange={(e) => {
+                  const back = e.target.value;
+                  commit(cards.map((c, i) => (i === idx ? { ...c, back } : c)));
+                }}
+                placeholder="Answer or definition"
+                rows={2}
+                className="w-full px-2 py-1.5 border border-slate-200 rounded text-sm"
+              />
+            </div>
+          </div>
+        </div>
+      ))}
+      <button
+        onClick={() => commit([...cards, { front: '', back: '' }])}
+        className="text-sm text-[#ff7900] hover:text-[#ff7900]/80 font-medium"
+      >
+        + Add Card
       </button>
     </div>
   );
@@ -162,8 +640,10 @@ function BlockEditor({ block, onChange }) {
       return <UrlBlockEditor block={block} onChange={onChange} />;
 
     case 'QUIZ':
-    case 'PRACTICE_QUESTIONS':
       return <QuizBlockEditor block={block} onChange={onChange} />;
+
+    case 'PRACTICE_QUESTIONS':
+      return <PracticeQuestionsBlockEditor block={block} onChange={onChange} />;
 
     case 'CODE':
       return <CodeBlockEditor block={block} onChange={onChange} />;
@@ -182,30 +662,19 @@ function BlockEditor({ block, onChange }) {
       );
 
     case 'FLASHCARDS':
-      return (
-        <textarea
-          value={JSON.stringify(block.content?.cards || [], null, 2)}
-          onChange={(e) => {
-            try {
-              const cards = JSON.parse(e.target.value);
-              onChange({ ...block, content: { ...block.content, cards } });
-            } catch {}
-          }}
-          placeholder={'[{"front": "Question", "back": "Answer"}]'}
-          rows={4}
-          className="w-full px-3 py-2 border border-slate-200 rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[#ff7900]"
-        />
-      );
+      return <FlashcardsBlockEditor block={block} onChange={onChange} />;
 
     case 'GALLERY':
+      return <GalleryBlockEditor block={block} onChange={onChange} />;
+
     case 'TIMELINE':
+      return <TimelineBlockEditor block={block} onChange={onChange} />;
+
     case 'ACCORDION':
+      return <AccordionBlockEditor block={block} onChange={onChange} />;
+
     case 'TABLE':
-      return (
-        <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-700">
-          {type} editor coming soon. Edit as JSON in advanced mode.
-        </div>
-      );
+      return <TableBlockEditor block={block} onChange={onChange} />;
 
     case 'ASSIGNMENT':
       return (

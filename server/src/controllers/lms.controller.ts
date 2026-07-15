@@ -419,6 +419,40 @@ export const endLessonSession = async (req: AuthRequest, res: Response): Promise
   }
 };
 
+/**
+ * POST /api/lms/lessons/media
+ * Upload a single media file (image/video/audio/pdf/diagram) for use inside a
+ * lesson content block. upload.single('file') middleware is applied in
+ * lms.routes.ts. Returns { url, fileName, fileSize, fileType } — the caller
+ * (LessonBlockEditor) sets this onto the relevant block's content.url and
+ * saves it via the normal upsertBlocks() flow.
+ */
+export const uploadLessonMedia = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const schoolId = req.school?.id;
+    if (!schoolId) {
+      res.status(400).json({ success: false, message: 'School context is required' });
+      return;
+    }
+
+    const file: Express.Multer.File | undefined = req.file;
+    if (!file) {
+      res.status(422).json({ success: false, message: 'No file provided', code: 'LMS_BLOCK_MEDIA_MISSING_FILE' });
+      return;
+    }
+
+    const result = await LMSLessonService.uploadBlockMedia(file, schoolId);
+    res.status(201).json({ success: true, data: result });
+  } catch (error: any) {
+    if (error instanceof ApiError) {
+      res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+    } else {
+      console.error('[LMS] uploadLessonMedia error:', error?.message ?? error);
+      res.status(500).json({ success: false, message: 'Failed to upload file' });
+    }
+  }
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ASSIGNMENTS
 // Requirements: 3.1, 4.1, 5.1, 17.1

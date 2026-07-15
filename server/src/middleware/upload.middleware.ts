@@ -29,6 +29,18 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
         'image/gif',
         'image/webp',
         'image/svg+xml',
+        // Video (lesson blocks, revision library)
+        'video/mp4',
+        'video/webm',
+        'video/ogg',
+        'video/quicktime',
+        // Audio (lesson blocks, revision library)
+        'audio/mpeg',
+        'audio/mp3',
+        'audio/wav',
+        'audio/ogg',
+        'audio/mp4',
+        'audio/webm',
         // Archives
         'application/zip',
         'application/x-rar-compressed',
@@ -47,7 +59,7 @@ const upload = multer({
     storage,
     fileFilter,
     limits: {
-        fileSize: 10 * 1024 * 1024 // 10MB max file size
+        fileSize: 50 * 1024 * 1024 // 50MB max file size (raised from 10MB to accommodate lesson video/audio blocks)
     }
 });
 

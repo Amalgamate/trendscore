@@ -105,6 +105,17 @@ export const lmsAPI = {
   getLessonWithBlocks: async (id) => fetchWithAuth(`/lms/lessons/${id}`),
   upsertLessonBlocks: async (id, blocks) =>
     fetchWithAuth(`/lms/lessons/${id}/blocks`, { method: 'POST', body: JSON.stringify({ blocks }) }),
+  /**
+   * Upload a single media file (image/video/audio/pdf/diagram) for use inside
+   * a lesson content block. Returns { url, fileName, fileSize, fileType }.
+   */
+  uploadLessonMedia: async (formData) =>
+    fetchWithAuth('/lms/lessons/media', {
+      method: 'POST',
+      body: formData,
+      // Do NOT set Content-Type — browser sets it with boundary for multipart
+      headers: {},
+    }),
 
   // ─── Resources (Revision Library) ─────────────────────────────────────────
   getResources: async (params = {}) => {

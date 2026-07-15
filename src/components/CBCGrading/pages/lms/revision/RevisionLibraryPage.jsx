@@ -517,6 +517,7 @@ export default function RevisionLibraryPage({ onNavigate }) {
       {/* ── Upload modal (teacher/admin only) ── */}
       {canUpload && showUploadModal && (
         <ResourceUploadModal
+          isOpen={showUploadModal}
           onSuccess={handleUploadSuccess}
           onClose={() => setShowUploadModal(false)}
         />
