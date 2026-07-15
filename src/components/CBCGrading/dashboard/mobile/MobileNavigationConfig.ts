@@ -94,6 +94,14 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         color: 'text-brand-purple'
       },
       {
+        id: 'students',
+        label: 'Students',
+        icon: Users,
+        path: 'learners-list',
+        activePaths: ['learners-list', 'learners-admissions', 'learners-transfers-in', 'learners-exited'],
+        color: 'text-violet-600'
+      },
+      {
         id: 'attendance',
         label: 'Attendance',
         icon: Clock,
@@ -101,11 +109,11 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         color: 'text-emerald-600'
       },
       {
-        id: 'finance',
-        label: 'Fees',
-        icon: Wallet,
-        path: 'fees-overview',
-        activePaths: ['finance-dashboard', 'fees-overview', 'fees-collection', 'fees-invoices', 'fees-reports', 'fees-statements'],
+        id: 'grades',
+        label: 'Grades',
+        icon: Award,
+        path: 'assess-mobile-dashboard',
+        activePaths: ['assess-mobile-dashboard', 'assess-summative-assessment', 'assess-summative-tests', 'assess-summary-report', 'assess-learner-reports', 'assess-termly-report'],
         color: 'text-amber-600'
       },
       {
@@ -136,6 +144,14 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         icon: Home,
         path: 'dashboard',
         color: 'text-brand-purple'
+      },
+      {
+        id: 'students',
+        label: 'Students',
+        icon: Users,
+        path: 'learners-list',
+        activePaths: ['learners-list', 'learners-admissions', 'learners-transfers-in', 'learners-exited'],
+        color: 'text-violet-600'
       },
       {
         id: 'attendance',
@@ -245,10 +261,10 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
       },
       {
         id: 'learners',
-        label: 'Learners',
+        label: 'Students',
         icon: Users,
         path: 'learners-list',
-        activePaths: ['learners-list', 'teacher-learner-analysis'],
+        activePaths: ['learners-list', 'learners-admissions', 'teacher-learner-analysis'],
         color: 'text-violet-600'
       },
       {
@@ -290,10 +306,10 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
       },
       {
         id: 'learners',
-        label: 'Learners',
+        label: 'Students',
         icon: Users,
-        path: 'teacher-learner-analysis',
-        activePaths: ['teacher-learner-analysis', 'learners-list'],
+        path: 'learners-list',
+        activePaths: ['learners-list', 'learners-admissions', 'teacher-learner-analysis'],
         color: 'text-violet-600'
       },
       {

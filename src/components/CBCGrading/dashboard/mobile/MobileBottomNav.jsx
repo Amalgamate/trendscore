@@ -42,7 +42,10 @@ const MobileBottomNav = ({ role, currentPath = 'dashboard', onNavigate }) => {
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}
     >
-      <div className="grid grid-cols-5 gap-0 w-full max-w-md mx-auto h-16 overflow-hidden">
+      <div
+        className="grid gap-0 w-full max-w-md mx-auto h-16 overflow-hidden"
+        style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
+      >
         {items.map((item) => {
           const Icon = item.icon;
           const displayLabel = item.shortLabel || MOBILE_LABELS[item.id] || item.label;

@@ -231,8 +231,10 @@ const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
   if (!activeSection) return null;
   if (activeSection.hideHorizontalSubmenu) return null;
   if (hasGroups && !(activeSection.items || []).length) return null;
-  // A single destination does not need a second navigation row.
-  if (!hasGroups && flatItems.length < 2) return null;
+  // A single destination normally does not need a second navigation row.
+  // Learners is the exception: admissions is intentionally an inline action
+  // here, so retain the bar when it is the only available learner control.
+  if (!hasGroups && flatItems.length < 2 && !showLearnerAddAction) return null;
 
   return (
     <div className="horizontal-menu-shell border-b border-gray-200 bg-gray-100/95 backdrop-blur-md">
