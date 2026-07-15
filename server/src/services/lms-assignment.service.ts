@@ -113,6 +113,29 @@ export class LMSAssignmentService {
       throw new ApiError(422, 'Missing required fields: title, classId, learningAreaId, termId, category');
     }
 
+    // The assignment builder submits HTML number inputs as strings (and empty
+    // optional fields as ""). Prisma rejects those values for Int columns,
+    // which previously surfaced to users as an unhelpful 500 error.
+    const optionalInteger = (value: unknown, field: string): number | undefined => {
+      if (value === undefined || value === null || value === '') return undefined;
+      const parsed = typeof value === 'number' ? value : Number(value);
+      if (!Number.isInteger(parsed) || parsed < 0) {
+        throw new ApiError(422, `${field} must be a non-negative whole number`);
+      }
+      return parsed;
+    };
+
+    const optionalDate = (value: unknown): Date | undefined => {
+      if (value === undefined || value === null || value === '') return undefined;
+      const parsed = value instanceof Date ? value : new Date(String(value));
+      if (Number.isNaN(parsed.getTime())) {
+        throw new ApiError(422, 'Due date is invalid');
+      }
+      return parsed;
+    };
+
+    const maxFileSize = optionalInteger(data.maxFileSize, 'Maximum file size');
+
     return prisma.learningAssignment.create({
       data: {
         title,
@@ -125,15 +148,15 @@ export class LMSAssignmentService {
         status: 'DRAFT',
         streamId: data.streamId,
         instructions: data.instructions,
-        dueDate: data.dueDate,
-        estimatedMins: data.estimatedMins,
-        totalMarks: data.totalMarks,
-        passMark: data.passMark,
+        dueDate: optionalDate(data.dueDate),
+        estimatedMins: optionalInteger(data.estimatedMins, 'Estimated minutes'),
+        totalMarks: optionalInteger(data.totalMarks, 'Total marks'),
+        passMark: optionalInteger(data.passMark, 'Pass mark'),
         rubric: data.rubric ?? undefined,
         cbcOutcomes: data.cbcOutcomes ?? [],
         allowLateSubmit: data.allowLateSubmit ?? true,
         allowResubmit: data.allowResubmit ?? false,
-        maxFileSize: data.maxFileSize ?? 25,
+        maxFileSize: maxFileSize ?? 25,
         allowedFileTypes: data.allowedFileTypes ?? [],
         gradebookSync: data.gradebookSync ?? false,
       },
