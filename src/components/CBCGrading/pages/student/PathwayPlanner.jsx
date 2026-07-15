@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { dashboardAPI, pathwayAPI, seniorPathwayAPI, pathwayPlannerAPI, careerAPI } from '../../../../services/api';
 import PathwaySelectionStep from './PathwaySelectionStep';
+import DiscoverMePanel from '../../shared/DiscoverMePanel';
 import { generatePathwayPlanPDF } from '../../../../utils/pathwayPlanPDF';
 import DecisionPlanPanel from '../../shared/DecisionPlanPanel';
 import SchoolMatchingPanel from '../../shared/SchoolMatchingPanel';
@@ -529,6 +530,8 @@ const PathwayPlanner = ({ user, onNavigate, brandingSettings }) => {
 
       <div className="px-4 -mt-6 space-y-4">
 
+        {learnerId && <DiscoverMePanel learnerId={learnerId} />}
+
         {isSecondaryStudent && (
           <section className="space-y-3 rounded-2xl border border-indigo-200 bg-white p-4 shadow-sm">
             <div>
@@ -710,6 +713,7 @@ const PathwayPlanner = ({ user, onNavigate, brandingSettings }) => {
           </p>
           <ol className="space-y-2.5">
             {(isJuniorStudent ? [
+              { done: false, text: 'Complete your Discover Me reflection' },
               { done: !pending && !!recommendation?.predictedPathway, text: 'Understand your pathway recommendation and strengths' },
               { done: false, text: 'Explore and save careers that fit your interests' },
               { done: !!selectedComboId, text: 'Compare subject combinations and the career doors they support' },

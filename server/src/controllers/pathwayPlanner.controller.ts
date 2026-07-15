@@ -88,6 +88,80 @@ async function assertAccess(req: AuthRequest, learnerId: string): Promise<void> 
   }
 }
 
+const PROFILE_OPTIONS = {
+  interestAreas: ['Technology', 'Science', 'People & community', 'Business', 'Arts & design', 'Sports & wellbeing', 'Nature & environment', 'Media & communication'],
+  strengthAreas: ['Problem solving', 'Creativity', 'Leadership', 'Communication', 'Teamwork', 'Organisation', 'Practical making', 'Research'],
+  preferredActivities: ['Building or experimenting', 'Reading and writing', 'Helping people', 'Creating or performing', 'Playing sport', 'Working with numbers', 'Leading a team', 'Using technology'],
+  learningPreference: ['Learning by doing', 'Visual examples', 'Discussion and teamwork', 'Independent reading', 'Practice and repetition'],
+};
+
+const cleanSelections = (value: unknown, allowed: string[]) => Array.isArray(value)
+  ? [...new Set(value.filter((item): item is string => typeof item === 'string' && allowed.includes(item)))].slice(0, 6)
+  : [];
+
+const cleanConfidence = (value: unknown) => {
+  const source = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  return Object.fromEntries(['problemSolving', 'creativity', 'leadership', 'communication'].map((key) => {
+    const score = Number(source[key]);
+    return [key, Number.isFinite(score) ? Math.max(1, Math.min(5, Math.round(score))) : 3];
+  }));
+};
+
+// ─── Discover Me — learner reflection profile ─────────────────────────────────
+
+export const getPathwayProfile = async (req: AuthRequest, res: Response) => {
+  const { learnerId } = req.params;
+  await assertLearnerPathwayAccess(req, learnerId);
+  const profile = await prisma.learnerPathwayProfile.findUnique({ where: { learnerId } });
+  res.json({ success: true, data: profile, meta: PROFILE_OPTIONS });
+};
+
+export const getPathwayConversation = async (req: AuthRequest, res: Response) => {
+  const { learnerId } = req.params;
+  await assertLearnerPathwayAccess(req, learnerId);
+  const rows = await prisma.pathwayConversationMessage.findMany({ where: { learnerId }, orderBy: { createdAt: 'asc' }, take: 100 });
+  res.json({ success: true, data: rows });
+};
+
+export const addPathwayConversationMessage = async (req: AuthRequest, res: Response) => {
+  const { learnerId } = req.params;
+  await assertLearnerPathwayAccess(req, learnerId);
+  const message = String(req.body?.message ?? '').trim();
+  if (!message) throw new ApiError(400, 'A message is required');
+  const actorId = req.user?.userId;
+  if (!actorId) throw new ApiError(401, 'Authentication required');
+  const actor = await prisma.user.findUnique({ where: { id: actorId }, select: { firstName: true, lastName: true, role: true } });
+  const row = await prisma.pathwayConversationMessage.create({ data: { learnerId, authorId: actorId, authorName: `${actor?.firstName || 'Pathway'} ${actor?.lastName || 'participant'}`.trim(), authorRole: actor?.role || req.user?.role || 'PARTICIPANT', message: message.slice(0, 1500) } });
+  res.status(201).json({ success: true, data: row });
+};
+
+export const savePathwayProfile = async (req: AuthRequest, res: Response) => {
+  const { learnerId } = req.params;
+  await assertLearnerPathwayAccess(req, learnerId);
+  const body = req.body ?? {};
+  const profile = await prisma.learnerPathwayProfile.upsert({
+    where: { learnerId },
+    update: {
+      interestAreas: cleanSelections(body.interestAreas, PROFILE_OPTIONS.interestAreas),
+      strengthAreas: cleanSelections(body.strengthAreas, PROFILE_OPTIONS.strengthAreas),
+      preferredActivities: cleanSelections(body.preferredActivities, PROFILE_OPTIONS.preferredActivities),
+      aspirations: typeof body.aspirations === 'string' ? body.aspirations.trim().slice(0, 600) || null : null,
+      learningPreference: PROFILE_OPTIONS.learningPreference.includes(body.learningPreference) ? body.learningPreference : null,
+      confidenceAreas: cleanConfidence(body.confidenceAreas),
+    },
+    create: {
+      learnerId,
+      interestAreas: cleanSelections(body.interestAreas, PROFILE_OPTIONS.interestAreas),
+      strengthAreas: cleanSelections(body.strengthAreas, PROFILE_OPTIONS.strengthAreas),
+      preferredActivities: cleanSelections(body.preferredActivities, PROFILE_OPTIONS.preferredActivities),
+      aspirations: typeof body.aspirations === 'string' ? body.aspirations.trim().slice(0, 600) || null : null,
+      learningPreference: PROFILE_OPTIONS.learningPreference.includes(body.learningPreference) ? body.learningPreference : null,
+      confidenceAreas: cleanConfidence(body.confidenceAreas),
+    },
+  });
+  res.json({ success: true, data: profile });
+};
+
 const isCounsellor = (role: string) =>
   ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].includes(role);
 
@@ -624,7 +698,7 @@ export const upsertSeniorSchool = async (req: AuthRequest, res: Response) => {
     id, name, knecCode, county, subCounty, schoolType, gender,
     category, pathwayCodes, trackCodes, combinationCodes, minimumKcpeGrade, website, phone, verified,
     verificationStatus, dataSource, affordabilityBand, facilities, specialNeedsSupport,
-    latitude, longitude, faithAffiliation, active,
+    latitude, longitude, faithAffiliation, clubs, annualCostNotes, performanceNotes, transitionNotes, active,
   } = req.body as Record<string, any>;
 
   if (!name || !county) throw new ApiError(400, 'name and county are required');
@@ -648,7 +722,11 @@ export const upsertSeniorSchool = async (req: AuthRequest, res: Response) => {
     dataSource:         dataSource ? String(dataSource) : null,
     affordabilityBand: affordabilityBand ? String(affordabilityBand) : null,
     facilities:         Array.isArray(facilities) ? facilities.map(String) : [],
+    clubs:              Array.isArray(clubs) ? clubs.map(String) : [],
     specialNeedsSupport: Array.isArray(specialNeedsSupport) ? specialNeedsSupport.map(String) : [],
+    annualCostNotes: annualCostNotes ? String(annualCostNotes).slice(0, 600) : null,
+    performanceNotes: performanceNotes ? String(performanceNotes).slice(0, 600) : null,
+    transitionNotes: transitionNotes ? String(transitionNotes).slice(0, 600) : null,
     latitude:           latitude != null ? Number(latitude) : null,
     longitude:          longitude != null ? Number(longitude) : null,
     faithAffiliation:   faithAffiliation ? String(faithAffiliation) : null,

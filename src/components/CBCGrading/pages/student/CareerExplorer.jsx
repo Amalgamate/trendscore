@@ -153,6 +153,18 @@ function CareerDetail({ careerId, learnerId, savedIds, onSaveToggle, onBack }) {
         </div>
       )}
 
+      {career.futureSkills?.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Future skills to build</p>
+          <div className="flex flex-wrap gap-1.5">{career.futureSkills.map((skill, index) => <span key={index} className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">{skill}</span>)}</div>
+        </div>
+      )}
+
+      {(career.labourMarketNotes || career.salaryRangeNotes) && <div className="grid gap-2 sm:grid-cols-2">
+        {career.labourMarketNotes && <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Career outlook</p><p className="mt-1 text-[11px] leading-relaxed text-gray-700">{career.labourMarketNotes}</p></div>}
+        {career.salaryRangeNotes && <div className="rounded-xl border border-amber-100 bg-amber-50 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Earnings context</p><p className="mt-1 text-[11px] leading-relaxed text-gray-700">{career.salaryRangeNotes}</p></div>}
+      </div>}
+
       {/* Education routes */}
       {career.educationRoutes?.length > 0 && (
         <div>
@@ -195,6 +207,8 @@ function CareerDetail({ careerId, learnerId, savedIds, onSaveToggle, onBack }) {
           </div>
         </div>
       )}
+
+      {career.successStory && <div className="rounded-xl border border-violet-100 bg-violet-50 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-violet-700">Inspiration</p><p className="mt-1 text-[11px] leading-relaxed text-gray-700">{career.successStory}</p></div>}
     </div>
   );
 }

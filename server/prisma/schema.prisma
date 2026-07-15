@@ -503,6 +503,8 @@ model Learner {
   schoolMatchScores      SchoolMatchScore[]
   careerMatches          LearnerCareerMatch[]
   savedCareers           LearnerCareerSave[]
+  pathwayProfile         LearnerPathwayProfile?
+  pathwayConversation    PathwayConversationMessage[]
 
   @@index([admissionNumber])
   @@index([parentId])
@@ -4542,6 +4544,25 @@ model LearnerPathwayRecommendation {
   @@map("learner_pathway_recommendations")
 }
 
+// Learner-owned reflection used alongside, never in place of, academic evidence.
+// It keeps the "Discover Me" journey current without mutating recommendation history.
+model LearnerPathwayProfile {
+  id                String   @id @default(uuid())
+  learnerId         String   @unique
+  interestAreas     String[] @default([])
+  strengthAreas     String[] @default([])
+  preferredActivities String[] @default([])
+  aspirations       String?
+  learningPreference String?
+  confidenceAreas   Json?
+  updatedAt         DateTime @updatedAt
+  createdAt         DateTime @default(now())
+  learner           Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+
+  @@index([updatedAt])
+  @@map("learner_pathway_profiles")
+}
+
 // ── Pathway Planner — Phase 2/4 models ───────────────────────────────────────
 
 model CounsellorNote {
@@ -4585,7 +4606,11 @@ model SeniorSchool {
   affordabilityBand   String? // LOW | MEDIUM | HIGH
   faithAffiliation    String?
   facilities          String[]                  @default([])
+  clubs               String[]                  @default([])
   specialNeedsSupport String[]                  @default([])
+  annualCostNotes     String?
+  performanceNotes    String?
+  transitionNotes     String?
   latitude            Float?
   longitude           Float?
   createdAt           DateTime                  @default(now())
@@ -4682,6 +4707,20 @@ model DecisionPlan {
   @@index([learnerId])
   @@index([status])
   @@map("decision_plans")
+}
+
+model PathwayConversationMessage {
+  id         String   @id @default(uuid())
+  learnerId  String
+  authorId   String
+  authorName String
+  authorRole String
+  message    String
+  createdAt  DateTime @default(now())
+  learner    Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+
+  @@index([learnerId, createdAt])
+  @@map("pathway_conversation_messages")
 }
 
 // Immutable copy of the learner's selected pathway, combination, careers and
@@ -4924,6 +4963,9 @@ model Career {
   recommendedPathway   String? // STEM | SOCIAL_SCIENCES | ARTS_SPORTS
   recommendedTrackCode String?
   labourMarketNotes    String?
+  salaryRangeNotes     String?
+  futureSkills         String[]  @default([])
+  successStory         String?
   source               String?
   verificationStatus   String    @default("UNVERIFIED") // DRAFT | UNVERIFIED | SOURCE_VERIFIED | TREND_SCORE_VERIFIED | STALE | DISPUTED | RETIRED
   lastVerifiedAt       DateTime?

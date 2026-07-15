@@ -54,8 +54,12 @@ function Comparison({ rows, onClose }) {
     ['Accommodation', (row) => row.school.schoolType?.replaceAll('_', ' ')],
     ['Gender', (row) => row.school.gender],
     ['Affordability', (row) => row.school.affordabilityBand || 'Unknown'],
+    ['Cost context', (row) => row.school.annualCostNotes || 'Ask school'],
     ['Pathways', (row) => row.school.pathwayCodes?.join(', ') || 'Unknown'],
     ['Combinations', (row) => row.school.combinationCodes?.join(', ') || 'Unknown'],
+    ['Clubs & activities', (row) => row.school.clubs?.join(', ') || 'Unknown'],
+    ['Performance context', (row) => row.school.performanceNotes || 'Not published'],
+    ['Transition support', (row) => row.school.transitionNotes || 'Not published'],
     ['Support', (row) => row.school.specialNeedsSupport?.join(', ') || 'Unknown'],
     ['Verification', (row) => row.school.verificationStatus || 'Unknown'],
   ];

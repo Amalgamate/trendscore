@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { pathwayPlannerAPI, pathwayAPI, learnerAPI, classAPI, seniorPathwayAPI } from '../../../../services/api';
 import DecisionPlanPanel from '../../shared/DecisionPlanPanel';
+import PathwayConversation from '../../shared/PathwayConversation';
 import CounsellorCaseManagementPanel from './CounsellorCaseManagementPanel';
 import CounsellorWorkspaceDashboard from './CounsellorWorkspaceDashboard';
 import CounsellorEvidencePanel from './CounsellorEvidencePanel';
@@ -442,6 +443,8 @@ function LearnerDetail({ learnerId, onBack, user }) {
           </button>
         </div>
       </div>
+
+      <PathwayConversation learnerId={learnerId} />
 
       <DecisionPlanPanel
         learnerId={learnerId}

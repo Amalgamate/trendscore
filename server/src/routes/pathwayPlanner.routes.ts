@@ -51,6 +51,12 @@ router.post(
   ctrl.seedSeniorSchools
 );
 
+// ─── Discover Me — learner-owned reflection profile ──────────────────────────
+router.get('/learners/:learnerId/profile', requireLearnerPathwayAccess, ctrl.getPathwayProfile);
+router.put('/learners/:learnerId/profile', requireLearnerPathwayAccess, requireCsrf, auditLog('SAVE_PATHWAY_PROFILE'), ctrl.savePathwayProfile);
+router.get('/learners/:learnerId/conversation', requireLearnerPathwayAccess, ctrl.getPathwayConversation);
+router.post('/learners/:learnerId/conversation', requireLearnerPathwayAccess, requireCsrf, auditLog('ADD_PATHWAY_CONVERSATION_MESSAGE'), ctrl.addPathwayConversationMessage);
+
 // ─── Phase 2 — Counsellor notes ───────────────────────────────────────────────
 
 router.get(

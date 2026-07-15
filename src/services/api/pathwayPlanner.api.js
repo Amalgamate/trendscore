@@ -8,6 +8,18 @@
 import { fetchWithAuth } from './core';
 
 export const pathwayPlannerAPI = {
+  // ── Discover Me — learner reflection profile ──────────────────────────────
+  getPathwayProfile: (learnerId) =>
+    fetchWithAuth(`/pathway-planner/learners/${learnerId}/profile`),
+
+  savePathwayProfile: (learnerId, data) =>
+    fetchWithAuth(`/pathway-planner/learners/${learnerId}/profile`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  getPathwayConversation: (learnerId) => fetchWithAuth(`/pathway-planner/learners/${learnerId}/conversation`),
+  addPathwayConversationMessage: (learnerId, message) => fetchWithAuth(`/pathway-planner/learners/${learnerId}/conversation`, { method: 'POST', body: JSON.stringify({ message }) }),
+
   getAdminDashboard: () => fetchWithAuth('/pathway-planner/admin/dashboard'),
   getAdminReferences: (type) => fetchWithAuth(`/pathway-planner/admin/references/${type}`),
   getAdminReferenceImpact: (type, id) => fetchWithAuth(`/pathway-planner/admin/references/${type}/${id}/impact`),

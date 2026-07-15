@@ -141,7 +141,14 @@ export const pathwayAdminConsoleService = {
       });
     }
     if (!data.title?.trim()) throw new ApiError(400, 'title is required');
-    return data.id ? prisma.career.update({ where: { id: data.id }, data: { code: data.code, title: data.title, shortSummary: data.shortSummary ?? null, recommendedPathway: data.recommendedPathway ?? null, recommendedTrackCode: data.recommendedTrackCode ?? null, source: data.source ?? null } }) : prisma.career.create({ data: { code: data.code, title: data.title, shortSummary: data.shortSummary ?? null, recommendedPathway: data.recommendedPathway ?? null, recommendedTrackCode: data.recommendedTrackCode ?? null, source: data.source ?? null, active: false, verificationStatus: 'DRAFT' } });
+    const knowledge = {
+      fullDescription: data.fullDescription?.trim() || null,
+      labourMarketNotes: data.labourMarketNotes?.trim() || null,
+      salaryRangeNotes: data.salaryRangeNotes?.trim() || null,
+      futureSkills: Array.isArray(data.futureSkills) ? data.futureSkills.map((value: unknown) => String(value).trim()).filter(Boolean).slice(0, 12) : [],
+      successStory: data.successStory?.trim() || null,
+    };
+    return data.id ? prisma.career.update({ where: { id: data.id }, data: { code: data.code, title: data.title, shortSummary: data.shortSummary ?? null, recommendedPathway: data.recommendedPathway ?? null, recommendedTrackCode: data.recommendedTrackCode ?? null, source: data.source ?? null, ...knowledge } }) : prisma.career.create({ data: { code: data.code, title: data.title, shortSummary: data.shortSummary ?? null, recommendedPathway: data.recommendedPathway ?? null, recommendedTrackCode: data.recommendedTrackCode ?? null, source: data.source ?? null, ...knowledge, active: false, verificationStatus: 'DRAFT' } });
   },
 
   transitionReference: async (rawType: string, id: string, status: 'PUBLISHED' | 'RETIRED', actorId?: string, reason?: string) => {
@@ -261,13 +268,17 @@ export const pathwayAdminConsoleService = {
   },
 
   analytics: async () => {
-    const [pathways, careers, schools, decisions, parentReviews, counsellorNotes, revisions] = await Promise.all([
+    const [pathways, careers, topCareers, schools, decisions, parentReviews, counsellorNotes, revisions, totalPlans, submittedPlans, approvedPlans, lockedPlans] = await Promise.all([
       prisma.learnerPathwaySelection.groupBy({ by: ['pathwayId'], _count: { _all: true } }), prisma.learnerCareerSave.groupBy({ by: ['supportStatus'], _count: { _all: true } }),
+      prisma.learnerCareerSave.groupBy({ by: ['careerId'], _count: { _all: true }, orderBy: { _count: { careerId: 'desc' } }, take: 10 }),
       prisma.learnerSchoolPreference.groupBy({ by: ['schoolId'], _count: { _all: true }, orderBy: { _count: { schoolId: 'desc' } }, take: 10 }),
       prisma.decisionPlan.groupBy({ by: ['status'], _count: { _all: true } }), prisma.decisionPlan.count({ where: { parentReviewedAt: { not: null } } }),
-      prisma.counsellorNote.count(), prisma.decisionPlanRevision.count(),
+      prisma.counsellorNote.count(), prisma.decisionPlanRevision.count(), prisma.decisionPlan.count(), prisma.decisionPlan.count({ where: { submittedAt: { not: null } } }), prisma.decisionPlan.count({ where: { approvedAt: { not: null } } }), prisma.decisionPlan.count({ where: { lockedAt: { not: null } } }),
     ]);
-    return { pathways, careerSupport: careers, popularSchools: schools, decisions, participation: { parentReviews, counsellorNotes }, revisions };
+    const careerIds = topCareers.map((row) => row.careerId);
+    const careerRows = careerIds.length ? await prisma.career.findMany({ where: { id: { in: careerIds } }, select: { id: true, title: true } }) : [];
+    const titleById = new Map(careerRows.map((row) => [row.id, row.title]));
+    return { pathways, careerSupport: careers, topCareers: topCareers.map((row) => ({ ...row, title: titleById.get(row.careerId) || 'Retired career' })), popularSchools: schools, decisions, participation: { parentReviews, counsellorNotes }, revisions, funnel: { totalPlans, submittedPlans, approvedPlans, lockedPlans } };
   },
 
   auditLogs: async (query?: string) => prisma.auditLog.findMany({
