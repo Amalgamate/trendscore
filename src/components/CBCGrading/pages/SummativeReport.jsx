@@ -1286,7 +1286,11 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
   const [showSubjectOptions, setShowSubjectOptions] = useState(false);
   const learnerOptionsRef = useRef(null);
   const subjectOptionsRef = useRef(null);
-  const initializedFromParamsRef = useRef(false);
+  // The Reports menu keeps this component mounted while it swaps page params
+  // (for example Stream Sheet -> Grade Sheet). Track the last applied route
+  // signature instead of a one-time boolean so direct menu switches update the
+  // sheet immediately without requiring an intermediate navigation.
+  const initializedFromParamsRef = useRef(null);
 
   // Helper to normalize strings for comparison (e.g., "Grade 1" -> "GRADE_1")
   const normalize = (str) => {
@@ -1294,9 +1298,17 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     return String(str).trim().replace(/\s+/g, '_').toUpperCase();
   };
 
+  const reportParamsKey = [
+    pageParams?.reportType || '',
+    pageParams?.grade || '',
+    pageParams?.stream || '',
+    pageParams?.term || '',
+    pageParams?.academicYear || '',
+  ].join('|');
+
   useEffect(() => {
-    if (initializedFromParamsRef.current) return;
-    initializedFromParamsRef.current = true;
+    if (initializedFromParamsRef.current === reportParamsKey) return;
+    initializedFromParamsRef.current = reportParamsKey;
 
     if (pageParams?.grade) {
       const grade = normalize(pageParams.grade);
@@ -1329,7 +1341,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       setStagedStream('');
       setSelectedStream('');
     }
-  }, [pageParams, setup]);
+  }, [pageParams, reportParamsKey, setup]);
 
   // Dynamic learner fetching whenever grade or stream changes
   useEffect(() => {
