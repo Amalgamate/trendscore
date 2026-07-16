@@ -2,6 +2,12 @@ import { fetchWithAuth } from './core';
 import axiosInstance from './axiosConfig';
 
 export const cbcAPI = {
+  getHolisticSummary: async (params = {}) => {
+    const queryString = new URLSearchParams(
+      Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
+    ).toString();
+    return fetchWithAuth(`/cbc/holistic-summary${queryString ? `?${queryString}` : ''}`);
+  },
   saveCompetencies: async (data) =>
     fetchWithAuth('/cbc/competencies', { method: 'POST', body: JSON.stringify(data) }),
   getCompetencies: async (learnerId, params = {}) => {

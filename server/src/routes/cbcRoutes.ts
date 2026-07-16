@@ -98,6 +98,14 @@ const reportCommentsSchema = z.object({
 // CORE COMPETENCIES
 // ============================================
 
+router.get(
+  '/holistic-summary',
+  authenticate,
+  requirePermission('ACCESS_ASSESSMENT_MODULE'),
+  rateLimit({ windowMs: 60_000, maxRequests: 60 }),
+  cbcController.getHolisticSummary
+);
+
 router.post(
   '/competencies',
   authenticate,

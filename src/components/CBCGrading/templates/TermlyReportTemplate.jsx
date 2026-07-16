@@ -243,11 +243,14 @@ const TermlyReportTemplate = ({ reportData, id = "termly-report-content" }) => {
                         <h4 className="text-xs font-semibold bg-gray-100 p-2 rounded uppercase tracking-wider">Core Competencies</h4>
                         <div className="space-y-3">
                             {[
-                                { label: 'Communication & Collaboration', val: reportData.coreCompetencies?.communication },
+                                { label: 'Communication', val: reportData.coreCompetencies?.communication },
+                                { label: 'Collaboration', val: reportData.coreCompetencies?.collaboration },
                                 { label: 'Critical Thinking & Problem Solving', val: reportData.coreCompetencies?.criticalThinking },
                                 { label: 'Creativity & Imagination', val: reportData.coreCompetencies?.creativity },
                                 { label: 'Citizenship', val: reportData.coreCompetencies?.citizenship },
-                                { label: 'Learning to Learn', val: reportData.coreCompetencies?.learningToLearn }
+                                { label: 'Learning to Learn', val: reportData.coreCompetencies?.learningToLearn },
+                                { label: 'Self-Efficacy', val: reportData.coreCompetencies?.selfEfficacy },
+                                { label: 'Digital Literacy', val: reportData.coreCompetencies?.digitalLiteracy }
                             ].map((item, i) => (
                                 <div key={i} className="flex justify-between items-center border-b border-gray-50 pb-1">
                                     <span className="text-[10px] font-medium text-gray-600">{item.label}</span>
@@ -287,7 +290,7 @@ const TermlyReportTemplate = ({ reportData, id = "termly-report-content" }) => {
                             reportData.coCurricular.map((activity, i) => (
                                 <div key={i} className="bg-gray-50 p-3 rounded border border-gray-100">
                                     <p className="text-[10px] font-semibold text-gray-400 uppercase mb-1">{activity.activityName}</p>
-                                    <p className="text-xs font-medium text-gray-700">{activity.remarks || 'Active participation and good teamwork shown.'}</p>
+                                    <p className="text-xs font-medium text-gray-700">{activity.achievements || activity.remarks || 'Participation recorded'}</p>
                                 </div>
                             ))
                         ) : (

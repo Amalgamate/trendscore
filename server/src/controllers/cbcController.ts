@@ -5,10 +5,116 @@
 
 import { Request, Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
-import { Term, DetailedRubricRating } from '@prisma/client';
+import { Term, DetailedRubricRating, Prisma } from '@prisma/client';
 import prisma from '../config/database';
 
 import logger from '../utils/logger';
+
+const HOLISTIC_COMPETENCIES = [
+  ['communication', 'Communication'],
+  ['collaboration', 'Collaboration'],
+  ['criticalThinking', 'Critical thinking and problem solving'],
+  ['creativity', 'Imagination and creativity'],
+  ['citizenship', 'Citizenship'],
+  ['learningToLearn', 'Learning to learn'],
+  ['selfEfficacy', 'Self-efficacy'],
+  ['digitalLiteracy', 'Digital literacy'],
+] as const;
+
+const percentage = (count: number, total: number) => total > 0 ? Math.round((count / total) * 1000) / 10 : 0;
+
+/** Read-only whole-learner coverage and competency analysis. */
+export const getHolisticSummary = async (req: AuthRequest, res: Response) => {
+  try {
+    const { term, academicYear, grade, stream } = req.query;
+    if (!term || !academicYear) {
+      return res.status(400).json({ success: false, message: 'Term and academic year are required' });
+    }
+
+    const year = Number.parseInt(String(academicYear), 10);
+    if (!Number.isInteger(year)) {
+      return res.status(400).json({ success: false, message: 'Academic year must be a valid number' });
+    }
+
+    const learnerWhere: Prisma.LearnerWhereInput = { archived: false, status: 'ACTIVE' };
+    if (grade) learnerWhere.grade = String(grade);
+    if (stream) learnerWhere.stream = String(stream);
+
+    const [learners, scopeOptions] = await Promise.all([
+      prisma.learner.findMany({
+        where: learnerWhere,
+        select: { id: true, firstName: true, lastName: true, admissionNumber: true, grade: true, stream: true },
+        orderBy: [{ grade: 'asc' }, { stream: 'asc' }, { firstName: 'asc' }],
+      }),
+      prisma.learner.findMany({
+        where: { archived: false, status: 'ACTIVE' },
+        select: { grade: true, stream: true },
+      }),
+    ]);
+    const learnerIds = learners.map((learner) => learner.id);
+    const periodWhere = { learnerId: { in: learnerIds }, term: term as Term, academicYear: year, archived: false };
+
+    const [competencyRecords, valuesRecords, coCurricularRecords] = await Promise.all([
+      prisma.coreCompetency.findMany({ where: periodWhere }),
+      prisma.valuesAssessment.findMany({ where: periodWhere, select: { learnerId: true } }),
+      prisma.coCurricularActivity.findMany({ where: periodWhere, select: { learnerId: true, activityType: true, performance: true } }),
+    ]);
+
+    const competencyLearners = new Set(competencyRecords.map((record) => record.learnerId));
+    const valuesLearners = new Set(valuesRecords.map((record) => record.learnerId));
+    const coCurricularLearners = new Set(coCurricularRecords.map((record) => record.learnerId));
+    const totalLearners = learners.length;
+
+    const competencies = HOLISTIC_COMPETENCIES.map(([key, label]) => {
+      const distribution: Record<string, number> = { EE: 0, ME: 0, AE: 0, BE: 0 };
+      let recorded = 0;
+      for (const record of competencyRecords) {
+        const rating = (record as Record<string, unknown>)[key];
+        if (!rating) continue;
+        recorded += 1;
+        const band = String(rating).slice(0, 2);
+        if (band in distribution) distribution[band] += 1;
+      }
+      return { key, label, recorded, missing: Math.max(0, totalLearners - recorded), coverageRate: percentage(recorded, totalLearners), distribution };
+    });
+
+    const missingLearners = learners
+      .map((learner) => ({
+        ...learner,
+        missing: [
+          !competencyLearners.has(learner.id) ? 'Core Competencies' : null,
+          !valuesLearners.has(learner.id) ? 'National Values' : null,
+          !coCurricularLearners.has(learner.id) ? 'Co-Curricular' : null,
+        ].filter(Boolean),
+      }))
+      .filter((learner) => learner.missing.length > 0);
+
+    res.json({
+      success: true,
+      data: {
+        period: { term, academicYear: year },
+        scope: {
+          learnerCount: totalLearners,
+          grade: grade || null,
+          stream: stream || null,
+          availableGrades: Array.from(new Set(scopeOptions.map((learner) => learner.grade).filter(Boolean))).sort(),
+          availableStreams: Array.from(new Set(scopeOptions.filter((learner) => !grade || learner.grade === grade).map((learner) => learner.stream).filter(Boolean))).sort(),
+        },
+        coverage: {
+          competencies: { recorded: competencyLearners.size, missing: totalLearners - competencyLearners.size, rate: percentage(competencyLearners.size, totalLearners) },
+          values: { recorded: valuesLearners.size, missing: totalLearners - valuesLearners.size, rate: percentage(valuesLearners.size, totalLearners) },
+          coCurricular: { recorded: coCurricularLearners.size, missing: totalLearners - coCurricularLearners.size, rate: percentage(coCurricularLearners.size, totalLearners), activityCount: coCurricularRecords.length },
+        },
+        competencies,
+        missingLearners,
+      },
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Error fetching holistic summary:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch holistic summary', error: message });
+  }
+};
 // ============================================
 // CORE COMPETENCIES
 // ============================================

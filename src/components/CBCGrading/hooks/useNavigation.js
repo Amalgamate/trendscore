@@ -198,16 +198,16 @@ export const allNavSections = [
         app: 'gradebook',
         permission: 'ACCESS_ASSESSMENT_MODULE',
         items: [
+            // Assessment Overview at the root — spans all assessment types
+            { id: 'assess-mobile-dashboard', label: 'Assessment Overview', path: 'assess-mobile-dashboard', permission: 'ACCESS_ASSESSMENT_MODULE', icon: Activity },
             {
-                id: 'group-holistic',
-                label: 'Holistic Records',
+                id: 'group-formative',
+                label: 'Formative',
                 type: 'group',
-                icon: Star,
+                icon: Sparkles,
                 items: [
-                    { id: 'assess-formative',         label: 'Formative',       path: 'assess-formative',         permission: 'ACCESS_ASSESSMENT_MODULE', icon: Sparkles },
-                    { id: 'assess-core-competencies', label: 'Core Competencies', path: 'assess-core-competencies', permission: 'ACCESS_ASSESSMENT_MODULE', icon: Star },
-                    { id: 'assess-values',            label: 'National Values', path: 'assess-values',            permission: 'ACCESS_ASSESSMENT_MODULE', icon: Heart },
-                    { id: 'assess-cocurricular',       label: 'Co-Curricular',   path: 'assess-cocurricular',       permission: 'ACCESS_ASSESSMENT_MODULE', icon: Award },
+                    { id: 'assess-formative',        label: 'Record Assessment',  path: 'assess-formative',        permission: 'ACCESS_ASSESSMENT_MODULE', icon: Sparkles },
+                    { id: 'assess-formative-report', label: 'Formative Progress', path: 'assess-formative-report', permission: 'ACCESS_ASSESSMENT_MODULE', icon: TrendingUp },
                 ]
             },
             {
@@ -216,9 +216,20 @@ export const allNavSections = [
                 type: 'group',
                 icon: Zap,
                 items: [
-                    { id: 'assess-mobile-dashboard',      label: 'Assessment Overview', path: 'assess-mobile-dashboard',      permission: 'ACCESS_ASSESSMENT_MODULE' },
-                    { id: 'assess-summative-assessment', label: 'Summative Assessments', path: 'assess-summative-assessment', permission: 'ACCESS_ASSESSMENT_MODULE' },
                     { id: 'assess-summary-report',       label: 'Assessment Matrix',     path: 'assess-summary-report',       permission: 'ACCESS_ASSESSMENT_MODULE' },
+                    { id: 'assess-summative-assessment', label: 'Summative Assessments', path: 'assess-summative-assessment', permission: 'ACCESS_ASSESSMENT_MODULE' },
+                ]
+            },
+            {
+                id: 'group-holistic',
+                label: 'Holistic Development',
+                type: 'group',
+                icon: Star,
+                items: [
+                    { id: 'assess-holistic-summary',  label: 'Development Summary', path: 'assess-holistic-summary',  permission: 'ACCESS_ASSESSMENT_MODULE', icon: Activity },
+                    { id: 'assess-core-competencies', label: 'Core Competencies', path: 'assess-core-competencies', permission: 'ACCESS_ASSESSMENT_MODULE', icon: Star },
+                    { id: 'assess-values',            label: 'National Values',   path: 'assess-values',            permission: 'ACCESS_ASSESSMENT_MODULE', icon: Heart },
+                    { id: 'assess-cocurricular',      label: 'Co-Curricular',     path: 'assess-cocurricular',      permission: 'ACCESS_ASSESSMENT_MODULE', icon: Award },
                 ]
             },
             {

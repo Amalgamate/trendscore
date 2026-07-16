@@ -27,6 +27,7 @@ const PAGE_APP_REQUIREMENTS = {
   'assess-mobile-dashboard': 'gradebook',
   'assess-formative': 'gradebook',
   'assess-formative-report': 'gradebook',
+  'assess-holistic-summary': 'gradebook',
   'assess-summative-tests': 'gradebook',
   'assess-summative-assessment': 'gradebook',
   'assess-learner-reports': 'exams',

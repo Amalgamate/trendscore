@@ -299,14 +299,14 @@ const MobileAssessmentsDashboard = ({ learners = [], onNavigate }) => {
         )}
 
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <ActionTile icon={Target} label="Summative Tests" helper="Create and deploy exams or tests." tone="bg-violet-50 text-violet-700" onClick={go('assess-summative-tests')} gradient="from-violet-500/20 to-purple-600/20 hover:from-violet-500/50 hover:to-purple-600/50" />
-          <ActionTile icon={PenLine} label="Record Marks" helper="Enter learner scores by class and subject." tone="bg-blue-50 text-blue-700" onClick={go('assess-summative-assessment')} gradient="from-blue-500/20 to-indigo-600/20 hover:from-blue-500/50 hover:to-indigo-600/50" />
-          <ActionTile icon={CheckCircle} label="Formative" helper="Track continuous classroom assessment." tone="bg-emerald-50 text-emerald-700" onClick={go('assess-formative')} gradient="from-emerald-500/20 to-green-600/20 hover:from-emerald-500/50 hover:to-green-600/50" />
-          <ActionTile icon={FileText} label="Reports" helper="Open summary and learner reports." tone="bg-orange-50 text-orange-700" onClick={go('assess-summary-report')} gradient="from-orange-500/20 to-amber-600/20 hover:from-orange-500/50 hover:to-amber-600/50" />
+          <ActionTile icon={PenLine} label="Record Summative" helper="Enter learner scores by class and subject." tone="bg-blue-50 text-blue-700" onClick={go('assess-summative-assessment')} gradient="from-blue-500/20 to-indigo-600/20 hover:from-blue-500/50 hover:to-indigo-600/50" />
+          <ActionTile icon={CheckCircle} label="Record Formative" helper="Capture continuous classroom assessment." tone="bg-emerald-50 text-emerald-700" onClick={go('assess-formative')} gradient="from-emerald-500/20 to-green-600/20 hover:from-emerald-500/50 hover:to-green-600/50" />
+          <ActionTile icon={FileText} label="Assessment Matrix" helper="Review completion and report readiness." tone="bg-orange-50 text-orange-700" onClick={go('assess-summary-report')} gradient="from-orange-500/20 to-amber-600/20 hover:from-orange-500/50 hover:to-amber-600/50" />
           <ActionTile icon={Star} label="Core Competencies" helper="Assess CBC competency development." tone="bg-yellow-50 text-yellow-700" onClick={go('assess-core-competencies')} gradient="from-yellow-500/20 to-amber-500/20 hover:from-yellow-500/50 hover:to-amber-500/50" />
-          <ActionTile icon={Heart} label="Values" helper="Review national values and conduct signals." tone="bg-rose-50 text-rose-700" onClick={go('assess-values')} gradient="from-rose-500/20 to-pink-600/20 hover:from-rose-500/50 hover:to-pink-600/50" />
-          <ActionTile icon={ShieldCheck} label="Performance Scales" helper="Manage grading rubrics and levels." tone="bg-teal-50 text-teal-700" onClick={go('assess-performance-scale')} gradient="from-teal-500/20 to-emerald-600/20 hover:from-teal-500/50 hover:to-emerald-600/50" />
+          <ActionTile icon={Heart} label="National Values" helper="Record values and conduct development." tone="bg-rose-50 text-rose-700" onClick={go('assess-values')} gradient="from-rose-500/20 to-pink-600/20 hover:from-rose-500/50 hover:to-pink-600/50" />
+          <ActionTile icon={Target} label="Summative Tests" helper="Create and manage exams or tests." tone="bg-violet-50 text-violet-700" onClick={go('assess-summative-tests')} gradient="from-violet-500/20 to-purple-600/20 hover:from-violet-500/50 hover:to-purple-600/50" />
           <ActionTile icon={Settings} label="Learning Areas" helper="Manage subjects and learning areas." tone="bg-slate-100 text-slate-700" onClick={go('assess-learning-areas')} gradient="from-slate-300/20 to-slate-400/20 hover:from-slate-400/50 hover:to-slate-500/50" />
+          <ActionTile icon={ShieldCheck} label="Performance Scales" helper="Manage grading rubrics and levels." tone="bg-teal-50 text-teal-700" onClick={go('assess-performance-scale')} gradient="from-teal-500/20 to-emerald-600/20 hover:from-teal-500/50 hover:to-emerald-600/50" />
         </section>
       </div>
     </div>

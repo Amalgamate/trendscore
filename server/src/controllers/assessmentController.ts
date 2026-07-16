@@ -441,7 +441,27 @@ export const recordFormativeResultsBulk = async (req: AuthRequest, res: Response
       throw new ApiError(400, 'No assessments provided');
     }
 
-    // Validate each entry and collect any issues
+    // Validate each entry and collect any issues.
+    // Mirrors the Zod schema applied to POST /formative (single-entry) so bulk
+    // submissions can't silently write unnormalized terms, out-of-range years,
+    // or invalid rating codes that the single-entry path would reject outright.
+    const VALID_TERMS = new Set(['TERM_1', 'TERM_2', 'TERM_3']);
+    const VALID_OVERALL_RATINGS = new Set(['EE', 'ME', 'AE', 'BE']);
+    const VALID_DETAILED_RATINGS = new Set(['EE1', 'EE2', 'ME1', 'ME2', 'AE1', 'AE2', 'BE1', 'BE2']);
+    const VALID_TYPES = new Set([
+      'OPENER', 'WEEKLY', 'MONTHLY', 'CAT', 'MID_TERM',
+      'ASSIGNMENT', 'PROJECT', 'PRACTICAL', 'QUIZ',
+      'OBSERVATION', 'ORAL', 'EXAM', 'OTHER'
+    ]);
+
+    const normalizeTerm = (raw: any): string => {
+      const s = String(raw || '').toUpperCase().trim();
+      if (s === 'TERM 1' || s === 'TERM1') return 'TERM_1';
+      if (s === 'TERM 2' || s === 'TERM2') return 'TERM_2';
+      if (s === 'TERM 3' || s === 'TERM3') return 'TERM_3';
+      return s;
+    };
+
     const invalid: Array<{ learnerId: string; reason: string }> = [];
     const valid: any[] = [];
 
@@ -453,6 +473,36 @@ export const recordFormativeResultsBulk = async (req: AuthRequest, res: Response
       if (!a.overallRating && !a.detailedRating) {
         invalid.push({ learnerId: a.learnerId, reason: 'Missing rating (overallRating or detailedRating required)' });
         continue;
+      }
+      if (a.detailedRating && !VALID_DETAILED_RATINGS.has(String(a.detailedRating))) {
+        invalid.push({ learnerId: a.learnerId, reason: `Invalid detailedRating: ${a.detailedRating}` });
+        continue;
+      }
+      if (a.overallRating && !VALID_OVERALL_RATINGS.has(String(a.overallRating))) {
+        invalid.push({ learnerId: a.learnerId, reason: `Invalid overallRating: ${a.overallRating}` });
+        continue;
+      }
+      const normalizedTerm = normalizeTerm(a.term);
+      if (!VALID_TERMS.has(normalizedTerm)) {
+        invalid.push({ learnerId: a.learnerId, reason: `Invalid term: ${a.term}` });
+        continue;
+      }
+      a.term = normalizedTerm;
+      const yearNum = parseInt(a.academicYear, 10);
+      if (!Number.isFinite(yearNum) || yearNum < 2020 || yearNum > 2100) {
+        invalid.push({ learnerId: a.learnerId, reason: `Invalid academicYear: ${a.academicYear}` });
+        continue;
+      }
+      if (a.type && !VALID_TYPES.has(String(a.type))) {
+        invalid.push({ learnerId: a.learnerId, reason: `Invalid type: ${a.type}` });
+        continue;
+      }
+      if (a.weight != null) {
+        const weightNum = Number(a.weight);
+        if (!Number.isFinite(weightNum) || weightNum < 0 || weightNum > 100) {
+          invalid.push({ learnerId: a.learnerId, reason: `Invalid weight: ${a.weight}` });
+          continue;
+        }
       }
       valid.push(a);
     }

@@ -41,6 +41,7 @@ const TermlyReport = lazy(() => import('../pages/TermlyReport'));
 const ValuesAssessment = lazy(() => import('../pages/ValuesAssessment'));
 const CoCurricularActivities = lazy(() => import('../pages/CoCurricularActivities'));
 const CoreCompetenciesAssessment = lazy(() => import('../pages/CoreCompetenciesAssessment'));
+const HolisticDevelopmentSummary = lazy(() => import('../pages/HolisticDevelopmentSummary'));
 const SummaryReportPage = lazy(() => import('../pages/reports/SummaryReportPage'));
 const PerformanceScale = lazy(() => import('../pages/PerformanceScale'));
 const LearningAreasManagement = lazy(() => import('../pages/LearningAreasManagement'));
@@ -640,6 +641,7 @@ const PageRouter = ({
           case 'assess-values': return <ValuesAssessment learners={learners} />;
           case 'assess-cocurricular': return <CoCurricularActivities learners={learners} />;
           case 'assess-core-competencies': return <CoreCompetenciesAssessment learners={learners} />;
+          case 'assess-holistic-summary': return <ErrorBoundary><HolisticDevelopmentSummary learners={learners} onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'assess-learning-areas': return <LearningAreasManagement />;
           case 'assess-performance-scale': return <PerformanceScale />;
           case 'assess-print-center':

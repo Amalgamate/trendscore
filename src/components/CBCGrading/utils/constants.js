@@ -182,6 +182,7 @@ export const PAGE_TITLES = {
   // Assessment
   'assess-formative': 'Formative Assessment',
   'assess-formative-report': 'Formative Report',
+  'assess-holistic-summary': 'Holistic Development Summary',
   'assess-summative-tests': 'Summative Tests',
   'assess-summative-assessment': 'Summative Assessment',
   'assess-learner-reports': 'Learner Reports',
