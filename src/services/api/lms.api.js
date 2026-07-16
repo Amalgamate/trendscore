@@ -175,8 +175,14 @@ export const lmsAPI = {
     return fetchWithAuth(`/lms/analytics/learner/${learnerId}${queryString ? `?${queryString}` : ''}`);
   },
 
-  /** GET /api/lms/analytics/leaderboard (currently 501 until backend is wired) */
-  getLeaderboard: async () => fetchWithAuth('/lms/analytics/leaderboard'),
+  /** GET /api/lms/analytics/leaderboard?limit=10 */
+  getLeaderboard: async (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return fetchWithAuth(`/lms/analytics/leaderboard${queryString ? `?${queryString}` : ''}`);
+  },
+
+  /** GET /api/lms/achievements — authenticated student's XP, level, streak and badges */
+  getAchievements: async () => fetchWithAuth('/lms/achievements'),
 
   // Legacy placeholder (there is no generic GET /api/lms/analytics endpoint)
   getAnalytics: async (params = {}) => {

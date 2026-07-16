@@ -31,7 +31,7 @@ const DEFAULT_SETTINGS = {
   allowLateSubmission: true,
   allowResubmission: false,
   maxUploadSizeMB: 25,
-  allowedFileTypes: 'pdf,docx,pptx,jpg,png,mp4',
+  allowedFileTypes: ['pdf', 'docx', 'pptx', 'jpg', 'png', 'mp4'],
   assignmentDueTime: '23:59',
   // Lessons
   enableComments: true,
@@ -276,9 +276,16 @@ export default function LMSSettingsPage() {
     setLoading(true);
     lmsAPI
       .getSettings()
-      .then((data) => {
+      .then((response) => {
         if (!cancelled) {
-          setSettings({ ...DEFAULT_SETTINGS, ...data });
+          const data = response?.data ?? response ?? {};
+          setSettings({
+            ...DEFAULT_SETTINGS,
+            ...data,
+            allowedFileTypes: Array.isArray(data.allowedFileTypes)
+              ? data.allowedFileTypes
+              : DEFAULT_SETTINGS.allowedFileTypes,
+          });
         }
       })
       .catch((err) => {
@@ -301,8 +308,15 @@ export default function LMSSettingsPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const saved = await lmsAPI.updateSettings(settings);
-      setSettings({ ...DEFAULT_SETTINGS, ...saved });
+      const response = await lmsAPI.updateSettings(settings);
+      const saved = response?.data ?? response ?? {};
+      setSettings({
+        ...DEFAULT_SETTINGS,
+        ...saved,
+        allowedFileTypes: Array.isArray(saved.allowedFileTypes)
+          ? saved.allowedFileTypes
+          : DEFAULT_SETTINGS.allowedFileTypes,
+      });
       showSuccess('LMS settings saved successfully.');
     } catch (err) {
       showError(err?.message || 'Failed to save LMS settings.');
@@ -445,9 +459,12 @@ export default function LMSSettingsPage() {
                 <TextField
                   label="Allowed File Types"
                   description="Comma-separated list of permitted file extensions (e.g. pdf,docx,mp4). Leave blank to allow all types."
-                  value={settings.allowedFileTypes}
+                  value={settings.allowedFileTypes.join(',')}
                   placeholder="pdf,docx,pptx,jpg,png,mp4"
-                  onChange={(v) => update('allowedFileTypes', v)}
+                  onChange={(v) => update(
+                    'allowedFileTypes',
+                    v.split(',').map((type) => type.trim().replace(/^\./, '')).filter(Boolean),
+                  )}
                 />
               </div>
             </SettingsSection>

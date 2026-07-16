@@ -27,7 +27,7 @@ export default function SellerAnalytics({ onError, onSuccess }) {
     try {
       setLoading(true);
       const res = await marketplaceAPI.getMarketplaceAnalytics();
-      const data = res?.data?.data ?? {};
+      const data = res?.data ?? {};
       setAnalytics(data);
     } catch (error) {
       const message = error?.response?.data?.message || 'Failed to load analytics';

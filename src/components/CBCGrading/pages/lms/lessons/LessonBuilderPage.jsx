@@ -23,7 +23,7 @@ import LessonBlockEditor from './LessonBlockEditor';
 import LessonAssignmentsSection from './LessonAssignmentsSection';
 
 const createLessonRequestId = () => (
-  globalThis.crypto?.randomUUID?.()
+  (typeof window !== 'undefined' && window.crypto?.randomUUID?.())
   || `lesson-${Date.now()}-${Math.random().toString(36).slice(2)}`
 );
 

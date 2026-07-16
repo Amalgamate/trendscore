@@ -16,6 +16,13 @@ import api from '../../../../services/api';
 import { cn } from '../../../../utils/cn';
 import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
 import { hasPageAccess } from '../../utils/appAccess';
+import { useLearnerResults, scoreColor } from '../results/useLearnerResults';
+import {
+  ResultsLoadingState,
+  ResultsErrorState,
+  ResultsEmptyState,
+  TermAccordion,
+} from '../results/ResultsShared';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -186,13 +193,6 @@ function OverviewTab({ child, showFees }) {
 }
 
 // ─── Results Tab — uses shared hook + components from results/ResultsShared ────
-import { useLearnerResults, scoreColor } from '../results/useLearnerResults';
-import {
-  ResultsLoadingState,
-  ResultsErrorState,
-  ResultsEmptyState,
-  TermAccordion,
-} from '../results/ResultsShared';
 
 function ResultsTab({ learnerId }) {
   const year = String(new Date().getFullYear());

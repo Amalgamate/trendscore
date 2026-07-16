@@ -1823,8 +1823,29 @@ export const getMarketplaceAnalytics = async (req: AuthRequest, res: Response): 
   }
 };
 
-export const getLeaderboard = (_req: AuthRequest, res: Response): void => {
-  res.status(501).json(NOT_IMPLEMENTED);
+/**
+ * GET /api/lms/analytics/leaderboard?limit=10
+ * School-wide XP leaderboard, ranked by total achievement XP earned.
+ */
+export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const schoolId = req.school?.id;
+    if (!schoolId) {
+      res.status(400).json({ success: false, message: 'School context is required' });
+      return;
+    }
+
+    const limit = req.query.limit ? Number(req.query.limit) : undefined;
+    const data = await LMSAchievementsService.getLeaderboard({ schoolId, limit });
+    res.json({ success: true, data });
+  } catch (error: any) {
+    if (error instanceof ApiError) {
+      res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+    } else {
+      console.error('[LMS] getLeaderboard error:', error?.message ?? error);
+      res.status(500).json({ success: false, message: 'Failed to retrieve leaderboard' });
+    }
+  }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2399,6 +2420,34 @@ export const getLearnerProgress = async (req: AuthRequest, res: Response): Promi
 // ACHIEVEMENTS
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const getAchievements = (_req: AuthRequest, res: Response): void => {
-  res.status(501).json(NOT_IMPLEMENTED);
+/**
+ * GET /api/lms/achievements
+ * Returns the authenticated student's XP, level, streak and earned badges.
+ * Streak-based achievements (7/30-day) are computed and awarded on read.
+ * Student-only — staff/parent roles receive 403.
+ */
+export const getAchievements = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const schoolId = req.school?.id;
+    if (!schoolId) {
+      res.status(400).json({ success: false, message: 'School context is required' });
+      return;
+    }
+
+    const userId = req.user?.userId;
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+
+    const data = await LMSAchievementsService.getMyAchievements({ userId, schoolId });
+    res.json({ success: true, data });
+  } catch (error: any) {
+    if (error instanceof ApiError) {
+      res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+    } else {
+      console.error('[LMS] getAchievements error:', error?.message ?? error);
+      res.status(500).json({ success: false, message: 'Failed to retrieve achievements' });
+    }
+  }
 };

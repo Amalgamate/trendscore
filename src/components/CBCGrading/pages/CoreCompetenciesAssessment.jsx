@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Save, BookOpen, Edit3, ArrowRight, Sparkles, ChevronLeft, BarChart2, Star, Target, CheckCircle, Check, Users, Loader2, ShieldCheck } from 'lucide-react';
+import { Save, BookOpen, Edit3, ArrowRight, Sparkles, ChevronLeft, BarChart2, Star, Target, CheckCircle, Check, Users, Loader2, ShieldCheck, Laptop, Zap } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 import api from '../../../services/api';
 import SmartLearnerSearch from '../shared/SmartLearnerSearch';
@@ -29,7 +29,9 @@ const CoreCompetenciesAssessment = ({ learners }) => {
     creativity: 'ME1',
     collaboration: 'ME1',
     citizenship: 'ME1',
-    learningToLearn: 'ME1'
+    learningToLearn: 'ME1',
+    digitalLiteracy: 'ME1',
+    selfEfficacy: 'ME1'
   });
 
   const [viewMode, setViewMode] = useState('setup'); // 'setup' | 'assess'
@@ -41,7 +43,9 @@ const CoreCompetenciesAssessment = ({ learners }) => {
     creativity: { name: 'Creativity', label: 'Innovation & Art', icon: Sparkles, color: 'text-amber-500', bg: 'bg-amber-50' },
     collaboration: { name: 'Collaboration', label: 'Teamwork & Respect', icon: Users, color: 'text-indigo-500', bg: 'bg-indigo-50' },
     citizenship: { name: 'Citizenship', label: 'Social & Ethics', icon: ShieldCheck, color: 'text-emerald-500', bg: 'bg-emerald-50' },
-    learningToLearn: { name: 'Learning to Learn', label: 'Self & Research', icon: BookOpen, color: 'text-rose-500', bg: 'bg-rose-50' }
+    learningToLearn: { name: 'Learning to Learn', label: 'Self & Research', icon: BookOpen, color: 'text-rose-500', bg: 'bg-rose-50' },
+    digitalLiteracy: { name: 'Digital Literacy', label: 'Tech & Digital Tools', icon: Laptop, color: 'text-cyan-500', bg: 'bg-cyan-50' },
+    selfEfficacy: { name: 'Self-Efficacy', label: 'Confidence & Resilience', icon: Zap, color: 'text-orange-500', bg: 'bg-orange-50' }
   };
 
   const loadExistingCompetencies = useCallback(async () => {
@@ -58,7 +62,9 @@ const CoreCompetenciesAssessment = ({ learners }) => {
           creativity: response.data.creativity || 'ME1',
           collaboration: response.data.collaboration || 'ME1',
           citizenship: response.data.citizenship || 'ME1',
-          learningToLearn: response.data.learningToLearn || 'ME1'
+          learningToLearn: response.data.learningToLearn || 'ME1',
+          digitalLiteracy: response.data.digitalLiteracy || 'ME1',
+          selfEfficacy: response.data.selfEfficacy || 'ME1'
         });
         Object.keys(competencyDefinitions).forEach(key => {
            if (response.data[`${key}Comment`]) ratings.setComment(key, response.data[`${key}Comment`]);
@@ -92,7 +98,9 @@ const CoreCompetenciesAssessment = ({ learners }) => {
         creativityComment: ratings.comments.creativity || '',
         collaborationComment: ratings.comments.collaboration || '',
         citizenshipComment: ratings.comments.citizenship || '',
-        learningToLearnComment: ratings.comments.learningToLearn || ''
+        learningToLearnComment: ratings.comments.learningToLearn || '',
+        digitalLiteracyComment: ratings.comments.digitalLiteracy || '',
+        selfEfficacyComment: ratings.comments.selfEfficacy || ''
       });
       if (response.success) showSuccess('Record saved!');
       else throw new Error(response.message);
@@ -209,7 +217,7 @@ const CoreCompetenciesAssessment = ({ learners }) => {
 
                      <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-2">
-                           {CBC_RATINGS.slice(0, 4).map(r => (
+                           {CBC_RATINGS.map(r => (
                               <button
                                 key={r.value}
                                 onClick={() => ratings.setRating(key, r.value)}

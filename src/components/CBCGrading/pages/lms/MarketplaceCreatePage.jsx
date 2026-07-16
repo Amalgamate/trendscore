@@ -42,9 +42,9 @@ export default function MarketplaceCreatePage({ onNavigate, pageParams }) {
   const fetchResources = async () => {
     try {
       setLoading(true);
-      const res = await lmsAPI.getResources({ limit: 100 });
-      const data = res?.data ?? {};
-      setResources(data.data || []);
+      const response = await lmsAPI.getResources({ limit: 100 });
+      const data = response?.data ?? {};
+      setResources(data.resources || data.data || []);
     } catch (err) {
       const message = err?.response?.data?.message || 'Failed to load resources';
       showError(message);
@@ -81,8 +81,7 @@ export default function MarketplaceCreatePage({ onNavigate, pageParams }) {
 
     try {
       setSubmitting(true);
-      const res = await marketplaceAPI.createListing(formData);
-      const data = res?.data ?? {};
+      const data = await marketplaceAPI.createListing(formData);
 
       if (data.success) {
         setSuccess(true);

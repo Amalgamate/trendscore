@@ -39,6 +39,7 @@ import {
   Star,
   Trash2,
   TrendingUp,
+  Trophy,
   X,
   XCircle,
   Zap,
@@ -254,6 +255,101 @@ const CourseProgressCard = ({ course, onNavigate }) => {
         </span>
       </div>
     </button>
+  );
+};
+
+/* ─── Achievements Panel (real GET /lms/achievements — XP, level, streak, badges) ─── */
+const ACHIEVEMENT_ICON_BG = {
+  FIRST_LESSON: '#0ea5e9',
+  STREAK_7: '#f97316',
+  STREAK_30: '#f97316',
+  PERFECT_SCORE: '#10b981',
+  FAST_LEARNER: '#8b5cf6',
+  TOP_CONTRIBUTOR: '#f59e0b',
+  EARLY_BIRD: '#6366f1',
+  ASSIGNMENT_ACE: '#f43f5e',
+  RESOURCE_SHARER: '#14b8a6',
+};
+
+const AchievementsPanel = ({ achievements, loading, onNavigate }) => {
+  const xpTotal = achievements?.xpTotal ?? 0;
+  const level = achievements?.level ?? 1;
+  const streakDays = achievements?.streakDays ?? 0;
+  const xpThisLevel = achievements?.xpThisLevel ?? 0;
+  const xpToNextLevel = achievements?.xpToNextLevel ?? 100;
+  const badges = achievements?.achievements ?? [];
+  const levelProgressPct = Math.min(100, Math.round((xpThisLevel / Math.max(1, xpThisLevel + xpToNextLevel)) * 100));
+
+  return (
+    <Panel
+      title="Achievements"
+      icon={Trophy}
+      action={
+        <button
+          type="button"
+          onClick={() => onNavigate('learning-leaderboard')}
+          className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-[#06285a] transition hover:border-[#ff7900]/40"
+        >
+          Leaderboard <ChevronRight size={10} />
+        </button>
+      }
+    >
+      {loading ? (
+        <Skeleton className="h-32 w-full" />
+      ) : !achievements ? (
+        <EmptyPanel icon={Trophy} title="Achievements coming soon" subtitle="Complete lessons and assignments to start earning XP and badges." />
+      ) : (
+        <>
+          <div className="relative mb-3 overflow-hidden rounded-xl p-4 text-white" style={{ background: 'linear-gradient(135deg,#ff7900 0%,#e56200 100%)' }}>
+            <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-white/70">Level</p>
+                <p className="mt-0.5 text-3xl font-black text-white">{level}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-[10px] font-black uppercase tracking-widest text-white/70">Total XP</p>
+                <p className="mt-0.5 text-3xl font-black text-white">{xpTotal}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] font-black uppercase tracking-widest text-white/70">Streak</p>
+                <p className="mt-0.5 text-3xl font-black text-white">{streakDays}d</p>
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="mb-1 flex items-center justify-between text-[10px] font-semibold text-white/70">
+                <span>{xpThisLevel} XP</span>
+                <span>{xpToNextLevel} XP to level {level + 1}</span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/20">
+                <div className="h-full rounded-full bg-white transition-all" style={{ width: `${levelProgressPct}%` }} />
+              </div>
+            </div>
+          </div>
+
+          {badges.length === 0 ? (
+            <EmptyPanel icon={Award} title="No badges yet" subtitle="Complete lessons and assignments to earn your first badge." />
+          ) : (
+            <div className="space-y-2">
+              {badges.slice(0, 4).map((a) => (
+                <div key={a.id} className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3">
+                  <div
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                    style={{ background: `${ACHIEVEMENT_ICON_BG[a.type] || '#64748b'}18`, color: ACHIEVEMENT_ICON_BG[a.type] || '#64748b' }}
+                  >
+                    <Award size={14} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-bold text-[#06285a]">{a.title}</p>
+                    <p className="text-[10px] text-slate-500">+{a.xpEarned} XP</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </Panel>
   );
 };
 
@@ -659,6 +755,10 @@ const StudentDashboard = ({ user, onNavigate }) => {
   const [refreshing, setRefreshing]   = useState(false);
   const [noLearnerRecord, setNoLearnerRecord] = useState(false);
 
+  /* ── Achievements (real XP / level / streak / badges) ─────────────────────────────── */
+  const [achievements, setAchievements] = useState(null);
+  const [achievementsLoading, setAchievementsLoading] = useState(true);
+
   /* ── Courses (real enrollment + progress) ────────────────────────────────── */
   const [courses, setCourses]               = useState([]);
   const [coursesLoading, setCoursesLoading] = useState(true);
@@ -736,6 +836,16 @@ const StudentDashboard = ({ user, onNavigate }) => {
       // Report card: derive from metrics if available
       if (metricsRes.status === 'fulfilled' && metricsRes.value?.data?.reportCard) {
         setReportCard(metricsRes.value.data.reportCard);
+      }
+
+      // Achievements — best-effort, non-fatal (student-only endpoint)
+      try {
+        const achRes = await lmsAPI.getAchievements?.();
+        setAchievements(achRes?.data || null);
+      } catch {
+        setAchievements(null);
+      } finally {
+        setAchievementsLoading(false);
       }
     } catch (error) {
       setApiError(error.message || 'Could not reach the server.');
@@ -1135,6 +1245,9 @@ const StudentDashboard = ({ user, onNavigate }) => {
 
         {/* RIGHT SIDEBAR ──────────────────────────────────────── */}
         <div className="space-y-4">
+
+          {/* Achievements — real XP, level, streak and badges */}
+          <AchievementsPanel achievements={achievements} loading={achievementsLoading} onNavigate={onNavigate} />
 
           {/* Quick Actions */}
           <Panel title="Quick Actions" icon={Zap}>

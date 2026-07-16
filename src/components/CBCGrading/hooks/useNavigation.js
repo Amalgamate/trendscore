@@ -23,7 +23,8 @@ import {
     TrendingUp, Zap, CheckSquare, Settings, BookOpen,
     Users2, Truck, Fingerprint, CreditCard, PieChart, BarChart3, AlertCircle,
     Package, Building2, HelpCircle, Receipt, FileText,
-    Shirt, ClipboardList, Video, PlayCircle, Gift, Wrench, Activity, Brain, MoreHorizontal, Award
+    Shirt, ClipboardList, Video, PlayCircle, Gift, Wrench, Activity, Brain, MoreHorizontal, Award,
+    Heart, Star, Sparkles
 } from 'lucide-react';
 
 const focusModules = ['dashboard', 'learners', 'teachers', 'attendance', 'assessment', 'finance', 'communications', 'planner', 'digital-learning', 'learning-hub', 'docs-center', 'settings', 'hr', 'inventory', 'transport', 'pathway-planner'];
@@ -197,6 +198,18 @@ export const allNavSections = [
         app: 'gradebook',
         permission: 'ACCESS_ASSESSMENT_MODULE',
         items: [
+            {
+                id: 'group-holistic',
+                label: 'Holistic Records',
+                type: 'group',
+                icon: Star,
+                items: [
+                    { id: 'assess-formative',         label: 'Formative',       path: 'assess-formative',         permission: 'ACCESS_ASSESSMENT_MODULE', icon: Sparkles },
+                    { id: 'assess-core-competencies', label: 'Core Competencies', path: 'assess-core-competencies', permission: 'ACCESS_ASSESSMENT_MODULE', icon: Star },
+                    { id: 'assess-values',            label: 'National Values', path: 'assess-values',            permission: 'ACCESS_ASSESSMENT_MODULE', icon: Heart },
+                    { id: 'assess-cocurricular',       label: 'Co-Curricular',   path: 'assess-cocurricular',       permission: 'ACCESS_ASSESSMENT_MODULE', icon: Award },
+                ]
+            },
             {
                 id: 'group-summative',
                 label: 'Summative',

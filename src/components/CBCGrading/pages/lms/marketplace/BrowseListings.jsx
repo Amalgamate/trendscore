@@ -52,8 +52,7 @@ export default function BrowseListings({ onNavigate, onError, onSuccess }) {
       if (priceMin) params.set('priceMin', priceMin);
       if (priceMax) params.set('priceMax', priceMax);
 
-      const res = await marketplaceAPI.browseListings(Object.fromEntries(params));
-      const data = res?.data ?? {};
+      const data = await marketplaceAPI.browseListings(Object.fromEntries(params));
 
       setListings(data.listings || []);
       setPagination({

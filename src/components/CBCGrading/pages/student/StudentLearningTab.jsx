@@ -291,6 +291,100 @@ function DownloadsSection({ resources, loading, onDownloadResource }) {
   );
 }
 
+// ─── Achievements Section ──────────────────────────────────────────────────
+
+const ACHIEVEMENT_ICON_BG = {
+  FIRST_LESSON: 'bg-sky-100 text-sky-600',
+  STREAK_7: 'bg-orange-100 text-orange-600',
+  STREAK_30: 'bg-orange-100 text-orange-600',
+  PERFECT_SCORE: 'bg-emerald-100 text-emerald-600',
+  FAST_LEARNER: 'bg-purple-100 text-purple-600',
+  TOP_CONTRIBUTOR: 'bg-amber-100 text-amber-600',
+  EARLY_BIRD: 'bg-indigo-100 text-indigo-600',
+  ASSIGNMENT_ACE: 'bg-rose-100 text-rose-600',
+  RESOURCE_SHARER: 'bg-teal-100 text-teal-600',
+};
+
+function BadgeCard({ achievement }) {
+  const colorClass = ACHIEVEMENT_ICON_BG[achievement.type] || 'bg-slate-100 text-slate-600';
+  return (
+    <div className="flex items-start gap-3 p-3 border border-slate-100 rounded-lg bg-white">
+      <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${colorClass}`}>
+        <Award size={16} />
+      </div>
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-slate-900 truncate">{achievement.title}</p>
+        {achievement.description && (
+          <p className="text-xs text-slate-500 mt-0.5">{achievement.description}</p>
+        )}
+        <p className="text-xs font-medium text-[#ff7900] mt-1">+{achievement.xpEarned} XP</p>
+      </div>
+    </div>
+  );
+}
+
+function AchievementsSection({ achievements, loading }) {
+  if (loading) return <SectionSkeleton />;
+
+  if (!achievements) {
+    return (
+      <div className="p-8 border border-dashed border-slate-200 rounded-lg text-center bg-slate-50">
+        <Award size={32} className="mx-auto text-slate-300 mb-2" />
+        <p className="text-sm text-slate-500">No achievements yet</p>
+        <p className="text-xs text-slate-400 mt-2">Complete lessons and assignments to earn badges</p>
+      </div>
+    );
+  }
+
+  const { xpTotal, level, xpThisLevel, xpToNextLevel, streakDays, achievements: badges } = achievements;
+  const levelProgressPct = Math.min(100, Math.round((xpThisLevel / (xpThisLevel + xpToNextLevel)) * 100));
+
+  return (
+    <div className="space-y-4">
+      {/* Level / XP / Streak summary */}
+      <div className="p-4 rounded-lg bg-gradient-to-r from-[#ff7900]/10 to-transparent border border-[#ff7900]/20">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Level</p>
+            <p className="text-2xl font-bold text-slate-900">{level}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Total XP</p>
+            <p className="text-2xl font-bold text-slate-900">{xpTotal}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Streak</p>
+            <p className="text-2xl font-bold text-slate-900">{streakDays}d</p>
+          </div>
+        </div>
+        <div className="mt-3">
+          <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+            <span>{xpThisLevel} XP</span>
+            <span>{xpToNextLevel} XP to level {level + 1}</span>
+          </div>
+          <div className="w-full bg-white/70 rounded-full h-2">
+            <div className="bg-[#ff7900] h-2 rounded-full transition-all" style={{ width: `${levelProgressPct}%` }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Badges */}
+      {(!badges || badges.length === 0) ? (
+        <div className="p-6 border border-dashed border-slate-200 rounded-lg text-center bg-slate-50">
+          <p className="text-sm text-slate-500">No badges yet</p>
+          <p className="text-xs text-slate-400 mt-1">Complete lessons and assignments to earn badges</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {badges.map((a) => (
+            <BadgeCard key={a.id} achievement={a} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Section Header ────────────────────────────────────────────────────────
 
 function SectionHeader({ title, icon: Icon, action }) {
@@ -315,6 +409,7 @@ export default function StudentLearningTab({ onNavigate }) {
   const [todaysLessons, setTodaysLessons] = useState([]);
   const [continueLearning, setContinueLearning] = useState([]);
   const [resources, setResources] = useState([]);
+  const [achievements, setAchievements] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -351,6 +446,15 @@ export default function StudentLearningTab({ onNavigate }) {
       const resourceRes = await lmsAPI.getResources?.({ limit: 10 });
       const resourcesData = resourceRes?.data || [];
       setResources(resourcesData);
+
+      // Fetch achievements (XP, level, streak, badges) — best-effort, non-fatal
+      try {
+        const achievementsRes = await lmsAPI.getAchievements?.();
+        setAchievements(achievementsRes?.data || null);
+      } catch (achErr) {
+        console.warn('Achievements unavailable:', achErr);
+        setAchievements(null);
+      }
     } catch (err) {
       console.error('Error loading learning data:', err);
       setError('Failed to load your learning data. Please try again.');
@@ -508,20 +612,22 @@ export default function StudentLearningTab({ onNavigate }) {
         </button>
       </section>
 
-      {/* Achievements (Placeholder) */}
+      {/* Achievements */}
       <section>
-        <SectionHeader title="Achievements" icon={Award} />
-        <div className="p-8 border border-dashed border-slate-200 rounded-lg text-center bg-slate-50">
-          <Trophy size={32} className="mx-auto text-slate-300 mb-2" />
-          <p className="text-sm text-slate-500">No achievements yet</p>
-          <p className="text-xs text-slate-400 mt-2">Complete lessons and assignments to earn badges</p>
-        </div>
+        <SectionHeader
+          title="Achievements"
+          icon={Award}
+          action={
+            <button
+              onClick={() => onNavigate && onNavigate('learning-leaderboard')}
+              className="text-xs font-medium text-[#ff7900] hover:text-[#ff7900]/80"
+            >
+              View Leaderboard
+            </button>
+          }
+        />
+        <AchievementsSection achievements={achievements} loading={loading} />
       </section>
     </div>
   );
-}
-
-// Import Trophy if not available (fallback)
-function Trophy(props) {
-  return <Award {...props} />;
 }

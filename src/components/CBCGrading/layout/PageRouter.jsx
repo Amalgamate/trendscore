@@ -170,10 +170,12 @@ const LMSPlaceholder = lazy(() => import('../pages/lms/LMSPlaceholder'));
 const LMSSettingsPage = lazy(() => import('../pages/lms/settings/LMSSettingsPage'));
 const LMSLessonList = lazy(() => import('../pages/lms/lessons/LessonList'));
 const LMSLessonBuilderPage = lazy(() => import('../pages/lms/lessons/LessonBuilderPage'));
+const LMSLessonViewerPage = lazy(() => import('../pages/lms/lessons/LessonViewerPage'));
 const LMSRevisionLibraryPage = lazy(() => import('../pages/lms/revision/RevisionLibraryPage'));
 const MarketplacePage = lazy(() => import('../pages/lms/MarketplacePage'));
 const MarketplaceCreatePage = lazy(() => import('../pages/lms/MarketplaceCreatePage'));
 const LearningAnalyticsPage = lazy(() => import('../pages/lms/analytics/LearningAnalyticsPage'));
+const LeaderboardPage = lazy(() => import('../pages/lms/LeaderboardPage'));
 
 // Student Portal
 const MyCourses = lazy(() => import('../pages/student/MyCourses'));
@@ -743,11 +745,13 @@ const PageRouter = ({
           case 'learning-assignment-edit': return <AssignmentBuilder assignmentId={pageParams?.assignmentId || pageParams?.id} onNavigate={handleNavigate} />;
           case 'learning-lessons': return <LMSLessonList onNavigate={handleNavigate} user={user} />;
           case 'learning-lesson-builder': return <LMSLessonBuilderPage lessonId={pageParams?.lessonId} onNavigate={handleNavigate} pageParams={pageParams} />;
+          case 'learning-lesson-viewer': return <LMSLessonViewerPage lessonId={pageParams?.lessonId} onNavigate={handleNavigate} pageParams={pageParams} />;
           case 'learning-interactive': return <LMSPlaceholder title="Interactive Learning" description="Interactive learning content and activities are being prepared for the Digital Learning Hub." />;
           case 'learning-revision': return <LMSRevisionLibraryPage onNavigate={handleNavigate} />;
           case 'learning-marketplace': return <MarketplacePage onNavigate={handleNavigate} />;
           case 'learning-marketplace-create': return <MarketplaceCreatePage onNavigate={handleNavigate} pageParams={pageParams} />;
           case 'learning-analytics': return <LearningAnalyticsPage />;
+          case 'learning-leaderboard': return <LeaderboardPage onNavigate={handleNavigate} />;
           case 'learning-settings': return <LMSSettingsPage user={user} onNavigate={handleNavigate} />;
 
           // Student Portal

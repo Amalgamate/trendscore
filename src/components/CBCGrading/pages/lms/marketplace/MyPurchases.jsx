@@ -33,9 +33,8 @@ export default function MyPurchases({ onNavigate, onError, onSuccess }) {
   const fetchPurchases = async () => {
     try {
       setLoading(true);
-      const res = await marketplaceAPI.getMyPurchases();
-      const data = res?.data ?? {};
-      setPurchases(data.data || []);
+      const response = await marketplaceAPI.getMyPurchases();
+      setPurchases(response?.data || []);
     } catch (error) {
       const message = error?.response?.data?.message || 'Failed to load purchases';
       onError(message);
@@ -51,12 +50,12 @@ export default function MyPurchases({ onNavigate, onError, onSuccess }) {
   const handleDownload = async (purchaseId) => {
     try {
       setDownloadLoading((prev) => ({ ...prev, [purchaseId]: true }));
-      const res = await marketplaceAPI.downloadPurchasedResource(purchaseId);
-      const data = res?.data ?? {};
+      const response = await marketplaceAPI.downloadPurchasedResource(purchaseId);
+      const url = response?.data?.url;
 
-      if (data.data?.url) {
+      if (url) {
         // Open download URL in new tab
-        window.open(data.data.url, '_blank');
+        window.open(url, '_blank');
         onSuccess('Download started');
       }
     } catch (error) {

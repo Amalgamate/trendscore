@@ -1093,6 +1093,10 @@ model CoreCompetency {
   citizenshipComment      String?
   learningToLearn         DetailedRubricRating
   learningToLearnComment  String?
+  digitalLiteracy         DetailedRubricRating?
+  digitalLiteracyComment  String?
+  selfEfficacy            DetailedRubricRating?
+  selfEfficacyComment     String?
   assessedBy              String
   createdAt               DateTime             @default(now())
   updatedAt               DateTime             @updatedAt

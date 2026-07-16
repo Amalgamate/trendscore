@@ -408,10 +408,10 @@ class LMSMarketplaceServiceImpl {
   async initiatePurchase(
     listingId: string,
     buyerId: string,
-    buyerPhone: string,
+    buyerPhone: string | undefined,
     schoolId: string,
     buyerInfo?: { firstName?: string; lastName?: string },
-  ): Promise<{ purchaseId: string; checkoutRequestId: string }> {
+  ): Promise<{ purchaseId: string; checkoutRequestId?: string; free?: boolean }> {
     try {
       const listing = await prisma.marketplaceListing.findUnique({
         where: { id: listingId },
@@ -448,6 +448,40 @@ class LMSMarketplaceServiceImpl {
         listing.price,
         listing.revenueSharePct,
       );
+
+      // Free resources grant access immediately and must never initiate an
+      // M-Pesa request. The completed purchase is still recorded so download
+      // limits, analytics, and duplicate-purchase protection remain uniform.
+      if (listing.listingType === 'FREE' || listing.price <= 0) {
+        const purchase = await prisma.marketplacePurchase.create({
+          data: {
+            listingId,
+            buyerId,
+            schoolId: listing.schoolId,
+            amount: 0,
+            currency: listing.currency,
+            sellerEarnings: 0,
+            platformFee: 0,
+            status: 'COMPLETED',
+            maxDownloads: 5,
+            accessExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+          },
+          include: { listing: true, buyer: true },
+        });
+
+        await prisma.marketplaceListing.update({
+          where: { id: listingId },
+          data: { purchaseCount: { increment: 1 } },
+        });
+        await LMSNotificationService.onMarketplacePurchaseComplete(purchase);
+
+        logger.info(`[Marketplace] Free resource acquired: ${purchase.id} | listing: ${listingId}`);
+        return { purchaseId: purchase.id, free: true };
+      }
+
+      if (!buyerPhone) {
+        throw marketplaceError(400, 'STK_PUSH_FAILED');
+      }
 
       // Initiate STK push (no invoiceId — keeps fee-payment branch inert)
       const stkResult = await mpesaService.initiateStkPush({

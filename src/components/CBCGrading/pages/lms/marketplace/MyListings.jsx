@@ -37,9 +37,8 @@ export default function MyListings({ onNavigate, onError, onSuccess, canApprove 
   const fetchListings = async () => {
     try {
       setLoading(true);
-      const res = await marketplaceAPI.getMyListings();
-      const data = res?.data ?? {};
-      setListings(data.data || []);
+      const response = await marketplaceAPI.getMyListings();
+      setListings(response?.data || []);
     } catch (error) {
       const message = error?.response?.data?.message || 'Failed to load listings';
       onError(message);

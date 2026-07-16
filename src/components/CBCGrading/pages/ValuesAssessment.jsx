@@ -197,7 +197,7 @@ const ValuesAssessment = ({ learners }) => {
                      </div>
 
                      <div className="grid grid-cols-2 gap-2">
-                        {CBC_RATINGS.slice(0, 4).map(r => (
+                        {CBC_RATINGS.map(r => (
                            <button
                              key={r.value}
                              onClick={() => ratings.setRating(key, r.value)}

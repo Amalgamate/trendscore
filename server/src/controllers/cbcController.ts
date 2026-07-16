@@ -34,7 +34,11 @@ export const createOrUpdateCompetencies = async (req: AuthRequest, res: Response
       citizenship,
       citizenshipComment,
       learningToLearn,
-      learningToLearnComment
+      learningToLearnComment,
+      digitalLiteracy,
+      digitalLiteracyComment,
+      selfEfficacy,
+      selfEfficacyComment
     } = req.body;
 
     const assessedBy = req.user?.userId;
@@ -43,6 +47,9 @@ export const createOrUpdateCompetencies = async (req: AuthRequest, res: Response
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
+    // digitalLiteracy/selfEfficacy are intentionally NOT required here — they were
+    // added after this endpoint went live, and older frontend builds / partial
+    // bulk imports may still submit records without them.
     if (!learnerId || !term || !academicYear || !communication || !criticalThinking ||
       !creativity || !collaboration || !citizenship || !learningToLearn) {
       return res.status(400).json({
@@ -59,7 +66,9 @@ export const createOrUpdateCompetencies = async (req: AuthRequest, res: Response
         creativity, creativityComment,
         collaboration, collaborationComment,
         citizenship, citizenshipComment,
-        learningToLearn, learningToLearnComment
+        learningToLearn, learningToLearnComment,
+        digitalLiteracy, digitalLiteracyComment,
+        selfEfficacy, selfEfficacyComment
       }
     );
 
@@ -106,7 +115,9 @@ export const createOrUpdateCompetenciesBulk = async (req: AuthRequest, res: Resp
             creativity: r.creativity, creativityComment: r.creativityComment,
             collaboration: r.collaboration, collaborationComment: r.collaborationComment,
             citizenship: r.citizenship, citizenshipComment: r.citizenshipComment,
-            learningToLearn: r.learningToLearn, learningToLearnComment: r.learningToLearnComment
+            learningToLearn: r.learningToLearn, learningToLearnComment: r.learningToLearnComment,
+            digitalLiteracy: r.digitalLiteracy, digitalLiteracyComment: r.digitalLiteracyComment,
+            selfEfficacy: r.selfEfficacy, selfEfficacyComment: r.selfEfficacyComment
           }
         );
         savedResults.push(result);
@@ -159,6 +170,10 @@ async function _upsertCompetency(
         citizenshipComment: ratings.citizenshipComment,
         learningToLearn: ratings.learningToLearn as DetailedRubricRating,
         learningToLearnComment: ratings.learningToLearnComment,
+        digitalLiteracy: (ratings.digitalLiteracy ?? undefined) as DetailedRubricRating | undefined,
+        digitalLiteracyComment: ratings.digitalLiteracyComment,
+        selfEfficacy: (ratings.selfEfficacy ?? undefined) as DetailedRubricRating | undefined,
+        selfEfficacyComment: ratings.selfEfficacyComment,
         assessedBy: meta.assessedBy
       },
       include: {
@@ -185,6 +200,10 @@ async function _upsertCompetency(
       citizenshipComment: ratings.citizenshipComment,
       learningToLearn: ratings.learningToLearn as DetailedRubricRating,
       learningToLearnComment: ratings.learningToLearnComment,
+      digitalLiteracy: (ratings.digitalLiteracy ?? undefined) as DetailedRubricRating | undefined,
+      digitalLiteracyComment: ratings.digitalLiteracyComment,
+      selfEfficacy: (ratings.selfEfficacy ?? undefined) as DetailedRubricRating | undefined,
+      selfEfficacyComment: ratings.selfEfficacyComment,
       assessedBy: meta.assessedBy
     },
     include: {

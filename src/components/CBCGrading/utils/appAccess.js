@@ -164,6 +164,7 @@ const ROLE_PAGE_ALLOWLIST = {
     'student-pathway-planner',
     'student-career-explorer',
     'pathway-guide',
+    'learning-leaderboard',
     'settings-profile'
   ]),
   PARENT: new Set([

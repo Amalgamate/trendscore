@@ -37,20 +37,18 @@ export default function PurchaseModal({ listing, onClose, onSuccess, onError }) 
 
     try {
       setLoading(true);
-      const res = await marketplaceAPI.initiatePurchase(
+      const data = await marketplaceAPI.initiatePurchase(
         listing.id,
         isFree ? undefined : phone,
         firstName,
         lastName
       );
-      const data = res?.data ?? {};
-
       if (data.success) {
         // For free listings we can auto-download after access is granted.
         if (isFree && data.data?.purchaseId) {
           try {
             const dl = await marketplaceAPI.downloadPurchasedResource(data.data.purchaseId);
-            const url = dl?.data?.data?.url;
+            const url = dl?.data?.url;
             if (url) window.open(url, '_blank');
           } catch (dlErr) {
             // Non-fatal: user can still download later from "My Purchases"
@@ -78,9 +76,11 @@ export default function PurchaseModal({ listing, onClose, onSuccess, onError }) 
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
         <div className="bg-white rounded-xl shadow-2xl p-8 max-w-sm w-full text-center space-y-4">
           <CheckCircle size={48} className="mx-auto text-emerald-600" />
-          <h2 className="text-xl font-bold text-gray-900">Purchase Initiated!</h2>
+          <h2 className="text-xl font-bold text-gray-900">{isFree ? 'Resource Added!' : 'Purchase Initiated!'}</h2>
           <p className="text-gray-600">
-            You will receive an M-Pesa prompt on your phone. Complete the payment to confirm your purchase.
+            {isFree
+              ? 'The resource is now available in My Purchases.'
+              : 'You will receive an M-Pesa prompt on your phone. Complete the payment to confirm your purchase.'}
           </p>
         </div>
       </div>
