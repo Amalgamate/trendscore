@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Clock, Download, Filter, Loader2, Plus, Share2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Download, Filter, Loader2, Plus, Settings2, Share2, X } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 import Toast from '../shared/Toast';
 import api from '../../../services/api';
@@ -10,6 +10,7 @@ import { usePermissions } from '../../../hooks/usePermissions';
 import { useAuth } from '../../../hooks/useAuth';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { MOBILE_MEDIA_QUERY } from '../../../constants/breakpoints';
+import TimetableEngineSetup from './timetable/TimetableEngineSetup';
 
 const DEFAULT_TIME_SLOTS = [
   { startTime: '08:00', endTime: '08:45' },
@@ -120,6 +121,7 @@ const TimetablePage = () => {
   const [teachers, setTeachers] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [assignments, setAssignments] = useState([]);
+  const [engineSetupOpen, setEngineSetupOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedClassId, setSelectedClassId] = useState(() => {
     return localStorage.getItem('cbc_timetable_selected_class') || 'all';
@@ -756,6 +758,15 @@ const TimetablePage = () => {
           <p className="text-sm text-gray-500">Manage daily schedules and room allocations interactively</p>
         </div>
         <div className="flex items-center gap-3">
+          {canEditTimetable && (
+            <button
+              type="button"
+              onClick={() => setEngineSetupOpen(true)}
+              className="h-10 px-3 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-sm font-semibold flex items-center gap-2 hover:bg-indigo-100 transition-colors"
+            >
+              <Settings2 size={16} /> Engine setup
+            </button>
+          )}
           <div className="flex bg-gray-100 p-1 rounded-lg">
             <select
               value={selectedClassId}
@@ -783,6 +794,14 @@ const TimetablePage = () => {
         </div>
       </div>
       )}
+
+      <TimetableEngineSetup
+        open={engineSetupOpen}
+        onClose={() => setEngineSetupOpen(false)}
+        teachers={teachers}
+        learningAreas={subjects}
+        canEdit={canEditTimetable}
+      />
 
       {isMobile && (
         <div className="px-3 pt-3 pb-4 space-y-3">

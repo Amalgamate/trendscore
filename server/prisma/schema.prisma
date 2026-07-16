@@ -98,6 +98,8 @@ model User {
   approvedRequisitions       StockRequisition[]          @relation("ApprovedBy")
   inventoryRequisitions      StockRequisition[]          @relation("RequestedBy")
   subjectAssignments         SubjectAssignment[]
+  timetableEntries           TimetableEntry[]
+  timetableAvailabilities    TeacherAvailability[]
   summativeResultHistories   SummativeResultHistory[]    @relation("ChangedBy")
   recordedResults            SummativeResult[]           @relation("RecordedResults")
   approvedTests              SummativeTest[]             @relation("ApprovedTests")
@@ -316,6 +318,7 @@ model Class {
   enrollments         ClassEnrollment[]
   facilities          ClassFacility[]
   schedules           ClassSchedule[]
+  timetableEntries    TimetableEntry[]
   teacher             User?                @relation("ClassTeacher", fields: [teacherId], references: [id])
   // ── LMS Digital Learning Hub ────────────────────────────────────────────────
   learningLessons     LearningLesson[]
@@ -356,6 +359,195 @@ model ClassSchedule {
   @@index([day])
   @@index([subject])
   @@map("class_schedules")
+}
+
+// ── Timetable Engine Foundation ──────────────────────────────────────────────
+// ClassSchedule remains the published compatibility/read model used by existing
+// dashboards. Drafts and generated schedules live in versioned TimetableEntry
+// records until an approved version is published.
+model BellSchedule {
+  id          String       @id @default(uuid())
+  name        String       @unique
+  description String?
+  isDefault   Boolean      @default(false)
+  active      Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  periods     BellPeriod[]
+  plans       TimetablePlan[]
+
+  @@index([active])
+  @@map("bell_schedules")
+}
+
+model BellPeriod {
+  id             String               @id @default(uuid())
+  bellScheduleId String
+  name           String
+  sequence       Int
+  startTime      String
+  endTime        String
+  type           TimetablePeriodType  @default(LESSON)
+  instructional  Boolean              @default(true)
+  active         Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  bellSchedule   BellSchedule         @relation(fields: [bellScheduleId], references: [id], onDelete: Cascade)
+  entries        TimetableEntry[]
+
+  @@unique([bellScheduleId, sequence])
+  @@unique([bellScheduleId, startTime, endTime])
+  @@index([bellScheduleId, active])
+  @@map("bell_periods")
+}
+
+model TimetablePlan {
+  id             String             @id @default(uuid())
+  name           String
+  academicYear   Int
+  term           Term
+  bellScheduleId String
+  status         TimetablePlanStatus @default(DRAFT)
+  description    String?
+  createdById    String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  bellSchedule   BellSchedule       @relation(fields: [bellScheduleId], references: [id])
+  versions       TimetableVersion[]
+
+  @@unique([name, academicYear, term])
+  @@index([academicYear, term, status])
+  @@map("timetable_plans")
+}
+
+model TimetableVersion {
+  id          String                 @id @default(uuid())
+  planId      String
+  version     Int
+  status      TimetableVersionStatus @default(DRAFT)
+  changeNote  String?
+  createdById String?
+  reviewedAt  DateTime?
+  approvedAt  DateTime?
+  publishedAt DateTime?
+  lockedAt    DateTime?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  plan        TimetablePlan          @relation(fields: [planId], references: [id], onDelete: Cascade)
+  entries     TimetableEntry[]
+
+  @@unique([planId, version])
+  @@index([planId, status])
+  @@map("timetable_versions")
+}
+
+model TimetableRoom {
+  id           String             @id @default(uuid())
+  name         String             @unique
+  code         String?            @unique
+  type         TimetableRoomType  @default(CLASSROOM)
+  capacity     Int?
+  building     String?
+  floor        String?
+  equipment    String[]           @default([])
+  active       Boolean            @default(true)
+  notes        String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  entries      TimetableEntry[]
+  availability RoomAvailability[]
+
+  @@index([type, active])
+  @@map("timetable_rooms")
+}
+
+model TeacherAvailability {
+  id        String   @id @default(uuid())
+  teacherId String
+  day       String
+  startTime String
+  endTime   String
+  available Boolean  @default(true)
+  reason    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  teacher   User     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, day, startTime, endTime])
+  @@index([teacherId, day])
+  @@map("teacher_availability")
+}
+
+model RoomAvailability {
+  id        String        @id @default(uuid())
+  roomId    String
+  day       String
+  startTime String
+  endTime   String
+  available Boolean       @default(true)
+  reason    String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  room      TimetableRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, day, startTime, endTime])
+  @@index([roomId, day])
+  @@map("room_availability")
+}
+
+model InstructionalAllocation {
+  id                   String       @id @default(uuid())
+  academicYear         Int
+  grade                String
+  learningAreaId       String
+  minimumWeeklyPeriods Int          @default(0)
+  targetWeeklyPeriods  Int
+  maximumWeeklyPeriods Int?
+  preferredDuration    Int?
+  requiresDouble       Boolean      @default(false)
+  requiredRoomType     TimetableRoomType?
+  sourceReference      String?
+  effectiveFrom        DateTime?
+  effectiveTo          DateTime?
+  active               Boolean      @default(true)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  learningArea         LearningArea @relation(fields: [learningAreaId], references: [id], onDelete: Cascade)
+
+  @@unique([academicYear, grade, learningAreaId])
+  @@index([grade, academicYear, active])
+  @@map("instructional_allocations")
+}
+
+model TimetableEntry {
+  id             String               @id @default(uuid())
+  versionId      String
+  classId        String
+  learningAreaId String
+  teacherId      String?
+  roomId         String?
+  bellPeriodId   String?
+  day            String
+  startTime      String
+  endTime        String
+  lessonType     TimetableLessonType  @default(NORMAL)
+  locked         Boolean              @default(false)
+  notes          String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  version        TimetableVersion     @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  class          Class                @relation(fields: [classId], references: [id], onDelete: Cascade)
+  learningArea   LearningArea         @relation(fields: [learningAreaId], references: [id])
+  teacher        User?                @relation(fields: [teacherId], references: [id])
+  room           TimetableRoom?       @relation(fields: [roomId], references: [id])
+  bellPeriod     BellPeriod?          @relation(fields: [bellPeriodId], references: [id])
+
+  @@unique([versionId, classId, day, startTime, endTime])
+  @@index([versionId, day, startTime])
+  @@index([teacherId, day, startTime])
+  @@index([roomId, day, startTime])
+  @@index([classId, day, startTime])
+  @@map("timetable_entries")
 }
 
 model ClassFacility {
@@ -1696,6 +1888,8 @@ model LearningArea {
   pathwayId            String?
   categoryId           String?
   schedules            ClassSchedule[]
+  timetableEntries     TimetableEntry[]
+  timetableAllocations InstructionalAllocation[]
   formativeAssessments FormativeAssessment[]
   learnerSelections    LearnerSubjectSelection[]
   categoryRef          SubjectCategory?          @relation(fields: [categoryId], references: [id])
@@ -3250,6 +3444,68 @@ enum FamilyMemberStatus {
   INVITED
   ACTIVE
   SUSPENDED
+}
+
+enum TimetablePeriodType {
+  LESSON
+  BREAK
+  LUNCH
+  ASSEMBLY
+  PRAYER
+  CLUBS
+  GAMES
+  GUIDANCE
+  EXAMINATION
+  OTHER
+}
+
+enum TimetableLessonType {
+  NORMAL
+  DOUBLE
+  TRIPLE
+  PRACTICAL
+  LABORATORY
+  COMPUTER_LAB
+  GAMES
+  ASSEMBLY
+  CLUBS
+  GUIDANCE
+  PRAYER
+  LIBRARY
+  EXAMINATION
+}
+
+enum TimetableRoomType {
+  CLASSROOM
+  SCIENCE_LAB
+  ICT_LAB
+  LIBRARY
+  MUSIC_ROOM
+  ART_ROOM
+  WORKSHOP
+  AGRICULTURE_FIELD
+  SWIMMING_POOL
+  MULTIPURPOSE_HALL
+  SPORTS_GROUND
+  OTHER
+}
+
+enum TimetablePlanStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum TimetableVersionStatus {
+  DRAFT
+  GENERATED
+  DEPARTMENT_REVIEW
+  DEPUTY_REVIEW
+  PRINCIPAL_REVIEW
+  APPROVED
+  PUBLISHED
+  LOCKED
+  ARCHIVED
 }
 
 enum Grade {

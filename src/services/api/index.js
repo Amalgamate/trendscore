@@ -49,6 +49,7 @@ import { pathwayPlannerAPI } from './pathwayPlanner.api';
 import { careerAPI } from './career.api';
 import { chatAPI } from './chat.api';
 import { approvalAPI } from './approval.api';
+import { timetableAPI } from './timetable.api';
 
 export { API_BASE_URL, clearApiCache };
 
@@ -99,6 +100,7 @@ export { seniorPathwayAPI };
 export { pathwayPlannerAPI };
 export { careerAPI };
 export { approvalAPI };
+export { timetableAPI };
 
 const api = {
   // ── Core Axios-like Methods ───────────────────────────────────────────
@@ -184,6 +186,7 @@ const api = {
   careers: careerAPI,
   chat: chatAPI,
   approvals: approvalAPI,
+  timetable: timetableAPI,
   gitNotifications: {
     preview: async (data) => fetchWithAuth('/git-notifications/preview', { method: 'POST', body: JSON.stringify(data) }),
     publish: async (data) => fetchWithAuth('/git-notifications/publish', { method: 'POST', body: JSON.stringify(data) }),
