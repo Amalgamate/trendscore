@@ -2738,6 +2738,9 @@ model LearningLesson {
   allowDownload  Boolean      @default(false)
   allowQuestions Boolean      @default(true)
   createdById    String // FK → User
+  // Lets the client safely retry a save when the network drops after the
+  // server has committed the draft but before the browser receives its reply.
+  requestId      String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   archived       Boolean      @default(false)
@@ -2756,6 +2759,7 @@ model LearningLesson {
   @@index([status])
   @@index([termId])
   @@index([schoolId, classId, learningAreaId])
+  @@unique([schoolId, requestId])
   @@map("learning_lessons")
 }
 

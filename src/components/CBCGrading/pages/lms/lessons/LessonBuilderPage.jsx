@@ -22,6 +22,11 @@ import { Skeleton } from '../../../../ui';
 import LessonBlockEditor from './LessonBlockEditor';
 import LessonAssignmentsSection from './LessonAssignmentsSection';
 
+const createLessonRequestId = () => (
+  globalThis.crypto?.randomUUID?.()
+  || `lesson-${Date.now()}-${Math.random().toString(36).slice(2)}`
+);
+
 // ─── Lesson Metadata Form ──────────────────────────────────────────────────
 
 function LessonMetadataForm({ lesson, onUpdate, onSave, loading, error }) {
@@ -95,14 +100,22 @@ function LessonMetadataForm({ lesson, onUpdate, onSave, loading, error }) {
       const estimatedMins = form.estimatedMins === '' || form.estimatedMins === undefined
         ? undefined
         : Number(form.estimatedMins);
-      const res = await lmsAPI.createLesson?.({
+      const payload = {
         ...form,
         estimatedMins: Number.isInteger(estimatedMins) && estimatedMins >= 0 ? estimatedMins : undefined,
-      });
-      if (res?.success) {
-        onUpdate?.(res.data);
-        onSave?.(res.data);
+        requestId: createLessonRequestId(),
+      };
+      let res;
+      try {
+        res = await lmsAPI.createLesson?.(payload);
+      } catch (firstError) {
+        // If a response is interrupted after the server has persisted the
+        // draft, retrying with the same request ID returns that draft safely.
+        res = await lmsAPI.createLesson?.(payload);
       }
+      if (!res?.success || !res.data) throw new Error(res?.message || 'Failed to create lesson');
+      onUpdate?.(res.data);
+      onSave?.(res.data);
     } catch (err) {
       console.error('Create lesson failed:', err);
       alert(err?.message || 'Failed to create lesson');

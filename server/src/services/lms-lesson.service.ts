@@ -82,12 +82,14 @@ export interface CreateLessonInput {
   coverImageUrl?: string;
   estimatedMins?: number;
   dueDate?: Date;
+  /** Client-generated key used to make a retried draft save idempotent. */
+  requestId?: string;
   allowComments?: boolean;
   allowQuestions?: boolean;
   allowDownload?: boolean;
 }
 
-export type UpdateLessonInput = Partial<Omit<CreateLessonInput, 'schoolId'>>;
+export type UpdateLessonInput = Partial<Omit<CreateLessonInput, 'schoolId' | 'requestId'>>;
 
 export interface LessonFilters {
   classId?: string;
@@ -180,6 +182,7 @@ export class LMSLessonService {
     createdById: string,
   ): Promise<LearningLesson> {
     const { title, classId, learningAreaId, termId, schoolId } = data;
+    const requestId = typeof data.requestId === 'string' ? data.requestId.trim() : undefined;
 
     if (!title || !classId || !learningAreaId || !termId) {
       throw new ApiError(
@@ -205,25 +208,46 @@ export class LMSLessonService {
 
     const dueDate = LMSLessonService.parseOptionalDueDate(data.dueDate);
 
-    const lesson = await prisma.learningLesson.create({
-      data: {
-        title,
-        classId,
-        learningAreaId,
-        termId,
-        schoolId,
-        createdById,
-        status: 'DRAFT',
-        streamId: data.streamId,
-        description: data.description,
-        coverImageUrl: data.coverImageUrl,
-        estimatedMins,
-        dueDate,
-        allowComments: data.allowComments ?? false,
-        allowQuestions: data.allowQuestions ?? false,
-        allowDownload: data.allowDownload ?? false,
-      },
-    });
+    // A successful database write can occasionally outlive a client connection.
+    // Reusing the request ID returns that draft instead of creating a duplicate.
+    if (requestId) {
+      const existing = await prisma.learningLesson.findFirst({
+        where: { schoolId, requestId },
+      });
+      if (existing) return existing;
+    }
+
+    let lesson: LearningLesson;
+    try {
+      lesson = await prisma.learningLesson.create({
+        data: {
+          title,
+          classId,
+          learningAreaId,
+          termId,
+          schoolId,
+          createdById,
+          status: 'DRAFT',
+          streamId: data.streamId,
+          description: data.description,
+          coverImageUrl: data.coverImageUrl,
+          estimatedMins,
+          dueDate,
+          requestId,
+          allowComments: data.allowComments ?? false,
+          allowQuestions: data.allowQuestions ?? false,
+          allowDownload: data.allowDownload ?? false,
+        },
+      });
+    } catch (error: any) {
+      // A parallel retry can race the first insert. The unique key makes that
+      // harmless and lets both calls receive the same saved lesson.
+      if (requestId && error?.code === 'P2002') {
+        const existing = await prisma.learningLesson.findFirst({ where: { schoolId, requestId } });
+        if (existing) return existing;
+      }
+      throw error;
+    }
 
     await invalidateLessonCache(schoolId);
     return lesson;
