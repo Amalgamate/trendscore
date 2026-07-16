@@ -182,7 +182,15 @@ export default function LessonList({ onNavigate }) {
       };
       const res  = await lmsAPI.getLessons(params);
       const data = res?.data ?? res ?? {};
-      setLessons(Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : []);
+      // The LMS endpoint returns { lessons, pagination }.  Keep support for
+      // legacy list responses, but prefer the current contract so persisted
+      // lessons are not rendered as an empty list.
+      setLessons(
+        Array.isArray(data.lessons) ? data.lessons
+          : Array.isArray(data.data) ? data.data
+            : Array.isArray(data) ? data
+              : [],
+      );
       if (data.meta ?? data.pagination) {
         const m = data.meta ?? data.pagination;
         setPagination({ page: m.page ?? page, total: m.total ?? 0, pages: m.pages ?? m.totalPages ?? 1 });
