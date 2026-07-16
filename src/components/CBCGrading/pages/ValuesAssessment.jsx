@@ -92,7 +92,7 @@ const ValuesAssessment = ({ learners }) => {
   return (
     <div className="pb-24 font-sans">
       {/* ── Header ── */}
-      <div className="flex items-center justify-between mb-8 px-5 pt-4">
+      <div className="flex items-center justify-between mb-5 px-4 pt-4 sm:px-6 max-w-6xl mx-auto">
         <div className="flex items-center gap-3">
            <div className="w-10 h-10 rounded-2xl bg-rose-50 flex items-center justify-center text-rose-500">
               <Heart size={22} fill="currentColor" />
@@ -114,8 +114,8 @@ const ValuesAssessment = ({ learners }) => {
       </div>
 
       {viewMode === 'setup' && (
-        <div className="px-5 space-y-6 animate-in fade-in slide-in-from-bottom-4">
-          <div className="bg-white rounded-[2.5rem] border border-transparent shadow-xl shadow-rose-50 p-6 space-y-6">
+        <div className="px-4 sm:px-6 space-y-4 max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 sm:p-6 space-y-5">
             <div className="space-y-1">
                <span className="text-[10px] font-semibold text-rose-500 uppercase tracking-widest">Entry Scope</span>
                <h3 className="text-lg font-semibold text-gray-900">Learner Context</h3>
@@ -129,17 +129,18 @@ const ValuesAssessment = ({ learners }) => {
                     selectedLearnerId={selection.selectedLearnerId}
                     onSelect={selection.selectLearner}
                     placeholder={`Search ${labels.learners}...`}
-                    className="w-full h-14 pl-4 bg-gray-50 border-none rounded-2xl text-xs font-medium outline-none ring-offset-0 focus:ring-2 focus:ring-rose-100"
+                    compact
+                    inputClassName="h-12 bg-gray-50"
                   />
                </div>
 
-               <div className="grid grid-cols-2 gap-4">
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest ml-1">{labels.term}</label>
                     <select
                       value={setup.selectedTerm}
                       onChange={(e) => setup.updateTerm(e.target.value)}
-                      className="w-full h-14 px-4 bg-gray-50 border-none rounded-2xl text-xs font-medium focus:ring-2 focus:ring-rose-500/20"
+                      className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-rose-500/20"
                     >
                       {setup.terms.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
@@ -150,7 +151,7 @@ const ValuesAssessment = ({ learners }) => {
                       type="number"
                       value={setup.academicYear}
                       onChange={(e) => setup.updateAcademicYear(parseInt(e.target.value))}
-                      className="w-full h-14 px-4 bg-gray-50 border-none rounded-2xl text-xs font-medium"
+                      className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium"
                     />
                   </div>
                </div>
@@ -160,7 +161,7 @@ const ValuesAssessment = ({ learners }) => {
           <button
             onClick={() => setViewMode('assess')}
             disabled={!selection.selectedLearnerId}
-            className="w-full h-16 bg-rose-500 text-white rounded-[2rem] flex items-center justify-center gap-3 shadow-xl shadow-rose-100 active:scale-95 transition-all outline-none disabled:opacity-30"
+            className="w-full sm:w-auto sm:min-w-56 h-12 sm:ml-auto bg-rose-500 text-white rounded-xl flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-all outline-none disabled:opacity-30"
           >
             <span className="text-xs font-semibold uppercase tracking-[0.2em] ml-2">Character Audit</span>
             <ArrowRight size={20} strokeWidth={3} />
@@ -169,9 +170,9 @@ const ValuesAssessment = ({ learners }) => {
       )}
 
       {viewMode === 'assess' && selection.selectedLearner && (
-        <div className="px-5 space-y-6 animate-in fade-in slide-in-from-bottom-4">
-          <div className="bg-white border-b border-gray-100 py-4 -mx-1 flex items-center justify-between sticky top-0 z-10 transition-all">
-             <button onClick={() => setViewMode('setup')} className="p-3 border border-gray-100 rounded-2xl active:scale-90 transition-all">
+        <div className="px-4 sm:px-6 space-y-4 max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4">
+          <div className="bg-white border border-gray-200 rounded-xl p-3 flex items-center justify-between sticky top-3 z-10 shadow-sm transition-all">
+             <button onClick={() => setViewMode('setup')} className="w-10 h-10 flex items-center justify-center border border-gray-200 rounded-lg active:scale-90 transition-all">
                 <ChevronLeft size={20} className="text-gray-900" />
              </button>
              <div className="text-center flex-1">
@@ -181,14 +182,14 @@ const ValuesAssessment = ({ learners }) => {
              <div className="w-10" />
           </div>
 
-          <div className="space-y-6">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {Object.entries(valueDefinitions).map(([key, def]) => {
                const Icon = def.icon;
                return (
-                  <div key={key} className="bg-white rounded-[2.5rem] border border-gray-50 p-6 shadow-sm space-y-5">
+                  <div key={key} className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm space-y-5">
                      <div className="flex items-center gap-4">
-                        <div className={cn("w-14 h-14 rounded-[1.5rem] flex items-center justify-center text-2xl shadow-inner", def.bg, def.color)}>
-                           <Icon size={24} />
+                        <div className={cn("w-11 h-11 rounded-xl flex items-center justify-center", def.bg, def.color)}>
+                           <Icon size={22} />
                         </div>
                         <div>
                            <h5 className="text-sm font-semibold text-gray-900">{def.name}</h5>
@@ -196,13 +197,13 @@ const ValuesAssessment = ({ learners }) => {
                         </div>
                      </div>
 
-                     <div className="grid grid-cols-2 gap-2">
+                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         {CBC_RATINGS.map(r => (
                            <button
                              key={r.value}
                              onClick={() => ratings.setRating(key, r.value)}
                              className={cn(
-                                "py-4 px-2 rounded-2xl text-[10px] font-semibold uppercase transition-all tracking-tighter border-2",
+                                "min-h-10 px-2 rounded-lg text-[10px] font-semibold uppercase transition-all tracking-tighter border",
                                 ratings.ratings[key] === r.value 
                                    ? "bg-teal-600 border-transparent text-white shadow-lg shadow-teal-50 scale-[1.02]" 
                                    : "bg-white border-gray-50 text-gray-400 hover:border-teal-100"
@@ -216,7 +217,7 @@ const ValuesAssessment = ({ learners }) => {
                );
             })}
 
-            <div className="bg-white rounded-[2.5rem] border border-gray-100 p-6 space-y-4">
+            <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4 xl:col-span-2">
                <div className="flex items-center gap-2 ml-2">
                   <Edit3 size={14} className="text-gray-400" />
                   <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Growth Observations</span>
@@ -224,7 +225,7 @@ const ValuesAssessment = ({ learners }) => {
                <textarea
                   value={ratings.comments.general || ''}
                   onChange={(e) => ratings.setComment('general', e.target.value)}
-                  className="w-full h-32 p-5 bg-gray-50 border-none rounded-[1.5rem] text-xs font-medium outline-none placeholder:text-gray-300 resize-none focus:ring-2 focus:ring-rose-100"
+                  className="w-full h-24 p-4 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium outline-none placeholder:text-gray-300 resize-none focus:ring-2 focus:ring-rose-100"
                   placeholder="Summarize character development..."
                />
                <div className="flex justify-center p-2">
@@ -236,7 +237,7 @@ const ValuesAssessment = ({ learners }) => {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="w-full py-6 bg-teal-600 text-white text-xs font-semibold uppercase tracking-[0.2em] rounded-[2rem] shadow-xl shadow-teal-50 active:scale-95 transition-all mb-10"
+            className="w-full sm:w-auto sm:min-w-64 h-12 sm:ml-auto bg-teal-600 text-white text-xs font-semibold uppercase tracking-[0.2em] rounded-xl shadow-sm active:scale-95 transition-all mb-10"
           >
              Finalize Character Record
           </button>

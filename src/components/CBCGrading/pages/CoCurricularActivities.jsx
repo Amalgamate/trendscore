@@ -179,24 +179,26 @@ const CoCurricularActivities = ({ learners }) => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 max-w-6xl mx-auto px-4 sm:px-6 pt-4 pb-24">
       {/* Header */}
-      <div className="bg-orange-600 rounded-xl shadow-lg p-6 text-white">
-        <h2 className="text-2xl font-medium mb-2 flex items-center gap-2">
-          <Trophy size={28} />
-          Co-Curricular Activities
-        </h2>
-        <p className="text-orange-100">Track participation in sports, arts, clubs and other activities</p>
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-600">
+          <Trophy size={22} />
+        </div>
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900 tracking-tight leading-none">Co-Curricular Activities</h2>
+          <p className="text-[10px] font-medium text-gray-400 uppercase tracking-widest mt-1">Participation & achievement</p>
+        </div>
       </div>
 
       {/* Selection Panel */}
-      <div className="bg-white rounded-xl shadow-md p-6">
-        <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 sm:p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-5 flex items-center gap-2">
           <User size={20} />
           Select Learner & Term
         </h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">Learner</label>
             <SmartLearnerSearch
@@ -204,6 +206,8 @@ const CoCurricularActivities = ({ learners }) => {
               selectedLearnerId={selectedLearnerId}
               onSelect={setSelectedLearnerId}
               placeholder="Search by name, adm no..."
+              compact
+              inputClassName="h-12 bg-gray-50"
             />
           </div>
 
@@ -212,7 +216,7 @@ const CoCurricularActivities = ({ learners }) => {
             <select
               value={selectedTerm}
               onChange={(e) => setSelectedTerm(e.target.value)}
-              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-orange-500 focus:border-transparent"
             >
               {terms.map(t => (
                 <option key={t.value} value={t.value}>{t.label}</option>
@@ -226,7 +230,7 @@ const CoCurricularActivities = ({ learners }) => {
               type="number"
               value={academicYear}
               onChange={(e) => setAcademicYear(parseInt(e.target.value))}
-              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-orange-500 focus:border-transparent"
             />
           </div>
         </div>
@@ -235,10 +239,10 @@ const CoCurricularActivities = ({ learners }) => {
       {selectedLearner && (
         <>
           {/* Learner Info + Add Button */}
-          <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-4">
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="bg-orange-600 text-white rounded-full w-12 h-12 flex items-center justify-center font-medium text-xl">
+                <div className="bg-orange-600 text-white rounded-xl w-11 h-11 flex items-center justify-center font-semibold text-sm">
                   {selectedLearner.firstName[0]}{selectedLearner.lastName[0]}
                 </div>
                 <div>
@@ -252,7 +256,7 @@ const CoCurricularActivities = ({ learners }) => {
               </div>
               <button
                 onClick={() => setShowForm(!showForm)}
-                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition flex items-center gap-2 font-semibold"
+                className="h-10 px-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition flex items-center gap-2 text-sm font-semibold"
               >
                 <Plus size={20} />
                 Add Activity
@@ -262,12 +266,12 @@ const CoCurricularActivities = ({ learners }) => {
 
           {/* Add/Edit Form */}
           {showForm && (
-            <div className="bg-white rounded-xl shadow-md p-6 border-2 border-orange-200">
+            <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-6 border border-orange-200">
               <h3 className="font-medium text-lg mb-4 text-gray-800">
                 {editingId ? 'Edit Activity' : 'Add New Activity'}
               </h3>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Activity Name *</label>
                   <input
@@ -275,7 +279,7 @@ const CoCurricularActivities = ({ learners }) => {
                     value={formData.activityName}
                     onChange={(e) => setFormData({...formData, activityName: e.target.value})}
                     placeholder="e.g., Football, Drama Club, Choir"
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                    className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500"
                   />
                 </div>
 
@@ -284,7 +288,7 @@ const CoCurricularActivities = ({ learners }) => {
                   <select
                     value={formData.activityType}
                     onChange={(e) => setFormData({...formData, activityType: e.target.value})}
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                    className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500"
                   >
                     {activityTypes.map(t => (
                       <option key={t.value} value={t.value}>
@@ -299,7 +303,7 @@ const CoCurricularActivities = ({ learners }) => {
                   <select
                     value={formData.performance}
                     onChange={(e) => setFormData({...formData, performance: e.target.value})}
-                    className={`w-full px-4 py-2 border-2 rounded-lg focus:ring-2 focus:ring-orange-500 font-semibold ${getRatingColor(formData.performance)}`}
+                    className={`w-full h-12 px-4 border rounded-xl text-sm focus:ring-2 focus:ring-orange-500 font-semibold ${getRatingColor(formData.performance)}`}
                   >
                     {ratings.map(r => (
                       <option key={r.value} value={r.value}>{r.label}</option>
@@ -314,7 +318,7 @@ const CoCurricularActivities = ({ learners }) => {
                     value={formData.achievements}
                     onChange={(e) => setFormData({...formData, achievements: e.target.value})}
                     placeholder="e.g., Won inter-school competition"
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
+                    className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500"
                   />
                 </div>
               </div>
@@ -326,7 +330,7 @@ const CoCurricularActivities = ({ learners }) => {
                   onChange={(e) => setFormData({...formData, remarks: e.target.value})}
                   placeholder="Additional observations..."
                   rows={3}
-                  className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 resize-none"
+                  className="w-full min-h-24 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 resize-none"
                 />
               </div>
 

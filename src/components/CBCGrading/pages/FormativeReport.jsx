@@ -172,16 +172,18 @@ const FormativeReport = ({ learners, brandingSettings, user }) => {
 
       {/* SETUP VIEW: SELECTION PANEL */}
       {viewMode === 'setup' && (
-        <div className="bg-white rounded-xl shadow-lg p-8 border border-gray-100 max-w-3xl mx-auto mt-8">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600">
-              <FileText size={32} />
+        <div className="bg-white rounded-2xl shadow-sm p-5 sm:p-6 border border-gray-200 max-w-4xl mx-auto mt-4 sm:mt-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-11 h-11 shrink-0 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
+              <FileText size={22} />
             </div>
-            <h2 className="text-2xl font-medium text-gray-800">Generate Formative Report</h2>
-            <p className="text-gray-500">Select a learner and term to view their assessment report</p>
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Generate Formative Report</h2>
+              <p className="text-sm text-gray-500">Select a learner and term to view their assessment report</p>
+            </div>
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-4">
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">Select Learner</label>
 
@@ -190,6 +192,8 @@ const FormativeReport = ({ learners, brandingSettings, user }) => {
                 selectedLearnerId={selection.selectedLearnerId}
                 onSelect={selection.selectLearner}
                 placeholder="Search by name, adm no..."
+                compact
+                inputClassName="h-12 bg-gray-50"
               />
             </div>
 
@@ -198,7 +202,7 @@ const FormativeReport = ({ learners, brandingSettings, user }) => {
               <select
                 value={setup.selectedTerm}
                 onChange={(e) => setup.updateTerm(e.target.value)}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
               >
                 {setup.terms.map(t => (
                   <option key={t.value} value={t.value}>{t.label}</option>

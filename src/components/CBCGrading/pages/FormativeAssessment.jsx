@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckCircle, Check, Send, Save, ArrowRight, Edit3, FileText, Users, BarChart2, Sparkles, Loader2, Target, ChevronLeft, Search } from 'lucide-react';
+import { CheckCircle, Check, Send, Save, ArrowRight, Edit3, FileText, Users, BarChart2, Sparkles, Loader2, Target, ChevronLeft } from 'lucide-react';
 import RatingSelector from '../shared/RatingSelector';
 import { useNotifications } from '../hooks/useNotifications';
 import api, { aiAPI } from '../../../services/api';
@@ -264,7 +264,7 @@ const FormativeAssessment = ({ learners }) => {
   return (
     <div className="pb-24 font-sans">
       {/* ── Header ── */}
-      <div className="flex items-center justify-between mb-8 px-5 pt-4">
+      <div className="flex items-center justify-between mb-5 px-4 pt-4 sm:px-6 max-w-6xl mx-auto">
         <div className="flex items-center gap-3">
            <div className="w-10 h-10 rounded-2xl bg-purple-50 flex items-center justify-center text-[var(--brand-purple)]">
               <Sparkles size={22} />
@@ -288,20 +288,20 @@ const FormativeAssessment = ({ learners }) => {
 
       {/* ── STEP 1: SETUP ── */}
       {viewMode === 'setup' && (
-        <div className="px-5 space-y-6 animate-in fade-in slide-in-from-bottom-4">
-          <div className="bg-white rounded-[2.5rem] border border-transparent shadow-xl shadow-purple-50 p-6 space-y-6">
+        <div className="px-4 sm:px-6 space-y-4 max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 sm:p-6 space-y-5">
             <div className="space-y-1">
                <span className="text-[10px] font-semibold text-[var(--brand-teal)] uppercase tracking-widest">Stage 01</span>
                <h3 className="text-lg font-semibold text-gray-900">Configure Context</h3>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest ml-1">{labels.grade}</label>
                 <select
                   value={selectedGrade}
                   onChange={(e) => setSelectedGrade(e.target.value)}
-                  className="w-full h-14 px-4 bg-gray-50 border-none rounded-2xl text-xs font-medium focus:ring-2 focus:ring-purple-100 outline-none"
+                  className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-purple-100 outline-none"
                 >
                   {filteredGrades.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
                 </select>
@@ -312,7 +312,7 @@ const FormativeAssessment = ({ learners }) => {
                 <select
                   value={selectedTerm}
                   onChange={(e) => setSelectedTerm(e.target.value)}
-                  className="w-full h-14 px-4 bg-gray-50 border-none rounded-2xl text-xs font-medium focus:ring-2 focus:ring-purple-100 outline-none"
+                  className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-purple-100 outline-none"
                 >
                   {terms.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
@@ -324,7 +324,7 @@ const FormativeAssessment = ({ learners }) => {
               <select
                 value={selectedArea}
                 onChange={(e) => { setSelectedArea(e.target.value); learningAreas.selectLearningArea(e.target.value); }}
-                className="w-full h-14 px-4 bg-gray-50 border-none rounded-2xl text-xs font-medium focus:ring-2 focus:ring-purple-100 outline-none"
+                className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-purple-100 outline-none"
               >
                 <option value="">Select Area</option>
                 {filteredLearningAreasByWorkload.map(a => <option key={a} value={a}>{a}</option>)}
@@ -337,7 +337,7 @@ const FormativeAssessment = ({ learners }) => {
                  type="text"
                  value={assessmentTitle}
                  onChange={(e) => setAssessmentTitle(e.target.value)}
-                 className="w-full h-14 px-4 bg-gray-50 border-none rounded-2xl text-xs font-medium focus:ring-2 focus:ring-purple-100 outline-none"
+                 className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-purple-100 outline-none"
                  placeholder="e.g. Oral Addition Test"
                />
             </div>
@@ -348,7 +348,7 @@ const FormativeAssessment = ({ learners }) => {
                  type="text"
                  value={strand}
                  onChange={(e) => setStrand(e.target.value)}
-                 className="w-full h-14 px-4 bg-gray-50 border-none rounded-2xl text-xs font-medium focus:ring-2 focus:ring-purple-100 outline-none"
+                 className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-purple-100 outline-none"
                  placeholder="e.g. Basic Operations"
                />
             </div>
@@ -356,7 +356,7 @@ const FormativeAssessment = ({ learners }) => {
 
           <button
             onClick={goToNextStep}
-            className="w-full h-16 bg-[var(--brand-purple)] text-white rounded-[2rem] flex items-center justify-center gap-3 shadow-xl shadow-purple-200 active:scale-95 transition-all outline-none"
+            className="w-full sm:w-auto sm:min-w-56 h-12 sm:ml-auto bg-[var(--brand-purple)] text-white rounded-xl flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-all outline-none"
           >
             <span className="text-xs font-semibold uppercase tracking-[0.2em] ml-2">Begin Entry</span>
             <ArrowRight size={20} strokeWidth={3} />
@@ -366,41 +366,42 @@ const FormativeAssessment = ({ learners }) => {
 
       {/* ── STEP 2: ASSESS ── */}
       {viewMode === 'assess' && (
-        <div className="space-y-6 px-5 animate-in fade-in slide-in-from-bottom-4">
-          <div className="bg-white border-b border-gray-100 py-4 -mx-1 flex items-center justify-between sticky top-0 z-10">
-             <button onClick={goToPrevStep} className="p-3 border border-gray-100 rounded-2xl active:scale-90 transition-all">
+        <div className="space-y-4 px-4 sm:px-6 max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4">
+          <div className="bg-white border border-gray-200 rounded-xl p-3 flex items-center justify-between sticky top-3 z-10 shadow-sm">
+             <button onClick={goToPrevStep} className="w-10 h-10 flex items-center justify-center border border-gray-200 rounded-lg active:scale-90 transition-all">
                 <ChevronLeft size={20} className="text-gray-900" />
              </button>
              <div className="text-center flex-1">
                 <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">{selectedGrade} • {selectedArea}</h4>
                 <p className="text-xs font-semibold text-gray-900 truncate px-4">{strand}</p>
              </div>
-             <button onClick={handleSaveAll} disabled={saving} className="w-11 h-11 flex items-center justify-center bg-[var(--brand-teal)] text-white rounded-2xl shadow-lg shadow-teal-50 active:scale-90 transition-all disabled:opacity-30">
+             <button onClick={handleSaveAll} disabled={saving} className="w-10 h-10 flex items-center justify-center bg-[var(--brand-teal)] text-white rounded-lg shadow-sm active:scale-90 transition-all disabled:opacity-30">
                 {saving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
              </button>
           </div>
 
           <div className="space-y-4">
-             <div className="relative">
-                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" />
+             <div className="bg-white border border-gray-200 rounded-xl p-4">
+                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-widest mb-2">Filter {labels.learners}</label>
                 <SmartLearnerSearch
                   learners={classLearners}
                   selectedLearnerId={searchLearnerId}
                   onSelect={handleLearnerSelect}
                   placeholder={`Search ${labels.learners}...`}
-                  className="w-full h-14 pl-12 pr-4 bg-gray-50 border-none rounded-[1.5rem] text-xs font-medium outline-none"
+                  compact
+                  inputClassName="h-12 bg-gray-50"
                 />
              </div>
 
-             <div className="space-y-6 py-4">
+             <div className="space-y-4">
                 {filteredLearners.map(learner => {
                    const assessment = assessments[learner.id];
                    const isSaved = savedAssessments[learner.id];
                    return (
-                      <div key={learner.id} className="bg-white rounded-[2.5rem] border border-gray-50 p-6 shadow-sm space-y-6">
+                      <div key={learner.id} className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm space-y-5">
                          <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4">
-                               <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center text-xs font-semibold text-gray-600">
+                               <div className="w-11 h-11 bg-gray-100 rounded-xl flex items-center justify-center text-xs font-semibold text-gray-600">
                                   {learner.firstName[0]}{learner.lastName[0]}
                                </div>
                                <div>
@@ -411,7 +412,7 @@ const FormativeAssessment = ({ learners }) => {
                             {isSaved && <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center"><Check size={18} strokeWidth={4} /></div>}
                          </div>
 
-                         <div className="transform scale-[0.9] origin-left -mx-1">
+                         <div>
                             <RatingSelector
                                value={assessment?.detailedRating || ''}
                                onChange={(code, points, percentage) => handleRatingChange(learner.id, code, points, percentage)}
@@ -436,7 +437,7 @@ const FormativeAssessment = ({ learners }) => {
                          <div className="flex gap-2">
                              <button 
                                 onClick={() => setAssessments(prev => ({...prev, [learner.id]: {...prev[learner.id], enhanced: !prev[learner.id]?.enhanced}}))}
-                                className="flex-1 py-3 bg-purple-50 text-[var(--brand-purple)] text-[9px] font-semibold uppercase tracking-widest rounded-2xl active:scale-95 transition-all"
+                                className="flex-1 h-10 bg-purple-50 text-[var(--brand-purple)] text-[10px] font-semibold uppercase tracking-widest rounded-lg active:scale-95 transition-all"
                              >
                                 {assessment?.enhanced ? 'Hide Details' : 'Add Remarks'}
                              </button>
@@ -444,7 +445,7 @@ const FormativeAssessment = ({ learners }) => {
                                 <button
                                   onClick={() => handleSendWhatsApp(learner.id)}
                                   disabled={sendingWhatsApp[learner.id]}
-                                  className="w-14 h-11 flex items-center justify-center bg-emerald-50 text-emerald-500 rounded-2xl active:scale-90 transition-all"
+                                  className="w-11 h-10 flex items-center justify-center bg-emerald-50 text-emerald-500 rounded-lg active:scale-90 transition-all"
                                 >
                                    {sendingWhatsApp[learner.id] ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                                 </button>
@@ -458,7 +459,7 @@ const FormativeAssessment = ({ learners }) => {
 
           <button
             onClick={goToNextStep}
-            className="w-full h-16 bg-[var(--brand-purple)] text-white rounded-[2rem] flex items-center justify-center gap-3 shadow-xl shadow-purple-200 active:scale-95 transition-all"
+            className="w-full sm:w-auto sm:min-w-56 h-12 sm:ml-auto bg-[var(--brand-purple)] text-white rounded-xl flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-all"
           >
             <span className="text-xs font-semibold uppercase tracking-[0.2em]">Summary Board</span>
             <BarChart2 size={20} strokeWidth={3} />
@@ -468,32 +469,32 @@ const FormativeAssessment = ({ learners }) => {
 
       {/* ── STEP 3: REVIEW ── */}
       {viewMode === 'review' && (
-        <div className="px-5 space-y-8 animate-in fade-in slide-in-from-bottom-4">
-           <div className="flex items-center gap-4 bg-white py-4 sticky top-0 z-10 border-b border-gray-50 -mx-1 px-1">
-             <button onClick={goToPrevStep} className="p-3 border border-gray-100 rounded-2xl active:scale-90 transition-all">
+        <div className="px-4 sm:px-6 space-y-4 max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4">
+           <div className="flex items-center gap-3 bg-white p-3 sticky top-3 z-10 border border-gray-200 rounded-xl shadow-sm">
+             <button onClick={goToPrevStep} className="w-10 h-10 flex items-center justify-center border border-gray-200 rounded-lg active:scale-90 transition-all">
                 <ChevronLeft size={20} className="text-gray-900" />
              </button>
              <h3 className="text-lg font-semibold text-gray-900">Final Summary</h3>
           </div>
 
           <div className="grid grid-cols-3 gap-3">
-             <div className="bg-purple-50 p-4 rounded-[2rem] text-center border border-purple-100">
+             <div className="bg-purple-50 p-4 rounded-xl text-center border border-purple-100">
                 <p className="text-[8px] font-semibold text-purple-400 uppercase tracking-widest mb-1">Total</p>
                 <p className="text-xl font-semibold text-[var(--brand-purple)]">{stats.total}</p>
              </div>
-             <div className="bg-indigo-50 p-4 rounded-[2rem] text-center border border-indigo-100">
+             <div className="bg-indigo-50 p-4 rounded-xl text-center border border-indigo-100">
                 <p className="text-[8px] font-semibold text-indigo-400 uppercase tracking-widest mb-1">Entry</p>
                 <p className="text-xl font-semibold text-indigo-600">{stats.assessed}</p>
              </div>
-             <div className="bg-emerald-50 p-4 rounded-[2rem] text-center border border-emerald-100">
+             <div className="bg-emerald-50 p-4 rounded-xl text-center border border-emerald-100">
                 <p className="text-[8px] font-semibold text-emerald-400 uppercase tracking-widest mb-1">Saved</p>
                 <p className="text-xl font-semibold text-[var(--brand-teal)]">{stats.saved}</p>
              </div>
           </div>
 
-          <div className="bg-white rounded-[2.5rem] p-8 text-center space-y-6 shadow-xl shadow-purple-50 border border-gray-50">
-             <div className="w-24 h-24 bg-purple-50 rounded-full flex items-center justify-center mx-auto text-[var(--brand-purple)]">
-                <CheckCircle size={48} strokeWidth={1} />
+          <div className="bg-white rounded-2xl p-6 text-center space-y-5 shadow-sm border border-gray-200">
+             <div className="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center mx-auto text-[var(--brand-purple)]">
+                <CheckCircle size={32} strokeWidth={1.5} />
              </div>
              <div className="space-y-2">
                 <h4 className="text-xl font-semibold text-gray-900">Session Complete?</h4>
@@ -501,7 +502,7 @@ const FormativeAssessment = ({ learners }) => {
              </div>
              <button
                onClick={() => window.history.back()}
-               className="w-full py-5 bg-[var(--brand-purple)] text-white text-xs font-semibold uppercase tracking-[0.2em] rounded-[2rem] shadow-xl shadow-purple-50 active:scale-95 transition-all"
+               className="w-full sm:w-auto sm:min-w-56 h-12 bg-[var(--brand-purple)] text-white text-xs font-semibold uppercase tracking-[0.2em] rounded-xl shadow-sm active:scale-95 transition-all"
              >
                 Exit Session
              </button>

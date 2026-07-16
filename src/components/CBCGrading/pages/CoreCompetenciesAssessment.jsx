@@ -111,7 +111,7 @@ const CoreCompetenciesAssessment = ({ learners }) => {
   return (
     <div className="pb-24 font-sans">
       {/* ── Header ── */}
-      <div className="flex items-center justify-between mb-8 px-5 pt-4">
+      <div className="flex items-center justify-between mb-5 px-4 pt-4 sm:px-6 max-w-6xl mx-auto">
         <div className="flex items-center gap-3">
            <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600">
               <Star size={22} fill="currentColor" />
@@ -133,8 +133,8 @@ const CoreCompetenciesAssessment = ({ learners }) => {
       </div>
 
       {viewMode === 'setup' && (
-        <div className="px-5 space-y-6 animate-in fade-in slide-in-from-bottom-4">
-          <div className="bg-white rounded-[2.5rem] border border-transparent shadow-xl shadow-indigo-50 p-6 space-y-6">
+        <div className="px-4 sm:px-6 space-y-4 max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 sm:p-6 space-y-5">
             <div className="space-y-1">
                <span className="text-[10px] font-semibold text-indigo-500 uppercase tracking-widest">Stage 01</span>
                <h3 className="text-lg font-semibold text-gray-900">Define Scope</h3>
@@ -148,17 +148,18 @@ const CoreCompetenciesAssessment = ({ learners }) => {
                     selectedLearnerId={selection.selectedLearnerId}
                     onSelect={selection.selectLearner}
                     placeholder={`Find ${labels.learners}...`}
-                    className="w-full h-14 pl-4 bg-gray-50 border-none rounded-2xl text-xs font-medium outline-none ring-offset-0 focus:ring-2 focus:ring-indigo-100"
+                    compact
+                    inputClassName="h-12 bg-gray-50"
                   />
                </div>
 
-               <div className="grid grid-cols-2 gap-4">
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest ml-1">{labels.term}</label>
                     <select
                       value={setup.selectedTerm}
                       onChange={(e) => setup.updateTerm(e.target.value)}
-                      className="w-full h-14 px-4 bg-gray-50 border-none rounded-2xl text-xs font-medium focus:ring-2 focus:ring-indigo-500/20"
+                      className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500/20"
                     >
                       {setup.terms.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
@@ -169,7 +170,7 @@ const CoreCompetenciesAssessment = ({ learners }) => {
                       type="number"
                       value={setup.academicYear}
                       onChange={(e) => setup.updateAcademicYear(parseInt(e.target.value))}
-                      className="w-full h-14 px-4 bg-gray-50 border-none rounded-2xl text-xs font-medium"
+                      className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium"
                     />
                   </div>
                </div>
@@ -179,7 +180,7 @@ const CoreCompetenciesAssessment = ({ learners }) => {
           <button
             onClick={() => setViewMode('assess')}
             disabled={!selection.selectedLearnerId}
-            className="w-full h-16 bg-indigo-600 text-white rounded-[2rem] flex items-center justify-center gap-3 shadow-xl shadow-indigo-100 active:scale-95 transition-all outline-none disabled:opacity-30"
+            className="w-full sm:w-auto sm:min-w-56 h-12 sm:ml-auto bg-indigo-600 text-white rounded-xl flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-all outline-none disabled:opacity-30"
           >
             <span className="text-xs font-semibold uppercase tracking-[0.2em] ml-2">Begin Grading</span>
             <ArrowRight size={20} strokeWidth={3} />
@@ -188,9 +189,9 @@ const CoreCompetenciesAssessment = ({ learners }) => {
       )}
 
       {viewMode === 'assess' && selection.selectedLearner && (
-        <div className="px-5 space-y-6 animate-in fade-in slide-in-from-bottom-4">
-          <div className="bg-white border-b border-gray-100 py-4 -mx-1 flex items-center justify-between sticky top-0 z-10 transition-all">
-             <button onClick={() => setViewMode('setup')} className="p-3 border border-gray-100 rounded-2xl active:scale-90 transition-all">
+        <div className="px-4 sm:px-6 space-y-4 max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4">
+          <div className="bg-white border border-gray-200 rounded-xl p-3 flex items-center justify-between sticky top-3 z-10 shadow-sm transition-all">
+             <button onClick={() => setViewMode('setup')} className="w-10 h-10 flex items-center justify-center border border-gray-200 rounded-lg active:scale-90 transition-all">
                 <ChevronLeft size={20} className="text-gray-900" />
              </button>
              <div className="text-center flex-1">
@@ -200,14 +201,14 @@ const CoreCompetenciesAssessment = ({ learners }) => {
              <div className="w-10" />
           </div>
 
-          <div className="space-y-6">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {Object.entries(competencyDefinitions).map(([key, def]) => {
                const Icon = def.icon;
                return (
-                  <div key={key} className="bg-white rounded-[2.5rem] border border-gray-50 p-6 shadow-sm space-y-6">
+                  <div key={key} className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm space-y-5">
                      <div className="flex items-center gap-4">
-                        <div className={cn("w-14 h-14 rounded-[1.5rem] flex items-center justify-center text-2xl shadow-inner", def.bg, def.color)}>
-                           <Icon size={28} />
+                        <div className={cn("w-11 h-11 rounded-xl flex items-center justify-center", def.bg, def.color)}>
+                           <Icon size={22} />
                         </div>
                         <div>
                            <h5 className="text-sm font-semibold text-gray-900">{def.name}</h5>
@@ -216,13 +217,13 @@ const CoreCompetenciesAssessment = ({ learners }) => {
                      </div>
 
                      <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                            {CBC_RATINGS.map(r => (
                               <button
                                 key={r.value}
                                 onClick={() => ratings.setRating(key, r.value)}
                                 className={cn(
-                                   "py-3 px-2 rounded-2xl text-[10px] font-semibold uppercase transition-all tracking-tighter border-2",
+                                   "min-h-10 px-2 rounded-lg text-[10px] font-semibold uppercase transition-all tracking-tighter border",
                                    ratings.ratings[key] === r.value 
                                       ? "bg-indigo-600 border-transparent text-white shadow-lg shadow-indigo-100 scale-[1.02]" 
                                       : "bg-white border-gray-50 text-gray-400 hover:border-indigo-100"
@@ -237,7 +238,7 @@ const CoreCompetenciesAssessment = ({ learners }) => {
                            <textarea
                               value={ratings.comments[key] || ''}
                               onChange={(e) => ratings.setComment(key, e.target.value)}
-                              className="w-full h-24 p-4 bg-gray-50 border-none rounded-[1.5rem] text-xs font-medium outline-none placeholder:text-gray-300 resize-none focus:ring-2 focus:ring-indigo-100"
+                              className="w-full h-20 p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium outline-none placeholder:text-gray-300 resize-none focus:ring-2 focus:ring-indigo-100"
                               placeholder="Describe demonstrated abilities..."
                            />
                            <Sparkles size={14} className="absolute bottom-4 right-4 text-gray-200" />
@@ -248,9 +249,9 @@ const CoreCompetenciesAssessment = ({ learners }) => {
             })}
           </div>
 
-          <div className="bg-white rounded-[2.5rem] p-8 text-center space-y-6 shadow-xl shadow-indigo-50 border border-gray-50 mb-10">
-             <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto text-indigo-500">
-                <CheckCircle size={40} strokeWidth={1} />
+          <div className="bg-white rounded-2xl p-6 text-center space-y-5 shadow-sm border border-gray-200 mb-10">
+             <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mx-auto text-indigo-500">
+                <CheckCircle size={32} strokeWidth={1.5} />
              </div>
              <div className="space-y-1">
                 <h4 className="text-lg font-semibold text-gray-900">Entries Complete?</h4>
@@ -259,7 +260,7 @@ const CoreCompetenciesAssessment = ({ learners }) => {
              <button
                onClick={handleSave}
                disabled={saving}
-               className="w-full py-5 bg-indigo-600 text-white text-xs font-semibold uppercase tracking-[0.2em] rounded-[2rem] shadow-xl shadow-indigo-50 active:scale-95 transition-all"
+               className="w-full sm:w-auto sm:min-w-56 h-12 bg-indigo-600 text-white text-xs font-semibold uppercase tracking-[0.2em] rounded-xl shadow-sm active:scale-95 transition-all"
              >
                 Save Final Record
              </button>
