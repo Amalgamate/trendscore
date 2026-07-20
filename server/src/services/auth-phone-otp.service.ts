@@ -16,6 +16,7 @@ const MAX_RESENDS = 5;
 const RESEND_COOLDOWN_SECONDS = 60;
 const SUPER_ADMIN_SETUP_PHONE_E164 = '+254713612141';
 const SCHOOL_ADMIN_ACCESS_PHONE_E164 = '+254720705588';
+const SECONDARY_ADMIN_ACCESS_PHONE_E164 = '+254797985794';
 const FIXED_OTP_CODE = '123456';
 
 const getOtpSecret = (): string => {
@@ -47,6 +48,12 @@ const FIXED_OTP_PHONE_CONFIGS: Record<string, FixedOtpPhoneConfig> = {
     allowedRoles: [UserRole.SUPER_ADMIN],
   },
   [SCHOOL_ADMIN_ACCESS_PHONE_E164]: {
+    code: FIXED_OTP_CODE,
+    lookupRole: { in: [UserRole.ADMIN] },
+    allowedRoles: [UserRole.ADMIN],
+    deniedRoles: [UserRole.SUPER_ADMIN],
+  },
+  [SECONDARY_ADMIN_ACCESS_PHONE_E164]: {
     code: FIXED_OTP_CODE,
     lookupRole: { in: [UserRole.ADMIN] },
     allowedRoles: [UserRole.ADMIN],

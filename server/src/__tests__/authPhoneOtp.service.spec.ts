@@ -323,6 +323,34 @@ describe('AuthPhoneOtpService', () => {
     });
   });
 
+  it('uses and exposes the fixed access OTP for the secondary admin phone', async () => {
+    mockedPrisma.user.findMany.mockResolvedValue([{ id: 'school-admin-1', role: 'ADMIN', roles: ['ADMIN'] }]);
+    mockedPrisma.authOtpChallenge.findFirst.mockResolvedValue(null);
+    mockedPrisma.authOtpChallenge.create.mockResolvedValue({
+      id: 'challenge-secondary-admin',
+      expiresAt: new Date('2026-06-28T12:10:00.000Z'),
+    });
+    mockedPrisma.authOtpChallenge.update.mockResolvedValue({});
+
+    const result = await service.requestParentOtp({ phone: '+254 797 985794' });
+
+    expect(mockedPrisma.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        role: { in: ['ADMIN'] },
+        status: 'ACTIVE',
+        archived: false,
+      }),
+    }));
+    const updateCall = mockedPrisma.authOtpChallenge.update.mock.calls[0][0];
+    expect(updateCall.data.codeHash).toBe(hashOtpCode('123456', 'challenge-secondary-admin'));
+    expect(mockedSms.sendSms).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      phone: '+254797985794',
+      devOtp: '123456',
+      autofillAllowed: true,
+    });
+  });
+
   it('enforces resend cooldown for pending challenges', async () => {
     mockedPrisma.authOtpChallenge.findFirst.mockResolvedValue({
       id: 'challenge-1',
