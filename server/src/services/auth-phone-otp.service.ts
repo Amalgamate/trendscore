@@ -159,11 +159,11 @@ export class AuthPhoneOtpService {
       },
     });
 
-    if (latestChallenge?.lockedUntil && latestChallenge.lockedUntil > new Date()) {
+    if (!fixedOtpConfig && latestChallenge?.lockedUntil && latestChallenge.lockedUntil > new Date()) {
       throw new ApiError(429, 'Too many OTP requests. Please try again later.');
     }
 
-    if (latestChallenge?.lastSentAt) {
+    if (!fixedOtpConfig && latestChallenge?.lastSentAt) {
       const elapsedSeconds = Math.floor((Date.now() - latestChallenge.lastSentAt.getTime()) / 1000);
       if (elapsedSeconds < RESEND_COOLDOWN_SECONDS) {
         throw new ApiError(429, `Please wait ${RESEND_COOLDOWN_SECONDS - elapsedSeconds} seconds before requesting a new OTP`);
@@ -192,7 +192,7 @@ export class AuthPhoneOtpService {
         codeHash: 'pending',
         expiresAt,
         maxAttempts: MAX_ATTEMPTS,
-        resendCount: latestChallenge ? latestChallenge.resendCount + 1 : 0,
+        resendCount: !fixedOtpConfig && latestChallenge ? latestChallenge.resendCount + 1 : 0,
         maxResends: MAX_RESENDS,
         ipAddress: params.ipAddress || null,
         userAgent: params.userAgent || null,
