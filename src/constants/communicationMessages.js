@@ -38,6 +38,11 @@ export const COMMUNICATION_DEFAULTS = {
   }
 };
 
+export const SMS_PROVIDER_BASE_URLS = {
+  africastalking: 'https://api.africastalking.com/version1/messaging',
+  mobilesasa: 'https://api.mobilesasa.com'
+};
+
 export const TEST_MESSAGES = {
   sms: import.meta.env.VITE_TEST_SMS_MESSAGE || `This is a test message from ${PRODUCT_DISPLAY_NAME}.`,
   email: {

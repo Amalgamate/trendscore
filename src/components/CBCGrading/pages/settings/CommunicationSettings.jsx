@@ -12,7 +12,7 @@ import {
 import ModuleTabNav from '../../shared/ModuleTabNav';
 import { useNotifications } from '../../hooks/useNotifications';
 import { communicationAPI, notificationAPI } from '../../../../services/api';
-import { COMMUNICATION_DEFAULTS, TEST_MESSAGES } from '../../../../constants/communicationMessages';
+import { COMMUNICATION_DEFAULTS, SMS_PROVIDER_BASE_URLS, TEST_MESSAGES } from '../../../../constants/communicationMessages';
 import { PRODUCT_DISPLAY_NAME } from '../../../../config/productIdentity';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -995,6 +995,7 @@ const CommunicationSettings = () => {
                     setSmsSettings({
                       ...smsSettings,
                       provider: newProvider,
+                      baseUrl: SMS_PROVIDER_BASE_URLS[newProvider] || '',
                       apiKey: '', // Clear API key on switch
                       hasApiKey: false, // Force user to re-enter
                       username: '' // Clear AT username

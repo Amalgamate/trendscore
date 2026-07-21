@@ -247,8 +247,16 @@ export const saveCommunicationConfig = async (req: AuthRequest, res: Response) =
             hasSenderId: !!sms.senderId
         });
 
-        data.smsProvider = sms.provider || 'mobilesasa';
-        data.smsBaseUrl = normalizeOptionalString(sms.baseUrl) || 'https://api.mobilesasa.com';
+        const smsProvider = normalizeOptionalString(sms.provider)?.toLowerCase() || 'mobilesasa';
+        const canonicalBaseUrls: Record<string, string> = {
+            africastalking: 'https://api.africastalking.com/version1/messaging',
+            mobilesasa: 'https://api.mobilesasa.com'
+        };
+
+        data.smsProvider = smsProvider;
+        data.smsBaseUrl = canonicalBaseUrls[smsProvider]
+            || normalizeOptionalString(sms.baseUrl)
+            || 'https://api.mobilesasa.com';
         data.smsEnabled = sms.enabled !== undefined ? sms.enabled : true;
         data.smsSenderId = normalizeOptionalString(sms.senderId);
 
