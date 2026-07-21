@@ -66,6 +66,16 @@ const processQueue = (error, token = null) => {
     failedQueue = [];
 };
 
+const isAuthenticationAttempt = (url = '') => [
+    '/auth/login',
+    '/auth/otp/request',
+    '/auth/otp/verify',
+    '/auth/phone-otp/request',
+    '/auth/phone-otp/verify',
+    '/auth/student-phone/lookup',
+    '/auth/student-phone/login',
+].some((path) => url.includes(path));
+
 // ── Response interceptor ──────────────────────────────────────────────────────
 axiosInstance.interceptors.response.use(
     (response) => response,
@@ -81,8 +91,10 @@ axiosInstance.interceptors.response.use(
 
             // If the failure was on the refresh or login endpoint itself, don't attempt refresh
             const requestUrl = originalRequest.url || '';
-            if (requestUrl.includes('/auth/refresh') || requestUrl.includes('/auth/login')) {
-                _clearAuth();
+            if (isAuthenticationAttempt(requestUrl)) {
+                return Promise.reject(error);
+            }
+            if (requestUrl.includes('/auth/refresh')) {
                 return Promise.reject(error);
             }
 

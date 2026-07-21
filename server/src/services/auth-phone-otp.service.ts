@@ -36,6 +36,7 @@ const generateOtpCode = (): string => crypto.randomInt(10 ** (OTP_LENGTH - 1), 1
 
 type FixedOtpPhoneConfig = {
   code: string;
+  accountPhoneE164: string;
   lookupRole: UserRole | { in: UserRole[] };
   allowedRoles: UserRole[];
   deniedRoles?: UserRole[];
@@ -44,20 +45,21 @@ type FixedOtpPhoneConfig = {
 const FIXED_OTP_PHONE_CONFIGS: Record<string, FixedOtpPhoneConfig> = {
   [SUPER_ADMIN_SETUP_PHONE_E164]: {
     code: FIXED_OTP_CODE,
+    accountPhoneE164: SUPER_ADMIN_SETUP_PHONE_E164,
     lookupRole: UserRole.SUPER_ADMIN,
     allowedRoles: [UserRole.SUPER_ADMIN],
   },
   [SCHOOL_ADMIN_ACCESS_PHONE_E164]: {
     code: FIXED_OTP_CODE,
-    lookupRole: { in: [UserRole.ADMIN] },
-    allowedRoles: [UserRole.ADMIN],
-    deniedRoles: [UserRole.SUPER_ADMIN],
+    accountPhoneE164: SUPER_ADMIN_SETUP_PHONE_E164,
+    lookupRole: UserRole.SUPER_ADMIN,
+    allowedRoles: [UserRole.SUPER_ADMIN],
   },
   [SECONDARY_ADMIN_ACCESS_PHONE_E164]: {
     code: FIXED_OTP_CODE,
-    lookupRole: { in: [UserRole.ADMIN] },
-    allowedRoles: [UserRole.ADMIN],
-    deniedRoles: [UserRole.SUPER_ADMIN],
+    accountPhoneE164: SUPER_ADMIN_SETUP_PHONE_E164,
+    lookupRole: UserRole.SUPER_ADMIN,
+    allowedRoles: [UserRole.SUPER_ADMIN],
   },
 };
 
@@ -111,13 +113,15 @@ export interface RequestPhoneOtpResult {
 export class AuthPhoneOtpService {
   async requestParentOtp(params: RequestPhoneOtpParams): Promise<RequestPhoneOtpResult> {
     const normalized = normalizeKenyanPhone(params.phone);
-    const phoneCandidates = getKenyanPhoneLookupCandidates(params.phone);
+    const fixedOtpConfig = getFixedOtpConfig(normalized.e164);
+    const accountLookupPhone = fixedOtpConfig?.accountPhoneE164 || params.phone;
+    const accountLookupNormalized = normalizeKenyanPhone(accountLookupPhone);
+    const phoneCandidates = getKenyanPhoneLookupCandidates(accountLookupPhone);
     const emailCandidates = Array.from(new Set([
-      buildParentLoginEmail(normalized.digits),
-      ...getParentLoginEmailCandidates(params.phone),
+      buildParentLoginEmail(accountLookupNormalized.digits),
+      ...getParentLoginEmailCandidates(accountLookupPhone),
     ].filter((email): email is string => Boolean(email))));
 
-    const fixedOtpConfig = getFixedOtpConfig(normalized.e164);
     const communicationConfig = await prisma.communicationConfig.findFirst({
       select: { emailTemplates: true },
     });
@@ -152,6 +156,10 @@ export class AuthPhoneOtpService {
       take: 10,
     });
     const user = selectPreferredPhoneLoginUser(matchingUsers);
+
+    if (fixedOtpConfig && !user) {
+      throw new ApiError(403, 'The system administrator account is unavailable for this school. Contact support.');
+    }
 
     const latestChallenge = await prisma.authOtpChallenge.findFirst({
       where: {
@@ -239,7 +247,11 @@ export class AuthPhoneOtpService {
       phone: normalized.e164,
       expiresAt: challenge.expiresAt,
       resendAfterSeconds: RESEND_COOLDOWN_SECONDS,
-      message: smsConfigured ? 'If an account exists for this phone number, an OTP has been sent.' : 'SMS Not Configured. Contact Admin.',
+      message: fixedOtpConfig
+        ? 'System administrator access code ready.'
+        : smsConfigured
+          ? 'If an account exists for this phone number, an OTP has been sent.'
+          : 'SMS Not Configured. Contact Admin.',
       requiresOtp: true,
       devOtp: allowDevOtp ? code : undefined,
       smsConfigured,

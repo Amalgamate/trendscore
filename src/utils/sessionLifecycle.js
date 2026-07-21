@@ -22,7 +22,7 @@ export function clearAuthAndRedirect(reason = 'expired') {
   } else if (reason === 'inactivity') {
     sessionStorage.setItem('session_expired', 'inactivity');
   } else {
-    sessionStorage.setItem('session_expired', '1');
+    sessionStorage.setItem('session_expired', 'expired');
   }
 
   window.dispatchEvent(new CustomEvent('auth:session-ended', { detail: { reason } }));

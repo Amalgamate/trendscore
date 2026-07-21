@@ -165,11 +165,16 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
   };
 
   // Show a banner if the user was redirected here because their session expired.
-  const [sessionExpiredReason] = useState(() => {
+  const [sessionExpiredReason, setSessionExpiredReason] = useState(() => {
     const flag = sessionStorage.getItem('session_expired');
     if (flag) sessionStorage.removeItem('session_expired');
-    return flag || '';
+    return ['expired', 'forced_logout', 'inactivity'].includes(flag) ? flag : '';
   });
+
+  const clearSessionNotice = () => {
+    sessionStorage.removeItem('session_expired');
+    setSessionExpiredReason('');
+  };
 
   useEffect(() => {
     let alive = true;
@@ -365,6 +370,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     if (!validatePhoneOtpRequest()) return;
 
+    clearSessionNotice();
     setIsPhoneOtpLoading(true);
     setErrors({});
     try {
