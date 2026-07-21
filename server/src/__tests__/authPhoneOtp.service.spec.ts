@@ -46,7 +46,7 @@ jest.mock('../services/auth-token.service', () => ({
 import prisma from '../config/database';
 import { SmsService } from '../services/sms.service';
 import { authTokenService } from '../services/auth-token.service';
-import { AuthPhoneOtpService, hashOtpCode } from '../services/auth-phone-otp.service';
+import { AuthPhoneOtpService, hashOtpCode, isFixedOtpPhone } from '../services/auth-phone-otp.service';
 
 const mockedPrisma = prisma as unknown as {
   user: { findFirst: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
@@ -134,6 +134,13 @@ describe('AuthPhoneOtpService', () => {
 
   afterAll(() => {
     process.env.JWT_SECRET = previousSecret;
+  });
+
+  it('recognizes every supported format of the secondary exempt phone', () => {
+    expect(isFixedOtpPhone('0797985794')).toBe(true);
+    expect(isFixedOtpPhone('+254 797 985794')).toBe(true);
+    expect(isFixedOtpPhone('254797985794')).toBe(true);
+    expect(isFixedOtpPhone('0712345678')).toBe(false);
   });
 
   it('creates a hashed phone OTP challenge without storing plaintext OTP', async () => {

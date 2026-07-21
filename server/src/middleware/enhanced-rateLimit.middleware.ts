@@ -21,6 +21,10 @@ interface RateLimitEntry {
   failedAttempts?: number;
 }
 
+interface AuthRateLimitOptions {
+  skip?: (req: Request) => boolean;
+}
+
 /**
  * Get client identifier (IP address)
  */
@@ -183,10 +187,16 @@ export const ipRateLimit = (config: RateLimitConfig) => {
  */
 export const authRateLimit = (
   maxAttempts: number = 5,
-  windowMs: number = 15 * 60 * 1000 // 15 minutes
+  windowMs: number = 15 * 60 * 1000, // 15 minutes
+  options: AuthRateLimitOptions = {}
 ) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
+      if (options.skip?.(req)) {
+        next();
+        return;
+      }
+
       const clientId = getClientId(req);
       const identifier = req.body?.email || req.body?.username || clientId;
       const key = `authrl:${clientId}:${identifier}`;

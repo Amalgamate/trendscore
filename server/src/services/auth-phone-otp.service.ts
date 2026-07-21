@@ -65,6 +65,16 @@ const getFixedOtpConfig = (phoneE164: string): FixedOtpPhoneConfig | undefined =
   return FIXED_OTP_PHONE_CONFIGS[phoneE164 as keyof typeof FIXED_OTP_PHONE_CONFIGS];
 };
 
+export const isFixedOtpPhone = (phone: unknown): boolean => {
+  if (typeof phone !== 'string' || !phone.trim()) return false;
+
+  try {
+    return Boolean(getFixedOtpConfig(normalizeKenyanPhone(phone).e164));
+  } catch {
+    return false;
+  }
+};
+
 const userMatchesFixedOtpConfig = (userRoles: string[], config: FixedOtpPhoneConfig): boolean => {
   const hasAllowedRole = config.allowedRoles.some((role) => userRoles.includes(role));
   const hasDeniedRole = config.deniedRoles?.some((role) => userRoles.includes(role)) ?? false;
