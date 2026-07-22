@@ -1378,10 +1378,13 @@ export const deleteSummativeTest = async (req: AuthRequest, res: Response) => {
     const isSuperAdmin = req.user?.role === 'SUPER_ADMIN';
 
     if (isSuperAdmin) {
-      await prisma.$transaction([
-        prisma.summativeResult.deleteMany({ where: { testId: id } }),
-        prisma.summativeTest.delete({ where: { id } })
-      ]);
+      await prisma.$transaction(async (tx) => {
+        await tx.summativeResultHistory.deleteMany({
+          where: { result: { testId: id } }
+        });
+        await tx.summativeResult.deleteMany({ where: { testId: id } });
+        await tx.summativeTest.delete({ where: { id } });
+      });
 
       await redisCacheService.deleteByPrefix('tests:');
       await redisCacheService.delete(`test:${id}`);
@@ -1447,10 +1450,13 @@ export const deleteSummativeTestsBulk = async (req: AuthRequest, res: Response) 
     const isSuperAdmin = req.user?.role === 'SUPER_ADMIN';
 
     if (isSuperAdmin) {
-      await prisma.$transaction([
-        prisma.summativeResult.deleteMany({ where: { testId: { in: ids } } }),
-        prisma.summativeTest.deleteMany({ where: { id: { in: ids } } })
-      ]);
+      await prisma.$transaction(async (tx) => {
+        await tx.summativeResultHistory.deleteMany({
+          where: { result: { testId: { in: ids } } }
+        });
+        await tx.summativeResult.deleteMany({ where: { testId: { in: ids } } });
+        await tx.summativeTest.deleteMany({ where: { id: { in: ids } } });
+      });
       res.json({ success: true, message: 'Tests permanently deleted' });
     } else {
       await prisma.summativeTest.updateMany({

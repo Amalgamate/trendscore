@@ -1265,7 +1265,7 @@ model SummativeResultHistory {
   changeTimestamp DateTime        @default(now())
   reason          String?
   changer         User            @relation("ChangedBy", fields: [changedBy], references: [id])
-  result          SummativeResult @relation(fields: [resultId], references: [id])
+  result          SummativeResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
 
   @@index([resultId])
   @@index([changedBy])

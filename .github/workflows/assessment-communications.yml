@@ -5,7 +5,10 @@ on:
   pull_request:
     paths:
       - 'server/src/controllers/notification.controller.ts'
+      - 'server/src/controllers/assessmentController.ts'
       - 'server/src/routes/notification.routes.ts'
+      - 'server/prisma/schema.prisma'
+      - 'server/prisma/migrations/**'
       - 'server/src/services/assessment-sms-delivery.service.ts'
       - 'server/src/__tests__/assessmentSmsDelivery.service.spec.ts'
       - 'src/components/CBCGrading/pages/SummativeReport.jsx'
@@ -16,7 +19,10 @@ on:
     branches: [main]
     paths:
       - 'server/src/controllers/notification.controller.ts'
+      - 'server/src/controllers/assessmentController.ts'
       - 'server/src/routes/notification.routes.ts'
+      - 'server/prisma/schema.prisma'
+      - 'server/prisma/migrations/**'
       - 'server/src/services/assessment-sms-delivery.service.ts'
       - 'server/src/__tests__/assessmentSmsDelivery.service.spec.ts'
       - 'src/components/CBCGrading/pages/SummativeReport.jsx'
@@ -39,6 +45,20 @@ jobs:
       JWT_SECRET: ci_dummy_jwt_secret_minimum_32_chars________
       JWT_REFRESH_SECRET: ci_dummy_refresh_secret_minimum_32_chars_
       ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: trendscore_assessment_sms_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d trendscore_assessment_sms_ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -62,6 +82,10 @@ jobs:
       - name: Generate Prisma client
         working-directory: server
         run: npx prisma generate
+
+      - name: Apply migrations to clean PostgreSQL
+        working-directory: server
+        run: npx prisma migrate deploy
 
       - name: Typecheck server
         working-directory: server
