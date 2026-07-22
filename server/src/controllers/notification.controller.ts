@@ -402,6 +402,20 @@ export class NotificationController {
     });
   }
 
+  async previewAssessmentReportSmsBulk(req: AuthRequest, res: Response) {
+    const results = await assessmentSmsDeliveryService.preview(req.body.entries);
+    res.json({
+      success: true,
+      data: {
+        total: results.length,
+        valid: results.filter(result => result.valid).length,
+        invalid: results.filter(result => !result.valid).length,
+        totalParts: results.reduce((sum, result) => sum + (result.valid ? result.smsParts || 0 : 0), 0),
+        results,
+      },
+    });
+  }
+
   async retryAssessmentReportSms(req: AuthRequest, res: Response) {
     try {
       const result = await assessmentSmsDeliveryService.retry(req.params.auditId, req.user?.userId);

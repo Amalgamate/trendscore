@@ -87,6 +87,25 @@ describe('AssessmentSmsDeliveryService', () => {
     }));
   });
 
+  it('previews the exact resolved recipients and messages without sending or auditing', async () => {
+    db.learner.findMany.mockResolvedValue([
+      learner('one', '0711111111'),
+      learner('two'),
+    ]);
+
+    const result = await service.preview([
+      { learnerId: 'one', message: 'Mathematics: 72% ME' },
+      { learnerId: 'two', message: 'Mathematics: X' },
+    ]);
+
+    expect(result).toEqual([
+      expect.objectContaining({ learnerId: 'one', phone: '0711111111', message: 'Mathematics: 72% ME', valid: true, smsParts: 1 }),
+      expect.objectContaining({ learnerId: 'two', phone: '', message: 'Mathematics: X', valid: false }),
+    ]);
+    expect(sendSms).not.toHaveBeenCalled();
+    expect(db.assessmentSmsAudit.create).not.toHaveBeenCalled();
+  });
+
   it('retries a failed audit using the latest learner phone when the original was missing', async () => {
     db.assessmentSmsAudit.findUnique.mockResolvedValue({
       id: 'audit-missing',

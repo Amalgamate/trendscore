@@ -13,6 +13,8 @@ export const notificationAPI = {
     fetchWithAuth('/notifications/sms/assessment-report', { method: 'POST', body: JSON.stringify(data) }),
   sendAssessmentReportSmsBulk: async (data) =>
     fetchWithAuth('/notifications/sms/assessment-report/bulk', { method: 'POST', body: JSON.stringify(data) }),
+  previewAssessmentReportSmsBulk: async (data) =>
+    fetchWithAuth('/notifications/sms/assessment-report/bulk/preview', { method: 'POST', body: JSON.stringify(data) }),
   retryAssessmentReportSms: async (auditId) =>
     fetchWithAuth(`/notifications/sms/assessment-report/${encodeURIComponent(auditId)}/retry`, { method: 'POST' }),
   logCommunication: async (data) =>

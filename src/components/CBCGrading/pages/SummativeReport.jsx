@@ -19,6 +19,7 @@ import { getLearningAreasByGrade } from '../../../constants/learningAreas';
 import { useSchoolData } from '../../../contexts/SchoolDataContext';
 import { reportAPI } from '../../../services/api/report.api';
 import { getSchoolDisplayName } from '../../../utils/schoolDisplayName';
+import { buildAssessmentSmsMetrics } from '../../../utils/assessmentSmsFormatter';
 import { getAcademicYearOptions, getCurrentAcademicYear, getCurrentTerm } from '../utils/academicYear';
 import { resolveTestType, formatTestTypeLabel, compareTestTypes } from '../utils/testType';
 import Toast from '../shared/Toast';
@@ -1249,6 +1250,8 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
   const [smsPreviewData, setSmsPreviewData] = useState(null);
   const [editedPhoneNumber, setEditedPhoneNumber] = useState('');
   const [showSMSBulkConfirm, setShowSMSBulkConfirm] = useState(false);
+  const [bulkSmsPreviewData, setBulkSmsPreviewData] = useState(null);
+  const [bulkSmsEntries, setBulkSmsEntries] = useState([]);
   const [smsProgress, setSmsProgress] = useState({ current: 0, total: 0, success: 0, failed: 0 });
 
   // WhatsApp sending state
@@ -1986,25 +1989,17 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     const schoolName = getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, user?.schoolName, { fallback: 'School' });
 
     const results = row.results || [];
-    const totalMarks = results.reduce((sum, r) => sum + (r.score || 0), 0);
-    const maxPossibleMarks = results.reduce((sum, r) => sum + (r.totalMarks || 0), 0);
-    const averageScore = row.averageScore || row.averagePct || (maxPossibleMarks > 0 ? ((totalMarks / maxPossibleMarks) * 100).toFixed(1) : 0);
+    const { averageScore, subjects } = buildAssessmentSmsMetrics(row);
     const { grade: overallGrade } = getConfiguredCBCGrade(parseFloat(averageScore));
 
-    const processedSmsTests = new Set();
     const { pathways, recommended } = calculatePathwayInsights(results);
 
-    const subjects = results.reduce((acc, r) => {
-      const area = (r.learningArea || r.test?.learningArea || 'General').trim().toUpperCase();
-      if (!acc[area]) acc[area] = { score: 0, total: 0 };
-      acc[area].score += (r.score || 0);
-      acc[area].total += (r.totalMarks || 0);
-      return acc;
-    }, {});
-
-    const subjectsList = Object.entries(subjects).map(([name, detail]) => {
-      const shortName = getAbbreviatedName(name);
-      const pct = detail.total > 0 ? Math.round((detail.score / detail.total) * 100) : 0;
+    const subjectsList = subjects.map((subject) => {
+      const shortName = getAbbreviatedName(subject.name);
+      if (subject.missing || (subject.displayCode && subject.displayCode !== 'PRESENT')) {
+        return `${shortName}: ${subject.displayCode || 'X'}`;
+      }
+      const pct = subject.percentage;
       const { grade } = getConfiguredCBCGrade(pct);
       return `${shortName}: ${pct}% ${grade.replace(/\d+/g, '')}`;
     }).join('\n');
@@ -2268,8 +2263,24 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       return;
     }
 
-    // Show confirmation modal instead of browser alert
-    setShowSMSBulkConfirm(true);
+    const rowsToProcess = selectedReportRows.length > 0
+      ? selectedReportRows.map(idx => reportData.rows[idx])
+      : reportData.rows;
+    const entries = rowsToProcess.map(row => ({ learnerId: row.learner.id, message: formatSmsReport(row) }));
+
+    try {
+      const response = await api.notifications.previewAssessmentReportSmsBulk({
+        term: selectedTerm,
+        academicYear: Number(setup.academicYear || academicYear || new Date().getFullYear()),
+        entries,
+      });
+      setBulkSmsEntries(entries);
+      setBulkSmsPreviewData(response?.data || null);
+      setShowSMSBulkConfirm(true);
+    } catch (error) {
+      console.error('Unable to prepare assessment SMS preview:', error);
+      showError(error.message || 'Unable to prepare SMS preview. Nothing was sent.');
+    }
   };
 
   /**
@@ -2289,9 +2300,8 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       const response = await api.notifications.sendAssessmentReportSmsBulk({
         term: selectedTerm,
         academicYear: Number(setup.academicYear || academicYear || new Date().getFullYear()),
-        entries: rowsToProcess.map(row => ({
-          learnerId: row.learner.id,
-          message: formatSmsReport(row),
+        entries: bulkSmsEntries.map(entry => ({
+          ...entry,
           ...(testNumber ? { phoneOverride: testNumber } : {}),
         })),
       });
@@ -4399,7 +4409,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       {
         (showSMSBulkConfirm || bulkProgress.active) && (
           <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
-            <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md border border-gray-100">
+            <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-4xl border border-gray-100 max-h-[90vh] overflow-y-auto">
 
               {!bulkProgress.active ? (
                 <>
@@ -4408,15 +4418,35 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                     Start Bulk SMS?
                   </h3>
                   <p className="text-gray-600 mb-4 text-sm">
-                    You are about to send report summaries to <strong>{selectedReportRows.length > 0 ? selectedReportRows.length : reportData.rows.length}</strong> parents via SMS.
+                    Review the exact recipient and message content below. Nothing is sent until you click <strong>Send Verified Messages</strong>.
                   </p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4 text-xs">
+                    <div className="rounded bg-slate-100 p-2"><strong>{bulkSmsPreviewData?.total || 0}</strong><br />Learners</div>
+                    <div className="rounded bg-green-50 text-green-800 p-2"><strong>{bulkSmsPreviewData?.valid || 0}</strong><br />Valid phones</div>
+                    <div className="rounded bg-red-50 text-red-800 p-2"><strong>{bulkSmsPreviewData?.invalid || 0}</strong><br />Missing phones</div>
+                    <div className="rounded bg-blue-50 text-blue-800 p-2"><strong>{bulkSmsPreviewData?.totalParts || 0}</strong><br />Estimated parts</div>
+                  </div>
+                  <div className="border rounded-lg mb-4 max-h-80 overflow-y-auto divide-y bg-slate-50">
+                    {(bulkSmsPreviewData?.results || []).map((preview, index) => (
+                      <details key={`${preview.learnerId}-${index}`} className="p-3 bg-white" open={index === 0}>
+                        <summary className="cursor-pointer text-sm font-medium flex flex-wrap justify-between gap-2">
+                          <span>{index + 1}. {preview.learnerName}</span>
+                          <span className={preview.valid ? 'text-green-700' : 'text-red-700'}>
+                            {preview.phone || preview.error}
+                          </span>
+                        </summary>
+                        <pre className="mt-3 whitespace-pre-wrap text-xs font-mono bg-slate-50 border rounded p-3 text-slate-800">{preview.message}</pre>
+                        <div className="mt-1 text-[10px] text-slate-500 text-right">{preview.smsParts || 0} SMS part(s)</div>
+                      </details>
+                    ))}
+                  </div>
                   <div className="bg-blue-50 border border-blue-200 p-3 rounded mb-4 text-xs text-blue-800 font-medium">
                     <div className="flex items-start gap-2">
                       <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
                       <div>
                         <div className="font-medium mb-1">Cost Estimate</div>
-                        <div>Approx. {Math.ceil((selectedReportRows.length > 0 ? selectedReportRows.length : reportData.rows.length) * 2)} SMS parts will be sent.</div>
-                        <div className="text-[10px] text-blue-600 mt-1 italic">Each report is ~2-3 SMS parts (160 chars each)</div>
+                        <div>Exactly {bulkSmsPreviewData?.totalParts || 0} estimated SMS parts for recipients with valid phone numbers.</div>
+                        <div className="text-[10px] text-blue-600 mt-1 italic">Expand every learner above to verify scores and message text.</div>
                       </div>
                     </div>
                   </div>
@@ -4446,7 +4476,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                       }}
                       className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium text-sm shadow-lg shadow-blue-200 transition transform hover:scale-105"
                     >
-                      Start Sending
+                      Send Verified Messages
                     </button>
                   </div>
                 </>

@@ -142,6 +142,15 @@ router.post(
 );
 
 router.post(
+  '/sms/assessment-report/bulk/preview',
+  authenticate,
+  requirePermission('SEND_MESSAGES'),
+  rateLimit({ windowMs: 60_000, maxRequests: 30 }),
+  validate(sendAssessmentReportBulkSchema),
+  asyncHandler(notificationController.previewAssessmentReportSmsBulk.bind(notificationController))
+);
+
+router.post(
   '/sms/assessment-report/bulk',
   authenticate,
   requirePermission('SEND_MESSAGES'),

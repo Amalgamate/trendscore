@@ -37,6 +37,33 @@ const learnerName = (learner: any): string =>
   [learner?.firstName, learner?.middleName, learner?.lastName].filter(Boolean).join(' ');
 
 export class AssessmentSmsDeliveryService {
+  async preview(entries: AssessmentSmsEntry[]) {
+    const learnerIds = [...new Set(entries.map(entry => entry.learnerId))];
+    const learners = await prisma.learner.findMany({
+      where: { id: { in: learnerIds }, archived: false },
+      include: { parent: { select: { firstName: true, lastName: true, phone: true } } },
+    });
+    const learnerMap = new Map(learners.map(learner => [learner.id, learner]));
+
+    return entries.map((entry) => {
+      const learner = learnerMap.get(entry.learnerId);
+      if (!learner) {
+        return { learnerId: entry.learnerId, learnerName: 'Unknown learner', phone: '', message: entry.message, valid: false, error: 'Learner not found' };
+      }
+      const phone = resolveLearnerPhone(learner, entry.phoneOverride);
+      return {
+        learnerId: learner.id,
+        learnerName: learnerName(learner),
+        parentName: resolveParentName(learner),
+        phone,
+        message: entry.message,
+        smsParts: Math.max(1, Math.ceil(entry.message.length / 160)),
+        valid: Boolean(phone),
+        error: phone ? undefined : 'No parent or guardian phone number is configured',
+      };
+    });
+  }
+
   async sendBulk(request: AssessmentSmsBulkRequest) {
     const learnerIds = [...new Set(request.entries.map(entry => entry.learnerId))];
     const learners = await prisma.learner.findMany({

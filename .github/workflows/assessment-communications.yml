@@ -14,6 +14,8 @@ on:
       - 'src/components/CBCGrading/pages/SummativeReport.jsx'
       - 'src/components/CBCGrading/pages/MessageHistoryPage.jsx'
       - 'src/services/api/notification.api.js'
+      - 'src/utils/assessmentSmsFormatter.js'
+      - 'src/utils/assessmentSmsFormatter.test.js'
       - '.github/workflows/assessment-communications.yml'
   push:
     branches: [main]
@@ -28,6 +30,8 @@ on:
       - 'src/components/CBCGrading/pages/SummativeReport.jsx'
       - 'src/components/CBCGrading/pages/MessageHistoryPage.jsx'
       - 'src/services/api/notification.api.js'
+      - 'src/utils/assessmentSmsFormatter.js'
+      - 'src/utils/assessmentSmsFormatter.test.js'
       - '.github/workflows/assessment-communications.yml'
 
 concurrency:
@@ -101,6 +105,8 @@ jobs:
           src/components/CBCGrading/pages/SummativeReport.jsx
           src/components/CBCGrading/pages/MessageHistoryPage.jsx
           src/services/api/notification.api.js
+          src/utils/assessmentSmsFormatter.js
+          src/utils/assessmentSmsFormatter.test.js
 
       - name: Build production frontend
         run: npm run build
