@@ -118,6 +118,18 @@
       "compose_project": "zawadi-daawa-cs",
       "env_file": "/srv/zawadi/apps/env/.zawadi-daawa-cs.env",
       "public_domain": "daawa-cs.trendscore.co.ke"
+    },
+    {
+      "id": "barracks-comprehesive-school",
+      "aliases": ["barracks", "baracks"],
+      "label": "Barracks Comprehensive School",
+      "tier": "production",
+      "active": true,
+      "deployment_allowed": true,
+      "kind": "stack",
+      "compose_project": "zawadi-barracks-comprehesive-school",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-barracks-comprehesive-school.env",
+      "public_domain": "barracks-comprehesive-school.trendscore.co.ke"
     }
   ],
   "discovery": {
