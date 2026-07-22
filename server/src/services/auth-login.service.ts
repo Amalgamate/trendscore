@@ -129,7 +129,11 @@ export class AuthLoginService {
 
     const now = new Date();
     if (user.lockedUntil && user.lockedUntil > now) {
-      throw new ApiError(403, 'Account is locked');
+      const remainingMinutes = Math.max(1, Math.ceil((user.lockedUntil.getTime() - now.getTime()) / 60_000));
+      throw new ApiError(
+        423,
+        `Account temporarily locked. Try again in ${remainingMinutes} minute${remainingMinutes === 1 ? '' : 's'}.`
+      ).withCode('ACCOUNT_LOCKED');
     }
 
     if (user.lockedUntil && user.lockedUntil <= now) {
@@ -157,7 +161,17 @@ export class AuthLoginService {
           lockedUntil: shouldLock ? new Date(Date.now() + PASSWORD_LOCKOUT_MINUTES * 60 * 1000) : null,
         },
       });
-      throw new ApiError(401, 'Invalid credentials');
+      const remainingAttempts = Math.max(0, MAX_PASSWORD_LOGIN_ATTEMPTS - nextAttempts);
+      if (shouldLock) {
+        throw new ApiError(
+          423,
+          `Account temporarily locked for ${PASSWORD_LOCKOUT_MINUTES} minutes after ${MAX_PASSWORD_LOGIN_ATTEMPTS} failed attempts.`
+        ).withCode('ACCOUNT_LOCKED');
+      }
+      throw new ApiError(
+        401,
+        `Invalid credentials. ${remainingAttempts} attempt${remainingAttempts === 1 ? '' : 's'} remaining before temporary lock.`
+      ).withCode('INVALID_CREDENTIALS');
     }
 
     if (user.status !== 'ACTIVE') throw new ApiError(403, 'Account is not active');

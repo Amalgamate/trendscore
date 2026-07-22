@@ -270,7 +270,7 @@ describe('AuthLoginService', () => {
       email: 'admin@example.test',
       password: 'hashed',
       status: 'ACTIVE',
-      loginAttempts: 2,
+      loginAttempts: 0,
       lockedUntil: null,
       role: 'ADMIN',
       roles: ['ADMIN'],
@@ -292,13 +292,14 @@ describe('AuthLoginService', () => {
       requestSchool: null,
     })).rejects.toMatchObject({
       statusCode: 401,
-      message: 'Invalid credentials',
+      code: 'INVALID_CREDENTIALS',
+      message: 'Invalid credentials. 4 attempts remaining before temporary lock.',
     });
 
     expect(mockedRedis.delete).toHaveBeenCalledWith('auth:v2:user:admin@example.test');
     expect(mockedPrisma.user.update).toHaveBeenCalledWith({
       where: { id: 'user-1' },
-      data: { loginAttempts: 3, lockedUntil: null },
+      data: { loginAttempts: 1, lockedUntil: null },
     });
     expect(mockedAuthTokenService.issueTokenPair).not.toHaveBeenCalled();
   });
@@ -330,8 +331,9 @@ describe('AuthLoginService', () => {
       password: 'wrong',
       requestSchool: null,
     })).rejects.toMatchObject({
-      statusCode: 401,
-      message: 'Invalid credentials',
+      statusCode: 423,
+      code: 'ACCOUNT_LOCKED',
+      message: 'Account temporarily locked for 15 minutes after 5 failed attempts.',
     });
 
     expect(mockedPrisma.user.update).toHaveBeenCalledWith({
@@ -366,8 +368,9 @@ describe('AuthLoginService', () => {
       password: 'secret123',
       requestSchool: null,
     })).rejects.toMatchObject({
-      statusCode: 403,
-      message: 'Account is locked',
+      statusCode: 423,
+      code: 'ACCOUNT_LOCKED',
+      message: 'Account temporarily locked. Try again in 5 minutes.',
     });
 
     expect(mockedBcrypt.compare).not.toHaveBeenCalled();

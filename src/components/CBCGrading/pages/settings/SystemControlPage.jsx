@@ -30,7 +30,7 @@ function clearLocalSessionAndRedirect() {
 
   document.cookie = 'accessToken=; Max-Age=0; path=/; SameSite=Lax';
   document.cookie = 'refreshToken=; Max-Age=0; path=/; SameSite=Lax';
-  sessionStorage.setItem('session_expired', '1');
+  sessionStorage.setItem('session_expired', 'expired');
   window.location.href = '/';
 }
 

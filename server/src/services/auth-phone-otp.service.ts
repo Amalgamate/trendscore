@@ -350,7 +350,11 @@ export class AuthPhoneOtpService {
     }
 
     if (user.lockedUntil && user.lockedUntil > new Date()) {
-      throw new ApiError(403, 'Account is locked');
+      const remainingMinutes = Math.max(1, Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60_000));
+      throw new ApiError(
+        423,
+        `Account temporarily locked. Try again in ${remainingMinutes} minute${remainingMinutes === 1 ? '' : 's'}.`
+      ).withCode('ACCOUNT_LOCKED');
     }
 
     await prisma.authOtpChallenge.update({

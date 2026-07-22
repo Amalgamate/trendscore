@@ -508,7 +508,7 @@ const AcademicSettings = () => {
       if (error.message && error.message.includes('already exists')) {
         showError('Stream name already exists');
       } else if (error.message && error.message.includes('Unauthorized')) {
-        showError('Session expired. Please log in again.');
+        showError('Your session is no longer valid. Please sign in again.');
       } else {
         showError(error.message || 'Failed to save stream. Please try again.');
       }

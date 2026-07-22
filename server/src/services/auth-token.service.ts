@@ -79,7 +79,7 @@ export class AuthTokenService {
       const decoded = verifyRefreshToken(refreshToken);
       if (await isTokenGloballyInvalidated(decoded)) {
         await this.revokeRefreshToken(refreshToken);
-        throw new ApiError(401, 'Session invalidated by administrator');
+        throw new ApiError(401, 'Session invalidated by administrator').withCode('FORCE_LOGOUT');
       }
 
       const user = await prisma.user.findUnique({ where: { id: decoded.userId } });

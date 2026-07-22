@@ -205,8 +205,10 @@ const FacilityManager = () => {
 
       if (error?.message?.includes('already exists')) {
         showError('Stream name already exists');
-      } else if (error?.message?.includes('Unauthorized') || error?.response?.status === 403) {
-        showError('Session expired. Please log in again.');
+      } else if (error?.response?.status === 403) {
+        showError('You do not have permission to perform this action.');
+      } else if (error?.response?.status === 401 || error?.message?.includes('Unauthorized')) {
+        showError('Your session is no longer valid. Please sign in again.');
       } else {
         showError(error?.response?.data?.error?.message || error?.message || 'Failed to save stream. Please try again.');
       }

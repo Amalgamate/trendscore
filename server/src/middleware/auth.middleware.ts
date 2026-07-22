@@ -84,7 +84,9 @@ export const authenticate = async (
       console.error(`[Auth] Authentication failed: ${error.message} (Name: ${error.name})`);
     }
 
-    if (error.name === 'TokenExpiredError') {
+    if (error instanceof ApiError) {
+      next(error);
+    } else if (error.name === 'TokenExpiredError') {
       next(new ApiError(401, 'Token expired').withCode('TOKEN_EXPIRED'));
     } else if (error.name === 'JsonWebTokenError') {
       next(new ApiError(401, 'Invalid token').withCode('INVALID_TOKEN'));

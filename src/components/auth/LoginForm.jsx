@@ -1254,9 +1254,9 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
         <div className="w-full max-w-[20.5rem] sm:max-w-sm mb-2 sm:mb-3 flex items-start gap-2 px-3 py-2.5 sm:px-4 sm:py-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-800 text-xs sm:text-sm font-medium relative z-10">
           <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
           {sessionExpiredReason === 'forced_logout'
-            ? 'You were signed out by an administrator. Please complete the required onboarding and sign in again.'
+            ? 'You were signed out by an administrator. Please sign in again.'
             : sessionExpiredReason === 'inactivity'
-              ? 'You were signed out after 30 minutes of inactivity. Please sign in again.'
+              ? 'You were signed out after 24 hours of inactivity. Please sign in again.'
               : 'Your session has expired. Please sign in again.'}
         </div>
       )}

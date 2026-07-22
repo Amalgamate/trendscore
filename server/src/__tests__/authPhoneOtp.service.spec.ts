@@ -684,8 +684,9 @@ describe('AuthPhoneOtpService', () => {
       phone: '0712345678',
       code: '123456',
     })).rejects.toMatchObject({
-      statusCode: 403,
-      message: 'Account is locked',
+      statusCode: 423,
+      code: 'ACCOUNT_LOCKED',
+      message: 'Account temporarily locked. Try again in 1 minute.',
     });
 
     expect(mockedAuthTokenService.issueTokenPair).not.toHaveBeenCalled();

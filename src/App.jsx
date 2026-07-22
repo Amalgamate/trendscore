@@ -215,7 +215,7 @@ function AppContent() {
 
   // Session lifecycle guard:
   // - Polls the backend so force-logout takes effect even on idle open tabs.
-  // - Logs out locally after 30 minutes of inactivity.
+  // - Logs out locally after 24 hours of inactivity.
   useEffect(() => {
     if (!isAuthenticated || loading) return undefined;
 
