@@ -1138,6 +1138,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
   const bulkPrintAbortController = useRef(null);
   const [selectedReportRows, setSelectedReportRows] = useState([]); // Track selected rows for bulk action
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, active: false, success: 0, failed: 0 });
+  const bulkSmsRequestInFlight = useRef(false);
   const [singleDownloadData, setSingleDownloadData] = useState(null);
   const [bulkDownloadData, setBulkDownloadData] = useState(null);
   const [isSingleDownloading, setIsSingleDownloading] = useState(false);
@@ -2322,6 +2323,8 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
    * Execute Bulk SMS - Called after user confirms in modal
    */
   const executeBulkSMS = async (testNumber = null) => {
+    if (bulkSmsRequestInFlight.current) return;
+    bulkSmsRequestInFlight.current = true;
     setShowSMSBulkConfirm(false);
 
     // Determine target rows (selected or all)
@@ -2349,14 +2352,16 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
         failed: result.failed || 0,
       });
       if (result.failed > 0) {
-        showError(`${result.sent || 0} SMS sent; ${result.failed} failed. Open Communications → Message History for names, reasons, and retry.`);
+        showError(`${result.sent || 0} SMS sent; ${result.alreadySent || 0} already delivered; ${result.failed} failed. Open Communications → Message History for names, reasons, and retry.`);
       } else {
-        showSuccess(`${result.sent || 0} assessment SMS messages sent and logged.`);
+        showSuccess(`${result.sent || 0} SMS sent; ${result.alreadySent || 0} already delivered and safely skipped.`);
       }
     } catch (err) {
       console.error('Bulk assessment SMS failed:', err);
       setBulkProgress(prev => ({ ...prev, active: false, failed: prev.total }));
       showError(err.message || 'Bulk assessment SMS processing failed');
+    } finally {
+      bulkSmsRequestInFlight.current = false;
     }
   };
 
@@ -4455,9 +4460,10 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                   <p className="text-gray-600 mb-4 text-sm">
                     Review the exact recipient and message content below. Nothing is sent until you click <strong>Send Verified Messages</strong>.
                   </p>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4 text-xs">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4 text-xs">
                     <div className="rounded bg-slate-100 p-2"><strong>{bulkSmsPreviewData?.total || 0}</strong><br />Learners</div>
-                    <div className="rounded bg-green-50 text-green-800 p-2"><strong>{bulkSmsPreviewData?.valid || 0}</strong><br />Valid phones</div>
+                    <div className="rounded bg-green-50 text-green-800 p-2"><strong>{bulkSmsPreviewData?.sendable || 0}</strong><br />Ready to send</div>
+                    <div className="rounded bg-amber-50 text-amber-800 p-2"><strong>{bulkSmsPreviewData?.alreadySent || 0}</strong><br />Already delivered</div>
                     <div className="rounded bg-red-50 text-red-800 p-2"><strong>{bulkSmsPreviewData?.invalid || 0}</strong><br />Missing phones</div>
                     <div className="rounded bg-blue-50 text-blue-800 p-2"><strong>{bulkSmsPreviewData?.totalParts || 0}</strong><br />Estimated parts</div>
                   </div>
@@ -4466,8 +4472,8 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                       <details key={`${preview.learnerId}-${index}`} className="p-3 bg-white" open={index === 0}>
                         <summary className="cursor-pointer text-sm font-medium flex flex-wrap justify-between gap-2">
                           <span>{index + 1}. {preview.learnerName}</span>
-                          <span className={preview.valid ? 'text-green-700' : 'text-red-700'}>
-                            {preview.phone || preview.error}
+                          <span className={preview.alreadySent ? 'text-amber-700' : (preview.valid ? 'text-green-700' : 'text-red-700')}>
+                            {preview.alreadySent ? `Already delivered · ${preview.phone}` : (preview.phone || preview.error)}
                           </span>
                         </summary>
                         <pre className="mt-3 whitespace-pre-wrap text-xs font-mono bg-slate-50 border rounded p-3 text-slate-800">{preview.message}</pre>
@@ -4509,9 +4515,10 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                         const testNum = document.getElementById('sms-test-number').value;
                         executeBulkSMS(testNum || null);
                       }}
-                      className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium text-sm shadow-lg shadow-blue-200 transition transform hover:scale-105"
+                      disabled={!bulkSmsPreviewData?.sendable}
+                      className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-medium text-sm shadow-lg shadow-blue-200 transition transform hover:scale-105"
                     >
-                      Send Verified Messages
+                      Send {bulkSmsPreviewData?.sendable || 0} New Message{bulkSmsPreviewData?.sendable === 1 ? '' : 's'}
                     </button>
                   </div>
                 </>

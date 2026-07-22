@@ -397,20 +397,25 @@ export class NotificationController {
 
     res.json({
       success: true,
-      message: `Assessment SMS processing completed: ${result.sent} sent, ${result.failed} failed`,
+      message: `Assessment SMS processing completed: ${result.sent} sent, ${result.alreadySent} already delivered, ${result.failed} failed`,
       data: result,
     });
   }
 
   async previewAssessmentReportSmsBulk(req: AuthRequest, res: Response) {
-    const results = await assessmentSmsDeliveryService.preview(req.body.entries);
+    const results = await assessmentSmsDeliveryService.preview(req.body.entries, {
+      term: req.body.term,
+      academicYear: Number(req.body.academicYear),
+    });
     res.json({
       success: true,
       data: {
         total: results.length,
         valid: results.filter(result => result.valid).length,
         invalid: results.filter(result => !result.valid).length,
-        totalParts: results.reduce((sum, result) => sum + (result.valid ? result.smsParts || 0 : 0), 0),
+        alreadySent: results.filter(result => result.alreadySent).length,
+        sendable: results.filter(result => result.valid && !result.alreadySent).length,
+        totalParts: results.reduce((sum, result) => sum + (result.valid && !result.alreadySent ? result.smsParts || 0 : 0), 0),
         results,
       },
     });

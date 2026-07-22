@@ -6,6 +6,7 @@ jest.mock('../config/database', () => ({
       create: jest.fn(),
       update: jest.fn(),
       findUnique: jest.fn(),
+      findMany: jest.fn(),
     },
   },
 }));
@@ -48,6 +49,24 @@ describe('AssessmentSmsDeliveryService', () => {
       .mockResolvedValueOnce({ id: 'audit-2' })
       .mockResolvedValueOnce({ id: 'audit-3' });
     db.assessmentSmsAudit.update.mockResolvedValue({});
+    db.assessmentSmsAudit.findMany.mockResolvedValue([]);
+  });
+
+  it('skips an exact report that was already delivered in the same term and year', async () => {
+    db.learner.findMany.mockResolvedValue([learner('one', '0711111111')]);
+    db.assessmentSmsAudit.findMany.mockResolvedValue([{
+      id: 'sent-before', learnerId: 'one', parentPhone: '254711111111',
+      messageContent: 'Report one', sentAt: new Date('2026-07-22T08:36:00Z'),
+    }]);
+
+    const result = await service.sendBulk({
+      term: 'TERM_2', academicYear: 2026,
+      entries: [{ learnerId: 'one', message: 'Report one' }],
+    });
+
+    expect(result).toMatchObject({ total: 1, sent: 0, alreadySent: 1, failed: 0 });
+    expect(sendSms).not.toHaveBeenCalled();
+    expect(db.assessmentSmsAudit.create).not.toHaveBeenCalled();
   });
 
   it('durably records sent, provider-failed, and missing-phone attempts', async () => {
@@ -122,6 +141,32 @@ describe('AssessmentSmsDeliveryService', () => {
     expect(result).toMatchObject({ success: true, messageId: 'retry-provider-id' });
     expect(db.assessmentSmsAudit.update).toHaveBeenLastCalledWith(expect.objectContaining({
       data: expect.objectContaining({ smsStatus: 'SENT', failureReason: null }),
+    }));
+  });
+
+  it('reconciles a duplicate failure to an earlier delivery instead of resending it', async () => {
+    db.assessmentSmsAudit.findUnique.mockResolvedValue({
+      id: 'duplicate-failure',
+      learnerId: 'one',
+      channel: 'SMS',
+      parentPhone: '0711111111',
+      messageContent: 'Assessment report',
+      term: 'TERM_2',
+      academicYear: 2026,
+      learner: learner('one', '0711111111'),
+    });
+    db.assessmentSmsAudit.findMany.mockResolvedValue([{
+      id: 'original-delivery', learnerId: 'one', parentPhone: '254711111111',
+      messageContent: 'Assessment report', sentAt: new Date('2026-07-22T08:36:00Z'),
+    }]);
+
+    const result = await service.retry('duplicate-failure', 'admin-2');
+
+    expect(result).toMatchObject({ success: true, skipped: true, existingAuditId: 'original-delivery' });
+    expect(sendSms).not.toHaveBeenCalled();
+    expect(db.assessmentSmsAudit.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'duplicate-failure' },
+      data: expect.objectContaining({ smsStatus: 'SKIPPED' }),
     }));
   });
 });
