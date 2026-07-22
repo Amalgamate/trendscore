@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { X, Upload, Download, FileDown, AlertCircle, CheckCircle, Loader } from 'lucide-react';
 import axiosInstance, { API_BASE_URL } from '../../../../services/api/axiosConfig';
+import { getAuthItem } from '../../../../utils/authStorage';
 
 const BulkOperationsModal = ({
   isOpen,
@@ -134,7 +135,7 @@ const BulkOperationsModal = ({
   const handleExport = async () => {
     setExporting(true);
     try {
-      const token = localStorage.getItem('token');
+      const token = getAuthItem('token');
 
       if (!token) {
         alert('Authentication required. Please log in again.');

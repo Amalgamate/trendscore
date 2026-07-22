@@ -1,5 +1,6 @@
 
 import axiosInstance from './api/axiosConfig';
+import { getAuthItem } from '../utils/authStorage';
 
 export const supportAPI = {
     getTickets: async () => {
@@ -16,7 +17,7 @@ export const supportAPI = {
         // If guest (no token), use public endpoint
         // Check if token exists or if we passed isGuest flag (implicit via data fields maybe?)
         // Let's assume axios interceptor handles auth. If we want public, we must use public URL.
-        const token = localStorage.getItem('token');
+        const token = getAuthItem('token');
         const url = token ? '/support' : '/onboarding/support';
 
         // If public, we need CSRF token first (handled by axiosInstance automatically? No, only requests. 

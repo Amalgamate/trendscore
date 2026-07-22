@@ -270,20 +270,17 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
   };
 
   const finishLogin = (loginUserData, token, refreshToken) => {
+    const options = { rememberMe: formData.rememberMe === true };
     if (isMobile) {
-      setMobileRoleIntro({ user: loginUserData, token, refreshToken });
+      setMobileRoleIntro({ user: loginUserData, token, refreshToken, options });
       return;
     }
 
-    onLoginSuccess(loginUserData, token, refreshToken);
+    onLoginSuccess(loginUserData, token, refreshToken, options);
   };
 
   const completeBypassLogin = async (credentialsData, identifier = phoneOtp.phone) => {
     const { token, refreshToken, user } = credentialsData;
-    if (token) localStorage.setItem('token', token);
-    if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
-    if (formData.rememberMe) localStorage.setItem('authToken', token);
-
     const loginUserData = buildLoginUserData(credentialsData, identifier);
 
     const bid = user.branchId || user.branch?.id || '';
@@ -297,7 +294,12 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
     if (!mobileRoleIntro) return undefined;
 
     const timer = window.setTimeout(() => {
-      onLoginSuccess(mobileRoleIntro.user, mobileRoleIntro.token, mobileRoleIntro.refreshToken);
+      onLoginSuccess(
+        mobileRoleIntro.user,
+        mobileRoleIntro.token,
+        mobileRoleIntro.refreshToken,
+        mobileRoleIntro.options
+      );
     }, 2300);
 
     return () => window.clearTimeout(timer);
@@ -443,6 +445,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
         challengeId: phoneOtp.challengeId,
         phone: normalizeKenyanPhone(phoneOtp.phone),
         code: phoneOtp.code,
+        rememberMe: formData.rememberMe === true,
       });
       await completeBypassLogin(credentialsData, phoneOtp.phone);
     } catch (error) {
@@ -469,6 +472,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
       const credentialsData = await authAPI.login({
         phone: normalizeKenyanPhone(phoneOtp.phone),
         password: formData.password,
+        rememberMe: formData.rememberMe === true,
       });
 
       if (credentialsData?.user?.role === 'SUPER_ADMIN' && credentialsData?.user?.requiresInstitutionSetup) {
@@ -571,6 +575,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
         sessionToken: studentLogin.sessionToken,
         studentUserId: studentLogin.selectedStudentUserId,
         password: studentLogin.password,
+        rememberMe: formData.rememberMe === true,
       });
       setStudentLogin(prev => ({ ...prev, isLoading: false }));
       await completeBypassLogin(credentialsData, studentLogin.phone);

@@ -11,6 +11,7 @@ interface LoginParams {
   email?: string;
   phone?: string;
   password?: string;
+  rememberMe?: boolean;
   requestSchool?: {
     id?: string;
     institutionType?: string;
@@ -29,6 +30,7 @@ interface SessionParams {
   ipAddress?: string;
   userAgent?: string;
   sourceChallengeId?: string;
+  rememberMe?: boolean;
 }
 
 export interface AuthLoginResult {
@@ -45,7 +47,7 @@ const xssPatterns = [/<script/gi, /javascript:/gi, /on\w+\s*=/gi, /<iframe/gi];
 
 export class AuthLoginService {
   async loginWithPassword(params: LoginParams): Promise<AuthLoginResult> {
-    const { email, phone, password, requestSchool } = params;
+    const { email, phone, password, requestSchool, rememberMe = false } = params;
 
     if ((!email && !phone) || !password) throw new ApiError(400, 'Phone number and password are required');
 
@@ -162,11 +164,12 @@ export class AuthLoginService {
       user,
       requestSchool,
       loginMethod: 'PASSWORD',
+      rememberMe,
     });
   }
 
   async createAuthenticatedSession(params: SessionParams): Promise<AuthLoginResult> {
-    const { user, requestSchool, loginMethod = 'PASSWORD' } = params;
+    const { user, requestSchool, loginMethod = 'PASSWORD', rememberMe = false } = params;
 
     const { password: _, passwordResetToken: __, ...userWithoutSensitive } = user;
     const schoolId = (user as any).schoolId || requestSchool?.id;
@@ -182,7 +185,7 @@ export class AuthLoginService {
     }
 
     const mustChangePassword = !!user.passwordResetToken;
-    const { accessToken, refreshToken } = authTokenService.issueTokenPair(user as any);
+    const { accessToken, refreshToken } = authTokenService.issueTokenPair(user as any, rememberMe);
 
     await prisma.user.update({
       where: { id: user.id },

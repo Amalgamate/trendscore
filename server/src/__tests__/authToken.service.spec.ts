@@ -66,12 +66,12 @@ describe('AuthTokenService', () => {
 
     const pair = service.issueTokenPair(user);
 
-    expect(pair).toEqual({ accessToken: 'access.jwt', refreshToken: 'refresh.jwt' });
+    expect(pair).toEqual({ accessToken: 'access.jwt', refreshToken: 'refresh.jwt', rememberMe: false });
     expect(mockedAccessToken).toHaveBeenCalledWith(user);
-    expect(mockedRefreshToken).toHaveBeenCalledWith(user);
+    expect(mockedRefreshToken).toHaveBeenCalledWith(user, false);
   });
 
-  it('sets auth cookies with the existing names and max ages', () => {
+  it('sets browser-session cookies when remember me is off', () => {
     const cookie = jest.fn();
     const res = { cookie } as unknown as Response;
 
@@ -80,12 +80,30 @@ describe('AuthTokenService', () => {
     expect(cookie).toHaveBeenCalledWith(
       'accessToken',
       'access.jwt',
-      expect.objectContaining({ httpOnly: true, path: '/', maxAge: 24 * 60 * 60 * 1000 })
+      expect.not.objectContaining({ maxAge: expect.any(Number) })
     );
     expect(cookie).toHaveBeenCalledWith(
       'refreshToken',
       'refresh.jwt',
-      expect.objectContaining({ httpOnly: true, path: '/', maxAge: 24 * 60 * 60 * 1000 })
+      expect.not.objectContaining({ maxAge: expect.any(Number) })
+    );
+  });
+
+  it('sets persistent access and 30-day refresh cookies when remember me is on', () => {
+    const cookie = jest.fn();
+    const res = { cookie } as unknown as Response;
+
+    service.setTokenCookies(res, 'access.jwt', 'refresh.jwt', true);
+
+    expect(cookie).toHaveBeenCalledWith(
+      'accessToken',
+      'access.jwt',
+      expect.objectContaining({ maxAge: 24 * 60 * 60 * 1000 })
+    );
+    expect(cookie).toHaveBeenCalledWith(
+      'refreshToken',
+      'refresh.jwt',
+      expect.objectContaining({ maxAge: 30 * 24 * 60 * 60 * 1000 })
     );
   });
 
@@ -124,8 +142,8 @@ describe('AuthTokenService', () => {
 
     expect(mockedVerifyRefresh).toHaveBeenCalledWith('old.refresh.jwt');
     expect(mockedPrisma.user.findUnique).toHaveBeenCalledWith({ where: { id: 'user-1' } });
-    expect(mockedRedis.set).toHaveBeenCalledWith('revoked_rt:old.refresh.jwt', '1', 24 * 60 * 60);
-    expect(pair).toEqual({ accessToken: 'access.jwt', refreshToken: 'refresh.jwt' });
+    expect(mockedRedis.set).toHaveBeenCalledWith('revoked_rt:old.refresh.jwt', '1', 30 * 24 * 60 * 60);
+    expect(pair).toEqual({ accessToken: 'access.jwt', refreshToken: 'refresh.jwt', rememberMe: false });
   });
 
   it('rejects a refresh token that was already revoked', async () => {
@@ -146,6 +164,21 @@ describe('AuthTokenService', () => {
       statusCode: 401,
       message: 'Session invalidated by administrator',
     });
-    expect(mockedRedis.set).toHaveBeenCalledWith('revoked_rt:old.refresh.jwt', '1', 24 * 60 * 60);
+    expect(mockedRedis.set).toHaveBeenCalledWith('revoked_rt:old.refresh.jwt', '1', 30 * 24 * 60 * 60);
+  });
+
+  it('preserves remembered-session lifetime when rotating refresh tokens', async () => {
+    mockedRedis.get.mockResolvedValue(null);
+    mockedInvalidated.mockResolvedValue(false);
+    mockedVerifyRefresh.mockReturnValue({ userId: 'user-1', rememberMe: true, iat: 100 });
+    mockedPrisma.user.findUnique.mockResolvedValue({
+      id: 'user-1', email: 'user@example.test', role: 'ADMIN', roles: ['ADMIN'],
+      institutionType: 'PRIMARY_CBC', status: 'ACTIVE',
+    });
+
+    const pair = await service.rotateRefreshToken('remembered.refresh.jwt');
+
+    expect(mockedRefreshToken).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), true);
+    expect(pair.rememberMe).toBe(true);
   });
 });

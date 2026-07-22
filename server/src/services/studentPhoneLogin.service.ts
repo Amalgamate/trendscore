@@ -24,6 +24,7 @@ export interface StudentPhoneLoginParams {
   password: string;
   ipAddress?: string;
   userAgent?: string;
+  rememberMe?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -224,6 +225,7 @@ export class StudentPhoneLoginService {
       loginMethod: 'STUDENT_PHONE_PASSWORD',
       ipAddress: params.ipAddress,
       userAgent: params.userAgent,
+      rememberMe: params.rememberMe === true,
     });
 
     await this.writeAuditLog({

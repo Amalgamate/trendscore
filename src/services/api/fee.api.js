@@ -1,5 +1,6 @@
 import { fetchWithAuth, API_BASE_URL } from './core';
 import axiosInstance from './axiosConfig';
+import { getAuthItem } from '../../utils/authStorage';
 
 export const feeAPI = {
   getAllFeeStructures: async (params = {}) => {
@@ -71,7 +72,7 @@ export const feeAPI = {
   },
   exportInvoices: async (params = {}) => {
     const query = new URLSearchParams(params).toString();
-    const token = localStorage.getItem('token');
+      const token = getAuthItem('token');
     if (!token) throw new Error('No authentication token found');
     const response = await fetch(`${API_BASE_URL}/fees/invoices/export${query ? `?${query}` : ''}`, {
       method: 'GET',

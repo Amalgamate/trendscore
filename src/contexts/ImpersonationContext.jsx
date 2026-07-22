@@ -25,6 +25,7 @@ import React, {
 import { AuthContext } from './AuthContext';
 import { impersonationApi } from '../services/api/impersonation.api';
 import axiosInstance from '../services/api/axiosConfig';
+import { getAuthItem } from '../utils/authStorage';
 
 // ─── localStorage key constants ───────────────────────────────────────────────
 const LS_ORIGINAL_TOKEN = 'trendscore_impersonation_original_token';
@@ -155,7 +156,7 @@ export function ImpersonationProvider({ children }) {
     setError(null);
 
     // Capture original admin token and user BEFORE any changes (Req 3.10)
-    const originalToken = localStorage.getItem('token') ?? '';
+    const originalToken = getAuthItem('token') ?? '';
     const originalUser  = auth.user;
 
     // Persist original session to localStorage (Req 3.10)

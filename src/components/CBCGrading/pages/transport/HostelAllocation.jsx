@@ -21,6 +21,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { useNotifications } from '../../hooks/useNotifications';
+import { getAuthItem } from '../../../../utils/authStorage';
 
 // ─── constants ─────────────────────────────────────────────────────────────────
 
@@ -369,7 +370,7 @@ const HostelAllocation = () => {
     // Try real API first; fall back to mock data
     try {
       const res = await fetch('/api/hostel/blocks', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+        headers: { Authorization: `Bearer ${getAuthItem('token') || ''}` }
       });
       if (res.ok) {
         const json = await res.json();

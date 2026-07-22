@@ -3,6 +3,7 @@ import { X, Upload, FileSpreadsheet, Loader2, RefreshCw, CreditCard, Download, I
 import { API_BASE_URL } from '../../../services/api/index';
 import { downloadFeeTemplate, downloadBalanceTemplate, downloadWaiverTemplate, downloadTransportTemplate } from '../../../utils/feeTemplateGenerator';
 import { getCurrentTerm } from '../utils/academicYear';
+import { getAuthItem } from '../../../utils/authStorage';
 
 const FeeImportModal = ({ isOpen, onClose, onComplete }) => {
   const [importMode, setImportMode] = useState('balances'); // 'balances', 'payments', or 'waivers'
@@ -83,7 +84,7 @@ const FeeImportModal = ({ isOpen, onClose, onComplete }) => {
       const response = await fetch(`${baseUrl}${endpoint}`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}` // Ensure auth header if needed
+          'Authorization': `Bearer ${getAuthItem('token')}` // Ensure auth header if needed
         },
         body: formData,
         signal: abortControllerRef.current.signal

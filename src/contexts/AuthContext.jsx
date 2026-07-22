@@ -9,6 +9,7 @@ import React, { createContext, useState, useEffect, useRef, useCallback } from '
 import { setInstitutionType } from '../services/api/institutionContext';
 import { useBootstrapStore } from '../store/useBootstrapStore';
 import { resetMobileOnboardingForLogout } from '../utils/mobileOnboardingStorage';
+import { clearAuthStorage, getAuthItem, setAuthItem, storeAuthSession } from '../utils/authStorage';
 
 export const AuthContext = createContext({
   isAuthenticated: false,
@@ -61,22 +62,20 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const checkAuth = () => {
       try {
-        const token = localStorage.getItem('token');
-        const storedUser = localStorage.getItem('user');
+        const token = getAuthItem('token');
+        const storedUser = getAuthItem('user');
 
         // Support both real tokens and cookie-based placeholders
         if (storedUser && (token || document.cookie.includes('accessToken'))) {
           const parsedUser = normalizeUser(JSON.parse(storedUser));
-          localStorage.setItem('user', JSON.stringify(parsedUser));
+          setAuthItem('user', JSON.stringify(parsedUser));
           setUser(parsedUser);
           setIsAuthenticated(true);
         }
       } catch (error) {
         console.error('Error restoring auth state:', error);
         // Clear invalid data
-        localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('user');
+        clearAuthStorage();
       } finally {
         setLoading(false);
       }
@@ -85,20 +84,16 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
   }, [normalizeUser]);
 
-  const login = useCallback((userData, token, refreshToken) => {
+  const login = useCallback((userData, token, refreshToken, options = {}) => {
     try {
       const normalizedUser = normalizeUser(userData);
 
-      // Store tokens
-      localStorage.setItem('token', token);
-      if (refreshToken) {
-        localStorage.setItem('refreshToken', refreshToken);
-      } else if (refreshToken === null) {
-        localStorage.removeItem('refreshToken');
-      }
-
-      // Store user data
-      localStorage.setItem('user', JSON.stringify(normalizedUser));
+      storeAuthSession({
+        token,
+        refreshToken,
+        user: normalizedUser,
+        rememberMe: options.rememberMe === true,
+      });
 
       setUser(normalizedUser);
       setIsAuthenticated(true);
@@ -112,10 +107,7 @@ export const AuthProvider = ({ children }) => {
     resetMobileOnboardingForLogout();
 
     // Clear localStorage
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('authToken'); // Also clear legacy authToken if present
+    clearAuthStorage();
     localStorage.removeItem('selectedInstitutionType');
 
     // Expire HttpOnly cookies (server will honour these on next request,
@@ -130,7 +122,7 @@ export const AuthProvider = ({ children }) => {
   const updateUser = useCallback((updates) => {
     setUser(prevUser => {
       const updatedUser = { ...prevUser, ...updates };
-      localStorage.setItem('user', JSON.stringify(updatedUser));
+      setAuthItem('user', JSON.stringify(updatedUser));
       return updatedUser;
     });
   }, []);

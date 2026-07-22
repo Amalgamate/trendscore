@@ -49,7 +49,8 @@ const optionalLoginPhoneSchema = z.preprocess(
 export const loginSchema = z.object({
   email: optionalEmailSchema,
   phone: optionalLoginPhoneSchema,
-  password: z.string().min(1, 'Password is required')
+  password: z.string().min(1, 'Password is required'),
+  rememberMe: z.boolean().optional().default(false)
 }).refine((data) => Boolean(data.email || data.phone), {
   message: 'Email or phone number is required',
   path: ['email'],
@@ -62,7 +63,8 @@ export const phoneOtpRequestSchema = z.object({
 export const phoneOtpVerifySchema = z.object({
   challengeId: z.string().min(1, 'Challenge ID is required'),
   phone: z.string().min(9, 'Phone number is required').max(20, 'Phone number is too long'),
-  code: z.string().regex(/^\d{6}$/, 'OTP code must be 6 digits')
+  code: z.string().regex(/^\d{6}$/, 'OTP code must be 6 digits'),
+  rememberMe: z.boolean().optional().default(false)
 });
 
 export const registerSchema = z.object({
@@ -317,6 +319,7 @@ export const studentPhoneLoginSchema = z.object({
     .refine((val) => !containsXSS(val), {
       message: 'Password contains unsafe content',
     }),
+  rememberMe: z.boolean().optional().default(false),
 });
 
 export type StudentPhoneLookupInput = z.infer<typeof studentPhoneLookupSchema>;

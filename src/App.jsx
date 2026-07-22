@@ -12,6 +12,7 @@ import { RolePreviewProvider } from './contexts/RolePreviewContext';
 import { ModuleAccessProvider } from './contexts/ModuleAccessContext';
 import FeeApprovalReminder from './components/CBCGrading/layout/FeeApprovalReminder';
 import axiosInstance from './services/api/axiosConfig';
+import { authAPI } from './services/api';
 import { useBootstrapStore } from './store/useBootstrapStore';
 import { useUIStore } from './store/useUIStore';
 import { resolveDashboardPage } from './components/CBCGrading/utils/appAccess';
@@ -290,7 +291,7 @@ function AppContent() {
     }
   }, [isAuthenticated, loading, pathname, navigate, user?.requiresInstitutionSetup, user?.role]);
 
-  const handleAuthSuccess = (userData, token, refreshToken) => {
+  const handleAuthSuccess = (userData, token, refreshToken, options = {}) => {
     // Always clear bootstrap and UI state on login. The incoming user may
     // have a different institutionType and stale cached data must not bleed
     // through. The bootstrap store will refill during the splash screen.
@@ -302,7 +303,7 @@ function AppContent() {
     localStorage.removeItem('cbc_expanded_sections');
     useUIStore.getState().resetUI(landingPage);
 
-    login(userData, token, refreshToken);
+    login(userData, token, refreshToken, options);
 
     if (userData.mustChangePassword) {
       navigate('/auth/reset-password?token=INITIAL_SETUP_REQUIRED', { replace: true });
@@ -328,8 +329,13 @@ function AppContent() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     clearBootstrap();       // wipe pre-loaded data from sessionStorage
+    try {
+      await authAPI.logout();
+    } catch {
+      // Local logout must still complete if the server is temporarily unavailable.
+    }
     logout();
     navigate('/auth/login', { replace: true });
   };

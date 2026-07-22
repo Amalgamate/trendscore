@@ -7,6 +7,7 @@ import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '.
 import { ApiError } from '../utils/error.util';
 
 const SESSION_TTL_SECONDS = 24 * 60 * 60;
+const REMEMBERED_SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 const revokedTokenKey = (token: string) => `revoked_rt:${token}`;
 
@@ -15,6 +16,7 @@ type TokenUser = Pick<User, 'id' | 'email' | 'role' | 'roles' | 'institutionType
 export interface AuthTokenPair {
   accessToken: string;
   refreshToken: string;
+  rememberMe: boolean;
 }
 
 export class AuthTokenService {
@@ -31,24 +33,25 @@ export class AuthTokenService {
     };
   }
 
-  issueTokenPair(user: TokenUser): AuthTokenPair {
+  issueTokenPair(user: TokenUser, rememberMe = false): AuthTokenPair {
     return {
       accessToken: generateAccessToken(user),
-      refreshToken: generateRefreshToken(user),
+      refreshToken: generateRefreshToken(user, rememberMe),
+      rememberMe,
     };
   }
 
-  setTokenCookies(res: Response, accessToken: string, refreshToken: string): void {
+  setTokenCookies(res: Response, accessToken: string, refreshToken: string, rememberMe = false): void {
     const commonOptions = this.getCookieOptions();
 
     res.cookie('accessToken', accessToken, {
       ...commonOptions,
-      maxAge: SESSION_TTL_SECONDS * 1000,
+      ...(rememberMe ? { maxAge: SESSION_TTL_SECONDS * 1000 } : {}),
     });
 
     res.cookie('refreshToken', refreshToken, {
       ...commonOptions,
-      maxAge: SESSION_TTL_SECONDS * 1000,
+      ...(rememberMe ? { maxAge: REMEMBERED_SESSION_TTL_SECONDS * 1000 } : {}),
     });
   }
 
@@ -59,7 +62,7 @@ export class AuthTokenService {
   }
 
   async revokeRefreshToken(token: string): Promise<void> {
-    await redisCacheService.set(revokedTokenKey(token), '1', SESSION_TTL_SECONDS);
+    await redisCacheService.set(revokedTokenKey(token), '1', REMEMBERED_SESSION_TTL_SECONDS);
   }
 
   async isRefreshTokenRevoked(token: string): Promise<boolean> {
@@ -85,7 +88,7 @@ export class AuthTokenService {
       }
 
       await this.revokeRefreshToken(refreshToken);
-      return this.issueTokenPair(user);
+      return this.issueTokenPair(user, decoded.rememberMe === true);
     } catch (error) {
       if (error instanceof ApiError) throw error;
       throw new ApiError(401, 'Invalid refresh token');

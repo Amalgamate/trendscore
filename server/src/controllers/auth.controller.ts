@@ -107,10 +107,11 @@ export class AuthController {
       email: req.body.email,
       phone: req.body.phone,
       password: req.body.password,
+      rememberMe: req.body.rememberMe === true,
       requestSchool: (req as any).school || null,
     });
 
-    authTokenService.setTokenCookies(res, result.token, result.refreshToken);
+    authTokenService.setTokenCookies(res, result.token, result.refreshToken, req.body.rememberMe === true);
     res.json(result);
   }
 
@@ -131,9 +132,10 @@ export class AuthController {
       code: req.body.code,
       ipAddress: req.ip || undefined,
       userAgent: req.headers['user-agent'] ? String(req.headers['user-agent']) : undefined,
+      rememberMe: req.body.rememberMe === true,
     });
 
-    authTokenService.setTokenCookies(res, result.token, result.refreshToken);
+    authTokenService.setTokenCookies(res, result.token, result.refreshToken, req.body.rememberMe === true);
     res.json(result);
   }
 
@@ -179,9 +181,10 @@ export class AuthController {
       const {
         accessToken: newAccessToken,
         refreshToken: newRefreshToken,
+        rememberMe,
       } = await authTokenService.rotateRefreshToken(refreshToken);
 
-      authTokenService.setTokenCookies(res, newAccessToken, newRefreshToken);
+      authTokenService.setTokenCookies(res, newAccessToken, newRefreshToken, rememberMe);
 
       res.json({ 
         success: true,
@@ -347,9 +350,10 @@ export class AuthController {
       password: req.body.password,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'] ? String(req.headers['user-agent']) : undefined,
+      rememberMe: req.body.rememberMe === true,
     });
 
-    authTokenService.setTokenCookies(res, result.token, result.refreshToken);
+    authTokenService.setTokenCookies(res, result.token, result.refreshToken, req.body.rememberMe === true);
     res.json(result);
   }
 

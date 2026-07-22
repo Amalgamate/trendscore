@@ -4,6 +4,7 @@
  */
 
 import axios from 'axios';
+import { getAuthItem } from '../utils/authStorage';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -16,7 +17,7 @@ export const createClass = async (classData) => {
   try {
     const response = await axios.post(`${API_BASE_URL}/classes`, classData, {
       headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`
+        Authorization: `Bearer ${getAuthItem('token')}`
       }
     });
     return response.data;
@@ -35,7 +36,7 @@ export const getClassDetails = async (classId) => {
   try {
     const response = await axios.get(`${API_BASE_URL}/classes/${classId}`, {
       headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`
+        Authorization: `Bearer ${getAuthItem('token')}`
       }
     });
     return response.data;
@@ -52,7 +53,7 @@ export const getClassStatistics = async (classId) => {
   try {
     const response = await axios.get(`${API_BASE_URL}/classes/${classId}/statistics`, {
       headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`
+        Authorization: `Bearer ${getAuthItem('token')}`
       }
     });
     return response.data;
@@ -77,7 +78,7 @@ export const getInventoryItems = async (classId, filters = {}) => {
       `${API_BASE_URL}/classes/${classId}/inventory?${params.toString()}`,
       {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`
+          Authorization: `Bearer ${getAuthItem('token')}`
         }
       }
     );
@@ -98,7 +99,7 @@ export const addInventoryItem = async (classId, itemData) => {
       itemData,
       {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${getAuthItem('token')}`,
           'Content-Type': 'application/json'
         }
       }
@@ -120,7 +121,7 @@ export const updateInventoryItem = async (classId, itemId, itemData) => {
       itemData,
       {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${getAuthItem('token')}`,
           'Content-Type': 'application/json'
         }
       }
@@ -141,7 +142,7 @@ export const deleteInventoryItem = async (classId, itemId) => {
       `${API_BASE_URL}/classes/${classId}/inventory/${itemId}`,
       {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`
+          Authorization: `Bearer ${getAuthItem('token')}`
         }
       }
     );
@@ -167,7 +168,7 @@ export const getSchedules = async (classId, filters = {}) => {
       `${API_BASE_URL}/classes/${classId}/schedules?${params.toString()}`,
       {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`
+          Authorization: `Bearer ${getAuthItem('token')}`
         }
       }
     );
@@ -188,7 +189,7 @@ export const addSchedule = async (classId, scheduleData) => {
       scheduleData,
       {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${getAuthItem('token')}`,
           'Content-Type': 'application/json'
         }
       }
@@ -210,7 +211,7 @@ export const updateSchedule = async (classId, scheduleId, scheduleData) => {
       scheduleData,
       {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${getAuthItem('token')}`,
           'Content-Type': 'application/json'
         }
       }
@@ -231,7 +232,7 @@ export const deleteSchedule = async (classId, scheduleId) => {
       `${API_BASE_URL}/classes/${classId}/schedules/${scheduleId}`,
       {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`
+          Authorization: `Bearer ${getAuthItem('token')}`
         }
       }
     );
@@ -257,7 +258,7 @@ export const getFacilities = async (classId, filters = {}) => {
       `${API_BASE_URL}/classes/${classId}/facilities?${params.toString()}`,
       {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`
+          Authorization: `Bearer ${getAuthItem('token')}`
         }
       }
     );
@@ -278,7 +279,7 @@ export const addFacility = async (classId, facilityData) => {
       facilityData,
       {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${getAuthItem('token')}`,
           'Content-Type': 'application/json'
         }
       }
@@ -300,7 +301,7 @@ export const updateFacility = async (classId, facilityId, facilityData) => {
       facilityData,
       {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${getAuthItem('token')}`,
           'Content-Type': 'application/json'
         }
       }
@@ -321,7 +322,7 @@ export const deleteFacility = async (classId, facilityId) => {
       `${API_BASE_URL}/classes/${classId}/facilities/${facilityId}`,
       {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`
+          Authorization: `Bearer ${getAuthItem('token')}`
         }
       }
     );

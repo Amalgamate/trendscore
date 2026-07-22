@@ -95,6 +95,7 @@ interface VerifyPhoneOtpParams {
   code: string;
   ipAddress?: string;
   userAgent?: string;
+  rememberMe?: boolean;
 }
 
 export interface RequestPhoneOtpResult {
@@ -367,6 +368,7 @@ export class AuthPhoneOtpService {
       ipAddress: params.ipAddress,
       userAgent: params.userAgent,
       sourceChallengeId: challenge.id,
+      rememberMe: params.rememberMe === true,
     });
 
     await prisma.authOtpChallenge.update({

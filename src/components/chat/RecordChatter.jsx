@@ -22,6 +22,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { cn } from '../../utils/cn';
 import api from '../../services/api';
 import { io } from 'socket.io-client';
+import { getAuthItem } from '../../utils/authStorage';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -233,7 +234,7 @@ export default function RecordChatter({
 
     const socket = io(window.location.origin, {
       withCredentials: true,
-      auth: { token: localStorage.getItem('token') },
+      auth: { token: getAuthItem('token') },
     });
     socketRef.current = socket;
     socket.emit('chat:join', convId);

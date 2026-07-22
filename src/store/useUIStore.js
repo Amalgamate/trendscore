@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { getAuthItem } from '../utils/authStorage';
 
 /**
  * useUIStore
@@ -12,7 +13,7 @@ import { persist } from 'zustand/middleware';
  */
 
 function sanitisePersistedPage(page) {
-    const hasToken = !!(localStorage.getItem('token') || document.cookie.includes('accessToken'));
+    const hasToken = !!(getAuthItem('token') || document.cookie.includes('accessToken'));
     if (!hasToken) return 'dashboard';
     return page || 'dashboard';
 }

@@ -16,6 +16,7 @@ import React, {
 import { io } from 'socket.io-client';
 import { useAuth } from '../hooks/useAuth';
 import api from '../services/api';
+import { getAuthItem } from '../utils/authStorage';
 
 const ChatContext = createContext(null);
 
@@ -227,7 +228,7 @@ export const ChatProvider = ({ children }) => {
 
     const socket = io(apiOrigin, {
       withCredentials: true,
-      auth: { token: localStorage.getItem('token') },
+      auth: { token: getAuthItem('token') },
     });
     socketRef.current = socket;
 

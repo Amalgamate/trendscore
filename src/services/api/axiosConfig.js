@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { getInstitutionType } from './institutionContext';
 import { clearAuthAndRedirect, getAuthErrorCode } from '../../utils/sessionLifecycle';
+import { getAuthItem, setAuthItem } from '../../utils/authStorage';
 
 // Use environment variable for API URL or fall back to automatic discovery for production stability
 const getApiBaseUrl = () => {
@@ -37,7 +38,7 @@ axiosInstance.interceptors.request.use(
     (config) => {
         // Preference for cookies (withCredentials: true), 
         // but allow Bearer fallback for mobile/capacitor clients
-        const token = localStorage.getItem('token');
+        const token = getAuthItem('token');
         // If we have a real JWT (starts with ey), send it as Header fallback
         if (token && token.startsWith('ey')) {
             config.headers['Authorization'] = `Bearer ${token}`;
@@ -115,7 +116,7 @@ axiosInstance.interceptors.response.use(
             // When using cookies, the browser handles sending the refreshToken automatically 
             // the withCredentials: true ensures it is sent. 
             // We still pass it as a body if available for compatibility.
-            const refreshToken = localStorage.getItem('refreshToken');
+            const refreshToken = getAuthItem('refreshToken');
 
             try {
                 // withCredentials is inherited from axiosInstance settings
@@ -124,8 +125,8 @@ axiosInstance.interceptors.response.use(
                     // If the server rotated cookies, the browser already has them.
                     // If the server also returned body tokens (legacy/mobile), update them.
                     const { token, refreshToken: newRefreshToken } = response.data || {};
-                    if (token) localStorage.setItem('token', token);
-                    if (newRefreshToken) localStorage.setItem('refreshToken', newRefreshToken);
+                    if (token) setAuthItem('token', token);
+                    if (newRefreshToken) setAuthItem('refreshToken', newRefreshToken);
                     
                     processQueue(null, token);
                     isRefreshing = false;

@@ -41,6 +41,11 @@ export const authAPI = {
 
   me: async () => fetchWithAuth('/auth/me'),
 
+  logout: async () => {
+    const response = await axiosInstance.post('/auth/logout');
+    return response.data;
+  },
+
   getSeededUsers: async () => {
     try {
       const response = await axiosInstance.get('/auth/seeded-users');
@@ -122,9 +127,14 @@ export const authAPI = {
     }
   },
 
-  studentPhoneLogin: async ({ sessionToken, studentUserId, password }) => {
+  studentPhoneLogin: async ({ sessionToken, studentUserId, password, rememberMe = false }) => {
     try {
-      const response = await axiosInstance.post('/auth/student-phone/login', { sessionToken, studentUserId, password });
+      const response = await axiosInstance.post('/auth/student-phone/login', {
+        sessionToken,
+        studentUserId,
+        password,
+        rememberMe,
+      });
       return response.data;
     } catch (error) {
       if (error.response?.data) {

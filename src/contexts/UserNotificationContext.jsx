@@ -44,6 +44,7 @@ import React, {
 import { io } from 'socket.io-client';
 import { useAuth } from '../hooks/useAuth';
 import api from '../services/api';
+import { getAuthItem } from '../utils/authStorage';
 
 const UserNotificationContext = createContext(null);
 
@@ -102,7 +103,7 @@ export const UserNotificationProvider = ({ children }) => {
     const serverUrl = window.location.origin;
     const socket = io(serverUrl, {
       withCredentials: true,
-      auth: { token: localStorage.getItem('token') },
+      auth: { token: getAuthItem('token') },
     });
 
     socket.on('connect', () => {

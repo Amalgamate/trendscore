@@ -44,11 +44,15 @@ export const generateAccessToken = (user: User): string => {
   );
 };
 
-export const generateRefreshToken = (user: User): string => {
+export const generateRefreshToken = (user: User, rememberMe = false): string => {
   return jwt.sign(
-    { userId: user.id },
+    { userId: user.id, rememberMe },
     process.env.JWT_REFRESH_SECRET!,
-    { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '24h' } as jwt.SignOptions
+    {
+      expiresIn: rememberMe
+        ? process.env.JWT_REMEMBER_REFRESH_EXPIRES_IN || '30d'
+        : process.env.JWT_REFRESH_EXPIRES_IN || '24h',
+    } as jwt.SignOptions
   );
 };
 
@@ -56,6 +60,6 @@ export const verifyAccessToken = (token: string): JWTPayload => {
   return jwt.verify(token, process.env.JWT_SECRET!) as JWTPayload;
 };
 
-export const verifyRefreshToken = (token: string): { userId: string; iat?: number } => {
-  return jwt.verify(token, process.env.JWT_REFRESH_SECRET!) as { userId: string; iat?: number };
+export const verifyRefreshToken = (token: string): { userId: string; rememberMe?: boolean; iat?: number } => {
+  return jwt.verify(token, process.env.JWT_REFRESH_SECRET!) as { userId: string; rememberMe?: boolean; iat?: number };
 };
