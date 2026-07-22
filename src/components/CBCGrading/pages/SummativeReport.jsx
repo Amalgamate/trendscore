@@ -1979,6 +1979,39 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
   };
 
   /**
+   * Resolve the assessment cycle represented by the generated report.
+   * Prefer the user's explicit filter, then the selected tests, and finally
+   * the test metadata attached to the learner results.
+   */
+  const getAssessmentReportName = (row, termLabel) => {
+    let testTypes = selectedTestGroups;
+
+    if (testTypes.length === 0 && selectedTestIds.length > 0) {
+      testTypes = availableTests
+        .filter((test) => selectedTestIds.includes(test.id))
+        .map((test) => resolveTestGroup(test));
+    }
+
+    if (testTypes.length === 0) {
+      testTypes = (row?.results || []).map((result) => resolveTestGroup({
+        testType: result.test?.testType || result.testType,
+        title: result.test?.title || result.title,
+      }));
+    }
+
+    const uniqueTypes = [...new Set(testTypes.filter(Boolean))];
+    if (uniqueTypes.length === 1) {
+      return `${formatTestTypeLabel(uniqueTypes[0])} ${termLabel}`;
+    }
+
+    if (uniqueTypes.length > 1) {
+      return `${termLabel} Combined Assessment`;
+    }
+
+    return `${termLabel} Assessment`;
+  };
+
+  /**
    * Helper to format SMS message for a row
    */
   const formatSmsReport = (row) => {
@@ -1987,6 +2020,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     const parentName = learner.guardianName || learner.parent?.firstName || 'Parent';
     const termLabel = terms.find(t => t.value === selectedTerm)?.label || selectedTerm;
     const schoolName = getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, user?.schoolName, { fallback: 'School' });
+    const assessmentReportName = getAssessmentReportName(row, termLabel);
 
     const results = row.results || [];
     const { averageScore, subjects } = buildAssessmentSmsMetrics(row);
@@ -2010,7 +2044,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       .join(', ');
 
     return `${schoolName.toUpperCase()}\n` +
-      `Official Assessment Report\n\n` +
+      `${assessmentReportName}\n\n` +
       `Dear ${parentName},\n` +
       `Summary for ${learner.firstName} ${learner.lastName} (${termLabel}):\n\n` +
       `${subjectsList}\n\n` +
@@ -2107,6 +2141,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     const parentName = learnerObj.guardianName || learnerObj.parent?.firstName || 'Parent';
     const termLabel = terms.find(t => t.value === selectedTerm)?.label || selectedTerm;
     const schoolName = getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, user?.schoolName, { fallback: 'School' });
+    const assessmentReportName = getAssessmentReportName(row, termLabel);
 
     const results = row.results || [];
 
@@ -2162,7 +2197,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     // 3. Construct the Final Message (Matching user request)
     const waMessage =
       `*${schoolName.toUpperCase()}*\n` +
-      `_Official Assessment Report_\n\n` +
+      `_${assessmentReportName}_\n\n` +
       `Dear *${parentName}*,\n` +
       `Assessment summary for\n*${learnerObj.firstName || ''} ${learnerObj.lastName || ''}* (*${termLabel}*):\n\n` +
       `\`\`\`\n` +
