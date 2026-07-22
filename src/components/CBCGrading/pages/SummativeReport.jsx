@@ -12,7 +12,7 @@ import {
   PieChart, Pie, Legend
 } from 'recharts';
 import { useNotifications } from '../hooks/useNotifications';
-import api, { configAPI, communicationAPI } from '../../../services/api';
+import api, { configAPI } from '../../../services/api';
 import { gradingAPI } from '../../../services/api/grading.api';
 import { useAssessmentSetup } from '../hooks/useAssessmentSetup';
 import { getLearningAreasByGrade } from '../../../constants/learningAreas';
@@ -2284,59 +2284,35 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       : reportData.rows;
 
     setBulkProgress({ current: 0, total: rowsToProcess.length, active: true, success: 0, failed: 0 });
-    const total = rowsToProcess.length;
 
-    for (let i = 0; i < total; i++) {
-      const row = rowsToProcess[i];
-      const learner = row.learner;
-
-      try {
-        // Prepare Data (Priority: Parent/Guardian -> Parent)
-        const parentPhone = getLearnerPhone(learner);
-        if (!parentPhone) {
-          setBulkProgress(prev => ({ ...prev, current: i + 1, failed: prev.failed + 1 }));
-          continue;
-        }
-
-        const message = formatSmsReport(row);
-        let formattedPhone = parentPhone.replace(/\D/g, '');
-        if (formattedPhone.startsWith('0')) formattedPhone = '254' + formattedPhone.substring(1);
-
-        // Send via Communication API (Direct delivery)
-        await communicationAPI.sendTestSMS({
-          phoneNumber: formattedPhone,
-          message: message,
-          schoolId: user?.schoolId || user?.school?.id || localStorage.getItem('currentSchoolId')
-        });
-
-        // Log communication to backend
-        try {
-          await api.notifications.logCommunication({
-            learnerId: learner.id,
-            channel: 'SMS',
-            term: selectedTerm,
-            academicYear: setup.academicYear,
-            assessmentType: 'SUMMATIVE'
-          });
-        } catch (logErr) {
-          console.warn("Failed to log SMS communication", logErr);
-        }
-
-        setBulkProgress(prev => ({ ...prev, current: i + 1, success: prev.success + 1 }));
-
-      } catch (err) {
-        console.error(`Failed to send SMS to ${learner.firstName}:`, err);
-        setBulkProgress(prev => ({ ...prev, current: i + 1, failed: prev.failed + 1 }));
+    try {
+      const response = await api.notifications.sendAssessmentReportSmsBulk({
+        term: selectedTerm,
+        academicYear: Number(setup.academicYear || academicYear || new Date().getFullYear()),
+        entries: rowsToProcess.map(row => ({
+          learnerId: row.learner.id,
+          message: formatSmsReport(row),
+          ...(testNumber ? { phoneOverride: testNumber } : {}),
+        })),
+      });
+      const result = response?.data || {};
+      setBulkProgress({
+        current: result.total || rowsToProcess.length,
+        total: result.total || rowsToProcess.length,
+        active: false,
+        success: result.sent || 0,
+        failed: result.failed || 0,
+      });
+      if (result.failed > 0) {
+        showError(`${result.sent || 0} SMS sent; ${result.failed} failed. Open Communications → Message History for names, reasons, and retry.`);
+      } else {
+        showSuccess(`${result.sent || 0} assessment SMS messages sent and logged.`);
       }
-
-      // Small delay to prevent rate limiting
-      await new Promise(r => setTimeout(r, 200));
+    } catch (err) {
+      console.error('Bulk assessment SMS failed:', err);
+      setBulkProgress(prev => ({ ...prev, active: false, failed: prev.total }));
+      showError(err.message || 'Bulk assessment SMS processing failed');
     }
-
-    setTimeout(() => {
-      setBulkProgress(prev => ({ ...prev, active: false }));
-      showSuccess('Bulk SMS processing completed');
-    }, 1000);
   };
 
   /**
@@ -2474,10 +2450,17 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
         formattedPhone = '254' + formattedPhone.substring(1);
       }
 
-      await communicationAPI.sendTestSMS({
-        phoneNumber: formattedPhone,
-        message: smsPreviewData.message
+      const response = await api.notifications.sendAssessmentReportSmsBulk({
+        term: selectedTerm,
+        academicYear: Number(setup.academicYear || academicYear || new Date().getFullYear()),
+        entries: [{
+          learnerId: smsPreviewData.learnerId,
+          message: smsPreviewData.message,
+          phoneOverride: formattedPhone,
+        }],
       });
+      const delivery = response?.data?.results?.[0];
+      if (!delivery?.success) throw new Error(delivery?.error || 'SMS delivery failed');
 
       setNotificationModal({
         show: true,

@@ -13,6 +13,7 @@ import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 import { ApiError } from '../utils/error.util';
 
 import logger from '../utils/logger';
+import { assessmentSmsDeliveryService } from '../services/assessment-sms-delivery.service';
 export class NotificationController {
   /**
    * Send assessment completion notification to parent
@@ -386,6 +387,34 @@ export class NotificationController {
     }
   }
 
+  async sendAssessmentReportSmsBulk(req: AuthRequest, res: Response) {
+    const result = await assessmentSmsDeliveryService.sendBulk({
+      entries: req.body.entries,
+      term: req.body.term,
+      academicYear: Number(req.body.academicYear),
+      sentByUserId: req.user?.userId,
+    });
+
+    res.json({
+      success: true,
+      message: `Assessment SMS processing completed: ${result.sent} sent, ${result.failed} failed`,
+      data: result,
+    });
+  }
+
+  async retryAssessmentReportSms(req: AuthRequest, res: Response) {
+    try {
+      const result = await assessmentSmsDeliveryService.retry(req.params.auditId, req.user?.userId);
+      res.json({
+        success: result.success,
+        message: result.success ? 'Assessment SMS resent successfully' : result.error || 'Assessment SMS retry failed',
+        data: result,
+      });
+    } catch (error: any) {
+      throw new ApiError(404, error?.message || 'Assessment SMS audit record not found');
+    }
+  }
+
   /**
    * Send assessment report via WhatsApp to parent
    * POST /api/notifications/whatsapp/assessment-report
@@ -687,6 +716,37 @@ export class NotificationController {
           })
         : [];
 
+      const messageReceiptWhere: any = {
+        message: { messageType: 'SMS' },
+      };
+      if (normalizedStatus && normalizedStatus !== 'BOUNCED') {
+        messageReceiptWhere.status = normalizedStatus;
+      }
+      if (start || end) {
+        messageReceiptWhere.createdAt = {};
+        if (start) messageReceiptWhere.createdAt.gte = start;
+        if (end) messageReceiptWhere.createdAt.lte = end;
+      }
+      if (searchText) {
+        messageReceiptWhere.OR = [
+          { recipientPhone: { contains: searchText, mode: 'insensitive' } },
+          { message: { body: { contains: searchText, mode: 'insensitive' } } },
+        ];
+      }
+
+      const genericMessageReceipts = canUseBroadcast
+        ? await prisma.messageReceipt.findMany({
+            where: messageReceiptWhere,
+            include: {
+              message: {
+                select: { id: true, body: true, messageType: true, senderId: true, sentAt: true, createdAt: true },
+              },
+            },
+            orderBy: { createdAt: 'desc' },
+            take: safetyBuffer,
+          })
+        : [];
+
       const normalizedAudit = auditLogs.map((log: any) => ({
         id: `audit_${log.id}`,
         createdAt: log.sentAt || log.createdAt,
@@ -699,6 +759,9 @@ export class NotificationController {
         term: log.term,
         source: 'ASSESSMENT_AUDIT',
         messageContent: log.messageContent,
+        failureReason: log.failureReason,
+        auditId: log.id,
+        canRetry: log.channel === 'SMS' && normalizeStatus(log.smsStatus) === 'FAILED',
       }));
 
       const normalizedBroadcastRecipients = broadcastRecipients.map((recipient: any) => ({
@@ -727,11 +790,31 @@ export class NotificationController {
         term: null,
         source: 'SMS_DELIVERY_LOG',
         messageContent: delivery.message,
+        failureReason: delivery.errorDetails,
       }));
+
+      const normalizedMessageReceipts = genericMessageReceipts.map((receipt: any) => {
+        const summaryName = receipt.message?.body?.match(/Summary for\s+(.+?)\s*\(/i)?.[1]?.trim();
+        return {
+          id: `message_receipt_${receipt.id}`,
+          createdAt: receipt.message?.sentAt || receipt.createdAt || receipt.message?.createdAt,
+          sentAt: receipt.message?.sentAt || receipt.createdAt || receipt.message?.createdAt,
+          learner: { firstName: summaryName || 'Recipient', lastName: '', admissionNumber: null, grade: null },
+          phoneNumber: receipt.recipientPhone,
+          channel: 'SMS',
+          status: normalizeStatus(receipt.status),
+          sentBy: { firstName: 'System', lastName: '' },
+          term: receipt.message?.body?.match(/\((Term\s+\d+)\)/i)?.[1] || null,
+          source: 'MESSAGE_RECEIPT',
+          messageContent: receipt.message?.body,
+          failureReason: receipt.failureReason,
+          canRetry: false,
+        };
+      });
 
       // Dedupe and merge
       const dedupeMap = new Map<string, any>();
-      for (const entry of [...normalizedAudit, ...normalizedBroadcastRecipients, ...normalizedDeliveryLogs]) {
+      for (const entry of [...normalizedAudit, ...normalizedBroadcastRecipients, ...normalizedDeliveryLogs, ...normalizedMessageReceipts]) {
         const key = `${entry.phoneNumber || 'unknown'}|${entry.createdAt ? new Date(entry.createdAt).toISOString() : 'no-date'}|${entry.channel || 'unknown'}|${entry.status}`;
         const existing = dedupeMap.get(key);
         if (!existing) {
@@ -741,7 +824,8 @@ export class NotificationController {
         const score = (record: any) => {
           if (record.source === 'ASSESSMENT_AUDIT') return 3;
           if (record.source === 'BROADCAST_RECIPIENT') return 2;
-          return 1;
+          if (record.source === 'SMS_DELIVERY_LOG') return 1;
+          return 0;
         };
         if (score(entry) > score(existing)) dedupeMap.set(key, entry);
       }

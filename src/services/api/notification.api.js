@@ -1,5 +1,4 @@
 import { fetchWithAuth } from './core';
-import axiosInstance from './axiosConfig';
 
 export const notificationAPI = {
   sendAssessmentNotification: async (data) =>
@@ -12,6 +11,12 @@ export const notificationAPI = {
     fetchWithAuth('/notifications/announcement', { method: 'POST', body: JSON.stringify(data) }),
   sendAssessmentReportSms: async (data) =>
     fetchWithAuth('/notifications/sms/assessment-report', { method: 'POST', body: JSON.stringify(data) }),
+  sendAssessmentReportSmsBulk: async (data) =>
+    fetchWithAuth('/notifications/sms/assessment-report/bulk', { method: 'POST', body: JSON.stringify(data) }),
+  retryAssessmentReportSms: async (auditId) =>
+    fetchWithAuth(`/notifications/sms/assessment-report/${encodeURIComponent(auditId)}/retry`, { method: 'POST' }),
+  logCommunication: async (data) =>
+    fetchWithAuth('/notifications/log-communication', { method: 'POST', body: JSON.stringify(data) }),
   sendAssessmentReportWhatsApp: async (data) =>
     fetchWithAuth('/notifications/whatsapp/assessment-report', { method: 'POST', body: JSON.stringify(data) }),
   testWhatsApp: async (phoneNumber, message) =>

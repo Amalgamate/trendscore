@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Download, RefreshCw, Loader, MessageSquare, CheckCircle, XCircle, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Download, RefreshCw, Loader, MessageSquare, CheckCircle, XCircle, Search, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 import { Card, CardContent, Button, Input, Label, Badge } from '../../../components/ui';
 import { useNotifications } from '../hooks/useNotifications';
 import api from '../../../services/api';
@@ -23,6 +23,7 @@ const MessageHistoryPage = () => {
     const searchTimerRef = useRef(null);
 
     const [page, setPage] = useState(1);
+    const [retryingId, setRetryingId] = useState(null);
     const [totalPages, setTotalPages] = useState(1);
     const limit = 50;
 
@@ -97,19 +98,35 @@ const MessageHistoryPage = () => {
         showSuccess('Refreshed!');
     };
 
+    const handleRetry = async (log) => {
+        if (!log.auditId || retryingId) return;
+        setRetryingId(log.auditId);
+        try {
+            const response = await api.notifications.retryAssessmentReportSms(log.auditId);
+            if (!response?.success) throw new Error(response?.message || 'Retry failed');
+            showSuccess(`SMS resent to ${log.learner?.firstName || 'recipient'}`);
+            await fetchLogs();
+        } catch (error) {
+            showError(error.message || 'SMS retry failed');
+        } finally {
+            setRetryingId(null);
+        }
+    };
+
     const handleExportCSV = () => {
         if (logs.length === 0) {
             showError('No data to export');
             return;
         }
 
-        const headers = ['Date/Time', 'Learner Name', 'Parent Phone', 'Channel', 'Status', 'Sent By', 'Term'];
+        const headers = ['Date/Time', 'Learner Name', 'Parent Phone', 'Channel', 'Status', 'Failure Reason', 'Sent By', 'Term'];
         const rows = logs.map(log => [
             new Date(log.createdAt).toLocaleString(),
             `${log.learner?.firstName || ''} ${log.learner?.lastName || ''}`.trim() || 'N/A',
             log.phoneNumber || 'N/A',
             log.channel || 'N/A',
             log.status || 'N/A',
+            log.failureReason || '',
             `${log.sentBy?.firstName || ''} ${log.sentBy?.lastName || ''}`.trim() || 'System',
             log.term || 'N/A'
         ]);
@@ -284,6 +301,7 @@ const MessageHistoryPage = () => {
                                         <th className="px-4 py-3 font-semibold text-[color:var(--table-header-fg)] uppercase text-xs">Status</th>
                                         <th className="px-4 py-3 font-semibold text-[color:var(--table-header-fg)] uppercase text-xs">Sent By</th>
                                         <th className="px-4 py-3 font-semibold text-[color:var(--table-header-fg)] uppercase text-xs">Term</th>
+                                        <th className="px-4 py-3 font-semibold text-[color:var(--table-header-fg)] uppercase text-xs">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-200">
@@ -319,9 +337,16 @@ const MessageHistoryPage = () => {
                                                     </Badge>
                                                 </td>
                                                 <td className="px-4 py-3">
-                                                    <div className={`flex items-center gap-1 ${className}`}>
-                                                        <StatusIcon size={14} />
-                                                        <span className="text-xs font-medium">{label}</span>
+                                                    <div>
+                                                        <div className={`flex items-center gap-1 ${className}`}>
+                                                            <StatusIcon size={14} />
+                                                            <span className="text-xs font-medium">{label}</span>
+                                                        </div>
+                                                        {log.failureReason && (
+                                                            <p className="mt-1 max-w-64 text-xs text-red-600" title={log.failureReason}>
+                                                                {log.failureReason}
+                                                            </p>
+                                                        )}
                                                     </div>
                                                 </td>
                                                 <td className="px-4 py-3 text-xs text-gray-700 whitespace-nowrap">
@@ -329,6 +354,20 @@ const MessageHistoryPage = () => {
                                                 </td>
                                                 <td className="px-4 py-3 text-xs text-gray-700">
                                                     {log.term || '—'}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    {log.canRetry ? (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => handleRetry(log)}
+                                                            disabled={retryingId === log.auditId}
+                                                            className="gap-1 whitespace-nowrap"
+                                                        >
+                                                            <RotateCcw size={14} className={retryingId === log.auditId ? 'animate-spin' : ''} />
+                                                            Retry
+                                                        </Button>
+                                                    ) : '—'}
                                                 </td>
                                             </tr>
                                         );

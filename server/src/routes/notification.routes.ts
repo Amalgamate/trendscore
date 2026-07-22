@@ -56,6 +56,16 @@ const sendAssessmentReportSchema = z.object({
   reportImageBase64: z.string().optional()
 });
 
+const sendAssessmentReportBulkSchema = z.object({
+  term: z.string().min(1),
+  academicYear: z.coerce.number().int().min(2000).max(2200),
+  entries: z.array(z.object({
+    learnerId: z.string().min(1),
+    message: z.string().min(1).max(5000),
+    phoneOverride: z.string().max(30).optional(),
+  })).min(1).max(250),
+});
+
 /**
  * @route   POST /api/notifications/assessment-complete
  * @desc    Send assessment completion notification to parent
@@ -129,6 +139,25 @@ router.post(
   validate(sendAssessmentReportSchema),
   auditLog('SEND_ASSESSMENT_REPORT_SMS'),
   asyncHandler(notificationController.sendAssessmentReportSms.bind(notificationController))
+);
+
+router.post(
+  '/sms/assessment-report/bulk',
+  authenticate,
+  requirePermission('SEND_MESSAGES'),
+  rateLimit({ windowMs: 60_000, maxRequests: 10 }),
+  validate(sendAssessmentReportBulkSchema),
+  auditLog('SEND_ASSESSMENT_REPORT_SMS_BULK'),
+  asyncHandler(notificationController.sendAssessmentReportSmsBulk.bind(notificationController))
+);
+
+router.post(
+  '/sms/assessment-report/:auditId/retry',
+  authenticate,
+  requirePermission('SEND_MESSAGES'),
+  rateLimit({ windowMs: 60_000, maxRequests: 30 }),
+  auditLog('RETRY_ASSESSMENT_REPORT_SMS'),
+  asyncHandler(notificationController.retryAssessmentReportSms.bind(notificationController))
 );
 
 /**
