@@ -611,6 +611,7 @@ export class NotificationController {
     const {
       startDate,
       endDate,
+      grade,
       channel,
       status,
       search,
@@ -624,6 +625,7 @@ export class NotificationController {
       const safetyBuffer = skip + take + 500; // Limit DB fetch to what we likely need
 
       const searchText = (search || '').toString().trim().toLowerCase();
+      const normalizedGrade = grade ? String(grade).trim().toUpperCase() : undefined;
       const normalizedChannel = channel ? String(channel).toUpperCase() : undefined;
       const normalizedStatus = status ? String(status).toUpperCase() : undefined;
       const wantsOnlyBounced = normalizedStatus === 'BOUNCED';
@@ -647,6 +649,15 @@ export class NotificationController {
       };
 
       const auditWhere: any = {};
+      if (normalizedGrade) {
+        const validGrades = new Set([
+          'PLAYGROUP', 'PP1', 'PP2',
+          ...Array.from({ length: 9 }, (_, index) => `GRADE_${index + 1}`),
+          ...Array.from({ length: 4 }, (_, index) => `FORM_${index + 1}`),
+        ]);
+        if (!validGrades.has(normalizedGrade)) throw new ApiError(400, 'Invalid grade filter');
+        auditWhere.learner = { grade: normalizedGrade };
+      }
       if (normalizedChannel) auditWhere.channel = normalizedChannel;
       if (normalizedStatus && normalizedStatus !== 'BOUNCED') auditWhere.smsStatus = normalizedStatus;
       if (start || end) {
@@ -676,7 +687,7 @@ export class NotificationController {
             take: safetyBuffer, // SCALE FIX: Don't load everything
           });
 
-      const canUseBroadcast = (!normalizedChannel || normalizedChannel === 'SMS') && !wantsOnlyBounced;
+      const canUseBroadcast = (!normalizedChannel || normalizedChannel === 'SMS') && !wantsOnlyBounced && !normalizedGrade;
       
       const broadcastWhere: any = {};
       if (start || end) {

@@ -4,6 +4,12 @@ import { Card, CardContent, Button, Input, Label, Badge, Dialog, DialogContent, 
 import { useNotifications } from '../hooks/useNotifications';
 import api from '../../../services/api';
 
+const MESSAGE_HISTORY_GRADES = [
+    ['PLAYGROUP', 'Playgroup'], ['PP1', 'PP1'], ['PP2', 'PP2'],
+    ...Array.from({ length: 9 }, (_, index) => [`GRADE_${index + 1}`, `Grade ${index + 1}`]),
+    ...Array.from({ length: 4 }, (_, index) => [`FORM_${index + 1}`, `Form ${index + 1}`]),
+];
+
 const MessageHistoryPage = () => {
     const { showSuccess, showError } = useNotifications();
 
@@ -14,6 +20,7 @@ const MessageHistoryPage = () => {
     const [filters, setFilters] = useState({
         startDate: '',
         endDate: '',
+        grade: 'all',
         channel: 'all',
         status: 'all',
         search: ''
@@ -40,6 +47,7 @@ const MessageHistoryPage = () => {
                 limit,
                 ...(activeFilters.startDate  && { startDate:  activeFilters.startDate }),
                 ...(activeFilters.endDate    && { endDate:    activeFilters.endDate }),
+                ...(activeFilters.grade !== 'all' && { grade: activeFilters.grade }),
                 ...(activeFilters.channel !== 'all' && { channel: activeFilters.channel }),
                 ...(activeFilters.status  !== 'all' && { status:  activeFilters.status }),
                 ...(activeFilters.search     && { search:     activeFilters.search }),
@@ -229,7 +237,7 @@ const MessageHistoryPage = () => {
 
             {/* Filters */}
             <div className="px-6 py-4 bg-white border-b border-gray-200">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
                     <div className="space-y-1">
                         <Label htmlFor="startDate" className="text-xs font-medium">From Date</Label>
                         <Input
@@ -238,6 +246,20 @@ const MessageHistoryPage = () => {
                             value={filters.startDate}
                             onChange={(e) => handleFilterChange('startDate', e.target.value)}
                         />
+                    </div>
+                    <div className="space-y-1">
+                        <Label htmlFor="grade" className="text-xs font-medium">Grade</Label>
+                        <select
+                            id="grade"
+                            value={filters.grade}
+                            onChange={(e) => handleFilterChange('grade', e.target.value)}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-brand-teal text-sm"
+                        >
+                            <option value="all">All Grades</option>
+                            {MESSAGE_HISTORY_GRADES.map(([value, label]) => (
+                                <option key={value} value={value}>{label}</option>
+                            ))}
+                        </select>
                     </div>
                     <div className="space-y-1">
                         <Label htmlFor="endDate" className="text-xs font-medium">To Date</Label>
@@ -439,7 +461,7 @@ const MessageHistoryPage = () => {
                         <MessageSquare size={48} className="text-gray-300 mb-4" />
                         <h3 className="text-lg font-medium text-gray-600">No Messages Found</h3>
                         <p className="text-gray-400 text-sm mt-2">
-                            {filters.startDate || filters.endDate || filters.channel !== 'all' || filters.status !== 'all' || filters.search
+                            {filters.startDate || filters.endDate || filters.grade !== 'all' || filters.channel !== 'all' || filters.status !== 'all' || filters.search
                                 ? 'No messages match your current filters — try adjusting the date range or clearing filters.'
                                 : 'Messages will appear here once SMS or WhatsApp notifications are sent.'}
                         </p>

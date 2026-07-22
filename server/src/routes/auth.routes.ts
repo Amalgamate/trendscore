@@ -12,6 +12,11 @@ import { isFixedOtpPhone } from '../services/auth-phone-otp.service';
 const router = Router();
 const authController = new AuthController();
 
+router.get('/login-config',
+  authRateLimit(30, 60_000),
+  asyncHandler(authController.loginConfig.bind(authController))
+);
+
 // Public routes with enhanced security rate limiting
 router.post('/register',
   optionalAuthenticate,

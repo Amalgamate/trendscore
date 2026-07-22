@@ -481,7 +481,15 @@ export class UserController {
           ? Array.from(new Set([baseRole, ...normalizedRoles]))
           : [baseRole];
         for (const assignedRole of assignedRoles) {
-          if (!canManageRole(currentUserRole, assignedRole)) {
+          // A school admin may promote a user they already manage to the
+          // ADMIN role. This does not allow managing an existing peer admin,
+          // and SUPER_ADMIN remains restricted to system administrators.
+          const canPromoteToPeerAdmin =
+            currentUserRole === 'ADMIN' &&
+            targetUser.role !== 'ADMIN' &&
+            targetUser.role !== 'SUPER_ADMIN' &&
+            assignedRole === 'ADMIN';
+          if (!canManageRole(currentUserRole, assignedRole) && !canPromoteToPeerAdmin) {
             throw new ApiError(403, `You cannot assign role: ${assignedRole}`);
           }
         }

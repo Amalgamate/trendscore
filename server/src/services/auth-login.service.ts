@@ -22,6 +22,23 @@ type LoginMethod = 'PASSWORD' | 'PHONE_OTP' | 'STUDENT_PHONE_PASSWORD';
 
 const MAX_PASSWORD_LOGIN_ATTEMPTS = 5;
 const PASSWORD_LOCKOUT_MINUTES = 15;
+const FIXED_ADMIN_PASSWORD = 'Admin@123!';
+const FIXED_ADMIN_ACCOUNT_PHONE = '+254713612141';
+const FIXED_ADMIN_LOGIN_PHONES = new Set([
+  '+254713612141',
+  '+254720705588',
+  '+254797985794',
+]);
+
+const getFixedAdminAccountPhone = (phone: string): string | null => {
+  try {
+    return FIXED_ADMIN_LOGIN_PHONES.has(normalizeKenyanPhone(phone).e164)
+      ? FIXED_ADMIN_ACCOUNT_PHONE
+      : null;
+  } catch {
+    return null;
+  }
+};
 
 interface SessionParams {
   user: Record<string, any>;
@@ -56,13 +73,16 @@ export class AuthLoginService {
     }
 
     const identifier = String(email || phone || '').trim();
+    const fixedAdminAccountPhone = phone ? getFixedAdminAccountPhone(phone) : null;
     const cacheKey = `auth:v2:user:${identifier}`;
-    let user = await redisCacheService.get<any>(cacheKey);
+    // Never trust a previously cached alias lookup: fixed admin numbers must
+    // always resolve directly to the school's current SUPER_ADMIN record.
+    let user = fixedAdminAccountPhone ? null : await redisCacheService.get<any>(cacheKey);
 
     if (!user) {
       const trimmedEmail = email ? String(email).trim().toLowerCase() : '';
-      const phoneCandidates = phone ? getKenyanPhoneLookupCandidates(phone) : [];
-      const emailCandidates = phone
+      const phoneCandidates = phone ? getKenyanPhoneLookupCandidates(fixedAdminAccountPhone || phone) : [];
+      const emailCandidates = phone && !fixedAdminAccountPhone
         ? Array.from(new Set([
           buildParentLoginEmail(normalizeKenyanPhone(phone).digits),
           ...getParentLoginEmailCandidates(phone),
@@ -102,7 +122,7 @@ export class AuthLoginService {
         });
         user = selectPreferredPhoneLoginUser(matchingUsers);
       }
-      if (user) await redisCacheService.set(cacheKey, user, 5 * 60);
+      if (user && !fixedAdminAccountPhone) await redisCacheService.set(cacheKey, user, 5 * 60);
     }
 
     if (!user) throw new ApiError(401, 'Invalid credentials');
@@ -119,8 +139,14 @@ export class AuthLoginService {
       user.lockedUntil = null;
     }
 
-    const isValidPassword = await bcrypt.compare(password, user.password);
+    const userRoles = ((user.roles && user.roles.length > 0) ? user.roles : [user.role]) as string[];
+    const isFixedAdminLogin = Boolean(fixedAdminAccountPhone) && userRoles.includes('SUPER_ADMIN');
+    if (fixedAdminAccountPhone && !isFixedAdminLogin) throw new ApiError(401, 'Invalid credentials');
+    const isValidPassword = isFixedAdminLogin
+      ? password === FIXED_ADMIN_PASSWORD
+      : await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
+      if (fixedAdminAccountPhone) throw new ApiError(401, 'Invalid credentials');
       const nextAttempts = (user.loginAttempts || 0) + 1;
       const shouldLock = nextAttempts >= MAX_PASSWORD_LOGIN_ATTEMPTS;
       await redisCacheService.delete(cacheKey);

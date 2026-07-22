@@ -115,6 +115,15 @@ export class AuthController {
     res.json(result);
   }
 
+  async loginConfig(_req: Request, res: Response) {
+    const config = await prisma.communicationConfig.findFirst({
+      select: { emailTemplates: true },
+    });
+    const otpEnabled = (config?.emailTemplates as any)?.__security?.otpEnabled !== false;
+
+    res.json({ otpEnabled });
+  }
+
   async requestPhoneOtp(req: Request, res: Response) {
     const result = await authPhoneOtpService.requestParentOtp({
       phone: req.body.phone,

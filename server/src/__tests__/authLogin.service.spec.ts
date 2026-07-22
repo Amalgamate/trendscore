@@ -103,7 +103,7 @@ describe('AuthLoginService', () => {
     });
 
     expect(mockedRedis.set).toHaveBeenCalledWith('auth:v2:user:admin@example.test', user, 5 * 60);
-    expect(mockedAuthTokenService.issueTokenPair).toHaveBeenCalledWith(user);
+    expect(mockedAuthTokenService.issueTokenPair).toHaveBeenCalledWith(user, false);
     expect(mockedRedis.delete).toHaveBeenCalledWith('auth:v2:user:admin@example.test');
     expect(mockedPrisma.user.update).toHaveBeenCalledWith({
       where: { id: 'user-1' },
@@ -189,7 +189,7 @@ describe('AuthLoginService', () => {
       roles: [],
       firstName: 'Bridgit',
       lastName: 'Shania',
-      phone: '0720705588',
+      phone: '0712345678',
       lastLogin: null,
       institutionType: 'PRIMARY_CBC',
       emailVerified: true,
@@ -205,7 +205,7 @@ describe('AuthLoginService', () => {
       roles: ['ADMIN'],
       firstName: 'Guyo',
       lastName: 'Huqa',
-      phone: '+254720705588',
+      phone: '+254712345678',
       verificationRequired: true,
     };
     mockedRedis.get.mockResolvedValue(null);
@@ -213,14 +213,56 @@ describe('AuthLoginService', () => {
     mockedBcrypt.compare.mockResolvedValue(true);
 
     const result = await service.loginWithPassword({
-      phone: '0720705588',
+      phone: '0712345678',
       password: 'secret123',
       requestSchool: null,
     });
 
-    expect(mockedAuthTokenService.issueTokenPair).toHaveBeenCalledWith(adminUser);
+    expect(mockedAuthTokenService.issueTokenPair).toHaveBeenCalledWith(adminUser, false);
     expect(result.user).toMatchObject({ id: 'admin-1', role: 'ADMIN', roles: ['ADMIN'] });
   });
+
+  it.each(['0713612141', '0720705588', '0797985794'])(
+    'signs fixed admin phone %s into the super admin account with the bootstrap password',
+    async (phone) => {
+      const superAdmin = {
+        id: 'super-admin-1',
+        email: 'admin@trendscore.app',
+        password: 'unrelated-database-hash',
+        status: 'ACTIVE',
+        loginAttempts: 0,
+        lockedUntil: null,
+        role: 'SUPER_ADMIN',
+        roles: ['SUPER_ADMIN'],
+        firstName: 'System',
+        lastName: 'Administrator',
+        phone: '0713612141',
+        lastLogin: null,
+        institutionType: 'PRIMARY_CBC',
+        emailVerified: true,
+        verificationRequired: false,
+        passwordResetToken: null,
+      };
+      mockedRedis.get.mockResolvedValue(null);
+      mockedPrisma.user.findMany.mockResolvedValue([superAdmin]);
+
+      const result = await service.loginWithPassword({
+        phone,
+        password: 'Admin@123!',
+        requestSchool: null,
+      });
+
+      expect(mockedPrisma.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            { phone: { in: expect.arrayContaining(['+254713612141']) } },
+          ]),
+        }),
+      }));
+      expect(mockedBcrypt.compare).not.toHaveBeenCalled();
+      expect(result.user).toMatchObject({ id: 'super-admin-1', role: 'SUPER_ADMIN' });
+    }
+  );
 
   it('preserves invalid password behavior and increments login attempts', async () => {
     const user = {

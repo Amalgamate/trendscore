@@ -177,6 +177,25 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
   };
 
   useEffect(() => {
+    let active = true;
+
+    authAPI.getLoginConfig()
+      .then((config) => {
+        if (!active || config?.otpEnabled !== false) return;
+        setPhoneOtp(prev => ({ ...prev, requiresOtp: false, smsConfigured: false }));
+        setPhoneOtpStep('verify');
+        setPhonePasswordFallback(true);
+      })
+      .catch(() => {
+        // Preserve the existing OTP flow when the public policy cannot be loaded.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     let alive = true;
     const loadInstitutionProgress = async () => {
       if (!showInstitutionSetupModal || !pendingCredentialsData?.token || !institutionChoice) return;

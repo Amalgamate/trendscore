@@ -15,10 +15,11 @@
  * Priority order: ERROR (CRITICAL) → WARNING (IMPORTANT) → GIT_UPDATE (NORMAL)
  */
 
-import React, { useMemo, useCallback } from 'react';
-import { X, GitBranch, GitCommit, User, Link2, Rocket, AlertTriangle, Zap, Bell } from 'lucide-react';
+import React, { useMemo, useCallback, useState } from 'react';
+import { X, GitBranch, GitCommit, User, Link2, Rocket, AlertTriangle, Zap, Bell, Check, Loader2 } from 'lucide-react';
 import { cn } from '../../../utils/cn';
 import { useUserNotifications } from '../../../contexts/UserNotificationContext';
+import { approvalAPI } from '../../../services/api/approval.api';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -83,6 +84,8 @@ const fmtDate = (iso) => {
 
 export default function GitPopupAlert() {
   const { notifications, markAsRead } = useUserNotifications();
+  const [approving, setApproving] = useState(false);
+  const [approvalError, setApprovalError] = useState('');
 
   // Pick the first unread popup notification, sorted highest priority first
   const popup = useMemo(() => {
@@ -100,11 +103,28 @@ export default function GitPopupAlert() {
     if (popup) markAsRead(popup.id);
   }, [popup, markAsRead]);
 
+  const handleApprove = useCallback(async () => {
+    const requestId = popup?.metadata?.requestId;
+    if (!popup || !requestId || approving) return;
+
+    setApproving(true);
+    setApprovalError('');
+    try {
+      await approvalAPI.approve(requestId, {});
+      await markAsRead(popup.id);
+    } catch (error) {
+      setApprovalError(error?.message || 'Unable to approve this request. Open Approvals to review its current status.');
+    } finally {
+      setApproving(false);
+    }
+  }, [popup, approving, markAsRead]);
+
   if (!popup) return null;
 
   const cfg = TYPE_CONFIG[popup.type] || TYPE_CONFIG.INFO;
   const Icon = cfg.icon;
   const meta = popup.metadata || {};
+  const isPendingApproval = meta.event === 'PENDING_APPROVAL' && Boolean(meta.requestId);
 
   return (
     <>
@@ -212,6 +232,12 @@ export default function GitPopupAlert() {
           <p className="text-[10px] text-gray-400 font-medium">
             {fmtDate(popup.createdAt)}
           </p>
+
+          {approvalError && (
+            <p role="alert" className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+              {approvalError}
+            </p>
+          )}
         </div>
 
         {/* Footer */}
@@ -233,13 +259,26 @@ export default function GitPopupAlert() {
           ) : (
             <div />
           )}
-          <button
-            onClick={handleDismiss}
-            className="px-5 py-2 text-xs font-bold uppercase tracking-wide text-white transition-colors"
-            style={{ background: 'var(--brand-purple, #030b82)' }}
-          >
-            Got it
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            {isPendingApproval && (
+              <button
+                onClick={handleApprove}
+                disabled={approving}
+                className="flex items-center gap-1.5 bg-emerald-600 px-5 py-2 text-xs font-bold uppercase tracking-wide text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {approving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                {approving ? 'Approving...' : 'Approve'}
+              </button>
+            )}
+            <button
+              onClick={handleDismiss}
+              disabled={approving}
+              className="px-5 py-2 text-xs font-bold uppercase tracking-wide text-white transition-colors disabled:opacity-60"
+              style={{ background: 'var(--brand-purple, #030b82)' }}
+            >
+              {isPendingApproval ? 'Later' : 'Got it'}
+            </button>
+          </div>
         </div>
       </div>
     </>

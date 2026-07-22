@@ -414,7 +414,7 @@ describe('AuthPhoneOtpService', () => {
       mustChangePassword: false,
       message: 'Login successful',
     });
-    expect(mockedAuthTokenService.issueTokenPair).toHaveBeenCalledWith(validParent);
+    expect(mockedAuthTokenService.issueTokenPair).toHaveBeenCalledWith(validParent, false);
     expect(mockedPrisma.user.update).toHaveBeenCalledWith({
       where: { id: 'parent-1' },
       data: { lastLogin: expect.any(Date), loginAttempts: 0, lockedUntil: null },
@@ -529,7 +529,7 @@ describe('AuthPhoneOtpService', () => {
       id: 'teacher-1',
       role: 'TEACHER',
       roles: ['TEACHER'],
-    }));
+    }), false);
   });
 
   it('verifies the fixed setup OTP for the configured super admin phone', async () => {
@@ -560,7 +560,7 @@ describe('AuthPhoneOtpService', () => {
       refreshToken: 'refresh.jwt',
       user: { id: 'super-admin-1', role: 'SUPER_ADMIN', roles: ['SUPER_ADMIN'] },
     });
-    expect(mockedAuthTokenService.issueTokenPair).toHaveBeenCalledWith(validSuperAdmin);
+    expect(mockedAuthTokenService.issueTokenPair).toHaveBeenCalledWith(validSuperAdmin, false);
   });
 
   it('verifies the first admin alias as the configured system administrator', async () => {
@@ -591,7 +591,7 @@ describe('AuthPhoneOtpService', () => {
       refreshToken: 'refresh.jwt',
       user: { id: 'super-admin-1', role: 'SUPER_ADMIN', roles: ['SUPER_ADMIN'] },
     });
-    expect(mockedAuthTokenService.issueTokenPair).toHaveBeenCalledWith(validSuperAdmin);
+    expect(mockedAuthTokenService.issueTokenPair).toHaveBeenCalledWith(validSuperAdmin, false);
   });
 
   it('verifies the second admin alias as the configured system administrator', async () => {

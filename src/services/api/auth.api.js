@@ -103,6 +103,18 @@ export const authAPI = {
     }
   },
 
+  getLoginConfig: async () => {
+    try {
+      const response = await axiosInstance.get('/auth/login-config');
+      return response.data;
+    } catch (error) {
+      if (error.response?.data) {
+        throw new Error(extractApiErrorMessage(error.response.data, error.response.status));
+      }
+      throw error;
+    }
+  },
+
   verifyPhoneOtp: async (data) => {
     try {
       const response = await axiosInstance.post('/auth/phone-otp/verify', data);
