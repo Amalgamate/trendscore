@@ -119,10 +119,11 @@ const MessageHistoryPage = () => {
             return;
         }
 
-        const headers = ['Date/Time', 'Learner Name', 'Parent Phone', 'Channel', 'Status', 'Failure Reason', 'Sent By', 'Term'];
+        const headers = ['Date/Time', 'Learner Name', 'Grade', 'Parent Phone', 'Channel', 'Status', 'Failure Reason', 'Sent By', 'Term'];
         const rows = logs.map(log => [
             new Date(log.createdAt).toLocaleString(),
             `${log.learner?.firstName || ''} ${log.learner?.lastName || ''}`.trim() || 'N/A',
+            formatGrade(log.learner?.grade),
             log.phoneNumber || 'N/A',
             log.channel || 'N/A',
             log.status || 'N/A',
@@ -152,6 +153,15 @@ const MessageHistoryPage = () => {
             month: 'short', day: 'numeric', year: 'numeric',
             hour: '2-digit', minute: '2-digit'
         });
+    };
+
+    const formatGrade = (grade) => {
+        if (!grade) return '—';
+        const normalized = String(grade).trim().toUpperCase();
+        if (normalized.startsWith('GRADE_')) return `Grade ${normalized.slice(6)}`;
+        if (/^PP\d+$/.test(normalized)) return normalized;
+        if (normalized === 'PLAYGROUP') return 'Playgroup';
+        return normalized.replace(/_/g, ' ');
     };
 
     const getStatusMeta = (status) => {
@@ -321,7 +331,14 @@ const MessageHistoryPage = () => {
                                                             <p className="text-sm font-medium text-gray-800 whitespace-nowrap">
                                                                 {log.learner?.firstName} {log.learner?.lastName}
                                                             </p>
-                                                            <p className="text-xs text-gray-500">{log.learner?.admissionNumber || '—'}</p>
+                                                            <p className="text-xs text-gray-500 whitespace-nowrap">
+                                                                {log.learner?.admissionNumber || '—'}
+                                                                {log.learner?.grade && (
+                                                                    <span className="ml-1.5 font-medium text-brand-teal">
+                                                                        • {formatGrade(log.learner.grade)}
+                                                                    </span>
+                                                                )}
+                                                            </p>
                                                         </div>
                                                     </div>
                                                 </td>
