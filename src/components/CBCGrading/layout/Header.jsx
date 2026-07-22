@@ -398,16 +398,16 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
     };
   }, [user?.id]);
 
-  const handleClockIn = () => {
-    clockInTeacher(user, {
+  const handleClockIn = async () => {
+    await clockInTeacher(user, {
       source: 'header',
       role: user?.role
     });
     setClockInState(getCurrentUserClockInStatus(user));
   };
 
-  const handleClockOut = () => {
-    clockOutTeacher(user, {
+  const handleClockOut = async () => {
+    await clockOutTeacher(user, {
       source: 'header',
       role: user?.role
     });

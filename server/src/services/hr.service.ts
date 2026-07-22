@@ -64,7 +64,11 @@ type AttendanceRequestContext = {
 };
 
 export class HRService {
-    private readonly staffRoles = ['ADMIN', 'HEAD_TEACHER', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST'] as const;
+    private readonly staffRoles = [
+        'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT',
+        'RECEPTIONIST', 'LIBRARIAN', 'NURSE', 'SECURITY', 'DRIVER', 'COOK',
+        'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT'
+    ] as const;
     // 30m default: practical minimum for browser GPS (indoor accuracy is typically 5–50m).
     // Admin can tighten this per-school via geofenceRadiusMeters in school settings.
     private readonly defaultGeofenceRadiusMeters = 30;
@@ -75,6 +79,14 @@ export class HRService {
         const date = new Date(dateValue);
         date.setHours(0, 0, 0, 0);
         return date;
+    }
+
+    private toCalendarDateKey(dateValue: Date) {
+        const date = new Date(dateValue);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
 
     private toWorkedMinutes(clockInAt: Date, clockOutAt: Date) {
@@ -771,13 +783,37 @@ export class HRService {
             }
         });
         const existingMap = new Map(existingRecords.map(r => [r.userId, r]));
+        const monthStart = new Date(year, month - 1, 1);
+        const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+        const attendanceLogs = await prisma.staffAttendanceLog.findMany({
+            where: {
+                userId: { in: staff.map(s => s.id) },
+                date: { gte: monthStart, lte: monthEnd },
+                status: { in: ['PRESENT', 'LATE', 'PARTIAL'] }
+            },
+            select: { userId: true, date: true, clockInAt: true, clockOutAt: true }
+        });
+        const attendanceTotals = new Map<string, { workedDays: number; workedMinutes: number }>();
+        for (const log of attendanceLogs) {
+            const totals = attendanceTotals.get(log.userId) || { workedDays: 0, workedMinutes: 0 };
+            totals.workedDays += 1;
+            if (log.clockInAt && log.clockOutAt) totals.workedMinutes += this.toWorkedMinutes(log.clockInAt, log.clockOutAt);
+            attendanceTotals.set(log.userId, totals);
+        }
 
         const payrollRecords = [];
 
         for (const member of staff) {
             const existing = existingMap.get(member.id);
+            const totals = attendanceTotals.get(member.id) || { workedDays: 0, workedMinutes: 0 };
             if (existing) {
-                payrollRecords.push(existing);
+                const refreshed = existing.status === 'DRAFT'
+                    ? await prisma.payrollRecord.update({
+                        where: { id: existing.id },
+                        data: totals
+                    })
+                    : existing;
+                payrollRecords.push(refreshed);
                 continue;
             }
 
@@ -803,6 +839,8 @@ export class HRService {
                         customTotal: pay.customDeductionTotal,
                         totalDeductions: pay.totalDeductions
                     } as any,
+                    workedDays: totals.workedDays,
+                    workedMinutes: totals.workedMinutes,
                     status: 'DRAFT',
                     generatedBy
                 }
@@ -1084,24 +1122,66 @@ export class HRService {
         }
         const metadata = this.buildAttendanceMetadata(payload, geofenceDecision);
 
-        const attendance = await prisma.staffAttendanceLog.upsert({
-            where: { userId_date: { userId, date: dateOnly } },
-            update: {
-                schoolId: schoolId || undefined,
-                clockInAt: timestamp,
-                clockOutAt: null,
-                source: payload?.source || 'web',
-                metadata
-            },
-            create: {
-                userId,
-                schoolId,
-                date: dateOnly,
-                clockInAt: timestamp,
-                source: payload?.source || 'web',
-                metadata
-            }
+        const existingAttendance = await prisma.staffAttendanceLog.findUnique({
+            where: { userId_date: { userId, date: dateOnly } }
         });
+
+        // The first accepted arrival is authoritative. Repeated clicks, browser retries,
+        // and a second device must never replace it or erase an existing clock-out.
+        if (existingAttendance?.clockInAt) {
+            return {
+                attendance: existingAttendance,
+                payroll: null,
+                payrollCreated: false,
+                geofenceDecision,
+                alreadyClockedIn: true
+            };
+        }
+
+        const attendance = existingAttendance
+            ? await prisma.staffAttendanceLog.update({
+                where: { id: existingAttendance.id },
+                data: {
+                    schoolId: existingAttendance.schoolId || schoolId || undefined,
+                    status: 'PRESENT',
+                    clockInAt: timestamp,
+                    clockOutAt: null,
+                    source: payload?.source || 'web',
+                    metadata,
+                    markedBy: null,
+                    markingReason: null,
+                    correctedAt: existingAttendance.status === 'ABSENT' ? new Date() : undefined
+                }
+            })
+            : await prisma.staffAttendanceLog.create({
+                data: {
+                    userId,
+                    schoolId,
+                    date: dateOnly,
+                    status: 'PRESENT',
+                    clockInAt: timestamp,
+                    source: payload?.source || 'web',
+                    metadata
+                }
+            });
+
+        if (existingAttendance && existingAttendance.status !== 'PRESENT') {
+            await prisma.staffAttendanceCorrection.create({
+                data: {
+                    attendanceId: attendance.id,
+                    userId,
+                    date: dateOnly,
+                    previousStatus: existingAttendance.status,
+                    newStatus: 'PRESENT',
+                    previousClockInAt: existingAttendance.clockInAt,
+                    previousClockOutAt: existingAttendance.clockOutAt,
+                    newClockInAt: attendance.clockInAt,
+                    newClockOutAt: attendance.clockOutAt,
+                    reason: 'Reconciled automatically from an accepted staff clock-in',
+                    correctedBy: userId
+                }
+            });
+        }
 
         const user = await prisma.user.findUnique({
             where: { id: userId },
@@ -1156,7 +1236,7 @@ export class HRService {
         const attendance = await prisma.staffAttendanceLog.findUnique({
             where: { userId_date: { userId, date: dateOnly } }
         });
-        if (!attendance) throw new Error('No clock-in record found for today');
+        if (!attendance?.clockInAt) throw new Error('No clock-in record found for today');
         if (timestamp.getTime() < new Date(attendance.clockInAt).getTime()) {
             throw new Error('Clock-out time cannot be earlier than clock-in time');
         }
@@ -1274,54 +1354,242 @@ export class HRService {
     // ─── Attendance Report ────────────────────────────────────────────────────
 
     async getAttendanceReport(params: { userId?: string; startDate: string; endDate: string }) {
-        const start = new Date(params.startDate); start.setHours(0, 0, 0, 0);
-        const end   = new Date(params.endDate);   end.setHours(23, 59, 59, 999);
-        return prisma.staffAttendanceLog.findMany({
-            where: {
-                date: { gte: start, lte: end },
-                ...(params.userId ? { userId: params.userId } : {})
-            },
-            include: { user: { select: { firstName: true, lastName: true, staffId: true, role: true } } },
-            orderBy: [{ date: 'desc' }, { user: { lastName: 'asc' } }]
+        const start = this.toDateOnly(new Date(params.startDate));
+        const end = this.toDateOnly(new Date(params.endDate));
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) {
+            throw new ApiError(400, 'Invalid attendance report date range');
+        }
+        const rangeDays = Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1;
+        if (rangeDays > 366) throw new ApiError(400, 'Attendance reports are limited to 366 days');
+
+        const userSelect = { id: true, firstName: true, lastName: true, email: true, staffId: true, role: true, status: true, joinedAt: true } as const;
+        const [staff, logs, approvedLeaves, school] = await Promise.all([
+            prisma.user.findMany({
+                where: {
+                    role: { in: [...this.staffRoles] as any },
+                    archived: false,
+                    status: 'ACTIVE',
+                    ...(params.userId ? { id: params.userId } : {})
+                },
+                select: userSelect,
+                orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }]
+            }),
+            prisma.staffAttendanceLog.findMany({
+                where: {
+                    date: { gte: start, lte: end },
+                    ...(params.userId ? { userId: params.userId } : {})
+                },
+                include: {
+                    user: { select: userSelect },
+                    corrections: { orderBy: { createdAt: 'desc' }, take: 20 }
+                }
+            }),
+            prisma.leaveRequest.findMany({
+                where: {
+                    status: 'APPROVED',
+                    startDate: { lte: end },
+                    endDate: { gte: start },
+                    ...(params.userId ? { userId: params.userId } : {})
+                },
+                include: { leaveType: { select: { name: true } } }
+            }),
+            prisma.school.findFirst({
+                where: { archived: false },
+                orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }],
+                select: {
+                    id: true, attendanceLockTime: true, staffWorkStartTime: true, staffWorkEndTime: true,
+                    staffRequiredMinutes: true, staffPartialDayMinutes: true, staffWorkingDays: true
+                }
+            })
+        ]);
+
+        const requiredMinutes = school?.staffRequiredMinutes || 480;
+        const partialDayMinutes = school?.staffPartialDayMinutes || 240;
+        const workStartTime = school?.staffWorkStartTime || school?.attendanceLockTime || '07:30';
+        const workEndTime = school?.staffWorkEndTime || '16:30';
+        const workingDays = Array.isArray(school?.staffWorkingDays)
+            ? (school.staffWorkingDays as number[]).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+            : [1, 2, 3, 4, 5];
+        const [workStartHour, workStartMinute] = workStartTime.split(':').map(Number);
+        const nairobiNowParts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', hour12: false
+        }).formatToParts(new Date());
+        const nowPart = (type: string) => nairobiNowParts.find((part) => part.type === type)?.value || '';
+        const todayKey = `${nowPart('year')}-${nowPart('month')}-${nowPart('day')}`;
+        const currentNairobiMinutes = Number(nowPart('hour')) * 60 + Number(nowPart('minute'));
+        const logByUserDate = new Map(logs.map((log) => [`${log.userId}:${this.toCalendarDateKey(log.date)}`, log]));
+        const leaveByUserDate = new Map<string, any>();
+        for (const leave of approvedLeaves) {
+            const cursor = this.toDateOnly(leave.startDate);
+            const leaveEnd = this.toDateOnly(leave.endDate);
+            while (cursor <= leaveEnd) {
+                leaveByUserDate.set(`${leave.userId}:${this.toCalendarDateKey(cursor)}`, leave);
+                cursor.setDate(cursor.getDate() + 1);
+            }
+        }
+
+        const getNairobiMinutes = (value?: Date | null) => {
+            if (!value) return null;
+            const parts = new Intl.DateTimeFormat('en-GB', {
+                timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit', hour12: false
+            }).formatToParts(new Date(value));
+            const hour = Number(parts.find((part) => part.type === 'hour')?.value || 0);
+            const minute = Number(parts.find((part) => part.type === 'minute')?.value || 0);
+            return hour * 60 + minute;
+        };
+
+        const rows: any[] = [];
+        for (const person of staff) {
+            const cursor = new Date(start);
+            while (cursor <= end) {
+                const dateKey = this.toCalendarDateKey(cursor);
+                const joinedDateKey = person.joinedAt ? this.toCalendarDateKey(person.joinedAt) : null;
+                if (joinedDateKey && dateKey < joinedDateKey) {
+                    cursor.setDate(cursor.getDate() + 1);
+                    continue;
+                }
+                const key = `${person.id}:${dateKey}`;
+                const log: any = logByUserDate.get(key);
+                const leave: any = leaveByUserDate.get(key);
+                const isWorkday = workingDays.includes(cursor.getDay());
+                const workedMinutes = log?.clockInAt && log?.clockOutAt
+                    ? this.toWorkedMinutes(log.clockInAt, log.clockOutAt)
+                    : 0;
+                const arrivalMinutes = getNairobiMinutes(log?.clockInAt);
+                const lateMinutes = arrivalMinutes === null ? 0 : Math.max(0, arrivalMinutes - (workStartHour * 60 + workStartMinute));
+                const overtimeMinutes = Math.max(0, workedMinutes - requiredMinutes);
+                const notDue = dateKey > todayKey
+                    || (dateKey === todayKey && !log && !leave && currentNairobiMinutes < workStartHour * 60 + workStartMinute);
+
+                let status = log?.status;
+                if (!status) status = notDue ? 'NOT_DUE' : (leave ? 'ON_LEAVE' : (isWorkday ? 'ABSENT' : 'OFF_DUTY'));
+                if (log?.status === 'PRESENT' && workedMinutes > 0 && workedMinutes < partialDayMinutes) status = 'PARTIAL';
+                else if (log?.status === 'PRESENT' && lateMinutes > 0) status = 'LATE';
+
+                rows.push({
+                    ...(log || {}),
+                    id: log?.id || `derived:${person.id}:${dateKey}`,
+                    userId: person.id,
+                    user: person,
+                    date: new Date(cursor),
+                    status,
+                    workedMinutes,
+                    lateMinutes,
+                    overtimeMinutes,
+                    missingClockOut: !!log?.clockInAt && !log?.clockOutAt,
+                    expectedWorkday: isWorkday && !leave && !['HOLIDAY', 'OFF_DUTY', 'NOT_DUE'].includes(status),
+                    leaveType: leave?.leaveType?.name || null,
+                    derived: !log
+                });
+                cursor.setDate(cursor.getDate() + 1);
+            }
+        }
+
+        rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+            || String(a.user?.lastName || '').localeCompare(String(b.user?.lastName || '')));
+        const summaryByUser = staff.map((person) => {
+            const userRows = rows.filter((row) => row.userId === person.id);
+            const count = (statuses: string[]) => userRows.filter((row) => statuses.includes(row.status)).length;
+            const expectedDays = userRows.filter((row) => row.expectedWorkday).length;
+            const attendedDays = count(['PRESENT', 'LATE', 'PARTIAL']);
+            return {
+                user: person,
+                expectedDays,
+                attendedDays,
+                absentDays: count(['ABSENT']),
+                lateDays: count(['LATE']),
+                partialDays: count(['PARTIAL']),
+                leaveDays: count(['ON_LEAVE']),
+                holidayDays: count(['HOLIDAY']),
+                missingClockOuts: userRows.filter((row) => row.missingClockOut).length,
+                workedMinutes: userRows.reduce((sum, row) => sum + row.workedMinutes, 0),
+                lateMinutes: userRows.reduce((sum, row) => sum + row.lateMinutes, 0),
+                overtimeMinutes: userRows.reduce((sum, row) => sum + row.overtimeMinutes, 0),
+                attendanceRate: expectedDays ? Number(((attendedDays / expectedDays) * 100).toFixed(1)) : 100
+            };
         });
+
+        return {
+            rows,
+            summary: summaryByUser,
+            totals: {
+                staff: staff.length,
+                expectedDays: summaryByUser.reduce((sum, item) => sum + item.expectedDays, 0),
+                attendedDays: summaryByUser.reduce((sum, item) => sum + item.attendedDays, 0),
+                absentDays: summaryByUser.reduce((sum, item) => sum + item.absentDays, 0),
+                lateDays: summaryByUser.reduce((sum, item) => sum + item.lateDays, 0),
+                leaveDays: summaryByUser.reduce((sum, item) => sum + item.leaveDays, 0),
+                missingClockOuts: summaryByUser.reduce((sum, item) => sum + item.missingClockOuts, 0)
+            },
+            policy: { workStartTime, workEndTime, requiredMinutes, partialDayMinutes, workingDays }
+        };
     }
 
-    async markStaffAttendance(params: { userId: string; status: 'PRESENT' | 'ABSENT'; date?: string; markedBy: string }) {
+    async markStaffAttendance(params: { userId: string; status: 'PRESENT' | 'ABSENT' | 'LATE' | 'ON_LEAVE' | 'OFF_DUTY' | 'HOLIDAY' | 'PARTIAL'; date?: string; markedBy: string; reason: string }) {
         const dateOnly = this.toDateOnly(params.date ? new Date(params.date) : new Date());
         const target = await prisma.user.findUnique({
             where: { id: params.userId },
             select: { id: true, role: true, archived: true, firstName: true, lastName: true, staffId: true }
         });
-        if (!target || target.archived) throw new Error('Teacher not found');
-        if (!['TEACHER', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].includes(String(target.role))) {
-            throw new Error('Attendance can only be marked for tutors');
+        if (!target || target.archived) throw new Error('Staff member not found');
+        if (!(this.staffRoles as readonly string[]).includes(String(target.role))) {
+            throw new Error('Attendance can only be marked for staff members');
         }
 
-        if (params.status === 'ABSENT') {
-            await prisma.staffAttendanceLog.deleteMany({
-                where: { userId: params.userId, date: dateOnly }
-            });
-            return { userId: params.userId, status: 'ABSENT', date: dateOnly };
-        }
-
-        const timestamp = new Date();
-        const attendance = await prisma.staffAttendanceLog.upsert({
-            where: { userId_date: { userId: params.userId, date: dateOnly } },
-            update: {
-                clockInAt: timestamp,
-                source: 'admin-register',
-                metadata: { markedBy: params.markedBy, markedVia: 'dashboard-register' } as any
-            },
-            create: {
-                userId: params.userId,
-                date: dateOnly,
-                clockInAt: timestamp,
-                source: 'admin-register',
-                metadata: { markedBy: params.markedBy, markedVia: 'dashboard-register' } as any
-            }
+        const reason = params.reason.trim();
+        const previous = await prisma.staffAttendanceLog.findUnique({
+            where: { userId_date: { userId: params.userId, date: dateOnly } }
         });
+        const schoolId = previous?.schoolId || (await this.resolveCurrentSchoolGeofenceContext())?.id || undefined;
 
-        return { ...attendance, status: 'PRESENT' };
+        return prisma.$transaction(async (tx) => {
+            const attendance = await tx.staffAttendanceLog.upsert({
+                where: { userId_date: { userId: params.userId, date: dateOnly } },
+                update: {
+                    status: params.status,
+                    schoolId,
+                    clockInAt: ['ABSENT', 'ON_LEAVE', 'OFF_DUTY', 'HOLIDAY'].includes(params.status) ? null : previous?.clockInAt,
+                    clockOutAt: ['ABSENT', 'ON_LEAVE', 'OFF_DUTY', 'HOLIDAY'].includes(params.status) ? null : previous?.clockOutAt,
+                    source: 'admin-register',
+                    markedBy: params.markedBy,
+                    markingReason: reason,
+                    correctedAt: new Date(),
+                    metadata: { markedBy: params.markedBy, markedVia: 'dashboard-register', reason } as any
+                },
+                create: {
+                    userId: params.userId,
+                    schoolId,
+                    date: dateOnly,
+                    status: params.status,
+                    clockInAt: null,
+                    clockOutAt: null,
+                    source: 'admin-register',
+                    markedBy: params.markedBy,
+                    markingReason: reason,
+                    correctedAt: new Date(),
+                    metadata: { markedBy: params.markedBy, markedVia: 'dashboard-register', reason } as any
+                }
+            });
+
+            await tx.staffAttendanceCorrection.create({
+                data: {
+                    attendanceId: attendance.id,
+                    userId: params.userId,
+                    date: dateOnly,
+                    previousStatus: previous?.status,
+                    newStatus: params.status,
+                    previousClockInAt: previous?.clockInAt,
+                    previousClockOutAt: previous?.clockOutAt,
+                    newClockInAt: attendance.clockInAt,
+                    newClockOutAt: attendance.clockOutAt,
+                    reason,
+                    correctedBy: params.markedBy
+                }
+            });
+
+            return attendance;
+        });
     }
 
     // ─── Business days in a calendar month ───────────────────────────────────

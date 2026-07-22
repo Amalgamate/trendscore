@@ -3,7 +3,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { School, Save, Upload, X, AlertTriangle, MapPin, Loader2, Image as ImageIcon, Info, Phone, Mail, MessageSquare, ShieldCheck, Wifi } from 'lucide-react';
+import { School, Save, Upload, X, AlertTriangle, MapPin, Loader2, Image as ImageIcon, Info, Phone, Mail, MessageSquare, ShieldCheck, Wifi, Clock } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useNotifications } from '../../hooks/useNotifications';
 import axiosInstance from '../../../../services/api/axiosConfig';
@@ -46,6 +46,11 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
     geofenceRadiusMeters: 30,
     geofenceEnforcementMode: 'OFF',
     allowedClockInIps: '',
+    staffWorkStartTime: '07:30',
+    staffWorkEndTime: '16:30',
+    staffRequiredMinutes: 480,
+    staffPartialDayMinutes: 240,
+    staffWorkingDays: [1, 2, 3, 4, 5],
     primaryColor: normalizeHexColor(brandingSettings?.primaryColor, '#030b82'),
     secondaryColor: normalizeHexColor(brandingSettings?.secondaryColor, '#0D9488'),
     accentColor1: normalizeHexColor(brandingSettings?.accentColor1, '#3b82f6'),
@@ -85,6 +90,11 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
       geofenceRadiusMeters: 30,
       geofenceEnforcementMode: 'OFF',
       allowedClockInIps: '',
+      staffWorkStartTime: '07:30',
+      staffWorkEndTime: '16:30',
+      staffRequiredMinutes: 480,
+      staffPartialDayMinutes: 240,
+      staffWorkingDays: [1, 2, 3, 4, 5],
       primaryColor: normalizeHexColor(brandingSettings?.primaryColor, '#030b82'),
       secondaryColor: normalizeHexColor(brandingSettings?.secondaryColor, '#0D9488'),
       accentColor1: normalizeHexColor(brandingSettings?.accentColor1, '#3b82f6'),
@@ -145,6 +155,11 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
             geofenceRadiusMeters: school.geofenceRadiusMeters ?? 30,
             geofenceEnforcementMode: school.geofenceEnforcementMode || 'OFF',
             allowedClockInIps: school.allowedClockInIps || '',
+            staffWorkStartTime: school.staffWorkStartTime || '07:30',
+            staffWorkEndTime: school.staffWorkEndTime || '16:30',
+            staffRequiredMinutes: school.staffRequiredMinutes ?? 480,
+            staffPartialDayMinutes: school.staffPartialDayMinutes ?? 240,
+            staffWorkingDays: Array.isArray(school.staffWorkingDays) ? school.staffWorkingDays : [1, 2, 3, 4, 5],
             primaryColor: normalizeHexColor(school.primaryColor, '#030b82'),
             secondaryColor: normalizeHexColor(school.secondaryColor, '#0D9488'),
             accentColor1: normalizeHexColor(school.accentColor1, '#3b82f6'),
@@ -304,6 +319,11 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
         geofenceRadiusMeters: settings.geofenceRadiusMeters,
         geofenceEnforcementMode: settings.geofenceEnforcementMode,
         allowedClockInIps: settings.allowedClockInIps || null,
+        staffWorkStartTime: settings.staffWorkStartTime,
+        staffWorkEndTime: settings.staffWorkEndTime,
+        staffRequiredMinutes: Number(settings.staffRequiredMinutes),
+        staffPartialDayMinutes: Number(settings.staffPartialDayMinutes),
+        staffWorkingDays: settings.staffWorkingDays,
         welcomeTitle: settings.welcomeTitle,
         welcomeMessage: settings.welcomeMessage,
         onboardingTitle: settings.onboardingTitle,
@@ -654,6 +674,39 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition"
                     placeholder="How the school plans to achieve its vision..."
                   />
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+              <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+                <Clock className="text-indigo-600" size={20} />
+                <h3 className="font-medium text-gray-700">Staff Attendance Policy</h3>
+              </div>
+              <div className="p-6 space-y-5">
+                <p className="text-sm text-gray-500">These settings drive late arrivals, partial days, expected working days, overtime and HR attendance reports.</p>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                  <label className="text-sm font-medium text-gray-700">Work starts
+                    <input type="time" value={settings.staffWorkStartTime} onChange={(e) => handleChange('staffWorkStartTime', e.target.value)} className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2" />
+                  </label>
+                  <label className="text-sm font-medium text-gray-700">Work ends
+                    <input type="time" value={settings.staffWorkEndTime} onChange={(e) => handleChange('staffWorkEndTime', e.target.value)} className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2" />
+                  </label>
+                  <label className="text-sm font-medium text-gray-700">Full day (minutes)
+                    <input type="number" min="60" max="1440" value={settings.staffRequiredMinutes} onChange={(e) => handleChange('staffRequiredMinutes', Number(e.target.value))} className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2" />
+                  </label>
+                  <label className="text-sm font-medium text-gray-700">Partial below (minutes)
+                    <input type="number" min="30" max="1439" value={settings.staffPartialDayMinutes} onChange={(e) => handleChange('staffPartialDayMinutes', Number(e.target.value))} className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2" />
+                  </label>
+                </div>
+                <div>
+                  <p className="mb-2 text-sm font-medium text-gray-700">Working days</p>
+                  <div className="flex flex-wrap gap-2">
+                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label, day) => {
+                      const selected = settings.staffWorkingDays.includes(day);
+                      return <button key={label} type="button" onClick={() => handleChange('staffWorkingDays', selected ? settings.staffWorkingDays.filter((value) => value !== day) : [...settings.staffWorkingDays, day].sort())} className={`rounded-lg border px-3 py-2 text-sm font-medium ${selected ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-500'}`}>{label}</button>;
+                    })}
+                  </div>
                 </div>
               </div>
             </div>

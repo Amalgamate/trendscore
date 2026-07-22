@@ -84,8 +84,9 @@ const attendanceLocationPayloadSchema = z.preprocess(
 
 const markAttendanceSchema = z.object({
     userId: z.string().min(1),
-    status: z.enum(['PRESENT', 'ABSENT']),
-    date: z.string().optional()
+    status: z.enum(['PRESENT', 'ABSENT', 'LATE', 'ON_LEAVE', 'OFF_DUTY', 'HOLIDAY', 'PARTIAL']),
+    date: z.string().optional(),
+    reason: z.string().min(3).max(500)
 });
 
 // ── Dashboard ────────────────────────────────────────────────────────────────

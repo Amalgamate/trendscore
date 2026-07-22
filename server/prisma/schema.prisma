@@ -199,6 +199,11 @@ model School {
   attendanceAllowLateAfterLock           Boolean                    @default(true)
   attendanceRequireRemarksForLateExcused Boolean                    @default(true)
   attendanceNotifyAbsentDefault          Boolean                    @default(true)
+  staffWorkStartTime                     String                     @default("07:30")
+  staffWorkEndTime                       String                     @default("16:30")
+  staffRequiredMinutes                   Int                        @default(480)
+  staffPartialDayMinutes                 Int                        @default(240)
+  staffWorkingDays                       Json                       @default("[1,2,3,4,5]")
   brandColor                             String?
   welcomeMessage                         String?
   welcomeTitle                           String?
@@ -2242,23 +2247,50 @@ model StaffDeduction {
 }
 
 model StaffAttendanceLog {
-  id         String    @id @default(uuid())
-  userId     String
-  schoolId   String?
-  date       DateTime  @db.Date
-  clockInAt  DateTime
-  clockOutAt DateTime?
-  source     String?
-  metadata   Json?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  school     School?   @relation(fields: [schoolId], references: [id], onDelete: SetNull)
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String                        @id @default(uuid())
+  userId        String
+  schoolId      String?
+  date          DateTime                      @db.Date
+  status        StaffAttendanceStatus         @default(PRESENT)
+  clockInAt     DateTime?
+  clockOutAt    DateTime?
+  source        String?
+  metadata      Json?
+  markedBy      String?
+  markingReason String?
+  correctedAt   DateTime?
+  createdAt     DateTime                      @default(now())
+  updatedAt     DateTime                      @updatedAt
+  school        School?                       @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  user          User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  corrections   StaffAttendanceCorrection[]
 
   @@unique([userId, date])
   @@index([schoolId, date])
+  @@index([status, date])
   @@index([userId, clockInAt])
   @@map("staff_attendance_logs")
+}
+
+model StaffAttendanceCorrection {
+  id                 String                @id @default(uuid())
+  attendanceId       String
+  userId             String
+  date               DateTime              @db.Date
+  previousStatus     StaffAttendanceStatus?
+  newStatus          StaffAttendanceStatus
+  previousClockInAt  DateTime?
+  previousClockOutAt DateTime?
+  newClockInAt       DateTime?
+  newClockOutAt      DateTime?
+  reason             String
+  correctedBy        String
+  createdAt          DateTime              @default(now())
+  attendance         StaffAttendanceLog    @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  @@index([attendanceId, createdAt])
+  @@index([userId, date])
+  @@map("staff_attendance_corrections")
 }
 
 model StaffAttendanceAttemptLog {
@@ -3561,6 +3593,16 @@ enum StaffAttendanceAttemptAction {
 enum StaffAttendanceAttemptResult {
   ALLOWED
   DENIED
+}
+
+enum StaffAttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  ON_LEAVE
+  OFF_DUTY
+  HOLIDAY
+  PARTIAL
 }
 
 enum FormativeAssessmentType {

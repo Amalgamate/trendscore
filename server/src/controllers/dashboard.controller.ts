@@ -410,7 +410,7 @@ export class DashboardController {
                 select: { date: true, status: true },
             }),
             prisma.staffAttendanceLog.findMany({
-                where: { date: { gte: studentStart } },
+                where: { date: { gte: studentStart }, status: { in: ['PRESENT', 'LATE', 'PARTIAL'] } },
                 select: { date: true, userId: true },
             }),
         ]);
@@ -449,6 +449,7 @@ export class DashboardController {
         const logs = await prisma.staffAttendanceLog.findMany({
             where: {
                 date: { gte: todayStart, lte: todayEnd },
+                status: { in: ['PRESENT', 'LATE', 'PARTIAL'] },
                 userId: { in: activeTeachers.map(teacher => teacher.id) }
             },
             select: { userId: true },
@@ -1190,6 +1191,7 @@ export class DashboardController {
                 prisma.staffAttendanceLog.findMany({
                     where: {
                         date: { gte: staffStartOfToday, lte: staffEndOfToday },
+                        status: { in: ['PRESENT', 'LATE', 'PARTIAL'] },
                         user: { role: { in: [...TUTOR_ROLES] as any }, archived: false },
                     },
                     select: { userId: true },
@@ -1205,6 +1207,7 @@ export class DashboardController {
                 prisma.staffAttendanceLog.findMany({
                     where: {
                         date: { gte: staffStartOfToday, lte: staffEndOfToday },
+                        status: { in: ['PRESENT', 'LATE', 'PARTIAL'] },
                         user: {
                             role: { in: ['ACCOUNTANT', 'RECEPTIONIST', 'ADMIN', 'HEAD_TEACHER'] as any },
                             archived: false,

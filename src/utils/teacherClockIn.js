@@ -23,8 +23,9 @@ const mapBackendClockInRecord = (backendData, fallbackTeacherId, fallbackDateKey
   return {
     teacherId: attendance.userId || fallbackTeacherId,
     dateKey,
-    timestamp: clockInAt || new Date().toISOString(),
+    timestamp: clockInAt || null,
     clockOutAt: attendance.clockOutAt || null,
+    status: attendance.status || (clockInAt ? 'PRESENT' : null),
     source: attendance.source || 'web',
     metadata: attendance.metadata || null,
     payrollCreated: !!backendData?.payrollCreated,
@@ -60,10 +61,10 @@ export const getClockInRecord = (teacherId, dateKey = getTodayDateKey()) => {
 
 export const isTeacherClockedIn = (teacherId, dateKey = getTodayDateKey()) => {
   const record = getClockInRecord(teacherId, dateKey);
-  return !!record && !record.clockOutAt;
+  return !!record?.timestamp && !record.clockOutAt && record.status !== 'ABSENT';
 };
 
-export const clockInTeacher = (user, metadata = {}) => {
+export const clockInTeacher = async (user, metadata = {}) => {
   const teacherId = resolveTeacherId(user);
   const dateKey = getTodayDateKey();
 
@@ -71,7 +72,7 @@ export const clockInTeacher = (user, metadata = {}) => {
   // so the server can enforce the geofence authoritatively.
   const { latitude, longitude, accuracyMeters, capturedAt, source, ...restMetadata } = metadata;
 
-  const localRecord = {
+  const pendingRecord = {
     teacherId,
     dateKey,
     timestamp: new Date().toISOString(),
@@ -82,34 +83,25 @@ export const clockInTeacher = (user, metadata = {}) => {
     }
   };
 
-  persistLocalClockInRecord(localRecord);
-  notifyClockInChange(localRecord);
-
   const apiPayload = {
-    timestamp: localRecord.timestamp,
-    source: localRecord.source,
-    metadata: localRecord.metadata,
+    timestamp: pendingRecord.timestamp,
+    source: pendingRecord.source,
+    metadata: pendingRecord.metadata,
     ...(latitude !== undefined && longitude !== undefined
       ? { latitude, longitude, accuracyMeters, capturedAt }
       : {})
   };
 
-  hrAPI.clockInStaff(apiPayload)
-    .then((response) => {
-      if (!response?.success) return;
-      const syncedRecord = mapBackendClockInRecord(response.data, teacherId, dateKey);
-      if (!syncedRecord) return;
-      persistLocalClockInRecord(syncedRecord);
-      notifyClockInChange(syncedRecord);
-    })
-    .catch(() => {
-      // Keep local clock-in state if backend is unavailable
-    });
-
-  return localRecord;
+  const response = await hrAPI.clockInStaff(apiPayload);
+  if (!response?.success) return null;
+  const syncedRecord = mapBackendClockInRecord(response.data, teacherId, dateKey);
+  if (!syncedRecord) return null;
+  persistLocalClockInRecord(syncedRecord);
+  notifyClockInChange(syncedRecord);
+  return syncedRecord;
 };
 
-export const clockOutTeacher = (user, metadata = {}) => {
+export const clockOutTeacher = async (user, metadata = {}) => {
   const teacherId = resolveTeacherId(user);
   const dateKey = getTodayDateKey();
   const current = getClockInRecord(teacherId, dateKey);
@@ -122,7 +114,7 @@ export const clockOutTeacher = (user, metadata = {}) => {
   // the geofence on clock-out authoritatively.
   const { latitude, longitude, accuracyMeters, capturedAt, source, ...restMetadata } = metadata;
 
-  const localRecord = {
+  const pendingRecord = {
     ...current,
     clockOutAt: new Date().toISOString(),
     source: source || current.source || 'web',
@@ -133,31 +125,22 @@ export const clockOutTeacher = (user, metadata = {}) => {
     }
   };
 
-  persistLocalClockInRecord(localRecord);
-  notifyClockInChange(localRecord);
-
   const apiPayload = {
-    timestamp: localRecord.clockOutAt,
-    source: localRecord.source,
-    metadata: localRecord.metadata,
+    timestamp: pendingRecord.clockOutAt,
+    source: pendingRecord.source,
+    metadata: pendingRecord.metadata,
     ...(latitude !== undefined && longitude !== undefined
       ? { latitude, longitude, accuracyMeters, capturedAt }
       : {})
   };
 
-  hrAPI.clockOutStaff(apiPayload)
-    .then((response) => {
-      if (!response?.success) return;
-      const syncedRecord = mapBackendClockInRecord(response.data, teacherId, dateKey);
-      if (!syncedRecord) return;
-      persistLocalClockInRecord(syncedRecord);
-      notifyClockInChange(syncedRecord);
-    })
-    .catch(() => {
-      // Keep local clock-out state if backend is unavailable
-    });
-
-  return localRecord;
+  const response = await hrAPI.clockOutStaff(apiPayload);
+  if (!response?.success) return null;
+  const syncedRecord = mapBackendClockInRecord(response.data, teacherId, dateKey);
+  if (!syncedRecord) return null;
+  persistLocalClockInRecord(syncedRecord);
+  notifyClockInChange(syncedRecord);
+  return syncedRecord;
 };
 
 export const syncCurrentUserClockInStatus = async (user) => {
@@ -173,8 +156,8 @@ export const syncCurrentUserClockInStatus = async (user) => {
       return {
         teacherId,
         dateKey,
-        clockedIn: !backendRecord.clockOutAt,
-        clockedToday: true,
+        clockedIn: !!backendRecord.timestamp && !backendRecord.clockOutAt && backendRecord.status !== 'ABSENT',
+        clockedToday: !!backendRecord.timestamp,
         clockedOut: !!backendRecord.clockOutAt,
         record: backendRecord
       };
@@ -190,13 +173,13 @@ export const getCurrentUserClockInStatus = (user) => {
   const teacherId = resolveTeacherId(user);
   const dateKey = getTodayDateKey();
   const record = getClockInRecord(teacherId, dateKey);
-  const clockedToday = !!record;
+  const clockedToday = !!record?.timestamp;
   const clockedOut = !!record?.clockOutAt;
 
   return {
     teacherId,
     dateKey,
-    clockedIn: !!record && !clockedOut,
+    clockedIn: clockedToday && !clockedOut && record?.status !== 'ABSENT',
     clockedToday,
     clockedOut,
     record

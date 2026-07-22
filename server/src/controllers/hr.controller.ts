@@ -264,7 +264,7 @@ export class HRController {
             const { userId, startDate, endDate } = req.query as Record<string, string>;
             if (!startDate || !endDate) throw new ApiError(400, 'startDate and endDate are required');
             const data = await hrService.getAttendanceReport({ userId, startDate, endDate });
-            res.json({ success: true, data, count: data.length });
+            res.json({ success: true, data, count: data.rows.length });
         } catch (error: any) {
             res.status(error.statusCode || 500).json({ success: false, message: error.message });
         }
@@ -278,9 +278,10 @@ export class HRController {
                 userId: req.body.userId,
                 status: req.body.status,
                 date: req.body.date,
-                markedBy
+                markedBy,
+                reason: req.body.reason
             });
-            res.json({ success: true, message: `Teacher marked ${req.body.status.toLowerCase()}`, data });
+            res.json({ success: true, message: `Staff member marked ${req.body.status.toLowerCase()}`, data });
         } catch (error: any) {
             res.status(error.statusCode || 500).json({ success: false, message: error.message });
         }

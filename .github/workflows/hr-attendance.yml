@@ -1,0 +1,107 @@
+name: HR Attendance Quality Gate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'server/prisma/schema.prisma'
+      - 'server/prisma/migrations/**'
+      - 'server/src/**/hr*.ts'
+      - 'server/src/**/dashboard*.ts'
+      - 'src/components/CBCGrading/pages/hr/**'
+      - 'src/components/CBCGrading/pages/settings/SchoolSettings.jsx'
+      - 'src/components/CBCGrading/layout/Header.jsx'
+      - 'src/utils/teacherClockIn.js'
+      - '.github/workflows/hr-attendance.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'server/prisma/schema.prisma'
+      - 'server/prisma/migrations/**'
+      - 'server/src/**/hr*.ts'
+      - 'server/src/**/dashboard*.ts'
+      - 'src/components/CBCGrading/pages/hr/**'
+      - 'src/components/CBCGrading/pages/settings/SchoolSettings.jsx'
+      - 'src/components/CBCGrading/layout/Header.jsx'
+      - 'src/utils/teacherClockIn.js'
+      - '.github/workflows/hr-attendance.yml'
+
+concurrency:
+  group: hr-attendance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Migration, service and UI contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/trendscore_hr_ci?schema=public
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/trendscore_hr_ci?schema=public
+      JWT_SECRET: ci_dummy_jwt_secret_minimum_32_chars________
+      JWT_REFRESH_SECRET: ci_dummy_refresh_secret_minimum_32_chars_
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: trendscore_hr_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d trendscore_hr_ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Validate Prisma schema
+        working-directory: server
+        run: npx prisma validate
+
+      - name: Generate Prisma client
+        working-directory: server
+        run: npx prisma generate
+
+      - name: Apply all migrations to clean PostgreSQL
+        working-directory: server
+        run: npx prisma migrate deploy
+
+      - name: Typecheck server
+        working-directory: server
+        run: npx tsc --noEmit --pretty false
+
+      - name: Run HR attendance regression tests
+        working-directory: server
+        run: npx jest src/__tests__/hrAttendancePrecision.service.spec.ts --runInBand --coverage=false
+
+      - name: Lint attendance UI contract
+        run: >-
+          npx eslint
+          src/components/CBCGrading/pages/hr/AttendanceManager.jsx
+          src/components/CBCGrading/pages/settings/SchoolSettings.jsx
+          src/components/CBCGrading/layout/Header.jsx
+          src/utils/teacherClockIn.js
+
+      - name: Build production frontend
+        run: npm run build
