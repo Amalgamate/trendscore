@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Download, RefreshCw, Loader, MessageSquare, CheckCircle, XCircle, Search, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
-import { Card, CardContent, Button, Input, Label, Badge } from '../../../components/ui';
+import { Download, RefreshCw, Loader, MessageSquare, CheckCircle, XCircle, Search, ChevronLeft, ChevronRight, RotateCcw, Eye } from 'lucide-react';
+import { Card, CardContent, Button, Input, Label, Badge, Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../components/ui';
 import { useNotifications } from '../hooks/useNotifications';
 import api from '../../../services/api';
 
@@ -24,6 +24,7 @@ const MessageHistoryPage = () => {
 
     const [page, setPage] = useState(1);
     const [retryingId, setRetryingId] = useState(null);
+    const [selectedLog, setSelectedLog] = useState(null);
     const [totalPages, setTotalPages] = useState(1);
     const limit = 50;
 
@@ -373,18 +374,29 @@ const MessageHistoryPage = () => {
                                                     {log.term || '—'}
                                                 </td>
                                                 <td className="px-4 py-3">
-                                                    {log.canRetry ? (
+                                                    <div className="flex items-center gap-2 whitespace-nowrap">
                                                         <Button
                                                             variant="outline"
                                                             size="sm"
-                                                            onClick={() => handleRetry(log)}
-                                                            disabled={retryingId === log.auditId}
+                                                            onClick={() => setSelectedLog(log)}
                                                             className="gap-1 whitespace-nowrap"
                                                         >
-                                                            <RotateCcw size={14} className={retryingId === log.auditId ? 'animate-spin' : ''} />
-                                                            Retry
+                                                            <Eye size={14} />
+                                                            View
                                                         </Button>
-                                                    ) : '—'}
+                                                        {log.canRetry && (
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => handleRetry(log)}
+                                                                disabled={retryingId === log.auditId}
+                                                                className="gap-1 whitespace-nowrap"
+                                                            >
+                                                                <RotateCcw size={14} className={retryingId === log.auditId ? 'animate-spin' : ''} />
+                                                                Retry
+                                                            </Button>
+                                                        )}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         );
@@ -434,6 +446,58 @@ const MessageHistoryPage = () => {
                     </div>
                 )}
             </div>
+
+            <Dialog open={Boolean(selectedLog)} onOpenChange={(open) => !open && setSelectedLog(null)}>
+                <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <MessageSquare size={20} className="text-brand-teal" />
+                            Message Details
+                        </DialogTitle>
+                        <DialogDescription>
+                            Complete communication record and message body.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {selectedLog && (() => {
+                        const { label, className, icon: StatusIcon } = getStatusMeta(selectedLog.status);
+                        const learnerName = `${selectedLog.learner?.firstName || ''} ${selectedLog.learner?.lastName || ''}`.trim() || 'Recipient';
+                        const sentBy = `${selectedLog.sentBy?.firstName || ''} ${selectedLog.sentBy?.lastName || ''}`.trim() || 'System';
+
+                        return (
+                            <div className="space-y-5">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
+                                    <div><p className="text-xs uppercase text-slate-500">Learner</p><p className="font-medium text-slate-900">{learnerName}</p></div>
+                                    <div><p className="text-xs uppercase text-slate-500">Admission / Grade</p><p className="font-medium text-slate-900">{selectedLog.learner?.admissionNumber || '—'} • {formatGrade(selectedLog.learner?.grade)}</p></div>
+                                    <div><p className="text-xs uppercase text-slate-500">Phone</p><p className="font-mono text-slate-900">{selectedLog.phoneNumber || '—'}</p></div>
+                                    <div><p className="text-xs uppercase text-slate-500">Channel</p><p className="font-medium text-slate-900">{selectedLog.channel || '—'}</p></div>
+                                    <div><p className="text-xs uppercase text-slate-500">Date / Time</p><p className="font-medium text-slate-900">{formatDate(selectedLog.createdAt)}</p></div>
+                                    <div><p className="text-xs uppercase text-slate-500">Term</p><p className="font-medium text-slate-900">{selectedLog.term || '—'}</p></div>
+                                    <div><p className="text-xs uppercase text-slate-500">Sent By</p><p className="font-medium text-slate-900">{sentBy}</p></div>
+                                    <div>
+                                        <p className="text-xs uppercase text-slate-500">Status</p>
+                                        <p className={`flex items-center gap-1 font-medium ${className}`}><StatusIcon size={15} /> {label}</p>
+                                    </div>
+                                </div>
+
+                                {selectedLog.failureReason && (
+                                    <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                                        <p className="text-xs font-semibold uppercase text-red-700">Failure reason</p>
+                                        <p className="mt-1 text-sm text-red-700">{selectedLog.failureReason}</p>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <p className="mb-2 text-xs font-semibold uppercase text-slate-600">Message body</p>
+                                    <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-white p-4 font-sans text-sm leading-6 text-slate-800">
+                                        {selectedLog.messageContent || 'No message body was recorded for this communication.'}
+                                    </pre>
+                                </div>
+                            </div>
+                        );
+                    })()}
+                </DialogContent>
+            </Dialog>
         </div>
     );
 };
