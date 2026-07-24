@@ -16,6 +16,9 @@ import {
   Clock,
   AlertCircle,
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  Check,
 } from 'lucide-react';
 import { useNotifications } from '../../../hooks/useNotifications';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -35,6 +38,13 @@ const ASSIGNMENT_CATEGORIES = [
   'READING',
   'PRACTICAL',
   'GROUP_WORK',
+];
+
+const FORM_STEPS = [
+  { title: 'Assignment setup', shortTitle: 'Setup', description: 'Class, subject and instructions' },
+  { title: 'Questions', shortTitle: 'Questions', description: 'Build questions and answers' },
+  { title: 'Marking & files', shortTitle: 'Settings', description: 'Marks, rubric and attachments' },
+  { title: 'Review & publish', shortTitle: 'Review', description: 'Check everything before publishing' },
 ];
 
 const DEFAULT_FORM_DATA = {
@@ -76,6 +86,7 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState({});
+  const [currentStep, setCurrentStep] = useState(0);
 
   const visibleClasses = useMemo(() => {
     if (!teacherContext.restricted) return classes;
@@ -262,6 +273,51 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
     return Object.keys(newErrors).length === 0;
   };
 
+  const validateStep = (step) => {
+    const newErrors = {};
+    if (step === 0) {
+      if (!formData.title.trim()) newErrors.title = 'Title is required';
+      if (!formData.classId) newErrors.classId = 'Class is required';
+      if (!formData.learningAreaId) newErrors.learningAreaId = 'Learning area is required';
+      if (!formData.termId) newErrors.termId = 'Term is required';
+    }
+    if (step === 1) {
+      const invalidQuestion = formData.questions.find((question) => {
+        if (!question.prompt?.trim() || Number(question.marks) <= 0) return true;
+        if (question.type === 'ESSAY') return false;
+        if (question.type === 'MULTIPLE_CHOICE') {
+          return !Array.isArray(question.options)
+            || question.options.some((option) => !option.trim())
+            || question.correctAnswer === '';
+        }
+        return String(question.correctAnswer ?? '').trim() === '';
+      });
+      if (invalidQuestion) {
+        newErrors.questions = 'Every question needs text, marks, choices where applicable, and a correct answer.';
+      }
+    }
+    setErrors((prev) => ({ ...prev, ...newErrors }));
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const goToStep = (step) => {
+    if (step > currentStep && !validateStep(currentStep)) {
+      showError('Please complete the required fields before continuing');
+      return;
+    }
+    setCurrentStep(step);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const questionMarks = useMemo(
+    () => formData.questions.reduce((sum, question) => sum + (Number(question.marks) || 0), 0),
+    [formData.questions],
+  );
+
+  const selectedClass = classes.find((item) => item.id === formData.classId);
+  const selectedArea = learningAreas.find((item) => item.id === formData.learningAreaId);
+  const selectedTerm = terms.find((item) => item.id === formData.termId);
+
   // ─── Save Handlers ──────────────────────────────────────────────────────────
 
   const returnToAssignments = useCallback(() => {
@@ -378,8 +434,54 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
 
       {/* Form */}
       <div className="max-w-5xl mx-auto px-4 py-8">
+        <nav aria-label="Assignment creation progress" className="mb-6">
+          <ol className="grid grid-cols-4 gap-2">
+            {FORM_STEPS.map((step, index) => (
+              <li key={step.title}>
+                <button
+                  type="button"
+                  onClick={() => goToStep(index)}
+                  className={cn(
+                    'w-full rounded-xl border px-2 py-3 text-left transition-colors',
+                    index === currentStep
+                      ? 'border-brand-purple bg-brand-purple/10 text-brand-purple'
+                      : index < currentStep
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border-gray-200 bg-white text-gray-500 hover:border-brand-purple/40',
+                  )}
+                  aria-current={index === currentStep ? 'step' : undefined}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className={cn(
+                      'flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold',
+                      index === currentStep
+                        ? 'bg-brand-purple text-white'
+                        : index < currentStep
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-gray-100 text-gray-500',
+                    )}>
+                      {index < currentStep ? <Check size={14} /> : index + 1}
+                    </span>
+                    <span className="text-xs font-bold sm:text-sm">{step.shortTitle}</span>
+                  </span>
+                  <span className="mt-1 hidden pl-8 text-xs lg:block">{step.description}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </nav>
+
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+          <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+            <p className="text-xs font-semibold uppercase tracking-wide text-brand-purple">
+              Step {currentStep + 1} of {FORM_STEPS.length}
+            </p>
+            <h2 className="mt-1 text-lg font-bold text-gray-950 dark:text-white">
+              {FORM_STEPS[currentStep].title}
+            </h2>
+          </div>
           <div className="p-6 space-y-6">
+            <div className={cn('space-y-6', currentStep !== 0 && 'hidden')}>
             {/* Title */}
             <div>
               <label className="block text-sm font-semibold text-gray-950 dark:text-white mb-2">
@@ -577,6 +679,9 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
             </div>
 
             {/* Estimated Minutes & Max File Size */}
+            </div>
+
+            <div className={cn('space-y-6', currentStep !== 2 && 'hidden')}>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-950 dark:text-white mb-2">
@@ -687,13 +792,23 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
                 className="w-full md:w-48 px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm outline-none focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/20 dark:text-white"
               />
             </div>
+            </div>
 
-            <QuestionBuilder
-              questions={formData.questions}
-              onChange={(questions) => handleChange('questions', questions)}
-            />
+            <div className={cn(currentStep !== 1 && 'hidden')}>
+              <QuestionBuilder
+                questions={formData.questions}
+                onChange={(questions) => handleChange('questions', questions)}
+              />
+              {errors.questions && (
+                <p className="mt-3 flex items-center gap-1 text-xs text-red-500">
+                  <AlertCircle size={12} />
+                  {errors.questions}
+                </p>
+              )}
+            </div>
 
             {/* Rubric Builder */}
+            <div className={cn('space-y-6', currentStep !== 2 && 'hidden')}>
             <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-bold text-gray-950 dark:text-white">
@@ -822,20 +937,83 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
                 </ul>
               )}
             </div>
+            </div>
+
+            {currentStep === 3 && (
+              <div className="space-y-5">
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-600 dark:bg-gray-700">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Assignment</p>
+                      <h3 className="mt-1 text-lg font-bold text-gray-950 dark:text-white">
+                        {formData.title || 'Untitled assignment'}
+                      </h3>
+                      <p className="mt-1 text-sm text-gray-500">
+                        {selectedClass?.name || 'No class'} · {selectedArea?.name || 'No subject'} · {' '}
+                        {selectedTerm?.term ? `Term ${selectedTerm.term}, ${selectedTerm.academicYear}` : selectedTerm?.name || 'No term'}
+                      </p>
+                    </div>
+                    <button type="button" onClick={() => goToStep(0)} className="text-xs font-bold text-brand-purple">
+                      Edit setup
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {[
+                    ['Questions', formData.questions.length],
+                    ['Question marks', questionMarks],
+                    ['Total marks', formData.totalMarks || '—'],
+                    ['Due date', formData.dueDate || 'Required'],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-xl border border-gray-200 p-4 dark:border-gray-600">
+                      <p className="text-xs text-gray-500">{label}</p>
+                      <p className="mt-1 text-lg font-bold text-gray-950 dark:text-white">{value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {!formData.dueDate && (
+                  <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                    <AlertCircle className="mt-0.5 flex-shrink-0" size={16} />
+                    Add a due date in Assignment setup before publishing. You can still save this as a draft.
+                  </div>
+                )}
+                {formData.questions.length > 0 && Number(formData.totalMarks) !== questionMarks && (
+                  <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                    <AlertCircle className="mt-0.5 flex-shrink-0" size={16} />
+                    Total marks ({formData.totalMarks || 0}) must equal the question marks ({questionMarks}) before publishing.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Action Buttons */}
           <div className="border-t border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between bg-gray-50 dark:bg-gray-800">
             <button
               type="button"
-              onClick={handleCancel}
+              onClick={currentStep === 0 ? handleCancel : () => goToStep(currentStep - 1)}
               disabled={isSaving}
               className="px-4 py-2 text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50"
             >
-              Cancel
+              {currentStep === 0 ? 'Cancel' : (
+                <span className="flex items-center gap-1"><ChevronLeft size={16} /> Back</span>
+              )}
             </button>
 
             <div className="flex items-center gap-3">
+              {currentStep < FORM_STEPS.length - 1 && (
+                <button
+                  type="button"
+                  onClick={() => goToStep(currentStep + 1)}
+                  className="flex items-center gap-2 rounded-lg bg-brand-purple px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-purple/90"
+                >
+                  Continue <ChevronRight size={16} />
+                </button>
+              )}
+              {currentStep === FORM_STEPS.length - 1 && (
+                <>
               <button
                 type="button"
                 onClick={handleSaveDraft}
@@ -873,6 +1051,8 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
                   </>
                 )}
               </button>
+                </>
+              )}
             </div>
           </div>
         </div>
