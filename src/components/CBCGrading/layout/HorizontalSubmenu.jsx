@@ -66,6 +66,8 @@ const HIDDEN_HORIZONTAL_PATHS = new Set([
 const CHILD_PAGE_PARENT = {
   'learning-assignment-create': 'learning-assignments',
   'learning-assignment-edit':   'learning-assignments',
+  'learning-assignment-detail': 'learning-assignments',
+  'learning-marking-interface': 'learning-assignments',
   'learning-lesson-builder':    'learning-lessons',
   'learning-marketplace-create': 'learning-marketplace',
 };

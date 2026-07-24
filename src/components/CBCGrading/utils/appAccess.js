@@ -76,6 +76,10 @@ const PAGE_APP_REQUIREMENTS = {
 
   'learning-dashboard':   'lms-professional',
   'learning-assignments': 'lms-professional',
+  'learning-assignment-create': 'lms-professional',
+  'learning-assignment-edit': 'lms-professional',
+  'learning-assignment-detail': 'lms-professional',
+  'learning-marking-interface': 'lms-professional',
   'learning-lessons':     'lms-professional',
   'learning-revision':    'lms-professional',
   'learning-analytics':   'lms-professional',
@@ -158,6 +162,7 @@ const ROLE_PAGE_ALLOWLIST = {
     'dashboard',
     'student-courses',
     'student-assignments',
+    'learning-assignment-detail',
     'student-progress',
     'student-quizzes',
     'student-course-view',

@@ -44,6 +44,17 @@ describe('appAccess', () => {
     expect(hasAppAccess(user, 'lms-professional')).toBe(true);
     expect(hasPageAccess(user, 'learning-dashboard')).toBe(true);
     expect(hasPageAccess(user, 'learning-lessons')).toBe(true);
+    expect(hasPageAccess(user, 'learning-assignment-detail')).toBe(true);
+    expect(hasPageAccess(user, 'learning-marking-interface')).toBe(true);
+  });
+
+  it('lets students view assignments without granting teacher authoring or marking pages', () => {
+    const student = { role: 'STUDENT', enabledApps: ['lms'] };
+
+    expect(hasPageAccess(student, 'learning-assignment-detail')).toBe(true);
+    expect(hasPageAccess(student, 'learning-assignment-create')).toBe(false);
+    expect(hasPageAccess(student, 'learning-assignment-edit')).toBe(false);
+    expect(hasPageAccess(student, 'learning-marking-interface')).toBe(false);
   });
 
   it('lets super admins open non-fee settings regardless of package modules', () => {

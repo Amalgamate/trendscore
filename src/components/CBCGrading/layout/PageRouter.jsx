@@ -165,6 +165,9 @@ const BiometricManager = lazy(() => import('../pages/biometric/BiometricManager'
 const LMSManager = lazy(() => import('../pages/LMSManager'));
 const AssignmentsPage = lazy(() => import('../pages/lms/assignments/AssignmentsPage'));
 const AssignmentBuilder = lazy(() => import('../pages/lms/assignments/AssignmentBuilder'));
+const AssignmentDetail = lazy(() => import('../pages/lms/assignments/AssignmentDetail'));
+const StudentAssignmentView = lazy(() => import('../pages/lms/assignments/StudentAssignmentView'));
+const MarkingInterface = lazy(() => import('../pages/lms/assignments/MarkingInterface'));
 // LMS Digital Learning Hub — Phase 1+
 const LMSDashboard = lazy(() => import('../pages/LMSDashboard'));
 const LMSPlaceholder = lazy(() => import('../pages/lms/LMSPlaceholder'));
@@ -745,6 +748,13 @@ const PageRouter = ({
           case 'learning-assignments': return <AssignmentsPage onNavigate={handleNavigate} />;
           case 'learning-assignment-create': return <AssignmentBuilder onNavigate={handleNavigate} />;
           case 'learning-assignment-edit': return <AssignmentBuilder assignmentId={pageParams?.assignmentId || pageParams?.id} onNavigate={handleNavigate} />;
+          case 'learning-assignment-detail':
+            if (effectiveRole === 'STUDENT') {
+              return <StudentAssignmentView assignmentId={pageParams?.assignmentId || pageParams?.id} onNavigate={handleNavigate} />;
+            }
+            return <AssignmentDetail assignmentId={pageParams?.assignmentId || pageParams?.id} onNavigate={handleNavigate} />;
+          case 'learning-marking-interface':
+            return <MarkingInterface assignmentId={pageParams?.assignmentId} submissionId={pageParams?.submissionId} onNavigate={handleNavigate} />;
           case 'learning-lessons': return <LMSLessonList onNavigate={handleNavigate} user={user} />;
           case 'learning-lesson-builder': return <LMSLessonBuilderPage lessonId={pageParams?.lessonId} onNavigate={handleNavigate} pageParams={pageParams} />;
           case 'learning-lesson-viewer': return <LMSLessonViewerPage lessonId={pageParams?.lessonId} onNavigate={handleNavigate} pageParams={pageParams} />;
