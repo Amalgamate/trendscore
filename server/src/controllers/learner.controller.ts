@@ -44,6 +44,55 @@ const applyInstitutionGradeScope = (
   return whereClause;
 };
 
+const ensureLearnerClassEnrollment = async (learner: {
+  id: string;
+  grade: string;
+  stream?: string | null;
+  institutionType: 'PRIMARY_CBC' | 'SECONDARY' | 'TERTIARY';
+}) => {
+  const classCandidates = await prisma.class.findMany({
+    where: {
+      grade: learner.grade,
+      institutionType: learner.institutionType,
+      active: true,
+      archived: false,
+    },
+    select: { id: true, stream: true },
+    orderBy: [{ academicYear: 'desc' }, { updatedAt: 'desc' }],
+  });
+  const targetClass = classCandidates.find((item) => item.stream === learner.stream)
+    || classCandidates[0];
+  if (!targetClass) {
+    logger.warn('[learner enrollment] No active class matches learner grade', {
+      learnerId: learner.id,
+      grade: learner.grade,
+      stream: learner.stream,
+    });
+    return;
+  }
+
+  await prisma.$transaction([
+    prisma.classEnrollment.updateMany({
+      where: {
+        learnerId: learner.id,
+        active: true,
+        classId: { not: targetClass.id },
+      },
+      data: { active: false },
+    }),
+    prisma.classEnrollment.upsert({
+      where: {
+        classId_learnerId: {
+          classId: targetClass.id,
+          learnerId: learner.id,
+        },
+      },
+      update: { active: true, archived: false, archivedAt: null, archivedBy: null },
+      create: { classId: targetClass.id, learnerId: learner.id, active: true },
+    }),
+  ]);
+};
+
 /**
  * LearnerController handles learner operations in TrendScore.
  */
@@ -345,6 +394,7 @@ export class LearnerController {
       } catch (userError) {
         logger.error('Failed to create student system user:', userError);
       }
+      await ensureLearnerClassEnrollment(learner);
 
       const shouldGenerateInvoice = generateInvoice !== false && generateInvoice !== 'false';
 
@@ -586,6 +636,7 @@ export class LearnerController {
       } catch (userError) {
         logger.error('Failed to sync student system user:', userError);
       }
+      await ensureLearnerClassEnrollment(updated);
 
       res.json({ success: true, data: updated });
     } catch (error: any) {
@@ -653,6 +704,7 @@ export class LearnerController {
   async promoteLearners(req: AuthRequest, res: Response) {
     const { learnerIds, nextGrade } = req.body;
     const result = await prisma.$transaction(learnerIds.map((id: string) => prisma.learner.update({ where: { id }, data: { grade: String(nextGrade), updatedBy: req.user!.userId } })));
+    await Promise.all(result.map((learner) => ensureLearnerClassEnrollment(learner)));
     res.json({ success: true, message: `Promoted ${result.length} learners` });
   }
 
