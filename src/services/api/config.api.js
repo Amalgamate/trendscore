@@ -16,12 +16,17 @@ const institutionCacheKeySuffix = () => {
 };
 
 export const configAPI = {
-  getTermConfigs: async () => fetchWithAuth('/config/term'),
+  getTermConfigs: async () =>
+    cachedFetch('config:terms', () => fetchWithAuth('/config/term'), TTL.LONG),
   getActiveTermConfig: async () => fetchWithAuth('/config/term/active'),
-  upsertTermConfig: async (data) =>
-    fetchWithAuth('/config/term', { method: 'POST', body: JSON.stringify(data) }),
-  updateTermConfig: async (id, data) =>
-    fetchWithAuth(`/config/term/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  upsertTermConfig: async (data) => {
+    cacheDel('config:terms');
+    return fetchWithAuth('/config/term', { method: 'POST', body: JSON.stringify(data) });
+  },
+  updateTermConfig: async (id, data) => {
+    cacheDel('config:terms');
+    return fetchWithAuth(`/config/term/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  },
 
   getAggregationConfigs: async () => cachedFetch('config:aggregation', () => fetchWithAuth('/config/aggregation'), TTL.LONG),
   createAggregationConfig: async (data) =>
@@ -91,9 +96,50 @@ export const configAPI = {
     return fetchWithAuth('/config/streams/seed', { method: 'POST' });
   },
 
-  getClasses: async () => fetchWithAuth('/config/classes'),
-  upsertClass: async (data) =>
-    fetchWithAuth('/config/classes', { method: 'POST', body: JSON.stringify(data) }),
-  deleteClass: async (id) =>
-    fetchWithAuth(`/config/classes/${id}`, { method: 'DELETE' }),
+  getClasses: async () => {
+    const suffix = institutionCacheKeySuffix();
+    return cachedFetch(
+      `config:classes:${suffix}`,
+      () => fetchWithAuth('/config/classes'),
+      TTL.LONG,
+    );
+  },
+  upsertClass: async (data) => {
+    cacheDelPrefix('config:classes:');
+    return fetchWithAuth('/config/classes', { method: 'POST', body: JSON.stringify(data) });
+  },
+  deleteClass: async (id) => {
+    cacheDelPrefix('config:classes:');
+    return fetchWithAuth(`/config/classes/${id}`, { method: 'DELETE' });
+  },
+
+  /**
+   * Load LMS builder choices independently. A failure in an optional lookup
+   * must never discard classes or subjects that loaded successfully.
+   */
+  getLmsFormOptions: async () => {
+    const lookups = {
+      classes: configAPI.getClasses(),
+      learningAreas: configAPI.getLearningAreas(),
+      terms: configAPI.getTermConfigs(),
+      streams: configAPI.getStreamConfigs(),
+    };
+    const keys = Object.keys(lookups);
+    const settled = await Promise.allSettled(Object.values(lookups));
+    const options = {};
+    const failed = [];
+
+    settled.forEach((result, index) => {
+      const key = keys[index];
+      if (result.status === 'fulfilled') {
+        const response = result.value;
+        options[key] = response?.data || response || [];
+      } else {
+        options[key] = [];
+        failed.push(key);
+      }
+    });
+
+    return { options, failed };
+  },
 };

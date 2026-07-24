@@ -41,23 +41,17 @@ function LessonMetadataForm({ lesson, onUpdate, onSave, loading, error }) {
 
   useEffect(() => {
     let active = true;
-    const unwrap = (response) => response?.data || response || [];
 
-    Promise.all([
-      configAPI.getClasses(),
-      configAPI.getLearningAreas(),
-      configAPI.getTermConfigs(),
-      configAPI.getStreamConfigs?.() || Promise.resolve([]),
-    ])
-      .then(([classes, learningAreas, terms, streams]) => {
+    configAPI.getLmsFormOptions()
+      .then(({ options: loadedOptions, failed }) => {
         if (!active) return;
-        const termOptions = unwrap(terms);
-        setOptions({
-          classes: unwrap(classes),
-          learningAreas: unwrap(learningAreas),
-          terms: termOptions,
-          streams: unwrap(streams),
-        });
+        const termOptions = loadedOptions.terms;
+        setOptions(loadedOptions);
+        setOptionsError(
+          failed.length
+            ? `Some choices could not load (${failed.join(', ')}). The available choices remain usable; refresh to retry.`
+            : '',
+        );
         if (!lesson) {
           const activeTerm = termOptions.find((term) => term.isActive);
           if (activeTerm) setForm((current) => ({ ...current, termId: current.termId || activeTerm.id }));

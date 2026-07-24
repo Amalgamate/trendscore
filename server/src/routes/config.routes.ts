@@ -24,11 +24,11 @@ router.use(authenticate);
 /**
  * @route   GET /api/config/term
  * @desc    Get all term configurations
- * @access  ADMIN, SUPER_ADMIN
+ * @access  Academic staff who need term choices in assessment and LMS forms
  */
 router.get(
   '/term',
-  requireRole(['ADMIN', 'SUPER_ADMIN']),
+  requireRole(['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER']),
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   configController.getTermConfigs
 );
@@ -161,11 +161,11 @@ router.delete(
 /**
  * @route   GET /api/config/streams
  * @desc    Get stream configurations
- * @access  ADMIN, SUPER_ADMIN, HEAD_TEACHER, TEACHER
+ * @access  ADMIN, SUPER_ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM, TEACHER
  */
 router.get(
   '/streams',
-  requireRole(['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'TEACHER']),
+  requireRole(['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER']),
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   configController.getStreamConfigs
 );
@@ -216,11 +216,11 @@ router.post(
 /**
  * @route   GET /api/config/classes
  * @desc    Get classes
- * @access  ADMIN, SUPER_ADMIN, HEAD_TEACHER, TEACHER
+ * @access  ADMIN, SUPER_ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM, TEACHER
  */
 router.get(
   '/classes',
-  requireRole(['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'TEACHER']),
+  requireRole(['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER']),
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   configController.getClasses
 );

@@ -79,20 +79,20 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        const [classesRes, streamsRes, areasRes, termsRes] = await Promise.all([
-          configAPI.getClasses(),
-          configAPI.getStreamConfigs(),
-          configAPI.getLearningAreas(),
-          configAPI.getTermConfigs(),
-        ]);
+        const { options, failed } = await configAPI.getLmsFormOptions();
 
-        setClasses(classesRes?.data || classesRes || []);
-        setStreams(streamsRes?.data || streamsRes || []);
-        setLearningAreas(areasRes?.data || areasRes || []);
-        setTerms(termsRes?.data || termsRes || []);
+        setClasses(options.classes);
+        setStreams(options.streams);
+        setLearningAreas(options.learningAreas);
+        setTerms(options.terms);
+        if (failed.length) {
+          showError(
+            `Some form choices could not load (${failed.join(', ')}). Available choices remain usable; refresh to retry.`,
+          );
+        }
 
         // Set default term to active if available
-        const activeT = (termsRes?.data || termsRes || []).find((t) => t.isActive);
+        const activeT = options.terms.find((t) => t.isActive);
         if (activeT && !id) {
           setFormData((prev) => ({ ...prev, termId: activeT.id }));
         }
