@@ -832,7 +832,7 @@ const PageRouter = ({
             : <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="statements" />;
           case 'fees-unmatched': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="unmatched" />;
 
-          case 'help': return <SupportHub />;
+          case 'help': return <SupportHub initialQuery={pageParams.helpQuery} initialSection={pageParams.helpSection} />;
 
           case 'hr-portal': return <HRManager onNavigate={handleNavigate} />;
           case 'hr-staff-profiles': return <StaffDirectory />;

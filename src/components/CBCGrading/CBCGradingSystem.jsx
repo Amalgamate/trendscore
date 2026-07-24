@@ -10,6 +10,8 @@ import ErrorBoundary from './shared/ErrorBoundary';
 import CommandPalette from './layout/CommandPalette';
 import GitPopupAlert from './layout/GitPopupAlert';
 import GitNotificationDialog from './layout/GitNotificationDialog';
+import ModuleHelpAssistant from '../help/ModuleHelpAssistant';
+import RoleOnboarding from '../help/RoleOnboarding';
 import ImpersonationBanner from '../../components/ImpersonationBanner';
 import { useImpersonation } from '../../contexts/ImpersonationContext';
 
@@ -622,6 +624,8 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
               currentPath={currentPage}
               onNavigate={handleNavigate}
             />
+            <ModuleHelpAssistant currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} />
+            <RoleOnboarding currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} />
           </div>
           <GlobalModals
             showConfirmDialog={showConfirmDialog} setShowConfirmDialog={setShowConfirmDialog}
@@ -668,6 +672,8 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
           editingParent={editingParent} handleSaveParent={handleSaveParent}
           {...notify}
         />
+        <ModuleHelpAssistant currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} />
+        <RoleOnboarding currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} />
       </MobileAppShell>
     );
   }
@@ -733,6 +739,8 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
           editingParent={editingParent} handleSaveParent={handleSaveParent}
           {...notify}
         />
+        <ModuleHelpAssistant currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} />
+        <RoleOnboarding currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} />
       </div>
 
       {/* Git Update Popup — shows automatically on login/refresh for any

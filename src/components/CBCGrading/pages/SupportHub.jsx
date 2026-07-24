@@ -3,13 +3,18 @@
  * Comprehensive user guide and knowledge base
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Book, Search, ChevronDown, ChevronRight, HelpCircle, FileText, Video, Mail, MessageSquare, Settings } from 'lucide-react';
 import { PRODUCT_SUPPORT_EMAIL } from '../../../config/productIdentity';
 
-const SupportHub = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [expandedSections, setExpandedSections] = useState({});
+const SupportHub = ({ initialQuery = '', initialSection = '' }) => {
+  const [searchTerm, setSearchTerm] = useState(initialQuery || '');
+  const [expandedSections, setExpandedSections] = useState(initialSection ? { [initialSection]: true } : {});
+
+  useEffect(() => {
+    setSearchTerm(initialQuery || '');
+    if (initialSection) setExpandedSections(prev => ({ ...prev, [initialSection]: true }));
+  }, [initialQuery, initialSection]);
 
   const toggleSection = (sectionId) => {
     setExpandedSections(prev => ({
@@ -55,7 +60,7 @@ const SupportHub = () => {
         },
         {
           title: 'SMS Integration Setup',
-          content: 'Go to Settings → Communication Settings → SMS tab. Select provider (Africa\'s Talking for Kenya at KES 0.80/SMS recommended). For Africa\'s Talking: Use "sandbox" as username for free testing, or create account for production. Enter API key and set Sender ID (max 11 characters, e.g., TRENDSCORE). Save and test with a phone number in format 254712345678.'
+          content: 'Go to Settings → Communication → SMS. Configure the SMS provider enabled for your school, including the MobileSasa API credentials and approved Sender ID where applicable. Save the settings, then send a test to a Kenyan number in 254712345678 format. A successful test and sufficient SMS balance are required before bulk messaging.'
         },
         {
           title: 'M-Pesa Integration Setup',
@@ -63,15 +68,15 @@ const SupportHub = () => {
         },
         {
           title: 'Testing Integrations',
-          content: 'After configuring Email, SMS, or M-Pesa, scroll down to the "Test" section. Enter a test email/phone number and click "Send Test". Check loading state, then verify success message appears. For M-Pesa, check your phone for STK push prompt. If test fails, verify API keys are correct.'
+          content: 'After configuring Email, SMS, or M-Pesa, use the matching Test section. For SMS, send one message to a controlled phone number and confirm both delivery and the Message History record. For M-Pesa, confirm the STK prompt arrives. If a test fails, review the provider response shown by the system before changing credentials.'
         },
         {
           title: 'Troubleshooting Communication Issues',
-          content: 'Email not sending? Check API key is correct and "From Email" domain matches provider. SMS not delivering? Verify phone format (254...), check credits balance, confirm Sender ID is approved. M-Pesa failing? Ensure phone number is M-Pesa registered, check business number is correct, verify sufficient funds for testing.'
+          content: 'Email not sending? Check the API key and verified From Email domain. SMS not delivering? Verify 254 phone format, SMS balance, approved Sender ID, and the exact MobileSasa response in Message History. Duplicate-message responses normally mean the provider received the same phone and body too quickly; use Retry only after reviewing the message. M-Pesa failing? Confirm the registered phone, business number, and configured credentials.'
         },
         {
           title: 'Recommended Providers for Schools',
-          content: 'Small schools (<200 students): Email-Resend, SMS-Africa\'s Talking, M-Pesa-IntaSend. Medium schools (200-500): Email-SendGrid, SMS-Africa\'s Talking. Large schools (500+): Email-AWS SES, SMS-Africa\'s Talking, M-Pesa-Daraja (lowest fees).'
+          content: 'Use only providers configured and approved for your school. TrendScore supports school-specific communication credentials; MobileSasa is the current SMS path for schools configured to use it. Keep provider credentials private, monitor balances, and always test after changing settings.'
         }
       ]
     },
@@ -103,7 +108,7 @@ const SupportHub = () => {
         },
         {
           title: 'Bulk Import Learners',
-          content: 'For adding many learners at once: Download CSV template → Fill with learner data (name, DoB, gender, grade, guardian info) → Go to Admissions → Bulk Import → Upload CSV → Review data → Confirm import. System validates and imports all learners.'
+          content: 'Download a fresh template from Admissions → Bulk Import. Complete the required learner and class fields, using First Name plus Other Names when a separate surname is unavailable. Upload the file and review the preview carefully: correct validation errors, confirm names and grades, then import. The importer must never create placeholder words such as "Student" as part of a learner name.'
         }
       ]
     },
@@ -119,7 +124,7 @@ const SupportHub = () => {
         },
         {
           title: 'Viewing Attendance Reports',
-          content: 'Navigate to Attendance Reports → Set filters: Grade (1-6 or All), Date Range (This Week, This Month, Custom) → Click Generate Report → View statistics: total days, present count, absent count, late count, excused count, attendance percentage → Export as PDF or Excel for record-keeping.'
+          content: 'Navigate to Attendance Reports and choose the attendance type, date range, and available grade or staff filters. Generate the report to review present, absent, late, and excused totals and percentages. Records that require an unlock or correction must follow the approval flow so the original entry, approver, reason, and corrected value remain auditable.'
         },
         {
           title: 'Understanding Attendance Status',
@@ -151,7 +156,7 @@ const SupportHub = () => {
         },
         {
           title: 'Summative Tests & Scoring',
-          content: 'Go to Summative Tests → Create New Test → Enter: Test Title (e.g., "End Term 1 Mathematics"), Date, Total Marks, Pass Mark (usually 50%) → Add learners to test → Enter marks for each learner → System auto-calculates: Percentage, Grade (A-E), Pass/Fail status → Generate class statistics (highest, lowest, average, pass rate).'
+          content: 'Go to Summative Tests and create or select the exact assessment series and subject. Enter marks against the correct learner, grade, term, and exam, then publish only after checking the summary. Before bulk SMS distribution, use the preview to confirm the exam name and each learner\'s real scores. Message History records successful and failed attempts with the grade, message body, and provider response.'
         },
         {
           title: 'Generating CBC Reports',
@@ -163,7 +168,7 @@ const SupportHub = () => {
         },
         {
           title: 'Parent Report Distribution',
-          content: 'After generating reports: Option 1: Print reports, sign, distribute at parent meetings. Option 2: If Email is configured, send reports as PDF attachments to parent emails. Option 3: If WhatsApp integration added, send reports via WhatsApp. Track which reports sent, mark as "Collected" when parent receives.'
+          content: 'After generating reports, either print the approved report or use the configured bulk communication action. Always review the message preview before sending. The message should identify the school and exact assessment name and must show the learner\'s stored scores. Use Communications → Message History to inspect delivery status, failures, grade, provider response, and the exact message body.'
         }
       ]
     },
