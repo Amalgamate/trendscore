@@ -16,6 +16,7 @@ import * as XLSX from 'xlsx';
 import { ensureStudentAccountForLearner } from '../../services/studentAccount.service';
 import { generateAdmissionNumber } from '../../services/admissionNumber.service';
 import { parentService } from '../../services/parent.service';
+import { buildLearnerNameParts } from '../../utils/learnerName.util';
 
 const router = Router();
 
@@ -47,7 +48,7 @@ const learnerSchema = z.object({
   'Phone 2': z.string().optional(),
   'Reg Date': z.string().optional(),
   'Bal Due': z.string().optional(),
-}).refine(data => data['Learner Name'] || data['Leaner Name'] || data['Name'] || data['Surname'] || data['First Name'], {
+}).refine(data => data['Learner Name'] || data['Leaner Name'] || data['Name'] || data['Surname'] || data['First Name'] || data['Other Names'], {
   message: "Learner Name is required",
   path: ['Learner Name']
 });
@@ -198,42 +199,10 @@ function rowToRecord(headers: string[], values: any[], fallbackClass?: string): 
 }
 
 function shouldSkipParsedRow(row: Record<string, any>): boolean {
-  const learnerName = normalizeCellValue(row['Learner Name'] || row['Leaner Name'] || row['Name'] || row['Surname'] || row['First Name']);
+  const learnerName = normalizeCellValue(row['Learner Name'] || row['Leaner Name'] || row['Name'] || row['Surname'] || row['First Name'] || row['Other Names']);
   const learnerClass = normalizeCellValue(row['Class']);
   const birthEntryNumber = normalizeCellValue(row['Birth Entry Number']);
   return learnerName === '' && learnerClass === '' && birthEntryNumber === '';
-}
-
-function buildLearnerNameParts(csvData: Record<string, any>): {
-  rawName: string;
-  firstName: string;
-  middleName?: string;
-  lastName: string;
-} {
-  const surname = normalizeCellValue(csvData['Surname']);
-  const givenName = normalizeCellValue(csvData['First Name']);
-  const otherNames = normalizeCellValue(csvData['Other Names']);
-
-  if (surname || givenName || otherNames) {
-    const middleName = otherNames || undefined;
-    const rawName = [givenName, otherNames, surname].filter(Boolean).join(' ');
-    return {
-      rawName: rawName || [surname, givenName, otherNames].filter(Boolean).join(' '),
-      firstName: givenName || otherNames || surname || 'Student',
-      middleName,
-      lastName: surname || 'Student',
-    };
-  }
-
-  const rawName = normalizeCellValue(csvData['Learner Name'] || csvData['Leaner Name'] || csvData['Name']);
-  const nameParts = rawName.split(/\s+/).filter(Boolean);
-
-  return {
-    rawName,
-    firstName: nameParts[0] || 'Student',
-    middleName: nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : undefined,
-    lastName: nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'Student',
-  };
 }
 
 function parseUploadDate(value: any, fallback: Date): Date {
