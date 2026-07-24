@@ -399,6 +399,25 @@ export class LMSAssignmentService {
       throw new ApiError(422, 'Assignment must have title, classId, learningAreaId, and dueDate before publishing');
     }
 
+    const questions = Array.isArray(assignment.questions) ? assignment.questions as any[] : [];
+    for (const [index, question] of questions.entries()) {
+      if (!question?.id || !String(question.prompt || '').trim() || !(Number(question.marks) > 0)) {
+        throw new ApiError(422, `Question ${index + 1} needs question text and marks before publishing`)
+          .withCode('LMS_ASSIGNMENT_QUESTION_INVALID');
+      }
+      if (question.type !== 'ESSAY' && (question.correctAnswer === '' || question.correctAnswer === undefined)) {
+        throw new ApiError(422, `Question ${index + 1} needs a correct answer before publishing`)
+          .withCode('LMS_ASSIGNMENT_QUESTION_ANSWER_REQUIRED');
+      }
+    }
+    if (questions.length > 0) {
+      const questionMarks = questions.reduce((sum, question) => sum + (Number(question.marks) || 0), 0);
+      if (assignment.totalMarks !== questionMarks) {
+        throw new ApiError(422, `Total marks must equal the question total (${questionMarks}) before publishing`)
+          .withCode('LMS_ASSIGNMENT_MARKS_MISMATCH');
+      }
+    }
+
     const published = await prisma.learningAssignment.update({
       where: { id, schoolId },
       data: {

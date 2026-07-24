@@ -360,12 +360,23 @@ export default function AssignmentsPage({ onNavigate }) {
   };
 
   const handlePublish = async (assignment) => {
+    const missing = [];
+    if (!assignment.title) missing.push('title');
+    if (!assignment.classId) missing.push('class');
+    if (!assignment.learningAreaId) missing.push('learning area');
+    if (!assignment.dueDate) missing.push('due date');
+    if (missing.length > 0) {
+      alert(`Complete the ${missing.join(', ')} before publishing. The assignment will open for editing.`);
+      handleEditAssignment(assignment);
+      return;
+    }
     if (window.confirm(`Publish "${assignment.title}"? Students will receive notifications.`)) {
       try {
         await lmsAPI.publishAssignment?.(assignment.id);
         await loadAssignments();
       } catch (err) {
-        alert('Failed to publish assignment');
+        const message = err?.response?.data?.message || err?.message || 'Failed to publish assignment';
+        alert(message);
       }
     }
   };
