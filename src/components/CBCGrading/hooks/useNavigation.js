@@ -272,7 +272,6 @@ export const allNavSections = [
             { id: 'learning-lessons',      label: 'Lessons',           path: 'learning-lessons',      permission: 'ACCESS_LMS'             },
             { id: 'learning-interactive',  label: 'Interactive',       path: 'learning-interactive',  permission: 'ACCESS_LMS'             },
             { id: 'learning-revision',     label: 'Revision Library',  path: 'learning-revision',     permission: 'ACCESS_LMS'             },
-            { id: 'learning-analytics',    label: 'Analytics',         path: 'learning-analytics',    permission: 'ANALYTICS_LEARNING'     },
             { id: 'learning-settings',     label: 'Settings',          path: 'learning-settings',     permission: 'SCHOOL_SETTINGS'        },
             { id: 'learning-marketplace',  label: 'Marketplace',       path: 'learning-marketplace',  permission: 'MARKETPLACE_PURCHASE', app: 'lms-enterprise' },
         ]

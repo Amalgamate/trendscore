@@ -17,7 +17,7 @@ import CourseManager from './CourseManager';
 import ContentLibrary from './ContentLibrary';
 import EnrollmentManager from './EnrollmentManager';
 import ProgressReports from './ProgressReports';
-import LMSDashboard from './LMSDashboard';
+import LearningAnalyticsPage from './lms/analytics/LearningAnalyticsPage';
 
 const LMSManager = ({ currentPage = 'lms-courses' }) => {
     const { can } = usePermissions();
@@ -161,11 +161,7 @@ const LMSManager = ({ currentPage = 'lms-courses' }) => {
                 </TabsList>
 
                 <TabsContent value="dashboard" className="mt-6">
-                    <LMSDashboard
-                        onNavigateTab={setActiveTab}
-                        canManageEnrollments={canManageEnrollments}
-                        canViewReports={canViewReports}
-                    />
+                    <LearningAnalyticsPage />
                 </TabsContent>
 
                 <TabsContent value="courses" className="mt-6">

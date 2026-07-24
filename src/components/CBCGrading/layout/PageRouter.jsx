@@ -169,7 +169,6 @@ const AssignmentDetail = lazy(() => import('../pages/lms/assignments/AssignmentD
 const StudentAssignmentView = lazy(() => import('../pages/lms/assignments/StudentAssignmentView'));
 const MarkingInterface = lazy(() => import('../pages/lms/assignments/MarkingInterface'));
 // LMS Digital Learning Hub — Phase 1+
-const LMSDashboard = lazy(() => import('../pages/LMSDashboard'));
 const LMSPlaceholder = lazy(() => import('../pages/lms/LMSPlaceholder'));
 const LMSSettingsPage = lazy(() => import('../pages/lms/settings/LMSSettingsPage'));
 const LMSLessonList = lazy(() => import('../pages/lms/lessons/LessonList'));
@@ -744,7 +743,7 @@ const PageRouter = ({
           // LMS Digital Learning Hub
           case 'learning-dashboard': 
             if (effectiveRole === 'STUDENT') return <StudentLearningTab onNavigate={handleNavigate} />;
-            return <LMSDashboard user={user} onNavigate={handleNavigate} />;
+            return <LearningAnalyticsPage />;
           case 'learning-assignments': return <AssignmentsPage onNavigate={handleNavigate} />;
           case 'learning-assignment-create': return <AssignmentBuilder onNavigate={handleNavigate} />;
           case 'learning-assignment-edit': return <AssignmentBuilder assignmentId={pageParams?.assignmentId || pageParams?.id} onNavigate={handleNavigate} />;

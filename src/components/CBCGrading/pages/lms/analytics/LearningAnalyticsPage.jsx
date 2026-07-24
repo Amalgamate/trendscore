@@ -231,8 +231,8 @@ export default function LearningAnalyticsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Learning Analytics</h1>
-          <p className="mt-1 text-sm text-gray-600">Engagement, completion, and submission signals for the LMS.</p>
+          <h1 className="text-2xl font-bold text-gray-900">Learning Dashboard</h1>
+          <p className="mt-1 text-sm text-gray-600">Analytics for engagement, completion, lessons, and assignment submissions.</p>
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
