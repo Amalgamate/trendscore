@@ -224,6 +224,13 @@ router.post(
   lmsController.markSubmission
 );
 
+router.post(
+  '/submissions/:id/return',
+  requirePermission('ASSIGNMENT_MARK'),
+  requireCsrf,
+  lmsController.returnSubmissionForCorrection,
+);
+
 /** GET /api/lms/submissions/my — learner's own submissions */
 router.get(
   '/submissions/my',

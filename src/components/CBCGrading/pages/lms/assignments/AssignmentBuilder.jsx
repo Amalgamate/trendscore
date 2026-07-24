@@ -3,7 +3,7 @@
  * Form for creating/editing assignments with rich fields, rubric builder, and file attachments
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Save,
   Send,
@@ -21,6 +21,8 @@ import { useNotifications } from '../../../hooks/useNotifications';
 import { useNavigate, useParams } from 'react-router-dom';
 import { lmsAPI, configAPI } from '../../../../../services/api';
 import { cn } from '../../../../../utils/cn';
+import QuestionBuilder from './QuestionBuilder';
+import { useTeacherContext } from '../../../../../hooks/useTeacherContext';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -52,6 +54,7 @@ const DEFAULT_FORM_DATA = {
   allowResubmit: false,
   maxFileSize: 25,
   rubric: [],
+  questions: [],
 };
 
 // ─── AssignmentBuilder Component ─────────────────────────────────────────────
@@ -61,6 +64,7 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
   const id = assignmentId || params.id || params.assignmentId;
   const navigate = useNavigate();
   const { showSuccess, showError } = useNotifications();
+  const teacherContext = useTeacherContext();
   const fileInputRef = useRef(null);
 
   const [formData, setFormData] = useState(DEFAULT_FORM_DATA);
@@ -73,10 +77,49 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
   const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState({});
 
-  const selectedClass = classes.find((item) => item.id === formData.classId);
-  const visibleLearningAreas = selectedClass
-    ? learningAreas.filter((area) => area.gradeLevel === selectedClass.grade)
-    : [];
+  const visibleClasses = useMemo(() => {
+    if (!teacherContext.restricted) return classes;
+    const exactClassIds = new Set(teacherContext.assignedClassIds || []);
+    const assignedGrades = new Set(teacherContext.assignedGrades || []);
+    return classes.filter(
+      (item) => exactClassIds.has(item.id) || assignedGrades.has(item.grade),
+    );
+  }, [
+    classes,
+    teacherContext.assignedClassIds,
+    teacherContext.assignedGrades,
+    teacherContext.restricted,
+  ]);
+
+  const visibleLearningAreas = useMemo(() => {
+    if (!formData.classId) return [];
+    const selectedClass = classes.find((item) => item.id === formData.classId);
+    if (!selectedClass) return [];
+    const gradeAreas = learningAreas.filter(
+      (area) => area.gradeLevel === selectedClass.grade,
+    );
+    if (!teacherContext.restricted) return gradeAreas;
+    const isHomeroomClass = teacherContext.classTeacherOf?.id === formData.classId;
+    if (isHomeroomClass) return gradeAreas;
+
+    const allowedAreaIds = new Set(
+      (teacherContext.subjectAssignments || [])
+        .filter(
+          (item) =>
+            item.classId === formData.classId ||
+            (!item.classId && item.grade === selectedClass?.grade),
+        )
+        .map((item) => item.learningAreaId),
+    );
+    return gradeAreas.filter((area) => allowedAreaIds.has(area.id));
+  }, [
+    classes,
+    formData.classId,
+    learningAreas,
+    teacherContext.classTeacherOf,
+    teacherContext.restricted,
+    teacherContext.subjectAssignments,
+  ]);
 
   // ─── Fetch Dropdown Data ────────────────────────────────────────────────────
 
@@ -142,6 +185,7 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
             allowResubmit: assignment.allowResubmit || false,
             maxFileSize: assignment.maxFileSize || 25,
             rubric: assignment.rubric || [],
+            questions: Array.isArray(assignment.questions) ? assignment.questions : [],
           });
         }
       } catch (error) {
@@ -202,6 +246,17 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
     if (!formData.classId) newErrors.classId = 'Class is required';
     if (!formData.learningAreaId) newErrors.learningAreaId = 'Learning area is required';
     if (!formData.termId) newErrors.termId = 'Term is required';
+    const invalidQuestion = formData.questions.find((question) => {
+      if (!question.prompt?.trim() || Number(question.marks) <= 0) return true;
+      if (question.type === 'ESSAY') return false;
+      if (question.type === 'MULTIPLE_CHOICE') {
+        return !Array.isArray(question.options)
+          || question.options.some((option) => !option.trim())
+          || question.correctAnswer === '';
+      }
+      return String(question.correctAnswer ?? '').trim() === '';
+    });
+    if (invalidQuestion) newErrors.questions = 'Every question needs text, marks, choices where applicable, and a correct answer.';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -219,7 +274,7 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
 
   const handleSaveDraft = async () => {
     if (!validateForm()) {
-      showError('Please fill in all required fields');
+      showError('Please complete all required assignment and question fields');
       return;
     }
 
@@ -390,7 +445,7 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
                   )}
                 >
                   <option value="">Select Class</option>
-                  {classes.map((cls) => (
+                  {visibleClasses.map((cls) => (
                     <option key={cls.id} value={cls.id}>
                       {cls.name}
                     </option>
@@ -632,6 +687,11 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
                 className="w-full md:w-48 px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm outline-none focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/20 dark:text-white"
               />
             </div>
+
+            <QuestionBuilder
+              questions={formData.questions}
+              onChange={(questions) => handleChange('questions', questions)}
+            />
 
             {/* Rubric Builder */}
             <div className="border-t border-gray-200 dark:border-gray-700 pt-6">

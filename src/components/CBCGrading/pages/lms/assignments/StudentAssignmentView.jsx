@@ -133,6 +133,7 @@ export default function StudentAssignmentView({ assignmentId, onNavigate, user, 
 
   // Form state
   const [answer, setAnswer] = useState('');
+  const [questionResponses, setQuestionResponses] = useState({});
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [errors, setErrors] = useState({});
 
@@ -164,6 +165,7 @@ export default function StudentAssignmentView({ assignmentId, onNavigate, user, 
       // Pre-fill form if draft exists
       if (latestSubmission && latestSubmission.status === 'DRAFT') {
         setAnswer(latestSubmission.content ?? '');
+        setQuestionResponses(latestSubmission.questionResponses || {});
         // Note: existing file attachments from draft are read-only (we don't pre-populate attachedFiles)
       }
     } catch (err) {
@@ -209,9 +211,15 @@ export default function StudentAssignmentView({ assignmentId, onNavigate, user, 
   // ── Validation ────────────────────────────────────────────────────────────
   const validateForm = () => {
     const newErrors = {};
-    if (!answer || answer.trim().length === 0) {
+    const questions = Array.isArray(assignment?.questions) ? assignment.questions : [];
+    if (questions.length === 0 && (!answer || answer.trim().length === 0)) {
       newErrors.answer = 'Answer is required';
     }
+    const unanswered = questions.filter((question) => {
+      const response = questionResponses[String(question.id)];
+      return response === undefined || response === null || String(response).trim() === '';
+    });
+    if (unanswered.length > 0) newErrors.questions = `Answer all ${questions.length} questions before submitting.`;
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -222,6 +230,7 @@ export default function StudentAssignmentView({ assignmentId, onNavigate, user, 
     try {
       const formData = new FormData();
       formData.append('content', answer);
+      formData.append('questionResponses', JSON.stringify(questionResponses));
       formData.append('status', 'DRAFT');
       attachedFiles.forEach((file) => {
         formData.append('files', file);
@@ -240,7 +249,7 @@ export default function StudentAssignmentView({ assignmentId, onNavigate, user, 
   // ── Submit assignment ─────────────────────────────────────────────────────
   const handleSubmit = async () => {
     if (!validateForm()) {
-      showError('Please provide an answer before submitting.');
+      showError('Please answer every required question before submitting.');
       return;
     }
 
@@ -255,6 +264,7 @@ export default function StudentAssignmentView({ assignmentId, onNavigate, user, 
     try {
       const formData = new FormData();
       formData.append('content', answer);
+      formData.append('questionResponses', JSON.stringify(questionResponses));
       formData.append('status', 'SUBMITTED');
       attachedFiles.forEach((file) => {
         formData.append('files', file);
@@ -264,6 +274,7 @@ export default function StudentAssignmentView({ assignmentId, onNavigate, user, 
       showSuccess('Assignment submitted successfully!');
       fetchData(); // Reload to get the submitted status
       setAnswer('');
+      setQuestionResponses({});
       setAttachedFiles([]);
     } catch (err) {
       showError(err?.response?.data?.message ?? err?.message ?? 'Failed to submit assignment.');
@@ -277,6 +288,7 @@ export default function StudentAssignmentView({ assignmentId, onNavigate, user, 
     // Clear form and allow new submission
     setMySubmission(null);
     setAnswer('');
+    setQuestionResponses({});
     setAttachedFiles([]);
     showSuccess('You can now submit a new attempt.');
   };
@@ -322,7 +334,8 @@ export default function StudentAssignmentView({ assignmentId, onNavigate, user, 
   const countdown = getDueDateCountdown(assignment.dueDate);
   const canSubmit = assignment.status === 'PUBLISHED' && (!mySubmission || mySubmission.status === 'DRAFT');
   const isMarked = mySubmission && mySubmission.status === 'MARKED';
-  const canResubmit = isMarked && assignment.allowResubmit === true;
+  const isReturned = mySubmission && mySubmission.status === 'RETURNED';
+  const canResubmit = isReturned || (isMarked && assignment.allowResubmit === true);
 
   return (
     <div className="min-h-full bg-[var(--app-page-bg,#f8fafc)] px-4 py-5 sm:px-6 lg:px-8">
@@ -495,20 +508,27 @@ export default function StudentAssignmentView({ assignmentId, onNavigate, user, 
         )}
 
         {/* ── Your Marked Submission (if exists and marked) ── */}
-        {isMarked && (
-          <div className="rounded-xl border border-emerald-200 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 p-6">
+        {(isMarked || isReturned) && (
+          <div className={cn(
+            'rounded-xl border p-6',
+            isReturned
+              ? 'border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20'
+              : 'border-emerald-200 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20',
+          )}>
             <div className="flex items-start gap-4">
               <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white">
                 <CheckCircle size={24} />
               </div>
               <div className="min-w-0 flex-1">
                 <h2 className="text-lg font-bold text-emerald-900 dark:text-emerald-100 mb-1">
-                  Your Submission — Marked
+                  {isReturned ? 'Corrections Requested' : 'Your Submission — Marked'}
                 </h2>
                 <div className="flex items-center gap-4 mb-4 text-sm text-emerald-700 dark:text-emerald-300">
-                  <span className="font-semibold">
-                    Marks: {mySubmission.marks} / {assignment.totalMarks}
-                  </span>
+                  {isMarked && (
+                    <span className="font-semibold">
+                      Marks: {mySubmission.marks} / {assignment.totalMarks}
+                    </span>
+                  )}
                   {mySubmission.markedAt && (
                     <span>Marked on {formatDate(mySubmission.markedAt)}</span>
                   )}
@@ -524,6 +544,23 @@ export default function StudentAssignmentView({ assignmentId, onNavigate, user, 
                     />
                   </div>
                 )}
+                {isMarked && Array.isArray(mySubmission.rubricScores) && mySubmission.rubricScores.length > 0 && (
+                  <div className="mt-4 overflow-hidden rounded-lg border border-emerald-300 dark:border-emerald-600 bg-white dark:bg-emerald-900/40">
+                    <div className="px-4 py-2 text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                      Rubric Results
+                    </div>
+                    <div className="divide-y divide-emerald-100 dark:divide-emerald-800">
+                      {mySubmission.rubricScores.map((score, index) => (
+                        <div key={`${score.criterion}-${index}`} className="flex items-center justify-between gap-4 px-4 py-2 text-sm">
+                          <span className="text-emerald-900 dark:text-emerald-100">{score.criterion}</span>
+                          <span className="font-semibold text-emerald-700 dark:text-emerald-300">
+                            {score.marks} / {score.maxMarks}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {canResubmit && (
                   <button
                     type="button"
@@ -531,7 +568,7 @@ export default function StudentAssignmentView({ assignmentId, onNavigate, user, 
                     className="mt-4 inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-600 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition"
                   >
                     <Upload size={16} />
-                    Resubmit Assignment
+                    {isReturned ? 'Correct and Resubmit' : 'Resubmit Assignment'}
                   </button>
                 )}
               </div>
@@ -546,7 +583,50 @@ export default function StudentAssignmentView({ assignmentId, onNavigate, user, 
               Your Submission
             </h2>
 
+            {Array.isArray(assignment.questions) && assignment.questions.length > 0 && (
+              <div className="mb-6 space-y-4">
+                {assignment.questions.map((question, index) => {
+                  const questionId = String(question.id);
+                  const response = questionResponses[questionId] ?? '';
+                  return (
+                    <div key={questionId} className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+                      <div className="mb-3 flex items-start justify-between gap-4">
+                        <label className="font-semibold text-gray-950 dark:text-white">
+                          {index + 1}. {question.prompt}
+                        </label>
+                        <span className="whitespace-nowrap text-xs font-bold text-brand-purple">{question.marks || 0} marks</span>
+                      </div>
+                      {question.type === 'MULTIPLE_CHOICE' && (
+                        <div className="space-y-2">
+                          {(question.options || []).map((option, optionIndex) => (
+                            <label key={optionIndex} className="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 p-3 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">
+                              <input type="radio" name={`response-${questionId}`} checked={Number(response) === optionIndex && response !== ''} onChange={() => setQuestionResponses((current) => ({ ...current, [questionId]: optionIndex }))} />
+                              <span className="text-sm text-gray-800 dark:text-gray-200">{option}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      {question.type === 'TRUE_FALSE' && (
+                        <div className="flex gap-3">
+                          {['true', 'false'].map((value) => (
+                            <label key={value} className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-4 py-3 capitalize dark:border-gray-600">
+                              <input type="radio" name={`response-${questionId}`} checked={response === value} onChange={() => setQuestionResponses((current) => ({ ...current, [questionId]: value }))} />{value}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      {(question.type === 'SHORT_ANSWER' || question.type === 'ESSAY') && (
+                        <textarea rows={question.type === 'ESSAY' ? 6 : 2} value={response} onChange={(event) => setQuestionResponses((current) => ({ ...current, [questionId]: event.target.value }))} placeholder="Type your answer…" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-white" />
+                      )}
+                    </div>
+                  );
+                })}
+                {errors.questions && <p className="text-sm text-red-500">{errors.questions}</p>}
+              </div>
+            )}
+
             {/* Rich text answer */}
+            {(!Array.isArray(assignment.questions) || assignment.questions.length === 0) && (
             <div className="mb-6">
               <label htmlFor="answer" className="block text-sm font-semibold text-gray-950 dark:text-white mb-2">
                 Answer <span className="text-red-500">*</span>
@@ -574,6 +654,7 @@ export default function StudentAssignmentView({ assignmentId, onNavigate, user, 
                 </p>
               )}
             </div>
+            )}
 
             {/* File upload zone */}
             <div className="mb-6">

@@ -65,12 +65,14 @@ async function sendAssignmentDueTomorrowReminders(): Promise<void> {
 
             const allLearnerIds = enrollments.map((e) => e.learnerId);
 
-            // Find learners who have ALREADY submitted (any non-DRAFT submission)
+            // Find learners whose work is currently with the teacher or fully
+            // marked. RETURNED work is deliberately excluded so the learner
+            // still receives a due reminder while corrections are outstanding.
             const submissions = await prisma.learningSubmission.findMany({
                 where: {
                     assignmentId: assignment.id,
                     learnerId: { in: allLearnerIds },
-                    status: { not: 'DRAFT' },
+                    status: { in: ['SUBMITTED', 'LATE', 'MARKED', 'RESUBMITTED'] },
                     archived: false,
                 },
                 select: { learnerId: true },

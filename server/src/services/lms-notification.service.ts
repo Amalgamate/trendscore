@@ -302,6 +302,58 @@ export class LMSNotificationService {
     }
   }
 
+  static async onSubmissionReturned(
+    submission: LearningSubmission,
+  ): Promise<void> {
+    try {
+      const assignment = await prisma.learningAssignment.findUnique({
+        where: { id: submission.assignmentId },
+        select: { title: true },
+      });
+      if (!assignment) return;
+      const studentUserId = await resolveStudentUserId(submission.learnerId);
+      if (!studentUserId) return;
+
+      await NotificationService.createNotification({
+        userId: studentUserId,
+        title: 'Corrections Requested',
+        message: `Your teacher returned "${assignment.title}" with correction instructions. Review the feedback and resubmit your work.`,
+        type: NotificationType.WARNING,
+        link: `/app/learning/assignments/${submission.assignmentId}`,
+      });
+    } catch (err: any) {
+      console.error(
+        '[LMSNotificationService] onSubmissionReturned error:',
+        err?.message ?? err,
+      );
+    }
+  }
+
+  static async onSubmissionResubmitted(
+    submission: LearningSubmission,
+  ): Promise<void> {
+    try {
+      const assignment = await prisma.learningAssignment.findUnique({
+        where: { id: submission.assignmentId },
+        select: { title: true, createdById: true },
+      });
+      if (!assignment) return;
+
+      await NotificationService.createNotification({
+        userId: assignment.createdById,
+        title: 'Assignment Resubmitted',
+        message: `A student has resubmitted "${assignment.title}" after making corrections.`,
+        type: NotificationType.INFO,
+        link: `/app/learning/assignments/${submission.assignmentId}`,
+      });
+    } catch (err: any) {
+      console.error(
+        '[LMSNotificationService] onSubmissionResubmitted error:',
+        err?.message ?? err,
+      );
+    }
+  }
+
   /**
    * Req 19.6
    * Fired when a lesson is published.

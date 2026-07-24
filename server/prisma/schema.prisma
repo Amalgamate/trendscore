@@ -3028,6 +3028,7 @@ model LearningAssignment {
   totalMarks       Int?
   passMark         Int?
   rubric           Json? // structured rubric definition
+  questions        Json? // publisher-authored structured questions
   cbcOutcomes      String[]           @default([]) // CBC outcome IDs
   allowLateSubmit  Boolean            @default(true)
   allowResubmit    Boolean            @default(false)
@@ -3080,6 +3081,11 @@ model LearningSubmission {
   content       String?          @db.Text // rich text answer
   marks         Float?
   feedback      String?          @db.Text
+  rubricScores  Json?            // criterion-level marks and comments
+  questionResponses Json?        // answers keyed by publisher question id
+  autoMarks     Float?            // objective marks calculated by the server
+  autoMarked    Boolean          @default(false)
+  requiresManualMarking Boolean  @default(false)
   isLate        Boolean          @default(false)
   attemptNumber Int              @default(1)
   submittedAt   DateTime?

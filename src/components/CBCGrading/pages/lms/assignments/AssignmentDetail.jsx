@@ -25,6 +25,7 @@ import {
   Loader2,
   Lock,
   Paperclip,
+  Pencil,
   Target,
   TrendingUp,
   Users,
@@ -289,6 +290,15 @@ export default function AssignmentDetail({ assignmentId, onNavigate, user, pageP
               Back to Assignments
             </button>
 
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => onNavigate?.('learning-assignment-edit', { assignmentId: assignment.id })}
+                className="inline-flex items-center gap-2 rounded-lg border border-brand-purple/30 bg-brand-purple/5 px-4 py-2 text-sm font-semibold text-brand-purple hover:bg-brand-purple/10"
+              >
+                <Pencil size={16} />
+                Edit Assignment & Questions
+              </button>
             {assignment.status === 'PUBLISHED' && (
               <button
                 type="button"
@@ -299,6 +309,7 @@ export default function AssignmentDetail({ assignmentId, onNavigate, user, pageP
                 Close Assignment
               </button>
             )}
+            </div>
           </div>
 
           <div className="flex items-start gap-4">
@@ -399,6 +410,27 @@ export default function AssignmentDetail({ assignmentId, onNavigate, user, pageP
             </div>
           </div>
         </div>
+
+        {Array.isArray(assignment.questions) && assignment.questions.length > 0 && (
+          <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+            <h2 className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100">
+              Questions ({assignment.questions.length})
+            </h2>
+            <div className="space-y-3">
+              {assignment.questions.map((question, index) => (
+                <div key={question.id || index} className="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+                  <div className="flex items-start justify-between gap-4">
+                    <p className="font-semibold text-gray-900 dark:text-white">{index + 1}. {question.prompt}</p>
+                    <span className="whitespace-nowrap text-sm font-bold text-brand-purple">{question.marks || 0} marks</span>
+                  </div>
+                  <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    {String(question.type || '').replaceAll('_', ' ')}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── Rubric display ── */}
         {assignment.rubric && Array.isArray(assignment.rubric) && assignment.rubric.length > 0 && (

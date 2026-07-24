@@ -74,7 +74,7 @@ export const lmsAPI = {
     return fetchWithAuth(`/lms/submissions/my${queryString ? `?${queryString}` : ''}`);
   },
   submitAssignment: async (assignmentId, formData) =>
-    fetchWithAuth(`/lms/assignments/${assignmentId}/submissions`, {
+    fetchWithAuth(`/lms/assignments/${assignmentId}/submit`, {
       method: 'POST',
       body: formData,
       // Do NOT set Content-Type — browser sets it with boundary for multipart
@@ -82,6 +82,11 @@ export const lmsAPI = {
     }),
   markSubmission: async (submissionId, data) =>
     fetchWithAuth(`/lms/submissions/${submissionId}/mark`, { method: 'POST', body: JSON.stringify(data) }),
+  returnSubmission: async (submissionId, feedback) =>
+    fetchWithAuth(`/lms/submissions/${submissionId}/return`, {
+      method: 'POST',
+      body: JSON.stringify({ feedback }),
+    }),
 
   // ─── Lessons ───────────────────────────────────────────────────────────────
   getLessons: async (params = {}) => {
@@ -102,7 +107,6 @@ export const lmsAPI = {
     fetchWithAuth(`/lms/lessons/${id}/publish`, { method: 'PUT' }),
   archiveLesson: async (id) =>
     fetchWithAuth(`/lms/lessons/${id}/archive`, { method: 'POST' }),
-  getLessonWithBlocks: async (id) => fetchWithAuth(`/lms/lessons/${id}`),
   upsertLessonBlocks: async (id, blocks) =>
     fetchWithAuth(`/lms/lessons/${id}/blocks`, { method: 'POST', body: JSON.stringify({ blocks }) }),
   /**

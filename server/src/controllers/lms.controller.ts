@@ -536,8 +536,22 @@ export const getAssignmentDetail = async (req: AuthRequest, res: Response): Prom
       return;
     }
 
+    const requesterId = req.user?.userId;
+    if (!requesterId) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+    const learnerId = req.user!.role === 'STUDENT'
+      ? await resolveLearnerId(req)
+      : undefined;
     const { id } = req.params;
-    const result = await LMSAssignmentService.getAssignmentDetail(id, schoolId);
+    const result = await LMSAssignmentService.getAssignmentDetail(
+      id,
+      schoolId,
+      requesterId,
+      req.user!.role,
+      learnerId,
+    );
     res.json({ success: true, data: result });
   } catch (error: any) {
     if (error instanceof ApiError) {
@@ -571,7 +585,7 @@ export const createAssignment = async (req: AuthRequest, res: Response): Promise
     // Inject schoolId into the body before passing to service
     const body = { ...req.body, schoolId };
 
-    const result = await LMSAssignmentService.createAssignment(body, teacherId);
+    const result = await LMSAssignmentService.createAssignment(body, teacherId, req.user!.role);
     res.status(201).json({ success: true, data: result });
   } catch (error: any) {
     if (error instanceof ApiError) {
@@ -597,7 +611,18 @@ export const updateAssignment = async (req: AuthRequest, res: Response): Promise
     }
 
     const { id } = req.params;
-    const result = await LMSAssignmentService.updateAssignment(id, schoolId, req.body);
+    const requesterId = req.user?.userId;
+    if (!requesterId) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+    const result = await LMSAssignmentService.updateAssignment(
+      id,
+      schoolId,
+      req.body,
+      requesterId,
+      req.user!.role,
+    );
     res.json({ success: true, data: result });
   } catch (error: any) {
     if (error instanceof ApiError) {
@@ -629,7 +654,12 @@ export const publishAssignment = async (req: AuthRequest, res: Response): Promis
     }
 
     const { id } = req.params;
-    const result = await LMSAssignmentService.publishAssignment(id, schoolId, teacherId);
+    const result = await LMSAssignmentService.publishAssignment(
+      id,
+      schoolId,
+      teacherId,
+      req.user!.role,
+    );
     res.json({ success: true, data: result });
   } catch (error: any) {
     if (error instanceof ApiError) {
@@ -654,7 +684,17 @@ export const closeAssignment = async (req: AuthRequest, res: Response): Promise<
     }
 
     const { id } = req.params;
-    const result = await LMSAssignmentService.closeAssignment(id, schoolId);
+    const requesterId = req.user?.userId;
+    if (!requesterId) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+    const result = await LMSAssignmentService.closeAssignment(
+      id,
+      schoolId,
+      requesterId,
+      req.user!.role,
+    );
     res.json({ success: true, data: result });
   } catch (error: any) {
     if (error instanceof ApiError) {
@@ -679,7 +719,17 @@ export const archiveAssignment = async (req: AuthRequest, res: Response): Promis
     }
 
     const { id } = req.params;
-    const result = await LMSAssignmentService.archiveAssignment(id, schoolId);
+    const requesterId = req.user?.userId;
+    if (!requesterId) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+    const result = await LMSAssignmentService.archiveAssignment(
+      id,
+      schoolId,
+      requesterId,
+      req.user!.role,
+    );
     res.json({ success: true, data: result });
   } catch (error: any) {
     if (error instanceof ApiError) {
@@ -705,7 +755,17 @@ export const getSubmissions = async (req: AuthRequest, res: Response): Promise<v
     }
 
     const { id: assignmentId } = req.params;
-    const result = await LMSAssignmentService.getSubmissions(assignmentId, schoolId);
+    const requesterId = req.user?.userId;
+    if (!requesterId) {
+      res.status(401).json({ success: false, message: 'Authentication required' });
+      return;
+    }
+    const result = await LMSAssignmentService.getSubmissions(
+      assignmentId,
+      schoolId,
+      requesterId,
+      req.user!.role,
+    );
     res.json({ success: true, data: result });
   } catch (error: any) {
     if (error instanceof ApiError) {
@@ -813,7 +873,7 @@ export const markSubmission = async (req: AuthRequest, res: Response): Promise<v
     }
 
     const { id: submissionId } = req.params;
-    const { marks, feedback } = req.body;
+    const { marks, feedback, rubricScores } = req.body;
 
     const result = await LMSAssignmentService.markSubmission(
       submissionId,
@@ -821,6 +881,8 @@ export const markSubmission = async (req: AuthRequest, res: Response): Promise<v
       Number(marks),
       feedback ?? '',
       schoolId,
+      req.user!.role,
+      rubricScores,
     );
 
     res.json({ success: true, data: result });
@@ -830,6 +892,32 @@ export const markSubmission = async (req: AuthRequest, res: Response): Promise<v
     } else {
       console.error('[LMS] markSubmission error:', error?.message ?? error);
       res.status(500).json({ success: false, message: 'Failed to mark submission' });
+    }
+  }
+};
+
+export const returnSubmissionForCorrection = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const schoolId = req.school?.id;
+    const markerId = req.user?.userId;
+    if (!schoolId || !markerId) {
+      res.status(401).json({ success: false, message: 'Authentication and school context are required' });
+      return;
+    }
+    const result = await LMSAssignmentService.returnSubmissionForCorrection(
+      req.params.id,
+      markerId,
+      req.body.feedback ?? '',
+      schoolId,
+      req.user!.role,
+    );
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    if (error instanceof ApiError) {
+      res.status(error.statusCode).json({ success: false, message: error.message, code: error.code });
+    } else {
+      console.error('[LMS] returnSubmissionForCorrection error:', error?.message ?? error);
+      res.status(500).json({ success: false, message: 'Failed to return submission' });
     }
   }
 };

@@ -26,6 +26,7 @@ import type {
   SubmissionStatus,
   RubricRating,
 } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 // ─── Cache helpers ────────────────────────────────────────────────────────────
 
@@ -50,6 +51,7 @@ export interface CreateAssignmentInput {
   totalMarks?: number;
   passMark?: number;
   rubric?: object;
+  questions?: object[];
   cbcOutcomes?: string[];
   allowLateSubmit?: boolean;
   allowResubmit?: boolean;
@@ -80,6 +82,17 @@ export interface AssignmentFilters {
   limit?: number;
 }
 
+const hideQuestionAnswers = <T extends { questions?: unknown }>(assignment: T): T => {
+  if (!Array.isArray(assignment.questions)) return assignment;
+  return {
+    ...assignment,
+    questions: assignment.questions.map((question: any) => {
+      const { correctAnswer: _correctAnswer, explanation: _explanation, ...studentQuestion } = question || {};
+      return studentQuestion;
+    }),
+  };
+};
+
 export interface SubmissionFileInput {
   originalname: string;
   mimetype: string;
@@ -89,11 +102,98 @@ export interface SubmissionFileInput {
 
 export interface CreateSubmissionInput {
   content?: string;
+  status?: 'DRAFT' | 'SUBMITTED';
+  questionResponses?: unknown;
 }
 
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 export class LMSAssignmentService {
+  private static readonly OVERSIGHT_ROLES = new Set([
+    'SUPER_ADMIN',
+    'ADMIN',
+    'HEAD_TEACHER',
+    'HEAD_OF_CURRICULUM',
+  ]);
+
+  private static hasOversight(role: string): boolean {
+    return LMSAssignmentService.OVERSIGHT_ROLES.has(String(role).toUpperCase());
+  }
+
+  /**
+   * Teachers may issue work only for a class/learning-area combination that is
+   * present in their timetable, explicit subject workload, or homeroom class.
+   * Leadership roles are intentionally allowed to manage the whole school.
+   */
+  private static async assertTeacherWorkload(
+    teacherId: string,
+    role: string,
+    schoolId: string,
+    classId: string,
+    learningAreaId: string,
+  ): Promise<void> {
+    if (LMSAssignmentService.hasOversight(role)) return;
+
+    const targetClass = await prisma.class.findFirst({
+      where: { id: classId, active: true, archived: false },
+      select: { id: true, grade: true, teacherId: true },
+    });
+
+    if (!targetClass) {
+      throw new ApiError(422, 'The selected class is not active or does not exist')
+        .withCode('LMS_ASSIGNMENT_CLASS_INVALID');
+    }
+
+    const [scheduled, subjectAssigned] = await Promise.all([
+      prisma.classSchedule.findFirst({
+        where: {
+          classId,
+          learningAreaId,
+          teacherId,
+          active: true,
+          archived: false,
+        },
+        select: { id: true },
+      }),
+      prisma.subjectAssignment.findFirst({
+        where: {
+          teacherId,
+          learningAreaId,
+          grade: targetClass.grade,
+          active: true,
+        },
+        select: { id: true },
+      }),
+    ]);
+
+    if (!scheduled && !subjectAssigned && targetClass.teacherId !== teacherId) {
+      throw new ApiError(403, 'You are not assigned to teach this learning area for the selected class')
+        .withCode('LMS_ASSIGNMENT_OUTSIDE_WORKLOAD');
+    }
+  }
+
+  private static async assertCanManageAssignment(
+    id: string,
+    schoolId: string,
+    requesterId: string,
+    role: string,
+  ): Promise<LearningAssignment> {
+    const assignment = await prisma.learningAssignment.findFirst({
+      where: { id, schoolId, archived: false },
+    });
+
+    if (!assignment) {
+      throw new ApiError(404, 'Assignment not found').withCode('LMS_ASSIGNMENT_NOT_FOUND');
+    }
+
+    if (!LMSAssignmentService.hasOversight(role) && assignment.createdById !== requesterId) {
+      throw new ApiError(403, 'You can only manage assignments you created')
+        .withCode('LMS_ASSIGNMENT_NOT_OWNER');
+    }
+
+    return assignment;
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
   // TASK 8.1 — CRUD and Publishing
   // ══════════════════════════════════════════════════════════════════════════
@@ -106,6 +206,7 @@ export class LMSAssignmentService {
   static async createAssignment(
     data: CreateAssignmentInput,
     teacherId: string,
+    role: string,
   ): Promise<LearningAssignment> {
     const { title, classId, learningAreaId, termId, category, schoolId } = data;
 
@@ -136,7 +237,15 @@ export class LMSAssignmentService {
 
     const maxFileSize = optionalInteger(data.maxFileSize, 'Maximum file size');
 
-    return prisma.learningAssignment.create({
+    await LMSAssignmentService.assertTeacherWorkload(
+      teacherId,
+      role,
+      schoolId,
+      classId,
+      learningAreaId,
+    );
+
+    const created = await prisma.learningAssignment.create({
       data: {
         title,
         classId,
@@ -153,6 +262,7 @@ export class LMSAssignmentService {
         totalMarks: optionalInteger(data.totalMarks, 'Total marks'),
         passMark: optionalInteger(data.passMark, 'Pass mark'),
         rubric: data.rubric ?? undefined,
+        questions: data.questions ?? undefined,
         cbcOutcomes: data.cbcOutcomes ?? [],
         allowLateSubmit: data.allowLateSubmit ?? true,
         allowResubmit: data.allowResubmit ?? false,
@@ -161,6 +271,17 @@ export class LMSAssignmentService {
         gradebookSync: data.gradebookSync ?? false,
       },
     });
+    void auditService.logChange({
+      entityType: 'LearningAssignment',
+      entityId: created.id,
+      action: 'CREATE',
+      userId: teacherId,
+      field: 'status',
+      oldValue: undefined,
+      newValue: 'DRAFT',
+      reason: 'ASSIGNMENT_CREATED',
+    }).catch(() => undefined);
+    return created;
   }
 
   /**
@@ -173,14 +294,43 @@ export class LMSAssignmentService {
     id: string,
     schoolId: string,
     data: UpdateAssignmentInput,
+    requesterId: string,
+    role: string,
   ): Promise<LearningAssignment> {
+    const existing = await LMSAssignmentService.assertCanManageAssignment(
+      id,
+      schoolId,
+      requesterId,
+      role,
+    );
+
     // Build safe update — exclude status and createdById
     const { title, classId, learningAreaId, termId, category, streamId,
             instructions, dueDate, estimatedMins, totalMarks, passMark,
-            rubric, cbcOutcomes, allowLateSubmit, allowResubmit,
+            rubric, questions, cbcOutcomes, allowLateSubmit, allowResubmit,
             maxFileSize, allowedFileTypes, gradebookSync } = data;
 
-    return prisma.learningAssignment.update({
+    const nextClassId = classId ?? existing.classId;
+    const nextLearningAreaId = learningAreaId ?? existing.learningAreaId;
+    await LMSAssignmentService.assertTeacherWorkload(
+      requesterId,
+      role,
+      schoolId,
+      nextClassId,
+      nextLearningAreaId,
+    );
+
+    if (questions !== undefined && JSON.stringify(questions) !== JSON.stringify(existing.questions)) {
+      const startedSubmissions = await prisma.learningSubmission.count({
+        where: { assignmentId: id, status: { not: 'DRAFT' } },
+      });
+      if (startedSubmissions > 0) {
+        throw new ApiError(409, 'Questions cannot be changed after students begin submitting. Duplicate the assignment to create a new version.')
+          .withCode('LMS_ASSIGNMENT_QUESTIONS_LOCKED');
+      }
+    }
+
+    const updated = await prisma.learningAssignment.update({
       where: { id, schoolId },
       data: {
         ...(title !== undefined && { title }),
@@ -195,6 +345,7 @@ export class LMSAssignmentService {
         ...(totalMarks !== undefined && { totalMarks }),
         ...(passMark !== undefined && { passMark }),
         ...(rubric !== undefined && { rubric }),
+        ...(questions !== undefined && { questions }),
         ...(cbcOutcomes !== undefined && { cbcOutcomes }),
         ...(allowLateSubmit !== undefined && { allowLateSubmit }),
         ...(allowResubmit !== undefined && { allowResubmit }),
@@ -203,6 +354,17 @@ export class LMSAssignmentService {
         ...(gradebookSync !== undefined && { gradebookSync }),
       },
     });
+    void auditService.logChange({
+      entityType: 'LearningAssignment',
+      entityId: id,
+      action: 'UPDATE',
+      userId: requesterId,
+      field: 'assignment',
+      oldValue: 'EXISTING',
+      newValue: 'UPDATED',
+      reason: 'ASSIGNMENT_UPDATED',
+    }).catch(() => undefined);
+    return updated;
   }
 
   /**
@@ -216,14 +378,22 @@ export class LMSAssignmentService {
     id: string,
     schoolId: string,
     teacherId: string,
+    role: string,
   ): Promise<LearningAssignment> {
-    const assignment = await prisma.learningAssignment.findUnique({
-      where: { id },
-    });
+    const assignment = await LMSAssignmentService.assertCanManageAssignment(
+      id,
+      schoolId,
+      teacherId,
+      role,
+    );
 
-    if (!assignment || assignment.schoolId !== schoolId) {
-      throw new ApiError(404, 'Assignment not found').withCode('LMS_ASSIGNMENT_NOT_FOUND');
-    }
+    await LMSAssignmentService.assertTeacherWorkload(
+      teacherId,
+      role,
+      schoolId,
+      assignment.classId,
+      assignment.learningAreaId,
+    );
 
     if (!assignment.title || !assignment.classId || !assignment.learningAreaId || !assignment.dueDate) {
       throw new ApiError(422, 'Assignment must have title, classId, learningAreaId, and dueDate before publishing');
@@ -264,11 +434,25 @@ export class LMSAssignmentService {
   static async closeAssignment(
     id: string,
     schoolId: string,
+    requesterId: string,
+    role: string,
   ): Promise<LearningAssignment> {
-    return prisma.learningAssignment.update({
+    await LMSAssignmentService.assertCanManageAssignment(id, schoolId, requesterId, role);
+    const closed = await prisma.learningAssignment.update({
       where: { id, schoolId },
       data: { status: 'CLOSED' },
     });
+    void auditService.logChange({
+      entityType: 'LearningAssignment',
+      entityId: id,
+      action: 'UPDATE',
+      userId: requesterId,
+      field: 'status',
+      oldValue: 'PUBLISHED',
+      newValue: 'CLOSED',
+      reason: 'ASSIGNMENT_CLOSED',
+    }).catch(() => undefined);
+    return closed;
   }
 
   /**
@@ -277,11 +461,25 @@ export class LMSAssignmentService {
   static async archiveAssignment(
     id: string,
     schoolId: string,
+    requesterId: string,
+    role: string,
   ): Promise<LearningAssignment> {
-    return prisma.learningAssignment.update({
+    await LMSAssignmentService.assertCanManageAssignment(id, schoolId, requesterId, role);
+    const archived = await prisma.learningAssignment.update({
       where: { id, schoolId },
       data: { archived: true },
     });
+    void auditService.logChange({
+      entityType: 'LearningAssignment',
+      entityId: id,
+      action: 'DELETE',
+      userId: requesterId,
+      field: 'archived',
+      oldValue: 'false',
+      newValue: 'true',
+      reason: 'ASSIGNMENT_ARCHIVED',
+    }).catch(() => undefined);
+    return archived;
   }
 
   /**
@@ -375,7 +573,7 @@ export class LMSAssignmentService {
     ]);
 
     return {
-      assignments: items,
+      assignments: lockStatusToPublished ? items.map(hideQuestionAnswers) : items,
       pagination: {
         page,
         limit,
@@ -393,6 +591,9 @@ export class LMSAssignmentService {
   static async getAssignmentDetail(
     id: string,
     schoolId: string,
+    requesterId: string,
+    role: string,
+    learnerId?: string,
   ): Promise<LearningAssignment & { files: any[] }> {
     const assignment = await prisma.learningAssignment.findUnique({
       where: { id },
@@ -403,7 +604,47 @@ export class LMSAssignmentService {
       throw new ApiError(404, 'Assignment not found').withCode('LMS_ASSIGNMENT_NOT_FOUND');
     }
 
-    return assignment as LearningAssignment & { files: any[] };
+    if (LMSAssignmentService.hasOversight(role)) {
+      return assignment as LearningAssignment & { files: any[] };
+    }
+
+    if (role === 'TEACHER') {
+      if (assignment.createdById !== requesterId) {
+        throw new ApiError(403, 'You can only view assignments you created')
+          .withCode('LMS_ASSIGNMENT_NOT_OWNER');
+      }
+      return assignment as LearningAssignment & { files: any[] };
+    }
+
+    if (assignment.status !== 'PUBLISHED') {
+      throw new ApiError(404, 'Assignment not found').withCode('LMS_ASSIGNMENT_NOT_FOUND');
+    }
+
+    let accessibleLearnerIds: string[] = [];
+    if (role === 'STUDENT' && learnerId) {
+      accessibleLearnerIds = [learnerId];
+    } else if (role === 'PARENT') {
+      accessibleLearnerIds = await parentAccessService.getAccessibleLearnerIds(requesterId);
+    }
+
+    const enrollment = accessibleLearnerIds.length
+      ? await prisma.classEnrollment.findFirst({
+          where: {
+            learnerId: { in: accessibleLearnerIds },
+            classId: assignment.classId,
+            active: true,
+            archived: false,
+          },
+          select: { id: true },
+        })
+      : null;
+
+    if (!enrollment) {
+      throw new ApiError(403, 'This assignment is not issued to your class')
+        .withCode('LMS_ASSIGNMENT_NOT_ASSIGNED');
+    }
+
+    return hideQuestionAnswers(assignment) as LearningAssignment & { files: any[] };
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -429,10 +670,47 @@ export class LMSAssignmentService {
     files: Express.Multer.File[],
     schoolId: string,
   ): Promise<LearningSubmission & { files: any[] }> {
+    if (data.status && data.status !== 'DRAFT' && data.status !== 'SUBMITTED') {
+      throw new ApiError(422, 'Submission status must be DRAFT or SUBMITTED')
+        .withCode('LMS_SUBMISSION_STATUS_INVALID');
+    }
+    const saveAsDraft = data.status === 'DRAFT';
+    let questionResponses: Record<string, unknown> = {};
+    if (data.questionResponses) {
+      try {
+        questionResponses = typeof data.questionResponses === 'string'
+          ? JSON.parse(data.questionResponses)
+          : data.questionResponses as Record<string, unknown>;
+      } catch {
+        throw new ApiError(422, 'Question responses must be valid JSON')
+          .withCode('LMS_QUESTION_RESPONSES_INVALID');
+      }
+    }
+
     // 1. Load and validate assignment
     const assignment = await prisma.learningAssignment.findUnique({
       where: { id: assignmentId },
     });
+
+    const assignmentQuestions = Array.isArray(assignment?.questions) ? assignment.questions as any[] : [];
+    let autoMarks = 0;
+    let objectiveCount = 0;
+    let requiresManualMarking = false;
+    if (!saveAsDraft) {
+      for (const question of assignmentQuestions) {
+        const response = questionResponses[String(question.id)];
+        if (question.type === 'ESSAY') {
+          requiresManualMarking = true;
+          continue;
+        }
+        objectiveCount += 1;
+        const normalize = (value: unknown) => String(value ?? '').trim().toLocaleLowerCase();
+        const correct = question.type === 'MULTIPLE_CHOICE'
+          ? Number(response) === Number(question.correctAnswer)
+          : normalize(response) === normalize(question.correctAnswer);
+        if (correct) autoMarks += Number(question.marks) || 0;
+      }
+    }
 
     if (!assignment || assignment.schoolId !== schoolId) {
       throw new ApiError(404, 'Assignment not found').withCode('LMS_ASSIGNMENT_NOT_FOUND');
@@ -443,13 +721,30 @@ export class LMSAssignmentService {
         .withCode('LMS_ASSIGNMENT_NOT_PUBLISHED');
     }
 
+    const enrollment = await prisma.classEnrollment.findFirst({
+      where: {
+        learnerId,
+        classId: assignment.classId,
+        active: true,
+        archived: false,
+      },
+      select: { id: true },
+    });
+    if (!enrollment) {
+      throw new ApiError(403, 'This assignment is not issued to your class')
+        .withCode('LMS_ASSIGNMENT_NOT_ASSIGNED');
+    }
+
     // 2. Load LMS settings for late/resubmission rules
     const settings = await LMSSettingsService.getSettings(schoolId);
 
     // 3. Check due date
     let isLate = false;
-    if (assignment.dueDate && new Date() > assignment.dueDate) {
-      if (settings.allowLateSubmission === false) {
+    if (!saveAsDraft && assignment.dueDate && new Date() > assignment.dueDate) {
+      if (
+        settings.allowLateSubmission === false ||
+        assignment.allowLateSubmit === false
+      ) {
         throw new ApiError(409, 'The submission deadline has passed')
           .withCode('LMS_SUBMISSION_OVERDUE');
       }
@@ -458,20 +753,28 @@ export class LMSAssignmentService {
 
     // 4. Check resubmission
     let attemptNumber = 1;
-    const existingSubmissions = await prisma.learningSubmission.findMany({
-      where: {
-        assignmentId,
-        learnerId,
-        status: { in: ['SUBMITTED', 'MARKED', 'LATE', 'RETURNED', 'RESUBMITTED'] },
-        archived: false,
-      },
-      select: { attemptNumber: true },
-      orderBy: { attemptNumber: 'desc' },
-    });
+    const [existingDraft, existingSubmissions] = await Promise.all([
+      prisma.learningSubmission.findFirst({
+        where: { assignmentId, learnerId, status: 'DRAFT', archived: false },
+        select: { id: true },
+      }),
+      prisma.learningSubmission.findMany({
+        where: {
+          assignmentId,
+          learnerId,
+          status: { in: ['SUBMITTED', 'MARKED', 'LATE', 'RETURNED', 'RESUBMITTED'] },
+          archived: false,
+        },
+        select: { attemptNumber: true, status: true },
+        orderBy: { attemptNumber: 'desc' },
+      }),
+    ]);
 
-    if (existingSubmissions.length > 0) {
+    if (!saveAsDraft && existingSubmissions.length > 0) {
+      const returnedForCorrection = existingSubmissions[0]?.status === 'RETURNED';
       const resubmissionBlocked =
-        settings.allowResubmission === false || assignment.allowResubmit === false;
+        !returnedForCorrection &&
+        (settings.allowResubmission === false || assignment.allowResubmit === false);
       if (resubmissionBlocked) {
         throw new ApiError(409, 'Resubmission is not allowed for this assignment')
           .withCode('LMS_RESUBMISSION_NOT_ALLOWED');
@@ -520,17 +823,56 @@ export class LMSAssignmentService {
     }
 
     // 7. Create submission + submission files in a transaction
-    const submissionStatus: SubmissionStatus = isLate ? 'LATE' : 'SUBMITTED';
+    const fullyAutoMarked = !saveAsDraft && assignmentQuestions.length > 0
+      && objectiveCount === assignmentQuestions.length && !requiresManualMarking;
+    const submissionStatus: SubmissionStatus = saveAsDraft
+      ? 'DRAFT'
+      : fullyAutoMarked
+        ? 'MARKED'
+      : isLate
+        ? 'LATE'
+        : existingSubmissions.length > 0
+          ? 'RESUBMITTED'
+          : 'SUBMITTED';
     const submission = await prisma.$transaction(async (tx) => {
+      if (existingDraft) {
+        return tx.learningSubmission.update({
+          where: { id: existingDraft.id },
+          data: {
+            content: data.content,
+            questionResponses: questionResponses as Prisma.InputJsonValue,
+            autoMarks: saveAsDraft ? null : autoMarks,
+            autoMarked: fullyAutoMarked,
+            requiresManualMarking,
+            marks: fullyAutoMarked ? autoMarks : undefined,
+            markedAt: fullyAutoMarked ? new Date() : undefined,
+            status: submissionStatus,
+            isLate,
+            attemptNumber,
+            submittedAt: saveAsDraft ? null : new Date(),
+            files: uploadedFiles.length > 0
+              ? { create: uploadedFiles }
+              : undefined,
+          },
+          include: { files: true },
+        });
+      }
+
       const sub = await tx.learningSubmission.create({
         data: {
           assignmentId,
           learnerId,
           status: submissionStatus,
           content: data.content,
+          questionResponses: questionResponses as Prisma.InputJsonValue,
+          autoMarks: saveAsDraft ? null : autoMarks,
+          autoMarked: fullyAutoMarked,
+          requiresManualMarking,
+          marks: fullyAutoMarked ? autoMarks : undefined,
+          markedAt: fullyAutoMarked ? new Date() : undefined,
           isLate,
           attemptNumber,
-          submittedAt: new Date(),
+          submittedAt: saveAsDraft ? null : new Date(),
           files: uploadedFiles.length > 0
             ? { create: uploadedFiles }
             : undefined,
@@ -540,15 +882,33 @@ export class LMSAssignmentService {
       return sub;
     });
 
-    // 8. Fire-and-forget notification
-    void LMSNotificationService.onSubmissionReceived(submission).catch((err: any) =>
-      console.error('[LMSAssignmentService] createSubmission notification error:', err?.message),
-    );
+    if (!saveAsDraft) {
+      // 8. Fire-and-forget notification
+      const notification = submissionStatus === 'RESUBMITTED'
+        ? LMSNotificationService.onSubmissionResubmitted(submission)
+        : LMSNotificationService.onSubmissionReceived(submission);
+      void notification.catch((err: any) =>
+        console.error('[LMSAssignmentService] createSubmission notification error:', err?.message),
+      );
 
-    // Fire-and-forget: achievement awarding
-    void LMSAchievementsService.onAssignmentSubmitted({ learnerId, schoolId, assignmentId }).catch(() => undefined);
+      void auditService.logChange({
+        entityType: 'LearningSubmission',
+        entityId: submission.id,
+        action: 'UPDATE',
+        userId: learnerId,
+        field: 'status',
+        oldValue: existingDraft ? 'DRAFT' : undefined,
+        newValue: submissionStatus,
+        reason: submissionStatus === 'RESUBMITTED'
+          ? 'SUBMISSION_RESUBMITTED'
+          : 'SUBMISSION_SUBMITTED',
+      }).catch(() => undefined);
 
-    return submission;
+      // Fire-and-forget: achievement awarding
+      void LMSAchievementsService.onAssignmentSubmitted({ learnerId, schoolId, assignmentId }).catch(() => undefined);
+    }
+
+    return submission as LearningSubmission & { files: any[] };
   }
 
   /**
@@ -621,16 +981,15 @@ export class LMSAssignmentService {
   static async getSubmissions(
     assignmentId: string,
     schoolId: string,
+    requesterId: string,
+    role: string,
   ): Promise<any[]> {
-    // Verify assignment belongs to school
-    const assignment = await prisma.learningAssignment.findUnique({
-      where: { id: assignmentId },
-      select: { schoolId: true },
-    });
-
-    if (!assignment || assignment.schoolId !== schoolId) {
-      throw new ApiError(404, 'Assignment not found').withCode('LMS_ASSIGNMENT_NOT_FOUND');
-    }
+    await LMSAssignmentService.assertCanManageAssignment(
+      assignmentId,
+      schoolId,
+      requesterId,
+      role,
+    );
 
     return prisma.learningSubmission.findMany({
       where: { assignmentId, archived: false },
@@ -705,6 +1064,8 @@ export class LMSAssignmentService {
     marks: number,
     feedback: string,
     schoolId: string,
+    role: string,
+    rubricScores?: unknown,
   ): Promise<LearningSubmission & { files: any[] }> {
     // 1. Load submission + assignment
     const submission = await prisma.learningSubmission.findUnique({
@@ -719,6 +1080,7 @@ export class LMSAssignmentService {
             title: true,
             learningAreaId: true,
             termId: true,
+            createdById: true,
           },
         },
       },
@@ -731,12 +1093,59 @@ export class LMSAssignmentService {
     if (submission.assignment.schoolId !== schoolId) {
       throw new ApiError(403, 'Access denied');
     }
+    if (
+      !LMSAssignmentService.hasOversight(role) &&
+      submission.assignment.createdById !== markerId
+    ) {
+      throw new ApiError(403, 'You can only mark submissions for assignments you created')
+        .withCode('LMS_ASSIGNMENT_NOT_OWNER');
+    }
 
     // 2. Validate marks range
     const totalMarks = submission.assignment.totalMarks ?? null;
-    if (marks < 0 || (totalMarks !== null && marks > totalMarks)) {
+    if (!Number.isFinite(marks) || marks < 0 || (totalMarks !== null && marks > totalMarks)) {
       throw new ApiError(422, `Marks must be between 0 and ${totalMarks ?? '∞'}`)
         .withCode('LMS_MARKS_OUT_OF_RANGE');
+    }
+
+    let normalizedRubricScores: Array<{
+      criterion: string;
+      marks: number;
+      maxMarks: number;
+      comment?: string;
+    }> | undefined;
+    if (rubricScores !== undefined) {
+      if (!Array.isArray(rubricScores)) {
+        throw new ApiError(422, 'Rubric scores must be an array')
+          .withCode('LMS_RUBRIC_SCORES_INVALID');
+      }
+      normalizedRubricScores = rubricScores.map((entry: any, index: number) => {
+        const criterion = String(entry?.criterion ?? '').trim();
+        const criterionMarks = Number(entry?.marks);
+        const maxMarks = Number(entry?.maxMarks);
+        if (
+          !criterion ||
+          !Number.isFinite(criterionMarks) ||
+          !Number.isFinite(maxMarks) ||
+          criterionMarks < 0 ||
+          maxMarks < 0 ||
+          criterionMarks > maxMarks
+        ) {
+          throw new ApiError(422, `Rubric criterion ${index + 1} has invalid marks`)
+            .withCode('LMS_RUBRIC_SCORES_INVALID');
+        }
+        return {
+          criterion,
+          marks: criterionMarks,
+          maxMarks,
+          ...(entry?.comment ? { comment: String(entry.comment).trim() } : {}),
+        };
+      });
+      const rubricTotal = normalizedRubricScores.reduce((sum, entry) => sum + entry.marks, 0);
+      if (Math.abs(rubricTotal - marks) > 0.001) {
+        throw new ApiError(422, 'Overall marks must equal the rubric total')
+          .withCode('LMS_RUBRIC_TOTAL_MISMATCH');
+      }
     }
 
     // 3. Update submission
@@ -746,6 +1155,7 @@ export class LMSAssignmentService {
         status: 'MARKED',
         marks,
         feedback,
+        rubricScores: normalizedRubricScores,
         markedAt: new Date(),
         markedById: markerId,
       },
@@ -771,9 +1181,19 @@ export class LMSAssignmentService {
     // 5. Optionally sync to gradebook
     if (submission.assignment.gradebookSync) {
       void LMSAssignmentService._syncMarkToGradebook(marked, submission.assignment, markerId)
-        .catch((err: any) =>
-          console.error('[LMSAssignmentService] gradebook sync error:', err?.message),
-        );
+        .catch((err: any) => {
+          console.error('[LMSAssignmentService] gradebook sync error:', err?.message);
+          return auditService.logChange({
+            entityType: 'LearningSubmission',
+            entityId: submissionId,
+            action: 'UPDATE',
+            userId: markerId,
+            field: 'gradebookSync',
+            oldValue: 'PENDING',
+            newValue: 'FAILED',
+            reason: `GRADEBOOK_SYNC_FAILED: ${String(err?.message ?? err).slice(0, 300)}`,
+          });
+        });
     }
 
     // 6. Audit log (fire-and-forget)
@@ -794,6 +1214,67 @@ export class LMSAssignmentService {
     return marked;
   }
 
+  static async returnSubmissionForCorrection(
+    submissionId: string,
+    markerId: string,
+    feedback: string,
+    schoolId: string,
+    role: string,
+  ): Promise<LearningSubmission & { files: any[] }> {
+    const reason = feedback.trim();
+    if (!reason) {
+      throw new ApiError(422, 'Correction instructions are required')
+        .withCode('LMS_RETURN_FEEDBACK_REQUIRED');
+    }
+
+    const submission = await prisma.learningSubmission.findUnique({
+      where: { id: submissionId },
+      include: { assignment: true },
+    });
+    if (!submission || submission.assignment.schoolId !== schoolId) {
+      throw new ApiError(404, 'Submission not found');
+    }
+    if (
+      !LMSAssignmentService.hasOversight(role) &&
+      submission.assignment.createdById !== markerId
+    ) {
+      throw new ApiError(403, 'You can only return submissions for assignments you created')
+        .withCode('LMS_ASSIGNMENT_NOT_OWNER');
+    }
+    if (!['SUBMITTED', 'LATE', 'RESUBMITTED', 'MARKED'].includes(submission.status)) {
+      throw new ApiError(409, 'Only submitted work can be returned for correction')
+        .withCode('LMS_SUBMISSION_RETURN_INVALID_STATE');
+    }
+
+    const returned = await prisma.learningSubmission.update({
+      where: { id: submissionId },
+      data: {
+        status: 'RETURNED',
+        feedback: reason,
+        marks: null,
+        rubricScores: Prisma.JsonNull,
+        markedAt: null,
+        markedById: markerId,
+      },
+      include: { files: true },
+    });
+    void LMSNotificationService.onSubmissionReturned(returned).catch((err: any) =>
+      console.error('[LMSAssignmentService] return notification error:', err?.message),
+    );
+    void auditService.logChange({
+      entityType: 'LearningSubmission',
+      entityId: submissionId,
+      action: 'UPDATE',
+      userId: markerId,
+      field: 'status',
+      oldValue: submission.status,
+      newValue: 'RETURNED',
+      reason: 'SUBMISSION_RETURNED_FOR_CORRECTION',
+    }).catch(() => undefined);
+    await invalidateAnalyticsCache(schoolId);
+    return returned;
+  }
+
   /**
    * Push a marked submission's score to the Gradebook module as a
    * FormativeAssessment record. This keeps the LMS marks in sync with
@@ -812,7 +1293,7 @@ export class LMSAssignmentService {
     },
     markerId: string,
   ): Promise<void> {
-    if (!submission.marks || !assignment.totalMarks) return;
+    if (submission.marks === null || submission.marks === undefined || !assignment.totalMarks) return;
 
     const percentage = Math.round((submission.marks / assignment.totalMarks) * 100);
 
@@ -992,6 +1473,7 @@ export class LMSAssignmentService {
             markedAt: true,
             attemptNumber: true,
             feedback: true,
+            rubricScores: true,
           },
           orderBy: { attemptNumber: 'desc' },
           take: 1,
@@ -1008,13 +1490,15 @@ export class LMSAssignmentService {
       const submission = assignment.submissions[0] ?? null;
       const isOverdue = !!assignment.dueDate && assignment.dueDate < now && !submission;
 
-      let statusSummary: 'NOT_SUBMITTED' | 'SUBMITTED' | 'LATE' | 'MARKED';
+      let statusSummary: 'NOT_SUBMITTED' | 'SUBMITTED' | 'LATE' | 'MARKED' | 'RETURNED';
       if (!submission) {
         statusSummary = 'NOT_SUBMITTED';
       } else if (submission.status === 'MARKED') {
         statusSummary = 'MARKED';
       } else if (submission.status === 'LATE') {
         statusSummary = 'LATE';
+      } else if (submission.status === 'RETURNED') {
+        statusSummary = 'RETURNED';
       } else {
         statusSummary = 'SUBMITTED';
       }

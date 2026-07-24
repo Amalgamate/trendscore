@@ -28,6 +28,7 @@ import {
   Paperclip,
   Save,
   Send,
+  RotateCcw,
   Target,
   User,
 } from 'lucide-react';
@@ -160,7 +161,13 @@ export default function MarkingInterface({
     if (currentSubmission) {
       setMarks(currentSubmission.marks?.toString() ?? '');
       setFeedback(currentSubmission.feedback ?? '');
-      setRubricMarks({});
+      setRubricMarks(
+        Array.isArray(currentSubmission.rubricScores)
+          ? Object.fromEntries(
+              currentSubmission.rubricScores.map((item, index) => [index, item.marks]),
+            )
+          : {},
+      );
     } else {
       setMarks('');
       setFeedback('');
@@ -222,6 +229,13 @@ export default function MarkingInterface({
       await lmsAPI.markSubmission(currentSubmission.id, {
         marks: marksNum,
         feedback: feedback.trim(),
+        rubricScores: Array.isArray(assignment?.rubric)
+          ? assignment.rubric.map((item, index) => ({
+              criterion: item.criterion ?? item.name ?? item.title ?? `Criterion ${index + 1}`,
+              marks: Number(rubricMarks[index] ?? 0),
+              maxMarks: Number(item.marks ?? item.maxMarks ?? 0),
+            }))
+          : undefined,
       });
 
       showSuccess('Marks submitted successfully.');
@@ -238,6 +252,28 @@ export default function MarkingInterface({
       }
     } catch (err) {
       showError(err?.message ?? 'Failed to submit marks.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleReturnForCorrection = async () => {
+    if (!currentSubmission) return;
+    if (!feedback.trim()) {
+      showError('Add clear correction instructions before returning the work.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await lmsAPI.returnSubmission(currentSubmission.id, feedback.trim());
+      showSuccess('Submission returned to the student for correction.');
+      if (currentIndex < submissions.length - 1) {
+        setCurrentIndex((prev) => prev + 1);
+      } else {
+        onNavigate?.('learning-assignment-detail', { id: assignmentIdToUse });
+      }
+    } catch (err) {
+      showError(err?.message ?? 'Failed to return submission.');
     } finally {
       setSubmitting(false);
     }
@@ -577,6 +613,16 @@ export default function MarkingInterface({
                       Submit Marks
                     </>
                   )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleReturnForCorrection}
+                  disabled={submitting}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-semibold text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/30 rounded-lg transition disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <RotateCcw size={16} />
+                  Return for Correction
                 </button>
 
                 {/* Navigation buttons (mobile friendly) */}
