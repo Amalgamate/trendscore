@@ -385,7 +385,12 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
       returnToAssignments();
     } catch (error) {
       console.error('Failed to publish:', error);
-      showError(error?.response?.data?.message || 'Failed to publish assignment');
+      showError(
+        error?.response?.data?.message
+        || error?.response?.data?.error
+        || error?.message
+        || 'Failed to publish assignment',
+      );
     } finally {
       setIsSaving(false);
     }

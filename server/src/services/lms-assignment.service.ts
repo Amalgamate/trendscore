@@ -312,6 +312,28 @@ export class LMSAssignmentService {
 
     const nextClassId = classId ?? existing.classId;
     const nextLearningAreaId = learningAreaId ?? existing.learningAreaId;
+
+    // Update payloads arrive from HTML controls as strings. Keep updates on
+    // the same normalization contract as creates so Prisma never receives a
+    // date-only string or numeric text for typed columns.
+    const optionalInteger = (value: unknown, field: string): number | undefined => {
+      if (value === undefined || value === null || value === '') return undefined;
+      const parsed = typeof value === 'number' ? value : Number(value);
+      if (!Number.isInteger(parsed) || parsed < 0) {
+        throw new ApiError(422, `${field} must be a non-negative whole number`);
+      }
+      return parsed;
+    };
+
+    const optionalDate = (value: unknown): Date | undefined => {
+      if (value === undefined || value === null || value === '') return undefined;
+      const parsed = value instanceof Date ? value : new Date(String(value));
+      if (Number.isNaN(parsed.getTime())) {
+        throw new ApiError(422, 'Due date is invalid');
+      }
+      return parsed;
+    };
+
     await LMSAssignmentService.assertTeacherWorkload(
       requesterId,
       role,
@@ -340,16 +362,16 @@ export class LMSAssignmentService {
         ...(category !== undefined && { category }),
         ...(streamId !== undefined && { streamId }),
         ...(instructions !== undefined && { instructions }),
-        ...(dueDate !== undefined && { dueDate }),
-        ...(estimatedMins !== undefined && { estimatedMins }),
-        ...(totalMarks !== undefined && { totalMarks }),
-        ...(passMark !== undefined && { passMark }),
+        ...(dueDate !== undefined && { dueDate: optionalDate(dueDate) }),
+        ...(estimatedMins !== undefined && { estimatedMins: optionalInteger(estimatedMins, 'Estimated minutes') }),
+        ...(totalMarks !== undefined && { totalMarks: optionalInteger(totalMarks, 'Total marks') }),
+        ...(passMark !== undefined && { passMark: optionalInteger(passMark, 'Pass mark') }),
         ...(rubric !== undefined && { rubric }),
         ...(questions !== undefined && { questions }),
         ...(cbcOutcomes !== undefined && { cbcOutcomes }),
         ...(allowLateSubmit !== undefined && { allowLateSubmit }),
         ...(allowResubmit !== undefined && { allowResubmit }),
-        ...(maxFileSize !== undefined && { maxFileSize }),
+        ...(maxFileSize !== undefined && { maxFileSize: optionalInteger(maxFileSize, 'Maximum file size') }),
         ...(allowedFileTypes !== undefined && { allowedFileTypes }),
         ...(gradebookSync !== undefined && { gradebookSync }),
       },
