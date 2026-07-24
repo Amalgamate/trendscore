@@ -13,7 +13,7 @@ const TABS = [
   { id: 'graded',    label: 'Graded',    icon: Award },
 ];
 
-const MyAssignments = () => {
+const MyAssignments = ({ onNavigate }) => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('active');
@@ -27,6 +27,17 @@ const MyAssignments = () => {
   };
 
   useEffect(() => { fetchAssignments(); }, []);
+
+  const hasStructuredQuestions = (assignment) =>
+    Array.isArray(assignment?.questions) && assignment.questions.length > 0;
+
+  const openAssignment = (assignment) => {
+    if (hasStructuredQuestions(assignment) && onNavigate) {
+      onNavigate('learning-assignment-detail', { assignmentId: assignment.id });
+      return;
+    }
+    setSubmitting(assignment);
+  };
 
   const now = new Date();
 
@@ -147,10 +158,10 @@ const MyAssignments = () => {
                     <td className="px-5 py-4">
                       {!a.mySubmission && (
                         <button
-                          onClick={() => setSubmitting(a)}
+                          onClick={() => openAssignment(a)}
                           className="px-3 py-1.5 bg-purple-600 text-white text-xs font-semibold rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-1"
                         >
-                          <Send size={11} /> Submit
+                          <Send size={11} /> {hasStructuredQuestions(a) ? 'Answer Questions' : 'Submit'}
                         </button>
                       )}
                       {a.mySubmission && (
@@ -158,6 +169,15 @@ const MyAssignments = () => {
                           <span className="text-[10px] text-gray-400 flex items-center gap-1">
                             <Eye size={10} /> Submitted {a.mySubmission.submittedAt ? new Date(a.mySubmission.submittedAt).toLocaleDateString('en-KE', { month: 'short', day: 'numeric' }) : ''}
                           </span>
+                          {hasStructuredQuestions(a) && onNavigate && (
+                            <button
+                              type="button"
+                              onClick={() => openAssignment(a)}
+                              className="text-[10px] font-semibold text-purple-600 hover:text-purple-700"
+                            >
+                              View answers and results
+                            </button>
+                          )}
                         </div>
                       )}
                     </td>
@@ -170,7 +190,7 @@ const MyAssignments = () => {
       </div>
 
       {/* Submission modal */}
-      {submitting && (
+      {submitting && !hasStructuredQuestions(submitting) && (
         <SubmissionModal
           assignment={submitting}
           onClose={() => setSubmitting(null)}

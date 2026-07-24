@@ -1456,11 +1456,14 @@ export class LMSAssignmentService {
     });
 
     // 4. Transform: attach mySubmission to each assignment
-    return assignments.map((assignment) => ({
-      ...assignment,
-      mySubmission: assignment.submissions[0] ?? null,
-      submissions: undefined, // Remove array, use mySubmission instead
-    }));
+    return assignments.map((assignment) => {
+      const safeAssignment = hideQuestionAnswers(assignment);
+      return {
+        ...safeAssignment,
+        mySubmission: assignment.submissions[0] ?? null,
+        submissions: undefined, // Remove array, use mySubmission instead
+      };
+    });
   }
 
   // ══════════════════════════════════════════════════════════════════════════
