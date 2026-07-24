@@ -73,6 +73,11 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
   const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState({});
 
+  const selectedClass = classes.find((item) => item.id === formData.classId);
+  const visibleLearningAreas = selectedClass
+    ? learningAreas.filter((area) => area.gradeLevel === selectedClass.grade)
+    : [];
+
   // ─── Fetch Dropdown Data ────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -372,7 +377,10 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
                 </label>
                 <select
                   value={formData.classId}
-                  onChange={(e) => handleChange('classId', e.target.value)}
+                  onChange={(e) => {
+                    handleChange('classId', e.target.value);
+                    handleChange('learningAreaId', '');
+                  }}
                   className={cn(
                     'w-full px-4 py-2.5 rounded-lg border text-sm outline-none',
                     'focus:border-brand-purple focus:ring-2 focus:ring-brand-purple/20',
@@ -430,7 +438,7 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
                   )}
                 >
                   <option value="">Select Subject</option>
-                  {learningAreas.map((area) => (
+                  {visibleLearningAreas.map((area) => (
                     <option key={area.id} value={area.id}>
                       {area.name}
                     </option>

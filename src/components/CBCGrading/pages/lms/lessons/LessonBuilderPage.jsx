@@ -118,6 +118,11 @@ function LessonMetadataForm({ lesson, onUpdate, onSave, loading, error }) {
     }
   };
 
+  const selectedClass = options.classes.find((item) => item.id === form.classId);
+  const visibleLearningAreas = selectedClass
+    ? options.learningAreas.filter((item) => item.gradeLevel === selectedClass.grade)
+    : [];
+
   if (loading) {
     return (
       <div className="space-y-3">
@@ -181,7 +186,10 @@ function LessonMetadataForm({ lesson, onUpdate, onSave, loading, error }) {
           </label>
           <select
             value={form.classId || ''}
-            onChange={(e) => handleChange('classId', e.target.value)}
+            onChange={(e) => {
+              handleChange('classId', e.target.value);
+              handleChange('learningAreaId', '');
+            }}
             onBlur={(e) => handleBlurSave('classId', e.target.value)}
             disabled={Boolean(lesson)}
             className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-700 disabled:bg-slate-50 disabled:text-slate-600"
@@ -202,7 +210,7 @@ function LessonMetadataForm({ lesson, onUpdate, onSave, loading, error }) {
             className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-700 disabled:bg-slate-50 disabled:text-slate-600"
           >
             <option value="">Select subject</option>
-            {options.learningAreas.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            {visibleLearningAreas.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
         </div>
       </div>
