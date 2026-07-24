@@ -106,7 +106,7 @@ export const lmsAPI = {
   publishLesson: async (id) =>
     fetchWithAuth(`/lms/lessons/${id}/publish`, { method: 'PUT' }),
   archiveLesson: async (id) =>
-    fetchWithAuth(`/lms/lessons/${id}/archive`, { method: 'POST' }),
+    fetchWithAuth(`/lms/lessons/${id}`, { method: 'DELETE' }),
   upsertLessonBlocks: async (id, blocks) =>
     fetchWithAuth(`/lms/lessons/${id}/blocks`, { method: 'POST', body: JSON.stringify({ blocks }) }),
   /**

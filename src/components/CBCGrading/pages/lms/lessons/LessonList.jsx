@@ -249,7 +249,12 @@ export default function LessonList({ onNavigate }) {
       showSuccess(`"${lesson.title}" archived.`);
       fetchLessons(pagination.page);
     } catch (err) {
-      showError(err?.message ?? 'Failed to archive lesson.');
+      showError(
+        err?.response?.data?.message
+        || err?.response?.data?.error
+        || err?.message
+        || 'Failed to archive lesson.',
+      );
     } finally {
       setActionLoading(false);
       setConfirm({ open: false, type: '', lesson: null });
