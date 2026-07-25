@@ -29,6 +29,7 @@ import { MOBILE_MEDIA_QUERY } from '../../constants/breakpoints';
 import { clearAllSchoolData } from '../../utils/schoolDataCleanup';
 import { refreshBus } from '../../utils/refreshBus';
 import axiosInstance from '../../services/api/axiosConfig';
+import { userAPI } from '../../services/api/user.api';
 import { hasPageAccess, isParentPortalPage, resolveDashboardPage, userHasParentPortalAccess } from './utils/appAccess';
 import { resolveLearnerSaveIntent } from './utils/learnerSaveIntent';
 import { useModuleAccess } from '../../contexts/ModuleAccessContext';
@@ -407,9 +408,9 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
 
   const archiveTeacher = useCallback(async (id) => {
     try {
-      const res = await axiosInstance.patch(`/users/${id}/archive`);
-      if (res.data?.success) { await fetchTeachersFromApi(); return { success: true }; }
-      return { success: false, error: res.data?.message };
+      const result = await userAPI.archive(id);
+      if (result?.success) { await fetchTeachersFromApi(); return { success: true }; }
+      return { success: false, error: result?.message };
     } catch (err) {
       return { success: false, error: extractApiErrorMessage(err, 'Failed to archive tutor') };
     }
@@ -438,9 +439,9 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
 
   const archiveParent = useCallback(async (id) => {
     try {
-      const res = await axiosInstance.patch(`/users/${id}/archive`);
-      if (res.data?.success) { await fetchParentsFromApi(); return { success: true }; }
-      return { success: false, error: res.data?.message };
+      const result = await userAPI.archive(id);
+      if (result?.success) { await fetchParentsFromApi(); return { success: true }; }
+      return { success: false, error: result?.message };
     } catch (err) {
       return { success: false, error: err.message };
     }

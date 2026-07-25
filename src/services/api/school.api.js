@@ -9,14 +9,10 @@ export const schoolAPI = {
       headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
       body: JSON.stringify(data),
     }),
-  create: async (data) =>
-    fetchWithAuth('/schools', { method: 'POST', body: JSON.stringify(data) }),
-  update: async (id, data) =>
-    fetchWithAuth(`/schools/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  deactivate: async (id) =>
-    fetchWithAuth(`/schools/${id}/deactivate`, { method: 'POST' }),
-  delete: async (id) =>
-    fetchWithAuth(`/schools/${id}`, { method: 'DELETE' }),
+  deactivateCurrent: async () =>
+    fetchWithAuth('/schools/deactivate', { method: 'POST' }),
+  deleteCurrent: async () =>
+    fetchWithAuth('/schools', { method: 'DELETE' }),
   provision: async (data) =>
     fetchWithAuth('/schools/provision', { method: 'POST', body: JSON.stringify(data) }),
   getAdmissionNumberPreview: async (academicYear) =>

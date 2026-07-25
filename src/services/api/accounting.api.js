@@ -1,5 +1,4 @@
 import { fetchWithAuth } from './core';
-import axiosInstance from './axiosConfig';
 
 export const accountingAPI = {
   initializeCoA: async () =>
@@ -16,7 +15,7 @@ export const accountingAPI = {
   createJournalEntry: async (data) =>
     fetchWithAuth('/accounting/entries', { method: 'POST', body: JSON.stringify(data) }),
   postJournalEntry: async (id) =>
-    fetchWithAuth(`/accounting/entries/${id}/post`, { method: 'POST' }),
+    fetchWithAuth(`/accounting/entries/${id}/post`, { method: 'PUT' }),
   getVendors: async () => fetchWithAuth('/accounting/vendors'),
   createVendor: async (data) =>
     fetchWithAuth('/accounting/vendors', { method: 'POST', body: JSON.stringify(data) }),
