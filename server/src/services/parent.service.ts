@@ -71,6 +71,15 @@ export interface CreateOrGetParentArgs {
   skipNotifications?: boolean;
 }
 
+export interface SyncPrimaryParentArgs {
+  learnerId: string;
+  admissionNumber: string;
+  phone: string;
+  name: string;
+  email?: string | null;
+  relationship?: string | null;
+}
+
 export class ParentService {
   /**
    * Generates a secure random 8-character password.
@@ -183,6 +192,124 @@ export class ParentService {
         }
       }
     }
+
+    return parent;
+  }
+
+  /**
+   * Makes the learner's selected primary contact the authoritative parent.
+   * The parent owns the shared login phone; the student account is identified
+   * by admission number and must not retain the same phone.
+   */
+  public async syncPrimaryParentForLearner(args: SyncPrimaryParentArgs) {
+    const normalizedPhone = normalizeParentPhoneForFamily(args.phone);
+    if (!normalizedPhone) throw new Error('Primary parent phone is required');
+
+    const phoneCandidates = getParentPhoneLookupCandidates(args.phone);
+    const admissionLogin = String(args.admissionNumber).trim().toLowerCase();
+    const studentLoginEmail = `${admissionLogin}@${PRODUCT_EMAIL_DOMAIN}`;
+
+    // Release the shared parent phone only from this learner's student login.
+    await prisma.user.updateMany({
+      where: {
+        role: 'STUDENT',
+        OR: [
+          { email: { equals: studentLoginEmail, mode: 'insensitive' } },
+          { username: { equals: studentLoginEmail, mode: 'insensitive' } },
+          { email: { startsWith: `${admissionLogin}@`, mode: 'insensitive' } },
+          { username: { startsWith: `${admissionLogin}@`, mode: 'insensitive' } },
+          { username: { equals: admissionLogin, mode: 'insensitive' } },
+        ],
+        phone: { in: phoneCandidates },
+      },
+      data: { phone: null },
+    });
+
+    const parent = await this.getOrCreateParent({
+      phone: normalizedPhone,
+      name: args.name,
+      email: args.email || undefined,
+    });
+    if (!parent) throw new Error('Could not create or resolve the primary parent account');
+
+    const nameParts = String(args.name || 'Parent').trim().split(/\s+/).filter(Boolean);
+    const firstName = nameParts[0] || 'Parent';
+    const lastName = nameParts.slice(1).join(' ') || 'Guardian';
+    const member = await prisma.familyMember.findUnique({
+      where: { userId: parent.id },
+      select: { id: true, familyAccountId: true },
+    });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: parent.id },
+        data: {
+          firstName,
+          lastName,
+          phone: normalizedPhone,
+          role: 'PARENT',
+          roles: ['PARENT'],
+          status: 'ACTIVE',
+          archived: false,
+        },
+      });
+
+      await tx.learner.update({
+        where: { id: args.learnerId },
+        data: { parentId: parent.id },
+      });
+
+      if (member) {
+        // A learner has one authoritative primary family. Replacing the
+        // primary contact removes stale family access from the old parent.
+        await tx.learnerFamilyLink.deleteMany({
+          where: {
+            learnerId: args.learnerId,
+            familyAccountId: { not: member.familyAccountId },
+          },
+        });
+        await tx.learnerFamilyLink.upsert({
+          where: {
+            familyAccountId_learnerId: {
+              familyAccountId: member.familyAccountId,
+              learnerId: args.learnerId,
+            },
+          },
+          update: {
+            relationship: args.relationship || 'Parent',
+            isPrimary: true,
+          },
+          create: {
+            familyAccountId: member.familyAccountId,
+            learnerId: args.learnerId,
+            relationship: args.relationship || 'Parent',
+            isPrimary: true,
+          },
+        });
+        await tx.familyMember.update({
+          where: { id: member.id },
+          data: {
+            name: args.name,
+            phone: normalizedPhone,
+            normalizedPhone,
+            relationship: args.relationship || 'Parent',
+            role: 'PRIMARY_GUARDIAN',
+            status: 'ACTIVE',
+            isPrimary: true,
+            canLogin: true,
+          },
+        });
+        await tx.familyAccount.update({
+          where: { id: member.familyAccountId },
+          data: {
+            displayName: `${args.name} Family`,
+            primaryPhone: normalizedPhone,
+            status: 'ACTIVE',
+            archived: false,
+          },
+        });
+      }
+    });
 
     return parent;
   }

@@ -448,12 +448,13 @@ router.post(
               guardianPhone: csvData['Phone 1'] || undefined,
             }
           });
-          if (parentId) {
-            await parentService.linkLearnerToParentFamily({
-              parentId,
+          if (parentPhone && parentName) {
+            await parentService.syncPrimaryParentForLearner({
               learnerId: updatedLearner.id,
-              relationship: csvData['Parent/Guardian'] ? 'Guardian' : undefined,
-              isPrimary: true
+              admissionNumber: updatedLearner.admissionNumber,
+              phone: parentPhone,
+              name: parentName,
+              relationship: 'Guardian',
             });
           }
           const studentAccount = await ensureStudentAccountForLearner({
@@ -461,7 +462,7 @@ router.post(
             firstName: updatedLearner.firstName,
             lastName: updatedLearner.lastName,
             middleName: updatedLearner.middleName || null,
-            phone: (updatedLearner.guardianPhone || null) as string | null
+            phone: null
           });
           if (studentAccount.created) studentAccountsCreated += 1;
           updated.push({ line: item.line, id: existing.id, admNo, name: rawName });
@@ -485,12 +486,13 @@ router.post(
               parentId: parentId,
             }
           });
-          if (parentId) {
-            await parentService.linkLearnerToParentFamily({
-              parentId,
+          if (parentPhone && parentName) {
+            await parentService.syncPrimaryParentForLearner({
               learnerId: learner.id,
-              relationship: csvData['Parent/Guardian'] ? 'Guardian' : undefined,
-              isPrimary: true
+              admissionNumber: learner.admissionNumber,
+              phone: parentPhone,
+              name: parentName,
+              relationship: 'Guardian',
             });
           }
           const studentAccount = await ensureStudentAccountForLearner({
@@ -498,7 +500,7 @@ router.post(
             firstName: learner.firstName,
             lastName: learner.lastName,
             middleName: learner.middleName || null,
-            phone: (learner.guardianPhone || null) as string | null
+            phone: null
           });
           if (studentAccount.created) studentAccountsCreated += 1;
           created.push({ line: item.line, id: learner.id, admNo, name: rawName });
@@ -581,7 +583,7 @@ router.post(
             firstName: learner.firstName,
             lastName: learner.lastName,
             middleName: learner.middleName || null,
-            phone: (learner.guardianPhone || learner.primaryContactPhone || null) as string | null
+            phone: null
           });
           if (result.created) created += 1;
           else existing += 1;

@@ -382,6 +382,25 @@ export class LearnerController {
         }
       }
 
+      if (primaryContactType && primaryContactPhone && primaryContactName) {
+        const primaryParent = await parentService.syncPrimaryParentForLearner({
+          learnerId: learner.id,
+          admissionNumber,
+          phone: primaryContactPhone,
+          name: primaryContactName,
+          email: primaryContactEmail,
+          relationship: primaryContactType,
+        });
+        learner.parentId = primaryParent.id;
+        learner.parent = {
+          id: primaryParent.id,
+          firstName: primaryParent.firstName,
+          lastName: primaryParent.lastName,
+          email: primaryParent.email,
+          phone: primaryParent.phone,
+        };
+      }
+
       // ── Create student system user by default ────────────────────────────────
       try {
         await ensureStudentAccountForLearner({
@@ -389,7 +408,7 @@ export class LearnerController {
           firstName,
           lastName,
           middleName: middleName || null,
-          phone: guardianPhone || null
+          phone: null
         });
       } catch (userError) {
         logger.error('Failed to create student system user:', userError);
@@ -518,20 +537,14 @@ export class LearnerController {
         updateData.scholarshipAmount = Number(updateData.scholarshipAmount);
       }
 
-      // ── Auto-create parent account on update if still missing ─────────────────
-      let parentId = updateData.parentId || learner.parentId;
-      if (!parentId) {
-        const pPhone = req.body.guardianPhone || req.body.primaryContactPhone;
-        const pName  = req.body.guardianName  || req.body.primaryContactName || (req.body.firstName ? 'Parent' : null);
-
-        if (pPhone) {
-          const parent = await parentService.getOrCreateParent({
-            phone: pPhone,
-            name: pName
-          });
-          if (parent) updateData.parentId = parent.id;
-        }
-      }
+      // The contact explicitly marked primary is the authoritative parent.
+      // Synchronization happens after the learner fields are saved so the
+      // parent account, direct parentId, and family link cannot drift apart.
+      const shouldSyncPrimaryParent = Boolean(
+        req.body.primaryContactType &&
+        req.body.primaryContactPhone &&
+        req.body.primaryContactName
+      );
 
       if (req.body.dateOfBirth && req.body.dateOfBirth !== '') updateData.dateOfBirth = new Date(req.body.dateOfBirth);
       if (req.body.dateOfAdmission && req.body.dateOfAdmission !== '') updateData.admissionDate = new Date(req.body.dateOfAdmission);
@@ -586,6 +599,25 @@ export class LearnerController {
         include: { parent: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } },
       });
 
+      if (shouldSyncPrimaryParent) {
+        const parent = await parentService.syncPrimaryParentForLearner({
+          learnerId: updated.id,
+          admissionNumber: updated.admissionNumber,
+          phone: String(updated.primaryContactPhone),
+          name: String(updated.primaryContactName),
+          email: updated.primaryContactEmail,
+          relationship: updated.primaryContactType,
+        });
+        updated.parentId = parent.id;
+        updated.parent = {
+          id: parent.id,
+          firstName: parent.firstName,
+          lastName: parent.lastName,
+          email: parent.email,
+          phone: parent.phone,
+        };
+      }
+
       if (sensitiveChanges.length > 0) {
         const reason = normalizeScalar(req.body.changeReason);
         const auditEntries: Array<{ field: string; oldValue: string; newValue: string }> = [];
@@ -631,7 +663,7 @@ export class LearnerController {
           firstName: updated.firstName,
           lastName: updated.lastName,
           middleName: updated.middleName || null,
-          phone: (updated.guardianPhone || updated.primaryContactPhone || null) as string | null
+          phone: null
         });
       } catch (userError) {
         logger.error('Failed to sync student system user:', userError);
