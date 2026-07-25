@@ -9,20 +9,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, MoreVertical, CreditCard,
-  CheckCircle2, Loader2, GraduationCap,
+  CheckCircle2, Loader2,
   ChevronRight, Receipt, Bell,
 } from 'lucide-react';
 import api from '../../../../services/api';
 import { cn } from '../../../../utils/cn';
 import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
 import { hasPageAccess } from '../../utils/appAccess';
-import { useLearnerResults, scoreColor } from '../results/useLearnerResults';
-import {
-  ResultsLoadingState,
-  ResultsErrorState,
-  ResultsEmptyState,
-  TermAccordion,
-} from '../results/ResultsShared';
+import ParentReportCards from './ParentReportCards';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -194,35 +188,8 @@ function OverviewTab({ child, showFees }) {
 
 // ─── Results Tab — uses shared hook + components from results/ResultsShared ────
 
-function ResultsTab({ learnerId }) {
-  const year = String(new Date().getFullYear());
-  const { loading, error, summary } = useLearnerResults(learnerId, year);
-
-  if (loading) return <ResultsLoadingState />;
-  if (error)   return <ResultsErrorState message={error} />;
-  if (!summary.hasData) return <ResultsEmptyState />;
-
-  const latest    = summary.terms[summary.terms.length - 1];
-  const latestAvg = latest?.avg ?? null;
-
-  return (
-    <div className="space-y-4">
-      {/* Latest-term snapshot */}
-      {latestAvg != null && (
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <p className="text-[10px] text-gray-500 mb-1">{latest.term.replace('_', ' ')} — Overall Average</p>
-          <p className={`text-2xl font-bold ${scoreColor(latestAvg)}`}>{latestAvg}%</p>
-          <p className="text-[10px] text-gray-500 mt-0.5">
-            {latestAvg >= 70 ? 'Very Good' : latestAvg >= 50 ? 'Average' : 'Needs Work'}
-          </p>
-        </div>
-      )}
-      {/* Per-term accordions — latest first */}
-      {[...summary.terms].reverse().map((term, i) => (
-        <TermAccordion key={term.term} term={term} defaultOpen={i === 0} highlight={i === 0} />
-      ))}
-    </div>
-  );
+function ResultsTab({ child }) {
+  return <ParentReportCards learner={child} />;
 }
 
 // ─── Attendance Tab ───────────────────────────────────────────────────────────
@@ -466,7 +433,7 @@ export default function ParentChildProfile({ child, onBack, initialTab = 'overvi
       {/* Tab content */}
       <div className="px-4 py-4">
         {tab === 'overview'   && <OverviewTab   child={child} showFees={showFees} />}
-        {tab === 'results'    && <ResultsTab    learnerId={child.id} />}
+        {tab === 'results'    && <ResultsTab    child={child} />}
         {tab === 'attendance' && <AttendanceTab learnerId={child.id} />}
         {showFees && tab === 'fees' && <FeesTab learnerId={child.id} />}
         {tab === 'info'       && <InfoTab       child={child} />}
