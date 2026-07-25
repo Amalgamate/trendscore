@@ -5,6 +5,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Calculator, TrendingUp, Award } from 'lucide-react';
+import { percentageFromMark } from '../../../utils/grading/percentage';
 
 const GradeCalculatorPreview = ({ ranges, totalMarks = 100 }) => {
   const [sampleMark, setSampleMark] = useState('');
@@ -20,7 +21,7 @@ const GradeCalculatorPreview = ({ ranges, totalMarks = 100 }) => {
   const calculateGradeForMark = (mark) => {
     if (!mark || mark === '' || !totalMarks) return null;
     
-    const percentage = (parseFloat(mark) / totalMarks) * 100;
+    const percentage = percentageFromMark(mark, totalMarks);
     
     const range = sortedRanges.find(r => 
       percentage >= r.minPercentage && percentage <= r.maxPercentage

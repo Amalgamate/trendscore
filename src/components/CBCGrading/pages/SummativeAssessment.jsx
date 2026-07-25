@@ -15,6 +15,7 @@ import { generatePDFWithLetterhead } from '../../../utils/simplePdfGenerator';
 import BulkMarkImportModal from '../shared/BulkMarkImportModal';
 import PDFPreviewModal from '../shared/PDFPreviewModal';
 import { getGradeColor } from '../../../utils/grading/colors';
+import { percentageFromMark } from '../../../utils/grading/percentage';
 import { ASSESSMENT_STATUS_CODES, getAssessmentStatus, hasPerformanceScore } from '../../../utils/cbeGrading';
 import { useAssessmentSetup } from '../hooks/useAssessmentSetup';
 import { useTeacherWorkload } from '../hooks/useTeacherWorkload';
@@ -811,7 +812,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     const gradeDistribution = {};
     if (gradingScale && gradingScale.ranges && selectedTest?.totalMarks) {
       numericMarks.forEach(mark => {
-        const percentage = Math.min(100, (mark / selectedTest.totalMarks) * 100);
+        const percentage = percentageFromMark(mark, selectedTest.totalMarks);
         const range = gradingScale.ranges.find(r =>
           percentage >= r.minPercentage && percentage <= r.maxPercentage
         );
@@ -1220,7 +1221,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
   const getDescriptionForGrade = (mark, total, learnerName) => {
     if (!total || mark === undefined || mark === null || mark === '') return 'Not assessed';
 
-    const percentage = Math.min(100, (mark / total) * 100);
+    const percentage = percentageFromMark(mark, total);
 
     if (gradingScale && gradingScale.ranges) {
       const range = gradingScale.ranges.find(r =>
@@ -1409,7 +1410,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
           let teacherComment = markData.comment || existingResult?.teacherComment || '';
 
           if (selectedTest?.totalMarks && mark !== null && mark !== undefined && mark !== '') {
-            const percentage = Math.min(100, (mark / selectedTest.totalMarks) * 100);
+            const percentage = percentageFromMark(mark, selectedTest.totalMarks);
             if (gradingScale && gradingScale.ranges) {
               const range = gradingScale.ranges.find(r => percentage >= r.minPercentage && percentage <= r.maxPercentage);
               remarks = range ? range.label : remarks;
