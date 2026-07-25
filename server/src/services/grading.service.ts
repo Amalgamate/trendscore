@@ -6,6 +6,15 @@ interface ScoreItem {
   weight?: number;
 }
 
+const PERCENTAGE_PRECISION = 1_000_000;
+
+export const normalizePercentage = (percentage: number): number => {
+  if (!Number.isFinite(percentage)) return 0;
+
+  const capped = Math.min(100, Math.max(0, percentage));
+  return Math.round((capped + Number.EPSILON) * PERCENTAGE_PRECISION) / PERCENTAGE_PRECISION;
+};
+
 export const gradingService = {
   /**
    * Uses upsert-style logic to avoid duplicate creation under concurrent requests.
@@ -189,16 +198,19 @@ export const gradingService = {
    */
   async calculateGrade(percentage: number): Promise<string> {
     const system = await this.getGradingSystem('SUMMATIVE');
-    const range = system.ranges.find(r => percentage >= r.minPercentage && percentage <= r.maxPercentage);
+    const normalized = normalizePercentage(percentage);
+    const range = system.ranges.find(r => normalized >= r.minPercentage && normalized <= r.maxPercentage);
     return range?.summativeGrade || 'BE2';
   },
+
+  normalizePercentage,
 
   /**
    * Calculate grade with details (sync — caller must supply ranges)
    */
   calculateGradeSync(percentage: number, ranges: any[]): string {
-    const capped = Math.min(100, Math.max(0, percentage));
-    const range = ranges.find(r => capped >= r.minPercentage && capped <= r.maxPercentage);
+    const normalized = normalizePercentage(percentage);
+    const range = ranges.find(r => normalized >= r.minPercentage && normalized <= r.maxPercentage);
     return range?.summativeGrade || 'BE2';
   },
 
@@ -206,8 +218,8 @@ export const gradingService = {
    * Calculate CBC rating (sync — caller must supply ranges)
    */
   calculateRatingSync(percentage: number, ranges: any[]): DetailedRubricRating {
-    const capped = Math.min(100, Math.max(0, percentage));
-    const range = ranges.find(r => capped >= r.minPercentage && capped <= r.maxPercentage);
+    const normalized = normalizePercentage(percentage);
+    const range = ranges.find(r => normalized >= r.minPercentage && normalized <= r.maxPercentage);
     return range?.rubricRating || 'BE2';
   },
 

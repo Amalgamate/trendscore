@@ -1566,7 +1566,7 @@ export const recordSummativeResult = async (req: AuthRequest, res: Response) => 
 
     const performance = entry.kind === 'score'
       ? (() => {
-          const percentage = (entry.score / test.totalMarks) * 100;
+          const percentage = gradingService.normalizePercentage((entry.score / test.totalMarks) * 100);
           const gradeCode = cbcRanges.length > 0 ? gradingService.calculateRatingSync(percentage, cbcRanges) : 'BE2';
           const details = getCbeGradeDetails(gradeCode)!;
           const matchedRange = cbcRanges.find((r: any) => percentage >= r.minPercentage && percentage <= r.maxPercentage)
@@ -2356,7 +2356,7 @@ export const recordSummativeResultsBulk = async (req: AuthRequest, res: Response
 
       const performance = entry.kind === 'score'
         ? (() => {
-            const percentage = (entry.score / test.totalMarks) * 100;
+            const percentage = gradingService.normalizePercentage((entry.score / test.totalMarks) * 100);
             const gradeCode = cbcRanges.length > 0 ? gradingService.calculateRatingSync(percentage, cbcRanges) : 'BE2';
             const details = getCbeGradeDetails(gradeCode)!;
             const matchedRange = cbcRanges.find((r: any) => percentage >= r.minPercentage && percentage <= r.maxPercentage)
