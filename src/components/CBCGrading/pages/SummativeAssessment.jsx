@@ -215,7 +215,17 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
   // Data State
   const [tests, setTests] = useState([]);
   const [selectedLearningArea, setSelectedLearningArea] = useState(() => localStorage.getItem('cbc_summative_appliedLearningArea') || '');
-  const [selectedTestId, setSelectedTestId] = useState(() => initialTestId || localStorage.getItem('cbc_summative_appliedTestId') || '');
+  const [selectedTestId, setSelectedTestId] = useState(() => {
+    if (initialTestId) return initialTestId;
+
+    const appliedTestId = localStorage.getItem('cbc_summative_appliedTestId') || '';
+    const stagedTestId = localStorage.getItem('cbc_summative_stagedTestId') || '';
+
+    // A persisted applied test is only safe to restore when it is the same
+    // test that the visible staged controls restore.  Older sessions could
+    // retain a prior PP1 test while the filters had moved to Grade 9.
+    return appliedTestId && appliedTestId === stagedTestId ? appliedTestId : '';
+  });
   const [selectedTestType, setSelectedTestType] = useState(() => normalizedDefaultTestType || localStorage.getItem('cbc_summative_appliedTestType') || '');
   const [marks, setMarks] = useState({});
   const [gradingScale, setGradingScale] = useState(null);
@@ -671,40 +681,6 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
       return testArea === normalizedSelected;
     });
   }, [stagedFilteredTestsBySelection, stagedLearningArea]);
-
-  // Persisted selections must never bridge two different assessment contexts.
-  // A prior session could restore a PP1 test while the staged controls showed
-  // Grade 9, which left the old roster visible until the user pressed Load.
-  // Treat any mismatch as no selected assessment; the user must explicitly
-  // select a test from the visible filters before marks can be entered.
-  useEffect(() => {
-    if (!selectedTestId || !tests.length) return;
-
-    const test = tests.find((item) => String(item.id) === String(selectedTestId));
-    if (!test) return;
-
-    const normalizeArea = (value) => String(value || '')
-      .toLowerCase()
-      .replace(/&/g, 'and')
-      .replace(/\s+/g, '')
-      .trim();
-
-    const conflictsWithStagedSelection =
-      (stagedGrade && toCanonicalGrade(test.grade) !== toCanonicalGrade(stagedGrade)) ||
-      (stagedTerm && String(test.term || '').toUpperCase().trim() !== String(stagedTerm).toUpperCase().trim()) ||
-      (stagedAcademicYear && !matchesAcademicYear(test.academicYear, stagedAcademicYear)) ||
-      (stagedTestType && resolveTestType(test) !== stagedTestType) ||
-      (stagedLearningArea && normalizeArea(test.learningArea) !== normalizeArea(stagedLearningArea)) ||
-      (stagedTestId && String(stagedTestId) !== String(test.id));
-
-    if (!conflictsWithStagedSelection) return;
-
-    learnerRequestRef.current += 1;
-    setSelectedTestId('');
-    setMarks({});
-    setFetchedLearners([]);
-    localStorage.removeItem('cbc_summative_appliedTestId');
-  }, [selectedTestId, tests, stagedGrade, stagedTerm, stagedAcademicYear, stagedTestType, stagedLearningArea, stagedTestId]);
 
   const streamOptions = useMemo(() => {
     const options = contextualStreams.length > 0 ? contextualStreams : availableStreams;
