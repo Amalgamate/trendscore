@@ -246,6 +246,12 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
   // subject teacher) is about to enter scores.
   const [classTeacherOverrideWarning, setClassTeacherOverrideWarning] = useState(false);
 
+  // Learner requests can finish out of order when an administrator changes
+  // assessments quickly.  Keep a monotonically increasing request token so a
+  // response for the previous test can never overwrite the roster for the
+  // currently selected test.
+  const learnerRequestRef = useRef(0);
+
   useEffect(() => {
     if (!teacherCtx.restricted || !selectedLearningArea) {
       setClassTeacherOverrideWarning(false);
@@ -286,6 +292,17 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
 
   // Handler to apply filters when green button clicked
   const applyFilters = useCallback(() => {
+    const testChanged = String(stagedTestId || '') !== String(selectedTestId || '');
+
+    // Do not leave the previous test's learners visible while the new test is
+    // being applied.  Apart from being confusing, that made it possible to
+    // enter marks against the wrong class after a rapid filter change.
+    if (testChanged) {
+      learnerRequestRef.current += 1;
+      setFetchedLearners([]);
+      setMarks({});
+    }
+
     setup.updateGrade(stagedGrade);
     setup.updateStream(stagedStream);
     setup.updateTerm(stagedTerm);
@@ -307,10 +324,6 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     localStorage.setItem('cbc_summative_appliedLearningArea', stagedLearningArea);
     localStorage.setItem('cbc_summative_appliedTestId', stagedTestId);
 
-    // Clear marks when filters applied
-    if (stagedTestId !== selectedTestId) {
-      setMarks({});
-    }
   }, [stagedGrade, stagedStream, stagedTerm, stagedAcademicYear, stagedTestType, stagedLearningArea, stagedTestId, selectedTestId, setup]);
 
   const [generatingAI, setGeneratingAI] = useState({});
@@ -1083,12 +1096,23 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
 
   // Fetch Learners when test is selected
   useEffect(() => {
-    if (!selectedTestId) return;
+    if (!selectedTestId) {
+      learnerRequestRef.current += 1;
+      setFetchedLearners([]);
+      return;
+    }
 
     // Look up the test directly from the tests array — selectedTest (useMemo) may
     // not yet reflect the updated selectedTestId on the same render cycle.
     const resolvedTest = tests.find(t => String(t.id) === String(selectedTestId));
-    if (!resolvedTest) return;
+    if (!resolvedTest) {
+      learnerRequestRef.current += 1;
+      setFetchedLearners([]);
+      return;
+    }
+
+    const requestId = ++learnerRequestRef.current;
+    let cancelled = false;
 
     const fetchLearners = async () => {
       setLoadingLearners(true);
@@ -1109,17 +1133,26 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
 
         const response = await learnerAPI.getAll(params);
         const learnersData = response.data || response || [];
-        setFetchedLearners(Array.isArray(learnersData) ? learnersData : []);
+        if (!cancelled && requestId === learnerRequestRef.current) {
+          setFetchedLearners(Array.isArray(learnersData) ? learnersData : []);
+        }
       } catch (error) {
         console.error('Error fetching learners:', error);
-        toast.error('Failed to load learners');
-        setFetchedLearners([]);
+        if (!cancelled && requestId === learnerRequestRef.current) {
+          toast.error('Failed to load learners');
+          setFetchedLearners([]);
+        }
       } finally {
-        setLoadingLearners(false);
+        if (!cancelled && requestId === learnerRequestRef.current) {
+          setLoadingLearners(false);
+        }
       }
     };
 
     fetchLearners();
+    return () => {
+      cancelled = true;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTestId, tests, setup.selectedStream])
 
