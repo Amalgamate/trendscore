@@ -672,6 +672,40 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     });
   }, [stagedFilteredTestsBySelection, stagedLearningArea]);
 
+  // Persisted selections must never bridge two different assessment contexts.
+  // A prior session could restore a PP1 test while the staged controls showed
+  // Grade 9, which left the old roster visible until the user pressed Load.
+  // Treat any mismatch as no selected assessment; the user must explicitly
+  // select a test from the visible filters before marks can be entered.
+  useEffect(() => {
+    if (!selectedTestId || !tests.length) return;
+
+    const test = tests.find((item) => String(item.id) === String(selectedTestId));
+    if (!test) return;
+
+    const normalizeArea = (value) => String(value || '')
+      .toLowerCase()
+      .replace(/&/g, 'and')
+      .replace(/\s+/g, '')
+      .trim();
+
+    const conflictsWithStagedSelection =
+      (stagedGrade && toCanonicalGrade(test.grade) !== toCanonicalGrade(stagedGrade)) ||
+      (stagedTerm && String(test.term || '').toUpperCase().trim() !== String(stagedTerm).toUpperCase().trim()) ||
+      (stagedAcademicYear && !matchesAcademicYear(test.academicYear, stagedAcademicYear)) ||
+      (stagedTestType && resolveTestType(test) !== stagedTestType) ||
+      (stagedLearningArea && normalizeArea(test.learningArea) !== normalizeArea(stagedLearningArea)) ||
+      (stagedTestId && String(stagedTestId) !== String(test.id));
+
+    if (!conflictsWithStagedSelection) return;
+
+    learnerRequestRef.current += 1;
+    setSelectedTestId('');
+    setMarks({});
+    setFetchedLearners([]);
+    localStorage.removeItem('cbc_summative_appliedTestId');
+  }, [selectedTestId, tests, stagedGrade, stagedTerm, stagedAcademicYear, stagedTestType, stagedLearningArea, stagedTestId]);
+
   const streamOptions = useMemo(() => {
     const options = contextualStreams.length > 0 ? contextualStreams : availableStreams;
     return [...new Set(options.map(stream => String(stream || '').trim()).filter(Boolean))];
