@@ -378,9 +378,10 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
         testsData = response;
       }
 
-      // Only show published, active tests (backend enforces this too)
+      // Keep locked tests visible so teachers can request a correction unlock.
+      // They remain read-only until an approved request reopens the test.
       let activeTests = testsData.filter(t =>
-        (t.status || '').toUpperCase() === 'PUBLISHED' && t.active !== false
+        ['PUBLISHED', 'LOCKED'].includes((t.status || '').toUpperCase()) && t.active !== false
       );
       // Defensive portal scoping: never show JS grades inside Senior portal.
       activeTests = activeTests.filter((t) => {
@@ -1193,7 +1194,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
   }, [selectedTestId]);
 
   const isTestLocked =
-    selectedTest?.workflowStatus === 'LOCKED' &&
+    (String(selectedTest?.workflowStatus || selectedTest?.status || '').toUpperCase() === 'LOCKED' || selectedTest?.locked === true) &&
     !isTemporarilyUnlocked;
 
   const handleScoreInputClick = () => {
@@ -2158,6 +2159,11 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
             onUnlockGranted={() => {
               setShowUnlockPrompt(false);
               setIsTemporarilyUnlocked(true);
+              setTests(prev => prev.map(test =>
+                String(test.id) === String(selectedTestId)
+                  ? { ...test, status: 'PUBLISHED', workflowStatus: 'PUBLISHED', locked: false }
+                  : test
+              ));
             }}
             context={unlockContext}
           />

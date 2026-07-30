@@ -22,6 +22,7 @@ import {
     initiateSmsTopUp
 } from '../controllers/communication.controller';
 import { requireRole, auditLog } from '../middleware/permissions.middleware';
+import { BROADCAST_MANAGER_ROLES } from '../config/permissions';
 import { authenticate } from '../middleware/auth.middleware';
 import { requireSchoolContext } from '../middleware/school.middleware';
 import { validate } from '../middleware/validation.middleware';
@@ -171,10 +172,10 @@ router.post(
 );
 
 // Send Test SMS
-// Allowed: Admin, Super Admin, Head Teacher
+// Allowed: Admin, Super Admin, Head Teacher, Head of Curriculum
 router.post(
     '/test/sms',
-    requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
+    requireRole(BROADCAST_MANAGER_ROLES),
     rateLimit({ windowMs: 60_000, maxRequests: 30 }),
     validate(sendTestSmsSchema),
     sendTestSms
@@ -236,10 +237,10 @@ router.post(
 );
 
 // Get Broadcast Recipients
-// Allowed: Admin, Super Admin, Head Teacher
+// Allowed: Admin, Super Admin, Head Teacher, Head of Curriculum
 router.get(
     '/recipients',
-    requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
+    requireRole(BROADCAST_MANAGER_ROLES),
     rateLimit({ windowMs: 60_000, maxRequests: 100 }),
     getBroadcastRecipients
 );

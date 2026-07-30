@@ -12,6 +12,7 @@ import {
 import { authenticate } from '../middleware/auth.middleware';
 import { requireSchoolContext } from '../middleware/school.middleware';
 import { requireRole, auditLog } from '../middleware/permissions.middleware';
+import { BROADCAST_MANAGER_ROLES } from '../config/permissions';
 import { validate } from '../middleware/validation.middleware';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
 
@@ -72,11 +73,11 @@ router.use(requireSchoolContext);
 /**
  * @route   POST /api/broadcasts
  * @desc    Save broadcast campaign after sending
- * @access  ADMIN, SUPER_ADMIN, HEAD_TEACHER
+ * @access  ADMIN, SUPER_ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM
  */
 router.post(
   '/',
-  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
+  requireRole(BROADCAST_MANAGER_ROLES),
   rateLimit({ windowMs: 60_000, maxRequests: 20 }),
   validate(createCampaignSchema),
   auditLog('CREATE_BROADCAST_CAMPAIGN'),
@@ -86,11 +87,11 @@ router.post(
 /**
  * @route   POST /api/broadcasts/send-bulk
  * @desc    Send broadcast to multiple recipients using backend batching
- * @access  ADMIN, SUPER_ADMIN, HEAD_TEACHER
+ * @access  ADMIN, SUPER_ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM
  */
 router.post(
   '/send-bulk',
-  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
+  requireRole(BROADCAST_MANAGER_ROLES),
   rateLimit({ windowMs: 60_000, maxRequests: 5 }), // Strict rate limit for bulk send initiation
   validate(bulkSendSchema),
   auditLog('SEND_BULK_BROADCAST'),
@@ -100,11 +101,11 @@ router.post(
 /**
  * @route   GET /api/broadcasts
  * @desc    Get broadcast history
- * @access  ADMIN, SUPER_ADMIN, HEAD_TEACHER
+ * @access  ADMIN, SUPER_ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM
  */
 router.get(
   '/',
-  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
+  requireRole(BROADCAST_MANAGER_ROLES),
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   getBroadcastHistory
 );
@@ -112,11 +113,11 @@ router.get(
 /**
  * @route   GET /api/broadcasts/stats
  * @desc    Get broadcast statistics
- * @access  ADMIN, SUPER_ADMIN, HEAD_TEACHER
+ * @access  ADMIN, SUPER_ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM
  */
 router.get(
   '/stats',
-  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
+  requireRole(BROADCAST_MANAGER_ROLES),
   rateLimit({ windowMs: 60_000, maxRequests: 50 }),
   getBroadcastStats
 );
@@ -124,11 +125,11 @@ router.get(
 /**
  * @route   GET /api/broadcasts/:campaignId
  * @desc    Get broadcast campaign details
- * @access  ADMIN, SUPER_ADMIN, HEAD_TEACHER
+ * @access  ADMIN, SUPER_ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM
  */
 router.get(
   '/:campaignId',
-  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
+  requireRole(BROADCAST_MANAGER_ROLES),
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   getBroadcastDetails
 );

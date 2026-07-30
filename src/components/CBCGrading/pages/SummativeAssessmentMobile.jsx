@@ -6,6 +6,7 @@ import {
   Check,
   ChevronRight,
   ClipboardList,
+  Lock,
   Loader,
   Save,
   Search,
@@ -22,6 +23,7 @@ import { cn } from '../../../utils/cn';
 import { getCurrentTerm } from '../utils/academicYear';
 import { normalizeTestType } from '../utils/testType';
 import MobileBottomNav from '../dashboard/mobile/MobileBottomNav';
+import { ScoreUnlockPrompt } from '../../shared/ScoreUnlockPrompt';
 
 const TEST_TYPE_OPTIONS = [
   { value: 'all', label: 'All Types' },
@@ -174,7 +176,7 @@ const SummativeSubjectCard = ({ item, onOpen }) => (
   </button>
 );
 
-const LearnerMarkCard = ({ learner, mark, totalMarks, onChange, saved }) => {
+const LearnerMarkCard = ({ learner, mark, totalMarks, onChange, saved, locked, onRequestUnlock }) => {
   const learnerId = learner.id || learner._id;
   const numericMark = Number(mark);
   const markIsValid = hasMark(mark) && Number.isFinite(numericMark);
@@ -214,9 +216,21 @@ const LearnerMarkCard = ({ learner, mark, totalMarks, onChange, saved }) => {
           min="0"
           max={totalMarks || undefined}
           value={mark ?? ''}
-          onChange={(event) => onChange(learnerId, event.target.value)}
-          placeholder="Mark"
-          className="h-14 w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-4 text-center text-xl font-black text-slate-950 outline-none transition focus:border-brand-purple focus:bg-white"
+          onClick={locked ? onRequestUnlock : undefined}
+          onChange={(event) => {
+            if (locked) {
+              onRequestUnlock?.();
+              return;
+            }
+            onChange(learnerId, event.target.value);
+          }}
+          readOnly={locked}
+          placeholder={locked ? '🔒' : 'Mark'}
+          title={locked ? 'Assessment is locked — tap to request unlock' : undefined}
+          className={cn(
+            'h-14 w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-4 text-center text-xl font-black text-slate-950 outline-none transition focus:border-brand-purple focus:bg-white',
+            locked && 'cursor-not-allowed border-amber-300 bg-amber-50 text-amber-700'
+          )}
         />
         <div className="flex h-14 min-w-[64px] items-center justify-center rounded-2xl bg-slate-50 px-3 text-sm font-black text-slate-500">
           / {totalMarks || 100}
@@ -272,11 +286,24 @@ const SummativeAssessmentMobile = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [markFilter, setMarkFilter] = useState('all');
   const [reviewed, setReviewed] = useState(false);
+  const [showUnlockPrompt, setShowUnlockPrompt] = useState(false);
+  const [isTemporarilyUnlocked, setIsTemporarilyUnlocked] = useState(false);
 
   const selectedTest = useMemo(
     () => tests.find((test) => String(test.id) === String(selectedTestId)) || null,
     [tests, selectedTestId]
   );
+
+  const isTestLocked = Boolean(
+    selectedTest &&
+    (String(selectedTest.workflowStatus || selectedTest.status || '').toUpperCase() === 'LOCKED' || selectedTest.locked === true) &&
+    !isTemporarilyUnlocked
+  );
+
+  useEffect(() => {
+    setIsTemporarilyUnlocked(false);
+    setShowUnlockPrompt(false);
+  }, [selectedTestId]);
 
   const canSeeTest = useCallback((test) => {
     const grade = toCanonicalGrade(test?.grade);
@@ -336,7 +363,7 @@ const SummativeAssessmentMobile = ({
       const activeTests = testRows
         .filter((test) => {
           const status = String(test.status || '').toUpperCase();
-          return status === 'PUBLISHED' || test.published === true;
+          return status === 'PUBLISHED' || status === 'LOCKED' || test.published === true;
         })
         .filter(canSeeTest);
 
@@ -545,6 +572,10 @@ const SummativeAssessmentMobile = ({
   };
 
   const handleMarkChange = (learnerId, value) => {
+    if (isTestLocked) {
+      setShowUnlockPrompt(true);
+      return;
+    }
     setMarks((current) => ({ ...current, [learnerId]: value }));
     setSavedMarks((current) => {
       const next = new Set(current);
@@ -556,6 +587,10 @@ const SummativeAssessmentMobile = ({
 
   const saveMarks = async ({ final = false } = {}) => {
     if (!selectedTest) return false;
+    if (isTestLocked) {
+      setShowUnlockPrompt(true);
+      return false;
+    }
     if (final && markStats.missing > 0) {
       showError('Cannot publish while required marks are missing');
       return false;
@@ -771,6 +806,15 @@ const SummativeAssessmentMobile = ({
               </div>
             </div>
             <div className="mt-4"><ProgressBar value={markStats.completion} /></div>
+            {isTestLocked && (
+              <button
+                type="button"
+                onClick={() => setShowUnlockPrompt(true)}
+                className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 text-xs font-black text-white"
+              >
+                <Lock size={15} /> Request score unlock
+              </button>
+            )}
           </section>
 
           <section className="sticky top-0 z-10 mb-4 space-y-3 rounded-[1.5rem] border border-slate-100 bg-white/95 p-3 shadow-sm backdrop-blur">
@@ -823,6 +867,8 @@ const SummativeAssessmentMobile = ({
                     totalMarks={selectedTest.totalMarks || 100}
                     saved={savedMarks.has(learnerId)}
                     onChange={handleMarkChange}
+                    locked={isTestLocked}
+                    onRequestUnlock={() => setShowUnlockPrompt(true)}
                   />
                 );
               })
@@ -833,12 +879,15 @@ const SummativeAssessmentMobile = ({
             <div className="mx-auto flex max-w-md gap-3">
               <button
                 type="button"
-                onClick={() => saveMarks({ final: false })}
+                onClick={() => isTestLocked ? setShowUnlockPrompt(true) : saveMarks({ final: false })}
                 disabled={saving}
-                className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-brand-teal text-sm font-black text-white shadow-lg shadow-brand-teal/20 disabled:opacity-60"
+                className={cn(
+                  'flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl text-sm font-black text-white shadow-lg disabled:opacity-60',
+                  isTestLocked ? 'bg-amber-500 shadow-amber-500/20' : 'bg-brand-teal shadow-brand-teal/20'
+                )}
               >
-                {saving ? <Loader size={18} className="animate-spin" /> : <Save size={18} />}
-                Save
+                {saving ? <Loader size={18} className="animate-spin" /> : isTestLocked ? <Lock size={18} /> : <Save size={18} />}
+                {isTestLocked ? 'Request unlock' : 'Save'}
               </button>
               <button
                 type="button"
@@ -938,6 +987,29 @@ const SummativeAssessmentMobile = ({
           </section>
         </main>
       )}
+
+      <ScoreUnlockPrompt
+        open={showUnlockPrompt}
+        onDismiss={() => setShowUnlockPrompt(false)}
+        onUnlockGranted={() => {
+          setShowUnlockPrompt(false);
+          setIsTemporarilyUnlocked(true);
+          setTests((current) => current.map((test) =>
+            String(test.id) === String(selectedTestId)
+              ? { ...test, status: 'PUBLISHED', workflowStatus: 'PUBLISHED', locked: false }
+              : test
+          ));
+        }}
+        context={{
+          assessmentId: selectedTestId,
+          assessmentType: 'summative',
+          classId: selectedTest?.classId || selectedClass?.grade || '',
+          subjectId: selectedTest?.learningAreaId || '',
+          term: selectedTest?.term || selectedTerm || '',
+          academicYear: selectedTest?.academicYear || '',
+          teacherId: user?.id || '',
+        }}
+      />
 
       <MobileBottomNav role={user?.role} currentPath="assess-mobile-dashboard" onNavigate={onNavigate} />
     </div>

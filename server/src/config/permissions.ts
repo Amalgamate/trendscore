@@ -1,6 +1,18 @@
 import { ROLE_HIERARCHY, type Role } from './roleDefinitions';
 
 /**
+ * Roles trusted to address school-wide audiences through Broadcast Messages.
+ * Keep this separate from SEND_MESSAGES: teachers may send direct messages,
+ * while broadcasts expose the school parent-contact directory.
+ */
+export const BROADCAST_MANAGER_ROLES: Role[] = [
+  'SUPER_ADMIN',
+  'ADMIN',
+  'HEAD_TEACHER',
+  'HEAD_OF_CURRICULUM',
+];
+
+/**
  * Permissions Configuration
  * Defines which roles have access to which features/actions
  *

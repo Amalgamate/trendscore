@@ -76,12 +76,18 @@ const TERMINAL_STATUSES: ApprovalStatus[] = [
 
 const workflowService = new WorkflowService();
 
-async function scoreUnlockApprovalHandler(request: ApprovalRequest): Promise<void> {
+async function scoreUnlockApprovalHandler(request: ApprovalRequest, approverId?: string): Promise<void> {
   const meta = request.metadata as unknown as ScoreUnlockMetadata;
+  if (!approverId) {
+    throw new Error('An approver is required to unlock an assessment');
+  }
   await workflowService.unlockAssessment({
     assessmentId: meta.assessmentId,
     assessmentType: meta.assessmentType,
-    userId: request.requestedById,
+    // The requester is normally a teacher and is intentionally not allowed to
+    // perform an emergency unlock. Apply the approval under the authority of
+    // the Head Teacher/Admin who approved it instead.
+    userId: approverId,
     reason: `Approved via approval engine — request ${request.id}`,
   });
 }
@@ -99,7 +105,7 @@ async function scoreRelockHandler(request: ApprovalRequest): Promise<void> {
 // No-op stub for future modules
 const noopHandler = async (_request: ApprovalRequest): Promise<void> => {};
 
-export const APPROVAL_HOOKS: Record<ApprovalRequestType, (request: ApprovalRequest) => Promise<void>> = {
+export const APPROVAL_HOOKS: Record<ApprovalRequestType, (request: ApprovalRequest, approverId?: string) => Promise<void>> = {
   SCORE_UNLOCK: scoreUnlockApprovalHandler,
   ATTENDANCE_UNLOCK: noopHandler,
   FEE_ADJUSTMENT: noopHandler,
@@ -411,7 +417,7 @@ export class ApprovalEngineService {
 
       // Run approval hook when APPROVED
       if (newStatus === 'APPROVED') {
-        await this.runApprovalHook(updatedRequest);
+        await this.runApprovalHook(updatedRequest, actorId);
       }
     }
 
@@ -741,6 +747,7 @@ export class ApprovalEngineService {
       link: `/app/settings-approvals?requestId=${request.id}`,
       showAsPopup: false,
       metadata: {
+        requestId: request.id,
         requestType: request.requestType,
         status: request.status,
       },
@@ -754,11 +761,11 @@ export class ApprovalEngineService {
    * Look up and call the registered approval hook for the request type.
    * Errors are caught and logged — hooks must never block state transitions.
    */
-  private async runApprovalHook(request: ApprovalRequest): Promise<void> {
+  private async runApprovalHook(request: ApprovalRequest, approverId?: string): Promise<void> {
     const handler = APPROVAL_HOOKS[request.requestType];
     if (!handler) return;
     try {
-      await handler(request);
+      await handler(request, approverId);
     } catch (err: any) {
       console.error(
         `[ApprovalEngine] Approval hook failed for request ${request.id} (${request.requestType}):`,
