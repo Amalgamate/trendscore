@@ -195,9 +195,44 @@ describe('Biometric module end-to-end', () => {
         .post(`/api/biometric/devices/${deviceDbId}/rotate-token`)
         .set('Authorization', `Bearer ${authToken}`)
         .expect(404);
+
+      await request(app)
+        .post(`/api/biometric/devices/${deviceDbId}/activation`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(404);
     } finally {
       biometricTestSchoolId = ownerSchoolId;
     }
+  });
+
+  it('activates a phone terminal with a one-time setup code', async () => {
+    const activationResponse = await request(app)
+      .post(`/api/biometric/devices/${deviceDbId}/activation`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .expect(201);
+
+    expect(activationResponse.body.data.activationCode).toMatch(/^\d{8}$/);
+    expect(activationResponse.body.data.deviceId).toBe(biometricDeviceId);
+
+    const terminalResponse = await request(app)
+      .post('/api/biometric/terminal/activate')
+      .send({
+        deviceId: biometricDeviceId,
+        activationCode: activationResponse.body.data.activationCode,
+      })
+      .expect(200);
+
+    expect(terminalResponse.body.data.deviceToken).toEqual(expect.any(String));
+    expect(terminalResponse.body.data.device).not.toHaveProperty('tokenHash');
+    deviceToken = terminalResponse.body.data.deviceToken;
+
+    await request(app)
+      .post('/api/biometric/terminal/activate')
+      .send({
+        deviceId: biometricDeviceId,
+        activationCode: activationResponse.body.data.activationCode,
+      })
+      .expect(401);
   });
 
   it('enrolls a biometric credential for a learner', async () => {
@@ -220,23 +255,62 @@ describe('Biometric module end-to-end', () => {
 
   it('processes a biometric attendance log for the learner and returns logs', async () => {
     expect(deviceToken).toBeTruthy();
+    const eventId = `test-event-${Date.now()}`;
+    const timestamp = new Date().toISOString();
 
     const logResponse = await request(app)
-      .post('/api/biometric/log')
+      .post('/api/biometric/terminal/events')
+      .set('Authorization', `Bearer ${deviceToken}`)
       .send({
+        eventId,
         deviceId: biometricDeviceId,
-        deviceToken,
         personId: learnerAdmissionNumber,
         personType: 'LEARNER',
-        timestamp: new Date().toISOString(),
-        direction: 'IN'
+        timestamp,
+        direction: 'IN',
+        modality: 'QR',
       })
-      .expect(200);
+      .expect(201);
 
     expect(logResponse.body.success).toBe(true);
-    expect(logResponse.body.data).toHaveProperty('id', expect.any(String));
-    expect(logResponse.body.data).toHaveProperty('status', 'PENDING');
+    expect(logResponse.body.data).toHaveProperty('logId', expect.any(String));
+    expect(logResponse.body.data).toHaveProperty('processingStatus', 'PROCESSED');
+    expect(logResponse.body.data.outcome.person).toEqual(expect.objectContaining({
+      reference: learnerAdmissionNumber,
+      personType: 'LEARNER',
+      grade: 'GRADE_1',
+    }));
     expect(logResponse.body.data).not.toHaveProperty('personId');
+
+    const duplicateResponse = await request(app)
+      .post('/api/biometric/terminal/events')
+      .set('Authorization', `Bearer ${deviceToken}`)
+      .send({
+        eventId,
+        deviceId: biometricDeviceId,
+        personId: learnerAdmissionNumber,
+        personType: 'LEARNER',
+        timestamp,
+        direction: 'IN',
+        modality: 'QR',
+        offlineCaptured: true,
+      })
+      .expect(200);
+    expect(duplicateResponse.body.data.duplicate).toBe(true);
+
+    await request(app)
+      .post('/api/biometric/terminal/events')
+      .set('Authorization', `Bearer ${deviceToken}`)
+      .send({
+        eventId,
+        deviceId: biometricDeviceId,
+        personId: `${learnerAdmissionNumber}-CHANGED`,
+        personType: 'LEARNER',
+        timestamp,
+        direction: 'IN',
+        modality: 'QR',
+      })
+      .expect(409);
 
     const logsResponse = await request(app)
       .get('/api/biometric/logs')
@@ -245,7 +319,8 @@ describe('Biometric module end-to-end', () => {
 
     expect(logsResponse.body.success).toBe(true);
     expect(Array.isArray(logsResponse.body.data)).toBe(true);
-    expect(logsResponse.body.data.some((log: any) => log.personId === learnerAdmissionNumber)).toBe(true);
+    const matchingEvents = logsResponse.body.data.filter((log: any) => log.eventId === eventId);
+    expect(matchingEvents).toHaveLength(1);
   });
 
   it('verifies the heartbeat, rotates the token once, and decommissions safely', async () => {

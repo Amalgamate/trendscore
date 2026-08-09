@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth.middleware';
 import { requirePermission } from '../middleware/permissions.middleware';
 import { asyncHandler } from '../utils/async.util';
 import { biometricController } from '../controllers/biometric.controller';
+import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
 
 const router = Router();
 
@@ -42,6 +43,13 @@ router.post(
   authenticate,
   requirePermission('MANAGE_BIOMETRIC_DEVICES'),
   asyncHandler(biometricController.rotateDeviceToken.bind(biometricController)),
+);
+
+router.post(
+  '/devices/:id/activation',
+  authenticate,
+  requirePermission('MANAGE_BIOMETRIC_DEVICES'),
+  asyncHandler(biometricController.createTerminalActivation.bind(biometricController)),
 );
 
 router.post(
@@ -89,6 +97,18 @@ router.delete(
 );
 
 // ── Attendance Webhook (public — bearer token, legacy body token supported) ──
+
+router.post(
+  '/terminal/activate',
+  rateLimit({ windowMs: 15 * 60_000, maxRequests: 10 }),
+  biometricController.activateTerminal.bind(biometricController),
+);
+
+router.post(
+  '/terminal/events',
+  rateLimit({ windowMs: 60_000, maxRequests: 180 }),
+  biometricController.recordTerminalEvent.bind(biometricController),
+);
 
 router.post('/log', biometricController.logAttendance.bind(biometricController));
 

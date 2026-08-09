@@ -29,16 +29,18 @@ describe('biometric API contracts', () => {
     });
   });
 
-  it('uses explicit lifecycle endpoints for test, rotation, and decommission', async () => {
+  it('uses explicit lifecycle endpoints for test, phone activation, rotation, and decommission', async () => {
     fetchWithAuth.mockResolvedValue({ success: true, data: {} });
 
     await biometricAPI.testDeviceConnection('device-1');
+    await biometricAPI.createTerminalActivation('device-1');
     await biometricAPI.rotateDeviceToken('device-1');
     await biometricAPI.decommissionDevice('device-1');
 
     expect(fetchWithAuth).toHaveBeenNthCalledWith(1, '/biometric/devices/device-1/test', { method: 'POST' });
-    expect(fetchWithAuth).toHaveBeenNthCalledWith(2, '/biometric/devices/device-1/rotate-token', { method: 'POST' });
-    expect(fetchWithAuth).toHaveBeenNthCalledWith(3, '/biometric/devices/device-1', { method: 'DELETE' });
+    expect(fetchWithAuth).toHaveBeenNthCalledWith(2, '/biometric/devices/device-1/activation', { method: 'POST' });
+    expect(fetchWithAuth).toHaveBeenNthCalledWith(3, '/biometric/devices/device-1/rotate-token', { method: 'POST' });
+    expect(fetchWithAuth).toHaveBeenNthCalledWith(4, '/biometric/devices/device-1', { method: 'DELETE' });
   });
 
   it('normalizes log responses for the log viewer', async () => {

@@ -26,6 +26,10 @@ export const biometricAPI = {
     method: 'POST'
   })),
 
+  createTerminalActivation: async (id) => responseData(await fetchWithAuth(`/biometric/devices/${id}/activation`, {
+    method: 'POST'
+  })),
+
   testDeviceConnection: async (id) => responseData(await fetchWithAuth(`/biometric/devices/${id}/test`, {
     method: 'POST'
   })),

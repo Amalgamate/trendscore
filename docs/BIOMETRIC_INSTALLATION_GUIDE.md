@@ -19,6 +19,21 @@ TrendSCORE does not currently ship a desktop bridge installer or a vendor-specif
 3. Confirm the school deployment reports **Encryption ready** on **Biometrics > Installation**.
 4. Confirm the school's server time and terminal time use NTP. Scan timestamps must be ISO 8601 values with a timezone.
 
+## Phone terminal pilot
+
+The phone terminal validates the complete attendance workflow with QR codes or manual admission/staff IDs. It does not perform facial recognition until an independently evaluated matching and liveness SDK is installed.
+
+1. Register the phone as a terminal under **Biometrics > Devices**.
+2. Choose **Activate phone** on its device card. The resulting 8-digit code is valid for ten minutes and can be used once.
+3. Open `https://<school-host>/#/terminal/biometric` on the phone, then enter the hardware ID and activation code.
+4. Use Chrome on Android for camera QR scanning. Manual Entry remains available when the browser does not support the Barcode Detector API.
+5. A learner QR code may contain the admission number, `TS:LEARNER:<admission-number>`, or JSON containing `personId` and `personType`. Staff codes use `TS:STAFF:<staff-id>`.
+6. Events captured without connectivity are stored in the phone's IndexedDB queue and synchronize in capture order when the connection returns.
+
+Each phone event has a terminal-generated `eventId`. TrendSCORE enforces uniqueness per terminal, so retrying the same offline event returns the original result instead of creating another biometric log or attendance record.
+
+The terminal bearer token is held in browser application storage and rotated when a new activation code is exchanged. Remove the terminal configuration before repurposing the phone, and decommission the device immediately if the phone is lost.
+
 ## Register and configure a terminal
 
 1. In TrendSCORE, open **Biometrics > Devices** and choose **Register terminal**.
@@ -63,6 +78,7 @@ Obtain informed consent and follow the school's biometric retention policy befor
 
 - **Token exposed or lost:** rotate the terminal token, update the terminal/connector, and verify with a new scan. The previous token stops working immediately.
 - **Terminal retired or stolen:** decommission it. TrendSCORE disables authentication while retaining attendance logs for audit purposes.
+- **Phone replaced or browser storage cleared:** create a new activation code. Activation rotates the terminal token, invalidating the previous phone session.
 - **Scans not arriving:** check terminal time, outbound DNS/HTTPS, the exact hardware ID, bearer token, response code, and **Biometrics > Logs**. Retry failed internal processing only after correcting the cause.
 - **Encryption readiness failed:** repair the school's deployment environment with the original 64-character hexadecimal key. Never generate a replacement for a school that already has enrolled credentials.
 - **Key rotation:** schedule a controlled migration that decrypts every active credential with the old key and re-encrypts it with the new key/version. Take a verified backup first. Do not rotate by editing the environment file alone.

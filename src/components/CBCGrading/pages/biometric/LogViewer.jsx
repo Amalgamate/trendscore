@@ -148,11 +148,13 @@ const LogViewer = () => {
                           <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest">
                             Ref: {log.personId}
                           </p>
+                          {log.resultPayload?.message && <p className="mt-1 max-w-xs text-[9px] text-slate-400">{log.resultPayload.message}</p>}
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <p className="text-[10px] font-medium text-slate-600">{log.device?.name || 'Manual Upload'}</p>
+                      <p className="mt-1 text-[9px] uppercase tracking-wider text-slate-400">{log.modality || 'UNKNOWN'}{log.offlineCaptured ? ' · OFFLINE SYNC' : ''}</p>
                     </td>
                     <td className="px-6 py-4 text-center">
                       <span className={`inline-flex items-center px-3 py-1 rounded-full text-[9px] font-semibold uppercase tracking-widest ${getStatusStyle(log.status)}`}>

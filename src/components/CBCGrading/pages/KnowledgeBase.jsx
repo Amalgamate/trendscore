@@ -274,6 +274,7 @@ const ARTICLES = [
         'Once configured, each scan creates a GATE_ENTRY or GATE_EXIT event visible in the learner\'s presence timeline.',
       ]},
       { type: 'tip', text: 'Direct PUSH mode requires the canonical TrendScore JSON contract. Vendor-native ZKTeco payloads need an approved connector; compatible PULL installations also require a network-reachable device IP.' },
+      { type: 'p', text: 'For the phone pilot, register a PHONE terminal, choose Activate phone, and open /#/terminal/biometric on the phone. QR and manual attendance work online or through the replay-safe offline queue. Face recognition remains disabled until an evaluated matching and liveness provider is installed.' },
       { type: 'warning', text: 'The device token must be kept secret. If a device is stolen, rotate its token immediately from Terminal Management. Never place the platform biometric encryption key on a terminal.' },
     ]
   },

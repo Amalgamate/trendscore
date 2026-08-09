@@ -30,6 +30,7 @@ import {
 
 const Auth = lazy(() => import('./pages/Auth'));
 const CBCGradingSystem = lazy(() => import('./components/CBCGrading/CBCGradingSystem'));
+const BiometricTerminal = lazy(() => import('./pages/BiometricTerminal'));
 
 // ── SW update banner ─────────────────────────────────────────────────────────
 function SWUpdateBanner() {
@@ -83,6 +84,7 @@ function AppContent() {
   const navigate = useNavigate();
   const location = useLocation();
   const pathname = location.pathname;
+  const isBiometricTerminalRoute = pathname.startsWith('/terminal/biometric');
 
   // splashDone: true once the splash screen calls onReady (data pre-loaded)
   const [splashDone, setSplashDone] = useState(false);
@@ -290,6 +292,7 @@ function AppContent() {
   // Navigation guards
   useEffect(() => {
     if (loading) return;
+    if (isBiometricTerminalRoute) return;
     if (isAuthenticated) {
       if (user?.requiresInstitutionSetup) {
         if (pathname !== '/auth/setup-institution') navigate('/auth/setup-institution', { replace: true });
@@ -303,7 +306,7 @@ function AppContent() {
     } else {
       if (pathname.startsWith('/app')) navigate('/auth/login', { replace: true });
     }
-  }, [isAuthenticated, loading, pathname, navigate, user?.requiresInstitutionSetup, user?.role]);
+  }, [isAuthenticated, isBiometricTerminalRoute, loading, pathname, navigate, user?.requiresInstitutionSetup, user?.role]);
 
   const handleAuthSuccess = (userData, token, refreshToken, options = {}) => {
     // Always clear bootstrap and UI state on login. The incoming user may
@@ -374,7 +377,12 @@ function AppContent() {
           It won't be visible while the splash is on top. */}
       {!loading && (
         <Suspense fallback={<SplashScreen isLoading={true} user={null} onReady={() => {}} />}>
-          {isAuthenticated ? (
+          {isBiometricTerminalRoute ? (
+            <Routes>
+              <Route path="/terminal/biometric" element={<BiometricTerminal />} />
+              <Route path="*" element={<Navigate to="/terminal/biometric" replace />} />
+            </Routes>
+          ) : isAuthenticated ? (
             <Routes>
               <Route
                 path="/auth/setup-institution"

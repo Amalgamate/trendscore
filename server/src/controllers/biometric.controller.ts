@@ -98,6 +98,25 @@ export class BiometricController {
     }
   }
 
+  /** POST /api/biometric/devices/:id/activation — issue a short-lived phone setup code. */
+  async createTerminalActivation(req: AuthRequest, res: Response) {
+    try {
+      const schoolId = resolveSchoolId(req);
+      const activation = await biometricService.createTerminalActivation(
+        req.params.id,
+        schoolId,
+        req.user?.userId,
+      );
+      res.status(201).json({
+        success: true,
+        message: 'Activation code created. It expires in 10 minutes and can be used once.',
+        data: activation,
+      });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
+  }
+
   /**
    * PATCH /api/biometric/devices/:id
    * Update device metadata (name, location, syncMode, etc.)
@@ -147,6 +166,10 @@ export class BiometricController {
           keyVersion: Number.parseInt(process.env.BIOMETRIC_KEY_VERSION || '1', 10),
           guideVersion: '2026.08',
           webhookPath: '/api/biometric/log',
+          phoneTerminalPath: '/#/terminal/biometric',
+          terminalEventPath: '/api/biometric/terminal/events',
+          terminalEventContractVersion: 1,
+          faceRecognitionConfigured: false,
           supportedModes: ['PUSH', 'PULL', 'BOTH'],
         },
       });
@@ -308,6 +331,97 @@ export class BiometricController {
 
   // ── Attendance Webhook ─────────────────────────────────────────────────────
 
+  /** POST /api/biometric/terminal/activate — exchange a one-time setup code for a terminal token. */
+  async activateTerminal(req: Request, res: Response) {
+    try {
+      const result = await biometricService.activateTerminal(req.body.deviceId, req.body.activationCode);
+      res.json({
+        success: true,
+        message: 'Phone terminal activated. The device token will not be returned again.',
+        data: result,
+      });
+    } catch (error: any) {
+      res.status(error.statusCode || 400).json({ success: false, message: error.message });
+    }
+  }
+
+  /** POST /api/biometric/terminal/events — replay-safe phone/offline event contract. */
+  async recordTerminalEvent(req: Request, res: Response) {
+    try {
+      const bearerToken = req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+      if (!bearerToken) throw new ApiError(401, 'Terminal bearer token is required');
+
+      const eventId = String(req.body.eventId || '').trim();
+      const deviceId = String(req.body.deviceId || '').trim();
+      const personId = String(req.body.personId || '').trim();
+      const personType = String(req.body.personType || '').toUpperCase();
+      const direction = String(req.body.direction || 'IN').toUpperCase();
+      const modality = String(req.body.modality || 'QR').toUpperCase();
+      const timestamp = new Date(req.body.timestamp);
+
+      if (!/^[A-Za-z0-9._:-]{8,128}$/.test(eventId)) {
+        throw new ApiError(400, 'eventId must be an 8-128 character terminal-generated identifier');
+      }
+      if (!deviceId || !personId || deviceId.length > 128 || personId.length > 128) {
+        throw new ApiError(400, 'A valid deviceId and personId are required');
+      }
+      if (!['LEARNER', 'STAFF'].includes(personType)) {
+        throw new ApiError(400, 'personType must be LEARNER or STAFF');
+      }
+      if (!['IN', 'OUT'].includes(direction)) throw new ApiError(400, 'direction must be IN or OUT');
+      if (!['QR', 'NFC', 'CARD', 'FACE', 'FINGERPRINT', 'MANUAL'].includes(modality)) {
+        throw new ApiError(400, 'Unsupported terminal modality');
+      }
+      if (Number.isNaN(timestamp.getTime())) throw new ApiError(400, 'timestamp must be a valid ISO 8601 value');
+      const ageMs = Date.now() - timestamp.getTime();
+      if (ageMs > 30 * 24 * 60 * 60 * 1000 || ageMs < -5 * 60 * 1000) {
+        throw new ApiError(400, 'timestamp must be within the last 30 days and no more than 5 minutes in the future');
+      }
+
+      const matchConfidence = req.body.matchConfidence === undefined
+        ? undefined
+        : Number(req.body.matchConfidence);
+      const livenessConfidence = req.body.livenessConfidence === undefined
+        ? undefined
+        : Number(req.body.livenessConfidence);
+      for (const [label, value] of [['matchConfidence', matchConfidence], ['livenessConfidence', livenessConfidence]] as const) {
+        if (value !== undefined && (!Number.isFinite(value) || value < 0 || value > 1)) {
+          throw new ApiError(400, `${label} must be between 0 and 1`);
+        }
+      }
+
+      const result = await biometricService.processAttendanceLog({
+        deviceId,
+        deviceToken: bearerToken,
+        eventId,
+        personId,
+        personType: personType as 'LEARNER' | 'STAFF',
+        timestamp,
+        direction: direction as 'IN' | 'OUT',
+        modality,
+        matchConfidence,
+        livenessStatus: req.body.livenessStatus,
+        livenessConfidence,
+        offlineCaptured: Boolean(req.body.offlineCaptured),
+      });
+
+      res.status(result.duplicate ? 200 : 201).json({
+        success: true,
+        message: result.duplicate ? 'Attendance event already accepted' : 'Attendance event accepted',
+        data: {
+          eventId,
+          logId: result.log.id,
+          processingStatus: result.log.status,
+          duplicate: result.duplicate,
+          outcome: result.outcome,
+        },
+      });
+    } catch (error: any) {
+      const status = error.statusCode || (error.message?.includes('Invalid device') ? 401 : 400);
+      res.status(status).json({ success: false, message: error.message });
+    }
+  }
+
   /**
    * POST /api/biometric/log  (public — bearer token, legacy body token supported)
    * Webhook called by hardware devices when a person scans.
@@ -343,7 +457,7 @@ export class BiometricController {
         return res.status(400).json({ success: false, message: 'timestamp must be a valid ISO 8601 value' });
       }
 
-      const log = await biometricService.processAttendanceLog({
+      const result = await biometricService.processAttendanceLog({
         deviceId,
         deviceToken,
         personId,
@@ -355,7 +469,12 @@ export class BiometricController {
       res.status(200).json({
         success: true,
         message: 'Attendance log processed',
-        data: { id: log.id, status: log.status },
+        data: {
+          id: result.log.id,
+          status: result.log.status,
+          duplicate: result.duplicate,
+          outcome: result.outcome,
+        },
       });
     } catch (error: any) {
       const status = error.message?.includes('Invalid') ? 401 : 400;

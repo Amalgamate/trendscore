@@ -3036,37 +3036,52 @@ model AuditLog {
 // device registry, encrypted credential enrollment, raw scan logs
 
 model BiometricDevice {
-  id                        String         @id @default(uuid())
+  id                        String                      @id @default(uuid())
   name                      String
-  deviceId                  String         @unique
-  type                      String         @default("TERMINAL")
+  deviceId                  String                      @unique
+  type                      String                      @default("TERMINAL")
   location                  String?
   ipAddress                 String?
-  status                    String         @default("OFFLINE")
+  status                    String                      @default("OFFLINE")
   lastSeen                  DateTime?
   // Legacy plaintext token. New/rotated tokens use tokenHash and leave this null.
-  token                     String?        @unique
-  tokenHash                 String?        @unique @map("token_hash")
+  token                     String?                     @unique
+  tokenHash                 String?                     @unique @map("token_hash")
   // Multi-tenancy — nullable initially, required after backfill
-  schoolId                  String?        @map("school_id")
+  schoolId                  String?                     @map("school_id")
   // Hardware metadata
-  serialNumber              String?        @map("serial_number")
-  firmwareVersion           String?        @map("firmware_version")
-  syncMode                  String         @default("PUSH") @map("sync_mode") // PUSH | PULL | BOTH
-  installationStatus        String         @default("REGISTERED") @map("installation_status") // REGISTERED | CONFIGURING | VERIFIED | FAILED | DISABLED
-  installationGuideVersion  String         @default("2026.08") @map("installation_guide_version")
-  installedById             String?        @map("installed_by_id")
-  installedAt               DateTime?      @map("installed_at")
-  lastConnectionTestAt      DateTime?      @map("last_connection_test_at")
-  lastConnectionTestStatus  String?        @map("last_connection_test_status") // CONNECTED | WAITING_FOR_SCAN | FAILED
-  lastConnectionTestMessage String?        @map("last_connection_test_message")
-  createdAt                 DateTime       @default(now())
-  updatedAt                 DateTime       @updatedAt
+  serialNumber              String?                     @map("serial_number")
+  firmwareVersion           String?                     @map("firmware_version")
+  syncMode                  String                      @default("PUSH") @map("sync_mode") // PUSH | PULL | BOTH
+  installationStatus        String                      @default("REGISTERED") @map("installation_status") // REGISTERED | CONFIGURING | VERIFIED | FAILED | DISABLED
+  installationGuideVersion  String                      @default("2026.08") @map("installation_guide_version")
+  installedById             String?                     @map("installed_by_id")
+  installedAt               DateTime?                   @map("installed_at")
+  lastConnectionTestAt      DateTime?                   @map("last_connection_test_at")
+  lastConnectionTestStatus  String?                     @map("last_connection_test_status") // CONNECTED | WAITING_FOR_SCAN | FAILED
+  lastConnectionTestMessage String?                     @map("last_connection_test_message")
+  createdAt                 DateTime                    @default(now())
+  updatedAt                 DateTime                    @updatedAt
   logs                      BiometricLog[]
-  school                    School?        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  activations               BiometricDeviceActivation[]
+  school                    School?                     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   @@index([schoolId])
   @@map("biometric_devices")
+}
+
+model BiometricDeviceActivation {
+  id          String          @id @default(uuid())
+  deviceId    String          @map("device_id")
+  codeHash    String          @unique @map("code_hash")
+  expiresAt   DateTime        @map("expires_at")
+  usedAt      DateTime?       @map("used_at")
+  createdById String?         @map("created_by_id")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  device      BiometricDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, expiresAt])
+  @@map("biometric_device_activations")
 }
 
 model BiometricCredential {
@@ -3098,22 +3113,31 @@ model BiometricCredential {
 }
 
 model BiometricLog {
-  id           String          @id @default(uuid())
-  deviceId     String
-  personId     String
-  personType   String
-  timestamp    DateTime
-  direction    String          @default("IN")
-  status       String          @default("PENDING") // PENDING | PROCESSED | FAILED
-  errorMessage String?
+  id                 String          @id @default(uuid())
+  deviceId           String
+  eventId            String?         @map("event_id")
+  personId           String
+  personType         String
+  timestamp          DateTime
+  direction          String          @default("IN")
+  modality           String          @default("UNKNOWN")
+  matchConfidence    Float?          @map("match_confidence")
+  livenessStatus     String?         @map("liveness_status")
+  livenessConfidence Float?          @map("liveness_confidence")
+  offlineCaptured    Boolean         @default(false) @map("offline_captured")
+  receivedAt         DateTime        @default(now()) @map("received_at")
+  resultPayload      Json?           @map("result_payload")
+  status             String          @default("PENDING") // PENDING | PROCESSED | FAILED
+  errorMessage       String?
   // Multi-tenancy
-  schoolId     String?         @map("school_id")
+  schoolId           String?         @map("school_id")
   // Retry support
-  retryCount   Int             @default(0) @map("retry_count")
-  retryAt      DateTime?       @map("retry_at")
-  device       BiometricDevice @relation(fields: [deviceId], references: [id])
-  school       School?         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  retryCount         Int             @default(0) @map("retry_count")
+  retryAt            DateTime?       @map("retry_at")
+  device             BiometricDevice @relation(fields: [deviceId], references: [id])
+  school             School?         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
+  @@unique([deviceId, eventId])
   @@index([deviceId])
   @@index([schoolId])
   @@index([status])

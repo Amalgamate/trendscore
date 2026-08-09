@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  Smartphone,
   Trash2,
   Wifi,
   WifiOff,
@@ -38,6 +39,7 @@ const DeviceList = () => {
   const [editingId, setEditingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [oneTimeToken, setOneTimeToken] = useState(null);
+  const [terminalActivation, setTerminalActivation] = useState(null);
 
   const fetchDevices = async () => {
     try {
@@ -127,6 +129,16 @@ const DeviceList = () => {
       setDevices((current) => current.map((item) => item.id === device.id ? result.device : item));
     } catch (err) {
       setError(err.message || 'Connection test failed.');
+    }
+  };
+
+  const createPhoneActivation = async (device) => {
+    try {
+      setError('');
+      const activation = await biometricAPI.createTerminalActivation(device.id);
+      setTerminalActivation(activation);
+    } catch (err) {
+      setError(err.message || 'Unable to create a phone activation code.');
     }
   };
 
@@ -235,6 +247,7 @@ const DeviceList = () => {
                   {device.status !== 'DISABLED' && (
                     <>
                       <ActionButton icon={RefreshCw} label="Test" onClick={() => testConnection(device)} />
+                      <ActionButton icon={Smartphone} label="Activate phone" onClick={() => createPhoneActivation(device)} />
                       <ActionButton icon={KeyRound} label="Rotate token" onClick={() => rotateToken(device)} />
                       <ActionButton icon={Trash2} label="Decommission" danger onClick={() => decommission(device)} />
                     </>
@@ -257,7 +270,7 @@ const DeviceList = () => {
               </div>
             </div>
             <div className="mt-6 rounded-2xl bg-slate-950 p-5 text-white">
-              <p className="text-[10px] uppercase tracking-widest text-slate-400">Device ID</p>
+              <p className="text-[10px] uppercase tracking-widest text-white/60">Device ID</p>
               <p className="mt-1 font-mono text-sm">{oneTimeToken.deviceId}</p>
               <p className="mt-5 text-[10px] uppercase tracking-widest text-slate-400">Device token</p>
               <code className="mt-2 block break-all text-sm text-emerald-300">{oneTimeToken.token}</code>
@@ -265,6 +278,32 @@ const DeviceList = () => {
             <div className="mt-6 flex justify-end gap-3">
               <button onClick={() => navigator.clipboard.writeText(oneTimeToken.token)} className="flex items-center gap-2 rounded-xl bg-slate-100 px-5 py-3 text-xs font-semibold text-slate-700"><Clipboard size={15} /> Copy token</button>
               <button onClick={() => setOneTimeToken(null)} className="flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-xs font-semibold text-white"><CheckCircle2 size={15} /> I saved it</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {terminalActivation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-xl rounded-3xl bg-white p-7 shadow-2xl">
+            <div className="flex items-start gap-4">
+              <div className="rounded-2xl bg-indigo-50 p-3 text-indigo-600"><Smartphone size={26} /></div>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Activate a phone terminal</h3>
+                <p className="mt-1 text-sm text-slate-500">Open the terminal page on the phone and enter this single-use code within ten minutes.</p>
+              </div>
+            </div>
+            <div className="mt-6 rounded-2xl bg-slate-950 p-5 text-white">
+              <p className="text-[10px] uppercase tracking-widest text-slate-400">Device ID</p>
+              <p className="mt-1 font-mono text-sm">{terminalActivation.deviceId}</p>
+              <p className="mt-5 text-[10px] uppercase tracking-widest text-white/60">Activation code</p>
+              <p className="mt-2 font-mono text-3xl tracking-[0.3em] text-indigo-300">{terminalActivation.activationCode}</p>
+              <p className="mt-4 break-all text-xs text-white/60">{`${window.location.origin}/#/terminal/biometric?deviceId=${encodeURIComponent(terminalActivation.deviceId)}`}</p>
+            </div>
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button onClick={() => navigator.clipboard.writeText(`${window.location.origin}/#/terminal/biometric?deviceId=${encodeURIComponent(terminalActivation.deviceId)}`)} className="flex items-center gap-2 rounded-xl bg-slate-100 px-5 py-3 text-xs font-semibold text-slate-700"><Clipboard size={15} /> Copy terminal link</button>
+              <button onClick={() => navigator.clipboard.writeText(terminalActivation.activationCode)} className="flex items-center gap-2 rounded-xl bg-slate-100 px-5 py-3 text-xs font-semibold text-slate-700"><Clipboard size={15} /> Copy code</button>
+              <button onClick={() => setTerminalActivation(null)} className="rounded-xl bg-indigo-600 px-5 py-3 text-xs font-semibold text-white">Done</button>
             </div>
           </div>
         </div>
