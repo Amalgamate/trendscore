@@ -18,7 +18,7 @@ export class UserNotificationController {
     const limit = Math.min(100, Math.max(1, Number(req.query.limit ?? 30)));
     const cursor = typeof req.query.cursor === 'string' && req.query.cursor ? req.query.cursor : undefined;
     const typeFilter = typeof req.query.type === 'string' && req.query.type
-      ? req.query.type.split(',').map((t) => t.trim()).filter(Boolean)
+      ? req.query.type.split(',').map((t: string) => t.trim()).filter(Boolean)
       : undefined;
     const unreadOnly = req.query.unread === 'true';
 
