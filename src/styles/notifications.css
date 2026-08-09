@@ -1,8 +1,14 @@
 /**
  * Notification System Styles
+ *
+ * Animation policy:
+ *  - No infinite animations when the user is idle — they waste GPU and battery.
+ *  - ripple-bell fires a single 1.8s pulse when first applied, then stops.
+ *  - animate-wiggle fires once (1 iteration) so it draws attention without looping.
+ *  - bell-buzz and bell-approval-ring already have finite iteration counts.
  */
 
-/* Ripple animation for the notification bell */
+/* ── Ripple pulse — fires ONCE on new notification (1 iteration only) ────── */
 .ripple-bell {
   position: relative;
   overflow: visible !important;
@@ -17,32 +23,25 @@
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background-color: var(--brand-purple, #520050);
+  background-color: var(--brand-purple, #030b82);
   opacity: 0.4;
   z-index: -1;
-  animation: ripple-pulse 2s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+  /* Single pulse — does not loop */
+  animation: ripple-pulse 1.8s cubic-bezier(0.24, 0, 0.38, 1) 1 forwards;
 }
 
 @keyframes ripple-pulse {
-  0% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 0.4;
-  }
-  70% {
-    transform: translate(-50%, -50%) scale(1.8);
-    opacity: 0;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(1.8);
-    opacity: 0;
-  }
+  0%   { transform: translate(-50%, -50%) scale(1);   opacity: 0.4; }
+  70%  { transform: translate(-50%, -50%) scale(1.8); opacity: 0;   }
+  100% { transform: translate(-50%, -50%) scale(1.8); opacity: 0;   }
 }
 
-/* Wiggle animation for the bell icon itself */
+/* ── Wiggle — 2 swings, then stops ──────────────────────────────────────── */
 .animate-wiggle {
-  animation: wiggle 1s ease-in-out infinite;
+  animation: wiggle 0.7s ease-in-out 2;
 }
 
+/* ── Bell buzz on new notification (already finite) ─────────────────────── */
 .bell-buzz {
   animation: bell-buzz-pop 0.7s ease-in-out 2;
 }
@@ -54,9 +53,9 @@
 
 @keyframes wiggle {
   0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(15deg); }
-  50% { transform: rotate(-15deg); }
-  75% { transform: rotate(10deg); }
+  25%  { transform: rotate(12deg); }
+  50%  { transform: rotate(-12deg); }
+  75%  { transform: rotate(7deg); }
 }
 
 @keyframes bell-buzz-pop {
@@ -68,29 +67,21 @@
 }
 
 @keyframes bell-approval-ring {
-  0% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.55); }
-  70% { box-shadow: 0 0 0 14px rgba(124, 58, 237, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0); }
+  0%   { box-shadow: 0 0 0 0  rgba(124, 58, 237, 0.55); }
+  70%  { box-shadow: 0 0 0 14px rgba(124, 58, 237, 0);   }
+  100% { box-shadow: 0 0 0 0  rgba(124, 58, 237, 0);     }
 }
 
-/* Custom scrollbar for notification dropdown */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
+/* ── Custom scrollbar ────────────────────────────────────────────────────── */
+.custom-scrollbar::-webkit-scrollbar       { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: #E2E8F0;
   border-radius: 10px;
 }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #CBD5E1; }
 
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #CBD5E1;
-}
-
+/* ── Mobile popover positioning ──────────────────────────────────────────── */
 @media (max-width: 640px) {
   .notification-popover-content {
     position: fixed !important;

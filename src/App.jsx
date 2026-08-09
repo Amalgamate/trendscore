@@ -134,9 +134,16 @@ function AppContent() {
   // PWA icons and manifest
   useEffect(() => {
     const iconUrl = brandingSettings.pwaLogoUrl || '/logo512.png';
+    // Only add a cache-buster for data URIs (school-uploaded branding).
+    // For static paths, use a stable version derived from the updatedAt
+    // timestamp so it only changes when branding actually changes — not
+    // on every render. This stops Date.now() from breaking manifest caching.
+    const stableVersion = brandingSettings.updatedAt
+      ? new Date(brandingSettings.updatedAt).getTime()
+      : 'v1';
     const versionedIcon = iconUrl.startsWith('data:')
       ? iconUrl
-      : `${iconUrl}${iconUrl.includes('?') ? '&' : '?'}v=${Date.now()}`;
+      : `${iconUrl}${iconUrl.includes('?') ? '&' : '?'}v=${stableVersion}`;
 
     let appleIcon = document.querySelector("link[rel='apple-touch-icon']");
     if (!appleIcon) {
@@ -146,14 +153,20 @@ function AppContent() {
     }
     appleIcon.href = versionedIcon;
 
+    // Point the manifest at the dynamic backend endpoint.
+    // Use a stable version string — NOT Date.now() — so the browser
+    // can cache the manifest and the PWA install icon resolves correctly.
+    const manifestVersion = brandingSettings.updatedAt
+      ? new Date(brandingSettings.updatedAt).getTime()
+      : 'v1';
     let manifestLink = document.querySelector("link[rel='manifest']");
     if (!manifestLink) {
       manifestLink = document.createElement('link');
       manifestLink.rel = 'manifest';
       document.head.appendChild(manifestLink);
     }
-    manifestLink.href = `/api/schools/public/manifest?v=${Date.now()}`;
-  }, [brandingSettings.pwaLogoUrl, brandingSettings.faviconUrl]);
+    manifestLink.href = `/api/schools/public/manifest?v=${manifestVersion}`;
+  }, [brandingSettings.pwaLogoUrl, brandingSettings.faviconUrl, brandingSettings.updatedAt]);
 
   // CSS variables
   useEffect(() => {

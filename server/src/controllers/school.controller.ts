@@ -261,11 +261,21 @@ export const getPublicManifest = async (_req: Request, res: Response) => {
       { src: '/screenshots/dashboard-mobile.png', sizes: '720x1280', type: 'image/png', form_factor: 'narrow', label: 'Secure school portal on mobile' },
     ],
     icons: [
-      { src: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
-      { src: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
-      { src: '/favicon-48x48.png', sizes: '48x48', type: 'image/png' },
-      { src: pwaIcon, sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: pwaIcon, sizes: '512x512', type: 'image/png', purpose: 'any' },
+      // Small favicons — always served from static files (fast, no DB dependency)
+      { src: '/favicon-16x16.png', sizes: '16x16',  type: 'image/png' },
+      { src: '/favicon-32x32.png', sizes: '32x32',  type: 'image/png' },
+      { src: '/favicon-48x48.png', sizes: '48x48',  type: 'image/png' },
+      // Mid-size brand icons from static assets
+      { src: '/logo44.png',  sizes: '44x44',   type: 'image/png', purpose: 'any' },
+      { src: '/logo71.png',  sizes: '71x71',   type: 'image/png', purpose: 'any' },
+      { src: '/logo150.png', sizes: '150x150', type: 'image/png', purpose: 'any' },
+      { src: '/logo192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/logo310.png', sizes: '310x310', type: 'image/png', purpose: 'any' },
+      // School-branded 512px icon (falls back to static if not customised)
+      { src: pwaIcon,        sizes: '512x512', type: 'image/png', purpose: 'any' },
+      // Maskable variant — required for Windows/Android adaptive icons
+      // Uses the static maskable asset; schools customise via the 512px upload
+      { src: '/logo-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
   });
 };
