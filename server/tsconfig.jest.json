@@ -10,5 +10,11 @@
     "src/**/*.test.ts",
     "src/__tests__/**/*.ts",
     "tests/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "coverage",
+    "tmp"
   ]
 }
