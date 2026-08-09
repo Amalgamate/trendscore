@@ -14,6 +14,17 @@ process.env.BIOMETRIC_ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef01234567
 
 const app = express();
 app.use(express.json());
+let biometricTestSchoolId: string | null = null;
+app.use((req, _res, next) => {
+  if (biometricTestSchoolId) {
+    req.school = {
+      id: biometricTestSchoolId,
+      name: 'Biometric E2E Academy',
+      institutionType: 'PRIMARY_CBC',
+    };
+  }
+  next();
+});
 app.use('/api/biometric', biometricRoutes);
 
 describe('Biometric module end-to-end', () => {
@@ -31,9 +42,10 @@ describe('Biometric module end-to-end', () => {
   let deviceDbId: string | null = null;
   let deviceToken: string | null = null;
   let credentialId: string | null = null;
+  let ownerSchoolId: string | null = null;
 
   beforeAll(async () => {
-    await prisma.school.upsert({
+    const school = await prisma.school.upsert({
       where: { name: 'Biometric E2E Academy' },
       update: {
         active: true,
@@ -45,6 +57,22 @@ describe('Biometric module end-to-end', () => {
       },
       create: {
         name: 'Biometric E2E Academy',
+        active: true,
+        status: 'ACTIVE',
+        institutionType: 'PRIMARY_CBC',
+        institutionTypeLocked: true,
+        requiresUserVerification: false,
+        curriculumType: 'CBC_AND_EXAM',
+      },
+    });
+    biometricTestSchoolId = school.id;
+    ownerSchoolId = school.id;
+
+    await prisma.school.upsert({
+      where: { name: 'Biometric E2E Other School' },
+      update: { active: true, status: 'ACTIVE', archived: false },
+      create: {
+        name: 'Biometric E2E Other School',
         active: true,
         status: 'ACTIVE',
         institutionType: 'PRIMARY_CBC',
@@ -106,6 +134,7 @@ describe('Biometric module end-to-end', () => {
     }
     await prisma.user.deleteMany({ where: { id: 'test-biometric-admin-id' } }).catch(() => null);
     await prisma.school.deleteMany({ where: { name: 'Biometric E2E Academy' } }).catch(() => null);
+    await prisma.school.deleteMany({ where: { name: 'Biometric E2E Other School' } }).catch(() => null);
     await prisma.$disconnect();
   });
 
@@ -124,10 +153,12 @@ describe('Biometric module end-to-end', () => {
 
     expect(createResponse.body.success).toBe(true);
     expect(createResponse.body.data).toHaveProperty('deviceId', biometricDeviceId);
-    expect(createResponse.body.data).toHaveProperty('token');
+    expect(createResponse.body.data).toHaveProperty('deviceToken', expect.any(String));
+    expect(createResponse.body.data).not.toHaveProperty('token');
+    expect(createResponse.body.data).not.toHaveProperty('tokenHash');
 
     deviceDbId = createResponse.body.data.id;
-    deviceToken = createResponse.body.data.token;
+    deviceToken = createResponse.body.data.deviceToken;
 
     const listResponse = await request(app)
       .get('/api/biometric/devices')
@@ -137,6 +168,36 @@ describe('Biometric module end-to-end', () => {
     expect(listResponse.body.success).toBe(true);
     expect(Array.isArray(listResponse.body.data)).toBe(true);
     expect(listResponse.body.data.some((d: any) => d.deviceId === biometricDeviceId)).toBe(true);
+    expect(listResponse.body.data[0]).not.toHaveProperty('token');
+    expect(listResponse.body.data[0]).not.toHaveProperty('tokenHash');
+  });
+
+  it('does not expose or mutate a terminal from another school context', async () => {
+    const otherSchool = await prisma.school.findUnique({ where: { name: 'Biometric E2E Other School' } });
+    expect(otherSchool).toBeTruthy();
+    expect(deviceDbId).toBeTruthy();
+
+    biometricTestSchoolId = otherSchool!.id;
+    try {
+      const listResponse = await request(app)
+        .get('/api/biometric/devices')
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(200);
+      expect(listResponse.body.data).toEqual([]);
+
+      await request(app)
+        .patch(`/api/biometric/devices/${deviceDbId}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ name: 'Cross-school mutation' })
+        .expect(404);
+
+      await request(app)
+        .post(`/api/biometric/devices/${deviceDbId}/rotate-token`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(404);
+    } finally {
+      biometricTestSchoolId = ownerSchoolId;
+    }
   });
 
   it('enrolls a biometric credential for a learner', async () => {
@@ -185,5 +246,61 @@ describe('Biometric module end-to-end', () => {
     expect(logsResponse.body.success).toBe(true);
     expect(Array.isArray(logsResponse.body.data)).toBe(true);
     expect(logsResponse.body.data.some((log: any) => log.personId === learnerAdmissionNumber)).toBe(true);
+  });
+
+  it('verifies the heartbeat, rotates the token once, and decommissions safely', async () => {
+    expect(deviceDbId).toBeTruthy();
+    expect(deviceToken).toBeTruthy();
+
+    const testResponse = await request(app)
+      .post(`/api/biometric/devices/${deviceDbId}/test`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .expect(200);
+    expect(testResponse.body.data.status).toBe('CONNECTED');
+    expect(testResponse.body.data.device.installationStatus).toBe('VERIFIED');
+
+    const rotateResponse = await request(app)
+      .post(`/api/biometric/devices/${deviceDbId}/rotate-token`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .expect(200);
+    const rotatedToken = rotateResponse.body.data.deviceToken;
+    expect(rotatedToken).toEqual(expect.any(String));
+    expect(rotatedToken).not.toBe(deviceToken);
+
+    await request(app)
+      .post('/api/biometric/log')
+      .send({
+        deviceId: biometricDeviceId,
+        deviceToken,
+        personId: learnerAdmissionNumber,
+        personType: 'LEARNER',
+        timestamp: new Date().toISOString(),
+        direction: 'IN',
+      })
+      .expect(401);
+
+    deviceToken = rotatedToken;
+    await request(app)
+      .post('/api/biometric/log')
+      .set('Authorization', `Bearer ${deviceToken}`)
+      .send({
+        deviceId: biometricDeviceId,
+        personId: learnerAdmissionNumber,
+        personType: 'LEARNER',
+        timestamp: new Date().toISOString(),
+        direction: 'IN',
+      })
+      .expect(200);
+
+    const decommissionResponse = await request(app)
+      .delete(`/api/biometric/devices/${deviceDbId}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .expect(200);
+    expect(decommissionResponse.body.data.status).toBe('DISABLED');
+
+    await request(app)
+      .post(`/api/biometric/devices/${deviceDbId}/rotate-token`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .expect(409);
   });
 });

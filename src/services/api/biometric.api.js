@@ -1,46 +1,59 @@
 import { fetchWithAuth } from './core';
 
+const responseData = (response) => response?.data ?? response;
+
 export const biometricAPI = {
   /**
    * Device Management
    */
-  getDevices: () => fetchWithAuth('/biometric/devices'),
+  getDevices: async () => responseData(await fetchWithAuth('/biometric/devices')) || [],
   
-  registerDevice: (data) => fetchWithAuth('/biometric/devices', {
+  registerDevice: async (data) => responseData(await fetchWithAuth('/biometric/devices', {
     method: 'POST',
     body: JSON.stringify(data)
-  }),
+  })),
   
-  updateDevice: (id, data) => fetchWithAuth(`/biometric/devices/${id}`, {
-    method: 'PUT',
+  updateDevice: async (id, data) => responseData(await fetchWithAuth(`/biometric/devices/${id}`, {
+    method: 'PATCH',
     body: JSON.stringify(data)
-  }),
+  })),
   
-  deleteDevice: (id) => fetchWithAuth(`/biometric/devices/${id}`, {
+  decommissionDevice: async (id) => responseData(await fetchWithAuth(`/biometric/devices/${id}`, {
     method: 'DELETE'
-  }),
+  })),
+
+  rotateDeviceToken: async (id) => responseData(await fetchWithAuth(`/biometric/devices/${id}/rotate-token`, {
+    method: 'POST'
+  })),
+
+  testDeviceConnection: async (id) => responseData(await fetchWithAuth(`/biometric/devices/${id}/test`, {
+    method: 'POST'
+  })),
+
+  getConfiguration: async () => responseData(await fetchWithAuth('/biometric/configuration')),
 
   /**
    * Enrollment
    */
-  getEnrollmentStatus: (type, id) => fetchWithAuth(`/biometric/enroll/${type}/${id}`),
+  getEnrollmentStatus: async (type, id) => responseData(await fetchWithAuth(`/biometric/enroll/${type}/${id}`)),
   
-  enrollFingerprint: (data) => fetchWithAuth('/biometric/enroll', {
+  enrollFingerprint: async (data) => responseData(await fetchWithAuth('/biometric/enroll', {
     method: 'POST',
     body: JSON.stringify(data)
-  }),
+  })),
 
   /**
    * Attendance Logs
    */
-  getLogs: (params = {}) => {
+  getLogs: async (params = {}) => {
     const queryString = new URLSearchParams(params).toString();
-    return fetchWithAuth(`/biometric/logs${queryString ? `?${queryString}` : ''}`);
+    const response = await fetchWithAuth(`/biometric/logs${queryString ? `?${queryString}` : ''}`);
+    return { logs: response?.data || [], total: response?.count || 0 };
   },
   
-  processLog: (logId) => fetchWithAuth(`/biometric/logs/${logId}/process`, {
+  processLog: async (logId) => responseData(await fetchWithAuth(`/biometric/logs/${logId}/process`, {
     method: 'POST'
-  }),
+  })),
 };
 
 export default biometricAPI;

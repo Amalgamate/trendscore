@@ -6,7 +6,6 @@ import {
   AlertCircle, 
   Info, 
   Copy, 
-  ExternalLink,
   ShieldCheck,
   RefreshCw
 } from 'lucide-react';
@@ -104,10 +103,10 @@ const EnrollmentModal = ({ person, type, onClose }) => {
                 <ShieldCheck className="absolute -right-4 -bottom-4 text-white/10" size={120} />
                 <h3 className="text-sm font-semibold uppercase tracking-widest mb-4 flex items-center gap-2">
                   <Info size={16} /> 
-                  Enrollment Protocol
+                  Enrollment status
                 </h3>
                 <p className="text-xs font-medium text-indigo-50 leading-relaxed mb-6">
-                  To complete enrollment, open the TrendScore Biometric Bridge on the local scanning workstation. Use the following dynamic token to authenticate the session:
+                  Template capture must be completed on an approved biometric terminal or certified vendor connector. The browser never receives or stores raw fingerprint templates. Use this person reference during capture:
                 </p>
                 
                 <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 flex items-center justify-between border border-white/20">
@@ -125,15 +124,15 @@ const EnrollmentModal = ({ person, type, onClose }) => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                  <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Bridge Status</p>
+                  <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Enrollment state</p>
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-slate-300" />
-                    <p className="text-[10px] font-medium text-slate-600 italic">Waiting for connection...</p>
+                    <p className="text-[10px] font-medium text-slate-600 italic">{enrollmentData?.isEnrolled ? 'Active credential found' : 'Awaiting certified capture'}</p>
                   </div>
                 </div>
                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                  <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Template Version</p>
-                  <p className="text-[10px] font-medium text-slate-600">ISO-19794-2:2011</p>
+                  <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Template protection</p>
+                  <p className="text-[10px] font-medium text-slate-600">AES-256-GCM at rest</p>
                 </div>
               </div>
             </div>
@@ -160,7 +159,7 @@ const EnrollmentModal = ({ person, type, onClose }) => {
         <div className="px-8 py-6 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
           <p className="text-[9px] font-medium text-slate-400 flex items-center gap-2">
             <ShieldCheck size={14} className="text-indigo-400" />
-            End-to-End Encrypted Enrollment Channel
+            Raw biometric templates never pass through this browser
           </p>
           <div className="flex items-center gap-4">
             <button 
@@ -169,13 +168,8 @@ const EnrollmentModal = ({ person, type, onClose }) => {
             >
               Cancel
             </button>
-            <button 
-              disabled={status !== 'READY'}
-              onClick={() => window.open('/biometric-bridge-download', '_blank')}
-              className="flex items-center gap-2 px-6 py-2.5 bg-white border border-slate-200 text-slate-900 rounded-xl text-[10px] font-semibold uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm disabled:opacity-50"
-            >
-              <ExternalLink size={14} />
-              Open Bridge
+            <button onClick={onClose} className="flex items-center gap-2 px-6 py-2.5 bg-white border border-slate-200 text-slate-900 rounded-xl text-[10px] font-semibold uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm">
+              Done
             </button>
           </div>
         </div>

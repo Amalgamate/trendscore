@@ -108,6 +108,18 @@ const REQUIREMENTS: EnvRequirement[] = [
         required: true,
         description: 'Key for sensitive data encryption (32 chars hex)',
         validation: (val) => val.length >= 32 || 'ENCRYPTION_KEY must be at least 32 characters long'
+    },
+    {
+        key: 'BIOMETRIC_ENCRYPTION_KEY',
+        required: process.env.NODE_ENV === 'production',
+        description: 'Dedicated AES-256 key for biometric templates (64 hex characters)',
+        validation: (val) => /^[0-9a-fA-F]{64}$/.test(val) || 'BIOMETRIC_ENCRYPTION_KEY must be exactly 64 hexadecimal characters'
+    },
+    {
+        key: 'BIOMETRIC_KEY_VERSION',
+        required: false,
+        description: 'Positive integer identifying the active biometric encryption key version',
+        validation: (val) => /^[1-9]\d*$/.test(val) || 'BIOMETRIC_KEY_VERSION must be a positive integer'
     }
 ];
 

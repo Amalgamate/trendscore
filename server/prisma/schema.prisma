@@ -221,6 +221,9 @@ model School {
   etimsConfig                            Json?
   nemisConfig                            Json?
 
+  biometricDevices           BiometricDevice[]
+  biometricCredentials       BiometricCredential[]
+  biometricLogs              BiometricLog[]
   tertiaryDepartments        TertiaryDepartment[]
   tertiaryPrograms           TertiaryProgram[]
   tertiaryUnits              TertiaryUnit[]
@@ -374,13 +377,13 @@ model ClassSchedule {
 // dashboards. Drafts and generated schedules live in versioned TimetableEntry
 // records until an approved version is published.
 model BellSchedule {
-  id          String       @id @default(uuid())
-  name        String       @unique
+  id          String          @id @default(uuid())
+  name        String          @unique
   description String?
-  isDefault   Boolean      @default(false)
-  active      Boolean      @default(true)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  isDefault   Boolean         @default(false)
+  active      Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
   periods     BellPeriod[]
   plans       TimetablePlan[]
 
@@ -389,18 +392,18 @@ model BellSchedule {
 }
 
 model BellPeriod {
-  id             String               @id @default(uuid())
+  id             String              @id @default(uuid())
   bellScheduleId String
   name           String
   sequence       Int
   startTime      String
   endTime        String
-  type           TimetablePeriodType  @default(LESSON)
-  instructional  Boolean              @default(true)
-  active         Boolean              @default(true)
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  bellSchedule   BellSchedule         @relation(fields: [bellScheduleId], references: [id], onDelete: Cascade)
+  type           TimetablePeriodType @default(LESSON)
+  instructional  Boolean             @default(true)
+  active         Boolean             @default(true)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  bellSchedule   BellSchedule        @relation(fields: [bellScheduleId], references: [id], onDelete: Cascade)
   entries        TimetableEntry[]
 
   @@unique([bellScheduleId, sequence])
@@ -410,7 +413,7 @@ model BellPeriod {
 }
 
 model TimetablePlan {
-  id             String             @id @default(uuid())
+  id             String              @id @default(uuid())
   name           String
   academicYear   Int
   term           Term
@@ -418,9 +421,9 @@ model TimetablePlan {
   status         TimetablePlanStatus @default(DRAFT)
   description    String?
   createdById    String?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  bellSchedule   BellSchedule       @relation(fields: [bellScheduleId], references: [id])
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  bellSchedule   BellSchedule        @relation(fields: [bellScheduleId], references: [id])
   versions       TimetableVersion[]
 
   @@unique([name, academicYear, term])
@@ -504,23 +507,23 @@ model RoomAvailability {
 }
 
 model InstructionalAllocation {
-  id                   String       @id @default(uuid())
+  id                   String             @id @default(uuid())
   academicYear         Int
   grade                String
   learningAreaId       String
-  minimumWeeklyPeriods Int          @default(0)
+  minimumWeeklyPeriods Int                @default(0)
   targetWeeklyPeriods  Int
   maximumWeeklyPeriods Int?
   preferredDuration    Int?
-  requiresDouble       Boolean      @default(false)
+  requiresDouble       Boolean            @default(false)
   requiredRoomType     TimetableRoomType?
   sourceReference      String?
   effectiveFrom        DateTime?
   effectiveTo          DateTime?
-  active               Boolean      @default(true)
-  createdAt            DateTime     @default(now())
-  updatedAt            DateTime     @updatedAt
-  learningArea         LearningArea @relation(fields: [learningAreaId], references: [id], onDelete: Cascade)
+  active               Boolean            @default(true)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  learningArea         LearningArea       @relation(fields: [learningAreaId], references: [id], onDelete: Cascade)
 
   @@unique([academicYear, grade, learningAreaId])
   @@index([grade, academicYear, active])
@@ -528,7 +531,7 @@ model InstructionalAllocation {
 }
 
 model TimetableEntry {
-  id             String               @id @default(uuid())
+  id             String              @id @default(uuid())
   versionId      String
   classId        String
   learningAreaId String
@@ -538,17 +541,17 @@ model TimetableEntry {
   day            String
   startTime      String
   endTime        String
-  lessonType     TimetableLessonType  @default(NORMAL)
-  locked         Boolean              @default(false)
+  lessonType     TimetableLessonType @default(NORMAL)
+  locked         Boolean             @default(false)
   notes          String?
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  version        TimetableVersion     @relation(fields: [versionId], references: [id], onDelete: Cascade)
-  class          Class                @relation(fields: [classId], references: [id], onDelete: Cascade)
-  learningArea   LearningArea         @relation(fields: [learningAreaId], references: [id])
-  teacher        User?                @relation(fields: [teacherId], references: [id])
-  room           TimetableRoom?       @relation(fields: [roomId], references: [id])
-  bellPeriod     BellPeriod?          @relation(fields: [bellPeriodId], references: [id])
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  version        TimetableVersion    @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  class          Class               @relation(fields: [classId], references: [id], onDelete: Cascade)
+  learningArea   LearningArea        @relation(fields: [learningAreaId], references: [id])
+  teacher        User?               @relation(fields: [teacherId], references: [id])
+  room           TimetableRoom?      @relation(fields: [roomId], references: [id])
+  bellPeriod     BellPeriod?         @relation(fields: [bellPeriodId], references: [id])
 
   @@unique([versionId, classId, day, startTime, endTime])
   @@index([versionId, day, startTime])
@@ -1281,7 +1284,7 @@ model SummativeResultHistory {
 }
 
 model CoreCompetency {
-  id                      String               @id @default(uuid())
+  id                      String                @id @default(uuid())
   learnerId               String
   term                    Term
   academicYear            Int
@@ -1302,13 +1305,13 @@ model CoreCompetency {
   selfEfficacy            DetailedRubricRating?
   selfEfficacyComment     String?
   assessedBy              String
-  createdAt               DateTime             @default(now())
-  updatedAt               DateTime             @updatedAt
-  archived                Boolean              @default(false)
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+  archived                Boolean               @default(false)
   archivedAt              DateTime?
   archivedBy              String?
-  assessor                User                 @relation("AssessorCoreCompetencies", fields: [assessedBy], references: [id])
-  learner                 Learner              @relation("LearnerCoreCompetencies", fields: [learnerId], references: [id], onDelete: Cascade)
+  assessor                User                  @relation("AssessorCoreCompetencies", fields: [assessedBy], references: [id])
+  learner                 Learner               @relation("LearnerCoreCompetencies", fields: [learnerId], references: [id], onDelete: Cascade)
 
   @@unique([learnerId, term, academicYear])
   @@index([learnerId])
@@ -1887,27 +1890,27 @@ model AssessmentSmsAudit {
 // Covers all SMS types (absent learner, fee, pledge, library, etc.)
 // assessment_sms_audits remains for backward compatibility.
 model SmsOutboundAudit {
-  id              String    @id @default(uuid())
-  schoolId        String?
+  id             String    @id @default(uuid())
+  schoolId       String?
   // What triggered this SMS
-  triggerType     String    // ABSENT_LEARNER | FEE_INVOICE | PLEDGE_REMINDER | LIBRARY_OVERDUE | etc.
-  recipientPhone  String
-  recipientName   String?
-  learnerId       String?
-  userId          String?   // staff recipient if applicable
-  templateKey     String?
-  messageBody     String
+  triggerType    String // ABSENT_LEARNER | FEE_INVOICE | PLEDGE_REMINDER | LIBRARY_OVERDUE | etc.
+  recipientPhone String
+  recipientName  String?
+  learnerId      String?
+  userId         String? // staff recipient if applicable
+  templateKey    String?
+  messageBody    String
   // Provider tracking
-  provider        String?   // africastalking | mobilesasa
-  providerMsgId   String?
+  provider       String? // africastalking | mobilesasa
+  providerMsgId  String?
   // Lifecycle
-  status          String    @default("PENDING") // PENDING | SENT | FAILED | RETRY | PERMANENTLY_FAILED
-  retryCount      Int       @default(0)
-  retryAt         DateTime? // scheduled time for next retry attempt
-  failureReason   String?
-  sentAt          DateTime?
-  sentByUserId    String?
-  createdAt       DateTime  @default(now())
+  status         String    @default("PENDING") // PENDING | SENT | FAILED | RETRY | PERMANENTLY_FAILED
+  retryCount     Int       @default(0)
+  retryAt        DateTime? // scheduled time for next retry attempt
+  failureReason  String?
+  sentAt         DateTime?
+  sentByUserId   String?
+  createdAt      DateTime  @default(now())
 
   @@index([schoolId, triggerType, createdAt])
   @@index([status, retryCount])
@@ -1920,22 +1923,22 @@ model SmsOutboundAudit {
 // Used for absence acknowledgement and two-way communication.
 
 model ParentSmsReply {
-  id                     String    @id @default(uuid())
-  schoolId               String?
-  fromPhone              String
-  messageBody            String
-  receivedAt             DateTime  @default(now())
-  provider               String?   // africastalking | mobilesasa
-  providerMsgId          String?
+  id                   String    @id @default(uuid())
+  schoolId             String?
+  fromPhone            String
+  messageBody          String
+  receivedAt           DateTime  @default(now())
+  provider             String? // africastalking | mobilesasa
+  providerMsgId        String?
   // Intent parsed from message body
-  intent                 String?   // ACKNOWLEDGE_ABSENCE | REQUEST_CALL | OTHER
+  intent               String? // ACKNOWLEDGE_ABSENCE | REQUEST_CALL | OTHER
   // Resolved context
-  linkedLearnerId        String?
-  linkedNotificationId   String?
+  linkedLearnerId      String?
+  linkedNotificationId String?
   // Processing state
-  processed              Boolean   @default(false)
-  processedAt            DateTime?
-  createdAt              DateTime  @default(now())
+  processed            Boolean   @default(false)
+  processedAt          DateTime?
+  createdAt            DateTime  @default(now())
 
   @@index([fromPhone, receivedAt])
   @@index([schoolId, processed])
@@ -1947,24 +1950,24 @@ model ParentSmsReply {
 // Never replaces primary domain tables — it mirrors presence facts into one place.
 
 model PresenceEvent {
-  id             String    @id @default(uuid())
-  schoolId       String    @map("school_id")
-  personId       String    @map("person_id")
-  personType     String    @map("person_type")  // LEARNER | STAFF | VISITOR
-  eventType      String    @map("event_type")   // CLASS_ATTENDANCE | GATE_ENTRY | CLOCK_IN | etc.
-  context        String                         // CLASS | GATE | BUS | DORMITORY | etc.
-  timestamp      DateTime                       // When the event actually occurred
-  recordedAt     DateTime  @default(now()) @map("recorded_at")
-  recordedBy     String?   @map("recorded_by")  // userId if manually recorded
-  deviceId       String?   @map("device_id")    // biometric_devices.id if automated
+  id             String   @id @default(uuid())
+  schoolId       String   @map("school_id")
+  personId       String   @map("person_id")
+  personType     String   @map("person_type") // LEARNER | STAFF | VISITOR
+  eventType      String   @map("event_type") // CLASS_ATTENDANCE | GATE_ENTRY | CLOCK_IN | etc.
+  context        String // CLASS | GATE | BUS | DORMITORY | etc.
+  timestamp      DateTime // When the event actually occurred
+  recordedAt     DateTime @default(now()) @map("recorded_at")
+  recordedBy     String?  @map("recorded_by") // userId if manually recorded
+  deviceId       String?  @map("device_id") // biometric_devices.id if automated
   location       String?
-  direction      String?                        // IN | OUT
-  status         String    @default("CONFIRMED") // CONFIRMED | PENDING | DISPUTED
-  sourceModule   String    @map("source_module") // ATTENDANCE | HR_STAFF | BIOMETRIC | etc.
-  sourceRecordId String?   @map("source_record_id") // originating record
+  direction      String? // IN | OUT
+  status         String   @default("CONFIRMED") // CONFIRMED | PENDING | DISPUTED
+  sourceModule   String   @map("source_module") // ATTENDANCE | HR_STAFF | BIOMETRIC | etc.
+  sourceRecordId String?  @map("source_record_id") // originating record
   metadata       Json?
-  version        Int       @default(1)
-  createdAt      DateTime  @default(now()) @map("created_at")
+  version        Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at")
 
   @@unique([schoolId, personId, eventType, timestamp])
   @@index([personId, timestamp])
@@ -1976,13 +1979,13 @@ model PresenceEvent {
 }
 
 model PresenceRule {
-  id         String                   @id @default(uuid())
+  id         String                  @id @default(uuid())
   schoolId   String
-  ruleCode   String                   // e.g. ABSENT_NO_EXCUSE | BUS_NO_ARRIVAL
-  enabled    Boolean                  @default(true)
-  config     Json                     @default("{}")
-  createdAt  DateTime                 @default(now())
-  updatedAt  DateTime                 @updatedAt
+  ruleCode   String // e.g. ABSENT_NO_EXCUSE | BUS_NO_ARRIVAL
+  enabled    Boolean                 @default(true)
+  config     Json                    @default("{}")
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
   violations PresenceRuleViolation[]
 
   @@unique([schoolId, ruleCode])
@@ -1990,18 +1993,18 @@ model PresenceRule {
 }
 
 model PresenceRuleViolation {
-  id          String        @id @default(uuid())
-  schoolId    String                  @map("school_id")
-  ruleId      String
-  personId    String
-  personType  String
-  detectedAt  DateTime      @default(now())
-  resolvedAt  DateTime?
-  resolution  String?
-  notified    Boolean       @default(false)
-  metadata    Json?
-  createdAt   DateTime      @default(now())
-  rule        PresenceRule  @relation(fields: [ruleId], references: [id])
+  id         String       @id @default(uuid())
+  schoolId   String       @map("school_id")
+  ruleId     String
+  personId   String
+  personType String
+  detectedAt DateTime     @default(now())
+  resolvedAt DateTime?
+  resolution String?
+  notified   Boolean      @default(false)
+  metadata   Json?
+  createdAt  DateTime     @default(now())
+  rule       PresenceRule @relation(fields: [ruleId], references: [id])
 
   @@index([personId, detectedAt])
   @@index([schoolId, resolvedAt])
@@ -2009,16 +2012,16 @@ model PresenceRuleViolation {
 }
 
 model PresenceEventFailure {
-  id             String    @id @default(uuid())
+  id             String   @id @default(uuid())
   schoolId       String?
   sourceModule   String
   sourceRecordId String?
-  attemptedAt    DateTime  @default(now())
+  attemptedAt    DateTime @default(now())
   errorMessage   String?
   payload        Json?
-  retryCount     Int       @default(0)
-  resolved       Boolean   @default(false)
-  createdAt      DateTime  @default(now())
+  retryCount     Int      @default(0)
+  resolved       Boolean  @default(false)
+  createdAt      DateTime @default(now())
 
   @@index([resolved, retryCount])
   @@map("presence_event_failures")
@@ -2029,21 +2032,21 @@ model PresenceEventFailure {
 // All boarding events emit presence events — this module owns the source data.
 
 model Dormitory {
-  id          String                  @id @default(uuid())
-  schoolId    String
-  name        String
-  gender      String                  // BOYS | GIRLS | MIXED
-  capacity    Int                     @default(0)
-  block       String?
-  notes       String?
-  active      Boolean                 @default(true)
-  archived    Boolean                 @default(false)
-  createdAt   DateTime                @default(now()) @map("created_at")
-  updatedAt   DateTime                @updatedAt @map("updated_at")
-  beds        DormitoryBed[]
-  assignments DormitoryAssignment[]
+  id           String                  @id @default(uuid())
+  schoolId     String
+  name         String
+  gender       String // BOYS | GIRLS | MIXED
+  capacity     Int                     @default(0)
+  block        String?
+  notes        String?
+  active       Boolean                 @default(true)
+  archived     Boolean                 @default(false)
+  createdAt    DateTime                @default(now()) @map("created_at")
+  updatedAt    DateTime                @updatedAt @map("updated_at")
+  beds         DormitoryBed[]
+  assignments  DormitoryAssignment[]
   houseMasters HouseMasterAssignment[]
-  rollCalls   DormRollCall[]
+  rollCalls    DormRollCall[]
 
   @@unique([schoolId, name])
   @@index([schoolId, active])
@@ -2051,14 +2054,14 @@ model Dormitory {
 }
 
 model DormitoryBed {
-  id            String               @id @default(uuid())
-  dormitoryId   String               @map("dormitory_id")
-  bedNumber     String               @map("bed_number")
-  status        String               @default("VACANT") // VACANT | OCCUPIED | MAINTENANCE
-  notes         String?
-  createdAt     DateTime             @default(now()) @map("created_at")
-  dormitory     Dormitory            @relation(fields: [dormitoryId], references: [id], onDelete: Cascade)
-  assignments   DormitoryAssignment[]
+  id          String                @id @default(uuid())
+  dormitoryId String                @map("dormitory_id")
+  bedNumber   String                @map("bed_number")
+  status      String                @default("VACANT") // VACANT | OCCUPIED | MAINTENANCE
+  notes       String?
+  createdAt   DateTime              @default(now()) @map("created_at")
+  dormitory   Dormitory             @relation(fields: [dormitoryId], references: [id], onDelete: Cascade)
+  assignments DormitoryAssignment[]
 
   @@unique([dormitoryId, bedNumber])
   @@index([dormitoryId, status])
@@ -2066,18 +2069,18 @@ model DormitoryBed {
 }
 
 model DormitoryAssignment {
-  id            String       @id @default(uuid())
-  dormitoryId   String       @map("dormitory_id")
-  bedId         String?      @map("bed_id")
-  learnerId     String       @map("learner_id")
-  academicYear  Int          @map("academic_year")
-  fromDate      DateTime     @db.Date @map("from_date")
-  toDate        DateTime?    @db.Date @map("to_date")
-  active        Boolean      @default(true)
-  archived      Boolean      @default(false)
-  createdAt     DateTime     @default(now()) @map("created_at")
-  dormitory     Dormitory    @relation(fields: [dormitoryId], references: [id])
-  bed           DormitoryBed? @relation(fields: [bedId], references: [id])
+  id           String        @id @default(uuid())
+  dormitoryId  String        @map("dormitory_id")
+  bedId        String?       @map("bed_id")
+  learnerId    String        @map("learner_id")
+  academicYear Int           @map("academic_year")
+  fromDate     DateTime      @map("from_date") @db.Date
+  toDate       DateTime?     @map("to_date") @db.Date
+  active       Boolean       @default(true)
+  archived     Boolean       @default(false)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  dormitory    Dormitory     @relation(fields: [dormitoryId], references: [id])
+  bed          DormitoryBed? @relation(fields: [bedId], references: [id])
 
   @@index([learnerId, active])
   @@index([dormitoryId, active])
@@ -2085,13 +2088,13 @@ model DormitoryAssignment {
 }
 
 model HouseMasterAssignment {
-  id           String    @id @default(uuid())
-  dormitoryId  String    @map("dormitory_id")
-  userId       String    @map("user_id")
-  role         String    @default("DUTY") // PRIMARY | DUTY | MATRON
-  active       Boolean   @default(true)
-  createdAt    DateTime  @default(now()) @map("created_at")
-  dormitory    Dormitory @relation(fields: [dormitoryId], references: [id])
+  id          String    @id @default(uuid())
+  dormitoryId String    @map("dormitory_id")
+  userId      String    @map("user_id")
+  role        String    @default("DUTY") // PRIMARY | DUTY | MATRON
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  dormitory   Dormitory @relation(fields: [dormitoryId], references: [id])
 
   @@index([dormitoryId, active])
   @@index([userId, active])
@@ -2099,25 +2102,25 @@ model HouseMasterAssignment {
 }
 
 model ExeatRequest {
-  id               String    @id @default(uuid())
-  schoolId         String    @map("school_id")
-  learnerId        String    @map("learner_id")
-  requestedBy      String    @map("requested_by") // userId of parent or house master
-  exeatType        String    @default("WEEKEND") // WEEKEND | MEDICAL | FAMILY | OTHER
-  departureDate    DateTime  @db.Date @map("departure_date")
-  returnDate       DateTime  @db.Date @map("return_date")
-  reason           String
-  parentPhone      String?   @map("parent_phone")
-  status           String    @default("PENDING") // PENDING | APPROVED | DENIED | CANCELLED
-  approvedBy       String?   @map("approved_by")
-  approvedAt       DateTime? @map("approved_at")
-  denialReason     String?   @map("denial_reason")
-  departedAt       DateTime? @map("departed_at")
-  returnedAt       DateTime? @map("returned_at")
-  overdueNotified  Boolean   @default(false) @map("overdue_notified")
-  archived         Boolean   @default(false)
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+  id              String    @id @default(uuid())
+  schoolId        String    @map("school_id")
+  learnerId       String    @map("learner_id")
+  requestedBy     String    @map("requested_by") // userId of parent or house master
+  exeatType       String    @default("WEEKEND") // WEEKEND | MEDICAL | FAMILY | OTHER
+  departureDate   DateTime  @map("departure_date") @db.Date
+  returnDate      DateTime  @map("return_date") @db.Date
+  reason          String
+  parentPhone     String?   @map("parent_phone")
+  status          String    @default("PENDING") // PENDING | APPROVED | DENIED | CANCELLED
+  approvedBy      String?   @map("approved_by")
+  approvedAt      DateTime? @map("approved_at")
+  denialReason    String?   @map("denial_reason")
+  departedAt      DateTime? @map("departed_at")
+  returnedAt      DateTime? @map("returned_at")
+  overdueNotified Boolean   @default(false) @map("overdue_notified")
+  archived        Boolean   @default(false)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
   @@index([learnerId, departureDate])
   @@index([schoolId, status, returnDate])
@@ -2125,18 +2128,18 @@ model ExeatRequest {
 }
 
 model DormRollCall {
-  id           String               @id @default(uuid())
-  schoolId     String               @map("school_id")
-  dormitoryId  String               @map("dormitory_id")
-  date         DateTime             @db.Date
-  session      String               // MORNING | NIGHT
-  conductedBy  String               @map("conducted_by") // userId
-  startedAt    DateTime             @default(now()) @map("started_at")
-  completedAt  DateTime?            @map("completed_at")
-  status       String               @default("IN_PROGRESS") // IN_PROGRESS | COMPLETED
-  createdAt    DateTime             @default(now()) @map("created_at")
-  dormitory    Dormitory            @relation(fields: [dormitoryId], references: [id])
-  entries      DormRollCallEntry[]
+  id          String              @id @default(uuid())
+  schoolId    String              @map("school_id")
+  dormitoryId String              @map("dormitory_id")
+  date        DateTime            @db.Date
+  session     String // MORNING | NIGHT
+  conductedBy String              @map("conducted_by") // userId
+  startedAt   DateTime            @default(now()) @map("started_at")
+  completedAt DateTime?           @map("completed_at")
+  status      String              @default("IN_PROGRESS") // IN_PROGRESS | COMPLETED
+  createdAt   DateTime            @default(now()) @map("created_at")
+  dormitory   Dormitory           @relation(fields: [dormitoryId], references: [id])
+  entries     DormRollCallEntry[]
 
   @@unique([dormitoryId, date, session])
   @@index([schoolId, date])
@@ -2144,27 +2147,27 @@ model DormRollCall {
 }
 
 model DormRollCallEntry {
-  id          String       @id @default(uuid())
-  rollCallId  String       @map("roll_call_id")
-  learnerId   String       @map("learner_id")
-  status      String       @default("PRESENT") // PRESENT | ABSENT | EXCUSED | EXEAT
-  remarks     String?
-  createdAt   DateTime     @default(now()) @map("created_at")
-  rollCall    DormRollCall @relation(fields: [rollCallId], references: [id], onDelete: Cascade)
+  id         String       @id @default(uuid())
+  rollCallId String       @map("roll_call_id")
+  learnerId  String       @map("learner_id")
+  status     String       @default("PRESENT") // PRESENT | ABSENT | EXCUSED | EXEAT
+  remarks    String?
+  createdAt  DateTime     @default(now()) @map("created_at")
+  rollCall   DormRollCall @relation(fields: [rollCallId], references: [id], onDelete: Cascade)
 
   @@unique([rollCallId, learnerId])
   @@map("dorm_roll_call_entries")
 }
 
 model DiningAttendance {
-  id          String    @id @default(uuid())
-  schoolId    String    @map("school_id")
-  learnerId   String    @map("learner_id")
-  date        DateTime  @db.Date
-  session     String    // BREAKFAST | LUNCH | DINNER
-  present     Boolean   @default(true)
-  recordedBy  String    @map("recorded_by")
-  createdAt   DateTime  @default(now()) @map("created_at")
+  id         String   @id @default(uuid())
+  schoolId   String   @map("school_id")
+  learnerId  String   @map("learner_id")
+  date       DateTime @db.Date
+  session    String // BREAKFAST | LUNCH | DINNER
+  present    Boolean  @default(true)
+  recordedBy String   @map("recorded_by")
+  createdAt  DateTime @default(now()) @map("created_at")
 
   @@unique([learnerId, date, session])
   @@index([schoolId, date, session])
@@ -2172,15 +2175,15 @@ model DiningAttendance {
 }
 
 model PrepAttendance {
-  id          String    @id @default(uuid())
-  schoolId    String    @map("school_id")
-  learnerId   String    @map("learner_id")
-  date        DateTime  @db.Date
-  session     String    // AFTERNOON | EVENING
-  present     Boolean   @default(true)
-  remarks     String?
-  recordedBy  String    @map("recorded_by")
-  createdAt   DateTime  @default(now()) @map("created_at")
+  id         String   @id @default(uuid())
+  schoolId   String   @map("school_id")
+  learnerId  String   @map("learner_id")
+  date       DateTime @db.Date
+  session    String // AFTERNOON | EVENING
+  present    Boolean  @default(true)
+  remarks    String?
+  recordedBy String   @map("recorded_by")
+  createdAt  DateTime @default(now()) @map("created_at")
 
   @@unique([learnerId, date, session])
   @@index([schoolId, date])
@@ -2558,11 +2561,11 @@ model StaffDeduction {
 }
 
 model StaffAttendanceLog {
-  id            String                        @id @default(uuid())
+  id            String                      @id @default(uuid())
   userId        String
   schoolId      String?
-  date          DateTime                      @db.Date
-  status        StaffAttendanceStatus         @default(PRESENT)
+  date          DateTime                    @db.Date
+  status        StaffAttendanceStatus       @default(PRESENT)
   clockInAt     DateTime?
   clockOutAt    DateTime?
   source        String?
@@ -2570,10 +2573,10 @@ model StaffAttendanceLog {
   markedBy      String?
   markingReason String?
   correctedAt   DateTime?
-  createdAt     DateTime                      @default(now())
-  updatedAt     DateTime                      @updatedAt
-  school        School?                       @relation(fields: [schoolId], references: [id], onDelete: SetNull)
-  user          User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime                    @default(now())
+  updatedAt     DateTime                    @updatedAt
+  school        School?                     @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  user          User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
   corrections   StaffAttendanceCorrection[]
 
   @@unique([userId, date])
@@ -2584,10 +2587,10 @@ model StaffAttendanceLog {
 }
 
 model StaffAttendanceCorrection {
-  id                 String                @id @default(uuid())
+  id                 String                 @id @default(uuid())
   attendanceId       String
   userId             String
-  date               DateTime              @db.Date
+  date               DateTime               @db.Date
   previousStatus     StaffAttendanceStatus?
   newStatus          StaffAttendanceStatus
   previousClockInAt  DateTime?
@@ -2596,8 +2599,8 @@ model StaffAttendanceCorrection {
   newClockOutAt      DateTime?
   reason             String
   correctedBy        String
-  createdAt          DateTime              @default(now())
-  attendance         StaffAttendanceLog    @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  createdAt          DateTime               @default(now())
+  attendance         StaffAttendanceLog     @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
 
   @@index([attendanceId, createdAt])
   @@index([userId, date])
@@ -3033,51 +3036,64 @@ model AuditLog {
 // device registry, encrypted credential enrollment, raw scan logs
 
 model BiometricDevice {
-  id             String         @id @default(uuid())
-  name           String
-  deviceId       String         @unique
-  type           String         @default("TERMINAL")
-  location       String?
-  ipAddress      String?
-  status         String         @default("OFFLINE")
-  lastSeen       DateTime?
-  token          String         @unique @default(uuid())
+  id                        String         @id @default(uuid())
+  name                      String
+  deviceId                  String         @unique
+  type                      String         @default("TERMINAL")
+  location                  String?
+  ipAddress                 String?
+  status                    String         @default("OFFLINE")
+  lastSeen                  DateTime?
+  // Legacy plaintext token. New/rotated tokens use tokenHash and leave this null.
+  token                     String?        @unique
+  tokenHash                 String?        @unique @map("token_hash")
   // Multi-tenancy — nullable initially, required after backfill
-  schoolId       String?        @map("school_id")
+  schoolId                  String?        @map("school_id")
   // Hardware metadata
-  serialNumber   String?        @map("serial_number")
-  firmwareVersion String?       @map("firmware_version")
-  syncMode       String         @default("PUSH") @map("sync_mode") // PUSH | PULL | BOTH
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  logs           BiometricLog[]
+  serialNumber              String?        @map("serial_number")
+  firmwareVersion           String?        @map("firmware_version")
+  syncMode                  String         @default("PUSH") @map("sync_mode") // PUSH | PULL | BOTH
+  installationStatus        String         @default("REGISTERED") @map("installation_status") // REGISTERED | CONFIGURING | VERIFIED | FAILED | DISABLED
+  installationGuideVersion  String         @default("2026.08") @map("installation_guide_version")
+  installedById             String?        @map("installed_by_id")
+  installedAt               DateTime?      @map("installed_at")
+  lastConnectionTestAt      DateTime?      @map("last_connection_test_at")
+  lastConnectionTestStatus  String?        @map("last_connection_test_status") // CONNECTED | WAITING_FOR_SCAN | FAILED
+  lastConnectionTestMessage String?        @map("last_connection_test_message")
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+  logs                      BiometricLog[]
+  school                    School?        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   @@index([schoolId])
   @@map("biometric_devices")
 }
 
 model BiometricCredential {
-  id          String    @id @default(uuid())
+  id          String   @id @default(uuid())
   userId      String?
   learnerId   String?
-  type        String    @default("FINGERPRINT")
+  schoolId    String?  @map("school_id")
+  type        String   @default("FINGERPRINT")
   // Template is stored AES-256-GCM encrypted, hex-encoded as iv:ciphertext:authTag
   // NEVER return this field in API responses
   template    Bytes
   fingerIndex Int?
   quality     Int?
   // Encryption metadata
-  keyVersion  Int       @default(1) @map("key_version")
-  encryptedAt DateTime  @default(now()) @map("encrypted_at")
-  enrolledAt  DateTime  @default(now()) @map("enrolled_at")
-  status      String    @default("ACTIVE") // ACTIVE | REVOKED
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  learner     Learner?  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
-  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  keyVersion  Int      @default(1) @map("key_version")
+  encryptedAt DateTime @default(now()) @map("encrypted_at")
+  enrolledAt  DateTime @default(now()) @map("enrolled_at")
+  status      String   @default("ACTIVE") // ACTIVE | REVOKED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  learner     Learner? @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school      School?  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([learnerId])
+  @@index([schoolId])
   @@map("biometric_credentials")
 }
 
@@ -3096,6 +3112,7 @@ model BiometricLog {
   retryCount   Int             @default(0) @map("retry_count")
   retryAt      DateTime?       @map("retry_at")
   device       BiometricDevice @relation(fields: [deviceId], references: [id])
+  school       School?         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   @@index([deviceId])
   @@index([schoolId])
@@ -3166,21 +3183,21 @@ model TransportAssignment {
 // BoardingEvents record who boarded and alighted on each trip.
 
 model TransportTrip {
-  id          String                   @id @default(uuid())
-  schoolId    String
-  routeId     String
-  date        DateTime                 @db.Date
+  id             String                   @id @default(uuid())
+  schoolId       String
+  routeId        String
+  date           DateTime                 @db.Date
   // OUTBOUND = morning (home → school)  INBOUND = afternoon (school → home)
-  direction   String                   // OUTBOUND | INBOUND
-  departedAt  DateTime?
-  arrivedAt   DateTime?
-  driverUserId String?                 // optional link to users.id
-  status      String                   @default("SCHEDULED") // SCHEDULED | IN_PROGRESS | COMPLETED | CANCELLED
-  notes       String?
-  archived    Boolean                  @default(false)
-  createdAt   DateTime                 @default(now())
-  updatedAt   DateTime                 @updatedAt
-  route       TransportRoute           @relation(fields: [routeId], references: [id])
+  direction      String // OUTBOUND | INBOUND
+  departedAt     DateTime?
+  arrivedAt      DateTime?
+  driverUserId   String? // optional link to users.id
+  status         String                   @default("SCHEDULED") // SCHEDULED | IN_PROGRESS | COMPLETED | CANCELLED
+  notes          String?
+  archived       Boolean                  @default(false)
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  route          TransportRoute           @relation(fields: [routeId], references: [id])
   boardingEvents TransportBoardingEvent[]
 
   @@unique([routeId, date, direction])
@@ -3190,18 +3207,18 @@ model TransportTrip {
 }
 
 model TransportBoardingEvent {
-  id          String         @id @default(uuid())
-  tripId      String
-  learnerId   String
+  id         String        @id @default(uuid())
+  tripId     String
+  learnerId  String
   // BOARDED | ALIGHTED
-  eventType   String
-  recordedAt  DateTime       @default(now())
+  eventType  String
+  recordedAt DateTime      @default(now())
   // MANUAL | SCAN | CONFIRMED
-  method      String         @default("MANUAL")
-  recordedBy  String?
-  deviceId    String?
-  createdAt   DateTime       @default(now())
-  trip        TransportTrip  @relation(fields: [tripId], references: [id])
+  method     String        @default("MANUAL")
+  recordedBy String?
+  deviceId   String?
+  createdAt  DateTime      @default(now())
+  trip       TransportTrip @relation(fields: [tripId], references: [id])
 
   @@index([tripId])
   @@index([learnerId, recordedAt])
@@ -3371,13 +3388,13 @@ model LearningLesson {
   progress     LearningProgress[]
   createdBy    User               @relation("LessonCreator", fields: [createdById], references: [id])
 
+  @@unique([schoolId, requestId])
   @@index([schoolId])
   @@index([classId])
   @@index([learningAreaId])
   @@index([status])
   @@index([termId])
   @@index([schoolId, classId, learningAreaId])
-  @@unique([schoolId, requestId])
   @@map("learning_lessons")
 }
 
@@ -3462,26 +3479,26 @@ model AssignmentFile {
 }
 
 model LearningSubmission {
-  id            String           @id @default(uuid())
-  assignmentId  String
-  learnerId     String
-  status        SubmissionStatus @default(DRAFT)
-  content       String?          @db.Text // rich text answer
-  marks         Float?
-  feedback      String?          @db.Text
-  rubricScores  Json?            // criterion-level marks and comments
-  questionResponses Json?        // answers keyed by publisher question id
-  autoMarks     Float?            // objective marks calculated by the server
-  autoMarked    Boolean          @default(false)
-  requiresManualMarking Boolean  @default(false)
-  isLate        Boolean          @default(false)
-  attemptNumber Int              @default(1)
-  submittedAt   DateTime?
-  markedAt      DateTime?
-  markedById    String?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-  archived      Boolean          @default(false)
+  id                    String           @id @default(uuid())
+  assignmentId          String
+  learnerId             String
+  status                SubmissionStatus @default(DRAFT)
+  content               String?          @db.Text // rich text answer
+  marks                 Float?
+  feedback              String?          @db.Text
+  rubricScores          Json? // criterion-level marks and comments
+  questionResponses     Json? // answers keyed by publisher question id
+  autoMarks             Float? // objective marks calculated by the server
+  autoMarked            Boolean          @default(false)
+  requiresManualMarking Boolean          @default(false)
+  isLate                Boolean          @default(false)
+  attemptNumber         Int              @default(1)
+  submittedAt           DateTime?
+  markedAt              DateTime?
+  markedById            String?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  archived              Boolean          @default(false)
 
   assignment LearningAssignment @relation(fields: [assignmentId], references: [id])
   learner    Learner            @relation("LearnerSubmissions", fields: [learnerId], references: [id])
@@ -5248,17 +5265,17 @@ model LearnerPathwayRecommendation {
 // Learner-owned reflection used alongside, never in place of, academic evidence.
 // It keeps the "Discover Me" journey current without mutating recommendation history.
 model LearnerPathwayProfile {
-  id                String   @id @default(uuid())
-  learnerId         String   @unique
-  interestAreas     String[] @default([])
-  strengthAreas     String[] @default([])
+  id                  String   @id @default(uuid())
+  learnerId           String   @unique
+  interestAreas       String[] @default([])
+  strengthAreas       String[] @default([])
   preferredActivities String[] @default([])
-  aspirations       String?
-  learningPreference String?
-  confidenceAreas   Json?
-  updatedAt         DateTime @updatedAt
-  createdAt         DateTime @default(now())
-  learner           Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  aspirations         String?
+  learningPreference  String?
+  confidenceAreas     Json?
+  updatedAt           DateTime @updatedAt
+  createdAt           DateTime @default(now())
+  learner             Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
 
   @@index([updatedAt])
   @@map("learner_pathway_profiles")

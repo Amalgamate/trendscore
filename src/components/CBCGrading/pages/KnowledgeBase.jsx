@@ -266,14 +266,15 @@ const ARTICLES = [
       { type: 'p', text: 'Biometric devices (ZKTeco, NFC readers, gate terminals) can automatically record when learners and staff arrive and leave.' },
       { type: 'steps', items: [
         'Go to Biometric Attendance → Biometric Authority.',
-        'Click Register Device. Enter the device ID (from the hardware label), a name (e.g. Main Gate), type and location.',
-        'Note the device token shown — this is the secret the device uses to authenticate. Store it securely; it is shown once.',
+        'Open Terminal Management and select Register terminal. Enter the hardware device ID, name, type, location and synchronization mode.',
+        'Copy the one-time device token and store it in the terminal or approved connector. TrendScore stores only its cryptographic digest.',
         'Configure the device to POST events to: https://your-school.trendscore.co.ke/api/biometric/log',
-        'The device payload should include: deviceId, deviceToken, personId (admission number), personType (LEARNER), timestamp and direction (IN/OUT).',
+        'Send the one-time device token as an Authorization: Bearer header. The JSON payload should include: deviceId, personId (admission number or staff ID), personType (LEARNER or STAFF), timestamp and direction (IN/OUT).',
+        'Send one authenticated test scan, then select Test on the terminal card within ten minutes to complete verification.',
         'Once configured, each scan creates a GATE_ENTRY or GATE_EXIT event visible in the learner\'s presence timeline.',
       ]},
-      { type: 'tip', text: 'ZKTeco devices in PUSH mode work out of the box. For older devices without HTTP push, enable PULL mode in device settings so TrendSCORE polls the device every 15 minutes.' },
-      { type: 'warning', text: 'The device token must be kept secret. If a device is stolen, rotate its token immediately from the Biometric Authority page.' },
+      { type: 'tip', text: 'Direct PUSH mode requires the canonical TrendScore JSON contract. Vendor-native ZKTeco payloads need an approved connector; compatible PULL installations also require a network-reachable device IP.' },
+      { type: 'warning', text: 'The device token must be kept secret. If a device is stolen, rotate its token immediately from Terminal Management. Never place the platform biometric encryption key on a terminal.' },
     ]
   },
 

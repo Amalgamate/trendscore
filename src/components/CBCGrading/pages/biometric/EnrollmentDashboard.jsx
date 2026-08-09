@@ -151,7 +151,7 @@ const EnrollmentDashboard = () => {
                 className="w-full flex items-center justify-center gap-2 py-3 bg-slate-50 text-slate-600 rounded-xl text-xs font-semibold uppercase tracking-widest group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm group-hover:shadow-lg group-hover:shadow-indigo-600/20"
               >
                 <Fingerprint size={16} />
-                Enroll Biometrics
+                Check enrollment
                 <ChevronRight size={14} className="ml-auto" />
               </button>
             </div>

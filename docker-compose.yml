@@ -40,6 +40,8 @@ services:
       API_URL: ${API_URL:-http://localhost:5000/api}
       CLOUDINARY_URL: ${CLOUDINARY_URL:-}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      BIOMETRIC_ENCRYPTION_KEY: ${BIOMETRIC_ENCRYPTION_KEY:?Set BIOMETRIC_ENCRYPTION_KEY in the school env file}
+      BIOMETRIC_KEY_VERSION: ${BIOMETRIC_KEY_VERSION:-1}
       HTTPS_ONLY: ${HTTPS_ONLY:-false}
       NODE_ENV: production
       REDIS_HOST: redis
