@@ -8,6 +8,7 @@ import { provisionNewSchool } from '../services/school-provisioning.service';
 import { deleteSchoolSafely } from '../services/school-deletion.service';
 import { clearSchoolCache } from '../middleware/schoolContext.middleware';
 import { applyModulePackageToSchool, normalizePackageId } from '../services/moduleCatalog.service';
+import { buildInstalledAppName } from '../utils/pwa.util';
 
 import logger from '../utils/logger';
 const VALID_INSTITUTION_TYPES = new Set(['PRIMARY_CBC', 'SECONDARY', 'TERTIARY']);
@@ -232,13 +233,13 @@ export const getPublicManifest = async (_req: Request, res: Response) => {
 
   const pwaIcon = resolveBrandingAssetUrl('pwa-logo', school?.pwaLogoUrl || '/logo512.png', school?.updatedAt) || '/logo512.png';
   const themeColor = school?.primaryColor || school?.brandColor || '#520050';
-  const appName = school?.name || PRODUCT_DISPLAY_NAME;
+  const appName = buildInstalledAppName(school?.name);
 
   res.setHeader('Content-Type', 'application/manifest+json');
   res.setHeader('Cache-Control', 'public, max-age=300');
   res.status(200).json({
     short_name: appName,
-    name: `${appName} - School Management & CBC Grading`,
+    name: appName,
     description: 'Complete CBC School Management & Grading System for Kenyan schools',
     id: '/',
     scope: '/',
@@ -249,13 +250,22 @@ export const getPublicManifest = async (_req: Request, res: Response) => {
     theme_color: themeColor,
     background_color: '#ffffff',
     categories: ['education', 'productivity'],
+    shortcuts: [
+      { name: 'Take Attendance', short_name: 'Attendance', description: 'Open daily attendance', url: '/app?shortcut=attendance' },
+      { name: 'Open Fees', short_name: 'Fees', description: 'Open fee collection and balances', url: '/app?shortcut=fees' },
+      { name: 'Open Messages', short_name: 'Messages', description: 'Read school messages', url: '/app?shortcut=messages' },
+      { name: 'Open Learners', short_name: 'Learners', description: 'Open learner records', url: '/app?shortcut=learners' },
+    ],
+    screenshots: [
+      { src: '/screenshots/dashboard-wide.png', sizes: '1600x900', type: 'image/png', form_factor: 'wide', label: 'Secure school portal sign-in' },
+      { src: '/screenshots/dashboard-mobile.png', sizes: '720x1280', type: 'image/png', form_factor: 'narrow', label: 'Secure school portal on mobile' },
+    ],
     icons: [
       { src: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
       { src: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
       { src: '/favicon-48x48.png', sizes: '48x48', type: 'image/png' },
-      { src: pwaIcon, sizes: '192x192', type: 'image/png' },
-      { src: pwaIcon, sizes: '512x512', type: 'image/png' },
-      { src: pwaIcon, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      { src: pwaIcon, sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: pwaIcon, sizes: '512x512', type: 'image/png', purpose: 'any' },
     ],
   });
 };

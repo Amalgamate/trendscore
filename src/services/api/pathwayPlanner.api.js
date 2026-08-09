@@ -41,8 +41,14 @@ export const pathwayPlannerAPI = {
   getPathwayAnalytics: () => fetchWithAuth('/pathway-planner/admin/analytics'),
   getPathwayAuditLogs: (query = '') => fetchWithAuth(`/pathway-planner/admin/audit-logs${query ? `?query=${encodeURIComponent(query)}` : ''}`),
   // ── Phase 2 — Counsellor notes ──────────────────────────────────────────
-  getCounsellorNotes: (learnerId) =>
-    fetchWithAuth(`/pathway-planner/learners/${learnerId}/notes`),
+  getCounsellorNotes: (learnerId, params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params)
+        .filter(([, value]) => value !== undefined && value !== null && value !== '')
+        .map(([key, value]) => [key, String(value)])
+    ).toString();
+    return fetchWithAuth(`/pathway-planner/learners/${learnerId}/notes${qs ? `?${qs}` : ''}`);
+  },
 
   addCounsellorNote: (learnerId, data) =>
     fetchWithAuth(`/pathway-planner/learners/${learnerId}/notes`, {
@@ -66,6 +72,15 @@ export const pathwayPlannerAPI = {
 
   getClassDistribution: (classId) =>
     fetchWithAuth(`/pathway-planner/classes/${classId}/distribution`),
+
+  getClassLearners: (classId, params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params)
+        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+        .map(([k, v]) => [k, String(v)])
+    ).toString();
+    return fetchWithAuth(`/pathway-planner/classes/${classId}/learners${qs ? `?${qs}` : ''}`);
+  },
 
   // ── Counsellor case management ─────────────────────────────────────────
   getCounsellorDashboard: () =>
@@ -234,8 +249,15 @@ export const pathwayPlannerAPI = {
       body: JSON.stringify(data),
     }),
 
-  getSchoolCorrections: (status = '') =>
-    fetchWithAuth(`/pathway-planner/admin/school-corrections${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  getSchoolCorrections: (params = {}) => {
+    const values = typeof params === 'string' ? { status: params } : params;
+    const qs = new URLSearchParams(
+      Object.entries(values)
+        .filter(([, value]) => value !== undefined && value !== null && value !== '')
+        .map(([key, value]) => [key, String(value)])
+    ).toString();
+    return fetchWithAuth(`/pathway-planner/admin/school-corrections${qs ? `?${qs}` : ''}`);
+  },
 
   reviewSchoolCorrection: (correctionId, data) =>
     fetchWithAuth(`/pathway-planner/admin/school-corrections/${correctionId}/review`, {

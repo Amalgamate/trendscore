@@ -186,7 +186,7 @@ describe('Assessment module end-to-end', () => {
 
   it('creates a summative test, records a result, and retrieves test and learner summaries', async () => {
     const uniqueSuffix = Date.now();
-    const academicYear = new Date().getFullYear();
+    const academicYear = 2099;
 
     const createTest = await request(app)
       .post('/api/assessments/tests')

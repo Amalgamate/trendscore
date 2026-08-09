@@ -7,7 +7,8 @@
 
 import { Response } from 'express';
 import bcrypt from 'bcrypt';
-import { PRODUCT_APP_URL, PRODUCT_DISPLAY_NAME, PRODUCT_TEMP_PASSWORD_PREFIX } from '../config/productIdentity';
+import { PRODUCT_APP_URL, PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
+import { randomBytes } from 'crypto';
 import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
 import { AuthRequest } from '../middleware/permissions.middleware';
@@ -746,7 +747,7 @@ export class UserController {
       throw new ApiError(403, 'Permission denied to send credentials for this user');
     }
 
-    const tempPassword = `${PRODUCT_TEMP_PASSWORD_PREFIX}2026!`;
+    const tempPassword = randomBytes(9).toString('base64url');
     const hashedPassword = await bcrypt.hash(tempPassword, 12);
     
     // Set passwordResetToken to trigger the "must change password" flag on login
@@ -769,7 +770,8 @@ export class UserController {
     const schoolName = school?.name || PRODUCT_DISPLAY_NAME;
     const frontendUrl = process.env.FRONTEND_URL || PRODUCT_APP_URL;
     
-    const message = `Welcome to ${schoolName}! Your parent portal account is ready.\n\nLogin URL: ${frontendUrl}\nUsername: ${targetUser.email}\nTemp Password: ${tempPassword}\n\nPlease change your password immediately after logging in.`;
+    const loginId = targetUser.role === 'PARENT' ? (targetUser.parentCode || targetUser.username || targetUser.email) : (targetUser.username || targetUser.email);
+    const message = `Welcome to ${schoolName}! Your account is ready.\n\nLogin URL: ${frontendUrl}\nUsername: ${loginId}\nTemp Password: ${tempPassword}\n\nPlease change your password immediately after logging in.`;
 
     const results: any = { sms: null, whatsapp: null };
 

@@ -84,7 +84,10 @@ describe('appAccess', () => {
 
   it('isolates parent portal pages to parent users or explicit parent permissions', () => {
     expect(isParentPortalPage('parent-portal-home')).toBe(true);
+    expect(isParentPortalPage('parent-portal-homework')).toBe(true);
     expect(hasPageAccess({ role: 'PARENT' }, 'parent-portal-home')).toBe(true);
+    expect(hasPageAccess({ role: 'PARENT' }, 'parent-portal-homework')).toBe(true);
+    expect(hasPageAccess({ role: 'STUDENT' }, 'parent-portal-homework')).toBe(false);
     expect(hasPageAccess({ role: 'TEACHER' }, 'parent-portal-home')).toBe(false);
     expect(hasPageAccess({ role: 'ADMIN' }, 'parent-portal-fees')).toBe(false);
     expect(hasPageAccess({ role: 'ACCOUNTANT' }, 'parent-portal-results')).toBe(false);

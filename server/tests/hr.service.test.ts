@@ -106,6 +106,7 @@ const mockPrisma = {
     staffAttendanceLog: {
         findUnique: jest.fn(),
         upsert: jest.fn(),
+        create: jest.fn(),
         update: jest.fn(),
         findMany: jest.fn(),
     },
@@ -354,6 +355,12 @@ describe('HRService', () => {
             app: { name: 'Staff HR', slug: 'staff-hr' },
         });
         (mockPrisma.staffAttendanceAttemptLog.create as Mock).mockResolvedValue({ id: 'attempt-001' });
+        (mockPrisma.staffAttendanceLog.findUnique as Mock).mockResolvedValue(null);
+        (mockPrisma.staffAttendanceLog.findMany as Mock).mockResolvedValue([]);
+        (mockPrisma.staffAttendanceLog.create as Mock).mockImplementation(async ({ data }: any) => ({
+            id: 'att-001',
+            ...data,
+        }));
     });
 
     // ── 2.1 Staff Directory ────────────────────────────────────────────────────
@@ -426,6 +433,7 @@ describe('HRService', () => {
         ) => {
             (mockPrisma.user.findMany as Mock).mockResolvedValue([makeStaff({ basicSalary: 50000 })]);
             (mockPrisma.payrollRecord.findMany as Mock).mockResolvedValue([]); // no existing records
+            (mockPrisma.staffAttendanceLog.findMany as Mock).mockResolvedValue([]);
             (mockPrisma.staffAllowance.findMany as Mock).mockResolvedValue(allowances);
             (mockPrisma.staffDeduction.findMany as Mock).mockResolvedValue(deductions);
             (mockPrisma.payrollRecord.create as Mock).mockImplementation(async ({ data }: any) => ({
@@ -750,7 +758,8 @@ describe('HRService', () => {
                 id: 'att-001', userId: STAFF_ID, date: new Date('2026-04-11'),
                 clockInAt: timestamp, clockOutAt: null, source: 'web'
             };
-            (mockPrisma.staffAttendanceLog.upsert as Mock).mockResolvedValue(attendanceRecord);
+            (mockPrisma.staffAttendanceLog.findUnique as Mock).mockResolvedValue(null);
+            (mockPrisma.staffAttendanceLog.create as Mock).mockResolvedValue(attendanceRecord);
             (mockPrisma.user.findUnique as Mock).mockResolvedValue(makeStaff({ basicSalary: 50000 }));
             (mockPrisma.payrollRecord.findUnique as Mock).mockResolvedValue(null); // no payroll yet
             (mockPrisma.staffAllowance.findMany as Mock).mockResolvedValue([]);
@@ -760,11 +769,10 @@ describe('HRService', () => {
             const result = await service.clockInStaff(STAFF_ID, { timestamp });
             expect(result.attendance.clockInAt).toEqual(timestamp);
             expect(result.payrollCreated).toBe(true);
-            expect(mockPrisma.staffAttendanceLog.upsert).toHaveBeenCalledWith(
+            expect(mockPrisma.staffAttendanceLog.create).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    update: expect.objectContaining({
+                    data: expect.objectContaining({
                         clockInAt: timestamp,
-                        clockOutAt: null
                     })
                 })
             );
@@ -786,7 +794,8 @@ describe('HRService', () => {
 
         it('does not create payroll if it already exists for the month', async () => {
             const timestamp = new Date('2026-04-11T08:00:00.000Z');
-            (mockPrisma.staffAttendanceLog.upsert as Mock).mockResolvedValue({ clockInAt: timestamp });
+            (mockPrisma.staffAttendanceLog.findUnique as Mock).mockResolvedValue(null);
+            (mockPrisma.staffAttendanceLog.create as Mock).mockResolvedValue({ id: 'att-001', clockInAt: timestamp });
             (mockPrisma.user.findUnique as Mock).mockResolvedValue(makeStaff());
             (mockPrisma.payrollRecord.findUnique as Mock).mockResolvedValue(makePayrollRecord()); // already exists
 
@@ -803,7 +812,8 @@ describe('HRService', () => {
                 geofenceRadiusMeters: 20,
                 geofenceEnforcementMode: 'STRICT'
             }));
-            (mockPrisma.staffAttendanceLog.upsert as Mock).mockResolvedValue({ id: 'att-001', clockInAt: timestamp });
+            (mockPrisma.staffAttendanceLog.findUnique as Mock).mockResolvedValue(null);
+            (mockPrisma.staffAttendanceLog.create as Mock).mockResolvedValue({ id: 'att-001', clockInAt: timestamp });
             (mockPrisma.user.findUnique as Mock).mockResolvedValue(makeStaff());
             (mockPrisma.payrollRecord.findUnique as Mock).mockResolvedValue(makePayrollRecord());
 
@@ -947,7 +957,8 @@ describe('HRService', () => {
                 geofenceRadiusMeters: 5,
                 geofenceEnforcementMode: 'SOFT'
             }));
-            (mockPrisma.staffAttendanceLog.upsert as Mock).mockResolvedValue({ id: 'att-001', clockInAt: timestamp });
+            (mockPrisma.staffAttendanceLog.findUnique as Mock).mockResolvedValue(null);
+            (mockPrisma.staffAttendanceLog.create as Mock).mockResolvedValue({ id: 'att-001', clockInAt: timestamp });
             (mockPrisma.user.findUnique as Mock).mockResolvedValue(makeStaff());
             (mockPrisma.payrollRecord.findUnique as Mock).mockResolvedValue(makePayrollRecord());
 
@@ -979,7 +990,8 @@ describe('HRService', () => {
             (mockPrisma.school.findFirst as Mock).mockResolvedValue(makeSchool({
                 geofenceEnforcementMode: 'OFF'
             }));
-            (mockPrisma.staffAttendanceLog.upsert as Mock).mockResolvedValue({ id: 'att-001', clockInAt: timestamp });
+            (mockPrisma.staffAttendanceLog.findUnique as Mock).mockResolvedValue(null);
+            (mockPrisma.staffAttendanceLog.create as Mock).mockResolvedValue({ id: 'att-001', clockInAt: timestamp });
             (mockPrisma.user.findUnique as Mock).mockResolvedValue(makeStaff());
             (mockPrisma.payrollRecord.findUnique as Mock).mockResolvedValue(makePayrollRecord());
 
@@ -1015,7 +1027,8 @@ describe('HRService', () => {
                 geofenceRadiusMeters: 30,
                 geofenceEnforcementMode: 'STRICT'
             }));
-            (mockPrisma.staffAttendanceLog.upsert as Mock).mockResolvedValue({ id: 'att-001', clockInAt: timestamp });
+            (mockPrisma.staffAttendanceLog.findUnique as Mock).mockResolvedValue(null);
+            (mockPrisma.staffAttendanceLog.create as Mock).mockResolvedValue({ id: 'att-001', clockInAt: timestamp });
             (mockPrisma.user.findUnique as Mock).mockResolvedValue(makeStaff());
             (mockPrisma.payrollRecord.findUnique as Mock).mockResolvedValue(makePayrollRecord());
 
@@ -1168,7 +1181,8 @@ describe('HRService', () => {
                 geofenceRadiusMeters: 30,
                 geofenceEnforcementMode: 'STRICT'
             }));
-            (mockPrisma.staffAttendanceLog.upsert as Mock).mockResolvedValue({ id: 'att-001', clockInAt: timestamp });
+            (mockPrisma.staffAttendanceLog.findUnique as Mock).mockResolvedValue(null);
+            (mockPrisma.staffAttendanceLog.create as Mock).mockResolvedValue({ id: 'att-001', clockInAt: timestamp });
             (mockPrisma.user.findUnique as Mock).mockResolvedValue(makeStaff());
             (mockPrisma.payrollRecord.findUnique as Mock).mockResolvedValue(makePayrollRecord());
 
@@ -1580,7 +1594,8 @@ describe('HR Routes — API smoke tests', () => {
     describe('POST /api/hr/attendance/clock-in', () => {
         it('records clock-in successfully', async () => {
             const ts = new Date();
-            (mockPrisma.staffAttendanceLog.upsert as Mock).mockResolvedValue({ clockInAt: ts, source: 'web' });
+            (mockPrisma.staffAttendanceLog.findUnique as Mock).mockResolvedValue(null);
+            (mockPrisma.staffAttendanceLog.create as Mock).mockResolvedValue({ id: 'att-001', clockInAt: ts, source: 'web' });
             (mockPrisma.user.findUnique as Mock).mockResolvedValue(makeStaff({ basicSalary: 0 })); // no payroll auto-create
             (mockPrisma.payrollRecord.findUnique as Mock).mockResolvedValue(makePayrollRecord());
 

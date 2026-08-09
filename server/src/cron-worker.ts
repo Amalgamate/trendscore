@@ -13,6 +13,13 @@ import logger from './utils/logger';
 import { DutyRosterService } from './services/dutyRoster.service';
 import { approvalEngineService } from './services/approvalEngine.service';
 import { LMSNotificationService } from './services/lms-notification.service';
+import { runAbsentLearnerSmsWorker } from './domains/attendance/absent-learner.worker';
+import { runSmsRetryWorker } from './domains/communication/sms-retry.worker';
+import { runChronicAbsentWorker } from './domains/attendance/chronic-absent.worker';
+import { runBiometricSyncWorker } from './domains/biometrics/biometric-sync.worker';
+import { runBiometricLogRetryWorker } from './domains/biometrics/biometric-log-retry.worker';
+import { runExeatOverdueWorker } from './domains/boarding/exeat-overdue.worker';
+import { earlyWarningService } from './domains/presence/early-warning.service';
 
 /**
  * Query all PUBLISHED assignments whose dueDate falls on tomorrow (in UTC),
@@ -222,6 +229,77 @@ async function startCronWorker() {
             sendAssignmentDueTomorrowReminders().catch(err => {
                 logger.error('[CRON] Assignment due-tomorrow reminder error:', err);
             });
+        });
+
+        // ── Absent Learner SMS ────────────────────────────────────────────────
+        // Daily at 09:30 EAT (06:30 UTC) — notify parents of absent learners
+        cron.schedule('30 6 * * *', () => {
+            logger.info('[CRON] Running absent learner SMS worker');
+            runAbsentLearnerSmsWorker().catch(err => {
+                logger.error('[CRON] Absent learner SMS worker error:', err);
+            });
+        });
+
+        // ── SMS Retry Worker ──────────────────────────────────────────────────
+        // Every hour — retry failed SMS records with exponential back-off
+        cron.schedule('0 * * * *', () => {
+            logger.info('[CRON] Running SMS retry worker');
+            runSmsRetryWorker().catch(err => {
+                logger.error('[CRON] SMS retry worker error:', err);
+            });
+        });
+
+        // ── Chronic Absenteeism Worker ────────────────────────────────────────
+        // Monday 07:00 EAT (04:00 UTC) — flag learners with high absence rates
+        cron.schedule('0 4 * * 1', () => {
+            logger.info('[CRON] Running chronic absenteeism check');
+            runChronicAbsentWorker().catch(err => {
+                logger.error('[CRON] Chronic absenteeism worker error:', err);
+            });
+        });
+
+        // ── Biometric Sync Worker ─────────────────────────────────────────────
+        // Every 15 minutes — pull attendance from PULL-mode ZKTeco devices
+        cron.schedule('*/15 * * * *', () => {
+            runBiometricSyncWorker().catch(err => {
+                logger.error('[CRON] Biometric sync worker error:', err);
+            });
+        });
+
+        // ── Biometric Log Retry Worker ────────────────────────────────────────
+        // Daily 02:00 UTC — retry FAILED biometric log records
+        cron.schedule('0 2 * * *', () => {
+            logger.info('[CRON] Running biometric log retry worker');
+            runBiometricLogRetryWorker().catch(err => {
+                logger.error('[CRON] Biometric log retry worker error:', err);
+            });
+        });
+
+        // ── Exeat Overdue Worker ──────────────────────────────────────────────
+        // Daily 06:00 EAT (03:00 UTC) — detect learners who haven't returned from leave
+        cron.schedule('0 3 * * *', () => {
+            logger.info('[CRON] Running exeat overdue check');
+            runExeatOverdueWorker().catch(err => {
+                logger.error('[CRON] Exeat overdue worker error:', err);
+            });
+        });
+
+        // ── Early Warning Checks ──────────────────────────────────────────────
+        // Daily 23:00 UTC — run all presence rule checks for the school
+        cron.schedule('0 23 * * *', async () => {
+            logger.info('[CRON] Running early warning checks');
+            try {
+                const school = await prisma.school.findFirst({
+                    where: { archived: false, active: true },
+                    select: { id: true },
+                    orderBy: { createdAt: 'asc' }
+                });
+                if (school) {
+                    await earlyWarningService.runAllChecks(school.id);
+                }
+            } catch (err) {
+                logger.error('[CRON] Early warning check error:', err);
+            }
         });
 
     } catch (error) {

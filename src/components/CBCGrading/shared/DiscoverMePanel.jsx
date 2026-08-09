@@ -29,7 +29,7 @@ function ChoiceSet({ label, hint, options, value, onChange }) {
   </div>;
 }
 
-export default function DiscoverMePanel({ learnerId, compact = false }) {
+export default function DiscoverMePanel({ learnerId, compact = false, onSaved }) {
   const [profile, setProfile] = useState(EMPTY);
   const [options, setOptions] = useState(DEFAULT_OPTIONS);
   const [loading, setLoading] = useState(true);
@@ -53,7 +53,13 @@ export default function DiscoverMePanel({ learnerId, compact = false }) {
   const update = (key, value) => { setSaved(false); setProfile((current) => ({ ...current, [key]: value })); };
   const save = async () => {
     setSaving(true); setError('');
-    try { const response = await pathwayPlannerAPI.savePathwayProfile(learnerId, profile); setProfile({ ...EMPTY, ...(response?.data || profile), confidenceAreas: { ...EMPTY.confidenceAreas, ...(response?.data?.confidenceAreas || profile.confidenceAreas) } }); setSaved(true); }
+    try {
+      const response = await pathwayPlannerAPI.savePathwayProfile(learnerId, profile);
+      setProfile({ ...EMPTY, ...(response?.data || profile), confidenceAreas: { ...EMPTY.confidenceAreas, ...(response?.data?.confidenceAreas || profile.confidenceAreas) } });
+      setSaved(true);
+      // Notify parent so the recommendation can be re-fetched with the new interest data
+      onSaved?.();
+    }
     catch (err) { setError(err?.message || 'Could not save your reflection.'); }
     finally { setSaving(false); }
   };
@@ -62,8 +68,14 @@ export default function DiscoverMePanel({ learnerId, compact = false }) {
 
   return <section className="space-y-4 rounded-2xl border border-violet-200 bg-white p-4 shadow-sm">
     <div className="flex items-start justify-between gap-3">
-      <div><p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-violet-700"><Sparkles size={12} /> Discover Me</p><h2 className="mt-1 text-sm font-black text-gray-900">Tell us what matters to you</h2><p className="mt-1 text-[11px] leading-relaxed text-gray-600">Your voice adds context to your plan. It does not replace your academic evidence or make a decision for you.</p></div>
-      {complete && <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-black text-emerald-700"><CheckCircle2 size={11} /> Ready</span>}
+      <div>
+        <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-violet-700"><Sparkles size={12} /> Discover Me</p>
+        <h2 className="mt-1 text-sm font-black text-gray-900">Your interests &amp; strengths</h2>
+        <p className="mt-1 text-[11px] leading-relaxed text-gray-600">
+          This adds <strong>15%</strong> of your pathway recommendation score. Tell us what interests you and where you feel strong — your answers directly influence which pathway best fits you.
+        </p>
+      </div>
+      {complete && <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-black text-emerald-700"><CheckCircle2 size={11} /> Saved</span>}
     </div>
     {error && <p className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-[11px] text-rose-700">{error}</p>}
     <ChoiceSet label="What interests you?" hint="Choose anything that you would like to explore." options={options.interestAreas} value={profile.interestAreas} onChange={(value) => update('interestAreas', value)} />

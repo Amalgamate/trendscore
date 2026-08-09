@@ -32,6 +32,7 @@ import { generatePathwayPlanPDF } from '../../../../utils/pathwayPlanPDF';
 import DecisionPlanPanel from '../../shared/DecisionPlanPanel';
 import SchoolMatchingPanel from '../../shared/SchoolMatchingPanel';
 import StudentPathwayWorkspace from '../../shared/StudentPathwayWorkspace';
+import SelectionStatusChip, { SELECTION_STATUS_CONFIG } from '../../shared/SelectionStatusChip';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -70,13 +71,7 @@ const PATHWAY_META = {
 PATHWAY_META.SOCIAL_SCIENCES = PATHWAY_META['Social Sciences'];
 PATHWAY_META.ARTS_SPORTS = PATHWAY_META['Arts and Sports Science'];
 
-const STATUS_CONFIG = {
-  DRAFT:     { label: 'Draft',     cls: 'bg-gray-100 text-gray-700 border-gray-200',      icon: Clock },
-  SUBMITTED: { label: 'Submitted', cls: 'bg-blue-100 text-blue-700 border-blue-200',      icon: TrendingUp },
-  APPROVED:  { label: 'Approved',  cls: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: CheckCircle2 },
-  REJECTED:  { label: 'Needs Revision', cls: 'bg-rose-100 text-rose-700 border-rose-200', icon: AlertCircle },
-  LOCKED:    { label: 'Locked',    cls: 'bg-violet-100 text-violet-700 border-violet-200', icon: Lock },
-};
+// STATUS_CONFIG for selection chips is now provided by SelectionStatusChip shared component.
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -228,7 +223,7 @@ function SelectionStatusCard({ selection }) {
     );
   }
 
-  const cfg = STATUS_CONFIG[selection.status] || STATUS_CONFIG.DRAFT;
+  const cfg = SELECTION_STATUS_CONFIG[selection.status] || SELECTION_STATUS_CONFIG.DRAFT;
   const Icon = cfg.icon;
 
   return (
@@ -236,10 +231,7 @@ function SelectionStatusCard({ selection }) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Selection Status</p>
-          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-black ${cfg.cls}`}>
-            <Icon size={11} aria-hidden="true" />
-            {cfg.label}
-          </span>
+          <SelectionStatusChip status={selection.status} />
         </div>
         {selection.locked && (
           <Lock size={16} className="text-violet-500 flex-shrink-0 mt-0.5" aria-label="Selection locked" />
@@ -530,8 +522,6 @@ const PathwayPlanner = ({ user, onNavigate, brandingSettings }) => {
 
       <div className="px-4 -mt-6 space-y-4">
 
-        {learnerId && <DiscoverMePanel learnerId={learnerId} />}
-
         {isSecondaryStudent && (
           <section className="space-y-3 rounded-2xl border border-indigo-200 bg-white p-4 shadow-sm">
             <div>
@@ -658,6 +648,14 @@ const PathwayPlanner = ({ user, onNavigate, brandingSettings }) => {
             </div>
           )}
         </div>
+
+        {/* ── Discover Me — interests & strengths feed the 15% learner-interest weight ── */}
+        {learnerId && !isSecondaryStudent && (
+          <DiscoverMePanel
+            learnerId={learnerId}
+            onSaved={() => loadRecommendation(learnerId, institutionType, grade)}
+          />
+        )}
 
         {isJuniorStudent && (
           <section className="space-y-3 rounded-2xl border border-violet-200 bg-white p-4">

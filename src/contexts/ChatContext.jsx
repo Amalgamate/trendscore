@@ -32,8 +32,11 @@ export const ChatProvider = ({ children }) => {
 
   const socketRef        = useRef(null);
   const typingTimers     = useRef({});
-  // IDs of messages we sent ourselves — used to suppress the echo from socket
-  const ownMessageIds    = useRef(new Set());
+  // Maps tempId → resolvers waiting for the real ID, and realId → true once confirmed.
+  // Pre-registered before the HTTP call so the socket echo is always suppressed
+  // even if it arrives before the HTTP response.
+  const pendingTempIds   = useRef(new Map()); // tempId → realId (set when HTTP responds)
+  const ownMessageIds    = useRef(new Set());  // realId → confirmed (used to drop socket echo)
   // Keep a stable ref to activeConversationId for use inside socket closures
   const activeConvRef    = useRef(null);
   activeConvRef.current  = activeConversationId;
@@ -104,11 +107,16 @@ export const ChatProvider = ({ children }) => {
     }
   }, [openConversation]);
 
-  // ── Send message — DEDUP FIX ───────────────────────────────────────────────
+  // ── Send message — bulletproof dedup ──────────────────────────────────────
   const sendMessage = useCallback(async (conversationId, body, options = {}) => {
     const tempId = `temp-${Date.now()}-${Math.random()}`;
 
-    // 1. Add optimistic bubble
+    // 1. Pre-register tempId so we can match it to the real ID once the
+    //    HTTP response arrives — regardless of whether the socket echo
+    //    races ahead of the response.
+    pendingTempIds.current.set(tempId, null);
+
+    // 2. Add optimistic bubble immediately
     const optimistic = {
       id: tempId,
       conversationId,
@@ -136,10 +144,13 @@ export const ChatProvider = ({ children }) => {
       const resp = await api.chat.sendMessage(conversationId, body, options);
       if (resp.success) {
         const realId = resp.data.id;
-        // Register this ID so the socket echo is ignored
-        ownMessageIds.current.add(realId);
 
-        // 2. Swap optimistic → real
+        // Register the real ID so any incoming socket echo for this message
+        // is immediately dropped (belt-and-suspenders on top of the server fix)
+        ownMessageIds.current.add(realId);
+        pendingTempIds.current.delete(tempId);
+
+        // 3. Swap optimistic → real
         setMessagesByConv((prev) => ({
           ...prev,
           [conversationId]: (prev[conversationId] ?? []).map((m) =>
@@ -157,6 +168,7 @@ export const ChatProvider = ({ children }) => {
       }
       return resp.data;
     } catch (err) {
+      pendingTempIds.current.delete(tempId);
       setMessagesByConv((prev) => ({
         ...prev,
         [conversationId]: (prev[conversationId] ?? []).filter((m) => m.id !== tempId),
@@ -236,16 +248,24 @@ export const ChatProvider = ({ children }) => {
       const convId = message.conversationId;
       const realId = message.id;
 
-      // DEDUP: if we sent this message ourselves, the optimistic→real swap
-      // already happened — delete from set and bail out
+      // Drop if this is our own message echo:
+      // — ownMessageIds covers the normal case (HTTP responded before socket)
+      // — pendingTempIds values covers the race case (socket arrived before HTTP)
       if (ownMessageIds.current.has(realId)) {
         ownMessageIds.current.delete(realId);
         return;
       }
+      // Check if the real ID matches any in-flight send we initiated
+      for (const [tempId, knownRealId] of pendingTempIds.current.entries()) {
+        if (knownRealId === realId) {
+          pendingTempIds.current.delete(tempId);
+          return;
+        }
+      }
 
       setMessagesByConv((prev) => {
         const msgs = prev[convId] ?? [];
-        if (msgs.some((m) => m.id === realId)) return prev; // extra safety
+        if (msgs.some((m) => m.id === realId)) return prev; // final safety check
         return { ...prev, [convId]: [...msgs, message] };
       });
 

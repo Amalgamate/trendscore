@@ -126,7 +126,8 @@ export class AuthPhoneOtpService {
     const communicationConfig = await prisma.communicationConfig.findFirst({
       select: { emailTemplates: true },
     });
-    const otpEnabled = (communicationConfig?.emailTemplates as any)?.__security?.otpEnabled !== false;
+    // Password is the safe default. A school opts into OTP only after SMS is configured.
+    const otpEnabled = (communicationConfig?.emailTemplates as any)?.__security?.otpEnabled === true;
 
     if (!otpEnabled && !fixedOtpConfig) {
       return {
@@ -199,6 +200,15 @@ export class AuthPhoneOtpService {
       }
     }
 
+    const smsConfigured = fixedOtpConfig ? true : await SmsService.isAvailable();
+    if (!fixedOtpConfig && !smsConfigured) {
+      return {
+        success: true, challengeId: '', phone: normalized.e164, expiresAt: new Date(), resendAfterSeconds: 0,
+        message: 'SMS login is unavailable. Please sign in with your Parent ID and password.',
+        requiresOtp: false, smsConfigured: false, autofillAllowed: false,
+      };
+    }
+
     const code = fixedOtpConfig && user?.id ? fixedOtpConfig.code : generateOtpCode();
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
     const challenge = await prisma.authOtpChallenge.create({
@@ -224,18 +234,18 @@ export class AuthPhoneOtpService {
       data: { codeHash: hashOtpCode(code, challenge.id) },
     });
 
-    // Determine whether SMS is configured (DB or env) so frontend can show a clear message
-    const smsConfigured = await SmsService.isAvailable();
-
     if (user?.id && !fixedOtpConfig && process.env.NODE_ENV !== 'test') {
-      if (!smsConfigured) {
-        console.warn('[AuthPhoneOtpService] SMS requested but service is not configured.');
-      } else {
-        Promise.resolve()
-          .then(() => SmsService.sendSms(normalized.e164, SMS_MESSAGES.otp(code, OTP_EXPIRY_MINUTES)))
-          .catch((error: any) => {
-            console.warn('[AuthPhoneOtpService] OTP SMS delivery failed:', error?.message || error);
-          });
+      try {
+        const delivery = await SmsService.sendSms(normalized.e164, SMS_MESSAGES.otp(code, OTP_EXPIRY_MINUTES));
+        if (!delivery?.success) throw new Error('SMS provider rejected OTP delivery');
+      } catch (error: any) {
+        await prisma.authOtpChallenge.update({ where: { id: challenge.id }, data: { status: 'EXPIRED' } });
+        console.warn('[AuthPhoneOtpService] OTP SMS delivery failed:', error?.message || error);
+        return {
+          success: true, challengeId: '', phone: normalized.e164, expiresAt: new Date(), resendAfterSeconds: 0,
+          message: 'We could not send an OTP. Please sign in with your Parent ID and password.',
+          requiresOtp: false, smsConfigured: false, autofillAllowed: false,
+        };
       }
     }
 

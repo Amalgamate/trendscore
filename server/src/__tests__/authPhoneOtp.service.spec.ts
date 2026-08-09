@@ -217,7 +217,7 @@ describe('AuthPhoneOtpService', () => {
 
     expect(result.smsConfigured).toBe(false);
     expect(result.autofillAllowed).toBe(false);
-    expect(result.message).toBe('SMS Not Configured. Contact Admin.');
+    expect(result.message).toBe('SMS login is unavailable. Please sign in with your Parent ID and password.');
     expect(result.devOtp).toBeUndefined();
   });
 
@@ -253,6 +253,7 @@ describe('AuthPhoneOtpService', () => {
     });
     mockedPrisma.authOtpChallenge.update.mockResolvedValue({});
     mockedSms.isAvailable.mockResolvedValue(true);
+    mockedSms.sendSms.mockResolvedValue({ success: true });
 
     const result = await service.requestParentOtp({ phone: '0712345678' });
 

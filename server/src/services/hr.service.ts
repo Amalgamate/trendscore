@@ -6,6 +6,7 @@ import { SmsService } from './sms.service';
 import { whatsappService } from './whatsapp.service';
 import { ApiError } from '../utils/error.util';
 import logger from '../utils/logger';
+import { presenceService } from '../domains/presence/presence.service';
 
 type AttendanceLocationPayload = {
     latitude?: number;
@@ -1226,6 +1227,23 @@ export class HRService {
             payrollCreated = true;
         }
 
+        // Emit CLOCK_IN presence event (fire-and-forget, non-blocking)
+        presenceService.emit({
+            schoolId:       schoolId || '',
+            personId:       userId,
+            personType:     'STAFF',
+            eventType:      'CLOCK_IN',
+            context:        'SCHOOL',
+            timestamp:      attendance.clockInAt || timestamp,
+            status:         'CONFIRMED',
+            sourceModule:   'HR_STAFF',
+            sourceRecordId: attendance.id,
+            metadata: {
+                source:          payload?.source || 'web',
+                geofenceResult:  geofenceDecision?.message,
+            },
+        }).catch(() => {/* failure recorded internally by PresenceService */});
+
         return { attendance, payroll: payrollRecord, payrollCreated, geofenceDecision };
     }
 
@@ -1296,6 +1314,24 @@ export class HRService {
                 }
             });
         }
+
+        // Emit CLOCK_OUT presence event (fire-and-forget, non-blocking)
+        presenceService.emit({
+            schoolId:       updatedAttendance.schoolId || schoolId || '',
+            personId:       userId,
+            personType:     'STAFF',
+            eventType:      'CLOCK_OUT',
+            context:        'SCHOOL',
+            timestamp:      timestamp,
+            status:         'CONFIRMED',
+            sourceModule:   'HR_STAFF',
+            sourceRecordId: updatedAttendance.id,
+            metadata: {
+                source:              payload?.source || 'web',
+                workedMinutesDelta,
+                workedDaysIncremented: shouldIncrementWorkedDays,
+            },
+        }).catch(() => {/* failure recorded internally by PresenceService */});
 
         return {
             attendance: updatedAttendance,

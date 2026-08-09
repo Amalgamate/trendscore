@@ -1,4 +1,4 @@
-/**
+﻿﻿﻿/**
  * ParentPortalPathway — Parent-facing pathway view
  *
  * Per-child expandable cards. Each card shows:
@@ -22,13 +22,15 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   ChevronDown, ChevronUp, Star, TrendingUp,
   BookOpen, CheckCircle2, Lock, Clock,
-  Users, Loader2, AlertCircle, Heart,
+  Users, Loader2, AlertCircle, Heart, Info, Download,
 } from 'lucide-react';
-import { dashboardAPI, pathwayAPI, seniorPathwayAPI } from '../../../../services/api';
+import { dashboardAPI, pathwayAPI, seniorPathwayAPI, pathwayPlannerAPI } from '../../../../services/api';
+import { generatePathwayPlanPDF } from '../../../../utils/pathwayPlanPDF';
 import { Skeleton } from '../../../ui';
 import DecisionPlanPanel from '../../shared/DecisionPlanPanel';
 import ParentCareerReviewPanel from '../../shared/ParentCareerReviewPanel';
 import StudentPathwayWorkspace from '../../shared/StudentPathwayWorkspace';
+import SelectionStatusChip from '../../shared/SelectionStatusChip';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -66,13 +68,7 @@ const PREFERENCE_OPTIONS = [
   { value: '',                        label: 'No preference yet' },
 ];
 
-const STATUS_CONFIG = {
-  DRAFT:     { label: 'Draft',     cls: 'bg-gray-100 text-gray-600 border-gray-200',      icon: Clock },
-  SUBMITTED: { label: 'Submitted', cls: 'bg-blue-100 text-blue-700 border-blue-200',      icon: TrendingUp },
-  APPROVED:  { label: 'Approved',  cls: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: CheckCircle2 },
-  REJECTED:  { label: 'Needs Revision', cls: 'bg-rose-100 text-rose-700 border-rose-200', icon: AlertCircle },
-  LOCKED:    { label: 'Locked',    cls: 'bg-violet-100 text-violet-700 border-violet-200', icon: Lock },
-};
+// Selection status chips are provided by the shared SelectionStatusChip component.
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -295,21 +291,23 @@ function ChildPathwayCard({ child, onNavigate }) {
   const [selection, setSelection]       = useState(null);
   const [loading, setLoading]           = useState(false);
   const [savingPref, setSavingPref]     = useState(false);
-  const [preference, setPreference]     = useState('');
+  const [preference, setPreference]     = useState(null); // null = not yet loaded
   const [prefSaved, setPrefSaved]       = useState(false);
+  const [prefError, setPrefError]       = useState(null);
   const [error, setError]               = useState(null);
+  const [generatingPDF, setGeneratingPDF] = useState(false);
 
   const load = useCallback(async () => {
     if (loading || rec) return;
     setLoading(true); setError(null);
     try {
       const { term, academicYear } = currentTermAndYear();
-      const [recRes, selRes] = await Promise.allSettled([
+      const [recRes, selRes, histRes] = await Promise.allSettled([
         isSecondary(child) ? pathwayAPI.getTransitionDecisionHistory(child.id) : pathwayAPI.getRecommendation(child.id, { term, academicYear }),
         isSecondary(child) ? seniorPathwayAPI.getLearnerSelection(child.id) : Promise.resolve(null),
+        pathwayAPI.getTransitionDecisionHistory(child.id),
       ]);
       if (recRes.status === 'fulfilled') {
-        // Shape: { success, data: { learner, prediction: {...}, recommendation } }
         const payload = recRes.value?.data || recRes.value || null;
         const historical = isSecondary(child) && Array.isArray(payload) ? payload[0] : null;
         setRec(historical ? { predictedPathway: historical.finalApprovedPathway || historical.recommendedPathway, confidence: historical.confidenceScore || 0, justification: 'Transition recommendation retained as context for senior progress.' } : (payload?.prediction ?? payload ?? null));
@@ -317,8 +315,16 @@ function ChildPathwayCard({ child, onNavigate }) {
       if (selRes.status === 'fulfilled' && selRes.value) {
         setSelection(selRes.value?.data || null);
       }
+      if (histRes.status === 'fulfilled') {
+        const history = histRes.value?.data;
+        const latest = Array.isArray(history) ? history[0] : history;
+        setPreference(latest?.parentPreference ?? '');
+      } else {
+        setPreference('');
+      }
     } catch (e) {
       setError(e?.message || 'Failed to load pathway data');
+      setPreference('');
     } finally {
       setLoading(false);
     }
@@ -330,15 +336,45 @@ function ChildPathwayCard({ child, onNavigate }) {
   };
 
   const savePreference = async () => {
-    setSavingPref(true);
+    setSavingPref(true); setPrefError(null);
     try {
-      await pathwayAPI.saveTransitionDecision(child.id, { parentPreference: preference || null });
+      await pathwayAPI.saveParentPreference(child.id, preference || null);
       setPrefSaved(true);
       setTimeout(() => setPrefSaved(false), 3000);
     } catch (e) {
-      setError(e?.message || 'Failed to save preference');
+      setPrefError(e?.message || 'Failed to save preference');
     } finally {
       setSavingPref(false);
+    }
+  };
+
+  const downloadPDF = async () => {
+    setGeneratingPDF(true);
+    try {
+      const [schoolPrefRes, notesRes] = await Promise.allSettled([
+        pathwayPlannerAPI.getSchoolPreferences(child.id),
+        pathwayPlannerAPI.getCounsellorNotes(child.id),
+      ]);
+      const schoolPreferences = schoolPrefRes.status === 'fulfilled' ? (schoolPrefRes.value?.data || []) : [];
+      const counsellorNotes = notesRes.status === 'fulfilled' ? (notesRes.value?.data || []) : [];
+      await generatePathwayPlanPDF({
+        learner: {
+          id: child.id,
+          firstName: child.name?.split(' ')[0] || '',
+          lastName: child.name?.split(' ').slice(1).join(' ') || '',
+          admissionNumber: child.admissionNumber || '',
+          grade: child.grade || '',
+          institutionType: child.institutionType || '',
+        },
+        recommendation: rec,
+        selection,
+        schoolPreferences,
+        counsellorNotes,
+      });
+    } catch (e) {
+      console.error('[ParentPortalPathway] PDF export failed:', e?.message);
+    } finally {
+      setGeneratingPDF(false);
     }
   };
 
@@ -458,34 +494,28 @@ function ChildPathwayCard({ child, onNavigate }) {
                   <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5 flex items-center gap-1">
                     <BookOpen size={10} aria-hidden="true" /> Subject Selection Status
                   </p>
-                  {selection ? (() => {
-                    const cfg = STATUS_CONFIG[selection.status] || STATUS_CONFIG.DRAFT;
-                    const Icon = cfg.icon;
-                    return (
-                      <div className="rounded-xl border border-gray-200 bg-white p-3">
-                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-black ${cfg.cls}`}>
-                          <Icon size={10} aria-hidden="true" /> {cfg.label}
-                        </span>
-                        {selection.pathway && (
-                          <p className="mt-1.5 text-sm font-bold text-gray-900">{selection.pathway.name}</p>
-                        )}
-                        {selection.combinationRule && (
-                          <p className="text-[11px] text-gray-500">
-                            Combination: {selection.combinationRule.name}
-                          </p>
-                        )}
-                        {selection.status === 'REJECTED' && (() => {
-                          const latestRejection = (selection.approvals || []).find(a => a.status === 'REJECTED');
-                          return latestRejection?.comment ? (
-                            <div className="mt-2 rounded-lg bg-rose-50 border border-rose-200 p-2.5">
-                              <p className="text-[10px] font-bold text-rose-700 mb-0.5">Counsellor asked for a revision:</p>
-                              <p className="text-[11px] text-rose-700">“{latestRejection.comment}”</p>
-                            </div>
-                          ) : null;
-                        })()}
-                      </div>
-                    );
-                  })() : (
+                  {selection ? (
+                    <div className="rounded-xl border border-gray-200 bg-white p-3">
+                      <SelectionStatusChip status={selection.status} />
+                      {selection.pathway && (
+                        <p className="mt-1.5 text-sm font-bold text-gray-900">{selection.pathway.name}</p>
+                      )}
+                      {selection.combinationRule && (
+                        <p className="text-[11px] text-gray-500">
+                          Combination: {selection.combinationRule.name}
+                        </p>
+                      )}
+                      {selection.status === 'REJECTED' && (() => {
+                        const latestRejection = (selection.approvals || []).find(a => a.status === 'REJECTED');
+                        return latestRejection?.comment ? (
+                          <div className="mt-2 rounded-lg bg-rose-50 border border-rose-200 p-2.5">
+                            <p className="text-[10px] font-bold text-rose-700 mb-0.5">Counsellor asked for a revision:</p>
+                            <p className="text-[11px] text-rose-700">"{latestRejection.comment}"</p>
+                          </div>
+                        ) : null;
+                      })()}
+                    </div>
+                  ) : (
                     <p className="text-xs text-gray-400">No selection recorded yet.</p>
                   )}
                 </div>
@@ -510,35 +540,48 @@ function ChildPathwayCard({ child, onNavigate }) {
               {/* Parent preference */}
               {isJuniorTransition(child) && <div className="bg-rose-50 border border-rose-200 rounded-xl p-3">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-rose-600 mb-2 flex items-center gap-1">
-                  <Heart size={10} aria-hidden="true" /> Your Preference
+                  <Heart size={10} aria-hidden="true" /> Your Pathway Preference
                 </p>
-                <p className="text-[11px] text-gray-600 mb-2">
-                  Your input is shared with the school counsellor as part of the decision.
+                <p className="text-[11px] text-gray-700 mb-1 leading-relaxed font-semibold">
+                  Which pathway would you like for your child?
                 </p>
-                <div className="space-y-1.5">
-                  {PREFERENCE_OPTIONS.map(opt => (
-                    <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name={`pref-${child.id}`}
-                        value={opt.value}
-                        checked={preference === opt.value}
-                        onChange={() => setPreference(opt.value)}
-                        className="h-3.5 w-3.5 text-rose-600 focus:ring-rose-500"
-                      />
-                      <span className="text-[12px] font-semibold text-gray-700">{opt.label}</span>
-                    </label>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={savePreference}
-                  disabled={savingPref}
-                  className="mt-3 w-full rounded-xl bg-rose-600 py-2 text-[11px] font-black text-white hover:bg-rose-700 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
-                >
-                  {savingPref ? <Loader2 size={12} className="inline animate-spin mr-1" aria-hidden="true" /> : null}
-                  {savingPref ? 'Saving…' : prefSaved ? '✓ Saved' : 'Save Preference'}
-                </button>
+                <p className="text-[11px] text-gray-600 mb-3 leading-relaxed">
+                  Your preference carries weight in the recommendation and is shared with the counsellor.
+                  It does not override the evidence. If unsure, select "No preference yet" and discuss it first.
+                </p>
+                {preference === null ? (
+                  <Skeleton className="h-24 w-full rounded-xl" />
+                ) : (
+                  <>
+                    <div className="space-y-1.5">
+                      {PREFERENCE_OPTIONS.map(opt => (
+                        <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name={`pref-${child.id}`}
+                            value={opt.value}
+                            checked={preference === opt.value}
+                            onChange={() => { setPreference(opt.value); setPrefSaved(false); setPrefError(null); }}
+                            className="h-3.5 w-3.5 text-rose-600 focus:ring-rose-500"
+                          />
+                          <span className="text-[12px] font-semibold text-gray-700">{opt.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {prefError && (
+                      <p className="mt-2 text-[11px] text-rose-700 bg-rose-100 rounded-lg px-2 py-1.5" role="alert">{prefError}</p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={savePreference}
+                      disabled={savingPref}
+                      className="mt-3 w-full rounded-xl bg-rose-600 py-2 text-[11px] font-black text-white hover:bg-rose-700 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+                    >
+                      {savingPref ? <Loader2 size={12} className="inline animate-spin mr-1" aria-hidden="true" /> : null}
+                      {savingPref ? 'Saving...' : prefSaved ? 'Saved' : 'Save Preference'}
+                    </button>
+                  </>
+                )}
               </div>}
             </>
           )}
@@ -558,6 +601,20 @@ function ChildPathwayCard({ child, onNavigate }) {
               <DecisionPlanPanel learnerId={child.id} mode="parent" />
               {isJuniorTransition(child) && <ParentCareerReviewPanel learnerId={child.id} />}
             </>
+          )}
+
+          {/* Download plan as PDF */}
+          {!loading && rec && !pending && (
+            <button
+              type="button"
+              onClick={downloadPDF}
+              disabled={generatingPDF}
+              className="w-full rounded-xl border border-[#06285a]/20 bg-[#06285a]/5 py-2.5 text-[11px] font-black text-[#06285a] flex items-center justify-center gap-2 hover:bg-[#06285a]/10 transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#06285a]"
+            >
+              {generatingPDF
+                ? <><Loader2 size={12} className="animate-spin" aria-hidden="true" /> Generating PDF...</>
+                : <><Download size={12} aria-hidden="true" /> Download Plan (PDF)</>}
+            </button>
           )}
         </div>
       )}
@@ -593,15 +650,15 @@ const ParentPortalPathway = ({ onNavigate }) => {
 
         <div className="flex items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2.5">
           <div>
-            <p className="text-xs font-black text-indigo-900">New to pathway planning?</p>
-            <p className="text-[10px] text-indigo-700">Follow a simple guide for supporting your child.</p>
+            <p className="text-xs font-black text-indigo-900">Not sure where to start?</p>
+            <p className="text-[10px] text-indigo-700">Follow a simple 5-step guide to help your child choose the right path to senior school.</p>
           </div>
           <button
             type="button"
             onClick={() => onNavigate?.('pathway-guide')}
             className="shrink-0 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-[10px] font-black text-indigo-700 hover:bg-indigo-100"
           >
-            Pathway Guide
+            Guide Me
           </button>
         </div>
 

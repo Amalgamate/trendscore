@@ -4,6 +4,7 @@
  */
 
 import React from 'react';
+import AskAIButton from '../../help/AskAIButton';
 
 const StatsCard = ({ 
   title,
@@ -12,7 +13,9 @@ const StatsCard = ({
   icon: Icon,
   color = 'blue',
   trend,
-  className = ''
+  className = '',
+  askAI = true,
+  aiContext,
 }) => {
   const colorClasses = {
     blue: 'bg-blue-50 text-blue-700 border-blue-100',
@@ -26,14 +29,17 @@ const StatsCard = ({
   const accentClass = colorClasses[color] || colorClasses.blue;
 
   return (
-    <div className={`surface-panel surface-panel-interactive p-5 ${className}`}>
+    <div className={`surface-panel surface-panel-interactive p-5 ${className}`} data-ai-card="true" data-ai-title={title}>
       <div className="mb-4 flex items-start justify-between gap-4">
         {Icon && (
           <div className={`flex h-11 w-11 items-center justify-center border ${accentClass}`}>
             <Icon size={20} />
           </div>
         )}
-        <span className="text-3xl font-semibold text-slate-900">{value}</span>
+        <div className="flex flex-col items-end gap-2">
+          {askAI && <AskAIButton title={title} description={subtitle} context={aiContext || { value, trend }} />}
+          <span className="text-3xl font-semibold text-slate-900">{value}</span>
+        </div>
       </div>
       
       <div>

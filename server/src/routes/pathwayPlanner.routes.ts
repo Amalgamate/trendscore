@@ -101,6 +101,12 @@ router.get(
   ctrl.getClassPathwayDistribution
 );
 
+router.get(
+  '/classes/:classId/learners',
+  requirePermission('VIEW_PATHWAY_CASES'),
+  ctrl.getClassLearners
+);
+
 // ─── Counsellor case management ─────────────────────────────────────────────
 
 router.get(

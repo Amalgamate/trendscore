@@ -8,6 +8,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, MapPin, Bus, Phone, RefreshCw, AlertCircle, Navigation, Users,
+  Activity, CheckCircle2, Clock,
 } from 'lucide-react';
 import api, { dashboardAPI } from '../../../../services/api';
 import { Skeleton } from '../../../ui';
@@ -17,7 +18,61 @@ function fmtMoney(n) {
   return `KES ${v.toLocaleString()}`;
 }
 
+function fmtTime(ts) {
+  if (!ts) return '';
+  return new Date(ts).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
 const getChildPhoto = (child) => child?.photoUrl || child?.profilePicture || child?.photo || child?.imageUrl || null;
+
+// ── Today's boarding events (from Presence Platform) ─────────────────────────
+function TodayBoardingEvents({ learnerId }) {
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!learnerId) return;
+    const today = new Date().toISOString().slice(0, 10);
+    api.presence.getLearnerTimeline(learnerId, today)
+      .then(res => {
+        const busEvents = (res?.data?.events ?? []).filter(e =>
+          e.eventType === 'BUS_BOARDED' || e.eventType === 'BUS_ALIGHTED'
+        );
+        setEvents(busEvents);
+      })
+      .catch(() => setEvents([]))
+      .finally(() => setLoading(false));
+  }, [learnerId]);
+
+  if (loading) return null;
+  if (events.length === 0) return (
+    <div className="mt-3 rounded-xl bg-gray-50 border border-gray-100 p-3 text-center">
+      <p className="text-[11px] text-gray-400">No bus boarding recorded today</p>
+    </div>
+  );
+
+  return (
+    <div className="mt-3 rounded-xl bg-amber-50 border border-amber-100 overflow-hidden">
+      <div className="flex items-center gap-1.5 px-3 py-2 border-b border-amber-100">
+        <Activity size={12} className="text-amber-600" />
+        <span className="text-[11px] font-bold text-amber-700">Today's Bus Journey</span>
+      </div>
+      {events.map(ev => (
+        <div key={ev.id} className="flex items-center gap-2.5 px-3 py-2.5 border-b border-amber-50 last:border-0">
+          <div className="w-6 h-6 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+            {ev.eventType === 'BUS_BOARDED'
+              ? <CheckCircle2 size={12} className="text-amber-600" />
+              : <Clock size={12} className="text-amber-500" />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-semibold text-amber-800">{ev.description}</p>
+          </div>
+          <span className="text-[10px] text-amber-500">{fmtTime(ev.timestamp)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // ─── Child transport card ───────────────────────────────────────────────────
 
@@ -115,6 +170,9 @@ function ChildTransportCard({ child }) {
                 )}
               </div>
             )}
+
+            {/* Today's bus journey from Presence Platform */}
+            <TodayBoardingEvents learnerId={child.id} />
           </div>
         )}
       </div>

@@ -181,7 +181,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
 
     authAPI.getLoginConfig()
       .then((config) => {
-        if (!active || config?.otpEnabled !== false) return;
+        if (!active || config?.otpEnabled === true) return;
         setPhoneOtp(prev => ({ ...prev, requiresOtp: false, smsConfigured: false }));
         setPhoneOtpStep('verify');
         setPhonePasswordFallback(true);
@@ -246,7 +246,8 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
     const { name, value } = e.target;
     let formatted = value;
     if (name === 'phone') {
-      formatted = value.replace(/\D/g, '').slice(0, 12);
+      // Password-only schools accept the Parent ID (PAR-…) as well as a phone.
+      formatted = value.replace(/[^a-zA-Z0-9+\-\s()]/g, '').slice(0, 32);
     } else if (name === 'code') {
       formatted = value.replace(/\D/g, '').slice(0, 6);
     }
@@ -477,9 +478,11 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
   const handlePhonePasswordLogin = async (e) => {
     e.preventDefault();
     const newErrors = {};
-    const digits = phoneOtp.phone.replace(/\D/g, '');
-    if (!digits) newErrors.phone = 'Phone number is required';
-    else if (digits.length < 9) newErrors.phone = 'Enter a valid phone number';
+    const identifier = phoneOtp.phone.trim();
+    const digits = identifier.replace(/\D/g, '');
+    const isPhone = /^\+?[0-9\s()-]+$/.test(identifier);
+    if (!identifier) newErrors.phone = 'Phone number or username is required';
+    else if (isPhone && digits.length < 9) newErrors.phone = 'Enter a valid phone number';
     if (!formData.password) newErrors.password = 'Password is required';
     else if (formData.password.length < 6) newErrors.password = 'Min 6 characters';
     setErrors(newErrors);
@@ -489,7 +492,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
     setErrors({});
     try {
       const credentialsData = await authAPI.login({
-        phone: normalizeKenyanPhone(phoneOtp.phone),
+        ...(isPhone ? { phone: normalizeKenyanPhone(identifier) } : { email: identifier }),
         password: formData.password,
         rememberMe: formData.rememberMe === true,
       });

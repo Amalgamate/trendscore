@@ -21,6 +21,7 @@
     "seed:ss:learning-areas": "ts-node prisma/seed-ss-learning-areas.ts",
     "seed:ss:official-catalog": "node prisma/seed-senior-official-catalog.js",
     "seed:learners:demo": "ts-node prisma/seed-learners-demo.ts",
+    "seed:presence-demo": "ts-node prisma/seed-presence-demo.ts",
     "seed:parent-dashboard-demo": "ts-node prisma/seed-parent-dashboard-demo.ts",
     "seed:backfill-streams-classes": "ts-node prisma/seeders/seed-streams-classes.ts",
     "seed:timetable": "tsx prisma/seed-timetable.ts",

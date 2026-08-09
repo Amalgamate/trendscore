@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bell, Zap, ChevronDown, ClipboardList, BarChart3, MessageSquare, Calendar, Gift, User as UserIcon, GitBranch } from 'lucide-react';
+import { Bell, Zap, ChevronDown, ClipboardList, BarChart3, MessageSquare, Calendar, Gift, User as UserIcon, GitBranch, Compass, HelpCircle } from 'lucide-react';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { useRolePreview } from '../../../contexts/RolePreviewContext';
 import api from '../../../services/api';
@@ -17,7 +17,7 @@ import ChatPanel from '../../chat/ChatPanel';
 import SmsBalanceWidget from './SmsBalanceWidget';
 import '../../../styles/notifications.css';
 
-const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate }) => {
+const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate, showOnboarding, onOpenOnboarding, onboardingProgress, showHelp, onOpenHelp }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUnreadReminder, setShowUnreadReminder] = useState(false);
   const [birthdays, setBirthdays] = useState([]);
@@ -44,11 +44,22 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
 
   // Chat context for the messaging button
   const { unreadTotal: chatUnreadCount, isChatOpen, setIsChatOpen } = useChat();
+  const [chatInitialTab, setChatInitialTab] = useState('messages');
 
   const notificationRef = useRef(null);
   const dropdownRef = useRef(null);
   const sessionStartedAtRef = useRef(Date.now());
   const { role } = usePermissions();
+
+  // Listen for AI tab open requests (fired by AIAssistant when ASK_AI_EVENT is received)
+  useEffect(() => {
+    const handleOpenAITab = () => {
+      setChatInitialTab('ai');
+      setIsChatOpen(true);
+    };
+    window.addEventListener('trendscore:open-ai-tab', handleOpenAITab);
+    return () => window.removeEventListener('trendscore:open-ai-tab', handleOpenAITab);
+  }, [setIsChatOpen]);
 
   useEffect(() => {
     try {
@@ -436,6 +447,28 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
         </div>
       </div>
       <div className="flex items-center gap-2 lg:gap-4">
+        {showHelp && (
+          <button
+            type="button"
+            onClick={onOpenHelp}
+            className="hidden md:inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-[0.12em] text-gray-400 transition-colors hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+            aria-label="Open help for this page"
+            title="Open help for this page"
+          >
+            <HelpCircle size={11} aria-hidden="true" /> Help
+          </button>
+        )}
+        {showOnboarding && (
+          <button
+            type="button"
+            onClick={onOpenOnboarding}
+            className="hidden md:inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-[0.12em] text-gray-400 transition-colors hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+            aria-label={`Open setup guide, ${onboardingProgress?.completed || 0} of ${onboardingProgress?.total || 0} complete`}
+            title={`Setup: ${onboardingProgress?.completed || 0} of ${onboardingProgress?.total || 0} complete`}
+          >
+            <Compass size={11} aria-hidden="true" /> Setup {onboardingProgress?.completed || 0}/{onboardingProgress?.total || 0}
+          </button>
+        )}
         {(role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'HEAD_TEACHER') && (
           <SmsBalanceWidget />
         )}
@@ -659,25 +692,37 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
           {/* Backdrop */}
           <div
             className="fixed inset-0 z-40"
-            onClick={() => setIsChatOpen(false)}
+            onClick={() => { setIsChatOpen(false); setChatInitialTab('messages'); }}
           />
           <div className="relative z-50 w-[380px] h-[560px] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-200">
-            <ChatPanel onClose={() => setIsChatOpen(false)} />
+            <ChatPanel
+              onClose={() => { setIsChatOpen(false); setChatInitialTab('messages'); }}
+              initialTab={chatInitialTab}
+              currentPage={title}
+              onNavigate={onNavigate}
+            />
           </div>
         </>
       )}
 
       {/* FAB button */}
       <button
-        onClick={() => setIsChatOpen((v) => !v)}
+        onClick={() => {
+          if (isChatOpen) {
+            setIsChatOpen(false);
+            setChatInitialTab('messages');
+          } else {
+            setIsChatOpen(true);
+          }
+        }}
         className={cn(
           "relative h-14 w-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-brand-purple focus:ring-offset-2",
           isChatOpen
             ? "bg-gray-700 hover:bg-gray-800 rotate-0"
             : "bg-brand-purple hover:bg-brand-purple/90"
         )}
-        title="Messages"
-        aria-label="Open messages"
+        title="Messages & AI"
+        aria-label="Open messages and AI"
       >
         <MessageSquare size={22} className="text-white" />
         {!isChatOpen && chatUnreadCount > 0 && (

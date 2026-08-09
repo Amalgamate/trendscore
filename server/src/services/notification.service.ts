@@ -224,22 +224,34 @@ export class NotificationService {
   /**
    * Get ALL recent notifications for a user (both read and unread).
    *
-   * IMPORTANT: We return ALL records, not just unread ones.
-   *
-   * Returning only `isRead:false` rows was the root cause of the ghost-badge
-   * bug: on page refresh React state is destroyed, `fetchNotifications` ran
-   * with an empty `prev`, the merge found no locally-read IDs, and every
-   * returned row was treated as unread — even if the user had already read
-   * them. The frontend `UserNotificationContext` is responsible for computing
-   * the derived `unreadCount`; the server just supplies the raw records.
+   * Supports optional cursor-based pagination (cursor = ISO timestamp,
+   * returns rows older than the cursor), type filtering, and unread-only mode.
    */
-  static async getUserNotifications(userId: string, limit = 30) {
+  static async getUserNotifications(
+    userId: string,
+    limit = 30,
+    cursor?: string,
+    typeFilter?: string[],
+    unreadOnly = false,
+  ) {
     await this.syncApprovalNotificationsForUser(userId);
 
+    const where: any = { userId };
+
+    if (cursor) {
+      where.createdAt = { lt: new Date(cursor) };
+    }
+    if (typeFilter && typeFilter.length > 0) {
+      where.type = { in: typeFilter };
+    }
+    if (unreadOnly) {
+      where.isRead = false;
+    }
+
     return prisma.userNotification.findMany({
-      where: { userId },
+      where,
       orderBy: { createdAt: 'desc' },
-      take: limit
+      take: limit,
     });
   }
 

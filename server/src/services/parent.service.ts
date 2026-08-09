@@ -50,6 +50,9 @@ export const buildParentLoginEmail = (phone?: string | null): string | null => {
   return normalizedPhone ? `${normalizedPhone}@${PRODUCT_EMAIL_DOMAIN}` : null;
 };
 
+const buildParentCodeEmail = (parentCode: string): string =>
+  `${parentCode.toLowerCase()}@${PRODUCT_EMAIL_DOMAIN}`;
+
 export const getParentLoginEmailCandidates = (phone?: string | null): string[] => {
   return getParentPhoneLookupCandidates(phone)
     .map((candidate) => buildParentLoginEmail(candidate))
@@ -81,6 +84,14 @@ export interface SyncPrimaryParentArgs {
 }
 
 export class ParentService {
+  /** Create an immutable, non-guessable parent login ID. */
+  private async generateParentCode(): Promise<string> {
+    for (;;) {
+      const candidate = `PAR-${randomBytes(4).toString('hex').toUpperCase()}`;
+      const existing = await prisma.user.findUnique({ where: { parentCode: candidate }, select: { id: true } });
+      if (!existing) return candidate;
+    }
+  }
   /**
    * Generates a secure random 8-character password.
    * Format: 3 uppercase + 3 digits + 2 lowercase.
@@ -99,10 +110,10 @@ export class ParentService {
    */
   public async getOrCreateParent(args: CreateOrGetParentArgs) {
     const normalizedPhone = normalizeParentPhoneForFamily(args.phone);
-    const finalEmail = buildParentLoginEmail(normalizedPhone || args.phone);
-    if (!args.phone || !finalEmail) return null;
+    const legacyPhoneEmail = buildParentLoginEmail(normalizedPhone || args.phone);
+    if (!args.phone || !legacyPhoneEmail) return null;
     const phoneCandidates = getParentPhoneLookupCandidates(args.phone);
-    const emailCandidates = Array.from(new Set([finalEmail, ...getParentLoginEmailCandidates(args.phone)]));
+    const emailCandidates = Array.from(new Set([legacyPhoneEmail, ...getParentLoginEmailCandidates(args.phone)]));
 
     const existingParent = await prisma.user.findFirst({
       where: {
@@ -124,11 +135,11 @@ export class ParentService {
     }
 
     const existingParentByLogin = await prisma.user.findUnique({
-      where: { email: finalEmail }
+      where: { email: legacyPhoneEmail }
     });
     if (existingParentByLogin) {
       if (existingParentByLogin.role === 'PARENT') return existingParentByLogin;
-      throw new Error(`Login email ${finalEmail} is already assigned to a non-parent user`);
+      throw new Error(`Login email ${legacyPhoneEmail} is already assigned to a non-parent user`);
     }
 
     // Prepare default values
@@ -140,12 +151,15 @@ export class ParentService {
 
     // Force secure temporary credentials
     const parentPassword = this.generateTemporaryPassword();
+    const parentCode = await this.generateParentCode();
+    const finalEmail = buildParentCodeEmail(parentCode);
     const forceResetToken = randomBytes(32).toString('hex');
     const forceResetExpiry = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); // 90 days
 
     const parent = await prisma.user.create({
       data: {
-        username: finalEmail,
+        username: parentCode,
+        parentCode,
         email: finalEmail,
         firstName,
         lastName,
@@ -169,7 +183,7 @@ export class ParentService {
     // Ship welcome notifications
     if (!skipNotifications) {
       const portalUrl = PRODUCT_PARENT_PORTAL_URL;
-      const credentialsMessage = `Hello ${firstName}, your Parent Portal account is ready. Login at ${portalUrl} with email: ${finalEmail} and temporary password: ${parentPassword}. You will be prompted to set a new password on first login.`;
+      const credentialsMessage = `Hello ${firstName}, your Parent Portal account is ready. Login at ${portalUrl} with Parent ID: ${parentCode} and temporary password: ${parentPassword}. You will be prompted to set a new password on first login.`;
 
       if (phone) {
         try {

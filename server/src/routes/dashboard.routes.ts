@@ -18,11 +18,19 @@ import { getStarterDashboardMetrics } from '../controllers/starter-dashboard.con
 import { requireRole } from '../middleware/permissions.middleware';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
 import { asyncHandler } from '../utils/async.util';
+import { getSetupStatus } from '../controllers/setup-status.controller';
 
 const router = Router();
 const dashboardController = new DashboardController();
 
 // authenticate is applied in index.ts — do NOT add router.use(authenticate) here
+
+router.get(
+  '/setup-status',
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT']),
+  rateLimit({ windowMs: 60_000, maxRequests: 60 }),
+  asyncHandler(getSetupStatus)
+);
 
 /**
  * @route   GET /api/dashboard/starter
@@ -39,11 +47,11 @@ router.get(
 /**
  * @route   GET /api/dashboard/secondary
  * @desc    Get secondary dashboard metrics
- * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM
+ * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM, TEACHER
  */
 router.get(
   '/secondary',
-  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM']),
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER']),
   rateLimit({ windowMs: 60_000, maxRequests: 60 }),
   asyncHandler(dashboardController.getSecondaryMetrics.bind(dashboardController))
 );

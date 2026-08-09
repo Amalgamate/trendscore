@@ -82,6 +82,38 @@ export const PERMISSIONS = {
   GENERATE_ATTENDANCE_REPORTS: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER'],
 
   // ============================================
+  // PRESENCE PLATFORM
+  // ============================================
+  // VIEW_PRESENCE_TIMELINE: individual learner timeline (teacher scoped, parent scoped)
+  VIEW_PRESENCE_TIMELINE: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'PARENT'],
+  // VIEW_ALL_PRESENCE: school-wide snapshot, absent-today list, any learner
+  VIEW_ALL_PRESENCE: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'],
+  // VIEW_PRESENCE_ANALYTICS: analytics dashboard, at-risk list, reports
+  VIEW_PRESENCE_ANALYTICS: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'],
+  // SUPER_ADMIN_ONLY: most sensitive operations (NEMIS export, etc.)
+  SUPER_ADMIN_ONLY: ['SUPER_ADMIN'],
+
+  // ============================================
+  // TRANSPORT TRIPS (Phase 2)
+  // ============================================
+  MANAGE_TRANSPORT_TRIPS:   ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
+  VIEW_TRANSPORT_TRIPS:     ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER'],
+  // Drivers record boarding — role DRIVER maps here
+  RECORD_BOARDING_EVENTS:   ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DRIVER'],
+
+  // ============================================
+  // BOARDING MODULE (Phase 5)
+  // ============================================
+  VIEW_BOARDING:            ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER', 'PARENT'],
+  MANAGE_DORMITORIES:       ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
+  ASSIGN_DORMITORY_BEDS:    ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
+  MANAGE_HOUSE_MASTERS:     ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
+  CONDUCT_ROLL_CALL:        ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HOUSE_MASTER'],
+  MANAGE_EXEAT_REQUESTS:    ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HOUSE_MASTER'],
+  SUBMIT_EXEAT_REQUEST:     ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'PARENT', 'HOUSE_MASTER'],
+  VIEW_BOARDING_REPORTS:    ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
+
+  // ============================================
   // SETTINGS
   // ============================================
   SYSTEM_SETTINGS: ['SUPER_ADMIN'],

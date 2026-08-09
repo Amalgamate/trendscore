@@ -67,6 +67,13 @@ export const PERMISSIONS = {
   GENERATE_ATTENDANCE_REPORTS: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER'],
 
   // ============================================
+  // PRESENCE PLATFORM (Phase 2.0)
+  // ============================================
+  VIEW_PRESENCE_TIMELINE:   ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER', 'PARENT'],
+  VIEW_ALL_PRESENCE:        ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
+  VIEW_PRESENCE_ANALYTICS:  ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
+
+  // ============================================
   // SETTINGS
   // ============================================
   SYSTEM_SETTINGS: SUPER_ADMIN_ROLES,

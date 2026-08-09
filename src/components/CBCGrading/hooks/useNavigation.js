@@ -27,7 +27,7 @@ import {
     Heart, Star, Sparkles
 } from 'lucide-react';
 
-const focusModules = ['dashboard', 'learners', 'teachers', 'attendance', 'assessment', 'finance', 'communications', 'planner', 'digital-learning', 'learning-hub', 'docs-center', 'settings', 'hr', 'inventory', 'transport', 'pathway-planner'];
+const focusModules = ['dashboard', 'learners', 'teachers', 'attendance', 'assessment', 'finance', 'communications', 'planner', 'digital-learning', 'learning-hub', 'docs-center', 'settings', 'hr', 'inventory', 'transport', 'pathway-planner', 'presence', 'presence-analytics', 'boarding'];
 const SCHOOL_SECTION_ORDER = ['learners', 'students', 'teachers', 'lecturers', 'attendance', 'assessment', 'secondary-assessment', 'tertiary-assessment'];
 
 const orderSectionsById = (sections = [], preferredOrder = SCHOOL_SECTION_ORDER) => {
@@ -422,6 +422,7 @@ export const allNavSections = [
             { id: 'docs-staff',    label: 'Staff Records',    path: 'docs-center', params: { category: 'staff' },    permission: null },
             { id: 'docs-finance',  label: 'Financial Docs',   path: 'docs-center', params: { category: 'finance' },  permission: null },
             { id: 'docs-reports',  label: 'Academic Reports', path: 'docs-center', params: { category: 'reports' },  permission: null },
+            { id: 'knowledge-base', label: 'Help & Guides',   path: 'knowledge-base',                                permission: null },
         ]
     },
     {
@@ -568,9 +569,9 @@ export const allNavSections = [
         permission: null,
         items: [
             { id: 'pathways-admin-overview', label: 'Overview',             path: 'pathways-admin',         params: { tab: 'dashboard' }, permission: 'MANAGE_PATHWAY_CATALOG' },
-            { id: 'sec-pathway-overview',   label: 'Transition Readiness', path: 'sec-pathway-overview',   permission: 'VIEW_ALL_LEARNERS'      },
-            { id: 'sec-pathway-counsellor', label: 'Transition Cases',     path: 'sec-pathway-counsellor', permission: 'VIEW_ALL_LEARNERS'      },
-            { id: 'pathway-guide',          label: 'Guide',                path: 'pathway-guide',          permission: null                     },
+            { id: 'sec-pathway-overview',    label: 'Readiness Dashboard',  path: 'sec-pathway-overview',   permission: 'VIEW_ALL_LEARNERS' },
+            { id: 'sec-pathway-counsellor',  label: 'Learner Cases',        path: 'sec-pathway-counsellor', permission: 'VIEW_ALL_LEARNERS' },
+            { id: 'pathway-guide',           label: 'Guide',                path: 'pathway-guide',          permission: null },
             {
                 id: 'pathway-catalogues',
                 label: 'Catalogues',
@@ -607,6 +608,40 @@ export const allNavSections = [
         items: [
             { id: 'facilities-classes',  label: 'Classes & Streams',      path: 'facilities-classes',  permission: 'MANAGE_FACILITIES' },
             { id: 'hostel-allocation',   label: 'Hostel Room Allocation', path: 'hostel-allocation',   permission: 'MANAGE_FACILITIES' }
+        ]
+    },
+
+    // ── Presence Platform (Phase 2.0) ─────────────────────────────────────────
+    {
+        id: 'presence',
+        label: 'Presence Platform',
+        icon: Activity,
+        permission: null,
+        items: [
+            { id: 'presence-dashboard', label: 'School Snapshot',    path: 'presence-dashboard',  permission: 'VIEW_ALL_PRESENCE' },
+            { id: 'presence-timeline',  label: 'Learner Timeline',   path: 'presence-timeline',   permission: 'VIEW_PRESENCE_TIMELINE' },
+        ]
+    },
+
+    // ── Analytics & Intelligence (Phase 2.0) ─────────────────────────────────
+    {
+        id: 'presence-analytics',
+        label: 'Attendance Intelligence',
+        icon: Brain,
+        permission: 'VIEW_ALL_ATTENDANCE',
+        items: [
+            { id: 'analytics-dashboard', label: 'Analytics Dashboard',  path: 'analytics-dashboard', permission: 'VIEW_ALL_ATTENDANCE' },
+        ]
+    },
+
+    // ── Boarding Module (Phase 2.0) ────────────────────────────────────────────
+    {
+        id: 'boarding',
+        label: 'Boarding',
+        icon: Home,
+        permission: null,
+        items: [
+            { id: 'boarding-dashboard', label: 'Boarding Hub', path: 'boarding-dashboard', permission: null },
         ]
     },
     {
@@ -1043,7 +1078,7 @@ export const useNavigation = () => {
             ];
         }
         return navSections.filter(s => 
-            ['hr', 'finance', 'inventory', 'library', 'transport', 'biometric'].includes(s.id)
+            ['hr', 'finance', 'inventory', 'library', 'transport', 'biometric', 'presence', 'presence-analytics', 'boarding'].includes(s.id)
         );
     }, [navSections, role]);
 
@@ -1181,7 +1216,7 @@ export const groupNavigationByCategory = (nav) => {
     }
 
     // Populate Operations
-    const operationsIds = ['hr', 'inventory', 'library', 'transport', 'biometric'];
+    const operationsIds = ['hr', 'inventory', 'library', 'transport', 'biometric', 'presence', 'presence-analytics', 'boarding'];
     const operationsSections = nav.backOfficeSections?.filter(s => operationsIds.includes(s.id)) || [];
     if (operationsSections.length > 0) {
         groups.operations.items.push(...operationsSections);

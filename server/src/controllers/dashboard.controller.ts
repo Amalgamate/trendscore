@@ -9,6 +9,7 @@ import { buildSnapshot, generateInsights } from '../services/insights.service';
 import { reportDashboardService } from '../services/reportDashboard.service';
 import { parentAccessService } from '../services/parent-access.service';
 import { CanonicalInstitutionType } from '../utils/institutionNormalizer';
+import { hasAnyRole } from '../utils/roleNormalizer';
 
 import logger from '../utils/logger';
 // ─── TTL constants ─────────────────────────────────────────────────────────────
@@ -239,8 +240,8 @@ export class DashboardController {
 
         const enrollments = await prisma.classEnrollment.findMany({
             where: schoolWide
-                ? { active: true, archived: false }
-                : { classId: { in: classIds }, active: true, archived: false },
+                ? { active: true, archived: false, learner: { archived: false } }
+                : { classId: { in: classIds }, active: true, archived: false, learner: { archived: false } },
             include: {
                 class: { select: { name: true, grade: true, stream: true } },
                 learner: {
@@ -403,10 +404,19 @@ export class DashboardController {
             .slice(0, take);
     }
 
-    private async getAttendanceTrend(studentStart: Date, activeTeacherIds: string[]) {
+    private async getAttendanceTrend(studentStart: Date, activeTeacherIds: string[], _schoolId: string) {
+        const schoolLearnerIds = await prisma.learner.findMany({
+            where: { archived: false },
+            select: { id: true },
+        }).then(rows => rows.map(r => r.id));
+
         const [studentRecords, staffRecords] = await Promise.all([
             prisma.attendance.findMany({
-                where: { date: { gte: studentStart }, archived: false },
+                where: {
+                    date: { gte: studentStart },
+                    archived: false,
+                    learnerId: { in: schoolLearnerIds },
+                },
                 select: { date: true, status: true },
             }),
             prisma.staffAttendanceLog.findMany({
@@ -492,6 +502,10 @@ export class DashboardController {
     }
 
     async getIntelligenceSummary(req: AuthRequest, res: Response) {
+        const schoolId = req.school?.id;
+        if (!schoolId) {
+            return res.status(400).json({ success: false, message: 'School context is required' });
+        }
         try {
             const now = new Date();
             const today = new Date(now);
@@ -515,6 +529,16 @@ export class DashboardController {
             const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
             const monthlyWindowStart = new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() - 2, 1);
 
+            // Single-tenant deployment: resolve all active learners for learner-linked queries.
+            const schoolLearnerIds = await prisma.learner.findMany({
+                where: { archived: false },
+                select: { id: true },
+            }).then(rows => rows.map(r => r.id));
+
+            const learnerIdFilter = schoolLearnerIds.length > 0
+                ? { learnerId: { in: schoolLearnerIds } }
+                : { learnerId: 'none' }; // no learners → empty results
+
             const [
                 snapshot,
                 averagePercentageAgg,
@@ -527,9 +551,10 @@ export class DashboardController {
                 monthlyBillingRows,
                 riskSignals,
             ] = await Promise.all([
-                buildSnapshot(),
+                buildSnapshot(schoolId),
                 prisma.summativeResult.aggregate({
                     where: {
+                        ...learnerIdFilter,
                         archived: false,
                         percentage: { not: null },
                     },
@@ -550,7 +575,7 @@ export class DashboardController {
                 `),
                 prisma.formativeAssessment.groupBy({
                     by: ['learningArea', 'overallRating'],
-                    where: { archived: false },
+                    where: { ...learnerIdFilter, archived: false },
                     _count: true,
                 }),
                 prisma.$queryRaw<Array<{ academicYear: number; term: string; avgPct: number }>>(Prisma.sql`
@@ -569,6 +594,7 @@ export class DashboardController {
                 `),
                 prisma.attendance.findMany({
                     where: {
+                        ...learnerIdFilter,
                         date: { gte: thirtyDaysAgo },
                         archived: false,
                     },
@@ -583,6 +609,7 @@ export class DashboardController {
                         prisma.attendance.groupBy({
                             by: ['status'],
                             where: {
+                                ...learnerIdFilter,
                                 date: { gte: start, lt: end },
                                 archived: false,
                             },
@@ -595,6 +622,7 @@ export class DashboardController {
                         DATE_TRUNC('month', p."paymentDate") AS "monthStart",
                         SUM(p.amount)::float AS collected
                     FROM fee_payments p
+                    INNER JOIN fee_invoices i ON i.id = p."invoiceId"
                     WHERE p.archived = false
                       AND p."paymentDate" >= ${monthlyWindowStart}
                     GROUP BY DATE_TRUNC('month', p."paymentDate")
@@ -792,7 +820,7 @@ export class DashboardController {
                     .withCode('INSTITUTION_FORBIDDEN');
             }
 
-            const cacheKey = `dashboard:secondary:${institutionType}`;
+            const cacheKey = `dashboard:secondary:${req.school?.id}:${institutionType}`;
             const cached = await redisCacheService.get<any>(cacheKey);
             if (cached) return res.json({ success: true, data: cached, _cached: true });
 
@@ -976,7 +1004,7 @@ export class DashboardController {
                         ],
                     },
                 };
-            const cacheKey = `dashboard:admin:v4:${institutionType}:${filter}`;
+            const cacheKey = `dashboard:admin:v4:${req.school?.id}:${institutionType}:${filter}`;
 
             // ── Serve from cache unless caller explicitly bypassed it ──────────
             if (!fresh) {
@@ -1567,7 +1595,7 @@ export class DashboardController {
                 select: { id: true, subject: true, role: true },
             });
             const [attendanceTrend, teacherAttendanceByDept] = await Promise.all([
-                this.getAttendanceTrend(attendanceTrendStart, activeTeacherList.map(teacher => teacher.id)),
+                this.getAttendanceTrend(attendanceTrendStart, activeTeacherList.map(teacher => teacher.id), req.school?.id ?? ''),
                 this.getTeacherAttendanceGroups(activeTeacherList, staffStartOfToday, staffEndOfToday),
             ]);
 
@@ -2656,14 +2684,18 @@ export class DashboardController {
      * Cached for 3 minutes; pass ?fresh=1 to bypass.
      */
     async getInsights(req: AuthRequest, res: Response) {
-        const cacheKey = 'dashboard:insights';
+        const schoolId = req.school?.id;
+        if (!schoolId) {
+            return res.status(400).json({ success: false, message: 'School context is required' });
+        }
+        const cacheKey = `dashboard:insights:${schoolId}`;
         try {
             if (!req.query.fresh) {
                 const cached = await redisCacheService.get<any>(cacheKey);
                 if (cached) return res.json({ success: true, data: cached, _cached: true });
             }
 
-            const payload = await generateInsights();
+            const payload = await generateInsights(schoolId);
             await redisCacheService.set(cacheKey, payload, 180); // 3-min cache
             res.json({ success: true, data: payload });
         } catch (error: any) {
@@ -2675,7 +2707,12 @@ export class DashboardController {
 
     async getAssessmentOperations(req: AuthRequest, res: Response) {
         try {
-            const data = await reportDashboardService.getDashboardData(parseReportDashboardFilters(req.query));
+            const restrictedTeacher = hasAnyRole(req.user, ['TEACHER'])
+                && !hasAnyRole(req.user, ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM']);
+            const data = await reportDashboardService.getDashboardData(
+                parseReportDashboardFilters(req.query),
+                restrictedTeacher ? { teacherId: req.user?.userId } : undefined
+            );
             res.json({ success: true, data });
         } catch (error: any) {
             logger.error('Assessment Operations Dashboard Error:', error);

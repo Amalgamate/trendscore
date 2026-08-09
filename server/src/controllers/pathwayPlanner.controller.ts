@@ -173,15 +173,33 @@ export const getCounsellorNotes = async (req: AuthRequest, res: Response) => {
   const { learnerId } = req.params;
   await assertLearnerPathwayAccess(req, learnerId);
   const readableVisibilities = readableCounsellorNoteVisibilities(req.user);
-  const notes = await prisma.counsellorNote.findMany({
-    where: {
-      learnerId,
-      ...(readableVisibilities ? { visibility: { in: readableVisibilities } } : {}),
-    },
-    orderBy: { createdAt: 'desc' },
-    include: { author: { select: { firstName: true, lastName: true, role: true } } },
+
+  const query      = req.query || {};
+  const pageNumber = Math.max(1, Number.parseInt(String(query.page ?? '1')) || 1);
+  const pageSize   = Math.min(100, Math.max(1, Number.parseInt(String(query.limit ?? '50')) || 50));
+  const skip       = (pageNumber - 1) * pageSize;
+
+  const where = {
+    learnerId,
+    ...(readableVisibilities ? { visibility: { in: readableVisibilities } } : {}),
+  };
+
+  const [notes, total] = await Promise.all([
+    prisma.counsellorNote.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: pageSize,
+      include: { author: { select: { firstName: true, lastName: true, role: true } } },
+    }),
+    prisma.counsellorNote.count({ where }),
+  ]);
+
+  res.json({
+    success: true,
+    data: notes,
+    pagination: { page: pageNumber, limit: pageSize, total, pages: Math.ceil(total / pageSize) },
   });
-  res.json({ success: true, data: notes });
 };
 
 export const addCounsellorNote = async (req: AuthRequest, res: Response) => {
@@ -390,7 +408,7 @@ export const submitStudentSelection = async (req: AuthRequest, res: Response) =>
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const searchSeniorSchools = async (req: AuthRequest, res: Response) => {
-  const { query, county, category, schoolType, gender, pathway, track, combination, verificationStatus, affordabilityBand, page = '1', limit = '20' } = req.query as Record<string, string>;
+  const { query, county, category, classification, schoolType, gender, pathway, track, combination, verificationStatus, affordabilityBand, page = '1', limit = '20' } = req.query as Record<string, string>;
   const pageNumber = Math.max(1, Number.parseInt(page) || 1);
   const pageSize = Math.min(100, Math.max(1, Number.parseInt(limit) || 20));
   const skip = (pageNumber - 1) * pageSize;
@@ -403,6 +421,7 @@ export const searchSeniorSchools = async (req: AuthRequest, res: Response) => {
   ];
   if (county)     where.county     = { contains: county, mode: 'insensitive' };
   if (category)   where.category   = category;
+  if (classification) where.classification = classification;
   if (schoolType) where.schoolType = schoolType;
   if (gender)     where.gender     = gender;
   if (pathway)    where.pathwayCodes = { has: pathway };
@@ -626,7 +645,11 @@ export const getClassPathwayDistribution = async (req: AuthRequest, res: Respons
   // Tally recommendations by pathway
   const recTally: Record<string, number> = {};
   const selTally: Record<string, number> = { DRAFT: 0, SUBMITTED: 0, APPROVED: 0, LOCKED: 0, NONE: 0 };
-  recs.forEach((r) => { recTally[r.recommendedPathway] = (recTally[r.recommendedPathway] || 0) + 1; });
+  recs.forEach((r) => {
+    if (r.recommendedPathway) {
+      recTally[r.recommendedPathway] = (recTally[r.recommendedPathway] || 0) + 1;
+    }
+  });
   const selByLearner = new Map(selections.map((s) => [s.learnerId, s]));
   learnerIds.forEach((id) => {
     const sel = selByLearner.get(id);
@@ -696,23 +719,30 @@ export const seedSeniorSchools = async (req: AuthRequest, res: Response) => {
 export const upsertSeniorSchool = async (req: AuthRequest, res: Response) => {
   const {
     id, name, knecCode, county, subCounty, schoolType, gender,
-    category, pathwayCodes, trackCodes, combinationCodes, minimumKcpeGrade, website, phone, verified,
+    category, classification, pathwayCodes, trackCodes, combinationCodes,
+    minimumKcpeGrade, website, phone, verified,
     verificationStatus, dataSource, affordabilityBand, facilities, specialNeedsSupport,
     latitude, longitude, faithAffiliation, clubs, annualCostNotes, performanceNotes, transitionNotes, active,
   } = req.body as Record<string, any>;
 
   if (!name || !county) throw new ApiError(400, 'name and county are required');
 
+  const VALID_CLASSIFICATIONS = ['C1', 'C2', 'C3', 'C4'];
+  if (classification && !VALID_CLASSIFICATIONS.includes(String(classification))) {
+    throw new ApiError(422, `classification must be one of: ${VALID_CLASSIFICATIONS.join(', ')}`);
+  }
+
   const data = {
     name: String(name),
     county: String(county),
-    subCounty:          subCounty  ? String(subCounty)  : null,
-    schoolType:         schoolType ? String(schoolType) : 'DAY',
-    gender:             gender     ? String(gender)     : 'MIXED',
-    category:           category   ? String(category)   : null,
-    pathwayCodes:       Array.isArray(pathwayCodes) ? pathwayCodes.map(String) : [],
-    trackCodes:         Array.isArray(trackCodes) ? trackCodes.map(String) : [],
-    combinationCodes:   Array.isArray(combinationCodes) ? combinationCodes.map(String) : [],
+    subCounty:          subCounty      ? String(subCounty)      : null,
+    schoolType:         schoolType     ? String(schoolType)     : 'DAY',
+    gender:             gender         ? String(gender)         : 'MIXED',
+    category:           category       ? String(category)       : null,
+    classification:     classification ? String(classification) : null,
+    pathwayCodes:       Array.isArray(pathwayCodes)       ? pathwayCodes.map(String)       : [],
+    trackCodes:         Array.isArray(trackCodes)         ? trackCodes.map(String)         : [],
+    combinationCodes:   Array.isArray(combinationCodes)   ? combinationCodes.map(String)   : [],
     minimumKcpeGrade:   minimumKcpeGrade != null ? Number(minimumKcpeGrade) : null,
     website:            website ? String(website) : null,
     phone:              phone   ? String(phone)   : null,
@@ -720,14 +750,14 @@ export const upsertSeniorSchool = async (req: AuthRequest, res: Response) => {
     verificationStatus: verificationStatus ? String(verificationStatus) : (verified ? 'TREND_SCORE_VERIFIED' : 'UNVERIFIED'),
     verifiedAt:         verified ? new Date() : null,
     dataSource:         dataSource ? String(dataSource) : null,
-    affordabilityBand: affordabilityBand ? String(affordabilityBand) : null,
-    facilities:         Array.isArray(facilities) ? facilities.map(String) : [],
-    clubs:              Array.isArray(clubs) ? clubs.map(String) : [],
+    affordabilityBand:  affordabilityBand ? String(affordabilityBand) : null,
+    facilities:         Array.isArray(facilities)         ? facilities.map(String)         : [],
+    clubs:              Array.isArray(clubs)               ? clubs.map(String)               : [],
     specialNeedsSupport: Array.isArray(specialNeedsSupport) ? specialNeedsSupport.map(String) : [],
-    annualCostNotes: annualCostNotes ? String(annualCostNotes).slice(0, 600) : null,
-    performanceNotes: performanceNotes ? String(performanceNotes).slice(0, 600) : null,
-    transitionNotes: transitionNotes ? String(transitionNotes).slice(0, 600) : null,
-    latitude:           latitude != null ? Number(latitude) : null,
+    annualCostNotes:    annualCostNotes  ? String(annualCostNotes).slice(0, 600)  : null,
+    performanceNotes:   performanceNotes ? String(performanceNotes).slice(0, 600) : null,
+    transitionNotes:    transitionNotes  ? String(transitionNotes).slice(0, 600)  : null,
+    latitude:           latitude  != null ? Number(latitude)  : null,
     longitude:          longitude != null ? Number(longitude) : null,
     faithAffiliation:   faithAffiliation ? String(faithAffiliation) : null,
     active:             active == null ? true : Boolean(active),
@@ -856,12 +886,24 @@ export const submitSchoolCorrection = async (req: AuthRequest, res: Response) =>
 
 export const listSchoolCorrections = async (req: AuthRequest, res: Response) => {
   const status = req.query.status ? String(req.query.status) : undefined;
-  const rows = await prisma.schoolCorrection.findMany({
-    where: status ? { status } : undefined,
-    orderBy: { createdAt: 'desc' },
-    include: { school: true },
+  const pageNumber = Math.max(1, Number.parseInt(String(req.query.page ?? '1')) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number.parseInt(String(req.query.limit ?? '50')) || 50));
+  const where = status ? { status } : undefined;
+  const [rows, total] = await Promise.all([
+    prisma.schoolCorrection.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip: (pageNumber - 1) * pageSize,
+      take: pageSize,
+      include: { school: true },
+    }),
+    prisma.schoolCorrection.count({ where }),
+  ]);
+  res.json({
+    success: true,
+    data: rows,
+    pagination: { page: pageNumber, limit: pageSize, total, pages: Math.ceil(total / pageSize) },
   });
-  res.json({ success: true, data: rows });
 };
 
 function parseCorrectionValue(field: string, value: string): any {
@@ -916,4 +958,211 @@ export const verifySeniorSchool = async (req: AuthRequest, res: Response) => {
     data: { verificationStatus, verified, verifiedAt: verified ? new Date() : null, active: verificationStatus !== 'RETIRED' },
   });
   res.json({ success: true, data: school });
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 2 — Per-learner pathway table for a class (counsellor workbench)
+//
+// Returns each learner in the class with their:
+//   - recommendation (pathway + confidence)
+//   - selection status
+//   - readiness flags (career explored, school shortlisted, decision plan state)
+//
+// Query params:
+//   pathway  — filter by recommended pathway code (STEM | SOCIAL_SCIENCES | ARTS_SPORTS)
+//   status   — filter by selection status (DRAFT | SUBMITTED | APPROVED | LOCKED | NONE)
+//   readiness — filter by readiness gap (no_recommendation | no_career | no_school | needs_review)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const getClassLearners = async (req: AuthRequest, res: Response) => {
+  const { classId } = req.params;
+  const { pathway, status, readiness } = req.query as Record<string, string>;
+  const pageNumber = Math.max(1, Number.parseInt(String(req.query.page ?? '1')) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number.parseInt(String(req.query.limit ?? '50')) || 50));
+  const role = req.user?.role ?? '';
+  if (!isCounsellor(role) && role !== 'TEACHER') throw new ApiError(403, 'Access denied');
+
+  const classRecord = await prisma.class.findUnique({
+    where: { id: classId },
+    include: {
+      enrollments: {
+        where: { active: true },
+        include: {
+          learner: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              admissionNumber: true,
+              grade: true,
+              gender: true,
+              photoUrl: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!classRecord) throw new ApiError(404, 'Class not found');
+
+  const learners = classRecord.enrollments.map((e) => e.learner);
+  const learnerIds = learners.map((l) => l.id);
+
+  // Batch-load all pathway data for the class in parallel
+  const [recs, selections, decisionPlans, careerSaves, schoolPrefs] = await Promise.all([
+    prisma.learnerPathwayRecommendation.findMany({
+      where: { learnerId: { in: learnerIds } },
+      select: {
+        learnerId: true,
+        recommendedPathway: true,
+        confidenceScore: true,
+        parentPreference: true,
+        teacherRecommendation: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      distinct: ['learnerId'],
+    }),
+    prisma.learnerPathwaySelection.findMany({
+      where: { learnerId: { in: learnerIds } },
+      select: {
+        learnerId: true,
+        status: true,
+        pathway: { select: { code: true, name: true } },
+        combinationRule: { select: { name: true } },
+        updatedAt: true,
+      },
+      orderBy: { updatedAt: 'desc' },
+      distinct: ['learnerId'],
+    }),
+    prisma.decisionPlan.findMany({
+      where: { learnerId: { in: learnerIds } },
+      select: {
+        learnerId: true,
+        status: true,
+        parentReviewedAt: true,
+        counsellorReviewedAt: true,
+      },
+    }),
+    prisma.learnerCareerSave.findMany({
+      where: { learnerId: { in: learnerIds }, supportStatus: { not: 'REMOVED' } },
+      select: { learnerId: true },
+      distinct: ['learnerId'],
+    }),
+    prisma.learnerSchoolPreference.findMany({
+      where: { learnerId: { in: learnerIds } },
+      select: { learnerId: true },
+      distinct: ['learnerId'],
+    }),
+  ]);
+
+  // Index by learnerId for O(1) lookup
+  const recByLearner     = new Map(recs.map((r) => [r.learnerId, r]));
+  const selByLearner     = new Map(selections.map((s) => [s.learnerId, s]));
+  const planByLearner    = new Map(decisionPlans.map((p) => [p.learnerId, p]));
+  const careerSet        = new Set(careerSaves.map((c) => c.learnerId));
+  const schoolSet        = new Set(schoolPrefs.map((s) => s.learnerId));
+
+  // Build per-learner rows
+  let rows = learners.map((learner) => {
+    const rec  = recByLearner.get(learner.id);
+    const sel  = selByLearner.get(learner.id);
+    const plan = planByLearner.get(learner.id);
+
+    const recommendedPathway  = rec?.recommendedPathway  ?? null;
+    const selectionStatus     = sel?.status              ?? 'NONE';
+    const hasCareer           = careerSet.has(learner.id);
+    const hasSchool           = schoolSet.has(learner.id);
+    const hasRecommendation   = !!recommendedPathway;
+    const decisionStatus      = plan?.status ?? null;
+    const parentReviewed      = !!plan?.parentReviewedAt;
+    const counsellorReviewed  = !!plan?.counsellorReviewedAt;
+    const needsReview         = decisionStatus === 'SUBMITTED' || decisionStatus === 'COUNSELLOR_REVIEWED';
+
+    return {
+      learnerId: learner.id,
+      firstName: learner.firstName,
+      lastName: learner.lastName,
+      admissionNumber: learner.admissionNumber,
+      grade: learner.grade,
+      gender: learner.gender,
+      photoUrl: learner.photoUrl ?? null,
+      recommendedPathway,
+      confidenceScore: rec?.confidenceScore ?? null,
+      teacherRecommendation: rec?.teacherRecommendation ?? null,
+      parentPreference: rec?.parentPreference ?? null,
+      selectionStatus,
+      selectedPathwayName: sel?.pathway?.name ?? null,
+      combinationName: sel?.combinationRule?.name ?? null,
+      selectionUpdatedAt: sel?.updatedAt ?? null,
+      decisionStatus,
+      parentReviewed,
+      counsellorReviewed,
+      needsReview,
+      readiness: {
+        hasRecommendation,
+        hasCareer,
+        hasSchool,
+        hasDecision: !!decisionStatus && decisionStatus !== 'DRAFT',
+        isComplete: hasRecommendation && hasCareer && hasSchool && selectionStatus === 'LOCKED',
+      },
+    };
+  });
+
+  // Apply filters
+  if (pathway) {
+    rows = rows.filter((r) => r.recommendedPathway === pathway);
+  }
+  if (status) {
+    rows = rows.filter((r) => r.selectionStatus === status);
+  }
+  if (readiness) {
+    switch (readiness) {
+      case 'no_recommendation':
+        rows = rows.filter((r) => !r.readiness.hasRecommendation);
+        break;
+      case 'no_career':
+        rows = rows.filter((r) => r.readiness.hasRecommendation && !r.readiness.hasCareer);
+        break;
+      case 'no_school':
+        rows = rows.filter((r) => r.readiness.hasRecommendation && !r.readiness.hasSchool);
+        break;
+      case 'needs_review':
+        rows = rows.filter((r) => r.needsReview);
+        break;
+    }
+  }
+
+  // Sort: needs review first, then by selection status progress, then alphabetically
+  const statusOrder: Record<string, number> = {
+    LOCKED: 0, APPROVED: 1, SUBMITTED: 2, DRAFT: 3, NONE: 4,
+  };
+  rows.sort((a, b) => {
+    if (a.needsReview !== b.needsReview) return a.needsReview ? -1 : 1;
+    const sa = statusOrder[a.selectionStatus] ?? 5;
+    const sb = statusOrder[b.selectionStatus] ?? 5;
+    if (sa !== sb) return sa - sb;
+    return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+  });
+
+  const filteredTotal = rows.length;
+  const pageRows = rows.slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
+
+  res.json({
+    success: true,
+    data: pageRows,
+    meta: {
+      classId,
+      className: classRecord.name,
+      grade: classRecord.grade,
+      total: learners.length,
+      filtered: filteredTotal,
+    },
+    pagination: {
+      page: pageNumber,
+      limit: pageSize,
+      total: filteredTotal,
+      pages: Math.ceil(filteredTotal / pageSize),
+    },
+  });
 };

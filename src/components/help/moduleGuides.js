@@ -83,6 +83,73 @@ export const moduleGuides = [
     tips: ['A provider acceptance is not the same as handset delivery.', 'Do not retry a duplicate failure until checking whether an earlier copy was delivered.'],
     support: { query: 'SMS', section: 'communications' },
   },
+
+  // ── Phase 2.0 guides ────────────────────────────────────────────────────────
+
+  {
+    id: 'presence-overview',
+    title: 'Presence Platform Overview',
+    pages: ['presence-dashboard'],
+    roles: adminRoles,
+    summary: 'The Presence Platform aggregates attendance from every source — classes, biometric gates, school buses, and boarding roll calls — into one real-time school snapshot.',
+    required: 'At least one attendance source active (daily register, biometric device, or transport trips).',
+    steps: [
+      { title: 'Check today\'s snapshot', description: 'The School Snapshot shows total learners, present count, absent count, and unmarked count as of right now. Refresh it after the morning register is complete.', page: 'presence-dashboard' },
+      { title: 'Review absent learners', description: 'The Absent / Unmarked panel lists every learner with no attendance record today. Use this list to follow up before dismissal.', page: 'presence-dashboard' },
+      { title: 'Check grade breakdown', description: 'The attendance-by-grade chart shows which grades are below target. Drill down to find specific classes.', page: 'presence-dashboard' },
+      { title: 'View a learner timeline', description: 'Navigate to Learner Timeline to see a specific learner\'s full day — gate arrival, class mark, bus boarding. Use date navigation to go back to any previous day.', page: 'presence-timeline' },
+    ],
+    tips: [
+      'The snapshot updates in real time as teachers submit registers.',
+      'A learner with a biometric gate scan but no class attendance is a concern — check the Analytics dashboard.',
+      'Parents can see their child\'s timeline via the Parent Portal → Attendance.',
+    ],
+    support: { query: 'Presence Platform', section: 'attendance' },
+  },
+
+  {
+    id: 'presence-analytics',
+    title: 'Attendance Analytics & Early Warning',
+    pages: ['analytics-dashboard'],
+    roles: adminRoles,
+    summary: 'Surface at-risk learners, detect chronic absence patterns, and trigger early warnings before they become serious problems.',
+    required: 'At least 2 weeks of attendance records for meaningful trend analysis.',
+    steps: [
+      { title: 'Review the 7-day trend', description: 'The bar chart shows school-wide attendance rate for each of the past 7 days. A dip on a specific day often indicates a timetable clash or a missing class register.', page: 'analytics-dashboard' },
+      { title: 'Check the at-risk list', description: 'Switch to the At-Risk tab to see learners whose absence rate exceeds 20% over the past 4 weeks, ranked by risk level (LOW → CRITICAL).', page: 'analytics-dashboard' },
+      { title: 'Review late arrival patterns', description: 'The Late Patterns tab shows grades with repeated late arrivals. This helps identify transport issues or specific class start time problems.', page: 'analytics-dashboard' },
+      { title: 'Run early warning checks', description: 'Click "Run Checks" to immediately evaluate all four signals: chronic absence, late pattern, dorm abscond, and bus no-arrival. New violations appear in the Violations tab.', page: 'analytics-dashboard' },
+      { title: 'Resolve violations', description: 'When a violation has been followed up, click Resolve to close it. This prevents it from reappearing in reports.', page: 'analytics-dashboard' },
+    ],
+    tips: [
+      'Run checks every Monday morning for a weekly risk review.',
+      'A CRITICAL risk level means a learner has missed more than 40% of recorded days — escalate immediately.',
+      'Late pattern alerts fire when a learner is late 3 or more times in a 5-day window.',
+    ],
+    support: { query: 'Attendance Analytics', section: 'attendance' },
+  },
+
+  {
+    id: 'boarding-setup',
+    title: 'Boarding School Setup',
+    pages: ['boarding-dashboard'],
+    roles: adminRoles,
+    summary: 'Set up dormitories, assign boarders to beds, configure house masters, and run the first roll call.',
+    required: 'School configured as boarding type. Learners imported and active.',
+    steps: [
+      { title: 'Create dormitories', description: 'Click "Add Dormitory" and enter the name (e.g. Block A), gender (Boys / Girls / Mixed), and capacity. Create one dormitory per physical block or house.', page: 'boarding-dashboard' },
+      { title: 'Assign learners to dorms', description: 'Use the Assignments section to place each boarder in a dormitory. Optionally assign a specific bed number. The system tracks one active assignment per learner per academic year.', page: 'boarding-dashboard' },
+      { title: 'Assign house masters', description: 'Go to House Masters and assign each dormitory a PRIMARY house master and any DUTY or MATRON staff.', page: 'boarding-dashboard' },
+      { title: 'Run the first roll call', description: 'Click "Start Roll Call", select the dormitory, session (MORNING or NIGHT), and today\'s date. Mark each boarder as Present, Absent, Excused, or On Exeat. Complete the roll call when done.', page: 'boarding-dashboard' },
+      { title: 'Process an exeat request', description: 'When a parent requests weekend leave, click "Request Exeat", fill in the learner ID, dates, and reason. Approve or deny from the Exeat tab. Record departure and return when they happen.', page: 'boarding-dashboard' },
+    ],
+    tips: [
+      'Night roll call is the most critical — an absent boarder at night triggers an alert to the house master and head teacher.',
+      'Always record departure before return — the system blocks return recording if no departure is on file.',
+      'Exeat overdue alerts fire automatically the morning after a learner\'s expected return date if no return has been recorded.',
+    ],
+    support: { query: 'Boarding', section: 'boarding' },
+  },
 ];
 
 export function findModuleGuide(page, role) {

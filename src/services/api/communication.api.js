@@ -1,5 +1,4 @@
 import { fetchWithAuth } from './core';
-import axiosInstance from './axiosConfig';
 
 export const communicationAPI = {
   getConfig: async () => fetchWithAuth('/communication/config'),
@@ -12,6 +11,8 @@ export const communicationAPI = {
     fetchWithAuth('/communication/test/sms', { method: 'POST', body: JSON.stringify(data) }),
   sendTestEmail: async (data) =>
     fetchWithAuth('/communication/test/email', { method: 'POST', body: JSON.stringify(data) }),
+  testAI: async () =>
+    fetchWithAuth('/communication/test/ai', { method: 'POST', body: JSON.stringify({}) }),
   draftEmailTemplate: async (data) =>
     fetchWithAuth('/communication/email/draft', { method: 'POST', body: JSON.stringify(data) }),
   getBirthdaysToday: async () => fetchWithAuth('/communication/birthdays/today'),

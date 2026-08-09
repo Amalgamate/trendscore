@@ -50,6 +50,10 @@ import { careerAPI } from './career.api';
 import { chatAPI } from './chat.api';
 import { approvalAPI } from './approval.api';
 import { timetableAPI } from './timetable.api';
+import { presenceAPI } from './presence.api';
+import { boardingAPI } from './boarding.api';
+import { tripsAPI } from './trips.api';
+import { analyticsAPI } from './analytics.api';
 
 export { API_BASE_URL, clearApiCache };
 
@@ -101,6 +105,10 @@ export { pathwayPlannerAPI };
 export { careerAPI };
 export { approvalAPI };
 export { timetableAPI };
+export { presenceAPI };
+export { boardingAPI };
+export { tripsAPI };
+export { analyticsAPI };
 
 const api = {
   // ── Core Axios-like Methods ───────────────────────────────────────────
@@ -187,6 +195,10 @@ const api = {
   chat: chatAPI,
   approvals: approvalAPI,
   timetable: timetableAPI,
+  presence:  presenceAPI,
+  boarding:  boardingAPI,
+  trips:     tripsAPI,
+  analytics: analyticsAPI,
   gitNotifications: {
     preview: async (data) => fetchWithAuth('/git-notifications/preview', { method: 'POST', body: JSON.stringify(data) }),
     publish: async (data) => fetchWithAuth('/git-notifications/publish', { method: 'POST', body: JSON.stringify(data) }),

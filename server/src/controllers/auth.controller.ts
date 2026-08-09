@@ -119,7 +119,8 @@ export class AuthController {
     const config = await prisma.communicationConfig.findFirst({
       select: { emailTemplates: true },
     });
-    const otpEnabled = (config?.emailTemplates as any)?.__security?.otpEnabled !== false;
+    // Schools without an explicit, working SMS setup use password login.
+    const otpEnabled = (config?.emailTemplates as any)?.__security?.otpEnabled === true;
 
     res.json({ otpEnabled });
   }

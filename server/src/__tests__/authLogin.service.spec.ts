@@ -93,7 +93,7 @@ describe('AuthLoginService', () => {
       passwordResetToken: null,
     };
     mockedRedis.get.mockResolvedValue(null);
-    mockedPrisma.user.findUnique.mockResolvedValue(user);
+    mockedPrisma.user.findFirst.mockResolvedValue(user);
     mockedBcrypt.compare.mockResolvedValue(true);
 
     const result = await service.loginWithPassword({
@@ -113,7 +113,7 @@ describe('AuthLoginService', () => {
       success: true,
       token: 'access.jwt',
       refreshToken: 'refresh.jwt',
-      requiresOtp: true,
+      requiresOtp: false,
       mustChangePassword: false,
       message: 'Login successful',
       user: {

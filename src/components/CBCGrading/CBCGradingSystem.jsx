@@ -11,7 +11,11 @@ import CommandPalette from './layout/CommandPalette';
 import GitPopupAlert from './layout/GitPopupAlert';
 import GitNotificationDialog from './layout/GitNotificationDialog';
 import ModuleHelpAssistant from '../help/ModuleHelpAssistant';
+import { findModuleGuide } from '../help/moduleGuides';
+import AIAssistant from '../help/AIAssistant';
 import RoleOnboarding from '../help/RoleOnboarding';
+import { findRoleOnboarding, getRoleOnboarding } from '../help/roleOnboardingJourneys';
+import { useSetupProgress } from '../help/useSetupProgress';
 import ImpersonationBanner from '../../components/ImpersonationBanner';
 import { useImpersonation } from '../../contexts/ImpersonationContext';
 
@@ -33,6 +37,13 @@ import { userAPI } from '../../services/api/user.api';
 import { hasPageAccess, isParentPortalPage, resolveDashboardPage, userHasParentPortalAccess } from './utils/appAccess';
 import { resolveLearnerSaveIntent } from './utils/learnerSaveIntent';
 import { useModuleAccess } from '../../contexts/ModuleAccessContext';
+
+const PWA_SHORTCUT_PAGES = {
+  attendance: { default: 'attendance-daily', parent: 'parent-portal-attendance' },
+  fees: { default: 'fees-collection', parent: 'parent-portal-fees' },
+  messages: { default: 'comm-messages', parent: 'parent-portal-messages' },
+  learners: { default: 'learners-list', parent: 'parent-portal-children' },
+};
 
 const extractApiErrorMessage = (err, fallback = 'Request failed') => {
   const data = err?.response?.data;
@@ -87,6 +98,29 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
     currentPage, setCurrentPage,
     pageParams,
   } = useUIStore();
+  const hasModuleHelp = Boolean(findModuleGuide(currentPage, accessUser?.role));
+  const setupJourney = useMemo(() => getRoleOnboarding(accessUser?.role), [accessUser?.role]);
+  const setupProgress = useSetupProgress(setupJourney, accessUser, currentPage);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const shortcut = url.searchParams.get('shortcut');
+    const shortcutPages = PWA_SHORTCUT_PAGES[shortcut];
+    if (!shortcutPages) return;
+
+    const requestedPage = parentPortal ? shortcutPages.parent : shortcutPages.default;
+    const allowedPage = getAllowedPage(requestedPage);
+    setCurrentPage(allowedPage);
+
+    // Consume the launch intent once so refresh/back does not reopen it.
+    url.searchParams.delete('shortcut');
+    window.history.replaceState(
+      { appPage: allowedPage, appParams: {} },
+      '',
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  }, [getAllowedPage, parentPortal, setCurrentPage]);
+  const hasOnboardingGuide = Boolean(findRoleOnboarding(accessUser?.role, currentPage) && !setupProgress.complete);
 
   const isTabletOrLower = useMediaQuery('(max-width: 1023px)');
 
@@ -588,6 +622,13 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
 
   // ── Git notification dialog (SUPER_ADMIN / ADMIN only) ────────────────────
   const [gitDialogOpen, setGitDialogOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+
+  useEffect(() => {
+    setHelpOpen(false);
+    setOnboardingOpen(false);
+  }, [currentPage]);
 
   // ── Layout ────────────────────────────────────────────────────────────────
   if (isMobile) {
@@ -625,8 +666,9 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
               currentPath={currentPage}
               onNavigate={handleNavigate}
             />
-            <ModuleHelpAssistant currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} />
-            <RoleOnboarding currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} />
+            <ModuleHelpAssistant currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} open={helpOpen} onOpenChange={setHelpOpen} />
+            <AIAssistant currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} />
+            <RoleOnboarding currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} open={onboardingOpen} onOpenChange={setOnboardingOpen} progress={setupProgress} />
           </div>
           <GlobalModals
             showConfirmDialog={showConfirmDialog} setShowConfirmDialog={setShowConfirmDialog}
@@ -673,8 +715,9 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
           editingParent={editingParent} handleSaveParent={handleSaveParent}
           {...notify}
         />
-        <ModuleHelpAssistant currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} />
-        <RoleOnboarding currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} />
+        <ModuleHelpAssistant currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} open={helpOpen} onOpenChange={setHelpOpen} />
+        <AIAssistant currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} />
+        <RoleOnboarding currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} open={onboardingOpen} onOpenChange={setOnboardingOpen} progress={setupProgress} />
       </MobileAppShell>
     );
   }
@@ -707,7 +750,17 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
       <div className="flex-1 flex min-h-0 flex-col min-w-0 overflow-hidden relative">
         {!(user?.role === 'ACCOUNTANT' && currentPage === 'finance-dashboard') && (
           <>
-            <Header user={accessUser} onLogout={handleLogout} onNavigate={handleNavigate} brandingSettings={brandingSettings} />
+            <Header
+              user={accessUser}
+              onLogout={handleLogout}
+              onNavigate={handleNavigate}
+              brandingSettings={brandingSettings}
+              showOnboarding={hasOnboardingGuide}
+              onOpenOnboarding={() => setOnboardingOpen(true)}
+              onboardingProgress={setupProgress}
+              showHelp={hasModuleHelp}
+              onOpenHelp={() => setHelpOpen(true)}
+            />
             <HorizontalSubmenu currentPage={currentPage} pageParams={pageParams} onNavigate={handleNavigate} />
           </>
         )}
@@ -740,8 +793,9 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
           editingParent={editingParent} handleSaveParent={handleSaveParent}
           {...notify}
         />
-        <ModuleHelpAssistant currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} />
-        <RoleOnboarding currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} />
+        <ModuleHelpAssistant currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} open={helpOpen} onOpenChange={setHelpOpen} />
+        <AIAssistant currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} />
+        <RoleOnboarding currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} open={onboardingOpen} onOpenChange={setOnboardingOpen} progress={setupProgress} />
       </div>
 
       {/* Git Update Popup — shows automatically on login/refresh for any

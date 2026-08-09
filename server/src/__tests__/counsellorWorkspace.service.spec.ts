@@ -4,7 +4,7 @@ const databaseMock: any = {
   learnerActionPlan: { findUnique: jest.fn(), upsert: jest.fn() },
   actionItem: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn(), count: jest.fn() },
   counsellingSession: { findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), count: jest.fn() },
-  pathwayIntervention: { findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn(), groupBy: jest.fn() },
+  pathwayIntervention: { findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn(), count: jest.fn(), groupBy: jest.fn() },
   learnerPathwaySelection: { groupBy: jest.fn() },
   pathway: { findMany: jest.fn() },
   user: { findUnique: jest.fn(), findMany: jest.fn() },
@@ -19,6 +19,7 @@ import {
   bulkUpdatePathwayInterventions,
   createCounsellorActionItem,
   escalatePathwayIntervention,
+  getPathwayInterventionQueue,
   updateCounsellingSession,
   updatePathwayIntervention,
 } from '../services/counsellor-workspace.service';
@@ -87,6 +88,26 @@ describe('Counsellor workspace service', () => {
     })).rejects.toMatchObject({ statusCode: 422 });
 
     expect(databaseMock.pathwayIntervention.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('paginates the intervention queue and reports the filtered total', async () => {
+    databaseMock.pathwayIntervention.findMany.mockResolvedValue([{ id: 'intervention-26' }]);
+    databaseMock.pathwayIntervention.count.mockResolvedValue(51);
+    databaseMock.user.findMany.mockResolvedValue([]);
+
+    const result = await getPathwayInterventionQueue({
+      status: 'OPEN',
+      page: '2',
+      limit: '25',
+    });
+
+    expect(databaseMock.pathwayIntervention.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 25, take: 25 }),
+    );
+    expect(databaseMock.pathwayIntervention.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({ status: 'OPEN' }),
+    });
+    expect(result.pagination).toEqual({ page: 2, limit: 25, total: 51, pages: 3 });
   });
 
   it('escalates an owned intervention with urgent priority and actor context', async () => {

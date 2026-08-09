@@ -11,6 +11,7 @@ import { ChatProvider } from './contexts/ChatContext';
 import { RolePreviewProvider } from './contexts/RolePreviewContext';
 import { ModuleAccessProvider } from './contexts/ModuleAccessContext';
 import FeeApprovalReminder from './components/CBCGrading/layout/FeeApprovalReminder';
+import PwaBadgeSync from './components/pwa/PwaBadgeSync';
 import axiosInstance from './services/api/axiosConfig';
 import { authAPI } from './services/api';
 import { useBootstrapStore } from './store/useBootstrapStore';
@@ -132,7 +133,7 @@ function AppContent() {
 
   // PWA icons and manifest
   useEffect(() => {
-    const iconUrl = brandingSettings.pwaLogoUrl || brandingSettings.faviconUrl || '/logo512.png';
+    const iconUrl = brandingSettings.pwaLogoUrl || '/logo512.png';
     const versionedIcon = iconUrl.startsWith('data:')
       ? iconUrl
       : `${iconUrl}${iconUrl.includes('?') ? '&' : '?'}v=${Date.now()}`;
@@ -387,6 +388,7 @@ function AppContent() {
                     <FeeActionsProvider>
                       <UserNotificationProvider>
                         <ChatProvider>
+                          <PwaBadgeSync />
                           <RolePreviewProvider user={user}>
                             <ModuleAccessProvider user={user}>
                               <CBCGradingSystem

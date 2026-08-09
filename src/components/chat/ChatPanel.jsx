@@ -3,7 +3,7 @@
  *
  * Features:
  *  ✦ Modern header with avatar, name, online status
- *  ✦ Inbox + AI Chatbot tabs
+ *  ✦ Focused staff and family messaging inbox
  *  ✦ Greeting message on first open
  *  ✦ Animated typing indicators
  *  ✦ File & image attachment support
@@ -20,24 +20,19 @@ import React, {
 import {
   X, Search, Plus, ArrowLeft, Send, Smile, Users,
   MessageSquare, Loader2, Trash2, Edit3, Reply, Check,
-  Bot, Video, Paperclip, Image, Camera, Copy,
+  Video, Paperclip, Image, Camera, Copy,
   CheckCheck, Phone, MoreHorizontal, Mic, MicOff,
-  ExternalLink, Hash,
+  ExternalLink, Hash, Sparkles,
 } from 'lucide-react';
 import { useChat } from '../../contexts/ChatContext';
 import { useAuth } from '../../hooks/useAuth';
 import { cn } from '../../utils/cn';
 import api from '../../services/api';
+import { AIAssistantPanel } from '../help/AIAssistant';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
-
-const BOT_GREETING = `Hi there! I'm your school assistant. Ask me anything about:
-• Student records & grades
-• Fee balances & payments
-• Attendance summaries
-• Class schedules & assignments`;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -409,124 +404,6 @@ function MessageBubble({ message, isOwn, onReply, onDelete, onEdit, onReact, cur
   );
 }
 
-// ─── Chatbot ──────────────────────────────────────────────────────────────────
-
-function ChatbotPanel({ user }) {
-  const [messages, setMessages] = useState([
-    { id: 'greeting', role: 'bot', body: BOT_GREETING, createdAt: new Date().toISOString() },
-  ]);
-  const [input, setInput] = useState('');
-  const [thinking, setThinking] = useState(false);
-  const bottomRef = useRef(null);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length, thinking]);
-
-  const handleSend = async () => {
-    const q = input.trim();
-    if (!q || thinking) return;
-    setInput('');
-    const userMsg = { id: `u-${Date.now()}`, role: 'user', body: q, createdAt: new Date().toISOString() };
-    setMessages((prev) => [...prev, userMsg]);
-    setThinking(true);
-    try {
-      const resp = await api.chat.askBot(q, {
-        userId: user?.id,
-        role: user?.role,
-        institutionType: user?.institutionType,
-      });
-      const answer = resp?.success
-        ? (resp.data?.reply ?? resp.data?.message ?? 'I couldn\'t find an answer for that.')
-        : 'Sorry, I\'m having trouble right now. Try again shortly.';
-      setMessages((prev) => [...prev, {
-        id: `b-${Date.now()}`,
-        role: 'bot',
-        body: answer,
-        createdAt: new Date().toISOString(),
-      }]);
-    } catch {
-      setMessages((prev) => [...prev, {
-        id: `b-err-${Date.now()}`,
-        role: 'bot',
-        body: 'Something went wrong. Please try again.',
-        createdAt: new Date().toISOString(),
-      }]);
-    } finally {
-      setThinking(false);
-    }
-  };
-
-  return (
-    <div className="flex flex-col h-full bg-gray-50">
-      {/* Bot header strip */}
-      <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-gray-100 bg-white">
-        <div className="w-8 h-8 bg-brand-teal flex items-center justify-center shrink-0">
-          <Bot size={15} className="text-white" />
-        </div>
-        <div>
-          <p className="text-xs font-bold text-gray-800">School Assistant</p>
-          <p className="text-[9px] text-emerald-500 font-semibold uppercase tracking-wider">● AI Powered</p>
-        </div>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 custom-scrollbar">
-        {messages.map((msg) => (
-          <div key={msg.id} className={cn('flex gap-2', msg.role === 'user' ? 'flex-row-reverse' : 'flex-row')}>
-            {msg.role === 'bot' && (
-              <div className="w-6 h-6 bg-brand-teal flex items-center justify-center shrink-0 mt-0.5">
-                <Bot size={11} className="text-white" />
-              </div>
-            )}
-            <div className={cn(
-              'max-w-[80%] px-3 py-2 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap',
-              msg.role === 'user'
-                ? 'bg-brand-purple text-white rounded-tr-sm'
-                : 'bg-white text-gray-800 rounded-tl-sm border border-gray-100 shadow-sm',
-            )}>
-              {msg.body}
-            </div>
-          </div>
-        ))}
-
-        {thinking && (
-          <div className="flex gap-2 items-end">
-            <div className="w-6 h-6 bg-brand-teal flex items-center justify-center shrink-0">
-              <Bot size={11} className="text-white" />
-            </div>
-            <div className="bg-white border border-gray-100 shadow-sm rounded-2xl rounded-tl-sm px-3 py-2">
-              <TypingDots label="thinking…" />
-            </div>
-          </div>
-        )}
-
-        <div ref={bottomRef} />
-      </div>
-
-      {/* Input */}
-      <div className="border-t border-gray-200 bg-white p-3">
-        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 focus-within:border-brand-teal/50 focus-within:bg-white transition-colors">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-            placeholder="Ask me anything…"
-            className="flex-1 bg-transparent text-sm focus:outline-none placeholder:text-gray-400"
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || thinking}
-            className="h-7 w-7 rounded-full bg-brand-teal text-white flex items-center justify-center shrink-0 disabled:opacity-30 transition-opacity hover:opacity-90"
-          >
-            <Send size={13} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── MessageThread ────────────────────────────────────────────────────────────
 
 function MessageThread({ conversationId, conv, currentUserId }) {
@@ -537,6 +414,7 @@ function MessageThread({ conversationId, conv, currentUserId }) {
   const [input, setInput] = useState('');
   const [replyTo, setReplyTo] = useState(null);
   const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false); // synchronous guard — immune to React batching
   const [loadingMore, setLoadingMore] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [showVideoModal, setShowVideoModal] = useState(false);
@@ -567,17 +445,19 @@ function MessageThread({ conversationId, conv, currentUserId }) {
 
   const handleSend = async () => {
     const body = input.trim();
-    if ((!body && !attachments.length) || sending) return;
+    if ((!body && !attachments.length) || sendingRef.current) return;
+    // Set both the ref (synchronous, prevents re-entry) and state (drives UI)
+    sendingRef.current = true;
     setSending(true);
     const opts = {};
     if (replyTo) opts.replyToId = replyTo.id;
-    // Attachments would be uploaded here in a real impl; for now send as message
     const msgBody = body || (attachments.length ? `📎 ${attachments.map((f) => f.name).join(', ')}` : '');
     setInput('');
     setReplyTo(null);
     setAttachments([]);
     sendTyping(conversationId, false);
     await sendMessage(conversationId, msgBody, opts);
+    sendingRef.current = false;
     setSending(false);
   };
 
@@ -1006,7 +886,7 @@ function InboxList({ conversations, currentUserId, activeConversationId, onOpen,
 
 // ─── PanelHeader ──────────────────────────────────────────────────────────────
 
-function PanelHeader({ user, view, onClose, onNew, activeTab, onTabChange }) {
+function PanelHeader({ user, onClose, onNew, activeTab, onTabChange, chatUnreadCount }) {
   return (
     <div className="bg-white border-b border-gray-100">
       {/* Top row: title + actions */}
@@ -1022,7 +902,7 @@ function PanelHeader({ user, view, onClose, onNew, activeTab, onTabChange }) {
         </div>
 
         <div className="flex items-center gap-1">
-          {activeTab === 'inbox' && (
+          {activeTab === 'messages' && (
             <button
               onClick={onNew}
               className="h-7 w-7 rounded-full bg-brand-purple text-white flex items-center justify-center hover:bg-brand-purple/90 transition-colors"
@@ -1041,29 +921,43 @@ function PanelHeader({ user, view, onClose, onNew, activeTab, onTabChange }) {
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Tab strip */}
       <div className="flex border-t border-gray-100">
         <button
-          onClick={() => onTabChange('inbox')}
+          onClick={() => onTabChange('messages')}
           className={cn(
-            'flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold uppercase tracking-widest transition-colors border-b-2',
-            activeTab === 'inbox'
-              ? 'text-brand-purple border-brand-purple'
-              : 'text-gray-400 border-transparent hover:text-gray-600',
+            'flex flex-1 items-center justify-center gap-1.5 py-2.5 text-[11px] font-black uppercase tracking-widest transition-colors relative',
+            activeTab === 'messages'
+              ? 'text-brand-purple'
+              : 'text-gray-400 hover:text-gray-600',
           )}
         >
-          <MessageSquare size={12} /> Inbox
+          <MessageSquare size={13} />
+          Messages
+          {chatUnreadCount > 0 && activeTab !== 'messages' && (
+            <span className="ml-0.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[8px] font-bold text-white">
+              {chatUnreadCount > 9 ? '9+' : chatUnreadCount}
+            </span>
+          )}
+          {activeTab === 'messages' && (
+            <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-brand-purple" />
+          )}
         </button>
+
         <button
-          onClick={() => onTabChange('bot')}
+          onClick={() => onTabChange('ai')}
           className={cn(
-            'flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold uppercase tracking-widest transition-colors border-b-2',
-            activeTab === 'bot'
-              ? 'text-brand-teal border-brand-teal'
-              : 'text-gray-400 border-transparent hover:text-gray-600',
+            'flex flex-1 items-center justify-center gap-1.5 py-2.5 text-[11px] font-black uppercase tracking-widest transition-colors relative',
+            activeTab === 'ai'
+              ? 'text-violet-700'
+              : 'text-gray-400 hover:text-gray-600',
           )}
         >
-          <Bot size={12} /> Assistant
+          <Sparkles size={13} />
+          AI
+          {activeTab === 'ai' && (
+            <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-violet-600" />
+          )}
         </button>
       </div>
     </div>
@@ -1087,7 +981,7 @@ function GreetingBanner({ user, onDismiss }) {
         <p className="text-xs font-bold opacity-80 uppercase tracking-widest">{greeting}</p>
         <p className="text-sm font-bold mt-0.5">{name} 👋</p>
         <p className="text-[10px] opacity-70 mt-1 leading-relaxed">
-          You have your inbox open. Send a message or ask the AI assistant anything.
+          You have your inbox open. Start a conversation with staff, parents, or learners.
         </p>
         <button
           onClick={onDismiss}
@@ -1102,15 +996,20 @@ function GreetingBanner({ user, onDismiss }) {
 
 // ─── Main ChatPanel ───────────────────────────────────────────────────────────
 
-export default function ChatPanel({ onClose }) {
+export default function ChatPanel({ onClose, initialTab = 'messages', currentPage, onNavigate }) {
   const { user } = useAuth();
-  const { conversations, activeConversationId, openConversation, isChatOpen } = useChat();
+  const { conversations, activeConversationId, openConversation, isChatOpen, unreadTotal } = useChat();
 
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [view, setView] = useState('inbox');     // 'inbox' | 'thread' | 'new'
-  const [activeTab, setActiveTab] = useState('inbox'); // 'inbox' | 'bot'
   const [showGreeting, setShowGreeting] = useState(true);
   const [showVideoFromHeader, setShowVideoFromHeader] = useState(false);
   const greetingDismissed = useRef(false);
+
+  // Honour external tab switches (e.g. when ASK_AI_EVENT fires)
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   // Auto-dismiss greeting after 8s
   useEffect(() => {
@@ -1133,22 +1032,14 @@ export default function ChatPanel({ onClose }) {
 
   const handleNew = () => {
     setView('new');
-    setActiveTab('inbox');
   };
 
-  const handleTabChange = (tab) => {
-    setActiveTab(tab);
-    if (view === 'thread') setView('inbox');
-  };
-
-  // Determine what body to render
-  const renderBody = () => {
-    // New conversation search
+  // ── Messages tab body ──────────────────────────────────────────────────────
+  const renderMessagesBody = () => {
     if (view === 'new') {
       return <NewConversation onBack={handleBack} />;
     }
 
-    // Thread view
     if (view === 'thread') {
       if (!activeConversationId) {
         return (
@@ -1168,12 +1059,6 @@ export default function ChatPanel({ onClose }) {
       );
     }
 
-    // Bot tab
-    if (activeTab === 'bot') {
-      return <ChatbotPanel user={user} />;
-    }
-
-    // Inbox list
     return (
       <div className="flex flex-col h-full">
         {showGreeting && !greetingDismissed.current && (
@@ -1193,22 +1078,12 @@ export default function ChatPanel({ onClose }) {
     );
   };
 
-  return (
-    <div className="flex flex-col h-full bg-gray-50 overflow-hidden">
-      {/* Panel header (only shown on inbox/bot tabs; thread has its own) */}
-      {view !== 'thread' && view !== 'new' && (
-        <PanelHeader
-          user={user}
-          view={view}
-          onClose={onClose}
-          onNew={handleNew}
-          activeTab={activeTab}
-          onTabChange={handleTabChange}
-        />
-      )}
+  // ── Thread / new-conversation sub-headers (messages tab only) ─────────────
+  const renderMessagesSubHeader = () => {
+    if (activeTab !== 'messages') return null;
 
-      {/* Thread header */}
-      {view === 'thread' && (
+    if (view === 'thread') {
+      return (
         <div className="flex items-center justify-between border-b border-gray-100 bg-white">
           {activeConv ? (
             <ThreadHeader
@@ -1235,10 +1110,11 @@ export default function ChatPanel({ onClose }) {
             <X size={14} />
           </button>
         </div>
-      )}
+      );
+    }
 
-      {/* New conversation header */}
-      {view === 'new' && (
+    if (view === 'new') {
+      return (
         <div className="flex items-center gap-2 px-3 py-2.5 bg-white border-b border-gray-100">
           <button
             onClick={handleBack}
@@ -1257,11 +1133,42 @@ export default function ChatPanel({ onClose }) {
             <X size={14} />
           </button>
         </div>
+      );
+    }
+
+    return null;
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-gray-50 overflow-hidden">
+      {/* Shared panel header with tab strip
+          Hidden when drilling into thread/new-message (those have their own headers) */}
+      {!(activeTab === 'messages' && (view === 'thread' || view === 'new')) && (
+        <PanelHeader
+          user={user}
+          onClose={onClose}
+          onNew={handleNew}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          chatUnreadCount={unreadTotal}
+        />
       )}
 
-      {/* Body */}
+      {/* Thread / new-message sub-headers */}
+      {renderMessagesSubHeader()}
+
+      {/* Tab bodies */}
       <div className="flex-1 overflow-hidden">
-        {renderBody()}
+        {activeTab === 'messages' && renderMessagesBody()}
+
+        {activeTab === 'ai' && (
+          <AIAssistantPanel
+            currentPage={currentPage}
+            user={user}
+            onNavigate={onNavigate}
+            isActive={activeTab === 'ai'}
+          />
+        )}
       </div>
     </div>
   );

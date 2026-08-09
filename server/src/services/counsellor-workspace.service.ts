@@ -314,7 +314,11 @@ export async function getPathwayInterventionQueue(filters: {
   grade?: string;
   search?: string;
   escalated?: string | boolean;
+  page?: string | number;
+  limit?: string | number;
 }) {
+  const page = Math.max(1, Number.parseInt(String(filters.page ?? '1')) || 1);
+  const limit = Math.min(100, Math.max(1, Number.parseInt(String(filters.limit ?? '50')) || 50));
   const learnerWhere: Prisma.LearnerWhereInput = {};
   if (filters.grade) learnerWhere.grade = filters.grade;
   if (filters.search?.trim()) {
@@ -342,11 +346,12 @@ export async function getPathwayInterventionQueue(filters: {
     learner: Object.keys(learnerWhere).length ? { is: learnerWhere } : undefined,
   };
 
-  const [items, counsellors] = await Promise.all([
+  const [items, total, counsellors] = await Promise.all([
     prisma.pathwayIntervention.findMany({
       where,
       orderBy: [{ resolvedAt: 'asc' }, { dueDate: 'asc' }, { priority: 'desc' }, { createdAt: 'desc' }],
-      take: 250,
+      skip: (page - 1) * limit,
+      take: limit,
       include: {
         learner: {
           select: { id: true, firstName: true, lastName: true, admissionNumber: true, grade: true, stream: true },
@@ -354,6 +359,7 @@ export async function getPathwayInterventionQueue(filters: {
         assignedCounsellor: { select: { id: true, firstName: true, lastName: true, role: true } },
       },
     }),
+    prisma.pathwayIntervention.count({ where }),
     prisma.user.findMany({
       where: {
         role: { in: COUNSELLOR_ROLES },
@@ -364,7 +370,11 @@ export async function getPathwayInterventionQueue(filters: {
       select: { id: true, firstName: true, lastName: true, role: true },
     }),
   ]);
-  return { items, counsellors };
+  return {
+    items,
+    counsellors,
+    pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+  };
 }
 
 export async function bulkUpdatePathwayInterventions(params: {

@@ -58,6 +58,7 @@
     "audit:design-system": "node scripts/audit-design-system.mjs",
     "audit:design-system:strict": "node scripts/audit-design-system.mjs --fail",
     "seed:demo": "npm --prefix server run prisma:generate && node --no-warnings \"scripts/seed-demo-users.mjs\"",
+    "seed:presence-demo": "npm --prefix server run seed:presence-demo",
     "audit:api-contract": "node scripts/audit-api-contract-drift.js",
     "audit:api-contract:strict": "node scripts/audit-api-contract-drift.js --fail",
     "test:ui": "vitest run",

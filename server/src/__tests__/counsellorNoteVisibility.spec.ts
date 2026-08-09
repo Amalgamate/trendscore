@@ -1,5 +1,5 @@
 const databaseMock = {
-  counsellorNote: { findMany: jest.fn(), create: jest.fn() },
+  counsellorNote: { findMany: jest.fn(), count: jest.fn(), create: jest.fn() },
   learner: { findUnique: jest.fn() },
   user: { findUnique: jest.fn() },
 };
@@ -47,6 +47,7 @@ describe('counsellor note visibility', () => {
     jest.clearAllMocks();
     accessMock.mockResolvedValue(undefined);
     databaseMock.counsellorNote.findMany.mockResolvedValue([]);
+    databaseMock.counsellorNote.count.mockResolvedValue(0);
   });
 
   it('maps legacy learner/parent visibility values to canonical values', () => {
@@ -117,4 +118,3 @@ describe('counsellor note visibility', () => {
     expect(createNotificationMock).not.toHaveBeenCalled();
   });
 });
-

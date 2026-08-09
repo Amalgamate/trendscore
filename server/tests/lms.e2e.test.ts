@@ -13,6 +13,10 @@ process.env.JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 
 const app = express();
 app.use(express.json());
+app.use((req: any, _res, next) => {
+  req.school = { id: 'lms-e2e-school-id', name: 'LMS E2E Academy', institutionType: 'SECONDARY' };
+  next();
+});
 app.use('/api/lms', lmsRoutes);
 
 describe('LMS Courses, Enrollments & Student Portal API', () => {
@@ -30,6 +34,28 @@ describe('LMS Courses, Enrollments & Student Portal API', () => {
   let createdEnrollmentId: string | null = null;
 
   beforeAll(async () => {
+    await prisma.school.upsert({
+      where: { name: 'LMS E2E Academy' },
+      update: {
+        active: true,
+        status: 'ACTIVE',
+        archived: false,
+        institutionType: 'SECONDARY',
+        institutionTypeLocked: true,
+        requiresUserVerification: false,
+      },
+      create: {
+        id: 'lms-e2e-school-id',
+        name: 'LMS E2E Academy',
+        active: true,
+        status: 'ACTIVE',
+        institutionType: 'SECONDARY',
+        institutionTypeLocked: true,
+        requiresUserVerification: false,
+        curriculumType: 'CBC_AND_EXAM',
+      },
+    });
+
     // 1. Create a Head Teacher User
     const user = await prisma.user.upsert({
       where: { email: testUserEmail },
@@ -145,6 +171,7 @@ describe('LMS Courses, Enrollments & Student Portal API', () => {
     if (testUserId) {
       await prisma.user.deleteMany({ where: { id: testUserId } });
     }
+    await prisma.school.deleteMany({ where: { id: 'lms-e2e-school-id' } }).catch(() => null);
     await prisma.$disconnect();
   });
 

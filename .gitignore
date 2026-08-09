@@ -65,6 +65,8 @@ _cache/
 .cache/
 todelete/
 .agents/
+.claude/
+.reasonix/
 .friday/
 .kilo/
 .kiro/

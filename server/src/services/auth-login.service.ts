@@ -90,11 +90,11 @@ export class AuthLoginService {
         : [];
 
       if (trimmedEmail) {
-        user = await prisma.user.findUnique({
-          where: { email: trimmedEmail },
+        user = await prisma.user.findFirst({
+          where: { archived: false, OR: [{ email: trimmedEmail }, { username: String(email).trim() }, { parentCode: String(email).trim().toUpperCase() }] },
           select: {
             id: true, password: true, status: true, loginAttempts: true, lockedUntil: true,
-            role: true, roles: true, email: true, firstName: true, lastName: true,
+            role: true, roles: true, email: true, username: true, parentCode: true, firstName: true, lastName: true,
             phone: true, lastLogin: true, institutionType: true, emailVerified: true,
             verificationRequired: true,
             passwordResetToken: true,
@@ -113,7 +113,7 @@ export class AuthLoginService {
           },
           select: {
             id: true, password: true, status: true, loginAttempts: true, lockedUntil: true,
-            role: true, roles: true, email: true, firstName: true, lastName: true,
+            role: true, roles: true, email: true, username: true, parentCode: true, firstName: true, lastName: true,
             phone: true, lastLogin: true, institutionType: true, emailVerified: true,
             verificationRequired: true,
             passwordResetToken: true,
@@ -259,7 +259,7 @@ export class AuthLoginService {
     const communicationConfig = await prisma.communicationConfig.findFirst({
       select: { emailTemplates: true },
     });
-    const otpEnabled = (communicationConfig?.emailTemplates as any)?.__security?.otpEnabled !== false;
+    const otpEnabled = (communicationConfig?.emailTemplates as any)?.__security?.otpEnabled === true;
     const requiresOtp = otpEnabled && !userRoles.some(r => ['SUPER_ADMIN', 'STUDENT'].includes(r));
 
     return {

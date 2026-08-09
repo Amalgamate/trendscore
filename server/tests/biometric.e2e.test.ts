@@ -10,6 +10,7 @@ import { Role } from '../src/config/permissions';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret';
 process.env.JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 process.env.NODE_ENV = 'test';
+process.env.BIOMETRIC_ENCRYPTION_KEY = process.env.BIOMETRIC_ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
 const app = express();
 app.use(express.json());
@@ -32,6 +33,27 @@ describe('Biometric module end-to-end', () => {
   let credentialId: string | null = null;
 
   beforeAll(async () => {
+    await prisma.school.upsert({
+      where: { name: 'Biometric E2E Academy' },
+      update: {
+        active: true,
+        status: 'ACTIVE',
+        archived: false,
+        institutionType: 'PRIMARY_CBC',
+        institutionTypeLocked: true,
+        requiresUserVerification: false,
+      },
+      create: {
+        name: 'Biometric E2E Academy',
+        active: true,
+        status: 'ACTIVE',
+        institutionType: 'PRIMARY_CBC',
+        institutionTypeLocked: true,
+        requiresUserVerification: false,
+        curriculumType: 'CBC_AND_EXAM',
+      },
+    });
+
     await prisma.user.upsert({
       where: { id: 'test-biometric-admin-id' },
       update: {
@@ -83,6 +105,7 @@ describe('Biometric module end-to-end', () => {
       await prisma.learner.deleteMany({ where: { id: learnerId } }).catch(() => null);
     }
     await prisma.user.deleteMany({ where: { id: 'test-biometric-admin-id' } }).catch(() => null);
+    await prisma.school.deleteMany({ where: { name: 'Biometric E2E Academy' } }).catch(() => null);
     await prisma.$disconnect();
   });
 

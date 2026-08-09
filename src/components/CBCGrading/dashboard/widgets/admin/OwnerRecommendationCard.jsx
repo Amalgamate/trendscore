@@ -12,6 +12,7 @@
  */
 
 import React from 'react';
+import AskAIButton from '../../../../help/AskAIButton';
 
 const BG_COLORS = {
   // severity-based
@@ -56,6 +57,8 @@ const OwnerRecommendationCard = ({ recommendation, onAction, loading = false }) 
 
   return (
     <article
+      data-ai-card="true"
+      data-ai-title={title}
       className="flex-shrink-0 w-72 flex flex-col gap-3 rounded-xl p-4 text-white
         transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl select-none"
       style={{ backgroundColor: bg }}
@@ -65,7 +68,8 @@ const OwnerRecommendationCard = ({ recommendation, onAction, loading = false }) 
         <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 border border-white/30">
           {Icon && <Icon size={17} strokeWidth={2} className="text-white" />}
         </span>
-        <h3 className="text-sm font-bold text-white leading-snug">{title}</h3>
+        <h3 className="min-w-0 flex-1 text-sm font-bold text-white leading-snug">{title}</h3>
+        <AskAIButton title={title} description={description} context={recommendation} variant="light" />
       </div>
 
       {/* description */}

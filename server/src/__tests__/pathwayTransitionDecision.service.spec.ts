@@ -61,3 +61,72 @@ describe('pathway transition decision Prisma persistence', () => {
   });
 });
 
+describe('saveTransitionDecision — versioned metadata', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('merges a server-stamped persistedAt onto a provided analysisPayload', async () => {
+    databaseMock.learner.findUnique.mockResolvedValue({ id: 'learner-1' });
+    databaseMock.learnerPathwayRecommendation.create.mockResolvedValue({ id: 'decision-1' });
+
+    await saveTransitionDecision({
+      learnerId: 'learner-1',
+      recommendedPathway: 'STEM',
+      confidenceScore: 75,
+      analysisPayload: { version: 'GRADE9_READINESS_V1', generatedAt: '2026-08-01T00:00:00.000Z' },
+      updatedBy: 'staff-1',
+    });
+
+    const created = databaseMock.learnerPathwayRecommendation.create.mock.calls[0][0];
+    const payload = created.data.analysisPayload as Record<string, unknown>;
+    expect(payload.version).toBe('GRADE9_READINESS_V1');
+    expect(typeof payload.persistedAt).toBe('string');
+    expect(payload.savedBy).toBe('staff-1');
+    // Original fields must be preserved
+    expect(payload.generatedAt).toBe('2026-08-01T00:00:00.000Z');
+  });
+
+  it('creates a minimal version stub when recommendedPathway is set but no analysisPayload is given', async () => {
+    databaseMock.learner.findUnique.mockResolvedValue({ id: 'learner-1' });
+    databaseMock.learnerPathwayRecommendation.create.mockResolvedValue({ id: 'decision-2' });
+
+    await saveTransitionDecision({
+      learnerId: 'learner-1',
+      recommendedPathway: 'ARTS_SPORTS',
+      confidenceScore: 60,
+      updatedBy: 'staff-1',
+    });
+
+    const created = databaseMock.learnerPathwayRecommendation.create.mock.calls[0][0];
+    const payload = created.data.analysisPayload as Record<string, unknown>;
+    expect(typeof payload.persistedAt).toBe('string');
+    expect(payload.savedBy).toBe('staff-1');
+  });
+
+  it('leaves analysisPayload undefined for a parent-preference-only row (no pathway)', async () => {
+    databaseMock.learner.findUnique.mockResolvedValue({ id: 'learner-1' });
+    databaseMock.learnerPathwayRecommendation.create.mockResolvedValue({ id: 'decision-3' });
+
+    await saveTransitionDecision({
+      learnerId: 'learner-1',
+      recommendedPathway: null,
+      confidenceScore: 0,
+      parentPreference: 'STEM',
+    });
+
+    const created = databaseMock.learnerPathwayRecommendation.create.mock.calls[0][0];
+    expect(created.data.analysisPayload).toBeUndefined();
+  });
+
+  it('accepts recommendedPathway: null without throwing (nullable schema field)', async () => {
+    databaseMock.learner.findUnique.mockResolvedValue({ id: 'learner-1' });
+    databaseMock.learnerPathwayRecommendation.create.mockResolvedValue({ id: 'decision-4' });
+
+    await expect(
+      saveTransitionDecision({ learnerId: 'learner-1', recommendedPathway: null, confidenceScore: 0 }),
+    ).resolves.not.toThrow();
+
+    const created = databaseMock.learnerPathwayRecommendation.create.mock.calls[0][0];
+    expect(created.data.recommendedPathway).toBeNull();
+  });
+});
+

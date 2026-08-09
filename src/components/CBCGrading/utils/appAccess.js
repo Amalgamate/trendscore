@@ -133,6 +133,13 @@ const PAGE_APP_REQUIREMENTS = {
   'biometric-reports': 'biometric',
   'biometric-api': 'biometric',
 
+  // Phase 2.0 — Presence, Boarding, Analytics
+  'presence-dashboard':  null,   // available to all admin roles
+  'presence-timeline':   null,
+  'boarding-dashboard':  null,   // gated by boarding feature flag (future)
+  'analytics-dashboard': null,
+  'knowledge-base':      null,   // available to all roles
+
   'fees-overview': 'fee-management',
   'fees-collection': 'fee-management',
   'finance-dashboard': 'fee-management',
@@ -183,8 +190,11 @@ const ROLE_PAGE_ALLOWLIST = {
     'parent-portal-results',
     'parent-portal-attendance',
     'parent-portal-transport',
+    'parent-portal-homework',
     'parent-portal-documents',
     'parent-portal-support',
+    'parent-portal-pathway',
+    'parent-portal-schools',
     'fees-statements',
     'events-calendar',
     'learner-profile',
@@ -202,8 +212,11 @@ const PARENT_PORTAL_PAGES = new Set([
   'parent-portal-results',
   'parent-portal-attendance',
   'parent-portal-transport',
+  'parent-portal-homework',
   'parent-portal-documents',
   'parent-portal-support',
+  'parent-portal-pathway',
+  'parent-portal-schools',
   'events-calendar',
 ]);
 

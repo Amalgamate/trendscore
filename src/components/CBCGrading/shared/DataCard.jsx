@@ -1,6 +1,7 @@
 import React from 'react';
 import { ChevronRight } from 'lucide-react';
 import { cn } from '../../../utils/cn';
+import AskAIButton from '../../help/AskAIButton';
 
 /**
  * DataCard Component
@@ -24,11 +25,15 @@ const DataCard = ({
   actions,
   stats,
   onClick,
-  className
+  className,
+  askAI = true,
+  aiContext,
 }) => {
   return (
     <div
       onClick={onClick}
+      data-ai-card="true"
+      data-ai-title={title}
       className={cn(
         "surface-panel surface-panel-interactive p-5 cursor-pointer transition-transform active:scale-[0.99]",
         className
@@ -57,6 +62,7 @@ const DataCard = ({
 
         {/* Action Indicators */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
+          {askAI && <AskAIButton title={title} description={subtitle} context={aiContext || stats} />}
           {badges}
           {!actions && onClick && <ChevronRight size={18} className="text-gray-300" />}
         </div>

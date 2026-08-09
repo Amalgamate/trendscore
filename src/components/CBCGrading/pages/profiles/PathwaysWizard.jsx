@@ -102,6 +102,8 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
   const [pathwaySubjects, setPathwaySubjects] = useState([]);
   const [officialCatalog, setOfficialCatalog] = useState(null);
   const [officialCombinations, setOfficialCombinations] = useState([]);
+  const [officialCatalogWarning, setOfficialCatalogWarning] = useState('');
+  const [officialCombinationWarning, setOfficialCombinationWarning] = useState('');
 
   // selection state
   const [selectedPathwayCode, setSelectedPathwayCode] = useState('');
@@ -394,6 +396,8 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
     const load = async () => {
       if (!learner?.id) return;
       setLoading(true);
+      setOfficialCatalogWarning('');
+      setOfficialCombinationWarning('');
       try {
         const [pathwaysRes, learnerPathwayRes, learningAreasRes] =
           await Promise.all([
@@ -421,13 +425,21 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
         setPathwayCatalog(pathways);
         setPathwaySubjects(Array.isArray(areaRows) ? areaRows : []);
 
-        const [officialCatalogRes, officialSelectionRes] = await Promise.all([
-          api.seniorPathways.getCatalog().catch(() => null),
+        const [officialCatalogResult, officialSelectionRes] = await Promise.all([
+          api.seniorPathways
+            .getCatalog()
+            .then((response) => ({ response, failed: false }))
+            .catch(() => ({ response: null, failed: true })),
           api.seniorPathways.getLearnerSelection(learner.id).catch(() => null),
         ]);
-        const officialData = officialCatalogRes?.data || null;
+        const officialData = officialCatalogResult.response?.data || null;
         const officialSelection = officialSelectionRes?.data || null;
         setOfficialCatalog(officialData);
+        if (officialCatalogResult.failed) {
+          setOfficialCatalogWarning('The official senior pathway catalogue could not be loaded.');
+        } else if (!Array.isArray(officialData?.pathways) || officialData.pathways.length === 0) {
+          setOfficialCatalogWarning('The official senior pathway catalogue has no published pathways.');
+        }
         if (officialSelection?.combinationRule?.id) {
           setSelectedOfficialCombinationId(officialSelection.combinationRule.id);
         }
@@ -472,14 +484,26 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
       if (!selectedOfficialPathway?.id) {
         setOfficialCombinations([]);
         setSelectedOfficialCombinationId('');
+        setOfficialCombinationWarning(
+          selectedPathwayCode && !officialCatalogWarning
+            ? 'The selected pathway is not linked to a published official catalogue entry.'
+            : ''
+        );
         return;
       }
-      const res = await api.seniorPathways
+      setOfficialCombinationWarning('');
+      const result = await api.seniorPathways
         .getCombinations({ pathwayId: selectedOfficialPathway.id })
-        .catch(() => null);
+        .then((response) => ({ response, failed: false }))
+        .catch(() => ({ response: null, failed: true }));
       if (cancelled) return;
-      const combos = Array.isArray(res?.data) ? res.data : [];
+      const combos = Array.isArray(result.response?.data) ? result.response.data : [];
       setOfficialCombinations(combos);
+      if (result.failed) {
+        setOfficialCombinationWarning('Official subject combinations could not be loaded for this pathway.');
+      } else if (combos.length === 0) {
+        setOfficialCombinationWarning('This pathway has no published official subject combinations.');
+      }
       setSelectedOfficialCombinationId((current) =>
         combos.some((combo) => combo.id === current) ? current : ''
       );
@@ -488,7 +512,7 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
     return () => {
       cancelled = true;
     };
-  }, [selectedOfficialPathway?.id]);
+  }, [officialCatalogWarning, selectedOfficialPathway?.id, selectedPathwayCode]);
 
   // auto-select cores when pathway changes
   useEffect(() => {
@@ -622,7 +646,7 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
         .filter((id) => validSet.has(id))
         .map((learningAreaId) => ({ learningAreaId, active: true }));
       await api.pathways.setLearnerSubjects(learner.id, selections);
-      showSuccess('Subject selection saved successfully!');
+      showSuccess('Legacy subject selection saved. No official combination record was created.');
     } catch (e) {
       if (String(e?.message || '').toLowerCase().includes('locked')) {
         setSubjectSelectionLocked(true);
@@ -1059,6 +1083,22 @@ const PathwaysWizard = ({ learner, brandingSettings }) => {
                     </div>
                   )}
                 </div>
+
+                {!officialModeAvailable && (
+                  <div className="mb-3 rounded-xl border border-amber-300 bg-amber-50 p-3" role="alert">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-700" />
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wider text-amber-900">
+                          Legacy selection mode
+                        </p>
+                        <p className="mt-1 text-xs text-amber-800">
+                          {officialCombinationWarning || officialCatalogWarning || 'No published official combination is available.'} You can still save the legacy subject selection, but it will not create an official combination record. An administrator should publish the official catalogue before operational use.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {officialModeAvailable && (
                   <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50 p-3">

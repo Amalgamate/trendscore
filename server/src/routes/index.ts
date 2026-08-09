@@ -62,6 +62,11 @@ import approvalRoutes from './approval.routes';
 import approvalWorkflowRoutes from './approvalWorkflow.routes';
 import teacherRoutes from './teacher.routes';
 import timetableRoutes from '../modules/timetable/timetable.routes';
+import presenceRoutes from './presence.routes';
+import tripRoutes from './trips.routes';
+import webhookRoutes from './webhooks.routes';
+import boardingRoutes from './boarding.routes';
+import analyticsRoutes from './analytics.routes';
 import { requireApp } from '../middleware/requireApp';
 import { issueCsrfToken } from '../middleware/csrf.middleware';
 import { authenticate } from '../middleware/auth.middleware';
@@ -82,6 +87,8 @@ router.use('/schools', schoolRoutes);
 router.use('/biometric', biometricRoutes);
 router.use('/mpesa', mpesaRoutes);
 router.get('/auth/csrf', issueCsrfToken);
+// ── Public inbound webhooks (no JWT auth) ────────────────────────────────────
+router.use('/webhooks', webhookRoutes);
 
 // ============================================
 // PROTECTED ROUTES
@@ -150,5 +157,13 @@ router.use('/teacher', teacherRoutes);
 router.use('/git-notifications', gitNotificationRoutes);
 router.use('/diagnostics', diagnosticsRoutes);
 router.use('/migrations', migrationRoutes);
+// ── Presence Platform (v1) ──────────────────────────────────────────────────
+router.use('/v1/presence', presenceRoutes);
+// ── Transport Trips (v1) ────────────────────────────────────────────────────
+router.use('/v1/transport/trips', tripRoutes);
+// ── Boarding Module (v1) ────────────────────────────────────────────────────
+router.use('/v1/boarding', boardingRoutes);
+// ── Analytics & Intelligence (v1) ──────────────────────────────────────────
+router.use('/v1/analytics', analyticsRoutes);
 
 export default router;

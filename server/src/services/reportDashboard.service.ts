@@ -10,6 +10,15 @@ type DashboardFilters = {
   testType?: SummativeTestType;
 };
 
+type DashboardScope = {
+  teacherId?: string;
+};
+
+type TeacherAssessmentScope = {
+  classScopes: Array<{ grade: string; stream: string | null }>;
+  subjectScopes: Array<{ grade: string; learningArea: string }>;
+};
+
 type LearnerRecord = {
   id: string;
   admissionNumber: string;
@@ -101,7 +110,10 @@ const normalizeFilters = async (filters: DashboardFilters) => {
   };
 };
 
-const buildLearnerWhere = (filters: Awaited<ReturnType<typeof normalizeFilters>>): Prisma.LearnerWhereInput => {
+const buildLearnerWhere = (
+  filters: Awaited<ReturnType<typeof normalizeFilters>>,
+  teacherScope?: TeacherAssessmentScope
+): Prisma.LearnerWhereInput => {
   const gradeList = filters.grade ? [filters.grade] : filters.section ? SECTION_GRADES[filters.section] : undefined;
 
   return {
@@ -109,17 +121,75 @@ const buildLearnerWhere = (filters: Awaited<ReturnType<typeof normalizeFilters>>
     status: 'ACTIVE',
     ...(gradeList?.length ? { grade: { in: gradeList } } : {}),
     ...(filters.stream ? { stream: filters.stream } : {}),
+    ...(teacherScope ? {
+      OR: [
+        ...teacherScope.classScopes.map((scope) => ({
+          grade: scope.grade,
+          ...(scope.stream ? { stream: scope.stream } : {}),
+        })),
+        ...teacherScope.subjectScopes.map((scope) => ({ grade: scope.grade })),
+      ],
+    } : {}),
   };
 };
 
-const buildTestWhere = (filters: Awaited<ReturnType<typeof normalizeFilters>>, grades: string[]): Prisma.SummativeTestWhereInput => ({
+const buildTestWhere = (
+  filters: Awaited<ReturnType<typeof normalizeFilters>>,
+  grades: string[],
+  teacherScope?: TeacherAssessmentScope
+): Prisma.SummativeTestWhereInput => ({
   archived: false,
   active: true,
   academicYear: filters.academicYear,
   term: filters.term,
   ...(grades.length ? { grade: { in: grades } } : {}),
   ...(filters.testType ? { testType: filters.testType } : {}),
+  ...(teacherScope ? {
+    OR: [
+      ...teacherScope.classScopes.map((scope) => ({ grade: scope.grade })),
+      ...teacherScope.subjectScopes.map((scope) => ({
+        grade: scope.grade,
+        learningArea: { equals: scope.learningArea, mode: 'insensitive' },
+      })),
+    ],
+  } : {}),
 });
+
+const resolveTeacherAssessmentScope = async (teacherId: string): Promise<TeacherAssessmentScope> => {
+  const [classTeacherOf, schedules, subjectAssignments] = await Promise.all([
+    prisma.class.findMany({
+      where: { teacherId, active: true, archived: false },
+      select: { grade: true, stream: true },
+    }),
+    prisma.classSchedule.findMany({
+      where: { teacherId, active: true, archived: false },
+      select: {
+        subject: true,
+        class: { select: { grade: true } },
+        learningArea: { select: { name: true } },
+      },
+    }),
+    prisma.subjectAssignment.findMany({
+      where: { teacherId, active: true },
+      select: { grade: true, learningArea: { select: { name: true } } },
+    }),
+  ]);
+
+  const classScopes = Array.from(new Map(
+    classTeacherOf.map((item) => [`${item.grade}:${item.stream || ''}`, { grade: item.grade, stream: item.stream }])
+  ).values());
+  const subjectScopes = Array.from(new Map(
+    [...schedules, ...subjectAssignments]
+      .map((item) => ({
+        grade: 'class' in item ? item.class?.grade : item.grade,
+        learningArea: item.learningArea?.name || ('subject' in item ? item.subject : undefined),
+      }))
+      .filter((item): item is { grade: string; learningArea: string } => Boolean(item.grade && item.learningArea))
+      .map((item) => [`${item.grade}:${item.learningArea.toLowerCase()}`, item])
+  ).values());
+
+  return { classScopes, subjectScopes };
+};
 
 const createGroups = (learners: LearnerRecord[], tests: TestRecord[], results: ResultRecord[]) => {
   const learnerById = new Map(learners.map((learner) => [learner.id, learner]));
@@ -290,9 +360,10 @@ const buildAchievementRows = (results: ResultRecord[]) => {
 };
 
 export const reportDashboardService = {
-  async getDashboardData(rawFilters: DashboardFilters) {
+  async getDashboardData(rawFilters: DashboardFilters, scope: DashboardScope = {}) {
     const filters = await normalizeFilters(rawFilters);
-    const learnerWhere = buildLearnerWhere(filters);
+    const teacherScope = scope.teacherId ? await resolveTeacherAssessmentScope(scope.teacherId) : undefined;
+    const learnerWhere = buildLearnerWhere(filters, teacherScope);
 
     const learners = await prisma.learner.findMany({
       where: learnerWhere,
@@ -302,7 +373,7 @@ export const reportDashboardService = {
 
     const grades = Array.from(new Set(learners.map((learner) => learner.grade)));
     const tests = await prisma.summativeTest.findMany({
-      where: buildTestWhere(filters, grades),
+      where: buildTestWhere(filters, grades, teacherScope),
       select: { id: true, title: true, learningArea: true, grade: true, testType: true, totalMarks: true, status: true, published: true },
       orderBy: [{ grade: 'asc' }, { learningArea: 'asc' }, { testDate: 'asc' }],
     }) as TestRecord[];

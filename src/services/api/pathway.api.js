@@ -35,6 +35,17 @@ export const pathwayAPI = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  // Parent-only endpoint — only accepts { parentPreference } and preserves all staff fields.
+  saveParentPreference: async (learnerId, parentPreference) =>
+    fetchWithAuth(`/pathways/transition/${learnerId}/parent-preference`, {
+      method: 'POST',
+      body: JSON.stringify({ parentPreference: parentPreference ?? null }),
+    }),
+  overrideFinalizedDecision: async (learnerId, finalApprovedPathway, reason) =>
+    fetchWithAuth(`/pathways/transition/${learnerId}/decision/override`, {
+      method: 'POST',
+      body: JSON.stringify({ finalApprovedPathway, reason }),
+    }),
   getTransitionDecisionHistory: async (learnerId) =>
     fetchWithAuth(`/pathways/transition/${learnerId}/decision-history`),
 };

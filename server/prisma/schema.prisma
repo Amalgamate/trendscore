@@ -12,6 +12,9 @@ model User {
   id                      String          @id @default(uuid())
   email                   String          @unique
   username                String?         @unique
+  // Stable human-facing login ID for parents. Phone numbers may change, so
+  // they must not be the parent account identity.
+  parentCode              String?         @unique
   password                String
   firstName               String
   lastName                String
@@ -1024,6 +1027,9 @@ model Attendance {
   remarks    String?
   markedAt   DateTime         @default(now())
   markedBy   String
+  // Audit trail — how was this record created?
+  source     String           @default("MANUAL") // MANUAL | BIOMETRIC | BULK | IMPORT
+  updatedAt  DateTime         @default(now()) @updatedAt @map("updated_at")
   archived   Boolean          @default(false)
   archivedAt DateTime?
   archivedBy String?
@@ -1035,6 +1041,7 @@ model Attendance {
   @@index([date])
   @@index([learnerId])
   @@index([classId])
+  @@index([classId, date])
   @@index([status])
   @@map("attendances")
 }
@@ -1874,6 +1881,310 @@ model AssessmentSmsAudit {
   @@index([channel, smsStatus])
   @@index([term, academicYear])
   @@map("assessment_sms_audits")
+}
+
+// ── General SMS Outbound Audit ────────────────────────────────────────────────
+// Covers all SMS types (absent learner, fee, pledge, library, etc.)
+// assessment_sms_audits remains for backward compatibility.
+model SmsOutboundAudit {
+  id              String    @id @default(uuid())
+  schoolId        String?
+  // What triggered this SMS
+  triggerType     String    // ABSENT_LEARNER | FEE_INVOICE | PLEDGE_REMINDER | LIBRARY_OVERDUE | etc.
+  recipientPhone  String
+  recipientName   String?
+  learnerId       String?
+  userId          String?   // staff recipient if applicable
+  templateKey     String?
+  messageBody     String
+  // Provider tracking
+  provider        String?   // africastalking | mobilesasa
+  providerMsgId   String?
+  // Lifecycle
+  status          String    @default("PENDING") // PENDING | SENT | FAILED | RETRY | PERMANENTLY_FAILED
+  retryCount      Int       @default(0)
+  retryAt         DateTime? // scheduled time for next retry attempt
+  failureReason   String?
+  sentAt          DateTime?
+  sentByUserId    String?
+  createdAt       DateTime  @default(now())
+
+  @@index([schoolId, triggerType, createdAt])
+  @@index([status, retryCount])
+  @@index([recipientPhone, createdAt])
+  @@map("sms_outbound_audits")
+}
+
+// ── Parent SMS Replies ────────────────────────────────────────────────────────
+// Inbound SMS replies from parents, parsed from provider callbacks.
+// Used for absence acknowledgement and two-way communication.
+
+model ParentSmsReply {
+  id                     String    @id @default(uuid())
+  schoolId               String?
+  fromPhone              String
+  messageBody            String
+  receivedAt             DateTime  @default(now())
+  provider               String?   // africastalking | mobilesasa
+  providerMsgId          String?
+  // Intent parsed from message body
+  intent                 String?   // ACKNOWLEDGE_ABSENCE | REQUEST_CALL | OTHER
+  // Resolved context
+  linkedLearnerId        String?
+  linkedNotificationId   String?
+  // Processing state
+  processed              Boolean   @default(false)
+  processedAt            DateTime?
+  createdAt              DateTime  @default(now())
+
+  @@index([fromPhone, receivedAt])
+  @@index([schoolId, processed])
+  @@map("parent_sms_replies")
+}
+
+// ── Presence Platform ─────────────────────────────────────────────────────────
+// Cross-cutting event aggregator. Populated by all domain modules.
+// Never replaces primary domain tables — it mirrors presence facts into one place.
+
+model PresenceEvent {
+  id             String    @id @default(uuid())
+  schoolId       String    @map("school_id")
+  personId       String    @map("person_id")
+  personType     String    @map("person_type")  // LEARNER | STAFF | VISITOR
+  eventType      String    @map("event_type")   // CLASS_ATTENDANCE | GATE_ENTRY | CLOCK_IN | etc.
+  context        String                         // CLASS | GATE | BUS | DORMITORY | etc.
+  timestamp      DateTime                       // When the event actually occurred
+  recordedAt     DateTime  @default(now()) @map("recorded_at")
+  recordedBy     String?   @map("recorded_by")  // userId if manually recorded
+  deviceId       String?   @map("device_id")    // biometric_devices.id if automated
+  location       String?
+  direction      String?                        // IN | OUT
+  status         String    @default("CONFIRMED") // CONFIRMED | PENDING | DISPUTED
+  sourceModule   String    @map("source_module") // ATTENDANCE | HR_STAFF | BIOMETRIC | etc.
+  sourceRecordId String?   @map("source_record_id") // originating record
+  metadata       Json?
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@unique([schoolId, personId, eventType, timestamp])
+  @@index([personId, timestamp])
+  @@index([schoolId, timestamp])
+  @@index([eventType, timestamp])
+  @@index([sourceModule, sourceRecordId])
+  @@index([schoolId, eventType, timestamp])
+  @@map("presence_events")
+}
+
+model PresenceRule {
+  id         String                   @id @default(uuid())
+  schoolId   String
+  ruleCode   String                   // e.g. ABSENT_NO_EXCUSE | BUS_NO_ARRIVAL
+  enabled    Boolean                  @default(true)
+  config     Json                     @default("{}")
+  createdAt  DateTime                 @default(now())
+  updatedAt  DateTime                 @updatedAt
+  violations PresenceRuleViolation[]
+
+  @@unique([schoolId, ruleCode])
+  @@map("presence_rules")
+}
+
+model PresenceRuleViolation {
+  id          String        @id @default(uuid())
+  schoolId    String                  @map("school_id")
+  ruleId      String
+  personId    String
+  personType  String
+  detectedAt  DateTime      @default(now())
+  resolvedAt  DateTime?
+  resolution  String?
+  notified    Boolean       @default(false)
+  metadata    Json?
+  createdAt   DateTime      @default(now())
+  rule        PresenceRule  @relation(fields: [ruleId], references: [id])
+
+  @@index([personId, detectedAt])
+  @@index([schoolId, resolvedAt])
+  @@map("presence_rule_violations")
+}
+
+model PresenceEventFailure {
+  id             String    @id @default(uuid())
+  schoolId       String?
+  sourceModule   String
+  sourceRecordId String?
+  attemptedAt    DateTime  @default(now())
+  errorMessage   String?
+  payload        Json?
+  retryCount     Int       @default(0)
+  resolved       Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+
+  @@index([resolved, retryCount])
+  @@map("presence_event_failures")
+}
+
+// ── Boarding Module ───────────────────────────────────────────────────────────
+// Dormitory management, roll call, exeat, dining, prep attendance.
+// All boarding events emit presence events — this module owns the source data.
+
+model Dormitory {
+  id          String                  @id @default(uuid())
+  schoolId    String
+  name        String
+  gender      String                  // BOYS | GIRLS | MIXED
+  capacity    Int                     @default(0)
+  block       String?
+  notes       String?
+  active      Boolean                 @default(true)
+  archived    Boolean                 @default(false)
+  createdAt   DateTime                @default(now()) @map("created_at")
+  updatedAt   DateTime                @updatedAt @map("updated_at")
+  beds        DormitoryBed[]
+  assignments DormitoryAssignment[]
+  houseMasters HouseMasterAssignment[]
+  rollCalls   DormRollCall[]
+
+  @@unique([schoolId, name])
+  @@index([schoolId, active])
+  @@map("dormitories")
+}
+
+model DormitoryBed {
+  id            String               @id @default(uuid())
+  dormitoryId   String               @map("dormitory_id")
+  bedNumber     String               @map("bed_number")
+  status        String               @default("VACANT") // VACANT | OCCUPIED | MAINTENANCE
+  notes         String?
+  createdAt     DateTime             @default(now()) @map("created_at")
+  dormitory     Dormitory            @relation(fields: [dormitoryId], references: [id], onDelete: Cascade)
+  assignments   DormitoryAssignment[]
+
+  @@unique([dormitoryId, bedNumber])
+  @@index([dormitoryId, status])
+  @@map("dormitory_beds")
+}
+
+model DormitoryAssignment {
+  id            String       @id @default(uuid())
+  dormitoryId   String       @map("dormitory_id")
+  bedId         String?      @map("bed_id")
+  learnerId     String       @map("learner_id")
+  academicYear  Int          @map("academic_year")
+  fromDate      DateTime     @db.Date @map("from_date")
+  toDate        DateTime?    @db.Date @map("to_date")
+  active        Boolean      @default(true)
+  archived      Boolean      @default(false)
+  createdAt     DateTime     @default(now()) @map("created_at")
+  dormitory     Dormitory    @relation(fields: [dormitoryId], references: [id])
+  bed           DormitoryBed? @relation(fields: [bedId], references: [id])
+
+  @@index([learnerId, active])
+  @@index([dormitoryId, active])
+  @@map("dormitory_assignments")
+}
+
+model HouseMasterAssignment {
+  id           String    @id @default(uuid())
+  dormitoryId  String    @map("dormitory_id")
+  userId       String    @map("user_id")
+  role         String    @default("DUTY") // PRIMARY | DUTY | MATRON
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  dormitory    Dormitory @relation(fields: [dormitoryId], references: [id])
+
+  @@index([dormitoryId, active])
+  @@index([userId, active])
+  @@map("house_master_assignments")
+}
+
+model ExeatRequest {
+  id               String    @id @default(uuid())
+  schoolId         String    @map("school_id")
+  learnerId        String    @map("learner_id")
+  requestedBy      String    @map("requested_by") // userId of parent or house master
+  exeatType        String    @default("WEEKEND") // WEEKEND | MEDICAL | FAMILY | OTHER
+  departureDate    DateTime  @db.Date @map("departure_date")
+  returnDate       DateTime  @db.Date @map("return_date")
+  reason           String
+  parentPhone      String?   @map("parent_phone")
+  status           String    @default("PENDING") // PENDING | APPROVED | DENIED | CANCELLED
+  approvedBy       String?   @map("approved_by")
+  approvedAt       DateTime? @map("approved_at")
+  denialReason     String?   @map("denial_reason")
+  departedAt       DateTime? @map("departed_at")
+  returnedAt       DateTime? @map("returned_at")
+  overdueNotified  Boolean   @default(false) @map("overdue_notified")
+  archived         Boolean   @default(false)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@index([learnerId, departureDate])
+  @@index([schoolId, status, returnDate])
+  @@map("exeat_requests")
+}
+
+model DormRollCall {
+  id           String               @id @default(uuid())
+  schoolId     String               @map("school_id")
+  dormitoryId  String               @map("dormitory_id")
+  date         DateTime             @db.Date
+  session      String               // MORNING | NIGHT
+  conductedBy  String               @map("conducted_by") // userId
+  startedAt    DateTime             @default(now()) @map("started_at")
+  completedAt  DateTime?            @map("completed_at")
+  status       String               @default("IN_PROGRESS") // IN_PROGRESS | COMPLETED
+  createdAt    DateTime             @default(now()) @map("created_at")
+  dormitory    Dormitory            @relation(fields: [dormitoryId], references: [id])
+  entries      DormRollCallEntry[]
+
+  @@unique([dormitoryId, date, session])
+  @@index([schoolId, date])
+  @@map("dorm_roll_calls")
+}
+
+model DormRollCallEntry {
+  id          String       @id @default(uuid())
+  rollCallId  String       @map("roll_call_id")
+  learnerId   String       @map("learner_id")
+  status      String       @default("PRESENT") // PRESENT | ABSENT | EXCUSED | EXEAT
+  remarks     String?
+  createdAt   DateTime     @default(now()) @map("created_at")
+  rollCall    DormRollCall @relation(fields: [rollCallId], references: [id], onDelete: Cascade)
+
+  @@unique([rollCallId, learnerId])
+  @@map("dorm_roll_call_entries")
+}
+
+model DiningAttendance {
+  id          String    @id @default(uuid())
+  schoolId    String    @map("school_id")
+  learnerId   String    @map("learner_id")
+  date        DateTime  @db.Date
+  session     String    // BREAKFAST | LUNCH | DINNER
+  present     Boolean   @default(true)
+  recordedBy  String    @map("recorded_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@unique([learnerId, date, session])
+  @@index([schoolId, date, session])
+  @@map("dining_attendance")
+}
+
+model PrepAttendance {
+  id          String    @id @default(uuid())
+  schoolId    String    @map("school_id")
+  learnerId   String    @map("learner_id")
+  date        DateTime  @db.Date
+  session     String    // AFTERNOON | EVENING
+  present     Boolean   @default(true)
+  remarks     String?
+  recordedBy  String    @map("recorded_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@unique([learnerId, date, session])
+  @@index([schoolId, date])
+  @@map("prep_attendance")
 }
 
 model LearningArea {
@@ -2718,35 +3029,52 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-model BiometricDevice {
-  id        String         @id @default(uuid())
-  name      String
-  deviceId  String         @unique
-  type      String         @default("TERMINAL")
-  location  String?
-  ipAddress String?
-  status    String         @default("OFFLINE")
-  lastSeen  DateTime?
-  token     String         @unique @default(uuid())
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-  logs      BiometricLog[]
+// ── Biometrics ────────────────────────────────────────────────────────────────
+// device registry, encrypted credential enrollment, raw scan logs
 
+model BiometricDevice {
+  id             String         @id @default(uuid())
+  name           String
+  deviceId       String         @unique
+  type           String         @default("TERMINAL")
+  location       String?
+  ipAddress      String?
+  status         String         @default("OFFLINE")
+  lastSeen       DateTime?
+  token          String         @unique @default(uuid())
+  // Multi-tenancy — nullable initially, required after backfill
+  schoolId       String?        @map("school_id")
+  // Hardware metadata
+  serialNumber   String?        @map("serial_number")
+  firmwareVersion String?       @map("firmware_version")
+  syncMode       String         @default("PUSH") @map("sync_mode") // PUSH | PULL | BOTH
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  logs           BiometricLog[]
+
+  @@index([schoolId])
   @@map("biometric_devices")
 }
 
 model BiometricCredential {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   userId      String?
   learnerId   String?
-  type        String   @default("FINGERPRINT")
-  template    String
+  type        String    @default("FINGERPRINT")
+  // Template is stored AES-256-GCM encrypted, hex-encoded as iv:ciphertext:authTag
+  // NEVER return this field in API responses
+  template    Bytes
   fingerIndex Int?
   quality     Int?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  learner     Learner? @relation(fields: [learnerId], references: [id], onDelete: Cascade)
-  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Encryption metadata
+  keyVersion  Int       @default(1) @map("key_version")
+  encryptedAt DateTime  @default(now()) @map("encrypted_at")
+  enrolledAt  DateTime  @default(now()) @map("enrolled_at")
+  status      String    @default("ACTIVE") // ACTIVE | REVOKED
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  learner     Learner?  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([learnerId])
@@ -2760,11 +3088,17 @@ model BiometricLog {
   personType   String
   timestamp    DateTime
   direction    String          @default("IN")
-  status       String          @default("PENDING")
+  status       String          @default("PENDING") // PENDING | PROCESSED | FAILED
   errorMessage String?
+  // Multi-tenancy
+  schoolId     String?         @map("school_id")
+  // Retry support
+  retryCount   Int             @default(0) @map("retry_count")
+  retryAt      DateTime?       @map("retry_at")
   device       BiometricDevice @relation(fields: [deviceId], references: [id])
 
   @@index([deviceId])
+  @@index([schoolId])
   @@index([status])
   @@index([timestamp])
   @@map("biometric_logs")
@@ -2777,11 +3111,14 @@ model TransportVehicle {
   driverName         String
   driverPhone        String?
   status             String           @default("ACTIVE")
+  // Multi-tenancy — nullable to allow gradual backfill on existing deployments
+  schoolId           String?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   archived           Boolean          @default(false)
   routes             TransportRoute[]
 
+  @@index([schoolId])
   @@map("transport_vehicles")
 }
 
@@ -2792,13 +3129,17 @@ model TransportRoute {
   amount      Decimal               @default(0.00) @db.Decimal(10, 2)
   vehicleId   String?
   status      String                @default("ACTIVE")
+  // Multi-tenancy — nullable to allow gradual backfill
+  schoolId    String?
   createdAt   DateTime              @default(now())
   updatedAt   DateTime              @updatedAt
   archived    Boolean               @default(false)
   assignments TransportAssignment[]
+  trips       TransportTrip[]
   vehicle     TransportVehicle?     @relation(fields: [vehicleId], references: [id])
 
   @@index([vehicleId])
+  @@index([schoolId])
   @@map("transport_routes")
 }
 
@@ -2818,6 +3159,53 @@ model TransportAssignment {
   @@index([routeId])
   @@index([passengerId])
   @@map("transport_assignments")
+}
+
+// ── Transport Trip & Boarding Events ─────────────────────────────────────────
+// A Trip is a single daily run of a route (morning or afternoon).
+// BoardingEvents record who boarded and alighted on each trip.
+
+model TransportTrip {
+  id          String                   @id @default(uuid())
+  schoolId    String
+  routeId     String
+  date        DateTime                 @db.Date
+  // OUTBOUND = morning (home → school)  INBOUND = afternoon (school → home)
+  direction   String                   // OUTBOUND | INBOUND
+  departedAt  DateTime?
+  arrivedAt   DateTime?
+  driverUserId String?                 // optional link to users.id
+  status      String                   @default("SCHEDULED") // SCHEDULED | IN_PROGRESS | COMPLETED | CANCELLED
+  notes       String?
+  archived    Boolean                  @default(false)
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+  route       TransportRoute           @relation(fields: [routeId], references: [id])
+  boardingEvents TransportBoardingEvent[]
+
+  @@unique([routeId, date, direction])
+  @@index([routeId, date])
+  @@index([schoolId, date])
+  @@map("transport_trips")
+}
+
+model TransportBoardingEvent {
+  id          String         @id @default(uuid())
+  tripId      String
+  learnerId   String
+  // BOARDED | ALIGHTED
+  eventType   String
+  recordedAt  DateTime       @default(now())
+  // MANUAL | SCAN | CONFIRMED
+  method      String         @default("MANUAL")
+  recordedBy  String?
+  deviceId    String?
+  createdAt   DateTime       @default(now())
+  trip        TransportTrip  @relation(fields: [tripId], references: [id])
+
+  @@index([tripId])
+  @@index([learnerId, recordedAt])
+  @@map("transport_boarding_events")
 }
 
 model LMSCourse {
@@ -4839,7 +5227,7 @@ enum AchievementType {
 model LearnerPathwayRecommendation {
   id                    String   @id @default(uuid())
   learnerId             String
-  recommendedPathway    String // STEM | SOCIAL_SCIENCES | ARTS_SPORTS
+  recommendedPathway    String? // STEM | SOCIAL_SCIENCES | ARTS_SPORTS
   confidenceScore       Float    @default(0)
   learnerInterest       String?
   teacherRecommendation String?
@@ -4905,6 +5293,9 @@ model SeniorSchool {
   schoolType          String                    @default("DAY") // DAY | BOARDING | DAY_AND_BOARDING
   gender              String                    @default("MIXED") // MIXED | BOYS | GIRLS
   category            String? // NATIONAL | EXTRA_COUNTY | COUNTY | SUB_COUNTY
+  // CBC senior-school readiness band (GoK Aug 2026 reclassification)
+  // C1 = all 3 pathways | C2 = 2 pathways | C3 = 1 pathway | C4 = not yet ready
+  classification      String?
   pathwayCodes        String[]
   trackCodes          String[]                  @default([])
   combinationCodes    String[]                  @default([])
@@ -4933,6 +5324,7 @@ model SeniorSchool {
   corrections         SchoolCorrection[]
 
   @@index([county])
+  @@index([classification])
   @@map("senior_schools")
 }
 

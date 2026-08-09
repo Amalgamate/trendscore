@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, Loader2, Save } from 'lucide-react';
-import { pathwayPlannerAPI, seniorPathwayAPI } from '../../../../services/api';
+import { BookOpen, ChevronLeft, ChevronRight, Download, Loader2, Save } from 'lucide-react';
+import { pathwayPlannerAPI, seniorPathwayAPI, careerAPI } from '../../../../services/api';
 
 const REFERENCE_TYPES = ['PATHWAY', 'TRACK', 'COMBINATION', 'CAREER'];
 const ADMIN_TAB_IDS = new Set(['dashboard', 'content', 'schools', 'corrections', 'rules', 'imports', 'quality', 'analytics', 'history', 'audit']);
@@ -33,6 +33,8 @@ function ContentManager() {
   const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [seeding, setSeeding] = useState(false);
+  const [seedMsg, setSeedMsg] = useState('');
   const load = useCallback(async () => { setLoading(true); try { const response = await pathwayPlannerAPI.getAdminReferences(type); setRows(response?.data || []); } catch (err) { setError(err?.message || 'Could not load content'); } finally { setLoading(false); } }, [type]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -63,10 +65,44 @@ function ContentManager() {
     return form.pathwayId ? tracks.filter((track) => track.pathwayId === form.pathwayId) : [];
   }, [form.pathwayId, form.recommendedPathway, pathways, tracks, type]);
   const save = async (event) => { event.preventDefault(); setError(''); try { await pathwayPlannerAPI.saveAdminReference(type, { ...form, id: form.id || undefined, name: type === 'CAREER' ? undefined : form.name, title: type === 'CAREER' ? form.title : undefined }); setForm(EMPTY_FORM); await load(); } catch (err) { setError(err?.message || 'Save failed'); } };
+
+  const seedCareerCatalogue = async () => {
+    if (!window.confirm('Seed the career catalogue with 19 pre-built Kenyan CBC-aligned careers?\n\nThis is idempotent — existing records are updated, nothing is deleted.')) return;
+    setSeeding(true); setSeedMsg('');
+    try {
+      const result = await careerAPI.seedCareers();
+      setSeedMsg(`\u2713 Seeded ${result?.data?.careers ?? 0} careers across ${result?.data?.families ?? 0} families.`);
+      await load();
+    } catch (err) {
+      setSeedMsg(`\u2717 Seed failed: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setSeeding(false);
+    }
+  };
   const toggleSubject = (id) => setForm((current) => ({ ...current, subjectIds: current.subjectIds.includes(id) ? current.subjectIds.filter((item) => item !== id) : [...current.subjectIds, id] }));
   const transition = async (row, action) => { setError(''); try { const impactResponse = await pathwayPlannerAPI.getAdminReferenceImpact(type, row.id); const affected = impactResponse?.data?.affected || {}; const summary = Object.entries(affected).map(([key, value]) => `${key}: ${value}`).join('\n'); if (!window.confirm(`${action === 'PUBLISH' ? 'Publish' : 'Retire'} ${row.name || row.title}?\n\nAffected records\n${summary || 'No linked records'}`)) return; const reason = window.prompt(`Reason for ${action.toLowerCase()}ing this record?`) || ''; if (!reason) return; if (action === 'PUBLISH') await pathwayPlannerAPI.publishAdminReference(type, row.id, reason); else await pathwayPlannerAPI.retireAdminReference(type, row.id, reason); await load(); } catch (err) { setError(err?.message || `${action} failed`); } };
   return <div className="space-y-3">
     <div className="flex flex-wrap gap-2">{REFERENCE_TYPES.map((item) => <button key={item} type="button" onClick={() => setType(item)} className={`rounded-full border px-3 py-1 text-[10px] font-black ${type === item ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-200 bg-white text-gray-600'}`}>{item.replace('_', ' ')}</button>)}</div>
+    {type === 'CAREER' && (
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+        <div>
+          <p className="text-[11px] font-black text-emerald-900">Career catalogue is empty?</p>
+          <p className="text-[10px] text-emerald-700">Seed 19 pre-built Kenyan CBC-aligned careers across 10 family groups. Safe to run multiple times.</p>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <button type="button" onClick={seedCareerCatalogue} disabled={seeding}
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-[11px] font-black text-white hover:bg-emerald-700 disabled:opacity-60">
+            {seeding ? <Loader2 size={12} className="animate-spin" /> : <BookOpen size={12} />}
+            {seeding ? 'Seeding\u2026' : 'Seed Career Catalogue'}
+          </button>
+          {seedMsg && (
+            <p className={`text-[10px] font-semibold ${seedMsg.startsWith('\u2713') ? 'text-emerald-700' : 'text-rose-600'}`}>
+              {seedMsg}
+            </p>
+          )}
+        </div>
+      </div>
+    )}
     {error && <div className="rounded-lg bg-rose-50 p-2 text-xs text-rose-700">{error}</div>}
     <form onSubmit={save} className="grid gap-2 rounded-xl border border-gray-200 bg-white p-3 md:grid-cols-4">
       <input required value={form.code} onChange={(e) => setForm((v) => ({ ...v, code: e.target.value }))} placeholder="Official code" className="rounded-lg border border-gray-200 p-2 text-xs" />
@@ -119,11 +155,11 @@ function VersionHistory() {
 }
 
 function Corrections() {
-  const [rows, setRows] = useState([]); const [error, setError] = useState('');
-  const load = useCallback(() => pathwayPlannerAPI.getSchoolCorrections().then((response) => setRows(response?.data || [])).catch((err) => setError(err?.message || 'Could not load corrections')), []);
+  const [rows, setRows] = useState([]); const [error, setError] = useState(''); const [page, setPage] = useState(1); const [pagination, setPagination] = useState({ page: 1, total: 0, pages: 0 });
+  const load = useCallback(() => pathwayPlannerAPI.getSchoolCorrections({ page, limit: 25 }).then((response) => { setRows(response?.data || []); setPagination(response?.pagination || { page, total: response?.data?.length || 0, pages: 1 }); }).catch((err) => setError(err?.message || 'Could not load corrections')), [page]);
   useEffect(() => { load(); }, [load]);
   const review = async (id, action) => { const decisionReason = window.prompt(`Reason for ${action.toLowerCase()}ing this correction?`) || ''; if (!decisionReason) return; try { await pathwayPlannerAPI.reviewSchoolCorrection(id, { action, decisionReason }); load(); } catch (err) { setError(err?.message || 'Review failed'); } };
-  return <div className="space-y-2">{error && <p className="rounded-lg bg-rose-50 p-2 text-xs text-rose-700">{error}</p>}{rows.length === 0 ? <Empty>No correction requests.</Empty> : rows.map((row) => <div key={row.id} className="rounded-xl border border-gray-200 bg-white p-3"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-black">{row.school?.name} · {row.field}</p><p className="mt-1 text-[10px] text-gray-500">Current: {row.currentValue || 'Unknown'}</p><p className="text-[10px] text-indigo-700">Proposed: {row.suggestedValue}</p><p className="mt-1 text-[10px] text-gray-600">Evidence: {row.evidence}</p></div><span className="rounded-full bg-gray-100 px-2 py-0.5 text-[9px] font-black">{row.status}</span></div>{['SUBMITTED', 'UNDER_REVIEW'].includes(row.status) && <div className="mt-2 flex gap-2"><button type="button" onClick={() => review(row.id, 'APPROVE')} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[9px] font-black text-white">Approve & publish</button><button type="button" onClick={() => review(row.id, 'REJECT')} className="rounded-lg border border-rose-200 px-3 py-1.5 text-[9px] font-black text-rose-600">Reject</button></div>}</div>)}</div>;
+  return <div className="space-y-2">{error && <p className="rounded-lg bg-rose-50 p-2 text-xs text-rose-700">{error}</p>}{rows.length === 0 ? <Empty>No correction requests.</Empty> : rows.map((row) => <div key={row.id} className="rounded-xl border border-gray-200 bg-white p-3"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-black">{row.school?.name} · {row.field}</p><p className="mt-1 text-[10px] text-gray-500">Current: {row.currentValue || 'Unknown'}</p><p className="text-[10px] text-indigo-700">Proposed: {row.suggestedValue}</p><p className="mt-1 text-[10px] text-gray-600">Evidence: {row.evidence}</p></div><span className="rounded-full bg-gray-100 px-2 py-0.5 text-[9px] font-black">{row.status}</span></div>{['SUBMITTED', 'UNDER_REVIEW'].includes(row.status) && <div className="mt-2 flex gap-2"><button type="button" onClick={() => review(row.id, 'APPROVE')} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[9px] font-black text-white">Approve & publish</button><button type="button" onClick={() => review(row.id, 'REJECT')} className="rounded-lg border border-rose-200 px-3 py-1.5 text-[9px] font-black text-rose-600">Reject</button></div>}</div>)}{pagination.pages > 1 && <div className="flex items-center justify-between border-t border-gray-100 pt-2"><p className="text-[10px] font-semibold text-gray-500">{pagination.total} requests · Page {pagination.page} of {pagination.pages}</p><div className="flex gap-1"><button type="button" title="Previous page" aria-label="Previous page" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} className="rounded-lg border border-gray-200 p-1.5 text-gray-600 disabled:opacity-40"><ChevronLeft size={14} /></button><button type="button" title="Next page" aria-label="Next page" disabled={page >= pagination.pages} onClick={() => setPage((current) => current + 1)} className="rounded-lg border border-gray-200 p-1.5 text-gray-600 disabled:opacity-40"><ChevronRight size={14} /></button></div></div>}</div>;
 }
 
 function Rules() {

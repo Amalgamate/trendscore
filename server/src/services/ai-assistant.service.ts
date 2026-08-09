@@ -8,42 +8,15 @@
 
 import { performanceService } from './performance.service';
 import prisma from '../config/database';
+import { resolveSubjectClusters } from './subject-cluster-resolver.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Official CBC Junior School subject → cluster mapping */
-const CLUSTER_MAP: Record<string, 'STEM' | 'SOCIAL' | 'ARTS'> = {
-  // STEM
-  'mathematics':           'STEM',
-  'integrated science':    'STEM',
-  'pre-technical studies': 'STEM',
-  'pre technical studies': 'STEM',
-  'agriculture':           'STEM',
-  'computer science':      'STEM',
-  'science and technology':'STEM',
-  'information communications technology': 'STEM',
-  'ict':                   'STEM',
-
-  // SOCIAL
-  'english':               'SOCIAL',
-  'kiswahili':             'SOCIAL',
-  'social studies':        'SOCIAL',
-  'religious education':   'SOCIAL',
-  'life skills':           'SOCIAL',
-  'indigenous language':   'SOCIAL',
-
-  // ARTS
-  'creative arts and sports': 'ARTS',
-  'creative arts & sports':   'ARTS',
-  'creative arts':            'ARTS',
-  'creative activities':      'ARTS',
-  'ca':                       'ARTS',
-  'music':                    'ARTS',
-  'physical education':       'ARTS',
-  'pe':                       'ARTS',
-};
+// Subject → cluster resolution is now handled by subject-cluster-resolver.service.ts
+// which covers the full official name list, common abbreviations, Swahili names,
+// legacy 8-4-4 names, and LearningAreaAlias DB entries from individual schools.
 
 /** Career suggestions keyed by pathway */
 const CAREER_MAP: Record<string, string[]> = {
@@ -92,18 +65,6 @@ const GROWTH_MAP: Record<string, string[]> = {
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
-
-/** Loose, case-insensitive subject → cluster lookup */
-function resolveCluster(subject: string): 'STEM' | 'SOCIAL' | 'ARTS' | null {
-  const lower = subject.toLowerCase().trim();
-  // Exact match first
-  if (CLUSTER_MAP[lower]) return CLUSTER_MAP[lower];
-  // Partial match
-  for (const [key, cluster] of Object.entries(CLUSTER_MAP)) {
-    if (lower.includes(key) || key.includes(lower)) return cluster;
-  }
-  return null;
-}
 
 /** Convert numeric average to a CBC rubric label */
 function percentageToLabel(pct: number): string {
@@ -240,7 +201,8 @@ export class AIAssistantService {
    *
    * Algorithm:
    *  1. Fetch summative results for the term.
-   *  2. Map each subject to a CBC cluster (STEM / Social / Arts).
+   *  2. Batch-resolve each subject name to a CBC cluster via the
+   *     subject-cluster-resolver service (static map + DB alias table).
    *  3. Average scores per cluster.
    *  4. Pick the highest-scoring cluster as the recommended pathway.
    *  5. Derive confidence from the gap between top and second cluster.
@@ -260,7 +222,11 @@ export class AIAssistantService {
       include: { test: { select: { learningArea: true } } },
     });
 
-    // 2. Bucket scores into clusters
+    // 2. Batch-resolve all subject names in one DB round-trip
+    const subjectNames = [...new Set(results.map((r) => r.test.learningArea))];
+    const clusterBySubject = await resolveSubjectClusters(subjectNames);
+
+    // Bucket scores into clusters
     const clusterScores: Record<'STEM' | 'SOCIAL' | 'ARTS', number[]> = {
       STEM: [], SOCIAL: [], ARTS: [],
     };
@@ -269,7 +235,7 @@ export class AIAssistantService {
     const artsSubjects: string[] = [];
 
     for (const r of results) {
-      const cluster = resolveCluster(r.test.learningArea);
+      const cluster = clusterBySubject.get(r.test.learningArea);
       if (!cluster || r.percentage === null || r.percentage === undefined) continue;
       clusterScores[cluster].push(r.percentage);
       if (cluster === 'STEM')   stemSubjects.push(r.test.learningArea);
@@ -297,7 +263,6 @@ export class AIAssistantService {
     let topSubjects: string[];
 
     if (maxScore === 0) {
-      // No results recorded yet — return a neutral pending result
       return {
         predictedPathway: 'Analysis Pending',
         confidence: 0,

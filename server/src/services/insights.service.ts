@@ -412,13 +412,21 @@ function operationsInsights(s: MetricsSnapshot): Insight[] {
 
 // ─── Snapshot builder ─────────────────────────────────────────────────────────
 
-export async function buildSnapshot(): Promise<MetricsSnapshot> {
+export async function buildSnapshot(_schoolId: string): Promise<MetricsSnapshot> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  // This deployment has one school database, so all active learners are in scope.
+  const schoolLearnerRows = await prisma.learner.findMany({
+    where: { archived: false },
+    select: { id: true, status: true },
+  });
+  const allLearnerIds     = schoolLearnerRows.map(r => r.id);
+  const activeLearnerIds  = schoolLearnerRows.filter(r => r.status === 'ACTIVE').map(r => r.id);
+  const learnerFilter     = allLearnerIds.length > 0 ? { learnerId: { in: allLearnerIds } } : { learnerId: 'none' };
+  const activeLearnerFilter = activeLearnerIds.length > 0 ? { learnerId: { in: activeLearnerIds } } : { learnerId: 'none' };
+
   const [
-    studentCount,
-    activeStudents,
     teacherCount,
     activeTeachers,
     attendanceSummary,
@@ -432,40 +440,41 @@ export async function buildSnapshot(): Promise<MetricsSnapshot> {
     formativeRatings,
     subjectBE,
   ] = await Promise.all([
-    prisma.learner.count({ where: { archived: false } }),
-    prisma.learner.count({ where: { archived: false, status: 'ACTIVE' } }),
     prisma.user.count({ where: { role: 'TEACHER', archived: false } }),
     prisma.user.count({ where: { role: 'TEACHER', status: 'ACTIVE', archived: false } }),
 
-    // Today's attendance
+    // Today's attendance — scoped via learnerId
     prisma.attendance.groupBy({
       by: ['status'],
-      where: { date: { gte: today } },
+      where: { ...learnerFilter, date: { gte: today } },
       _count: true,
     }),
 
-    // Fee totals
+    // Fee totals — scoped via learnerId
     prisma.feeInvoice.aggregate({
-      where: { archived: false },
+      where: { ...learnerFilter, archived: false },
       _sum: { paidAmount: true, balance: true },
     }),
 
-    // Draft assessments
-    prisma.formativeAssessment.count({ where: { status: 'DRAFT', archived: false } }),
+    // Draft assessments — scoped via learnerId
+    prisma.formativeAssessment.count({
+      where: { ...learnerFilter, status: 'DRAFT', archived: false },
+    }),
 
-    // Missed exams — approximated by learners with no summative result this term
+    // Missed exams — scoped via learnerId
     prisma.summativeResult.groupBy({
       by: ['testId'],
-      where: { archived: false },
+      where: { ...activeLearnerFilter, archived: false },
       _count: true,
     }),
 
     prisma.class.count({ where: { archived: false } }),
     prisma.class.count({ where: { archived: false, active: true } }),
 
-    // Overdue invoices: past due date, balance > 0, not cancelled/paid
+    // Overdue invoices — scoped via learnerId
     prisma.feeInvoice.count({
       where: {
+        ...learnerFilter,
         archived: false,
         balance: { gt: 0 },
         dueDate: { lt: new Date() },
@@ -473,25 +482,22 @@ export async function buildSnapshot(): Promise<MetricsSnapshot> {
       },
     }),
 
-    // Overpaid invoices
+    // Overpaid invoices — scoped via learnerId
     prisma.feeInvoice.count({
-      where: {
-        archived: false,
-        status: 'OVERPAID',
-      },
+      where: { ...learnerFilter, archived: false, status: 'OVERPAID' },
     }),
 
-    // Formative rating distribution
+    // Formative rating distribution — scoped via learnerId
     prisma.formativeAssessment.groupBy({
       by: ['overallRating'],
-      where: { archived: false },
+      where: { ...learnerFilter, archived: false },
       _count: true,
     }),
 
-    // Subject-level BE breakdown for weakest subject detection
+    // Subject-level BE breakdown — scoped via learnerId
     prisma.formativeAssessment.groupBy({
       by: ['learningArea', 'overallRating'],
-      where: { archived: false, overallRating: 'BE' },
+      where: { ...learnerFilter, archived: false, overallRating: 'BE' },
       _count: true,
     }),
   ]);
@@ -510,10 +516,10 @@ export async function buildSnapshot(): Promise<MetricsSnapshot> {
   const subjectTotals: Record<string, number> = {};
   const subjectBECounts: Record<string, number> = {};
 
-  // Build subject totals from all formative data
+  // Build subject totals from all formative data for this school
   const allFormative = await prisma.formativeAssessment.groupBy({
     by: ['learningArea'],
-    where: { archived: false },
+    where: { ...learnerFilter, archived: false },
     _count: true,
   });
   allFormative.forEach(r => { subjectTotals[r.learningArea] = r._count; });
@@ -534,12 +540,12 @@ export async function buildSnapshot(): Promise<MetricsSnapshot> {
   // Use the existing aggregate as a proxy (sum of all result records)
   const totalMissedExams = Math.max(
     0,
-    activeStudents - missedExamAgg.reduce((s, r) => s + r._count, 0)
+    activeLearnerIds.length - missedExamAgg.reduce((s, r) => s + r._count, 0)
   );
 
   return {
-    totalStudents: studentCount,
-    activeStudents,
+    totalStudents: allLearnerIds.length,
+    activeStudents: activeLearnerIds.length,
     totalTeachers: teacherCount,
     activeTeachers,
     presentToday: attMap.PRESENT,
@@ -559,7 +565,7 @@ export async function buildSnapshot(): Promise<MetricsSnapshot> {
     overpaidInvoices: overpaidFees,
     weakestSubject,
     weakestSubjectBePct,
-    teacherStudentRatio: studentCount / Math.max(activeTeachers, 1),
+    teacherStudentRatio: activeLearnerIds.length / Math.max(activeTeachers, 1),
   };
 }
 
@@ -573,10 +579,10 @@ const SEVERITY_ORDER: Record<InsightSeverity, number> = {
 
 // ─── Main export ─────────────────────────────────────────────────────────────
 
-export async function generateInsights(): Promise<InsightsPayload> {
+export async function generateInsights(schoolId: string): Promise<InsightsPayload> {
   _insightCounter = 0; // reset per request
 
-  const snapshot = await buildSnapshot();
+  const snapshot = await buildSnapshot(schoolId);
 
   const allInsights: Insight[] = [
     ...academicInsights(snapshot),
@@ -602,7 +608,7 @@ export async function generateInsights(): Promise<InsightsPayload> {
       collectionEfficiency: pct(snapshot.feeCollected, totalBilled),
       attendanceRate: pct(snapshot.presentToday, total),
       assessmentCoverage: pct(snapshot.assessedClassCount, snapshot.totalClasses),
-      systemAccuracy: 94,        // deterministic engine confidence
+      systemAccuracy: Math.round(pct(snapshot.assessedClassCount, Math.max(snapshot.totalClasses, 1))),        // actual assessment coverage %
       insightsGenerated: snapshot.totalStudents + snapshot.assessedClassCount + 100,
     },
     riskDistribution: [

@@ -152,6 +152,38 @@ class RedisCacheService {
   }
 
   /**
+   * Atomically retrieve and remove a value.
+   * Used for one-time tokens and AI confirmations so concurrent requests
+   * cannot consume the same value twice.
+   */
+  async take<T>(key: string): Promise<T | null> {
+    try {
+      if (this.useRedis && this.redis) {
+        const value = await this.redis.eval(
+          "local v = redis.call('GET', KEYS[1]); if v then redis.call('DEL', KEYS[1]); end; return v",
+          1,
+          key,
+        ) as string | null;
+        if (!value) return null;
+        try {
+          return JSON.parse(value) as T;
+        } catch {
+          return value as T;
+        }
+      }
+
+      const entry = this.memoryFallback.get(key);
+      if (!entry) return null;
+      this.memoryFallback.delete(key);
+      if (Date.now() > entry.expiresAt) return null;
+      return entry.value as T;
+    } catch (error) {
+      console.error(`[Cache] Take error for key ${key}:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Set a value in cache with TTL
    */
   async set<T>(key: string, value: T, ttlSeconds: number = 300): Promise<void> {

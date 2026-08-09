@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckSquare, Filter, Loader2, Search, ShieldAlert, Square } from 'lucide-react';
+import {
+  AlertCircle, CheckSquare, ChevronLeft, ChevronRight, Filter,
+  Loader2, Search, ShieldAlert, Square,
+} from 'lucide-react';
 import { pathwayPlannerAPI } from '../../../../services/api';
 
 const humanize = value => String(value || '').toLowerCase().replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -7,7 +10,12 @@ const humanize = value => String(value || '').toLowerCase().replaceAll('_', ' ')
 export default function CounsellorInterventionQueue({ onOpenLearner }) {
   const [filters, setFilters] = useState({ search: '', status: '', priority: '', assignedCounsellorId: '', grade: '' });
   const [appliedFilters, setAppliedFilters] = useState({});
-  const [data, setData] = useState({ items: [], counsellors: [] });
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState({
+    items: [],
+    counsellors: [],
+    pagination: { page: 1, limit: 25, total: 0, pages: 0 },
+  });
   const [selected, setSelected] = useState([]);
   const [bulk, setBulk] = useState({ assignedCounsellorId: '', status: '', priority: '', dueDate: '' });
   const [loading, setLoading] = useState(true);
@@ -18,15 +26,20 @@ export default function CounsellorInterventionQueue({ onOpenLearner }) {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const res = await pathwayPlannerAPI.getInterventionQueue(appliedFilters);
-      setData(res?.data || { items: [], counsellors: [] });
+      const res = await pathwayPlannerAPI.getInterventionQueue({ ...appliedFilters, page, limit: 25 });
+      const next = res?.data || {};
+      setData({
+        items: next.items || [],
+        counsellors: next.counsellors || [],
+        pagination: next.pagination || { page, limit: 25, total: next.items?.length || 0, pages: 1 },
+      });
       setSelected([]);
     } catch (e) {
       setError(e?.message || 'Failed to load intervention queue');
     } finally {
       setLoading(false);
     }
-  }, [appliedFilters]);
+  }, [appliedFilters, page]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -64,7 +77,7 @@ export default function CounsellorInterventionQueue({ onOpenLearner }) {
     <section className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3" aria-label="Intervention queue">
       <div className="flex items-start justify-between gap-3">
         <div><p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-rose-600"><ShieldAlert size={12} /> Intervention Queue</p><p className="text-[11px] text-gray-500">Filter, assign and update cases in bulk.</p></div>
-        <span className="rounded-full bg-gray-100 px-2 py-1 text-[10px] font-black text-gray-600">{data.items.length} cases</span>
+        <span className="rounded-full bg-gray-100 px-2 py-1 text-[10px] font-black text-gray-600">{data.pagination.total} cases</span>
       </div>
 
       <div className="grid gap-2 md:grid-cols-4 xl:grid-cols-7">
@@ -73,7 +86,7 @@ export default function CounsellorInterventionQueue({ onOpenLearner }) {
         <select value={filters.priority} onChange={e => setFilters({ ...filters, priority: e.target.value })} className="rounded-lg border border-gray-200 px-2 py-2 text-xs"><option value="">All priorities</option>{['LOW', 'NORMAL', 'HIGH', 'URGENT'].map(value => <option key={value} value={value}>{humanize(value)}</option>)}</select>
         <select value={filters.assignedCounsellorId} onChange={e => setFilters({ ...filters, assignedCounsellorId: e.target.value })} className="rounded-lg border border-gray-200 px-2 py-2 text-xs"><option value="">All counsellors</option>{data.counsellors.map(item => <option key={item.id} value={item.id}>{item.firstName} {item.lastName}</option>)}</select>
         <input value={filters.grade} onChange={e => setFilters({ ...filters, grade: e.target.value })} placeholder="Grade" className="rounded-lg border border-gray-200 px-2 py-2 text-xs" />
-        <button type="button" onClick={() => setAppliedFilters(filters)} className="inline-flex items-center justify-center gap-1 rounded-lg bg-gray-800 px-3 py-2 text-xs font-bold text-white"><Filter size={11} /> Apply</button>
+        <button type="button" onClick={() => { setPage(1); setAppliedFilters({ ...filters }); }} className="inline-flex items-center justify-center gap-1 rounded-lg bg-gray-800 px-3 py-2 text-xs font-bold text-white"><Filter size={11} /> Apply</button>
       </div>
 
       {selected.length > 0 && (
@@ -96,6 +109,15 @@ export default function CounsellorInterventionQueue({ onOpenLearner }) {
             <tbody>{data.items.map(item => <tr key={item.id} className="border-b border-gray-50 hover:bg-gray-50"><td className="p-2"><button type="button" onClick={() => toggle(item.id)} aria-label={`Select ${item.learner?.firstName || 'case'}`}>{selected.includes(item.id) ? <CheckSquare size={14} className="text-violet-600" /> : <Square size={14} className="text-gray-300" />}</button></td><td className="p-2"><button type="button" onClick={() => onOpenLearner?.(item.learner)} className="font-bold text-violet-700 hover:underline">{item.learner?.firstName} {item.learner?.lastName}</button><p className="text-[10px] text-gray-400">{item.learner?.admissionNumber} · {item.learner?.grade}</p></td><td className="p-2"><p className="font-semibold text-gray-700">{humanize(item.interventionType)}</p><p className="max-w-[240px] truncate text-[10px] text-gray-500">{item.summary}</p></td><td className="p-2 font-bold text-gray-700">{humanize(item.priority)}</td><td className={`p-2 font-bold ${item.status === 'ESCALATED' ? 'text-rose-700' : 'text-gray-700'}`}>{humanize(item.status)}</td><td className="p-2 text-gray-600">{item.assignedCounsellor ? `${item.assignedCounsellor.firstName} ${item.assignedCounsellor.lastName}` : 'Unassigned'}</td><td className="p-2 text-gray-600">{item.dueDate ? new Date(item.dueDate).toLocaleDateString('en-GB') : '—'}</td></tr>)}</tbody>
           </table>
           {data.items.length === 0 && <p className="py-6 text-center text-xs text-gray-400">No interventions match these filters.</p>}
+          {data.pagination.pages > 1 && (
+            <div className="flex min-w-[760px] items-center justify-between border-t border-gray-100 px-2 pt-3">
+              <p className="text-[10px] font-semibold text-gray-500">Page {data.pagination.page} of {data.pagination.pages}</p>
+              <div className="flex gap-1">
+                <button type="button" title="Previous page" aria-label="Previous page" disabled={page <= 1} onClick={() => setPage(current => Math.max(1, current - 1))} className="rounded-lg border border-gray-200 p-1.5 text-gray-600 disabled:opacity-40"><ChevronLeft size={14} /></button>
+                <button type="button" title="Next page" aria-label="Next page" disabled={page >= data.pagination.pages} onClick={() => setPage(current => current + 1)} className="rounded-lg border border-gray-200 p-1.5 text-gray-600 disabled:opacity-40"><ChevronRight size={14} /></button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { RefreshCw, Zap } from 'lucide-react';
 import { getIntelligenceEngine } from '../../../../services/intelligence/IntelligenceEngine';
 import AIInsightsWidget from '../../widgets/AIInsights';
@@ -6,26 +6,53 @@ import RiskAlerts from '../../widgets/RiskAlerts';
 import FeeCollectionForecast from '../../widgets/FeeCollectionForecast';
 import AttendanceAnomalies from '../../widgets/AttendanceAnomalies';
 import AcademicInsights from '../../widgets/AcademicInsights';
+import { useAuth } from '../../../../hooks/useAuth';
+import { useTeacherContext } from '../../../../hooks/useTeacherContext';
 
-const CONTEXT_TYPE = 'school';
-const CONTEXT_ID = 'default';
+const TEACHER_ROLES = new Set(['TEACHER']);
+const ADMIN_ROLES = new Set(['ADMIN', 'HEAD_TEACHER', 'SUPER_ADMIN']);
 
 const AIInsights = () => {
+  const { user } = useAuth();
+  const { classTeacherOf, assignedClassIds, loading: teacherCtxLoading } = useTeacherContext();
   const [refreshKey, setRefreshKey] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Determine context: teachers get class scope; admins get school scope
+  const { contextType, contextId } = useMemo(() => {
+    const role = user?.role;
+    if (TEACHER_ROLES.has(role)) {
+      // Use the teacher's primary homeroom class, fall back to first assigned class
+      const primaryClassId = classTeacherOf?.id ?? assignedClassIds?.[0] ?? null;
+      if (primaryClassId) {
+        return { contextType: 'class', contextId: primaryClassId };
+      }
+    }
+    // ADMIN / HEAD_TEACHER / SUPER_ADMIN (or teacher with no class assigned yet)
+    return { contextType: 'school', contextId: 'default' };
+  }, [user?.role, classTeacherOf, assignedClassIds]);
 
   const handleRefresh = useCallback(async () => {
     try {
       setRefreshing(true);
       const engine = getIntelligenceEngine();
-      await engine.getInsights(CONTEXT_TYPE, CONTEXT_ID, { forceRefresh: true });
+      await engine.getInsights(contextType, contextId, { forceRefresh: true });
       setRefreshKey((current) => current + 1);
     } catch (error) {
       console.error('Failed to refresh intelligence insights:', error);
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [contextType, contextId]);
+
+  // Wait for teacher context to resolve before rendering widgets
+  if (teacherCtxLoading) {
+    return (
+      <div className="flex items-center justify-center py-16 text-slate-400 text-sm">
+        Loading context…
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -53,16 +80,16 @@ const AIInsights = () => {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <AIInsightsWidget contextType={CONTEXT_TYPE} contextId={CONTEXT_ID} refreshKey={refreshKey} />
-        <RiskAlerts contextType={CONTEXT_TYPE} contextId={CONTEXT_ID} refreshKey={refreshKey} />
+        <AIInsightsWidget contextType={contextType} contextId={contextId} refreshKey={refreshKey} />
+        <RiskAlerts contextType={contextType} contextId={contextId} refreshKey={refreshKey} />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <FeeCollectionForecast contextType={CONTEXT_TYPE} contextId={CONTEXT_ID} refreshKey={refreshKey} />
-        <AttendanceAnomalies contextType={CONTEXT_TYPE} contextId={CONTEXT_ID} refreshKey={refreshKey} />
+        <FeeCollectionForecast contextType={contextType} contextId={contextId} refreshKey={refreshKey} />
+        <AttendanceAnomalies contextType={contextType} contextId={contextId} refreshKey={refreshKey} />
       </div>
 
-      <AcademicInsights contextType={CONTEXT_TYPE} contextId={CONTEXT_ID} refreshKey={refreshKey} />
+      <AcademicInsights contextType={contextType} contextId={contextId} refreshKey={refreshKey} />
     </div>
   );
 };

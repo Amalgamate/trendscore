@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { pathwayRecommendationController } from '../controllers/pathwayRecommendation.controller';
 import { requireLearnerPathwayAccess } from '../middleware/pathwayAccess.middleware';
 import { requireCsrf } from '../middleware/csrf.middleware';
-import { auditLog } from '../middleware/permissions.middleware';
+import { requirePermission, auditLog } from '../middleware/permissions.middleware';
 import { requireLearnerPathwayStage } from '../middleware/pathwayStage.middleware';
 
 const router = Router();
@@ -15,8 +15,25 @@ router.post(
   requireLearnerPathwayAccess,
   requireLearnerPathwayStage(['JUNIOR_TRANSITION']),
   requireCsrf,
+  requirePermission('COUNSEL_PATHWAY'),
   auditLog('SAVE_PATHWAY_TRANSITION_DECISION'),
   pathwayRecommendationController.saveTransitionDecision,
+);
+router.post(
+  '/transition/:learnerId/parent-preference',
+  requireLearnerPathwayAccess,
+  requireCsrf,
+  auditLog('SAVE_PARENT_PATHWAY_PREFERENCE'),
+  pathwayRecommendationController.saveParentPreference,
+);
+router.post(
+  '/transition/:learnerId/decision/override',
+  requireLearnerPathwayAccess,
+  requireLearnerPathwayStage(['JUNIOR_TRANSITION']),
+  requireCsrf,
+  requirePermission('LOCK_PATHWAY'),
+  auditLog('OVERRIDE_FINALIZED_PATHWAY_TRANSITION_DECISION'),
+  pathwayRecommendationController.overrideFinalizedDecision,
 );
 router.get('/transition/:learnerId/decision-history', requireLearnerPathwayAccess, pathwayRecommendationController.getTransitionDecisionHistory);
 

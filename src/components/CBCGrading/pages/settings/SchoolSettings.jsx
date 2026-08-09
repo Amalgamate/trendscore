@@ -12,6 +12,60 @@ import SettingsPageShell from '../../shared/SettingsPageShell';
 
 const cleanSchoolName = (value) => String(value || '').trim();
 
+const traceRoundedRect = (context, x, y, width, height, radius) => {
+  const safeRadius = Math.min(radius, width / 2, height / 2);
+  context.beginPath();
+  context.moveTo(x + safeRadius, y);
+  context.lineTo(x + width - safeRadius, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+  context.lineTo(x + width, y + height - safeRadius);
+  context.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
+  context.lineTo(x + safeRadius, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+  context.lineTo(x, y + safeRadius);
+  context.quadraticCurveTo(x, y, x + safeRadius, y);
+  context.closePath();
+};
+
+const createWhitePwaIcon = (source) => new Promise((resolve, reject) => {
+  if (!source || typeof document === 'undefined') {
+    reject(new Error('Favicon source is unavailable'));
+    return;
+  }
+  const image = new Image();
+  image.crossOrigin = 'anonymous';
+  image.onload = () => {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const context = canvas.getContext('2d');
+
+      // Keep transparent breathing room so the rounded card and restrained
+      // shadow remain visible on Windows and other desktop launchers.
+      context.clearRect(0, 0, 512, 512);
+      context.save();
+      context.shadowColor = 'rgba(15, 23, 42, 0.14)';
+      context.shadowBlur = 18;
+      context.shadowOffsetY = 6;
+      context.fillStyle = '#ffffff';
+      traceRoundedRect(context, 32, 26, 448, 448, 72);
+      context.fill();
+      context.restore();
+
+      const scale = Math.min(336 / image.naturalWidth, 336 / image.naturalHeight);
+      const width = Math.max(1, image.naturalWidth * scale);
+      const height = Math.max(1, image.naturalHeight * scale);
+      context.drawImage(image, (512 - width) / 2, (512 - height) / 2, width, height);
+      resolve(canvas.toDataURL('image/png'));
+    } catch (error) {
+      reject(error);
+    }
+  };
+  image.onerror = () => reject(new Error('Could not prepare the install icon'));
+  image.src = source;
+});
+
 const normalizeHexColor = (value, fallback = '#030b82') => {
   if (typeof value !== 'string') return fallback;
   const trimmed = value.trim();
@@ -26,7 +80,6 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
   const { showSuccess } = useNotifications();
   const fileInputRef = useRef(null);
   const faviconInputRef = useRef(null);
-  const pwaLogoInputRef = useRef(null);
   const stampInputRef = useRef(null);
 
   // State for tabs
@@ -236,10 +289,21 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
       }
 
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         const result = reader.result;
-        setPreviews(prev => ({ ...prev, [type]: result }));
-        setSettings(prev => ({ ...prev, [`${type}Url`]: result }));
+        const pwaIcon = type === 'favicon'
+          ? await createWhitePwaIcon(result).catch(() => '/logo512.png')
+          : result;
+        setPreviews(prev => ({
+          ...prev,
+          [type]: result,
+          ...(type === 'favicon' ? { pwaLogo: pwaIcon } : {}),
+        }));
+        setSettings(prev => ({
+          ...prev,
+          [`${type}Url`]: result,
+          ...(type === 'favicon' ? { pwaLogoUrl: pwaIcon } : {}),
+        }));
         showSuccess(`${type.charAt(0).toUpperCase() + type.slice(1)} updated! Click "Save Changes" to persist.`);
       };
       reader.readAsDataURL(file);
@@ -247,8 +311,16 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
   };
 
   const handleRemoveImage = (type, defaultPath) => {
-    setPreviews(prev => ({ ...prev, [type]: defaultPath }));
-    setSettings(prev => ({ ...prev, [`${type}Url`]: defaultPath }));
+    setPreviews(prev => ({
+      ...prev,
+      [type]: defaultPath,
+      ...(type === 'favicon' ? { pwaLogo: '/logo512.png' } : {}),
+    }));
+    setSettings(prev => ({
+      ...prev,
+      [`${type}Url`]: defaultPath,
+      ...(type === 'favicon' ? { pwaLogoUrl: '/logo512.png' } : {}),
+    }));
     showSuccess(`${type.charAt(0).toUpperCase() + type.slice(1)} reset to default.`);
   };
 
@@ -298,6 +370,8 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
     setSaving(true);
     try {
       const explicitSchoolName = cleanSchoolName(settings.schoolName);
+      const linkedPwaLogoUrl = await createWhitePwaIcon(settings.faviconUrl)
+        .catch(() => settings.pwaLogoUrl || '/logo512.png');
       const payload = {
         ...(explicitSchoolName ? { name: explicitSchoolName } : {}),
         address: settings.address,
@@ -308,7 +382,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
         mission: settings.mission,
         logoUrl: settings.logoUrl,
         faviconUrl: settings.faviconUrl,
-        pwaLogoUrl: settings.pwaLogoUrl,
+        pwaLogoUrl: linkedPwaLogoUrl,
         stampUrl: settings.stampUrl,
         primaryColor: settings.primaryColor,
         secondaryColor: settings.secondaryColor,
@@ -343,9 +417,10 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
 
       await axiosInstance.put('/schools', payload);
 
-      const savedSettings = { ...settings, schoolName: explicitSchoolName };
+      const savedSettings = { ...settings, schoolName: explicitSchoolName, pwaLogoUrl: linkedPwaLogoUrl };
       setSettings(savedSettings);
-      setSavedState({ settings: savedSettings, previews: { ...previews } });
+      setPreviews(current => ({ ...current, pwaLogo: linkedPwaLogoUrl }));
+      setSavedState({ settings: savedSettings, previews: { ...previews, pwaLogo: linkedPwaLogoUrl } });
       toast.success('✅ School settings updated successfully!');
 
       // Push updated branding to app state immediately
@@ -353,7 +428,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
         setBrandingSettings({
           logoUrl: settings.logoUrl,
           faviconUrl: settings.faviconUrl,
-          pwaLogoUrl: settings.pwaLogoUrl,
+          pwaLogoUrl: linkedPwaLogoUrl,
           stampUrl: settings.stampUrl,
           schoolName: explicitSchoolName,
           primaryColor: settings.primaryColor,
@@ -385,7 +460,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
             user.school.address = settings.address;
             user.school.motto = settings.motto;
             user.school.logoUrl = settings.logoUrl;
-            user.school.pwaLogoUrl = settings.pwaLogoUrl;
+            user.school.pwaLogoUrl = linkedPwaLogoUrl;
             user.school.primaryColor = settings.primaryColor;
             user.school.secondaryColor = settings.secondaryColor;
             user.school.accentColor1 = settings.accentColor1;
@@ -831,26 +906,19 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
                     <Upload size={16} />
                     Change Icon
                   </button>
-                  <p className="text-[10px] text-gray-400 mt-1">Recommended: 32x32px PNG</p>
+                  <p className="text-[10px] text-gray-400 mt-1">Recommended: square 512x512px PNG (also used for the installed app)</p>
                 </div>
 
                 {/* PWA Logo */}
-                <div className="text-center group">
+                <div className="text-center">
                   <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-4">PWA App Icon</label>
-                  <div className="relative mx-auto w-28 h-28 border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center bg-gray-50 overflow-hidden transition-colors hover:border-blue-400 group-hover:bg-white shadow-inner mt-6">
-                    <img src={previews.pwaLogo} alt="PWA App Icon" className="w-16 h-16 object-contain" onError={(e) => e.target.src = '/logo512.png'} />
-                    {previews.pwaLogo !== '/logo512.png' && (
-                      <button onClick={() => handleRemoveImage('pwaLogo', '/logo512.png')} className="absolute top-1 right-1 w-6 h-6 bg-red-100 text-red-600 rounded-md opacity-0 group-hover:opacity-100 transition shadow-sm flex items-center justify-center">
-                        <X size={14} />
-                      </button>
-                    )}
+                  <div className="relative mx-auto mt-6 flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl border-2 border-emerald-200 bg-emerald-50 shadow-inner">
+                    <img src={previews.pwaLogo} alt="PWA App Icon copied from favicon on white" className="h-16 w-16 object-contain" onError={(e) => e.target.src = '/logo512.png'} />
                   </div>
-                  <input ref={pwaLogoInputRef} type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'pwaLogo')} className="hidden" />
-                  <button onClick={() => pwaLogoInputRef.current?.click()} className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700 transition">
-                    <Upload size={16} />
-                    Change PWA Icon
-                  </button>
-                  <p className="text-[10px] text-gray-400 mt-1">Recommended: 512x512px PNG (install app icon)</p>
+                  <div className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">
+                    Uses Page Favicon
+                  </div>
+                  <p className="mt-1 text-[10px] text-gray-400">Automatically resized for browser and app installation</p>
                 </div>
 
                 {/* Official Stamp */}

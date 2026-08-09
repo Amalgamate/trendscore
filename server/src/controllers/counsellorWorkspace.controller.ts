@@ -199,6 +199,8 @@ export const counsellorWorkspaceController = {
       grade: req.query.grade as string | undefined,
       search: req.query.search as string | undefined,
       escalated: req.query.escalated as string | undefined,
+      page: req.query.page as string | undefined,
+      limit: req.query.limit as string | undefined,
     });
     res.json({ success: true, data });
   },

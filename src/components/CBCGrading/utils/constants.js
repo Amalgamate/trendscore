@@ -217,6 +217,19 @@ export const PAGE_TITLES = {
   // Help
   'help': 'Help & Support',
 
+  // Pathway Planner
+  'sec-pathway-overview':    'Pathway Overview',
+  'sec-pathway-counsellor':  'Counsellor Workbench',
+  'sec-pathways':            'Pathway Catalogue',
+  'sec-school-catalogue':    'School Catalogue',
+  'sec-subjects':            'Subject Catalogue',
+  'pathways-admin':          'Pathway Administration',
+  'pathway-guide':           'Pathway Guide',
+  'student-pathway-planner': 'My Pathway',
+  'student-career-explorer': 'Career Explorer',
+  'parent-portal-pathway':   'Pathway Planner',
+  'parent-portal-schools':   'School Shortlist',
+
   // Settings
   'settings-school': 'School Settings & Branding',
   'settings-academic': 'Academic Settings',

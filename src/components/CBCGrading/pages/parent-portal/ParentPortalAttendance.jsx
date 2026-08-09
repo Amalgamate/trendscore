@@ -1,21 +1,26 @@
 /**
- * ParentPortalAttendance — Family Attendance
- * Family average from dashboardAPI.getParentMetrics (child.attendanceRate, child.attendanceSummary)
- * Per-child detail lazy-loaded from attendanceAPI.getLearnerSummary
+ * ParentPortalAttendance — Family Attendance + Presence Timeline
+ * Shows attendance summary AND the full-day presence timeline from the Presence Platform.
  *
- * API response shape for getLearnerSummary:
- *   { summary: { total, present, absent, late, excused, attendanceRate }, records: [...] }
+ * API sources:
+ *   dashboardAPI.getParentMetrics()           → child list with attendance summaries
+ *   attendanceAPI.getLearnerSummary(id)        → term records (existing)
+ *   api.presence.getLearnerTimeline(id, date)  → full-day presence timeline (Phase 2.0)
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users, ChevronDown, ChevronUp, CalendarDays, Clock3, FileEdit,
-  ShieldCheck, TrendingUp, AlertTriangle,
+  ShieldCheck, TrendingUp, AlertTriangle, Activity, MapPin, Bus,
+  Home, ChevronLeft, ChevronRight, Loader2,
 } from 'lucide-react';
 import { dashboardAPI, attendanceAPI } from '../../../../services/api';
+import api from '../../../../services/api';
 import { Skeleton } from '../../../ui';
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '—';
+const fmtTime = (ts) => ts ? new Date(ts).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit', hour12: true }) : '';
+const isoDate = (d) => d.toISOString().slice(0, 10);
 
 const getChildPhoto = (child) => child?.photoUrl || child?.profilePicture || child?.photo || child?.imageUrl || null;
 
@@ -26,6 +31,108 @@ const STATUS_COLORS = {
   EXCUSED: 'bg-blue-100 text-blue-700',
   SICK:    'bg-orange-100 text-orange-700',
 };
+
+// ── Presence Timeline mini-view ─────────────────────────────────────────────
+const EVENT_ICONS = {
+  CLASS_ATTENDANCE: Activity,
+  GATE_ENTRY: MapPin,
+  GATE_EXIT: MapPin,
+  BUS_BOARDED: Bus,
+  BUS_ALIGHTED: Bus,
+  DORM_ROLL_CALL: Home,
+};
+const EVENT_COLORS = {
+  CLASS_ATTENDANCE: 'bg-emerald-50 text-emerald-600',
+  GATE_ENTRY: 'bg-blue-50 text-blue-600',
+  GATE_EXIT: 'bg-slate-50 text-slate-500',
+  BUS_BOARDED: 'bg-amber-50 text-amber-600',
+  BUS_ALIGHTED: 'bg-amber-50 text-amber-500',
+  DORM_ROLL_CALL: 'bg-indigo-50 text-indigo-600',
+};
+
+function PresenceTimelineMini({ learnerId }) {
+  const [date, setDate]       = useState(isoDate(new Date()));
+  const [events, setEvents]   = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchTimeline = useCallback(async (d) => {
+    if (!learnerId) return;
+    setLoading(true);
+    try {
+      const res = await api.presence.getLearnerTimeline(learnerId, d);
+      setEvents(res?.data?.events ?? []);
+    } catch { setEvents([]); }
+    finally { setLoading(false); }
+  }, [learnerId]);
+
+  useEffect(() => { fetchTimeline(date); }, [fetchTimeline, date]);
+
+  const shiftDate = (delta) => {
+    const d = new Date(date + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + delta);
+    const next = isoDate(d);
+    if (next > isoDate(new Date())) return;
+    setDate(next);
+  };
+
+  const isToday = date === isoDate(new Date());
+
+  return (
+    <div className="mx-3 mb-3 rounded-xl border border-indigo-100 bg-white overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-2 bg-indigo-50/60 border-b border-indigo-100">
+        <div className="flex items-center gap-1.5 text-indigo-700">
+          <Activity size={12} />
+          <span className="text-[11px] font-bold">Today's Journey</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <button onClick={() => shiftDate(-1)} className="p-1 rounded hover:bg-indigo-100 text-indigo-400 transition">
+            <ChevronLeft size={12} />
+          </button>
+          <span className="text-[10px] font-semibold text-indigo-600 min-w-[52px] text-center">
+            {isToday ? 'Today' : date.slice(5).replace('-', ' ')}
+          </span>
+          <button onClick={() => shiftDate(1)} disabled={isToday}
+            className="p-1 rounded hover:bg-indigo-100 text-indigo-400 transition disabled:opacity-30">
+            <ChevronRight size={12} />
+          </button>
+        </div>
+      </div>
+
+      {/* Events */}
+      <div className="divide-y divide-gray-50">
+        {loading && (
+          <div className="flex items-center justify-center py-6 gap-2 text-gray-400">
+            <Loader2 size={14} className="animate-spin" />
+            <span className="text-[11px]">Loading…</span>
+          </div>
+        )}
+        {!loading && events.length === 0 && (
+          <div className="py-5 text-center">
+            <Activity size={20} className="mx-auto text-gray-200 mb-1" />
+            <p className="text-[11px] text-gray-400">No events recorded</p>
+          </div>
+        )}
+        {!loading && events.map((ev) => {
+          const Icon = EVENT_ICONS[ev.eventType] ?? Activity;
+          const colorCls = EVENT_COLORS[ev.eventType] ?? 'bg-gray-50 text-gray-500';
+          return (
+            <div key={ev.id} className="flex items-start gap-2.5 px-3 py-2.5">
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${colorCls}`}>
+                <Icon size={13} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-semibold text-gray-800 leading-tight">{ev.description}</p>
+                {ev.location && <p className="text-[10px] text-gray-400 mt-0.5">{ev.location}</p>}
+              </div>
+              <span className="text-[10px] text-gray-400 flex-shrink-0 mt-0.5">{fmtTime(ev.timestamp)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function ChildAttendanceCard({ child, onNavigate }) {
   const [detail, setDetail]     = useState(null);
@@ -149,6 +256,12 @@ function ChildAttendanceCard({ child, onNavigate }) {
                     <p className="text-[9px] font-semibold text-gray-500">{s.label}</p>
                   </div>
                 ))}
+              </div>
+
+              {/* Presence Timeline mini-view */}
+              <div className="px-0 pt-1">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2 px-3">Full Day Journey</p>
+                <PresenceTimelineMini learnerId={child.id} />
               </div>
 
               <div className="px-3 pb-3 grid grid-cols-2 gap-2">

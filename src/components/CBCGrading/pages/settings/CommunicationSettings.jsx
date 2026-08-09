@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Mail, MessageSquare, Send, Save,
   TestTube, CheckCircle, XCircle, Loader,
-  Phone, QrCode, RefreshCw, LogOut, Key, Sparkles, Gift
+  Phone, QrCode, RefreshCw, LogOut, Key, Sparkles, Gift, ExternalLink
 } from 'lucide-react';
 import ModuleTabNav from '../../shared/ModuleTabNav';
 import { useNotifications } from '../../hooks/useNotifications';
@@ -29,6 +29,50 @@ const EMAIL_TEMPLATE_OPTIONS = [
   { key: 'generic', label: 'Generic' }
 ];
 
+const AI_PROVIDER_OPTIONS = {
+  workflow: {
+    label: 'Free Workflow Engine',
+    keyLabel: 'No API key required',
+    keyPlaceholder: '',
+    keyUrl: '',
+    keyLinkLabel: '',
+    keySteps: [],
+    model: 'deterministic-v1',
+    apiUrl: 'Built into TrendSCORE',
+    models: []
+  },
+  anthropic: {
+    label: 'Anthropic (Claude)',
+    keyLabel: 'Anthropic API Key',
+    keyPlaceholder: 'sk-ant-...',
+    keyUrl: 'https://console.anthropic.com/settings/keys',
+    keyLinkLabel: 'Open Claude API Keys',
+    keySteps: [
+      'Sign in to the Anthropic Console.',
+      'Open Settings → API Keys and select Create Key.',
+      'Copy the new key once, then paste it above.'
+    ],
+    model: 'claude-sonnet-4-20250514',
+    apiUrl: 'https://api.anthropic.com/v1/messages',
+    models: ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001']
+  },
+  openai: {
+    label: 'OpenAI / Codex',
+    keyLabel: 'OpenAI / Codex API Key',
+    keyPlaceholder: 'sk-...',
+    keyUrl: 'https://platform.openai.com/api-keys',
+    keyLinkLabel: 'Open OpenAI API Keys',
+    keySteps: [
+      'Sign in to the OpenAI Platform.',
+      'Choose your project and open API Keys.',
+      'Create a secret key, copy it once, then paste it above.'
+    ],
+    model: 'gpt-4o-mini',
+    apiUrl: 'https://api.openai.com/v1/chat/completions',
+    models: ['gpt-4o-mini', 'gpt-4o']
+  }
+};
+
 const DEFAULT_EMAIL_TEMPLATES = {
   welcome: { heading: '', body: '' },
   onboarding: { heading: '', body: '' },
@@ -48,6 +92,7 @@ const CommunicationSettings = () => {
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
   const [aiDrafting, setAiDrafting] = useState(false);
+  const [aiTesting, setAiTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
 
   // WhatsApp connection states
@@ -127,13 +172,14 @@ const CommunicationSettings = () => {
   });
 
   const [aiSettings, setAiSettings] = useState({
-    enabled: false,
-    provider: 'openai',
+    enabled: true,
+    provider: 'workflow',
     apiKey: '',
-    model: 'gpt-4o-mini',
-    apiUrl: 'https://api.openai.com/v1/chat/completions',
-    hasApiKey: false,
-    source: 'none'
+    model: 'deterministic-v1',
+    apiUrl: 'Built into TrendSCORE',
+    hasApiKey: true,
+    source: 'built-in',
+    providers: {}
   });
 
   const [smsSettings, setSmsSettings] = useState({
@@ -218,14 +264,17 @@ const CommunicationSettings = () => {
           }
 
           if (data && data.ai) {
+            const provider = data.ai.provider || 'workflow';
+            const defaults = AI_PROVIDER_OPTIONS[provider] || AI_PROVIDER_OPTIONS.workflow;
             setAiSettings(prev => ({
               ...prev,
               enabled: !!data.ai.enabled,
-              provider: data.ai.provider || 'openai',
-              model: data.ai.model || 'gpt-4o-mini',
-              apiUrl: data.ai.apiUrl || 'https://api.openai.com/v1/chat/completions',
+              provider,
+              model: data.ai.model || defaults.model,
+              apiUrl: data.ai.apiUrl || defaults.apiUrl,
               hasApiKey: !!data.ai.hasApiKey,
               source: data.ai.source || 'none',
+              providers: data.ai.providers || {},
               apiKey: ''
             }));
           }
@@ -292,9 +341,12 @@ const CommunicationSettings = () => {
       }
 
       if (type === 'AI' || type === 'All') {
-        payload.ai = {
+        payload.ai = aiSettings.provider === 'workflow' ? {
           enabled: aiSettings.enabled,
-          provider: 'openai',
+          provider: 'workflow'
+        } : {
+          enabled: aiSettings.enabled,
+          provider: aiSettings.provider,
           model: aiSettings.model,
           apiUrl: aiSettings.apiUrl,
           apiKey: aiSettings.apiKey || undefined
@@ -325,19 +377,62 @@ const CommunicationSettings = () => {
 
 
 
-      await communicationAPI.saveConfig(payload);
+      const response = await communicationAPI.saveConfig(payload);
       showSuccess(`${type} settings saved successfully!`);
 
       // Refresh to get 'hasApiKey' flags updated? Use local state for now
       if (payload.sms?.apiKey) setSmsSettings(s => ({ ...s, hasApiKey: true }));
       if (payload.email?.apiKey) setEmailSettings(s => ({ ...s, hasApiKey: true, apiKey: '' }));
-      if (payload.ai?.apiKey) setAiSettings(s => ({ ...s, hasApiKey: true, source: 'settings', apiKey: '' }));
+      if (response?.data?.ai) {
+        const saved = response.data.ai;
+        setAiSettings(s => ({
+          ...s,
+          enabled: !!saved.enabled,
+          provider: saved.provider,
+          model: saved.model,
+          apiUrl: saved.apiUrl,
+          hasApiKey: !!saved.hasApiKey,
+          source: saved.source || 'none',
+          providers: saved.providers || s.providers,
+          apiKey: ''
+        }));
+      } else if (payload.ai?.apiKey) {
+        setAiSettings(s => ({ ...s, hasApiKey: true, source: 'settings', apiKey: '' }));
+      }
 
     } catch (error) {
       console.error('Save Error:', error);
       showError(error.message || 'Failed to save settings');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAIProviderChange = (provider) => {
+    const defaults = AI_PROVIDER_OPTIONS[provider];
+    const saved = aiSettings.providers?.[provider] || {};
+    setAiSettings(current => ({
+      ...current,
+      provider,
+      model: saved.model || defaults.model,
+      apiUrl: saved.apiUrl || defaults.apiUrl,
+      hasApiKey: !!saved.hasApiKey,
+      source: saved.source || 'none',
+      apiKey: ''
+    }));
+  };
+
+  const handleTestAI = async () => {
+    setAiTesting(true);
+    try {
+      const response = await communicationAPI.testAI();
+      const provider = response?.data?.provider || aiSettings.provider;
+      const model = response?.data?.model || aiSettings.model;
+      showSuccess(`${AI_PROVIDER_OPTIONS[provider]?.label || provider} connected successfully (${model})`);
+    } catch (error) {
+      showError(error.message || 'AI provider connection failed');
+    } finally {
+      setAiTesting(false);
     }
   };
 
@@ -460,13 +555,15 @@ const CommunicationSettings = () => {
             <div>
               <h3 className="text-lg font-medium">AI Assistant Settings</h3>
               <p className="text-sm text-gray-500">
-                Configure OpenAI for email template drafting and future AI-assisted communication tools.
+                Configure the provider used by TrendSCORE AI, contextual Ask AI, drafting, reports, and learning tools.
               </p>
             </div>
           </div>
           <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${aiSettings.hasApiKey ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
             {aiSettings.hasApiKey ? <CheckCircle size={14} /> : <Key size={14} />}
-            {aiSettings.hasApiKey ? `Configured via ${aiSettings.source === 'environment' ? 'server env' : 'settings'}` : 'Not configured'}
+            {aiSettings.source === 'built-in'
+              ? 'Built in · no API key'
+              : aiSettings.hasApiKey ? `Configured via ${aiSettings.source === 'environment' ? 'server env' : 'settings'}` : 'Not configured'}
           </div>
         </div>
 
@@ -478,42 +575,79 @@ const CommunicationSettings = () => {
               onChange={(e) => setAiSettings({ ...aiSettings, enabled: e.target.checked })}
               className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
             />
-            <span className="text-sm font-semibold text-gray-700">Enable AI drafting</span>
+            <span className="text-sm font-semibold text-gray-700">Enable AI tools</span>
           </label>
 
           <div>
             <label className="block text-sm font-semibold mb-2">Provider</label>
             <select
               value={aiSettings.provider}
-              onChange={(e) => setAiSettings({ ...aiSettings, provider: e.target.value })}
+              onChange={(e) => handleAIProviderChange(e.target.value)}
               className="w-full px-4 py-2 border rounded-lg"
             >
-              <option value="openai">OpenAI</option>
+              <option value="workflow">Free Workflow Engine</option>
+              <option value="anthropic">Anthropic (Claude)</option>
+              <option value="openai">OpenAI / Codex</option>
             </select>
           </div>
 
+          {aiSettings.provider === 'workflow' ? (
+            <div className="lg:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <div className="flex items-start gap-3">
+                <CheckCircle size={20} className="mt-0.5 shrink-0 text-emerald-700" />
+                <div>
+                  <p className="text-sm font-bold text-emerald-900">Free, private workflow mode</p>
+                  <p className="mt-1 text-xs leading-relaxed text-emerald-800">
+                    No API key, token billing, or external AI service is used. TrendSCORE reads only the records allowed by the signed-in role and returns deterministic summaries for fees, attendance, assessments, learners, messages, library, staff, reports, and AI Pathways.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (<>
           <div>
-            <label className="block text-sm font-semibold mb-2">OpenAI API Key</label>
+            <label className="block text-sm font-semibold mb-2">{AI_PROVIDER_OPTIONS[aiSettings.provider].keyLabel}</label>
             <input
               type="password"
               value={aiSettings.apiKey}
               onChange={(e) => setAiSettings({ ...aiSettings, apiKey: e.target.value })}
               className="w-full px-4 py-2 border rounded-lg font-mono text-sm"
-              placeholder={aiSettings.hasApiKey ? 'Saved - enter a new key to replace' : 'sk-...'}
+              placeholder={aiSettings.hasApiKey ? 'Saved - enter a new key to replace' : AI_PROVIDER_OPTIONS[aiSettings.provider].keyPlaceholder}
               autoComplete="off"
             />
             <p className="text-xs text-gray-500 mt-1">The key is write-only and encrypted on the server. It is never shown back in the browser.</p>
+            <div className="mt-3 rounded-lg border border-purple-100 bg-purple-50/70 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-bold text-purple-900">How to get your {AI_PROVIDER_OPTIONS[aiSettings.provider].keyLabel}</p>
+                <a
+                  href={AI_PROVIDER_OPTIONS[aiSettings.provider].keyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-white px-3 py-1 text-[11px] font-bold text-purple-700 hover:bg-purple-100"
+                >
+                  {AI_PROVIDER_OPTIONS[aiSettings.provider].keyLinkLabel}
+                  <ExternalLink size={12} aria-hidden="true" />
+                </a>
+              </div>
+              <ol className="mt-2 list-decimal space-y-1 pl-4 text-[11px] leading-relaxed text-gray-600">
+                {AI_PROVIDER_OPTIONS[aiSettings.provider].keySteps.map((step) => <li key={step}>{step}</li>)}
+              </ol>
+              <p className="mt-2 text-[10px] text-gray-500">API usage and billing are managed by the selected provider. Never share the generated key outside this encrypted field.</p>
+            </div>
           </div>
 
           <div>
             <label className="block text-sm font-semibold mb-2">Model</label>
             <input
               type="text"
+              list={`ai-models-${aiSettings.provider}`}
               value={aiSettings.model}
               onChange={(e) => setAiSettings({ ...aiSettings, model: e.target.value })}
               className="w-full px-4 py-2 border rounded-lg"
-              placeholder="gpt-4o-mini"
+              placeholder={AI_PROVIDER_OPTIONS[aiSettings.provider].model}
             />
+            <datalist id={`ai-models-${aiSettings.provider}`}>
+              {AI_PROVIDER_OPTIONS[aiSettings.provider].models.map((model) => <option key={model} value={model} />)}
+            </datalist>
           </div>
 
           <div className="lg:col-span-2">
@@ -523,9 +657,10 @@ const CommunicationSettings = () => {
               value={aiSettings.apiUrl}
               onChange={(e) => setAiSettings({ ...aiSettings, apiUrl: e.target.value })}
               className="w-full px-4 py-2 border rounded-lg"
-              placeholder="https://api.openai.com/v1/chat/completions"
+              placeholder={AI_PROVIDER_OPTIONS[aiSettings.provider].apiUrl}
             />
           </div>
+          </>)}
         </div>
 
         <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -538,8 +673,19 @@ const CommunicationSettings = () => {
             {loading ? <Loader size={20} className="animate-spin" /> : <Save size={20} />}
             {loading ? 'Saving...' : 'Save AI Settings'}
           </button>
+          <button
+            type="button"
+            onClick={handleTestAI}
+            disabled={loading || aiTesting || !aiSettings.enabled || (aiSettings.provider !== 'workflow' && !aiSettings.hasApiKey)}
+            className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-5 py-3 font-semibold text-purple-700 hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {aiTesting ? <Loader size={18} className="animate-spin" /> : <TestTube size={18} />}
+            {aiTesting ? 'Testing...' : aiSettings.provider === 'workflow' ? 'Test workflow mode' : 'Test connection'}
+          </button>
           <p className="text-xs text-gray-500">
-            Email template AI drafting will use this saved key first, then fall back to server environment variables.
+            {aiSettings.provider === 'workflow'
+              ? 'Built-in workflows are used globally and do not require internet access or provider billing.'
+              : 'Saved encrypted settings are used across AI workflows, with server environment variables as fallback.'}
           </p>
         </div>
       </div>

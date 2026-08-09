@@ -6,6 +6,7 @@ import {
     saveCommunicationConfig,
     sendTestSms,
     sendTestEmail,
+    testAIConfiguration,
     draftEmailTemplate,
     getBirthdaysToday,
     sendBirthdayWishes,
@@ -75,7 +76,7 @@ const saveCommunicationConfigSchema = z.object({
     }).optional(),
     ai: z.object({
         enabled: z.boolean().optional(),
-        provider: z.literal('openai').optional(),
+        provider: z.enum(['workflow', 'anthropic', 'openai']).optional(),
         model: z.string().min(2).max(80).optional(),
         apiUrl: z.string().url().optional(),
         apiKey: z.string().min(10).max(300).optional()
@@ -205,6 +206,15 @@ router.post(
     rateLimit({ windowMs: 60_000, maxRequests: 30 }),
     validate(sendTestEmailSchema),
     sendTestEmail
+);
+
+// Test active AI provider
+// Allowed: Admin, Super Admin
+router.post(
+    '/test/ai',
+    requireRole(['SUPER_ADMIN', 'ADMIN']),
+    rateLimit({ windowMs: 60_000, maxRequests: 10 }),
+    testAIConfiguration
 );
 
 // Draft Email Template with AI

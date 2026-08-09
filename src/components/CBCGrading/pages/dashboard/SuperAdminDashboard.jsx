@@ -13,11 +13,13 @@ import {
   BarChart3,
   Building2,
   CircleDollarSign,
+  ClipboardCheck,
   DatabaseBackup,
   FileText,
   GraduationCap,
   KeyRound,
   Lock,
+  MessageSquare,
   ServerCog,
   Settings,
   ShieldCheck,
@@ -33,13 +35,13 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
 
   const userId = user?.id || user?.userId;
   const sectionControls = useDashboardSections('super-admin', [
+    { id: 'institution-operations', label: 'Institution Operations', description: 'Complete school setup in operational order' },
+    { id: 'identity-access', label: 'Identity & Access', description: 'Users, roles, and security controls' },
+    { id: 'academic-oversight', label: 'Academic Oversight', description: 'Assessment, terms, and academic risk' },
+    { id: 'finance-oversight', label: 'Finance Oversight', description: 'Fee and accounting reporting' },
     { id: 'super-admin-quick-actions', label: 'Quick Actions', description: 'Priority control shortcuts' },
     { id: 'system-control', label: 'System Control', description: 'Settings, logs, backup, and maintenance' },
     { id: 'system-reporting', label: 'System Reporting', description: 'Logs, audit trails, and operational visibility' },
-    { id: 'academic-oversight', label: 'Academic Oversight', description: 'Assessment, terms, and academic risk' },
-    { id: 'finance-oversight', label: 'Finance Oversight', description: 'Fee and accounting reporting' },
-    { id: 'identity-access', label: 'Identity & Access', description: 'Users, roles, and security controls' },
-    { id: 'institution-operations', label: 'Institution Operations', description: 'School, academic, finance, and staff administration' },
   ]);
 
   const loadMetrics = async (filter = 'term') => {
@@ -107,8 +109,12 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
     operations: [
       { label: 'School Settings', description: 'Institution profile and operating settings', icon: Settings, path: 'settings-school' },
       { label: 'Academic Settings', description: 'Terms, grades, and academic configuration', icon: GraduationCap, path: 'settings-academic' },
+      { label: 'Users & Roles', description: 'Create accounts and assign the right permissions', icon: KeyRound, path: 'settings-users' },
       { label: 'Staff Directory', description: 'Staff profiles and HR access', icon: Users, path: 'hr-staff-profiles' },
-      { label: 'Finance Reports', description: 'Financial oversight and reports', icon: Activity, path: 'accounting-reports' },
+      { label: 'Data Upload', description: 'Import and verify learners, parents, staff, and fees', icon: UploadCloud, path: 'system-maintenance' },
+      { label: 'Communication', description: 'Configure messaging channels and AI workflow mode', icon: MessageSquare, path: 'settings-communication' },
+      { label: 'Fee Setup', description: 'Create fee types, structures, invoices, and balances', icon: CircleDollarSign, path: 'fees-overview' },
+      { label: 'Attendance', description: 'Confirm classes, registers, and presence workflows', icon: ClipboardCheck, path: 'attendance-daily' },
     ],
   };
 
@@ -178,21 +184,15 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
   return (
     <div className="min-h-screen bg-[var(--app-page-bg)] pb-24">
       <div className="px-6 lg:px-10 pt-8 space-y-6 pb-10">
-        <DashboardSection id="super-admin-quick-actions" controls={sectionControls}>
-          <AppCard title="Super Admin Quick Actions" subtitle="Colored shortcuts for the controls used most often">
-            {renderColoredQuickActions()}
+        <DashboardSection id="institution-operations" controls={sectionControls}>
+          <AppCard title="Institution Operations" subtitle="Complete school setup in the recommended order">
+            {renderToolGrid(toolGroups.operations)}
           </AppCard>
         </DashboardSection>
 
-        <DashboardSection id="system-control" controls={sectionControls}>
-          <AppCard title="System Control" subtitle="Settings, logs, backups, and platform maintenance">
-            {renderToolGrid(toolGroups.system)}
-          </AppCard>
-        </DashboardSection>
-
-        <DashboardSection id="system-reporting" controls={sectionControls}>
-          <AppCard title="System Reporting" subtitle="Operational reporting, logs, audits, and oversight">
-            {renderToolGrid(toolGroups.reporting)}
+        <DashboardSection id="identity-access" controls={sectionControls}>
+          <AppCard title="Identity & Access" subtitle="Users, roles, security, and permission oversight">
+            {renderToolGrid(toolGroups.identity)}
           </AppCard>
         </DashboardSection>
 
@@ -210,15 +210,21 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
           </DashboardSection>
         </div>
 
-        <DashboardSection id="identity-access" controls={sectionControls}>
-          <AppCard title="Identity & Access" subtitle="Users, roles, security, and permission oversight">
-            {renderToolGrid(toolGroups.identity)}
+        <DashboardSection id="super-admin-quick-actions" controls={sectionControls}>
+          <AppCard title="Super Admin Quick Actions" subtitle="Colored shortcuts for the controls used most often">
+            {renderColoredQuickActions()}
           </AppCard>
         </DashboardSection>
 
-        <DashboardSection id="institution-operations" controls={sectionControls}>
-          <AppCard title="Institution Operations" subtitle="Administrative control over school operations">
-            {renderToolGrid(toolGroups.operations)}
+        <DashboardSection id="system-control" controls={sectionControls}>
+          <AppCard title="System Control" subtitle="Settings, logs, backups, and platform maintenance">
+            {renderToolGrid(toolGroups.system)}
+          </AppCard>
+        </DashboardSection>
+
+        <DashboardSection id="system-reporting" controls={sectionControls}>
+          <AppCard title="System Reporting" subtitle="Operational reporting, logs, audits, and oversight">
+            {renderToolGrid(toolGroups.reporting)}
           </AppCard>
         </DashboardSection>
 

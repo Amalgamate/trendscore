@@ -1,5 +1,6 @@
 import React from 'react';
 import { TOKENS } from '../tokens';
+import AskAIButton from '../../components/help/AskAIButton';
 
 /**
  * AppCard - Standard card component for consistent styling
@@ -19,6 +20,8 @@ interface AppCardProps {
   className?: string;
   headerAction?: React.ReactNode;
   footer?: React.ReactNode;
+  askAI?: boolean;
+  aiContext?: unknown;
 }
 
 export const AppCard: React.FC<AppCardProps> = ({
@@ -30,6 +33,8 @@ export const AppCard: React.FC<AppCardProps> = ({
   className = '',
   headerAction,
   footer,
+  askAI = true,
+  aiContext,
 }) => {
   const variantStyles = {
     default: {
@@ -55,6 +60,8 @@ export const AppCard: React.FC<AppCardProps> = ({
   return (
     <div
       onClick={onClick}
+      data-ai-card="true"
+      data-ai-title={title}
       className={`app-card ${usesStandardSurface ? 'surface-panel' : ''} ${onClick ? 'surface-panel-interactive' : ''} ${className}`}
       style={{
         borderRadius: TOKENS.radius.card.default,
@@ -102,7 +109,12 @@ export const AppCard: React.FC<AppCardProps> = ({
               </p>
             )}
           </div>
-          {headerAction && <div>{headerAction}</div>}
+          {(askAI || headerAction) && (
+            <div className="flex shrink-0 items-center gap-2">
+              {askAI && title && <AskAIButton title={title} description={subtitle} context={aiContext} />}
+              {headerAction}
+            </div>
+          )}
         </div>
       )}
 

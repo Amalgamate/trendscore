@@ -5,7 +5,7 @@ import { EmailService } from './email-resend.service';
 import { MessageStatus } from '@prisma/client';
 import { LibraryService } from './library.service';
 import logger from '../utils/logger';
-import { decrypt } from '../utils/encryption.util';
+import { aiBridgeService } from './ai-bridge.service';
 
 const libraryService = new LibraryService();
 
@@ -229,9 +229,8 @@ export class MessageService {
     ageOrdinal: string;
     persona: string;
     customInstructions: string;
-    aiConfig: { apiKey: string; model: string; apiUrl: string };
   }): Promise<string> {
-    const { firstName, fullName, gradeName, schoolName, age, ageOrdinal, persona, customInstructions, aiConfig } = params;
+    const { firstName, fullName, gradeName, schoolName, age, ageOrdinal, persona, customInstructions } = params;
 
     const personaDescriptions: Record<string, string> = {
       'Enthusiastic Principal': 'a warm, professional and enthusiastic school principal who genuinely cares about students',
@@ -256,28 +255,12 @@ export class MessageService {
     ].filter(Boolean).join('\n');
 
     try {
-      const response = await fetch(aiConfig.apiUrl, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${aiConfig.apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: aiConfig.model,
-          messages: [
-            { role: 'system', content: 'You write concise, heartfelt birthday SMS messages for school students. Reply with the SMS text only.' },
-            { role: 'user', content: prompt }
-          ],
-          max_tokens: 80,
-          temperature: 0.85
-        }),
-        signal: AbortSignal.timeout(12000)
+      const response = await aiBridgeService.generateCompletion(prompt, {
+        systemPrompt: 'You write concise, heartfelt birthday SMS messages for school students. Reply with the SMS text only.',
+        maxTokens: 80,
+        temperature: 0.85,
       });
-
-      if (!response.ok) {
-        logger.warn(`[BirthdayService] AI API error ${response.status}. Falling back to standard message.`);
-        return '';
-      }
-
-      const payload: any = await response.json();
-      const text = payload?.choices?.[0]?.message?.content?.trim() || '';
+      const text = response.content.trim();
       if (!text) return '';
 
       // Clamp to 160 chars for SMS safety
@@ -305,27 +288,6 @@ export class MessageService {
     const channelStrategy: string = birthdayAi.channelStrategy || 'Smart Fallback';
     const persona: string = birthdayAi.persona || 'Enthusiastic Principal';
     const customInstructions: string = birthdayAi.customInstructions || '';
-
-    // ── Resolve OpenAI config if AI is enabled ────────────────────────────────
-    let aiConfig: { apiKey: string; model: string; apiUrl: string } | null = null;
-    if (aiEnabled) {
-      const openAiCfg = templates.__ai || {};
-      const envKey = process.env.OPENAI_API_KEY || process.env.AI_API_KEY;
-      let savedKey: string | undefined;
-      if (openAiCfg.apiKey) {
-        try { savedKey = decrypt(openAiCfg.apiKey); } catch { /* fall through */ }
-      }
-      const resolvedKey = savedKey || envKey;
-      if (resolvedKey) {
-        aiConfig = {
-          apiKey: resolvedKey,
-          model: openAiCfg.model || process.env.OPENAI_MODEL || 'gpt-4o-mini',
-          apiUrl: openAiCfg.apiUrl || process.env.OPENAI_API_URL || 'https://api.openai.com/v1/chat/completions'
-        };
-      } else {
-        logger.warn('[BirthdayService] AI birthdays enabled but no API key configured. Falling back to standard messages.');
-      }
-    }
 
     const now = new Date();
     const monthDay = `${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
@@ -394,10 +356,10 @@ export class MessageService {
       const manualTemplate = config.birthdayMessageTemplate || null;
       let messageText: string;
 
-      if (aiEnabled && aiConfig) {
+      if (aiEnabled) {
         const aiMessage = await this.generateAiBirthdayMessage({
           firstName, fullName, gradeName, schoolName, age, ageOrdinal,
-          persona, customInstructions, aiConfig
+          persona, customInstructions
         });
         messageText = aiMessage || (manualTemplate
           ? manualTemplate.replace(/{learnerName}/g, fullName).replace(/{firstName}/g, firstName)

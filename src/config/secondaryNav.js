@@ -7,7 +7,7 @@ import {
   Home, Mail, Calendar, Users, GraduationCap, UserCheck,
   TrendingUp, Settings, BookOpen, Users2, Truck, Fingerprint,
   CreditCard, PieChart, Package, HelpCircle, Receipt, FileText,
-  ClipboardList, BarChart3, Award, BookMarked, Activity, Wrench
+  ClipboardList, BarChart3, Award, BookMarked, Activity, Wrench, Brain
 } from 'lucide-react';
 
 export const secondaryNavSections = [
@@ -159,16 +159,20 @@ export const secondaryNavSections = [
     ],
   },
 
-  // ── Attendance ────────────────────────────────────────────────────────────
+  // ── Presence & Attendance ─────────────────────────────────────────────────
   {
-    id: 'attendance',
-    label: 'Attendance',
-    icon: ClipboardList,
+    id: 'presence-attendance',
+    label: 'Presence & Attendance',
+    icon: Activity,
     permission: null,
     items: [
-      { id: 'attendance-daily',   label: 'Daily Attendance',   path: 'attendance-daily',   permission: 'MARK_ATTENDANCE' },
-      { id: 'attendance-reports', label: 'Attendance Reports', path: 'attendance-reports', permission: 'GENERATE_ATTENDANCE_REPORTS' },
-      { id: 'attendance-configuration', label: 'Configuration', path: 'attendance-configuration', permission: 'VIEW_ALL_ATTENDANCE' },
+      { id: 'presence-dashboard',        label: 'Today',               path: 'presence-dashboard',        permission: null },
+      { id: 'attendance-daily',          label: 'Class Register',      path: 'attendance-daily',          permission: 'MARK_ATTENDANCE' },
+      { id: 'attendance-reports',        label: 'Reports',             path: 'attendance-reports',        permission: 'GENERATE_ATTENDANCE_REPORTS' },
+      { id: 'analytics-dashboard',       label: 'Insights & Alerts',   path: 'analytics-dashboard',       permission: null },
+      { id: 'boarding-dashboard',        label: 'Boarding Operations', path: 'boarding-dashboard',        permission: 'VIEW_BOARDING' },
+      { id: 'biometric-dashboard',       label: 'Devices & Biometrics', path: 'biometric-dashboard',       permission: 'BIOMETRIC_ATTENDANCE' },
+      { id: 'attendance-configuration',  label: 'Attendance Settings', path: 'attendance-configuration',  permission: 'VIEW_ALL_ATTENDANCE' },
     ],
   },
 
@@ -267,6 +271,7 @@ export const secondaryNavSections = [
       { id: 'hostel-fees',       label: 'Transport Fee Manager',     path: 'hostel-fees',        permission: 'TRANSPORT_MANAGEMENT' },
     ],
   },
+
   {
     id: 'inventory',
     label: 'Inventory',
@@ -277,16 +282,6 @@ export const secondaryNavSections = [
       { id: 'inventory-stores',      label: 'Stores',          path: 'inventory-stores',      permission: 'SCHOOL_SETTINGS' },
       { id: 'inventory-movements',   label: 'Stock Movements', path: 'inventory-movements',   permission: 'SCHOOL_SETTINGS' },
       { id: 'inventory-assets',      label: 'Asset Register',  path: 'inventory-assets',      permission: 'SCHOOL_SETTINGS' },
-    ],
-  },
-  {
-    id: 'biometric',
-    label: 'Biometric Attendance',
-    icon: Fingerprint,
-    permission: 'BIOMETRIC_ATTENDANCE',
-    items: [
-      { id: 'biometric-dashboard',  label: 'Biometric Authority',    path: 'biometric-dashboard', permission: 'BIOMETRIC_ATTENDANCE' },
-      { id: 'biometric-enrollment', label: 'Fingerprint Enrollment', path: 'biometric-dashboard?tab=enrollment', permission: 'ENROLL_FINGERPRINTS' },
     ],
   },
   {
@@ -341,7 +336,7 @@ export const secondaryNavSections = [
 ];
 
 // ── Secondary-specific category groupings ─────────────────────────────────────
-export const SECONDARY_SCHOOL_SECTIONS     = ['students', 'teachers', 'attendance', 'secondary-assessment', 'secondary-academics', 'pathway-planner'];
+export const SECONDARY_SCHOOL_SECTIONS     = ['students', 'teachers', 'presence-attendance', 'secondary-assessment', 'secondary-academics', 'pathway-planner'];
 export const SECONDARY_PATHWAY_SECTIONS    = ['pathway-planner'];  // kept for reference
 export const SECONDARY_RESULTS_SECTIONS    = ['secondary-results'];
 export const SECONDARY_BACKOFFICE_SECTIONS = ['finance', 'hr', 'transport', 'inventory'];

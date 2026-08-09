@@ -8,6 +8,7 @@ describe('phone OTP validation contracts', () => {
     })).toEqual({
       email: 'user@example.com',
       password: 'Test123!',
+      rememberMe: false,
     });
   });
 
@@ -18,6 +19,7 @@ describe('phone OTP validation contracts', () => {
     })).toEqual({
       phone: '0712345678',
       password: 'Test123!',
+      rememberMe: false,
     });
   });
 
@@ -42,6 +44,7 @@ describe('phone OTP validation contracts', () => {
       challengeId: 'challenge-1',
       phone: '0712345678',
       code: '123456',
+      rememberMe: false,
     });
   });
 

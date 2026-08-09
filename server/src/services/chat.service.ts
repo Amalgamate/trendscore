@@ -363,10 +363,12 @@ export class ChatService {
       }),
     ]);
 
-    // Emit to conversation room
+    // Emit to all conversation participants EXCEPT the sender.
+    // The sender already has the message via the optimistic bubble + HTTP response,
+    // so broadcasting back to them causes the duplicate the user sees.
     try {
       const io = getIO();
-      io.to(`conv:${input.conversationId}`).emit('chat:message', message);
+      io.to(`conv:${input.conversationId}`).except(input.senderId).emit('chat:message', message);
     } catch (err: any) {
       logger.warn({ err: err.message }, '[Chat] Socket emit failed');
     }

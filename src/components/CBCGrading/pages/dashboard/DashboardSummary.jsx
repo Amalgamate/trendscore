@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowUp, ArrowDown, CheckCircle2, Lightbulb, Sparkles, UserCircle, X } from 'lucide-react';
+import AskAIButton from '../../../help/AskAIButton';
 
 /**
  * Flat solid-color palette — exact colors from the receptionist dashboard screenshot.
@@ -376,15 +377,19 @@ export const DashboardSummaryCard = ({
   icon,
   tone = 'indigo',
   onClick,
+  askAI = true,
 }) => {
   const bgColor = SOLID_COLORS[tone] ?? SOLID_COLORS.indigo;
 
   const content = (
     <>
       {/* ── Row 1: label full width ── */}
-      <p className="relative z-10 text-xs font-bold uppercase tracking-[0.15em] text-white/75 leading-tight mb-3">
-        {label}
-      </p>
+      <div className="relative z-10 mb-3 flex items-start justify-between gap-2">
+        <p className="text-xs font-bold uppercase tracking-[0.15em] text-white/75 leading-tight">
+          {label}
+        </p>
+        {askAI && <AskAIButton title={label} context={{ value, subvalue, trend, trendValue, chips }} variant="light" />}
+      </div>
 
       {/* ── Row 2: big number (left) + icon (right) ── */}
       <div className="relative z-10 flex items-start justify-between gap-3">
@@ -428,16 +433,25 @@ export const DashboardSummaryCard = ({
   const base = 'relative overflow-hidden p-5 text-white transition-transform hover:-translate-y-0.5 select-none';
 
   return onClick ? (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+      data-ai-card="true"
+      data-ai-title={label}
       className={`${base} text-left w-full`}
       style={{ backgroundColor: bgColor }}
     >
       {content}
-    </button>
+    </div>
   ) : (
-    <div className={base} style={{ backgroundColor: bgColor }}>
+    <div className={base} style={{ backgroundColor: bgColor }} data-ai-card="true" data-ai-title={label}>
       {content}
     </div>
   );

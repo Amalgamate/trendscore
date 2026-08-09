@@ -16,7 +16,7 @@ import type { Prisma } from '@prisma/client';
 
 type SaveDecisionInput = {
   learnerId: string;
-  recommendedPathway: string;
+  recommendedPathway: string | null;
   confidenceScore: number;
   learnerInterest?: string | null;
   teacherRecommendation?: string | null;
@@ -34,17 +34,26 @@ export async function saveTransitionDecision(input: SaveDecisionInput) {
   });
   if (!learner) throw new ApiError(404, 'Learner not found');
 
+  // Stamp server-side persistence metadata so every row carries an audit trail
+  // regardless of whether the client passed back the full analysis payload.
+  const versionedPayload: Prisma.InputJsonValue | undefined =
+    input.analysisPayload != null
+      ? { ...(input.analysisPayload as Record<string, unknown>), persistedAt: new Date().toISOString(), savedBy: input.updatedBy ?? null }
+      : input.recommendedPathway != null
+        ? { version: 'GRADE9_READINESS_V1', persistedAt: new Date().toISOString(), savedBy: input.updatedBy ?? null }
+        : undefined;
+
   return prisma.learnerPathwayRecommendation.create({
     data: {
       learnerId:             input.learnerId,
-      recommendedPathway:    input.recommendedPathway,
+      recommendedPathway:    input.recommendedPathway ?? null,
       confidenceScore:       input.confidenceScore,
       learnerInterest:       input.learnerInterest   ?? null,
       teacherRecommendation: input.teacherRecommendation ?? null,
       parentPreference:      input.parentPreference  ?? null,
       finalApprovedPathway:  input.finalApprovedPathway ?? null,
       mismatchWarning:       input.mismatchWarning   ?? null,
-      analysisPayload:       input.analysisPayload   ?? undefined,
+      analysisPayload:       versionedPayload,
       updatedBy:             input.updatedBy         ?? null,
     },
   });

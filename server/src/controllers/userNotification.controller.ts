@@ -4,13 +4,25 @@ import { AuthRequest } from '../middleware/permissions.middleware';
 
 export class UserNotificationController {
   /**
-   * Get current user's unread notifications
+   * Get current user's notifications.
+   * Supports optional query params:
+   *   limit  (default 30, max 100)
+   *   cursor (ISO timestamp — returns rows older than this for pagination)
+   *   type   (comma-separated NotificationType values to filter)
+   *   unread (true/false — if true only return unread rows)
    */
   async getMyNotifications(req: AuthRequest, res: Response) {
     const userId = req.user?.userId;
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
 
-    const notifications = await NotificationService.getUserNotifications(userId);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit ?? 30)));
+    const cursor = typeof req.query.cursor === 'string' && req.query.cursor ? req.query.cursor : undefined;
+    const typeFilter = typeof req.query.type === 'string' && req.query.type
+      ? req.query.type.split(',').map((t) => t.trim()).filter(Boolean)
+      : undefined;
+    const unreadOnly = req.query.unread === 'true';
+
+    const notifications = await NotificationService.getUserNotifications(userId, limit, cursor, typeFilter, unreadOnly);
     res.json({ success: true, data: notifications });
   }
 

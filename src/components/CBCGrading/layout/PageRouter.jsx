@@ -50,6 +50,7 @@ const NoticesPage = lazy(() => import('../pages/NoticesPage'));
 const MessagesPage = lazy(() => import('../pages/MessagesPage'));
 const MessageHistoryPage = lazy(() => import('../pages/MessageHistoryPage'));
 const SupportHub = lazy(() => import('../pages/SupportHub'));
+const KnowledgeBase = lazy(() => import('../pages/KnowledgeBase'));
 const ReportsCenterPage = lazy(() => import('../pages/ReportsCenterPage'));
 const CodingPlayground = lazy(() => import('../pages/CodingPlayground'));
 const ClassList = lazy(() => import('../pages/ClassList'));
@@ -98,6 +99,7 @@ const ParentPortalSupport = lazy(() => import('../pages/parent-portal/ParentPort
 const ParentPortalHomework = lazy(() => import('../pages/parent-portal/ParentPortalHomework'));
 const ParentPortalPathway = lazy(() => import('../pages/parent-portal/ParentPortalPathway'));
 const ParentPortalSchools = lazy(() => import('../pages/parent-portal/ParentPortalSchools'));
+const ParentPortalBoarding = lazy(() => import('../pages/parent-portal/ParentPortalBoarding'));
 const UniformAllocationPage = lazy(() => import('../pages/UniformAllocationPage'));
 const IDPrintingPage = lazy(() => import('../pages/IDPrintingPage'));
 const PathwaysHub = lazy(() => import('../pages/secondary/PathwaysHub'));
@@ -160,6 +162,12 @@ const TransportFeeManager = lazy(() => import('../pages/transport/TransportFeeMa
 const HostelAllocation    = lazy(() => import('../pages/transport/HostelAllocation'));
 const LibraryManager = lazy(() => import('../pages/library/LibraryManager'));
 const BiometricManager = lazy(() => import('../pages/biometric/BiometricManager'));
+
+// Phase 2.0 — Presence, Boarding, Analytics
+const PresenceDashboard  = lazy(() => import('../pages/presence/PresenceDashboard'));
+const PresenceTimeline   = lazy(() => import('../pages/presence/PresenceTimeline'));
+const BoardingManager    = lazy(() => import('../pages/boarding/BoardingManager'));
+const AnalyticsDashboard = lazy(() => import('../pages/analytics/AnalyticsDashboard'));
 
 // LMS Module
 const LMSManager = lazy(() => import('../pages/LMSManager'));
@@ -793,6 +801,28 @@ const PageRouter = ({
           case 'hostel-fees':         return <TransportFeeManager onEditLearner={handleEditLearner} onViewLearner={handleViewLearner} />;
           case 'transport-reports':   return <TransportReports />;
 
+          // ── Presence Platform (Phase 2.0) ─────────────────────────────────
+          case 'presence-dashboard':
+            return <PresenceDashboard />;
+          case 'presence-timeline':
+            return (
+              <div className="max-w-2xl mx-auto p-6">
+                <PresenceTimeline
+                  learnerId={pageParams?.learnerId}
+                  learnerName={pageParams?.learnerName}
+                  grade={pageParams?.grade}
+                />
+              </div>
+            );
+
+          // ── Boarding Module (Phase 2.0) ────────────────────────────────────
+          case 'boarding-dashboard':
+            return <BoardingManager />;
+
+          // ── Analytics & Intelligence (Phase 2.0) ──────────────────────────
+          case 'analytics-dashboard':
+            return <AnalyticsDashboard />;
+
           // Biometric Module
           case 'biometric-devices':
           case 'biometric-enrollment':
@@ -842,6 +872,7 @@ const PageRouter = ({
           case 'fees-unmatched': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="unmatched" />;
 
           case 'help': return <SupportHub initialQuery={pageParams.helpQuery} initialSection={pageParams.helpSection} />;
+          case 'knowledge-base': return <KnowledgeBase />;
 
           case 'hr-portal': return <HRManager onNavigate={handleNavigate} />;
           case 'hr-staff-profiles': return <StaffDirectory />;

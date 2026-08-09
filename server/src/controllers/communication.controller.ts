@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../config/database';
-import { decrypt, encrypt } from '../utils/encryption.util';
+import { encrypt } from '../utils/encryption.util';
 import { SmsService } from '../services/sms.service';
 import { EmailService } from '../services/email-resend.service';
 import messageService from '../services/message.service';
@@ -8,6 +8,17 @@ import { AuthRequest } from '../middleware/permissions.middleware';
 import { whatsappService } from '../services/whatsapp.service';
 import { ApiError } from '../utils/error.util';
 import { COMMUNICATION_CONFIG, ERROR_MESSAGES, SMS_MESSAGES } from '../config/communication.messages';
+import { aiBridgeService } from '../services/ai-bridge.service';
+import {
+    AI_PROVIDER_DEFAULTS,
+    clearAISettingsCache,
+    getPublicAISettings,
+    getStoredAIConfig,
+    getStoredProviderConfig,
+    isAIMode,
+    isAIProvider,
+    resolveActiveAIMode
+} from '../services/ai-settings.service';
 
 import logger from '../utils/logger';
 
@@ -31,9 +42,6 @@ const extractJsonObject = (value: string) => {
     return JSON.parse(match[0]);
 };
 
-const OPENAI_DEFAULT_MODEL = 'gpt-4o-mini';
-const OPENAI_DEFAULT_API_URL = 'https://api.openai.com/v1/chat/completions';
-
 const getTemplateConfig = (templates: unknown): Record<string, any> =>
     templates && typeof templates === 'object' ? { ...(templates as Record<string, any>) } : {};
 
@@ -51,21 +59,6 @@ const getPublicBirthdayConfig = (templates: unknown) => {
         persona: b.persona || 'Enthusiastic Principal',
         customInstructions: b.customInstructions || '',
         channelStrategy: b.channelStrategy || 'Smart Fallback'
-    };
-};
-
-const getPublicAiConfig = (templates: unknown) => {
-    const ai = getTemplateConfig(templates).__ai || {};
-    const hasEnvKey = !!(process.env.OPENAI_API_KEY || process.env.AI_API_KEY);
-    const hasSavedKey = !!ai.apiKey;
-
-    return {
-        enabled: ai.enabled !== undefined ? !!ai.enabled : hasEnvKey,
-        provider: ai.provider || 'openai',
-        model: ai.model || process.env.OPENAI_MODEL || process.env.AI_MODEL || OPENAI_DEFAULT_MODEL,
-        apiUrl: ai.apiUrl || process.env.OPENAI_API_URL || OPENAI_DEFAULT_API_URL,
-        hasApiKey: hasSavedKey || hasEnvKey,
-        source: hasSavedKey ? 'settings' : hasEnvKey ? 'environment' : 'none'
     };
 };
 
@@ -97,29 +90,6 @@ const encryptSetting = (label: string, value: string): string => {
         throw new ApiError(500, `${label} could not be saved because server encryption is not configured correctly.`)
             .withCode('COMMUNICATION_ENCRYPTION_FAILED');
     }
-};
-
-const resolveAiDraftConfig = async () => {
-    const config = await prisma.communicationConfig.findFirst({ select: { emailTemplates: true } });
-    const ai = getTemplateConfig(config?.emailTemplates).__ai || {};
-    const envKey = process.env.OPENAI_API_KEY || process.env.AI_API_KEY;
-
-    let savedKey: string | undefined;
-    if (ai.enabled !== false && ai.apiKey) {
-        try {
-            savedKey = decrypt(ai.apiKey);
-        } catch (error: any) {
-            logger.warn('[CommunicationController] Saved AI API key could not be decrypted; falling back to environment key.', {
-                message: error?.message
-            });
-        }
-    }
-
-    return {
-        apiKey: savedKey || envKey,
-        model: (ai.enabled !== false ? ai.model : undefined) || process.env.OPENAI_MODEL || process.env.AI_MODEL || OPENAI_DEFAULT_MODEL,
-        apiUrl: (ai.enabled !== false ? ai.apiUrl : undefined) || process.env.OPENAI_API_URL || OPENAI_DEFAULT_API_URL
-    };
 };
 
 /**
@@ -163,14 +133,7 @@ export const getCommunicationConfig = async (req: AuthRequest, res: Response) =>
                 otp: {
                     enabled: true
                 },
-                ai: {
-                    enabled: !!(process.env.OPENAI_API_KEY || process.env.AI_API_KEY),
-                    provider: 'openai',
-                    model: process.env.OPENAI_MODEL || process.env.AI_MODEL || OPENAI_DEFAULT_MODEL,
-                    apiUrl: process.env.OPENAI_API_URL || OPENAI_DEFAULT_API_URL,
-                    hasApiKey: !!(process.env.OPENAI_API_KEY || process.env.AI_API_KEY),
-                    source: (process.env.OPENAI_API_KEY || process.env.AI_API_KEY) ? 'environment' : 'none'
-                }
+                ai: getPublicAISettings(undefined)
             }
         });
     }
@@ -221,7 +184,7 @@ export const getCommunicationConfig = async (req: AuthRequest, res: Response) =>
             otp: {
                 enabled: otpEnabled
             },
-            ai: getPublicAiConfig(config.emailTemplates),
+            ai: getPublicAISettings(config.emailTemplates),
             birthdayAi: getPublicBirthdayConfig(config.emailTemplates),
             createdAt: config.createdAt,
             updatedAt: config.updatedAt
@@ -330,18 +293,48 @@ export const saveCommunicationConfig = async (req: AuthRequest, res: Response) =
         const baseTemplates = (data.emailTemplates && typeof data.emailTemplates === 'object')
             ? data.emailTemplates
             : existingTemplates;
-        const existingAi = baseTemplates.__ai || {};
-        const nextAi = {
+        const existingAi = getStoredAIConfig(baseTemplates);
+        const provider = String(ai.provider || existingAi.provider || '').toLowerCase();
+        if (!isAIMode(provider)) {
+            throw new ApiError(400, 'Unsupported AI provider. Use workflow, anthropic, or openai.')
+                .withCode('AI_PROVIDER_UNSUPPORTED');
+        }
+
+        const existingProviders = (existingAi.providers && typeof existingAi.providers === 'object')
+            ? { ...existingAi.providers }
+            : {};
+        const legacyProvider = isAIProvider(existingAi.provider) ? existingAi.provider : 'openai';
+        if (!existingProviders[legacyProvider] && (existingAi.apiKey || existingAi.model || existingAi.apiUrl)) {
+            existingProviders[legacyProvider] = {
+                ...(existingAi.apiKey ? { apiKey: existingAi.apiKey } : {}),
+                ...(existingAi.model ? { model: existingAi.model } : {}),
+                ...(existingAi.apiUrl ? { apiUrl: existingAi.apiUrl } : {})
+            };
+        }
+        const nextAi: Record<string, any> = {
             ...existingAi,
             enabled: ai.enabled !== undefined ? !!ai.enabled : existingAi.enabled !== false,
-            provider: 'openai',
-            model: ai.model || existingAi.model || OPENAI_DEFAULT_MODEL,
-            apiUrl: ai.apiUrl || existingAi.apiUrl || OPENAI_DEFAULT_API_URL
+            provider,
+            providers: existingProviders
         };
 
-        if (ai.apiKey && String(ai.apiKey).trim()) {
-            nextAi.apiKey = encryptSetting('AI API key', String(ai.apiKey).trim());
+        if (provider !== 'workflow') {
+            const previousProviderConfig = getStoredProviderConfig(existingAi, provider);
+            const nextProviderConfig: Record<string, any> = {
+                ...previousProviderConfig,
+                model: normalizeOptionalString(ai.model) || previousProviderConfig.model || AI_PROVIDER_DEFAULTS[provider].model,
+                apiUrl: normalizeOptionalString(ai.apiUrl) || previousProviderConfig.apiUrl || AI_PROVIDER_DEFAULTS[provider].apiUrl
+            };
+
+            const apiKey = normalizeOptionalString(ai.apiKey);
+            if (apiKey) {
+                nextProviderConfig.apiKey = encryptSetting(`${provider} API key`, apiKey);
+            }
+            nextAi.providers = { ...existingProviders, [provider]: nextProviderConfig };
         }
+        delete nextAi.apiKey;
+        delete nextAi.model;
+        delete nextAi.apiUrl;
 
         data.emailTemplates = {
             ...baseTemplates,
@@ -367,12 +360,13 @@ export const saveCommunicationConfig = async (req: AuthRequest, res: Response) =
     // Clear SMS config cache so changes take effect immediately
     const { SmsService: SmsServiceImport } = await import('../services/sms.service');
     (SmsServiceImport as any).clearConfigCache();
+    clearAISettingsCache();
     logger.info(`✅ Communication config saved and cache cleared`);
 
     res.status(200).json({
         success: true,
         message: 'Configuration saved successfully',
-        data: { id: config.id, updatedAt: config.updatedAt }
+        data: { id: config.id, updatedAt: config.updatedAt, ai: getPublicAISettings(config.emailTemplates) }
     });
 };
 
@@ -486,11 +480,6 @@ export const draftEmailTemplate = async (req: AuthRequest, res: Response) => {
         existingBody
     } = req.body;
 
-    const { apiKey, model, apiUrl } = await resolveAiDraftConfig();
-    if (!apiKey) {
-        throw new ApiError(400, 'AI drafting is not configured. Add an OpenAI key in Communication Settings or set OPENAI_API_KEY on the server.');
-    }
-
     const school = await prisma.school.findFirst({ select: { name: true } });
     const schoolName = school?.name || 'Your School';
 
@@ -507,37 +496,15 @@ export const draftEmailTemplate = async (req: AuthRequest, res: Response) => {
         'Do not include scripts, styles, external images, forms, tracking pixels, or placeholders that require unavailable data.'
     ].filter(Boolean).join('\n');
 
-    const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            model,
-            messages: [
-                {
-                    role: 'system',
-                    content: 'You write safe, parent-friendly school communication emails. Return valid JSON only.'
-                },
-                { role: 'user', content: prompt }
-            ],
-            temperature: 0.4,
-            response_format: { type: 'json_object' }
-        })
+    const aiResponse = await aiBridgeService.generateCompletion(prompt, {
+        systemPrompt: 'You write safe, parent-friendly school communication emails. Return valid JSON only.',
+        temperature: 0.4,
+        jsonMode: true,
     });
 
-    if (!response.ok) {
-        const errorText = await response.text();
-        logger.error('[CommunicationController] AI draft failed:', errorText);
-        throw new ApiError(502, 'AI drafting failed. Check the AI API key, model, and server logs.');
-    }
+    if (!aiResponse.content) throw new ApiError(502, 'AI drafting returned an empty response.');
 
-    const payload: any = await response.json();
-    const content = payload?.choices?.[0]?.message?.content;
-    if (!content) throw new ApiError(502, 'AI drafting returned an empty response.');
-
-    const parsed = extractJsonObject(content);
+    const parsed = extractJsonObject(aiResponse.content);
     const heading = String(parsed.heading || '').replace(/<[^>]+>/g, '').trim().slice(0, 140);
     const body = sanitizeGeneratedEmailHtml(String(parsed.body || '')).slice(0, 5000);
 
@@ -548,7 +515,40 @@ export const draftEmailTemplate = async (req: AuthRequest, res: Response) => {
     res.status(200).json({
         success: true,
         message: 'AI email draft generated successfully',
-        data: { heading, body, model }
+        data: { heading, body, provider: aiResponse.provider, model: aiResponse.model }
+    });
+};
+
+/**
+ * Test the active AI provider without exposing its credential.
+ * POST /api/communication/test/ai
+ */
+export const testAIConfiguration = async (_req: AuthRequest, res: Response) => {
+    const mode = await resolveActiveAIMode();
+    if (mode === 'workflow') {
+        return res.status(200).json({
+            success: true,
+            message: 'Free Workflow Engine is ready',
+            data: { provider: 'workflow', model: 'deterministic-v1' }
+        });
+    }
+
+    const result = await aiBridgeService.generateCompletion(
+        'Reply with exactly: TrendSCORE AI connected',
+        {
+            systemPrompt: 'You are a connection test. Follow the user instruction exactly.',
+            maxTokens: 24,
+            temperature: 0
+        }
+    );
+
+    res.status(200).json({
+        success: true,
+        message: 'AI provider connected successfully',
+        data: {
+            provider: result.provider,
+            model: result.model
+        }
     });
 };
 

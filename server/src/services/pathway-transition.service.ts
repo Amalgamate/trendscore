@@ -1,6 +1,7 @@
 import prisma from '../config/database';
 import { DetailedRubricRating, Term } from '@prisma/client';
 import { ApiError } from '../utils/error.util';
+import { resolveSubjectClusters } from './subject-cluster-resolver.service';
 
 type PathwayCode = 'STEM' | 'SOCIAL_SCIENCES' | 'ARTS_SPORTS';
 
@@ -9,14 +10,18 @@ type TransitionInput = {
   teacherRecommendation?: PathwayCode | '';
   parentPreference?: PathwayCode | '';
   nationalExam?: Record<string, number>;
-  term?: Term;
-  academicYear?: number;
+  term?: Term | null;
+  academicYear?: number | null;
 };
 
-const SUBJECT_KEYWORDS: Record<PathwayCode, string[]> = {
-  STEM: ['MATHEMATICS', 'SCIENCE', 'INTEGRATED SCIENCE', 'PRE-TECHNICAL', 'TECHNICAL', 'COMPUTER'],
-  SOCIAL_SCIENCES: ['ENGLISH', 'KISWAHILI', 'LANGUAGE', 'SOCIAL STUDIES', 'HISTORY', 'GEOGRAPHY', 'CRE'],
-  ARTS_SPORTS: ['CREATIVE ARTS', 'ART', 'MUSIC', 'SPORT', 'PE'],
+const CANONICAL_RECOMMENDATION_ENGINE = 'GRADE9_READINESS_V1';
+const CONFIDENCE_DEFINITION = '60 + (top pathway score - runner-up score), clamped to 0-99';
+
+// Map the resolver's 3-way cluster code to the transition service's PathwayCode.
+const CLUSTER_TO_PATHWAY: Record<string, PathwayCode> = {
+  STEM:   'STEM',
+  SOCIAL: 'SOCIAL_SCIENCES',
+  ARTS:   'ARTS_SPORTS',
 };
 
 const DETAILED_RATING_POINTS: Record<DetailedRubricRating, number> = {
@@ -24,13 +29,6 @@ const DETAILED_RATING_POINTS: Record<DetailedRubricRating, number> = {
 };
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-
-function pathwayFromKeywords(areaName: string): PathwayCode[] {
-  const upper = String(areaName || '').toUpperCase();
-  return (Object.keys(SUBJECT_KEYWORDS) as PathwayCode[]).filter((pathway) =>
-    SUBJECT_KEYWORDS[pathway].some((keyword) => upper.includes(keyword))
-  );
-}
 
 function normalizeTo100(scores: number[]): number {
   if (scores.length === 0) return 0;
@@ -57,6 +55,15 @@ export async function buildGrade9TransitionReadiness(learnerId: string, input: T
     orderBy: [{ test: { academicYear: 'asc' } }, { test: { term: 'asc' } }],
   });
 
+  // Batch-resolve all subject names using the shared resolver (static map + DB aliases).
+  const allSubjectNames = [
+    ...new Set([
+      ...summative.map((r) => r.test?.learningArea || '').filter(Boolean),
+      ...Object.keys(input.nationalExam || {}),
+    ]),
+  ];
+  const clusterBySubject = await resolveSubjectClusters(allSubjectNames);
+
   const pathwayAcademicBuckets: Record<PathwayCode, number[]> = {
     STEM: [],
     SOCIAL_SCIENCES: [],
@@ -65,14 +72,18 @@ export async function buildGrade9TransitionReadiness(learnerId: string, input: T
 
   for (const row of summative) {
     const areaName = row.test?.learningArea || '';
-    const pathways = pathwayFromKeywords(areaName);
-    pathways.forEach((p) => pathwayAcademicBuckets[p].push(Number(row.percentage || 0)));
+    const cluster = clusterBySubject.get(areaName);
+    if (!cluster) continue;
+    const pathway = CLUSTER_TO_PATHWAY[cluster];
+    if (pathway) pathwayAcademicBuckets[pathway].push(Number(row.percentage || 0));
   }
 
   if (input.nationalExam) {
     for (const [subject, score] of Object.entries(input.nationalExam)) {
-      const pathways = pathwayFromKeywords(subject);
-      pathways.forEach((p) => pathwayAcademicBuckets[p].push(Number(score || 0)));
+      const cluster = clusterBySubject.get(subject);
+      if (!cluster) continue;
+      const pathway = CLUSTER_TO_PATHWAY[cluster];
+      if (pathway) pathwayAcademicBuckets[pathway].push(Number(score || 0));
     }
   }
 
@@ -148,6 +159,40 @@ export async function buildGrade9TransitionReadiness(learnerId: string, input: T
     ? `Selected parent preference (${input.parentPreference}) differs from strongest evidence-based fit (${recommended.pathway}).`
     : null;
 
+  const generatedAt = new Date().toISOString();
+  const recommendationMeta = {
+    recommendedPathway: recommended.pathway,
+    confidence,
+    confidenceDefinition: CONFIDENCE_DEFINITION,
+    version: CANONICAL_RECOMMENDATION_ENGINE,
+    generatedAt,
+    mismatchWarning: parentMismatchWarning,
+  };
+
+  const analysisPayload = {
+    engineVersion: CANONICAL_RECOMMENDATION_ENGINE,
+    generatedAt,
+    confidenceDefinition: CONFIDENCE_DEFINITION,
+    weights,
+    inputs: {
+      learnerInterest: input.learnerInterest || null,
+      teacherRecommendation: input.teacherRecommendation || null,
+      parentPreference: input.parentPreference || null,
+      nationalExam: input.nationalExam || null,
+      term: input.term || null,
+      academicYear: input.academicYear || null,
+    },
+    componentScores: {
+      academic: academicByPathway,
+      competency: competencyByPathway,
+      interest: interestByPathway,
+      teacher: teacherByPathway,
+      parent: parentByPathway,
+    },
+    ranking: ranked,
+    recommendation: recommendationMeta,
+  };
+
   return {
     success: true,
     data: {
@@ -162,6 +207,8 @@ export async function buildGrade9TransitionReadiness(learnerId: string, input: T
         teacherRecommendation: input.teacherRecommendation || null,
         parentPreference: input.parentPreference || null,
         nationalExam: input.nationalExam || null,
+        term: input.term || null,
+        academicYear: input.academicYear || null,
       },
       componentScores: {
         academic: academicByPathway,
@@ -171,11 +218,8 @@ export async function buildGrade9TransitionReadiness(learnerId: string, input: T
         parent: parentByPathway,
       },
       ranking: ranked,
-      recommendation: {
-        recommendedPathway: recommended.pathway,
-        confidence,
-        mismatchWarning: parentMismatchWarning,
-      },
+      recommendation: recommendationMeta,
+      analysisPayload,
     },
   };
 }
