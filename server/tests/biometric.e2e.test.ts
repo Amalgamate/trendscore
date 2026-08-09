@@ -10,7 +10,7 @@ import { Role } from '../src/config/permissions';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret';
 process.env.JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 process.env.NODE_ENV = 'test';
-process.env.BIOMETRIC_ENCRYPTION_KEY = process.env.BIOMETRIC_ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+process.env.BIOMETRIC_ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
 const app = express();
 app.use(express.json());
@@ -173,8 +173,9 @@ describe('Biometric module end-to-end', () => {
       .expect(200);
 
     expect(logResponse.body.success).toBe(true);
-    expect(logResponse.body.data).toHaveProperty('personId', learnerAdmissionNumber);
+    expect(logResponse.body.data).toHaveProperty('id', expect.any(String));
     expect(logResponse.body.data).toHaveProperty('status', 'PENDING');
+    expect(logResponse.body.data).not.toHaveProperty('personId');
 
     const logsResponse = await request(app)
       .get('/api/biometric/logs')
