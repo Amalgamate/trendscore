@@ -619,13 +619,26 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
               )}
             </div>
 
-            <Button
-              variant="ghost"
-              onClick={() => setShowNotifications(false)}
-              className="w-full h-12 border-t border-gray-50 rounded-none text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-500 hover:text-brand-purple hover:bg-brand-purple/5"
-            >
-              Close
-            </Button>
+            {/* Footer: View all + Close */}
+            <div className="flex border-t border-gray-50">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setShowNotifications(false);
+                  onNavigate?.('notification-center');
+                }}
+                className="flex-1 h-12 rounded-none text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-purple hover:bg-brand-purple/5 border-r border-gray-50"
+              >
+                View All
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setShowNotifications(false)}
+                className="flex-1 h-12 rounded-none text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-500 hover:text-brand-purple hover:bg-brand-purple/5"
+              >
+                Close
+              </Button>
+            </div>
           </PopoverContent>
         </Popover>
 
@@ -673,8 +686,11 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
                 <Button variant="outline" size="sm" onClick={snoozeReminder} className="h-8 text-[9px] font-semibold uppercase flex-1 border-gray-200">
                   Snooze
                 </Button>
-                <Button size="sm" onClick={() => { setShowUnreadReminder(false); setShowNotifications(true); }} className="h-8 text-[9px] font-semibold uppercase w-full bg-brand-purple hover:bg-brand-purple/90 shadow-lg">
-                  Review Now
+                <Button size="sm" onClick={() => { setShowUnreadReminder(false); setShowNotifications(true); }} className="h-8 text-[9px] font-semibold uppercase flex-1 bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 shadow-none">
+                  Bell
+                </Button>
+                <Button size="sm" onClick={() => { setShowUnreadReminder(false); onNavigate?.('notification-center'); }} className="h-8 text-[9px] font-semibold uppercase flex-1 bg-brand-purple hover:bg-brand-purple/90 shadow-lg">
+                  View All
                 </Button>
               </div>
             </div>

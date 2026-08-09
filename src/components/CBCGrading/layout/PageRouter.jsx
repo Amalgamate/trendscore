@@ -198,6 +198,9 @@ const MyResults = lazy(() => import('../pages/student/MyResults'));
 const PathwayPlanner = lazy(() => import('../pages/student/PathwayPlanner'));
 const CareerExplorer = lazy(() => import('../pages/student/CareerExplorer'));
 
+// Notification Center — global, all roles
+const NotificationCenter = lazy(() => import('../pages/NotificationCenter'));
+
 // Mobile Components
 const MobileUserManagement = lazy(() => import('../dashboard/mobile/MobileUserManagement'));
 const MobileGeneralSettings = lazy(() => import('../dashboard/mobile/MobileGeneralSettings'));
@@ -464,6 +467,10 @@ const PageRouter = ({
             return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} currentPage={currentPage} brandingSettings={brandingSettings} />;
           case 'finance-dashboard':
             return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} currentPage={currentPage} brandingSettings={brandingSettings} />;
+
+          // Notification Center — available to all roles
+          case 'notification-center':
+            return <NotificationCenter user={user} onNavigate={handleNavigate} />;
 
           // Annual Planner
           case 'annual-planner':

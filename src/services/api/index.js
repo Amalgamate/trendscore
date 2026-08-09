@@ -154,6 +154,13 @@ const api = {
   },
   userNotifications: {
     getAll: async () => fetchWithAuth('/user-notifications'),
+    getPaged: async ({ limit = 30, cursor, type, unread } = {}) => {
+      const params = new URLSearchParams({ limit: String(limit) });
+      if (cursor) params.set('cursor', cursor);
+      if (type) params.set('type', type);
+      if (unread) params.set('unread', 'true');
+      return fetchWithAuth(`/user-notifications?${params}`);
+    },
     markAsRead: async (id) => fetchWithAuth(`/user-notifications/${id}/read`, { method: 'PATCH' }),
     markAllAsRead: async () => fetchWithAuth('/user-notifications/read-all', { method: 'PATCH' }),
     getVapidPublicKey: async () => fetchWithAuth('/user-notifications/vapid-public-key'),
