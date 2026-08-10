@@ -19,20 +19,79 @@ TrendSCORE does not currently ship a desktop bridge installer or a vendor-specif
 3. Confirm the school deployment reports **Encryption ready** on **Biometrics > Installation**.
 4. Confirm the school's server time and terminal time use NTP. Scan timestamps must be ISO 8601 values with a timezone.
 
-## Phone terminal pilot
+## Phone face terminal
 
-The phone terminal validates the complete attendance workflow with QR codes or manual admission/staff IDs. It does not perform facial recognition until an independently evaluated matching and liveness SDK is installed.
+The phone terminal uses Amazon Rekognition Face Liveness and a school-scoped face collection. Manual admission/staff ID entry is the only fallback. TrendSCORE does not provide a QR scanner on this terminal.
 
 1. Register the phone as a terminal under **Biometrics > Devices**.
 2. Choose **Activate phone** on its device card. The resulting 8-digit code is valid for ten minutes and can be used once.
 3. Open `https://<school-host>/#/terminal/biometric` on the phone, then enter the hardware ID and activation code.
-4. Use Chrome on Android for camera QR scanning. Manual Entry remains available when the browser does not support the Barcode Detector API.
-5. A learner QR code may contain the admission number, `TS:LEARNER:<admission-number>`, or JSON containing `personId` and `personType`. Staff codes use `TS:STAFF:<staff-id>`.
-6. Events captured without connectivity are stored in the phone's IndexedDB queue and synchronize in capture order when the connection returns.
+4. Use Chrome on Android, choose **CHECK IN** or **CHECK OUT**, and select **Start face recognition**. A new AWS session is created for every attempt and expires after three minutes.
+5. The server records attendance only when the AWS liveness score and face-match score meet the configured thresholds. The defaults are 90 and 97 respectively; validate them against the school's approved risk assessment before go-live.
+6. Face recognition requires internet connectivity. Manual fallback events captured without connectivity are stored in the phone's IndexedDB queue and synchronize in capture order when the connection returns.
 
 Each phone event has a terminal-generated `eventId`. TrendSCORE enforces uniqueness per terminal, so retrying the same offline event returns the original result instead of creating another biometric log or attendance record.
 
 The terminal bearer token is held in browser application storage and rotated when a new activation code is exchanged. Remove the terminal configuration before repurposing the phone, and decommission the device immediately if the phone is lost.
+
+## AWS Rekognition setup
+
+TrendSCORE needs server-side AWS credentials and a separate assumable role for the browser liveness stream. Never put permanent AWS access keys in frontend build variables or phone storage.
+
+Set these values in the school stack environment file:
+
+```text
+AWS_REGION=af-south-1
+AWS_ACCESS_KEY_ID=<server credential, omit when using an instance role>
+AWS_SECRET_ACCESS_KEY=<server credential, omit when using an instance role>
+AWS_REKOGNITION_LIVENESS_ROLE_ARN=arn:aws:iam::<account-id>:role/TrendScoreFaceLivenessClient
+AWS_REKOGNITION_COLLECTION_PREFIX=trendscore
+AWS_REKOGNITION_LIVENESS_THRESHOLD=90
+AWS_REKOGNITION_MATCH_THRESHOLD=97
+```
+
+The server identity needs the following Rekognition actions plus `sts:AssumeRole` for the liveness-client role:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "rekognition:CreateFaceLivenessSession",
+        "rekognition:GetFaceLivenessSessionResults",
+        "rekognition:CreateCollection",
+        "rekognition:DescribeCollection",
+        "rekognition:IndexFaces",
+        "rekognition:SearchFacesByImage",
+        "rekognition:DeleteFaces"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": "arn:aws:iam::<account-id>:role/TrendScoreFaceLivenessClient"
+    }
+  ]
+}
+```
+
+The assumed `TrendScoreFaceLivenessClient` role must allow only:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "rekognition:StartFaceLivenessSession",
+    "Resource": "*"
+  }]
+}
+```
+
+Configure the role's trust policy so only the TrendSCORE server identity can assume it. TrendSCORE requests 15-minute temporary credentials and returns them only for a one-time, three-minute liveness session. Audit images are disabled; the transient AWS reference image is used immediately for enrollment or matching and is not written to TrendSCORE storage.
 
 ## Register and configure a terminal
 
@@ -70,24 +129,30 @@ The terminal bearer token is held in browser application storage and rotated whe
 
 ## Enrolment
 
-Use **Biometrics > Enrolment** to check whether a learner or staff member has an active credential. Capture requires supported terminal/connector software; the browser UI does not capture or receive raw templates. TrendSCORE encrypts accepted templates on the server and returns only enrolment status.
-
-Obtain informed consent and follow the school's biometric retention policy before enrolment. Revoke a credential when consent is withdrawn, the person leaves, or a credential is suspected to be compromised.
+1. Open **Biometric Attendance > Biometric Authority**, search for the learner or staff member, and choose **Check enrollment**.
+2. Confirm that documented parent/guardian consent (or staff consent) and the approved biometric purpose are on record.
+3. Choose **Start live face enrollment** and let the named person complete the AWS liveness challenge.
+4. TrendSCORE indexes one face vector into that school's AWS collection and stores only an encrypted provider reference locally. It does not retain the selfie video or reference image.
+5. Revoke the credential when consent is withdrawn, the person leaves, or the credential is suspected to be compromised. Revocation removes the AWS face vector as well as disabling the local credential.
 
 ## Maintenance and incident response
 
 - **Token exposed or lost:** rotate the terminal token, update the terminal/connector, and verify with a new scan. The previous token stops working immediately.
 - **Terminal retired or stolen:** decommission it. TrendSCORE disables authentication while retaining attendance logs for audit purposes.
 - **Phone replaced or browser storage cleared:** create a new activation code. Activation rotates the terminal token, invalidating the previous phone session.
-- **Scans not arriving:** check terminal time, outbound DNS/HTTPS, the exact hardware ID, bearer token, response code, and **Biometrics > Logs**. Retry failed internal processing only after correcting the cause.
+- **Face scan cannot start:** confirm the AWS region, server credentials, liveness role trust policy, `sts:AssumeRole`, outbound HTTPS, and **Biometrics > API & Bridge Info** readiness.
+- **Face not recognized:** use manual fallback, confirm the person has an active FACE credential, improve lighting, and re-enroll only after revoking the old credential.
+- **Scans not arriving:** check terminal time, outbound DNS/HTTPS, the exact hardware ID, bearer token, response code, and **Biometrics > Attendance Data Feed**. Retry failed internal processing only after correcting the cause.
 - **Encryption readiness failed:** repair the school's deployment environment with the original 64-character hexadecimal key. Never generate a replacement for a school that already has enrolled credentials.
 - **Key rotation:** schedule a controlled migration that decrypts every active credential with the old key and re-encrypts it with the new key/version. Take a verified backup first. Do not rotate by editing the environment file alone.
 
 ## Go-live checklist
 
 - School deployment reports encryption ready and the expected key version.
+- AWS face recognition reports configured, and both the server role and short-lived liveness role pass a real phone test.
+- A biometric DPIA, documented purpose, retention policy, and parent/guardian or staff consent workflow are approved before enrollment.
 - Terminal is registered under the correct school and its token is stored only on the terminal/connector.
 - A fresh connection test reports connected.
-- A test scan appears in the biometric log with the correct person, direction, and local time.
+- A liveness-protected test scan appears in the biometric log with modality FACE, the correct person, direction, confidence values, and local time.
 - Old or test tokens have been rotated, and unused terminals have been decommissioned.
 - Installer, installation time, terminal location, serial number, and firmware are recorded in TrendSCORE.

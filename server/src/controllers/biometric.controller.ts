@@ -10,6 +10,7 @@ import { BiometricService } from '../services/biometric.service';
 import { AuthRequest } from '../middleware/permissions.middleware';
 import { ApiError } from '../utils/error.util';
 import prisma from '../config/database';
+import { biometricFaceService, requiredBearerToken } from '../services/biometric-face.service';
 
 const biometricService = new BiometricService();
 
@@ -169,7 +170,8 @@ export class BiometricController {
           phoneTerminalPath: '/#/terminal/biometric',
           terminalEventPath: '/api/biometric/terminal/events',
           terminalEventContractVersion: 1,
-          faceRecognitionConfigured: false,
+          faceRecognitionConfigured: biometricFaceService.getConfiguration().configured,
+          faceRecognition: biometricFaceService.getConfiguration(),
           supportedModes: ['PUSH', 'PULL', 'BOTH'],
         },
       });
@@ -249,6 +251,49 @@ export class BiometricController {
     }
   }
 
+  /** POST /api/biometric/face/enrollment/session — start consent-gated AWS liveness enrollment. */
+  async createFaceEnrollmentSession(req: AuthRequest, res: Response) {
+    try {
+      const schoolId = resolveSchoolId(req);
+      const personType = String(req.body.personType || '').toUpperCase();
+      const personId = String(req.body.personId || '').trim();
+      if (!['LEARNER', 'STAFF'].includes(personType) || !personId) {
+        throw new ApiError(400, 'personType must be LEARNER or STAFF and personId is required');
+      }
+      if (req.body.consentConfirmed !== true) {
+        throw new ApiError(422, 'Parent, guardian, or staff biometric consent must be confirmed before enrollment');
+      }
+      if (!req.user?.userId) throw new ApiError(401, 'Authenticated administrator is required');
+
+      const session = await biometricFaceService.createSession({
+        purpose: 'ENROLLMENT',
+        schoolId,
+        personType: personType as 'LEARNER' | 'STAFF',
+        personId,
+        createdById: req.user.userId,
+      });
+      res.status(201).json({ success: true, data: session });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
+  }
+
+  /** POST /api/biometric/face/enrollment/session/:sessionId/complete */
+  async completeFaceEnrollmentSession(req: AuthRequest, res: Response) {
+    try {
+      const schoolId = resolveSchoolId(req);
+      if (!req.user?.userId) throw new ApiError(401, 'Authenticated administrator is required');
+      const result = await biometricFaceService.completeEnrollment(
+        req.params.sessionId,
+        schoolId,
+        req.user.userId,
+      );
+      res.status(201).json({ success: true, message: 'Face enrolled successfully', data: result });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
+  }
+
   /**
    * GET /api/biometric/credentials
    * List credentials for a person (no templates returned).
@@ -270,6 +315,7 @@ export class BiometricController {
         },
         select: {
           id: true, type: true, fingerIndex: true, quality: true,
+          provider: true, consentRecordedAt: true,
           keyVersion: true, enrolledAt: true, status: true, createdAt: true,
           // template is NEVER selected
         },
@@ -289,16 +335,8 @@ export class BiometricController {
   async revokeCredential(req: AuthRequest, res: Response) {
     try {
       const schoolId = resolveSchoolId(req);
-      const { id } = req.params;
-      const credential = await prisma.biometricCredential.findFirst({ where: { id, schoolId } });
-      if (!credential) throw new ApiError(404, 'Credential not found');
-
-      await prisma.biometricCredential.update({
-        where: { id },
-        data:  { status: 'REVOKED' },
-      });
-
-      res.json({ success: true, message: 'Credential revoked' });
+      const credential = await biometricFaceService.revokeCredential(req.params.id, schoolId);
+      res.json({ success: true, message: 'Credential revoked', data: credential });
     } catch (error: any) {
       res.status(error.statusCode || 500).json({ success: false, message: error.message });
     }
@@ -320,7 +358,10 @@ export class BiometricController {
           status: 'ACTIVE',
           ...(personType === 'LEARNER' ? { learnerId: personId } : { userId: personId }),
         },
-        select: { id: true, type: true, fingerIndex: true, quality: true, enrolledAt: true, status: true },
+        select: {
+          id: true, type: true, fingerIndex: true, quality: true, provider: true,
+          consentRecordedAt: true, enrolledAt: true, status: true,
+        },
         orderBy: { enrolledAt: 'desc' },
       });
       res.json({ success: true, data: { isEnrolled: credentials.length > 0, credentials } });
@@ -342,6 +383,45 @@ export class BiometricController {
       });
     } catch (error: any) {
       res.status(error.statusCode || 400).json({ success: false, message: error.message });
+    }
+  }
+
+  /** POST /api/biometric/terminal/face/session — start terminal liveness and matching. */
+  async createTerminalFaceSession(req: Request, res: Response) {
+    try {
+      const direction = String(req.body.direction || 'IN').toUpperCase();
+      if (!['IN', 'OUT'].includes(direction)) throw new ApiError(400, 'direction must be IN or OUT');
+      const session = await biometricFaceService.createTerminalSession(
+        String(req.body.deviceId || ''),
+        req.headers.authorization,
+        direction as 'IN' | 'OUT',
+      );
+      res.status(201).json({ success: true, data: session });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
+  }
+
+  /** POST /api/biometric/terminal/face/session/:sessionId/complete */
+  async completeTerminalFaceSession(req: Request, res: Response) {
+    try {
+      const token = requiredBearerToken(req.headers.authorization);
+      const result = await biometricFaceService.completeAttendance(
+        req.params.sessionId,
+        String(req.body.deviceId || ''),
+        token,
+      );
+      res.status(result.duplicate ? 200 : 201).json({
+        success: true,
+        message: result.duplicate ? 'Face attendance event already accepted' : 'Face attendance accepted',
+        data: {
+          duplicate: result.duplicate,
+          outcome: result.outcome,
+          logId: result.log.id,
+        },
+      });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({ success: false, message: error.message });
     }
   }
 

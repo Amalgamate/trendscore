@@ -3084,27 +3084,51 @@ model BiometricDeviceActivation {
   @@map("biometric_device_activations")
 }
 
+model BiometricFaceSession {
+  id           String    @id @default(uuid())
+  awsSessionId String    @unique @map("aws_session_id")
+  purpose      String // ENROLLMENT | ATTENDANCE
+  schoolId     String    @map("school_id")
+  deviceId     String?   @map("device_id")
+  personType   String?   @map("person_type")
+  personId     String?   @map("person_id")
+  direction    String?
+  status       String    @default("CREATED") // CREATED | SUCCEEDED | REJECTED | FAILED | EXPIRED
+  expiresAt    DateTime  @map("expires_at")
+  completedAt  DateTime? @map("completed_at")
+  createdById  String?   @map("created_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([schoolId, purpose, status])
+  @@index([deviceId, createdAt])
+  @@index([expiresAt])
+  @@map("biometric_face_sessions")
+}
+
 model BiometricCredential {
-  id          String   @id @default(uuid())
-  userId      String?
-  learnerId   String?
-  schoolId    String?  @map("school_id")
-  type        String   @default("FINGERPRINT")
+  id                  String    @id @default(uuid())
+  userId              String?
+  learnerId           String?
+  schoolId            String?   @map("school_id")
+  type                String    @default("FINGERPRINT")
   // Template is stored AES-256-GCM encrypted, hex-encoded as iv:ciphertext:authTag
   // NEVER return this field in API responses
-  template    Bytes
-  fingerIndex Int?
-  quality     Int?
+  template            Bytes
+  fingerIndex         Int?
+  quality             Int?
+  provider            String? // e.g. AWS_REKOGNITION; provider reference remains encrypted in template
+  consentRecordedAt   DateTime? @map("consent_recorded_at")
+  consentRecordedById String?   @map("consent_recorded_by_id")
   // Encryption metadata
-  keyVersion  Int      @default(1) @map("key_version")
-  encryptedAt DateTime @default(now()) @map("encrypted_at")
-  enrolledAt  DateTime @default(now()) @map("enrolled_at")
-  status      String   @default("ACTIVE") // ACTIVE | REVOKED
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  learner     Learner? @relation(fields: [learnerId], references: [id], onDelete: Cascade)
-  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  school      School?  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  keyVersion          Int       @default(1) @map("key_version")
+  encryptedAt         DateTime  @default(now()) @map("encrypted_at")
+  enrolledAt          DateTime  @default(now()) @map("enrolled_at")
+  status              String    @default("ACTIVE") // ACTIVE | REVOKED
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  learner             Learner?  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  user                User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school              School?   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([learnerId])

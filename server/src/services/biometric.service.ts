@@ -14,7 +14,6 @@ import prisma from '../config/database';
 import {
   encryptTemplate,
   legacyStringToBuffer,
-  CURRENT_KEY_VERSION,
 } from '../domains/biometrics/biometric.encryption';
 import { handleBiometricLearnerScan } from '../domains/biometrics/biometric-attendance.service';
 import logger from '../utils/logger';
@@ -40,6 +39,9 @@ export interface EnrollCredentialInput {
   template: Buffer | string;
   fingerIndex?: number;
   quality?: number;
+  provider?: string;
+  consentRecordedAt?: Date;
+  consentRecordedById?: string;
 }
 
 export interface RegisterBiometricDeviceInput {
@@ -113,6 +115,8 @@ export interface ProcessAttendanceLogInput {
   livenessStatus?: string;
   livenessConfidence?: number;
   offlineCaptured?: boolean;
+  /** Internal-only proof that TrendSCORE completed provider matching. Never accept from request bodies. */
+  providerVerified?: boolean;
 }
 
 export interface TerminalAttendanceOutcome {
@@ -363,6 +367,29 @@ export class BiometricService {
     };
   }
 
+  async authenticateTerminal(deviceIdInput: string, deviceToken: string) {
+    const deviceId = deviceIdInput?.trim();
+    if (!deviceId || !deviceToken) throw new ApiError(401, 'Terminal bearer token is required');
+
+    const device = await prisma.biometricDevice.findUnique({ where: { deviceId } });
+    const submittedHash = hashDeviceToken(deviceToken);
+    const validHashedToken = Boolean(device?.tokenHash && secretsMatch(device.tokenHash, submittedHash));
+    const validLegacyToken = Boolean(device?.token && secretsMatch(device.token, deviceToken));
+
+    if (!device || device.status === 'DISABLED' || (!validHashedToken && !validLegacyToken)) {
+      throw new ApiError(401, 'Invalid device or token');
+    }
+
+    if (validLegacyToken) {
+      await prisma.biometricDevice.update({
+        where: { id: device.id },
+        data: { token: null, tokenHash: submittedHash },
+      });
+    }
+
+    return device;
+  }
+
   async decommissionDevice(id: string, schoolId: string) {
     const existing = await prisma.biometricDevice.findFirst({ where: { id, schoolId }, select: { id: true } });
     if (!existing) throw new ApiError(404, 'Device not found');
@@ -438,6 +465,9 @@ export class BiometricService {
         template: encryptedBuffer,
         fingerIndex: data.fingerIndex,
         quality: data.quality,
+        provider: data.provider,
+        consentRecordedAt: data.consentRecordedAt,
+        consentRecordedById: data.consentRecordedById,
         keyVersion,
         encryptedAt: new Date(),
         enrolledAt: new Date(),
@@ -451,6 +481,9 @@ export class BiometricService {
         type: true,
         fingerIndex: true,
         quality: true,
+        provider: true,
+        consentRecordedAt: true,
+        consentRecordedById: true,
         keyVersion: true,
         enrolledAt: true,
         status: true,
@@ -469,20 +502,13 @@ export class BiometricService {
    */
   async processAttendanceLog(data: ProcessAttendanceLogInput) {
     // 1. Validate device by deviceId + token
-    const device = await prisma.biometricDevice.findUnique({
-      where: { deviceId: data.deviceId },
-    });
-
-    const submittedHash = hashDeviceToken(data.deviceToken);
-    const validHashedToken = Boolean(device?.tokenHash && secretsMatch(device.tokenHash, submittedHash));
-    const validLegacyToken = Boolean(device?.token && secretsMatch(device.token, data.deviceToken));
-
-    if (!device || device.status === 'DISABLED' || (!validHashedToken && !validLegacyToken)) {
-      throw new Error('Invalid device or token');
-    }
+    const device = await this.authenticateTerminal(data.deviceId, data.deviceToken);
 
     const modality = String(data.modality || 'UNKNOWN').toUpperCase();
     if (!VALID_MODALITIES.has(modality)) throw new ApiError(400, 'Unsupported attendance modality');
+    if (device.type === 'PHONE' && ['FACE', 'FINGERPRINT'].includes(modality) && !data.providerVerified) {
+      throw new ApiError(403, 'Phone biometric events must complete the verified face session endpoint');
+    }
 
     if (data.eventId) {
       const existingEvent = await prisma.biometricLog.findUnique({
@@ -500,14 +526,6 @@ export class BiometricService {
           duplicate: true,
         };
       }
-    }
-
-    // Opportunistically remove legacy plaintext tokens after successful auth.
-    if (validLegacyToken) {
-      await prisma.biometricDevice.update({
-        where: { id: device.id },
-        data: { token: null, tokenHash: submittedHash },
-      });
     }
 
     // 2. Update device heartbeat

@@ -4,11 +4,14 @@ import {
   CheckCircle2,
   Clipboard,
   Download,
+  Keyboard,
   KeyRound,
   Loader2,
   Radio,
+  ScanFace,
   Server,
   ShieldCheck,
+  Smartphone,
   Terminal,
 } from 'lucide-react';
 import { biometricAPI } from '../../../../services/api/biometric.api';
@@ -84,6 +87,30 @@ const BridgeConfig = () => {
         <Step number="4" icon={CheckCircle2} title="Verify" text="Send a test scan, then select Test on the terminal card within ten minutes." />
       </section>
 
+      <section className={`rounded-3xl border p-7 ${configuration?.faceRecognitionConfigured ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+        <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-start gap-4">
+            <div className={`rounded-2xl p-3 ${configuration?.faceRecognitionConfigured ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}><ScanFace size={24} /></div>
+            <div>
+              <h3 className="font-semibold text-slate-900">AWS face recognition</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                {configuration?.faceRecognitionConfigured
+                  ? `Ready in ${configuration.faceRecognition?.region}. Liveness threshold ${configuration.faceRecognition?.livenessThreshold}; match threshold ${configuration.faceRecognition?.matchThreshold}.`
+                  : `Not configured${configuration?.faceRecognition?.missing?.length ? ` — missing ${configuration.faceRecognition.missing.join(', ')}` : ''}. Manual attendance remains available.`}
+              </p>
+            </div>
+          </div>
+          <span className={`w-fit rounded-full px-4 py-2 text-xs font-semibold ${configuration?.faceRecognitionConfigured ? 'bg-emerald-600 text-white' : 'bg-amber-600 text-white'}`}>
+            {configuration?.faceRecognitionConfigured ? 'FACE READY' : 'SETUP REQUIRED'}
+          </span>
+        </div>
+        <div className="mt-6 grid gap-3 md:grid-cols-3">
+          <MiniStep icon={ScanFace} text="Enroll faces with documented consent under Biometric Authority." />
+          <MiniStep icon={Smartphone} text="Activate a PHONE terminal and start a new liveness session per attendance event." />
+          <MiniStep icon={Keyboard} text="Use manual admission/staff ID only when face recognition fails." />
+        </div>
+      </section>
+
       <section className="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="rounded-xl bg-indigo-50 p-2 text-indigo-600"><Server size={20} /></div>
@@ -137,6 +164,13 @@ const Step = ({ number, icon: Icon, title, text }) => (
     <h3 className="mt-5 font-semibold text-slate-900">{title}</h3>
     <p className="mt-2 text-xs leading-5 text-slate-500">{text}</p>
   </article>
+);
+
+const MiniStep = ({ icon: Icon, text }) => (
+  <div className="flex items-start gap-3 rounded-2xl bg-white/70 p-4 text-xs leading-5 text-slate-600">
+    <Icon size={17} className="mt-0.5 shrink-0 text-indigo-600" />
+    <span>{text}</span>
+  </div>
 );
 
 const CopyBlock = ({ label, value }) => (

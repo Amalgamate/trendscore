@@ -42,6 +42,25 @@ describe('phone terminal API', () => {
     }));
   });
 
+  it('creates and completes an AWS face liveness session with the terminal bearer token', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { sessionId: 'face-session-1' } }),
+    });
+
+    await biometricTerminalAPI.createFaceSession('terminal-token', 'PHONE-01', 'IN');
+    await biometricTerminalAPI.completeFaceSession('terminal-token', 'PHONE-01', 'face-session-1');
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/biometric/terminal/face/session', expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: 'Bearer terminal-token' }),
+      body: JSON.stringify({ deviceId: 'PHONE-01', direction: 'IN' }),
+    }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/biometric/terminal/face/session/face-session-1/complete', expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: 'Bearer terminal-token' }),
+      body: JSON.stringify({ deviceId: 'PHONE-01' }),
+    }));
+  });
+
   it('marks unreachable requests as queueable network failures', async () => {
     fetchMock.mockRejectedValue(new TypeError('offline'));
     await expect(biometricTerminalAPI.recordEvent('token', { eventId: 'event-12345678' }))

@@ -69,6 +69,22 @@ router.get(
 // ── Enrollment ────────────────────────────────────────────────────────────────
 
 router.post(
+  '/face/enrollment/session',
+  authenticate,
+  requirePermission('ENROLL_FINGERPRINTS'),
+  rateLimit({ windowMs: 60_000, maxRequests: 20 }),
+  asyncHandler(biometricController.createFaceEnrollmentSession.bind(biometricController)),
+);
+
+router.post(
+  '/face/enrollment/session/:sessionId/complete',
+  authenticate,
+  requirePermission('ENROLL_FINGERPRINTS'),
+  rateLimit({ windowMs: 60_000, maxRequests: 20 }),
+  asyncHandler(biometricController.completeFaceEnrollmentSession.bind(biometricController)),
+);
+
+router.post(
   '/enroll',
   authenticate,
   requirePermission('ENROLL_FINGERPRINTS'),
@@ -108,6 +124,18 @@ router.post(
   '/terminal/events',
   rateLimit({ windowMs: 60_000, maxRequests: 180 }),
   biometricController.recordTerminalEvent.bind(biometricController),
+);
+
+router.post(
+  '/terminal/face/session',
+  rateLimit({ windowMs: 60_000, maxRequests: 20 }),
+  biometricController.createTerminalFaceSession.bind(biometricController),
+);
+
+router.post(
+  '/terminal/face/session/:sessionId/complete',
+  rateLimit({ windowMs: 60_000, maxRequests: 20 }),
+  biometricController.completeTerminalFaceSession.bind(biometricController),
 );
 
 router.post('/log', biometricController.logAttendance.bind(biometricController));

@@ -36,6 +36,14 @@ export const biometricTerminalAPI = {
     token,
     body: event,
   }),
+  createFaceSession: (token, deviceId, direction) => terminalRequest('/biometric/terminal/face/session', {
+    token,
+    body: { deviceId, direction },
+  }),
+  completeFaceSession: (token, deviceId, sessionId) => terminalRequest(`/biometric/terminal/face/session/${sessionId}/complete`, {
+    token,
+    body: { deviceId },
+  }),
 };
 
 export default biometricTerminalAPI;

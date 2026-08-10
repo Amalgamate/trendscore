@@ -4,6 +4,7 @@
   "type": "module",
   "private": true,
   "dependencies": {
+    "@aws-amplify/ui-react-liveness": "^3.6.8",
     "@fontsource/poppins": "^5.2.7",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
@@ -12,6 +13,7 @@
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tabs": "^1.1.13",
+    "aws-amplify": "^6.20.0",
     "axios": "^1.13.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

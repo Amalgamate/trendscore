@@ -43,6 +43,21 @@ describe('biometric API contracts', () => {
     expect(fetchWithAuth).toHaveBeenNthCalledWith(4, '/biometric/devices/device-1', { method: 'DELETE' });
   });
 
+  it('uses consent-gated AWS face enrollment endpoints', async () => {
+    fetchWithAuth.mockResolvedValue({ success: true, data: { sessionId: 'face-session-1' } });
+
+    await biometricAPI.createFaceEnrollmentSession('LEARNER', 'learner-1', true);
+    await biometricAPI.completeFaceEnrollmentSession('face-session-1');
+
+    expect(fetchWithAuth).toHaveBeenNthCalledWith(1, '/biometric/face/enrollment/session', {
+      method: 'POST',
+      body: JSON.stringify({ personType: 'LEARNER', personId: 'learner-1', consentConfirmed: true }),
+    });
+    expect(fetchWithAuth).toHaveBeenNthCalledWith(2, '/biometric/face/enrollment/session/face-session-1/complete', {
+      method: 'POST',
+    });
+  });
+
   it('normalizes log responses for the log viewer', async () => {
     fetchWithAuth.mockResolvedValueOnce({ success: true, data: [{ id: 'log-1' }], count: 1 });
 

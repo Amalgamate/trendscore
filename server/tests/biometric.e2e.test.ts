@@ -145,7 +145,7 @@ describe('Biometric module end-to-end', () => {
       .send({
         deviceId: biometricDeviceId,
         name: 'Test Biometric Terminal',
-        type: 'TERMINAL',
+        type: 'PHONE',
         location: 'Main gate',
         ipAddress: '192.168.0.50'
       })
@@ -253,6 +253,33 @@ describe('Biometric module end-to-end', () => {
     credentialId = enrollResponse.body.data.id;
   });
 
+  it('requires recorded consent and terminal authentication before face liveness starts', async () => {
+    await request(app)
+      .post('/api/biometric/face/enrollment/session')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ personType: 'LEARNER', personId: learnerId, consentConfirmed: false })
+      .expect(422);
+
+    await request(app)
+      .post('/api/biometric/terminal/face/session')
+      .send({ deviceId: biometricDeviceId, direction: 'IN' })
+      .expect(401);
+
+    await request(app)
+      .post('/api/biometric/terminal/events')
+      .set('Authorization', `Bearer ${deviceToken}`)
+      .send({
+        eventId: `forged-face-${Date.now()}`,
+        deviceId: biometricDeviceId,
+        personId: learnerAdmissionNumber,
+        personType: 'LEARNER',
+        timestamp: new Date().toISOString(),
+        direction: 'IN',
+        modality: 'FACE',
+      })
+      .expect(403);
+  });
+
   it('processes a biometric attendance log for the learner and returns logs', async () => {
     expect(deviceToken).toBeTruthy();
     const eventId = `test-event-${Date.now()}`;
@@ -268,7 +295,7 @@ describe('Biometric module end-to-end', () => {
         personType: 'LEARNER',
         timestamp,
         direction: 'IN',
-        modality: 'QR',
+        modality: 'MANUAL',
       })
       .expect(201);
 
@@ -292,7 +319,7 @@ describe('Biometric module end-to-end', () => {
         personType: 'LEARNER',
         timestamp,
         direction: 'IN',
-        modality: 'QR',
+        modality: 'MANUAL',
         offlineCaptured: true,
       })
       .expect(200);
@@ -308,7 +335,7 @@ describe('Biometric module end-to-end', () => {
         personType: 'LEARNER',
         timestamp,
         direction: 'IN',
-        modality: 'QR',
+        modality: 'MANUAL',
       })
       .expect(409);
 
