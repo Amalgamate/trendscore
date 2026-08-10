@@ -77,4 +77,21 @@ describe('phone terminal API', () => {
     await expect(biometricTerminalAPI.recordEvent('token', { eventId: 'event-12345678' }))
       .rejects.toMatchObject({ networkError: true, status: 503, message: 'Offline' });
   });
+
+  it('shows the server reason from the normalized error envelope', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({
+        success: false,
+        error: { message: 'Face not recognized. Use manual entry or ask an administrator to enroll this person.' },
+      }),
+    });
+
+    await expect(biometricTerminalAPI.completeFaceSession('token', 'PHONE-01', 'face-session-1'))
+      .rejects.toMatchObject({
+        status: 404,
+        message: 'Face not recognized. Use manual entry or ask an administrator to enroll this person.',
+      });
+  });
 });

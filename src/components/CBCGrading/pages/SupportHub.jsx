@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { Book, Search, ChevronDown, ChevronRight, HelpCircle, FileText, Video, Mail, MessageSquare, Settings } from 'lucide-react';
+import { Book, Search, ChevronDown, ChevronRight, HelpCircle, FileText, Video, Mail, MessageSquare, Settings, ScanFace } from 'lucide-react';
 import { PRODUCT_SUPPORT_EMAIL } from '../../../config/productIdentity';
 
 const SupportHub = ({ initialQuery = '', initialSection = '' }) => {
@@ -137,6 +137,50 @@ const SupportHub = ({ initialQuery = '', initialSection = '' }) => {
         {
           title: 'Weekly & Monthly Attendance Summaries',
           content: 'Use Attendance Reports with date range filters to view weekly/monthly trends. Identify learners with low attendance (below 80%) for early intervention. Export summary reports for school administration or Ministry of Education compliance.'
+        }
+      ]
+    },
+    {
+      id: 'biometrics',
+      title: 'Biometric Attendance',
+      icon: ScanFace,
+      color: 'indigo',
+      articles: [
+        {
+          title: 'Module Overview and Readiness',
+          content: 'Biometric Attendance uses an activated phone camera, AWS Face Liveness, a school-scoped face collection, and TrendSCORE attendance records. Before enrolling anyone, open Biometric Attendance → API & Bridge Info and confirm both Encryption ready and FACE READY. AWS access keys and the biometric encryption key belong only in protected deployment secrets; they must never be entered into the app, phone, terminal link, or screenshots.'
+        },
+        {
+          title: 'Registering and Activating a Phone Terminal',
+          content: 'Open Terminal Management → Register terminal. Enter a stable hardware ID, name, PHONE type, location, serial number where available, and PUSH sync mode. Choose Activate phone, open the displayed terminal link on the intended phone, and enter the one-use 8-digit code within ten minutes. Keep using the same browser profile because the protected device token is stored there. If browser storage is cleared or the phone is replaced, issue a new activation code; this rotates the terminal token and invalidates the old session.'
+        },
+        {
+          title: 'Consent-Based Face Enrollment',
+          content: 'Open Face Enrollment, find the learner or staff member, and review their enrollment status. Confirm that documented parent or guardian consent, or staff consent, and the school-approved biometric purpose are on record. Select Start live face enrollment and let that named person complete the AWS liveness challenge in even lighting. TrendSCORE stores an encrypted AWS face reference rather than the camera video. Revoke the credential immediately when consent is withdrawn or the person leaves.'
+        },
+        {
+          title: 'Recording Face Attendance',
+          content: 'On the activated phone select LEARNER or STAFF and choose CHECK IN or CHECK OUT. Select Start face recognition, allow camera access for the school site, and let the person complete the liveness challenge. TrendSCORE records attendance only when liveness and face matching meet the configured thresholds. A fresh AWS session is created for each attempt and expires after three minutes; failed or cancelled sessions should be restarted rather than reused.'
+        },
+        {
+          title: 'Manual Fallback and Offline Use',
+          content: 'Select Use manual fallback when face recognition is unavailable or does not match. Enter the learner admission number or staff ID and confirm the correct direction. Face recognition always requires internet, but manual events captured offline are queued in the phone browser and synchronize in order when connectivity returns. Do not treat manual fallback as a successful biometric match; review repeated failures and re-enroll only after revoking the previous face credential.'
+        },
+        {
+          title: 'Attendance Data Feed and Connection Testing',
+          content: 'After a test, open Attendance Data Feed and confirm the correct person, direction, timestamp, terminal, FACE modality, liveness result and confidence values. In Terminal Management choose Test connection after a recent authenticated scan or heartbeat. Investigate pending or failed logs before retrying them so duplicate attendance is not created. Event IDs are unique per terminal, making safe retries return the existing result.'
+        },
+        {
+          title: 'Security and Terminal Maintenance',
+          content: 'Use one terminal record and token per physical phone. Rotate the token immediately if it is exposed, remove the local terminal configuration before repurposing a phone, and decommission lost, stolen or retired devices. Decommissioning blocks new events while preserving audit history. Never share one Demo School terminal link, token, face enrollment, or biometric encryption key with another school.'
+        },
+        {
+          title: 'Rolling Out to Another School',
+          content: 'First deploy that school with protected AWS region, server credentials and liveness role configuration, then confirm FACE READY. TrendSCORE creates a separate AWS face collection for the school automatically. The school must register and activate its own phone terminals, record its own consent, and enroll its own learners and staff. Existing Demo School terminals and enrollments are intentionally not copied. Run one controlled check-in, verify it in Attendance Data Feed, and complete the go-live checklist before wider use.'
+        },
+        {
+          title: 'Troubleshooting Face Attendance',
+          content: 'If a session cannot start, check FACE READY, internet access, camera permission, AWS region and the deployment verification result. If liveness fails, improve lighting, keep the face centered and start a new session. If liveness passes but no face matches, confirm that the person has an active FACE enrollment in the current school. If the terminal reports authorization expired, create a new activation code. Use manual fallback while resolving the cause.'
         }
       ]
     },

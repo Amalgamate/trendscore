@@ -20,7 +20,10 @@ const terminalRequest = async (path, { token, body } = {}) => {
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(payload.message || `Terminal request failed (${response.status})`);
+    const responseMessage = payload.message
+      || payload.error?.message
+      || (typeof payload.error === 'string' ? payload.error : '');
+    const error = new Error(responseMessage || `Terminal request failed (${response.status})`);
     error.status = response.status;
     error.networkError = response.status >= 500 || payload.offline === true;
     throw error;
