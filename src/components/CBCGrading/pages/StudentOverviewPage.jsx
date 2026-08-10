@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, BarChart3, CheckCircle2, FileText, UserPlus, Users, UserX } from 'lucide-react';
-import { learnerAPI } from '../../../services/api';
+import { classAPI, learnerAPI } from '../../../services/api';
 
 const unwrap = (response) => response?.data ?? response ?? {};
 
@@ -10,17 +10,19 @@ const displayLabel = (value) => String(value || 'Unassigned')
 
 const StudentOverviewPage = ({ learners = [], onNavigate }) => {
   const [stats, setStats] = useState(null);
+  const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    learnerAPI.getStats()
-      .then((response) => {
-        if (!cancelled) setStats(unwrap(response));
-      })
-      .catch(() => {
-        // The cards still have a useful local fallback when the aggregate
-        // endpoint is unavailable.
+    Promise.allSettled([learnerAPI.getStats(), classAPI.getAll()])
+      .then(([statsResult, classesResult]) => {
+        if (cancelled) return;
+        if (statsResult.status === 'fulfilled') setStats(unwrap(statsResult.value));
+        if (classesResult.status === 'fulfilled') {
+          const classData = unwrap(classesResult.value);
+          setClasses(Array.isArray(classData) ? classData : []);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -41,9 +43,38 @@ const StudentOverviewPage = ({ learners = [], onNavigate }) => {
   const total = stats?.total ?? fallback.total;
   const active = stats?.active ?? fallback.active;
   const exited = stats?.byStatus?.EXITED ?? stats?.byStatus?.EXited ?? 0;
-  const gradeRows = Object.entries(stats?.byGrade || fallback.byGrade)
-    .sort(([, left], [, right]) => right - left)
-    .slice(0, 8);
+  const capacityByGrade = useMemo(() => classes.reduce((result, classItem) => {
+    const grade = classItem.grade || 'Unassigned';
+    const current = result[grade] || { enrolled: 0, capacity: 0, classes: 0 };
+    current.enrolled += Number(classItem._count?.enrollments ?? classItem.studentCount ?? 0) || 0;
+    current.capacity += Number(classItem.capacity) || 0;
+    current.classes += 1;
+    result[grade] = current;
+    return result;
+  }, {}), [classes]);
+
+  const gradeRows = useMemo(() => {
+    const registeredByGrade = stats?.byGrade || fallback.byGrade;
+    const grades = new Set([...Object.keys(registeredByGrade), ...Object.keys(capacityByGrade)]);
+    return Array.from(grades)
+      .map((grade) => {
+        const capacityData = capacityByGrade[grade] || {};
+        const enrolled = capacityData.enrolled || Number(registeredByGrade[grade]) || 0;
+        const capacity = capacityData.capacity || 0;
+        const utilization = capacity > 0
+          ? Math.round((enrolled / capacity) * 100)
+          : (active > 0 ? Math.round((enrolled / active) * 100) : 0);
+        return {
+          grade,
+          enrolled,
+          capacity,
+          classes: capacityData.classes || 0,
+          utilization: Math.min(100, utilization),
+        };
+      })
+      .sort((left, right) => right.enrolled - left.enrolled)
+      .slice(0, 12);
+  }, [active, capacityByGrade, fallback.byGrade, stats?.byGrade]);
 
   const cards = [
     { label: 'Total Students', value: total, icon: Users, tone: 'bg-indigo-50 text-indigo-700' },
@@ -97,23 +128,25 @@ const StudentOverviewPage = ({ learners = [], onNavigate }) => {
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-black text-slate-950">Active students by grade</h2>
-                <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Current register distribution</p>
+                <h2 className="text-lg font-black text-slate-950">Class capacity by grade</h2>
+                <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Active enrolment against configured capacity</p>
               </div>
               <BarChart3 size={20} className="text-indigo-500" />
             </div>
             <div className="mt-5 space-y-3">
-              {gradeRows.length ? gradeRows.map(([grade, count]) => {
-                const percentage = active ? Math.round((count / active) * 100) : 0;
+              {gradeRows.length ? gradeRows.map(({ grade, enrolled, capacity, classes: classCount, utilization }) => {
                 return (
                   <div key={grade}>
                     <div className="mb-1 flex items-center justify-between text-xs font-bold text-slate-600">
                       <span>{displayLabel(grade)}</span>
-                      <span>{count}</span>
+                      <span>{enrolled}{capacity ? ` / ${capacity}` : ''}</span>
                     </div>
                     <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                      <div className="h-full rounded-full bg-indigo-500" style={{ width: `${Math.min(100, percentage)}%` }} />
+                      <div className="h-full rounded-full bg-brand-purple" style={{ width: `${utilization}%` }} />
                     </div>
+                    <p className="mt-1 text-[10px] font-semibold text-slate-400">
+                      {capacity ? `${utilization}% occupied · ${Math.max(0, capacity - enrolled)} seats available` : `${classCount || 0} classes · capacity not configured`}
+                    </p>
                   </div>
                 );
               }) : <p className="rounded-lg bg-slate-50 p-4 text-sm font-semibold text-slate-500">No student data is available yet.</p>}

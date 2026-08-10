@@ -50,8 +50,8 @@
   --table-header-padding: 0.75rem;
   --bg-primary: #ffffff;
   --bg-secondary: #f8fafc;
-  --text-primary: #000000;
-  --text-secondary: #4b5563;
+  --text-primary: var(--brand-primary-dark);
+  --text-secondary: #4d78a8;
   --border-color: #e5e7eb;
   /* ── Toolbar / action-bar widget background ───────────────────────────────
      A single token controls the accent tint on all list-page toolbars.
@@ -96,7 +96,7 @@
 @layer base {
   body {
     @apply antialiased leading-relaxed;
-    color: #000000;
+    color: var(--brand-primary-dark);
     font-family: var(--font-family-sans);
     font-size: var(--font-size-body);
     line-height: var(--line-height-body);
@@ -106,7 +106,7 @@
 
   h1, h2, h3, h4, h5, h6 {
     @apply leading-tight font-semibold tracking-tight;
-    color: #000000;
+    color: var(--brand-primary-dark);
     font-family: var(--font-family-sans);
   }
 
@@ -117,6 +117,27 @@
   button, input, label, select, textarea {
     @apply font-medium;
     font-family: var(--font-family-sans);
+    color: var(--brand-primary-dark);
+  }
+
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    border-color: color-mix(in srgb, var(--brand-primary) 18%, #dbeafe);
+    caret-color: var(--brand-primary);
+  }
+
+  input:not([type='checkbox']):not([type='radio'])::placeholder,
+  textarea::placeholder {
+    color: color-mix(in srgb, var(--brand-primary) 48%, #94a3b8);
+  }
+
+  input:not([type='checkbox']):not([type='radio']):focus,
+  select:focus,
+  textarea:focus {
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 3px rgb(var(--brand-primary-rgb) / 0.12);
+    outline: none;
   }
 }
 
@@ -449,16 +470,74 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--bg-primary);
-  color: #000000;
+  color: var(--brand-primary-dark);
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Enforce pure-black for neutral text utility classes app-wide */
-[class*="text-gray-"],
-[class*="text-slate-"],
-[class*="text-zinc-"],
-[class*="text-neutral-"],
-[class*="text-stone-"] {
+/* Keep neutral utility text inside the blue brand palette. This prevents
+ * shared forms and data views from falling back to pure black while retaining
+ * the intended visual hierarchy between strong and muted text. */
+[class*="text-gray-950"], [class*="text-gray-900"],
+[class*="text-slate-950"], [class*="text-slate-900"],
+[class*="text-zinc-950"], [class*="text-zinc-900"],
+[class*="text-neutral-950"], [class*="text-neutral-900"],
+[class*="text-stone-950"], [class*="text-stone-900"] {
+  color: var(--brand-primary-dark) !important;
+}
+
+[class*="text-gray-800"], [class*="text-gray-700"],
+[class*="text-slate-800"], [class*="text-slate-700"],
+[class*="text-zinc-800"], [class*="text-zinc-700"],
+[class*="text-neutral-800"], [class*="text-neutral-700"],
+[class*="text-stone-800"], [class*="text-stone-700"] {
+  color: #1d4f91 !important;
+}
+
+[class*="text-gray-600"], [class*="text-gray-500"],
+[class*="text-slate-600"], [class*="text-slate-500"],
+[class*="text-zinc-600"], [class*="text-zinc-500"],
+[class*="text-neutral-600"], [class*="text-neutral-500"],
+[class*="text-stone-600"], [class*="text-stone-500"] {
+  color: #4d78a8 !important;
+}
+
+[class*="text-gray-400"], [class*="text-gray-300"],
+[class*="text-slate-400"], [class*="text-slate-300"],
+[class*="text-zinc-400"], [class*="text-zinc-300"],
+[class*="text-neutral-400"], [class*="text-neutral-300"],
+[class*="text-stone-400"], [class*="text-stone-300"] {
+  color: #7f9fc0 !important;
+}
+
+/* Explicit text-black utility usage in light forms follows the same theme. */
+form input.text-black,
+form select.text-black,
+form textarea.text-black,
+form label.text-black {
+  color: var(--brand-primary-dark) !important;
+}
+
+/* Reports and receipts intentionally keep high-contrast black for printing. */
+.pdf-report-root [class*="text-gray-"],
+.pdf-report-root [class*="text-slate-"],
+.pdf-report-root [class*="text-zinc-"],
+.pdf-report-root [class*="text-neutral-"],
+.pdf-report-root [class*="text-stone-"],
+.report-card [class*="text-gray-"],
+.report-card [class*="text-slate-"],
+.report-card [class*="text-zinc-"],
+.report-card [class*="text-neutral-"],
+.report-card [class*="text-stone-"],
+#single-print-content [class*="text-gray-"],
+#single-print-content [class*="text-slate-"],
+#single-print-content [class*="text-zinc-"],
+#single-print-content [class*="text-neutral-"],
+#single-print-content [class*="text-stone-"],
+#summative-report-content [class*="text-gray-"],
+#summative-report-content [class*="text-slate-"],
+#summative-report-content [class*="text-zinc-"],
+#summative-report-content [class*="text-neutral-"],
+#summative-report-content [class*="text-stone-"] {
   color: #000000 !important;
 }
 
