@@ -22,7 +22,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Zap, ChevronDown, ChevronUp,
   Star, TrendingUp, BookOpen, Lightbulb,
-  CheckCircle2, Lock, Clock, AlertCircle,
+  Lock, AlertCircle,
   Loader2, GraduationCap, Download,
 } from 'lucide-react';
 import { dashboardAPI, pathwayAPI, seniorPathwayAPI, pathwayPlannerAPI, careerAPI } from '../../../../services/api';
@@ -32,7 +32,7 @@ import { generatePathwayPlanPDF } from '../../../../utils/pathwayPlanPDF';
 import DecisionPlanPanel from '../../shared/DecisionPlanPanel';
 import SchoolMatchingPanel from '../../shared/SchoolMatchingPanel';
 import StudentPathwayWorkspace from '../../shared/StudentPathwayWorkspace';
-import SelectionStatusChip, { SELECTION_STATUS_CONFIG } from '../../shared/SelectionStatusChip';
+import SelectionStatusChip from '../../shared/SelectionStatusChip';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -223,9 +223,6 @@ function SelectionStatusCard({ selection }) {
     );
   }
 
-  const cfg = SELECTION_STATUS_CONFIG[selection.status] || SELECTION_STATUS_CONFIG.DRAFT;
-  const Icon = cfg.icon;
-
   return (
     <div className={`rounded-xl border p-4 ${selection.status === 'LOCKED' ? 'bg-violet-50 border-violet-200' : 'bg-white border-gray-200'}`}>
       <div className="flex items-start justify-between gap-3">
@@ -289,6 +286,8 @@ const PathwayPlanner = ({ user, onNavigate, brandingSettings }) => {
 
   const [loadingSel, setLoadingSel]   = useState(false);
   const [selection, setSelection]     = useState(null);
+  const [activeStep, setActiveStep]   = useState(0);
+  const [workspaceRefresh, setWorkspaceRefresh] = useState(0);
 
   // ── PDF export state ──────────────────────────────────────────────────────
   const [generatingPDF, setGeneratingPDF] = useState(false);
@@ -409,6 +408,27 @@ const PathwayPlanner = ({ user, onNavigate, brandingSettings }) => {
   const meta = PATHWAY_META[recommendation?.predictedPathway] || null;
   const isSecondaryStudent = isSecondary(institutionType, grade);
   const isJuniorStudent = isJuniorTransitionGrade(grade);
+  const journeySteps = useMemo(() => isSecondaryStudent ? [
+    { id: 'evidence', label: 'Evidence', short: 'Review your pathway evidence' },
+    { id: 'selection', label: 'Combination', short: 'Confirm your subject combination' },
+    { id: 'progress', label: 'Progress', short: 'Track actions and support' },
+    { id: 'decision', label: 'Decision plan', short: 'Submit for review' },
+  ] : [
+    { id: 'discover', label: 'Discover Me', short: 'Tell us about your interests' },
+    { id: 'recommendation', label: 'Recommendation', short: 'Understand your pathway fit' },
+    { id: 'careers', label: 'Careers', short: 'Explore future possibilities' },
+    { id: 'combinations', label: 'Combinations', short: 'Compare subject options' },
+    { id: 'schools', label: 'Schools', short: 'Build a senior-school shortlist' },
+    { id: 'decision', label: 'Decision plan', short: 'Share your plan for review' },
+  ], [isSecondaryStudent]);
+  const activeStepId = journeySteps[activeStep]?.id || journeySteps[0].id;
+  const goToStep = (index) => setActiveStep(Math.max(0, Math.min(journeySteps.length - 1, index)));
+  const goNext = () => goToStep(activeStep + 1);
+  const handleDiscoverMeSaved = () => {
+    setWorkspaceRefresh((value) => value + 1);
+    loadRecommendation(learnerId, institutionType, grade);
+    goNext();
+  };
   const pending = recommendation?.predictedPathway === 'Analysis Pending' || !recommendation?.predictedPathway;
   const juniorCombinations = useMemo(() => {
     const recommended = normalizePathwayCode(recommendation?.predictedPathway);
@@ -522,7 +542,41 @@ const PathwayPlanner = ({ user, onNavigate, brandingSettings }) => {
 
       <div className="px-4 -mt-6 space-y-4">
 
-        {isSecondaryStudent && (
+        {/* Guided journey: one decision at a time, with a live progress report. */}
+        {learnerId && (
+          <StudentPathwayWorkspace
+            learnerId={learnerId}
+            recommendation={recommendation}
+            selection={selection}
+            stage={isSecondaryStudent ? 'senior' : 'junior'}
+            summaryOnly
+            refreshKey={workspaceRefresh}
+          />
+        )}
+
+        <section className="rounded-2xl border border-[#06285a]/10 bg-white p-3 shadow-sm" aria-label="Pathway journey steps">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#06285a]/60">Your pathway journey</p>
+              <p className="mt-1 text-xs font-bold text-gray-800">{journeySteps[activeStep]?.short}</p>
+            </div>
+            <span className="rounded-full bg-[#06285a]/5 px-2.5 py-1 text-[10px] font-black text-[#06285a]">Step {activeStep + 1} of {journeySteps.length}</span>
+          </div>
+          <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-[#06285a] transition-all" style={{ width: `${((activeStep + 1) / journeySteps.length) * 100}%` }} />
+          </div>
+          <div className={`grid gap-1.5 ${isSecondaryStudent ? 'grid-cols-4' : 'grid-cols-3 sm:grid-cols-6'}`} role="tablist" aria-label="Pathway steps">
+            {journeySteps.map((step, index) => (
+              <button key={step.id} type="button" role="tab" aria-selected={activeStep === index} onClick={() => goToStep(index)}
+                className={`rounded-xl border px-1.5 py-2 text-center transition-colors ${activeStep === index ? 'border-[#06285a] bg-[#06285a] text-white shadow-sm' : index < activeStep ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-white text-gray-500 hover:border-[#06285a]/30'}`}>
+                <span className="mx-auto flex h-5 w-5 items-center justify-center rounded-full bg-black/5 text-[9px] font-black">{index < activeStep ? '✓' : index + 1}</span>
+                <span className="mt-1 block truncate text-[9px] font-black">{step.label}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {isSecondaryStudent && activeStepId === 'selection' && (
           <section className="space-y-3 rounded-2xl border border-indigo-200 bg-white p-4 shadow-sm">
             <div>
               <p className="text-[10px] font-black uppercase tracking-wider text-indigo-700">My senior pathway</p>
@@ -533,13 +587,11 @@ const PathwayPlanner = ({ user, onNavigate, brandingSettings }) => {
               {loadingSel ? <Skel className="h-24 w-full rounded-xl" /> : <SelectionStatusCard selection={selection} />}
             </div>
             {learnerId && !loadingSel && <PathwaySelectionStep learnerId={learnerId} existingSelection={selection} onSuccess={() => loadSelection(learnerId, institutionType, grade)} />}
-            {learnerId && <StudentPathwayWorkspace learnerId={learnerId} recommendation={recommendation} selection={selection} />}
-            {learnerId && <DecisionPlanPanel learnerId={learnerId} mode="student" />}
           </section>
         )}
 
         {/* ── Recommendation card ── */}
-        <div className={`rounded-2xl overflow-hidden border shadow-sm ${meta ? `${meta.bg} ${meta.border}` : 'bg-white border-gray-200'}`}>
+        {activeStepId === (isSecondaryStudent ? 'evidence' : 'recommendation') && <div className={`rounded-2xl overflow-hidden border shadow-sm ${meta ? `${meta.bg} ${meta.border}` : 'bg-white border-gray-200'}`}>
 
           {/* Card header */}
           <div className="px-4 pt-4 pb-3">
@@ -647,17 +699,32 @@ const PathwayPlanner = ({ user, onNavigate, brandingSettings }) => {
               </div>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* ── Discover Me — interests & strengths feed the 15% learner-interest weight ── */}
-        {learnerId && !isSecondaryStudent && (
+        {learnerId && !isSecondaryStudent && activeStepId === 'discover' && (
           <DiscoverMePanel
             learnerId={learnerId}
-            onSaved={() => loadRecommendation(learnerId, institutionType, grade)}
+            onSaved={handleDiscoverMeSaved}
           />
         )}
 
-        {isJuniorStudent && (
+        {isJuniorStudent && activeStepId === 'careers' && (
+          <section className="space-y-4 rounded-2xl border border-rose-200 bg-white p-5 shadow-sm">
+            <div className="rounded-2xl bg-rose-50 p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-rose-700">Step 3 · Career studio</p>
+              <h2 className="mt-1 text-lg font-black text-gray-900">Explore the futures that excite you</h2>
+              <p className="mt-1 text-xs leading-relaxed text-gray-600">Browse careers, open the details, compare your favourites, and save the ones you want to discuss with your parent or counsellor.</p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {['Browse every career family', 'Compare up to four choices', 'Save a shortlist for review'].map((item, index) => <div key={item} className="rounded-xl border border-gray-100 bg-gray-50 p-3"><p className="text-lg font-black text-rose-600">0{index + 1}</p><p className="mt-1 text-[11px] font-bold text-gray-800">{item}</p></div>)}
+            </div>
+            <button type="button" onClick={() => onNavigate?.('student-career-explorer')} className="w-full rounded-xl bg-rose-600 py-3 text-xs font-black text-white shadow-sm hover:bg-rose-700">Open Career Explorer</button>
+            <p className="text-center text-[10px] text-gray-400">Your saved careers will appear in the progress report when you return.</p>
+          </section>
+        )}
+
+        {isJuniorStudent && activeStepId === 'combinations' && (
           <section className="space-y-3 rounded-2xl border border-violet-200 bg-white p-4">
             <div>
               <p className="text-[10px] font-black uppercase tracking-wider text-violet-700">Explore subject combinations</p>
@@ -667,29 +734,37 @@ const PathwayPlanner = ({ user, onNavigate, brandingSettings }) => {
               <div className="max-h-72 space-y-2 overflow-y-auto pr-1">{juniorCombinations.map((combo) => <label key={combo.id} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${selectedComboId === combo.id ? 'border-violet-300 bg-violet-50' : 'border-gray-200'}`}><input type="radio" name="junior-combination" checked={selectedComboId === combo.id} onChange={() => setSelectedComboId(combo.id)} className="mt-1 text-violet-600" /><div><p className="text-xs font-black text-gray-900">{combo.name}</p><p className="text-[10px] text-gray-500">{combo.pathway?.name} › {combo.track?.name}</p><div className="mt-1 flex flex-wrap gap-1">{(combo.items || []).map((item) => <span key={item.id || item.officialLearningArea?.id} className="rounded-full bg-white px-2 py-0.5 text-[9px] font-bold text-gray-600">{item.officialLearningArea?.officialName}</span>)}</div></div></label>)}</div>
             )}
             {combinationImpact?.careers?.length > 0 && <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3"><p className="text-[10px] font-black uppercase text-indigo-700">Career door analysis</p><div className="mt-2 space-y-1">{combinationImpact.careers.map((item) => <div key={item.career.id} className="flex justify-between gap-2 rounded-lg bg-white p-2"><div><p className="text-[10px] font-bold text-gray-800">{item.career.title}</p><p className="text-[9px] text-gray-500">{item.explanation}</p></div><span className={`h-fit rounded-full px-2 py-0.5 text-[8px] font-black ${item.classification.includes('SUPPORTS') ? 'bg-emerald-100 text-emerald-700' : item.classification === 'MAY_RESTRICT' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{item.classification.replaceAll('_', ' ')}</span></div>)}</div></div>}
-            <button type="button" onClick={() => onNavigate?.('student-career-explorer')} className="w-full rounded-xl border border-violet-200 bg-violet-50 py-2 text-[11px] font-black text-violet-700">Explore and save careers</button>
+            <button type="button" onClick={() => goToStep(journeySteps.findIndex((step) => step.id === 'careers'))} className="w-full rounded-xl border border-violet-200 bg-violet-50 py-2 text-[11px] font-black text-violet-700">Return to Career Studio</button>
           </section>
         )}
 
         {/* ── Decision Plan lifecycle ── */}
-        {isJuniorStudent && learnerId && (
-          <StudentPathwayWorkspace learnerId={learnerId} recommendation={recommendation} selection={selection} />
+        {isJuniorStudent && learnerId && activeStepId === 'decision' && (
+          <StudentPathwayWorkspace learnerId={learnerId} recommendation={recommendation} selection={selection} stage="junior" refreshKey={workspaceRefresh} />
         )}
 
-        {isJuniorStudent && learnerId && (
+        {isJuniorStudent && learnerId && activeStepId === 'schools' && (
           <SchoolMatchingPanel learnerId={learnerId} title="Find Senior Schools" />
         )}
 
-        {isSecondaryStudent && learnerId && (
-          <details className="rounded-2xl border border-gray-200 bg-white p-4">
-            <summary className="cursor-pointer text-xs font-black text-gray-700">Previous school decision and alternatives</summary>
-            <div className="mt-3"><SchoolMatchingPanel learnerId={learnerId} title="Senior school alternatives" /></div>
-          </details>
+        {isSecondaryStudent && learnerId && activeStepId === 'progress' && (
+          <>
+            <StudentPathwayWorkspace learnerId={learnerId} recommendation={recommendation} selection={selection} stage="senior" refreshKey={workspaceRefresh} />
+            <details className="rounded-2xl border border-gray-200 bg-white p-4">
+              <summary className="cursor-pointer text-xs font-black text-gray-700">Previous school decision and alternatives</summary>
+              <div className="mt-3"><SchoolMatchingPanel learnerId={learnerId} title="Senior school alternatives" /></div>
+            </details>
+          </>
         )}
 
-        {isJuniorStudent && learnerId && (
-          <DecisionPlanPanel learnerId={learnerId} mode="student" />
+        {isJuniorStudent && learnerId && activeStepId === 'decision' && (
+          <DecisionPlanPanel learnerId={learnerId} mode="student" onChanged={() => setWorkspaceRefresh((value) => value + 1)} />
         )}
+
+        {isSecondaryStudent && learnerId && activeStepId === 'decision' && (
+          <DecisionPlanPanel learnerId={learnerId} mode="student" onChanged={() => setWorkspaceRefresh((value) => value + 1)} />
+        )}
+
 
         {/* ── Download Plan PDF ── */}
         {!pending && recommendation && (
@@ -705,36 +780,11 @@ const PathwayPlanner = ({ user, onNavigate, brandingSettings }) => {
           </button>
         )}
 
-        {/* ── What happens next ── */}        <div className="bg-white rounded-2xl border border-gray-200 p-4">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3 flex items-center gap-1.5">
-            <CheckCircle2 size={11} aria-hidden="true" /> What happens next
-          </p>
-          <ol className="space-y-2.5">
-            {(isJuniorStudent ? [
-              { done: false, text: 'Complete your Discover Me reflection' },
-              { done: !pending && !!recommendation?.predictedPathway, text: 'Understand your pathway recommendation and strengths' },
-              { done: false, text: 'Explore and save careers that fit your interests' },
-              { done: !!selectedComboId, text: 'Compare subject combinations and the career doors they support' },
-              { done: false, text: 'Find, compare and shortlist matching senior schools' },
-              { done: false, text: 'Review the Transition Decision Plan with your parent and counsellor' },
-            ] : [
-              { done: !pending && !!recommendation?.predictedPathway, text: 'Review the evidence behind your current pathway' },
-              { done: !!selection, text: 'Confirm your current subject combination' },
-              { done: selection?.status === 'APPROVED' || selection?.status === 'LOCKED', text: 'School head approves your pathway selection' },
-              { done: selection?.status === 'LOCKED', text: 'Complete Action Plan work and track pathway progress' },
-            ]).map(({ done, text }, i) => (
-              <li key={i} className="flex items-start gap-2.5">
-                <div className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center mt-0.5 ${done ? 'bg-emerald-100' : 'bg-gray-100'}`}>
-                  {done
-                    ? <CheckCircle2 size={11} className="text-emerald-600" aria-label="Complete" />
-                    : <span className="text-[9px] font-black text-gray-400">{i + 1}</span>
-                  }
-                </div>
-                <p className={`text-[12px] ${done ? 'text-gray-700 font-semibold' : 'text-gray-500'}`}>{text}</p>
-              </li>
-            ))}
-          </ol>
-        </div>
+        <section className="flex items-center justify-between gap-3 rounded-2xl border border-[#06285a]/10 bg-white p-3 shadow-sm">
+          <button type="button" onClick={() => goToStep(activeStep - 1)} disabled={activeStep === 0} className="rounded-xl border border-gray-200 px-3 py-2 text-[10px] font-black text-gray-600 disabled:cursor-not-allowed disabled:opacity-40">← Back</button>
+          <p className="text-center text-[10px] font-semibold text-gray-500">{activeStep === journeySteps.length - 1 ? 'Your plan is ready for review.' : `Next: ${journeySteps[activeStep + 1]?.label}`}</p>
+          <button type="button" onClick={goNext} disabled={activeStep === journeySteps.length - 1} className="rounded-xl bg-[#06285a] px-3 py-2 text-[10px] font-black text-white disabled:cursor-not-allowed disabled:opacity-40">Continue →</button>
+        </section>
 
       </div>
     </div>
