@@ -154,6 +154,12 @@ jobs:
             ssh production "${DEPLOY_CMD} SCHOOL_ID=${SCHOOL_ID} bash /srv/zawadi/apps/deploy/deploy-release.sh"
           fi
 
+      - name: Verify AWS biometric connection
+        if: needs.validate.outputs.deploy_target == 'school' && vars.AWS_REGION != ''
+        env:
+          SCHOOL_ID: ${{ needs.validate.outputs.school_id }}
+        run: bash scripts/ci/verify-school-biometric-aws.sh
+
       - name: Report success
         if: success()
         run: |
