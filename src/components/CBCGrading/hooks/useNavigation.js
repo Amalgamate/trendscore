@@ -546,7 +546,7 @@ export const allNavSections = [
         permission: 'BIOMETRIC_ATTENDANCE',
         items: [
             { id: 'biometric-dashboard',  label: 'Biometric Authority',    path: 'biometric-dashboard',  permission: 'BIOMETRIC_ATTENDANCE' },
-            { id: 'biometric-enrollment', label: 'Fingerprint Enrollment', path: 'biometric-dashboard?tab=enrollment', permission: 'ENROLL_FINGERPRINTS' },
+            { id: 'biometric-enrollment', label: 'Face Enrollment', path: 'biometric-dashboard?tab=enrollment', permission: 'ENROLL_FINGERPRINTS' },
             { id: 'biometric-devices',    label: 'Terminal Management',    path: 'biometric-dashboard?tab=devices',    permission: 'MANAGE_BIOMETRIC_DEVICES' },
             { id: 'biometric-logs',       label: 'Attendance Data Feed',   path: 'biometric-dashboard?tab=logs',       permission: 'VIEW_BIOMETRIC_LOGS' },
             { id: 'biometric-api',        label: 'API & Bridge Info',      path: 'biometric-dashboard?tab=config',     permission: 'CONFIGURE_BIOMETRIC_API' }
