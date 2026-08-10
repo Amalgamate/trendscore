@@ -66,6 +66,13 @@ const createWhitePwaIcon = (source) => new Promise((resolve, reject) => {
   image.src = source;
 });
 
+// Older school records use the static product icon as the PWA value. Treat it
+// as an unset legacy fallback so the installed app follows the page favicon.
+const resolvePwaIconUrl = (pwaLogoUrl, faviconUrl) => {
+  if (pwaLogoUrl && pwaLogoUrl !== '/logo512.png') return pwaLogoUrl;
+  return faviconUrl || '/logo512.png';
+};
+
 const normalizeHexColor = (value, fallback = '#030b82') => {
   if (typeof value !== 'string') return fallback;
   const trimmed = value.trim();
@@ -110,7 +117,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
     accentColor2: normalizeHexColor(brandingSettings?.accentColor2, '#e11d48'),
     logoUrl: brandingSettings?.logoUrl || '/branding/logo.png',
     faviconUrl: brandingSettings?.faviconUrl || '/branding/favicon.png',
-    pwaLogoUrl: brandingSettings?.pwaLogoUrl || '/logo512.png',
+    pwaLogoUrl: resolvePwaIconUrl(brandingSettings?.pwaLogoUrl, brandingSettings?.faviconUrl),
     stampUrl: brandingSettings?.stampUrl || '/branding/stamp.svg',
     welcomeTitle: brandingSettings?.welcomeTitle || '',
     welcomeMessage: brandingSettings?.welcomeMessage || '',
@@ -121,7 +128,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
   const [previews, setPreviews] = useState({
     logo: brandingSettings?.logoUrl || '/branding/logo.png',
     favicon: brandingSettings?.faviconUrl || '/branding/favicon.png',
-    pwaLogo: brandingSettings?.pwaLogoUrl || '/logo512.png',
+    pwaLogo: resolvePwaIconUrl(brandingSettings?.pwaLogoUrl, brandingSettings?.faviconUrl),
     stamp: brandingSettings?.stampUrl || '/branding/stamp.svg'
   });
 
@@ -154,7 +161,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
       accentColor2: normalizeHexColor(brandingSettings?.accentColor2, '#e11d48'),
       logoUrl: brandingSettings?.logoUrl || '/branding/logo.png',
       faviconUrl: brandingSettings?.faviconUrl || '/branding/favicon.png',
-      pwaLogoUrl: brandingSettings?.pwaLogoUrl || '/logo512.png',
+      pwaLogoUrl: resolvePwaIconUrl(brandingSettings?.pwaLogoUrl, brandingSettings?.faviconUrl),
       stampUrl: brandingSettings?.stampUrl || '/branding/stamp.svg',
       welcomeTitle: brandingSettings?.welcomeTitle || '',
       welcomeMessage: brandingSettings?.welcomeMessage || '',
@@ -164,7 +171,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
     previews: {
       logo: brandingSettings?.logoUrl || '/branding/logo.png',
       favicon: brandingSettings?.faviconUrl || '/branding/favicon.png',
-      pwaLogo: brandingSettings?.pwaLogoUrl || '/logo512.png',
+      pwaLogo: resolvePwaIconUrl(brandingSettings?.pwaLogoUrl, brandingSettings?.faviconUrl),
       stamp: brandingSettings?.stampUrl || '/branding/stamp.svg'
     }
   });
@@ -219,7 +226,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
             accentColor2: normalizeHexColor(school.accentColor2, '#e11d48'),
             logoUrl: school.logoUrl || '/branding/logo.png',
             faviconUrl: school.faviconUrl || '/branding/favicon.png',
-            pwaLogoUrl: school.pwaLogoUrl || '/logo512.png',
+            pwaLogoUrl: resolvePwaIconUrl(school.pwaLogoUrl, school.faviconUrl),
             stampUrl: school.stampUrl || '/branding/stamp.svg',
             welcomeTitle: school.welcomeTitle || '',
             welcomeMessage: school.welcomeMessage || '',
@@ -292,7 +299,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
       reader.onloadend = async () => {
         const result = reader.result;
         const pwaIcon = type === 'favicon'
-          ? await createWhitePwaIcon(result).catch(() => '/logo512.png')
+          ? await createWhitePwaIcon(result).catch(() => result)
           : result;
         setPreviews(prev => ({
           ...prev,
@@ -371,7 +378,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
     try {
       const explicitSchoolName = cleanSchoolName(settings.schoolName);
       const linkedPwaLogoUrl = await createWhitePwaIcon(settings.faviconUrl)
-        .catch(() => settings.pwaLogoUrl || '/logo512.png');
+        .catch(() => resolvePwaIconUrl(settings.pwaLogoUrl, settings.faviconUrl));
       const payload = {
         ...(explicitSchoolName ? { name: explicitSchoolName } : {}),
         address: settings.address,

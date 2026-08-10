@@ -63,6 +63,15 @@ const pickBrandingValue = (incoming, fallback) => {
   return incoming;
 };
 
+// The PWA icon is intentionally linked to the school favicon unless a
+// separate, non-default PWA asset has actually been saved. Older school rows
+// still contain the original static /logo512.png value, so treat that value as
+// the legacy fallback instead of letting it override a customised favicon.
+const resolvePwaIconUrl = (pwaLogoUrl, faviconUrl) => {
+  if (pwaLogoUrl && pwaLogoUrl !== '/logo512.png') return pwaLogoUrl;
+  return faviconUrl || '/logo512.png';
+};
+
 const DEFAULT_BRANDING = {
   logoUrl: '/branding/logo.png',
   faviconUrl: '/branding/favicon.png',
@@ -135,7 +144,7 @@ function AppContent() {
 
   // PWA icons and manifest
   useEffect(() => {
-    const iconUrl = brandingSettings.pwaLogoUrl || '/logo512.png';
+    const iconUrl = resolvePwaIconUrl(brandingSettings.pwaLogoUrl, brandingSettings.faviconUrl);
     // Only add a cache-buster for data URIs (school-uploaded branding).
     // For static paths, use a stable version derived from the updatedAt
     // timestamp so it only changes when branding actually changes — not

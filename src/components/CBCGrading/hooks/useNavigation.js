@@ -164,12 +164,32 @@ export const allNavSections = [
         app: 'student-registry',
         permission: null,
         items: [
-            { id: 'learners-list',       label: 'Students List',      path: 'learners-list',       permission: 'VIEW_ALL_LEARNERS' },
-            { id: 'learners-admissions', label: 'Admissions',         path: 'learners-admissions', permission: 'CREATE_LEARNER'    },
-            { id: 'learners-promotion',  label: 'Promotion',          path: 'learners-promotion',  permission: 'PROMOTE_LEARNER', app: 'planner' },
-            { id: 'learners-uniform',    label: 'Uniform Allocation', path: 'learners-uniform',    permission: 'VIEW_ALL_LEARNERS', icon: Shirt, app: 'inventory' },
-            { id: 'learners-id-print',   label: 'ID Card Printing',   path: 'learners-id-print',   permission: 'VIEW_ALL_LEARNERS', icon: CreditCard },
-            { id: 'parents-list',        label: 'Parents List',       path: 'parents-list',        permission: 'VIEW_ALL_USERS' },
+            { id: 'learners-overview',   label: 'Students Overview',   path: 'learners-overview',   permission: 'VIEW_ALL_LEARNERS' },
+            { id: 'learners-list',       label: 'Students List',       path: 'learners-list',       permission: 'VIEW_ALL_LEARNERS' },
+            { id: 'learners-admissions', label: 'Admissions',          path: 'learners-admissions', permission: 'CREATE_LEARNER'    },
+            { id: 'learners-reports',    label: 'Student Reports',     path: 'learners-reports',    permission: 'VIEW_ALL_LEARNERS' },
+            {
+                id: 'learners-transfers',
+                label: 'Transfers & Exits',
+                type: 'group',
+                items: [
+                    { id: 'learners-transfers-in',  label: 'Incoming Transfers', path: 'learners-transfers-in',  permission: 'VIEW_ALL_LEARNERS' },
+                    { id: 'learners-transfer-out',  label: 'Transfer Out',       path: 'learners-transfer-out',  permission: 'VIEW_ALL_LEARNERS' },
+                    { id: 'learners-exited',        label: 'Exited Students',    path: 'learners-exited',        permission: 'VIEW_ALL_LEARNERS' },
+                ],
+            },
+            {
+                id: 'learners-services',
+                label: 'Student Services',
+                type: 'group',
+                items: [
+                    { id: 'learners-promotion',  label: 'Promotion',          path: 'learners-promotion',  permission: 'PROMOTE_LEARNER', app: 'planner' },
+                    { id: 'learners-uniform',    label: 'Uniform Allocation', path: 'learners-uniform',    permission: 'VIEW_ALL_LEARNERS', icon: Shirt, app: 'inventory' },
+                    { id: 'learners-id-print',   label: 'ID Card Printing',   path: 'learners-id-print',   permission: 'VIEW_ALL_LEARNERS', icon: CreditCard },
+                    { id: 'learners-documents',  label: 'Student Documents',  path: 'docs-center', params: { category: 'students' }, permission: 'VIEW_ALL_LEARNERS', icon: FileText },
+                ],
+            },
+            { id: 'parents-list',        label: 'Parents & Guardians', path: 'parents-list',        permission: 'VIEW_ALL_USERS' },
         ]
     },
     {

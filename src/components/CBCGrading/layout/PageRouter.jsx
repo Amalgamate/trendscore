@@ -16,6 +16,8 @@ import RoleDashboard from '../pages/dashboard/RoleDashboard';
 import StudentDashboardView from '../pages/student/StudentDashboard';
 import FeeCollectionPage from '../pages/FeeCollectionPage';
 const LearnersList = lazy(() => import('../pages/LearnersList'));
+const StudentOverviewPage = lazy(() => import('../pages/StudentOverviewPage'));
+const StudentReportsPage = lazy(() => import('../pages/StudentReportsPage'));
 const TeacherLearnerAnalysis = lazy(() => import('../pages/dashboard/TeacherLearnerAnalysis'));
 const TeachersList = lazy(() => import('../pages/TeachersList'));
 const AddEditTeacherPage = lazy(() => import('../pages/AddEditTeacherPage'));
@@ -492,6 +494,10 @@ const PageRouter = ({
           // Learners Module
           case 'teacher-learner-analysis':
             return <TeacherLearnerAnalysis user={user} onNavigate={handleNavigate} />;
+          case 'learners-overview':
+            return <StudentOverviewPage learners={learners} onNavigate={handleNavigate} />;
+          case 'learners-reports':
+            return <StudentReportsPage learners={learners} />;
           case 'learners-list':
             return (
               <ErrorBoundary>
