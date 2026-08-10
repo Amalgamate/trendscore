@@ -184,7 +184,7 @@ const DeviceList = () => {
             <Field label="Hardware device ID" required value={form.deviceId} disabled={Boolean(editingId)} onChange={(value) => setForm({ ...form, deviceId: value })} placeholder="e.g. ZK-MAIN-001" />
             <Field label="Terminal name" required value={form.name} onChange={(value) => setForm({ ...form, name: value })} placeholder="Main Gate" />
             <Field label="Physical location" value={form.location} onChange={(value) => setForm({ ...form, location: value })} placeholder="Front entrance" />
-            <SelectField label="Terminal type" value={form.type} onChange={(value) => setForm({ ...form, type: value })} options={['TERMINAL', 'FINGERPRINT', 'FACE', 'CARD']} />
+            <SelectField label="Terminal type" value={form.type} onChange={(value) => setForm({ ...form, type: value })} options={['TERMINAL', 'PHONE', 'FINGERPRINT', 'FACE', 'CARD']} />
             <SelectField label="Synchronization mode" value={form.syncMode} onChange={(value) => setForm({ ...form, syncMode: value })} options={['PUSH', 'PULL', 'BOTH']} />
             <Field label="IP address / hostname" value={form.ipAddress} onChange={(value) => setForm({ ...form, ipAddress: value })} placeholder="Required for PULL mode" />
             <Field label="Serial number" value={form.serialNumber} onChange={(value) => setForm({ ...form, serialNumber: value })} placeholder="Manufacturer serial" />
@@ -294,7 +294,7 @@ const DeviceList = () => {
               </div>
             </div>
             <div className="mt-6 rounded-2xl bg-slate-950 p-5 text-white">
-              <p className="text-[10px] uppercase tracking-widest text-slate-400">Device ID</p>
+              <p className="text-[10px] uppercase tracking-widest text-white/60">Device ID</p>
               <p className="mt-1 font-mono text-sm">{terminalActivation.deviceId}</p>
               <p className="mt-5 text-[10px] uppercase tracking-widest text-white/60">Activation code</p>
               <p className="mt-2 font-mono text-3xl tracking-[0.3em] text-indigo-300">{terminalActivation.activationCode}</p>
