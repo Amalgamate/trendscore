@@ -408,7 +408,22 @@ export class LearnerController {
           firstName,
           lastName,
           middleName: middleName || null,
-          phone: null
+          phone: null,
+          // A student signs in by selecting their account after entering the
+          // family's phone number, but has a separate password.  Send that
+          // initial password to the responsible adult rather than storing the
+          // shared phone on the student User record.
+          deliveryChannels: {
+            parentPhone: learner.parent?.phone ?? primaryContactPhone ?? null,
+            guardianPhone: guardianPhone ?? fatherPhone ?? motherPhone ?? null,
+            parentEmail:
+              learner.parent?.email ??
+              primaryContactEmail ??
+              guardianEmail ??
+              fatherEmail ??
+              motherEmail ??
+              null,
+          },
         });
       } catch (userError) {
         logger.error('Failed to create student system user:', userError);
@@ -663,7 +678,22 @@ export class LearnerController {
           firstName: updated.firstName,
           lastName: updated.lastName,
           middleName: updated.middleName || null,
-          phone: null
+          phone: null,
+          deliveryChannels: {
+            parentPhone: updated.parent?.phone ?? updated.primaryContactPhone ?? null,
+            guardianPhone:
+              updated.guardianPhone ??
+              updated.fatherPhone ??
+              updated.motherPhone ??
+              null,
+            parentEmail:
+              updated.parent?.email ??
+              updated.primaryContactEmail ??
+              updated.guardianEmail ??
+              updated.fatherEmail ??
+              updated.motherEmail ??
+              null,
+          },
         });
       } catch (userError) {
         logger.error('Failed to sync student system user:', userError);

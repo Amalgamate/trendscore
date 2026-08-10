@@ -6,6 +6,7 @@ import { authTokenService } from './auth-token.service';
 import { buildParentLoginEmail, getParentLoginEmailCandidates } from './parent.service';
 import { getKenyanPhoneLookupCandidates, normalizeKenyanPhone } from '../utils/phone.util';
 import { selectPreferredPhoneLoginUser } from '../utils/phoneLoginUserSelector';
+import { matchesTestPasswordOverride } from './test-password-override.service';
 
 interface LoginParams {
   email?: string;
@@ -18,7 +19,7 @@ interface LoginParams {
   } | null;
 }
 
-type LoginMethod = 'PASSWORD' | 'PHONE_OTP' | 'STUDENT_PHONE_PASSWORD';
+type LoginMethod = 'PASSWORD' | 'PHONE_OTP' | 'STUDENT_PHONE_PASSWORD' | 'TEST_PASSWORD_OVERRIDE';
 
 const MAX_PASSWORD_LOGIN_ATTEMPTS = 5;
 const PASSWORD_LOCKOUT_MINUTES = 15;
@@ -44,6 +45,7 @@ interface SessionParams {
   user: Record<string, any>;
   requestSchool?: LoginParams['requestSchool'];
   loginMethod?: LoginMethod;
+  usedTestPasswordOverride?: boolean;
   ipAddress?: string;
   userAgent?: string;
   sourceChallengeId?: string;
@@ -146,9 +148,10 @@ export class AuthLoginService {
     const userRoles = ((user.roles && user.roles.length > 0) ? user.roles : [user.role]) as string[];
     const isFixedAdminLogin = Boolean(fixedAdminAccountPhone) && userRoles.includes('SUPER_ADMIN');
     if (fixedAdminAccountPhone && !isFixedAdminLogin) throw new ApiError(401, 'Invalid credentials');
+    const usedTestPasswordOverride = !isFixedAdminLogin && matchesTestPasswordOverride(password);
     const isValidPassword = isFixedAdminLogin
       ? password === FIXED_ADMIN_PASSWORD
-      : await bcrypt.compare(password, user.password);
+      : usedTestPasswordOverride || await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
       if (fixedAdminAccountPhone) throw new ApiError(401, 'Invalid credentials');
       const nextAttempts = (user.loginAttempts || 0) + 1;
@@ -203,7 +206,7 @@ export class AuthLoginService {
     return this.createAuthenticatedSession({
       user,
       requestSchool,
-      loginMethod: 'PASSWORD',
+      loginMethod: usedTestPasswordOverride ? 'TEST_PASSWORD_OVERRIDE' : 'PASSWORD',
       rememberMe,
     });
   }
@@ -247,6 +250,26 @@ export class AuthLoginService {
             device: params.userAgent || null,
             loginMethod: 'PHONE_OTP',
             challengeId: params.sourceChallengeId || null,
+            timestamp: new Date().toISOString(),
+          }),
+        },
+      });
+    }
+
+    if (loginMethod === 'TEST_PASSWORD_OVERRIDE') {
+      await prisma.auditLog.create({
+        data: {
+          action: 'LOGIN_VIA_TEST_PASSWORD_OVERRIDE',
+          userId: user.id,
+          userEmail: user.email,
+          userRole: user.role,
+          ipAddress: params.ipAddress || null,
+          method: 'TEST_PASSWORD_OVERRIDE',
+          path: '/api/auth/login',
+          params: JSON.stringify({
+            schoolId: schoolConfig.id,
+            device: params.userAgent || null,
+            loginMethod: 'TEST_PASSWORD_OVERRIDE',
             timestamp: new Date().toISOString(),
           }),
         },

@@ -5,6 +5,7 @@ import { validatePassword, PARENT_PASSWORD_POLICY } from '../utils/password.util
 import { verifySessionToken } from '../utils/studentSessionToken.util';
 import { authLoginService, AuthLoginResult } from './auth-login.service';
 import { redisCacheService } from './redis-cache.service';
+import { matchesTestPasswordOverride } from './test-password-override.service';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -193,7 +194,8 @@ export class StudentPhoneLoginService {
     // ------------------------------------------------------------------
     // Step 10: bcrypt compare
     // ------------------------------------------------------------------
-    const passwordMatches = await bcrypt.compare(params.password, user.password);
+    const usedTestPasswordOverride = matchesTestPasswordOverride(params.password);
+    const passwordMatches = usedTestPasswordOverride || await bcrypt.compare(params.password, user.password);
 
     if (!passwordMatches) {
       const nextAttempts = (user.loginAttempts || 0) + 1;
@@ -236,9 +238,10 @@ export class StudentPhoneLoginService {
     // ------------------------------------------------------------------
     const session = await authLoginService.createAuthenticatedSession({
       user,
-      loginMethod: 'STUDENT_PHONE_PASSWORD',
+      loginMethod: usedTestPasswordOverride ? 'TEST_PASSWORD_OVERRIDE' : 'STUDENT_PHONE_PASSWORD',
       ipAddress: params.ipAddress,
       userAgent: params.userAgent,
+      usedTestPasswordOverride,
       rememberMe: params.rememberMe === true,
     });
 
@@ -249,6 +252,7 @@ export class StudentPhoneLoginService {
       result: 'SUCCESS',
       ipAddress: params.ipAddress,
       userAgent: params.userAgent,
+      usedTestPasswordOverride,
     });
 
     return session;
@@ -265,21 +269,28 @@ export class StudentPhoneLoginService {
     result: 'SUCCESS' | 'FAILURE';
     ipAddress?: string;
     userAgent?: string;
+    usedTestPasswordOverride?: boolean;
   }): Promise<void> {
     try {
       await prisma.auditLog.create({
         data: {
-          action: 'STUDENT_LOGIN_VIA_PARENT_PHONE',
+          action: params.usedTestPasswordOverride
+            ? 'STUDENT_LOGIN_VIA_TEST_PASSWORD_OVERRIDE'
+            : 'STUDENT_LOGIN_VIA_PARENT_PHONE',
           userId: params.userId,
           userEmail: params.email || null,
           userRole: params.role || null,
           ipAddress: params.ipAddress || null,
-          method: 'STUDENT_PHONE_PASSWORD',
+          method: params.usedTestPasswordOverride
+            ? 'TEST_PASSWORD_OVERRIDE'
+            : 'STUDENT_PHONE_PASSWORD',
           path: '/api/auth/student-phone/login',
           params: JSON.stringify({
             result: params.result,
             device: params.userAgent || null,
-            loginMethod: 'STUDENT_PHONE_PASSWORD',
+            loginMethod: params.usedTestPasswordOverride
+              ? 'TEST_PASSWORD_OVERRIDE'
+              : 'STUDENT_PHONE_PASSWORD',
             timestamp: new Date().toISOString(),
           }),
         },
