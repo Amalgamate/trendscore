@@ -17,11 +17,13 @@ trap 'rm -rf "${LOCAL_STAGE}"' EXIT
 
 cp deploy/instances.manifest.json "${LOCAL_STAGE}/instances.manifest.json"
 cp scripts/deploy-release.sh "${LOCAL_STAGE}/deploy-release.sh"
+cp scripts/configure-school-aws-env.sh "${LOCAL_STAGE}/configure-school-aws-env.sh"
 cp docker-compose.yml "${LOCAL_STAGE}/main-docker-compose.yml"
 cp deploy/docker-compose.stack.yml "${LOCAL_STAGE}/stack-docker-compose.yml"
 tar -C "${LOCAL_STAGE}" -czf "${LOCAL_BUNDLE}" \
   instances.manifest.json \
   deploy-release.sh \
+  configure-school-aws-env.sh \
   main-docker-compose.yml \
   stack-docker-compose.yml
 
@@ -37,6 +39,7 @@ run_with_ssh_retry "Deploy asset bundle install" ssh production "set -euo pipefa
   sudo mkdir -p '${REMOTE_DEPLOY_DIR}'
   sudo install -m 0644 '${REMOTE_STAGE}/instances.manifest.json' '${REMOTE_DEPLOY_DIR}/instances.manifest.json'
   sudo install -m 0755 '${REMOTE_STAGE}/deploy-release.sh' '${REMOTE_DEPLOY_DIR}/deploy-release.sh'
+  sudo install -m 0755 '${REMOTE_STAGE}/configure-school-aws-env.sh' '${REMOTE_DEPLOY_DIR}/configure-school-aws-env.sh'
   sudo install -m 0644 '${REMOTE_STAGE}/main-docker-compose.yml' '/srv/zawadi/apps/zawadijrn/docker-compose.yml'
   sudo install -m 0644 '${REMOTE_STAGE}/stack-docker-compose.yml' '/srv/zawadi/apps/docker-compose.stack.yml'
   rm -rf '${REMOTE_STAGE}'

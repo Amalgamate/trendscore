@@ -7,16 +7,16 @@ on:
   workflow_dispatch:
     inputs:
       school_slug:
-        description: "School slug to deploy, e.g. demo, lions-complex, zawadi-junior"
+        description: 'School slug to deploy, e.g. demo, lions-complex, zawadi-junior'
         required: true
         type: string
       environment:
-        description: "Deployment environment, e.g. demo, pilot, production"
+        description: 'Deployment environment, e.g. demo, pilot, production'
         required: true
         type: string
         default: production
       branch:
-        description: "Git branch/ref whose sha-<commit> images should be deployed"
+        description: 'Git branch/ref whose sha-<commit> images should be deployed'
         required: true
         type: string
         default: main
@@ -127,6 +127,16 @@ jobs:
 
       - name: Upload deploy assets
         run: bash scripts/ci/sync-deploy-assets.sh
+
+      - name: Sync protected AWS configuration
+        if: needs.validate.outputs.deploy_target == 'school'
+        env:
+          SCHOOL_ID: ${{ needs.validate.outputs.school_id }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REKOGNITION_LIVENESS_ROLE_ARN: ${{ vars.AWS_REKOGNITION_LIVENESS_ROLE_ARN }}
+        run: bash scripts/ci/sync-school-aws-config.sh
 
       - name: Deploy matched school only
         env:

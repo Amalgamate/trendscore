@@ -41,7 +41,7 @@ TrendSCORE needs server-side AWS credentials and a separate assumable role for t
 Set these values in the school stack environment file:
 
 ```text
-AWS_REGION=af-south-1
+AWS_REGION=ap-south-1
 AWS_ACCESS_KEY_ID=<server credential, omit when using an instance role>
 AWS_SECRET_ACCESS_KEY=<server credential, omit when using an instance role>
 AWS_REKOGNITION_LIVENESS_ROLE_ARN=arn:aws:iam::<account-id>:role/TrendScoreFaceLivenessClient
@@ -49,6 +49,20 @@ AWS_REKOGNITION_COLLECTION_PREFIX=trendscore
 AWS_REKOGNITION_LIVENESS_THRESHOLD=90
 AWS_REKOGNITION_MATCH_THRESHOLD=97
 ```
+
+Face Liveness is not currently available in Africa (Cape Town) `af-south-1`.
+For Kenya deployments, TrendSCORE uses Asia Pacific (Mumbai) `ap-south-1` unless
+the school's approved data-protection assessment selects another AWS-supported
+Face Liveness region.
+
+For managed deployments, store the access key ID and secret access key as
+GitHub Environment secrets, and store the region and role ARN as Environment
+variables. The school promotion workflow transfers all four values through a
+permission-restricted temporary file, updates only the manifest-approved school
+environment, sets that environment file to mode `0600`, and removes the
+temporary file. The workflow never prints credential values. If the protected
+configuration is absent, promotion leaves the existing school AWS settings
+unchanged; a partial configuration stops the deployment before restart.
 
 The server identity needs the following Rekognition actions plus `sts:AssumeRole` for the liveness-client role:
 
