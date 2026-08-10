@@ -57,7 +57,7 @@ scores and school corrections still need their application services.
 
 - [x] Career catalogue, detail + education routes, fit-matching, save/unsave — done
 - [x] Career comparison (side-by-side, up to N)
-- [x] Career seed data — starter catalogue seeded: 7 families, 17 careers with education routes (`server/prisma/seed-careers.ts`, `npm run seed:careers`). Expand via admin console once built (Stage 6)
+- [x] Career seed data — canonical catalogue seeded: 10 families, 62 careers with learner descriptions and education routes (`server/src/services/career-seed.data.ts`, admin `Seed Career Catalogue` action, `npm run seed:careers` compatibility entry point)
 - [x] Career → combination impact classification (`STRONGLY_SUPPORTS`/`MAY_RESTRICT`/etc.)
 - [x] Parent career review (mark saved careers as supported/uncertain)
 - [x] Admin career management UI
