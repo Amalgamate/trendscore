@@ -20,6 +20,11 @@ on:
         required: true
         type: string
         default: main
+      image_tag:
+        description: 'Optional existing image tag override (useful when only deployment tooling changed)'
+        required: false
+        type: string
+        default: ''
 
 concurrency:
   group: promote-release-${{ inputs.environment }}-${{ inputs.school_slug }}
@@ -52,12 +57,19 @@ jobs:
 
       - name: Resolve image tag
         id: image
+        env:
+          IMAGE_TAG_OVERRIDE: ${{ inputs.image_tag }}
         run: |
           set -euo pipefail
           COMMIT_SHA="$(git rev-parse HEAD)"
           echo "commit_sha=${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "image_tag=sha-${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "Resolved branch '${{ inputs.branch }}' to ${COMMIT_SHA}"
+          if [[ -n "${IMAGE_TAG_OVERRIDE}" ]]; then
+            echo "image_tag=${IMAGE_TAG_OVERRIDE}" >> "$GITHUB_OUTPUT"
+            echo "Using image tag override '${IMAGE_TAG_OVERRIDE}' for branch '${{ inputs.branch }}' (${COMMIT_SHA})"
+          else
+            echo "image_tag=sha-${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
+            echo "Resolved branch '${{ inputs.branch }}' to ${COMMIT_SHA}"
+          fi
 
       - name: Validate deployment target
         id: target
@@ -109,6 +121,17 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Preflight deployment host storage
+        run: |
+          set -euo pipefail
+          ssh production 'set -euo pipefail
+            echo "Deployment host storage before asset upload:"
+            df -h /tmp /srv/zawadi
+            find /tmp -maxdepth 1 -type f -name "trendscore-deploy-assets-*.tgz" -mtime +1 -print -delete
+            echo "Deployment host storage after stale staging cleanup:"
+            df -h /tmp /srv/zawadi
+          '
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
