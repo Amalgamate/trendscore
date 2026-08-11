@@ -65,10 +65,11 @@ jobs:
             done < <(find "${backup_root}" -mindepth 1 -maxdepth 1 -type d -print0)
           fi
 
-          # Safe Docker cleanup: stopped containers, dangling images/networks,
-          # and old build cache only. Do not prune volumes or tagged images.
+          # Safe Docker cleanup: stopped containers, unused images/networks,
+          # and old build cache. Images backing running containers and all
+          # Docker volumes are preserved.
           sudo docker container prune -f
-          sudo docker image prune -f
+          sudo docker image prune -a -f
           sudo docker network prune -f
           sudo docker builder prune -af --filter 'until=168h'
           find /tmp -maxdepth 1 -type f -name 'trendscore-deploy-assets-*.tgz' -mtime +1 -print -delete
