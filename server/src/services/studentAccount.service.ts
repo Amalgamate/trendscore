@@ -5,6 +5,7 @@ import { PRODUCT_EMAIL_DOMAIN, PRODUCT_TEMP_PASSWORD_PREFIX } from '../config/pr
 import { studentPasswordIssuanceService } from './studentPasswordIssuance.service';
 
 type EnsureStudentAccountInput = {
+  learnerId?: string;
   admissionNumber: string;
   firstName: string;
   lastName: string;
@@ -70,6 +71,43 @@ export const ensureStudentAccountForLearner = async (input: EnsureStudentAccount
   const baseUsername = normalizeBaseUsername(input.admissionNumber);
   const canonicalEmail = buildStudentEmail(baseUsername);
 
+  const linkAccount = async (userId: string) => {
+    if (!input.learnerId) return;
+    await prisma.learner.update({
+      where: { id: input.learnerId },
+      data: { studentUserId: userId },
+    });
+  };
+
+  // The explicit learner link is the durable source of truth. It prevents a
+  // changed admission number or a formatted legacy username from producing a
+  // second student account for the same learner.
+  if (input.learnerId) {
+    const linkedLearner = await prisma.learner.findUnique({
+      where: { id: input.learnerId },
+      select: { studentUserId: true },
+    });
+    if (linkedLearner?.studentUserId) {
+      const linkedUser = await prisma.user.findUnique({
+        where: { id: linkedLearner.studentUserId },
+        select: { id: true, role: true },
+      });
+      if (linkedUser?.role === 'STUDENT') {
+        await prisma.user.update({
+          where: { id: linkedUser.id },
+          data: {
+            firstName: input.firstName,
+            lastName: input.lastName,
+            middleName: input.middleName ?? null,
+            phone: input.phone ?? null,
+            status: 'ACTIVE',
+          },
+        });
+        return { created: false, userId: linkedUser.id };
+      }
+    }
+  }
+
   const existing = await findExistingStudentByIdentity(baseUsername, canonicalEmail);
   if (existing?.role === 'STUDENT') {
     await prisma.user.update({
@@ -82,6 +120,7 @@ export const ensureStudentAccountForLearner = async (input: EnsureStudentAccount
         status: 'ACTIVE'
       }
     });
+    await linkAccount(existing.id);
     return { created: false, userId: existing.id };
   }
 
@@ -109,6 +148,7 @@ export const ensureStudentAccountForLearner = async (input: EnsureStudentAccount
     },
     select: { id: true }
   });
+  await linkAccount(createdUser.id);
 
   // Attempt password delivery if delivery channels were provided.
   // Failures must never block account creation — they are caught and logged.

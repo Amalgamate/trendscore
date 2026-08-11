@@ -100,8 +100,11 @@ export class DashboardController {
 
         const learner = await prisma.learner.findFirst({
             where: {
-                admissionNumber: { in: usernameCandidates },
                 archived: false,
+                OR: [
+                    { studentUserId: user.id },
+                    { admissionNumber: { in: usernameCandidates } },
+                ],
             },
             include: {
                 enrollments: {

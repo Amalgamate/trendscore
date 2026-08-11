@@ -82,6 +82,7 @@ model User {
   familyMembership           FamilyMember?
   invitedFamilyMembers       FamilyMember[]              @relation("FamilyMemberInviter")
   learners                   Learner[]                   @relation("ParentLearners")
+  studentLearner             Learner?                    @relation("StudentLearner")
   approvedLeaves             LeaveRequest[]              @relation("ApprovedLeaves")
   leaveRequests              LeaveRequest[]              @relation("UserLeaves")
   libraryMember              LibraryMember?
@@ -618,6 +619,7 @@ model Learner {
   grade                  String
   stream                 String?
   parentId               String?
+  studentUserId          String?                        @unique
   guardianName           String?
   guardianPhone          String?
   guardianEmail          String?
@@ -678,6 +680,7 @@ model Learner {
   formativeAssessments   FormativeAssessment[]
   subjectSelections      LearnerSubjectSelection[]
   parent                 User?                          @relation("ParentLearners", fields: [parentId], references: [id])
+  studentUser            User?                          @relation("StudentLearner", fields: [studentUserId], references: [id], onDelete: SetNull)
   pathway                Pathway?                       @relation(fields: [pathwayId], references: [id])
   lmsEnrollments         LMSEnrollment[]                @relation("LMSEnrolledLearners")
   summativeResults       SummativeResult[]
@@ -2033,7 +2036,7 @@ model PresenceEventFailure {
 
 model Dormitory {
   id           String                  @id @default(uuid())
-  schoolId     String
+  schoolId     String                  @map("school_id")
   name         String
   gender       String // BOYS | GIRLS | MIXED
   capacity     Int                     @default(0)

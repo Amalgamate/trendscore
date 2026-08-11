@@ -100,9 +100,7 @@ export const secondaryNavSections = [
     permission: null,
     items: [
       { id: 'pathways-admin-overview', label: 'Overview',             path: 'pathways-admin',         params: { tab: 'dashboard' }, permission: 'MANAGE_PATHWAY_CATALOG' },
-      { id: 'sec-pathway-overview',   label: 'Progress Dashboard',   path: 'sec-pathway-overview',   permission: 'VIEW_ALL_LEARNERS'      },
       { id: 'sec-pathway-counsellor', label: 'Counsellor Workbench', path: 'sec-pathway-counsellor', permission: 'VIEW_ALL_LEARNERS'      },
-      { id: 'pathway-guide',          label: 'Guide',                path: 'pathway-guide',          permission: null                     },
       {
         id: 'pathway-catalogues',
         label: 'Catalogues',
@@ -118,6 +116,7 @@ export const secondaryNavSections = [
         label: 'Configurations',
         type: 'group',
         items: [
+          { id: 'sec-school-offerings',      label: 'School Offerings', path: 'sec-school-offerings',                          permission: 'MANAGE_PATHWAY_OFFERINGS' },
           { id: 'pathways-admin-content',     label: 'Content',        path: 'pathways-admin', params: { tab: 'content' },     permission: 'MANAGE_PATHWAY_CATALOG' },
           { id: 'pathways-admin-schools',     label: 'Senior Schools', path: 'pathways-admin', params: { tab: 'schools' },     permission: 'MANAGE_PATHWAY_CATALOG' },
           { id: 'pathways-admin-corrections', label: 'Corrections',    path: 'pathways-admin', params: { tab: 'corrections' }, permission: 'MANAGE_PATHWAY_CATALOG' },

@@ -4,24 +4,13 @@ import { lmsAPI } from '../../../../../services/api/lms.api';
 import { configAPI } from '../../../../../services/api/config.api';
 import { learnerAPI } from '../../../../../services/api/learner.api';
 import { useNotifications } from '../../../hooks/useNotifications';
+import { KpiCard } from '../../../../../design-system/components';
 
-function StatCard({ label, value, icon: Icon, subtext }) {
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</div>
-          <div className="mt-1 text-2xl font-bold text-gray-900">{value}</div>
-          {subtext ? <div className="mt-1 text-xs text-gray-500">{subtext}</div> : null}
-        </div>
-        {Icon ? (
-          <div className="rounded-lg bg-brand-purple/10 p-2 text-brand-purple">
-            <Icon size={18} />
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
+const KPI_TONES = ['indigo', 'sky', 'violet', 'emerald', 'amber', 'rose'];
+const KPI_ORBS = ['top-right', 'bottom-right', 'top-center', 'bottom-left', 'bottom-center', 'top-left'];
+
+function StatCard({ label, value, icon: Icon, subtext, index = 0 }) {
+  return <KpiCard label={label} value={value} subvalue={subtext} icon={Icon ? <Icon size={19} /> : null} tone={KPI_TONES[index % KPI_TONES.length]} orbPosition={KPI_ORBS[index % KPI_ORBS.length]} />;
 }
 
 function Section({ title, description, children, right }) {
@@ -301,11 +290,11 @@ export default function LearningAnalyticsPage() {
       {!loading && activeTab === 'overview' ? (
         <div className="space-y-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            <StatCard label="Active lessons" value={safeNumber(overview?.totalActiveLessons)} icon={Activity} subtext={termLabel} />
-            <StatCard label="Assignments" value={safeNumber(overview?.totalAssignments)} icon={BookOpen} subtext={termLabel} />
-            <StatCard label="Avg completion" value={formatPct(overview?.avgCompletionRate)} icon={BarChart3} subtext={termLabel} />
-            <StatCard label="Avg submissions" value={formatPct(overview?.avgSubmissionRate)} icon={BarChart3} subtext={termLabel} />
-            <StatCard label="Learning time" value={formatMinutes(overview?.totalLearningTimeMinutes)} icon={Activity} subtext={termLabel} />
+            <StatCard label="Active lessons" value={safeNumber(overview?.totalActiveLessons)} icon={Activity} subtext={termLabel} index={0} />
+            <StatCard label="Assignments" value={safeNumber(overview?.totalAssignments)} icon={BookOpen} subtext={termLabel} index={1} />
+            <StatCard label="Avg completion" value={formatPct(overview?.avgCompletionRate)} icon={BarChart3} subtext={termLabel} index={2} />
+            <StatCard label="Avg submissions" value={formatPct(overview?.avgSubmissionRate)} icon={BarChart3} subtext={termLabel} index={3} />
+            <StatCard label="Learning time" value={formatMinutes(overview?.totalLearningTimeMinutes)} icon={Activity} subtext={termLabel} index={4} />
           </div>
 
           <Section

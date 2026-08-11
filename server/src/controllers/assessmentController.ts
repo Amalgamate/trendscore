@@ -17,6 +17,7 @@ import {
 } from '../utils/cbe-grading.util';
 
 import logger from '../utils/logger';
+import { PathwayService } from '../services/pathway.service';
 // ── Cache TTLs ────────────────────────────────────────────────────────────────
 const TESTS_CACHE_TTL   = 300;  // 5 min — published tests change rarely
 const RESULTS_CACHE_TTL = 30;   // 30 s  — results are written frequently
@@ -1648,6 +1649,13 @@ export const recordSummativeResult = async (req: AuthRequest, res: Response) => 
     // Bust result cache for this test
     await invalidateSummativeResultCache(testId);
 
+    // Keep the canonical pathway record current without making mark entry wait
+    // for the recommendation calculation. The service only acts for Grade 7–9
+    // learners with real summative evidence and skips unchanged results.
+    void PathwayService.ensureAutomaticRecommendation(learnerId).catch((error) =>
+      logger.warn('[PathwayRecommendation] Automatic refresh failed:', error.message)
+    );
+
     res.status(existingResult ? 200 : 201).json({
       success: true,
       message: existingResult ? 'Result updated successfully' : 'Result recorded successfully',
@@ -2472,6 +2480,17 @@ export const recordSummativeResultsBulk = async (req: AuthRequest, res: Response
 
     // ── 7. Bust result cache ──────────────────────────────────────────────────
     await invalidateSummativeResultCache(testId);
+
+    // Recalculate in the background for the affected junior-secondary learners.
+    // This keeps bulk score entry responsive while materialising the same
+    // canonical recommendation used throughout the pathway workflow.
+    const affectedLearnerIds = [...new Set(savedResults.map((result: any) => result.learnerId))];
+    void Promise.allSettled(
+      affectedLearnerIds.map((learnerId) => PathwayService.ensureAutomaticRecommendation(learnerId))
+    ).then((outcomes) => {
+      const failed = outcomes.filter((outcome) => outcome.status === 'rejected');
+      if (failed.length) logger.warn(`[PathwayRecommendation] ${failed.length} automatic bulk refreshes failed`);
+    });
 
     const response: any = {
       success: true,

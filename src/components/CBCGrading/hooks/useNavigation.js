@@ -584,14 +584,11 @@ export const allNavSections = [
     {
         id: 'pathway-planner',
         label: 'Junior Transition Centre',
-        badge: 'BETA',
         icon: Award,
         permission: null,
         items: [
             { id: 'pathways-admin-overview', label: 'Overview',             path: 'pathways-admin',         params: { tab: 'dashboard' }, permission: 'MANAGE_PATHWAY_CATALOG' },
-            { id: 'sec-pathway-overview',    label: 'Readiness Dashboard',  path: 'sec-pathway-overview',   permission: 'VIEW_ALL_LEARNERS' },
-            { id: 'sec-pathway-counsellor',  label: 'Learner Cases',        path: 'sec-pathway-counsellor', permission: 'VIEW_ALL_LEARNERS' },
-            { id: 'pathway-guide',           label: 'Guide',                path: 'pathway-guide',          permission: null },
+            { id: 'sec-pathway-counsellor',  label: 'Workbench',            path: 'sec-pathway-counsellor', permission: 'VIEW_ALL_LEARNERS' },
             {
                 id: 'pathway-catalogues',
                 label: 'Catalogues',
@@ -606,6 +603,7 @@ export const allNavSections = [
                 label: 'Configurations',
                 type: 'group',
                 items: [
+                    { id: 'sec-school-offerings',      label: 'School Offerings', path: 'sec-school-offerings',                          permission: 'MANAGE_PATHWAY_OFFERINGS' },
                     { id: 'pathways-admin-content',     label: 'Content',        path: 'pathways-admin', params: { tab: 'content' },     permission: 'MANAGE_PATHWAY_CATALOG' },
                     { id: 'pathways-admin-schools',     label: 'Senior Schools', path: 'pathways-admin', params: { tab: 'schools' },     permission: 'MANAGE_PATHWAY_CATALOG' },
                     { id: 'pathways-admin-corrections', label: 'Corrections',    path: 'pathways-admin', params: { tab: 'corrections' }, permission: 'MANAGE_PATHWAY_CATALOG' },
@@ -967,6 +965,11 @@ export const useNavigation = () => {
 
     const navSections = useMemo(() => {
         const isItemVisible = (item) => {
+            // A junior school guides transition decisions; it does not deliver
+            // Grade 10–12 subjects. School Offerings is therefore a senior-only
+            // setting and must not appear in the Junior Transition Centre.
+            if (institutionType !== 'SECONDARY' && item.id === 'sec-school-offerings') return false;
+
             if (item.path === 'learners-admissions' && isRole('TEACHER')) return true;
 
             // Teachers must NOT see admin-only learner management tabs.
@@ -1032,7 +1035,7 @@ export const useNavigation = () => {
             built = transformNavForParentRole(built);
         }
         return built;
-    }, [can, role, isRole, labels, accessUser, isModuleEnabled]);
+    }, [can, role, isRole, labels, accessUser, institutionType, isModuleEnabled]);
 
     const dashboardSection = navSections.find(s => s.id === 'dashboard');
     const lmsSection = navSections.find(s => s.id === 'digital-learning');

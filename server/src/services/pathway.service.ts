@@ -68,6 +68,92 @@ export class PathwayService {
   }
 
   /**
+   * Materialise the canonical Grade 7–9 recommendation when assessment data is
+   * available.  Other pathway features (career fit, school matching and the
+   * counsellor workbench) read LearnerPathwayRecommendation, so leaving the
+   * calculation only in the learner-facing response makes those views disagree.
+   *
+   * The decision table is append-only.  A new automatic row is therefore added
+   * only when the calculated evidence changes; finalised decisions are never
+   * altered by this background refresh.
+   */
+  static async ensureAutomaticRecommendation(
+    learnerId: string,
+    opts?: { term?: Term; academicYear?: number },
+  ) {
+    const latest = await prisma.learnerPathwayRecommendation.findFirst({
+      where: { learnerId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (latest?.finalApprovedPathway) return latest;
+
+    const learner = await prisma.learner.findUnique({
+      where: { id: learnerId },
+      select: { grade: true },
+    });
+    if (!learner) throw new ApiError(404, 'Learner not found');
+    if (!['GRADE_7', 'GRADE_8', 'GRADE_9'].includes(String(learner.grade))) return latest;
+
+    const resultCount = await prisma.summativeResult.count({
+      where: { learnerId, archived: false },
+    });
+    // A pathway must be evidence-based; do not manufacture a default pathway
+    // for a learner before their first scored assessment.
+    if (resultCount === 0) return latest;
+
+    const readiness = await buildGrade9TransitionReadiness(learnerId, {
+      term: opts?.term,
+      academicYear: opts?.academicYear,
+      learnerInterest: latest?.learnerInterest as any,
+      teacherRecommendation: latest?.teacherRecommendation as any,
+      parentPreference: latest?.parentPreference as any,
+    });
+    const recommendation = readiness.data.recommendation;
+    if (!recommendation?.recommendedPathway) return latest;
+
+    const evidence = {
+      engineVersion: readiness.data.analysisPayload.engineVersion,
+      weights: readiness.data.weights,
+      // term/year identify the request context, not the evidence window (the
+      // engine evaluates the learner's Grade 7–9 history). Excluding them
+      // prevents identical results from producing duplicate rows when the
+      // same learner is viewed from different screens.
+      inputs: {
+        learnerInterest: readiness.data.inputs.learnerInterest,
+        teacherRecommendation: readiness.data.inputs.teacherRecommendation,
+        parentPreference: readiness.data.inputs.parentPreference,
+        nationalExam: readiness.data.inputs.nationalExam,
+      },
+      componentScores: readiness.data.componentScores,
+      ranking: readiness.data.ranking,
+    };
+    const signature = JSON.stringify(evidence);
+    const existingSignature = (latest?.analysisPayload as any)?.automaticRecommendation?.signature;
+    if (existingSignature === signature) return latest;
+
+    return saveTransitionDecision({
+      learnerId,
+      recommendedPathway: recommendation.recommendedPathway,
+      confidenceScore: recommendation.confidence,
+      learnerInterest: latest?.learnerInterest ?? null,
+      teacherRecommendation: latest?.teacherRecommendation ?? null,
+      parentPreference: latest?.parentPreference ?? null,
+      finalApprovedPathway: null,
+      mismatchWarning: recommendation.mismatchWarning,
+      analysisPayload: {
+        ...(readiness.data.analysisPayload as Record<string, unknown>),
+        automaticRecommendation: {
+          generated: true,
+          signature,
+          resultCount,
+        },
+      } as Prisma.InputJsonValue,
+      updatedBy: null,
+    });
+  }
+
+  /**
    * Analyze a learner's Grade 9 readiness for pathway transition.
    * Returns AI-safe context object.
    */
@@ -360,11 +446,15 @@ export class PathwayService {
       targetGradeLevel?: 'GRADE10' | 'GRADE11' | 'GRADE12';
     }
   ) {
+    const persisted = await this.ensureAutomaticRecommendation(learnerId, opts);
     return recommendSeniorPathwayAndSubjects({
       learnerId,
       term: opts?.term || 'TERM_3',
       academicYear: opts?.academicYear || new Date().getFullYear(),
       targetGradeLevel: opts?.targetGradeLevel,
+      learnerInterest: persisted?.learnerInterest ?? undefined,
+      teacherRecommendation: persisted?.teacherRecommendation ?? undefined,
+      parentPreference: persisted?.parentPreference ?? undefined,
     });
   }
 

@@ -27,6 +27,7 @@ import {
   readableCounsellorNoteVisibilities,
 } from '../services/counsellor-note-visibility.service';
 import { schoolMatchingService } from '../services/school-matching.service';
+import { PathwayService } from '../services/pathway.service';
 
 // ─── Notification helpers (fire-and-forget) ───────────────────────────────────
 
@@ -333,7 +334,10 @@ export const submitStudentSelection = async (req: AuthRequest, res: Response) =>
     compulsorySubjectIds:  body.compulsorySubjectIds ?? [],
     optionalSubjectIds:    body.optionalSubjectIds ?? [],
     supportSubjectIds:     body.supportSubjectIds ?? [],
-    strictSchoolOfferings: false, // soft check for student-initiated
+    // A senior learner can only submit subjects their current school actually
+    // delivers. This is deliberately strict: the client-side list is helpful,
+    // but the server remains the authority if a request is altered manually.
+    strictSchoolOfferings: true,
   });
 
   if (!validation.valid) {
@@ -606,6 +610,11 @@ export const getClassPathwayDistribution = async (req: AuthRequest, res: Respons
   if (!classRecord) throw new ApiError(404, 'Class not found');
 
   const learnerIds = classRecord.enrollments.map((e) => e.learnerId);
+
+  // Keep counsellor coverage in sync with the same canonical engine used in
+  // the learner journey. Learners with no summative evidence are intentionally
+  // left without a recommendation.
+  await Promise.all(learnerIds.map((learnerId) => PathwayService.ensureAutomaticRecommendation(learnerId)));
 
   const [recs, selections, decisionPlans, careerSaves, schoolPreferences, actionPlans, interventions] = await Promise.all([
     prisma.learnerPathwayRecommendation.findMany({
@@ -1008,6 +1017,8 @@ export const getClassLearners = async (req: AuthRequest, res: Response) => {
 
   const learners = classRecord.enrollments.map((e) => e.learner);
   const learnerIds = learners.map((l) => l.id);
+
+  await Promise.all(learnerIds.map((learnerId) => PathwayService.ensureAutomaticRecommendation(learnerId)));
 
   // Batch-load all pathway data for the class in parallel
   const [recs, selections, decisionPlans, careerSaves, schoolPrefs] = await Promise.all([

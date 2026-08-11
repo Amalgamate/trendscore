@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import api from '../../../../services/api';
 import { useNotifications } from '../../hooks/useNotifications';
+import { KpiCard } from '../../../../design-system/components';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -30,25 +31,8 @@ function FillBar({ value, max }) {
 }
 
 function StatCard({ label, value, sub, color = 'blue', icon: Icon }) {
-    const colors = {
-        blue:   'bg-blue-50 text-blue-600 border-blue-100',
-        green:  'bg-emerald-50 text-emerald-600 border-emerald-100',
-        red:    'bg-red-50 text-red-600 border-red-100',
-        amber:  'bg-amber-50 text-amber-600 border-amber-100',
-        purple: 'bg-purple-50 text-purple-600 border-purple-100',
-    };
-    return (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-start gap-4">
-            <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 border ${colors[color]}`}>
-                <Icon size={20} />
-            </div>
-            <div>
-                <p className="text-2xl font-semibold text-gray-900 leading-none">{value}</p>
-                <p className="text-xs font-medium text-gray-500 mt-1">{label}</p>
-                {sub && <p className="text-[11px] text-gray-400 mt-0.5">{sub}</p>}
-            </div>
-        </div>
-    );
+    const tones = { blue: 'sky', green: 'emerald', red: 'rose', amber: 'amber', purple: 'violet' };
+    return <KpiCard label={label} value={value} subvalue={sub} icon={<Icon size={20} />} tone={tones[color] || 'sky'} orbPosition="bottom-right" />;
 }
 
 function SectionHeader({ icon: Icon, title, children }) {

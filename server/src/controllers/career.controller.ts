@@ -10,6 +10,7 @@ import { ApiError } from '../utils/error.util';
 import { careerService } from '../services/career.service';
 import { parentAccessService } from '../services/parent-access.service';
 import prisma from '../config/database';
+import { PathwayService } from '../services/pathway.service';
 
 // ─── Ownership helper ─────────────────────────────────────────────────────────
 
@@ -130,6 +131,10 @@ export const careerController = {
   recalculateMatches: async (req: AuthRequest, res: Response) => {
     const { learnerId } = req.params;
     await assertLearnerAccess(req, learnerId);
+
+    // Career matching consumes the persisted canonical recommendation. Refresh
+    // it first so a learner never has to visit a separate pathway page.
+    await PathwayService.ensureAutomaticRecommendation(learnerId);
 
     // Pull latest recommendation for this learner
     const latestRec = await prisma.learnerPathwayRecommendation.findFirst({

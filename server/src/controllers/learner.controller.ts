@@ -404,6 +404,7 @@ export class LearnerController {
       // ── Create student system user by default ────────────────────────────────
       try {
         await ensureStudentAccountForLearner({
+          learnerId: learner.id,
           admissionNumber,
           firstName,
           lastName,
@@ -674,6 +675,7 @@ export class LearnerController {
       // Keep student portal account in sync (and backfill if missing).
       try {
         await ensureStudentAccountForLearner({
+          learnerId: updated.id,
           admissionNumber: updated.admissionNumber,
           firstName: updated.firstName,
           lastName: updated.lastName,

@@ -47,6 +47,7 @@ import { getCurrentDate, toInputDate } from '../../utils/dateHelpers';
 import LoadingSpinner from '../../shared/LoadingSpinner';
 import { AttendanceStatusBadge } from './AttendanceStatusChip';
 import { printWindow } from '../../../../utils/simplePdfGenerator';
+import { KpiCard } from '../../../../design-system/components';
 
 const PERIODS = [
   { key: 'today', label: 'Today' },
@@ -796,24 +797,8 @@ function HealthCard({ rate, trend }) {
 }
 
 function MetricCard({ title, value, helper, tone, icon: Icon }) {
-  const tones = {
-    green: { gradient: 'from-emerald-50', text: 'text-emerald-700', iconBg: 'bg-emerald-100' },
-    red: { gradient: 'from-rose-50', text: 'text-rose-700', iconBg: 'bg-rose-100' },
-    amber: { gradient: 'from-amber-50', text: 'text-amber-700', iconBg: 'bg-amber-100' },
-    purple: { gradient: 'from-violet-50', text: 'text-violet-700', iconBg: 'bg-violet-100' },
-    orange: { gradient: 'from-orange-50', text: 'text-orange-700', iconBg: 'bg-orange-100' },
-  };
-  const colors = tones[tone] || tones.green;
-  return (
-    <div className={cn('rounded-3xl border border-white bg-gradient-to-br p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md', colors.gradient, 'to-white')}>
-      <div className="flex items-start justify-between">
-        <p className="text-xs font-black uppercase tracking-widest text-slate-500">{title}</p>
-        <div className={cn('rounded-2xl p-2', colors.iconBg)}><Icon size={18} className={colors.text} /></div>
-      </div>
-      <p className={cn('mt-3 text-4xl font-black', colors.text)}>{value}</p>
-      <p className="mt-2 text-xs font-bold text-slate-500">{helper}</p>
-    </div>
-  );
+  const tones = { green: 'emerald', red: 'rose', amber: 'amber', purple: 'violet', orange: 'amber' };
+  return <KpiCard label={title} value={value} subvalue={helper} icon={<Icon size={19} />} tone={tones[tone] || 'emerald'} orbPosition="bottom-center" />;
 }
 
 function Panel({ title, helper, children }) {

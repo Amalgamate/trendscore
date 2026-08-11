@@ -14,6 +14,9 @@ export async function recommendSeniorPathwayAndSubjects(opts: {
   term: Term;
   academicYear: number;
   targetGradeLevel?: 'GRADE10' | 'GRADE11' | 'GRADE12';
+  learnerInterest?: string;
+  teacherRecommendation?: string;
+  parentPreference?: string;
 }) {
   const { learnerId, term, academicYear } = opts;
   const targetGradeLevel = opts.targetGradeLevel || 'GRADE10';
@@ -30,7 +33,13 @@ export async function recommendSeniorPathwayAndSubjects(opts: {
     throw new ApiError(400, 'Recommendations are available for Grade 7–9 learners only (to guide Senior Secondary pathway selection).');
   }
 
-  const readiness = await buildGrade9TransitionReadiness(learnerId, { term, academicYear });
+  const readiness = await buildGrade9TransitionReadiness(learnerId, {
+    term,
+    academicYear,
+    learnerInterest: opts.learnerInterest as any,
+    teacherRecommendation: opts.teacherRecommendation as any,
+    parentPreference: opts.parentPreference as any,
+  });
   const rec = readiness?.data?.recommendation;
   const prediction = rec ? {
     predictedPathway: rec.recommendedPathway,
@@ -132,4 +141,3 @@ export async function recommendSeniorPathwayAndSubjects(opts: {
     }
   };
 }
-
