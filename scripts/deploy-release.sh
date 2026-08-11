@@ -69,6 +69,7 @@ CONSOLE_IMAGE_BASE="${CONSOLE_IMAGE_BASE:-$(jq -r '.defaults.console_image' "${M
 HEALTH_HOST="${HEALTH_HOST:-$(jq -r '.defaults.health_host' "${MANIFEST_PATH}")}"
 BACKUP_RETENTION_COUNT="${BACKUP_RETENTION_COUNT:-5}"
 SUMMATIVE_SERIES_MIGRATION="20260707121500_allow_multiple_summative_series"
+LEARNER_STUDENT_USER_MIGRATION="20260811090000_link_learners_to_student_users"
 
 FRONTEND_IMAGE="${FRONTEND_IMAGE_BASE}:${IMAGE_TAG}"
 BACKEND_IMAGE="${BACKEND_IMAGE_BASE}:${IMAGE_TAG}"
@@ -589,6 +590,21 @@ SQL
   " < /dev/null
 }
 
+repair_interrupted_learner_student_user_migration() {
+  local kind="$1"
+  local project="${2:-}"
+  local env_file="${3:-}"
+
+  # The migration is PostgreSQL transactional. If a deploy was interrupted
+  # (for example by a full disk), Prisma leaves it marked failed and refuses
+  # subsequent deploys. Clearing that failed attempt lets migrate deploy apply
+  # the complete migration again; an already-applied migration is unaffected.
+  log "━━ Recover interrupted learner/student user migration if needed ━━"
+  compose_with_pinned_images "${kind}" "${project}" "${env_file}" run -T --no-deps --rm backend sh -lc "
+    npx prisma migrate resolve --rolled-back ${LEARNER_STUDENT_USER_MIGRATION} >/tmp/learner-student-user-resolve.log 2>&1 || true
+  " < /dev/null
+}
+
 run_migrations() {
   local kind="$1"
   local project="${2:-}"
@@ -596,6 +612,7 @@ run_migrations() {
 
   log "━━ Migrations (prisma migrate deploy) ━━"
   repair_summative_series_migration "${kind}" "${project}" "${env_file}" || return 1
+  repair_interrupted_learner_student_user_migration "${kind}" "${project}" "${env_file}" || return 1
 
   if [[ "${kind}" == "main" ]]; then
     compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
