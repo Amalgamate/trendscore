@@ -16,6 +16,8 @@ import RoleDashboard from '../pages/dashboard/RoleDashboard';
 import StudentDashboardView from '../pages/student/StudentDashboard';
 import FeeCollectionPage from '../pages/FeeCollectionPage';
 const LearnersList = lazy(() => import('../pages/LearnersList'));
+const StudentOverviewPage = lazy(() => import('../pages/StudentOverviewPage'));
+const StudentReportsPage = lazy(() => import('../pages/StudentReportsPage'));
 const TeacherLearnerAnalysis = lazy(() => import('../pages/dashboard/TeacherLearnerAnalysis'));
 const TeachersList = lazy(() => import('../pages/TeachersList'));
 const AddEditTeacherPage = lazy(() => import('../pages/AddEditTeacherPage'));
@@ -195,7 +197,7 @@ const MyAssignments = lazy(() => import('../pages/student/MyAssignments'));
 const MyProgress = lazy(() => import('../pages/student/MyProgress'));
 const StudentLearningTab = lazy(() => import('../pages/student/StudentLearningTab'));
 const MyResults = lazy(() => import('../pages/student/MyResults'));
-const PathwayPlanner = lazy(() => import('../pages/student/PathwayPlanner'));
+const StudentPathwayDashboard = lazy(() => import('../pages/student/StudentPathwayDashboard'));
 const CareerExplorer = lazy(() => import('../pages/student/CareerExplorer'));
 
 // Notification Center — global, all roles
@@ -492,6 +494,10 @@ const PageRouter = ({
           // Learners Module
           case 'teacher-learner-analysis':
             return <TeacherLearnerAnalysis user={user} onNavigate={handleNavigate} />;
+          case 'learners-overview':
+            return <StudentOverviewPage learners={learners} onNavigate={handleNavigate} />;
+          case 'learners-reports':
+            return <StudentReportsPage learners={learners} />;
           case 'learners-list':
             return (
               <ErrorBoundary>
@@ -613,7 +619,6 @@ const PageRouter = ({
             if (!betaReviewer) {
               return renderParentPortalShell(
                 <ComingSoon
-                  badge="Beta"
                   title="Trips is inactive"
                   description="This beta menu is available only to school administrators and beta reviewers."
                 />
@@ -784,7 +789,7 @@ const PageRouter = ({
           case 'student-courses': return <ErrorBoundary><MyCourses onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'student-assignments': return <ErrorBoundary><MyAssignments onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'student-results': return <ErrorBoundary><MyResults user={user} onNavigate={handleNavigate} /></ErrorBoundary>;
-          case 'student-pathway-planner': return <ErrorBoundary><PathwayPlanner user={user} onNavigate={handleNavigate} brandingSettings={brandingSettings} /></ErrorBoundary>;
+          case 'student-pathway-planner': return <ErrorBoundary><StudentPathwayDashboard user={user} onNavigate={handleNavigate} brandingSettings={brandingSettings} /></ErrorBoundary>;
           case 'student-career-explorer': return <ErrorBoundary><CareerExplorer user={user} onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'student-quizzes':
           case 'student-progress': return <ErrorBoundary><MyProgress onNavigate={handleNavigate} /></ErrorBoundary>;
@@ -918,8 +923,9 @@ const PageRouter = ({
           case 'system-maintenance': return <SystemMaintenancePage />;
 
           case 'sec-pathways':            return <PathwaysHub menuAction={pageParams?.action} menuActionRequest={pageParams} onNavigate={handleNavigate} user={user} />;
+          case 'sec-school-offerings':    return <PathwaysHub initialMode="configure" onNavigate={handleNavigate} user={user} />;
           case 'sec-school-catalogue':    return <PathwaysHub initialMode="schools" onNavigate={handleNavigate} user={user} />;
-          case 'pathways-admin':          return <PathwaysHub initialMode="admin" adminTab={pageParams?.tab} onNavigate={handleNavigate} user={user} />;
+          case 'pathways-admin':          return <PathwaysHub initialMode="admin" adminTab={pageParams?.tab} adminReferenceType={pageParams?.type} onNavigate={handleNavigate} user={user} />;
           case 'sec-subjects':            return <SubjectManagement />;
           case 'sec-pathway-counsellor':  return <PathwayCounsellorWorkbench onNavigate={handleNavigate} initialClassId={pageParams?.classId} user={user} />;
           case 'sec-pathway-overview':    return <PathwayClassOverview onNavigate={handleNavigate} user={user} />;

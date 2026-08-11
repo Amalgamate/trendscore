@@ -1,0 +1,68 @@
+name: Verify Biometric AWS
+
+on:
+  workflow_dispatch:
+    inputs:
+      school_slug:
+        description: 'School slug to verify, e.g. demo'
+        required: true
+        type: string
+        default: demo
+      environment:
+        description: 'Deployment environment that owns the protected SSH credentials'
+        required: true
+        type: string
+        default: demo
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      school_id: ${{ steps.target.outputs.school_id }}
+      school_name: ${{ steps.target.outputs.school_name }}
+      github_environment: ${{ steps.target.outputs.github_environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate school target
+        id: target
+        run: |
+          set -euo pipefail
+          node scripts/validate-deployment-target.js "${{ inputs.school_slug }}" \
+            --environment "${{ inputs.environment }}" \
+            --branch "${{ github.ref_name }}" \
+            --manifest deploy/instances.manifest.json
+
+  verify:
+    runs-on: ubuntu-latest
+    needs: validate
+    environment: ${{ needs.validate.outputs.github_environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Upload current deploy diagnostics
+        run: bash scripts/ci/sync-deploy-assets.sh
+
+      - name: Verify protected AWS biometric connection
+        env:
+          SCHOOL_ID: ${{ needs.validate.outputs.school_id }}
+        run: bash scripts/ci/verify-school-biometric-aws.sh
+
+      - name: Report success
+        run: |
+          {
+            echo "## Biometric AWS verification passed"
+            echo ""
+            echo "School: \`${{ needs.validate.outputs.school_name }}\`"
+            echo ""
+            echo "Verified the server credentials, liveness role assumption, school face collection, and liveness session creation without exposing credentials."
+          } >> "$GITHUB_STEP_SUMMARY"

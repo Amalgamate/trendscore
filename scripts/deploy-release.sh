@@ -40,6 +40,7 @@ require_cmd() {
 
 require_cmd jq
 require_cmd curl
+require_cmd openssl
 
 run_as_root() {
   if [[ "$(id -u)" -eq 0 ]]; then
@@ -216,6 +217,29 @@ read_env_value() {
   grep -E "^${key}=" "${file}" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '\r' || true
 }
 
+ensure_biometric_key_in_env() {
+  local env_file="$1"
+  [[ -f "${env_file}" ]] || fail "Environment file not found while configuring biometric encryption: ${env_file}"
+
+  local key version generated_key
+  key="$(read_env_value "${env_file}" BIOMETRIC_ENCRYPTION_KEY)"
+  version="$(read_env_value "${env_file}" BIOMETRIC_KEY_VERSION)"
+
+  if [[ -z "${key}" ]]; then
+    generated_key="$(openssl rand -hex 32)"
+    printf 'BIOMETRIC_ENCRYPTION_KEY=%s\n' "${generated_key}" | run_as_root tee -a "${env_file}" >/dev/null
+    log "Generated a dedicated biometric encryption key for $(basename "${env_file}")"
+  elif [[ ! "${key}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+    fail "BIOMETRIC_ENCRYPTION_KEY in ${env_file} must be exactly 64 hexadecimal characters; refusing to rotate or overwrite it automatically"
+  fi
+
+  if [[ -z "${version}" ]]; then
+    printf 'BIOMETRIC_KEY_VERSION=1\n' | run_as_root tee -a "${env_file}" >/dev/null
+  elif [[ ! "${version}" =~ ^[1-9][0-9]*$ ]]; then
+    fail "BIOMETRIC_KEY_VERSION in ${env_file} must be a positive integer"
+  fi
+}
+
 compose_with_pinned_images() {
   local kind="$1"
   local project="${2:-}"
@@ -223,10 +247,12 @@ compose_with_pinned_images() {
   shift 3
 
   if [[ "${kind}" == "main" ]]; then
+    ensure_biometric_key_in_env "${MAIN_DIR}/.env"
     pin_runtime_images_in_env "${MAIN_DIR}/.env"
     cd "${MAIN_DIR}"
     docker_cmd compose "$@"
   else
+    ensure_biometric_key_in_env "${stack_env}"
     pin_runtime_images_in_env "${stack_env}"
     cd "${APPS_DIR}"
     docker_cmd compose --env-file "${stack_env}" \
@@ -696,6 +722,11 @@ deploy_one() {
   if [[ "${DRY_RUN}" == "true" ]]; then
     log "DRY_RUN: skip backup/migrate/restart for ${id}"
     return 0
+  fi
+  if [[ "${kind}" == "main" ]]; then
+    ensure_biometric_key_in_env "${MAIN_DIR}/.env"
+  else
+    ensure_biometric_key_in_env "${env_file}"
   fi
   backup_database "${id}" "${kind}" "${project}" "${env_file}" || return 1
   pull_images "${kind}" "${project}" "${env_file}" || return 1

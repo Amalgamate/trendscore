@@ -18,6 +18,7 @@ import api from '../../../../services/api';
 import usePageNavigation from '../../../../hooks/usePageNavigation';
 import { useNotifications } from '../../hooks/useNotifications';
 import Toast from '../../shared/Toast';
+import { KpiCard } from '../../../../design-system/components';
 
 const STATUS_STYLES = {
   PENDING: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -71,26 +72,8 @@ const contactName = (learner) => {
 const contactPhone = (learner) => learner?.guardianPhone || learner?.parent?.phone || '-';
 
 function StatCard({ icon: Icon, label, value, sub, tone = 'slate' }) {
-  const tones = {
-    slate: 'bg-white border-slate-200 text-slate-700',
-    amber: 'bg-amber-50 border-amber-200 text-amber-800',
-    orange: 'bg-orange-50 border-orange-200 text-orange-800',
-    rose: 'bg-rose-50 border-rose-200 text-rose-800',
-    emerald: 'bg-emerald-50 border-emerald-200 text-emerald-800',
-  };
-
-  return (
-    <div className={`rounded-lg border p-4 ${tones[tone] || tones.slate}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide opacity-70">{label}</p>
-          <p className="mt-1 text-2xl font-semibold text-slate-950">{value}</p>
-          {sub && <p className="mt-1 text-xs opacity-75">{sub}</p>}
-        </div>
-        <Icon size={19} className="shrink-0 opacity-70" />
-      </div>
-    </div>
-  );
+  const colors = { slate: 'indigo', amber: 'amber', orange: 'amber', rose: 'rose', emerald: 'emerald' };
+  return <KpiCard label={label} value={value} subvalue={sub} icon={<Icon size={19} />} tone={colors[tone] || 'indigo'} orbPosition={tone === 'emerald' ? 'bottom-left' : 'top-right'} />;
 }
 
 const FeePledgesPage = () => {

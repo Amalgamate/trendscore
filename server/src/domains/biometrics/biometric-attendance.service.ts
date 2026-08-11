@@ -68,6 +68,9 @@ export interface BiometricScanInput {
 
 export interface BiometricScanResult {
   learnerId:      string;
+  admissionNumber: string;
+  learnerName:    string;
+  grade:          string;
   attendanceId:   string | null;
   status:         AttendanceStatus | null;
   action:         'created' | 'skipped_existing' | 'skipped_out' | 'error';
@@ -79,17 +82,22 @@ export async function handleBiometricLearnerScan(
 ): Promise<BiometricScanResult> {
   const learner = await prisma.learner.findFirst({
     where: { admissionNumber: input.admissionNumber },
-    select: { id: true, grade: true },
+    select: { id: true, admissionNumber: true, firstName: true, lastName: true, grade: true },
   });
 
   if (!learner) {
     throw new Error(`Learner not found: admissionNumber=${input.admissionNumber}`);
   }
 
+  const learnerName = [learner.firstName, learner.lastName].filter(Boolean).join(' ');
+
   // OUT scans don't affect the daily attendance status
   if (input.direction === 'OUT') {
     return {
       learnerId:    learner.id,
+      admissionNumber: learner.admissionNumber,
+      learnerName,
+      grade: learner.grade,
       attendanceId: null,
       status:       null,
       action:       'skipped_out',
@@ -97,22 +105,26 @@ export async function handleBiometricLearnerScan(
     };
   }
 
-  const utcToday = new Date(
+  const eatDate = new Date(input.timestamp.getTime() + EAT_OFFSET_MS);
+  const attendanceDate = new Date(
     Date.UTC(
-      input.timestamp.getUTCFullYear(),
-      input.timestamp.getUTCMonth(),
-      input.timestamp.getUTCDate(),
+      eatDate.getUTCFullYear(),
+      eatDate.getUTCMonth(),
+      eatDate.getUTCDate(),
     ),
   );
 
   // Don't overwrite an existing manual record
   const existing = await prisma.attendance.findUnique({
-    where: { learnerId_date: { learnerId: learner.id, date: utcToday } },
+    where: { learnerId_date: { learnerId: learner.id, date: attendanceDate } },
   });
 
   if (existing) {
     return {
       learnerId:    learner.id,
+      admissionNumber: learner.admissionNumber,
+      learnerName,
+      grade: learner.grade,
       attendanceId: existing.id,
       status:       existing.status,
       action:       'skipped_existing',
@@ -146,13 +158,12 @@ export async function handleBiometricLearnerScan(
     throw new Error('No admin user found for markedBy — cannot create attendance record');
   }
 
-  const eatTime = new Date(input.timestamp.getTime() + EAT_OFFSET_MS);
-  const timeStr = `${String(eatTime.getUTCHours()).padStart(2,'0')}:${String(eatTime.getUTCMinutes()).padStart(2,'0')}`;
+  const timeStr = `${String(eatDate.getUTCHours()).padStart(2,'0')}:${String(eatDate.getUTCMinutes()).padStart(2,'0')}`;
 
   const attendance = await prisma.attendance.create({
     data: {
       learnerId: learner.id,
-      date:      utcToday,
+      date:      attendanceDate,
       status:    finalStatus,
       source:    'BIOMETRIC',
       remarks:   `Biometric ${input.direction} at ${timeStr} EAT`,
@@ -169,6 +180,9 @@ export async function handleBiometricLearnerScan(
 
   return {
     learnerId:    learner.id,
+    admissionNumber: learner.admissionNumber,
+    learnerName,
+    grade: learner.grade,
     attendanceId: attendance.id,
     status:       finalStatus,
     action:       'created',

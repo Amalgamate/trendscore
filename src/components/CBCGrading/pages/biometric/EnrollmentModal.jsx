@@ -1,187 +1,210 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  X, 
-  Fingerprint, 
-  CheckCircle2, 
-  AlertCircle, 
-  Info, 
-  Copy, 
-  ExternalLink,
+import React, { useEffect, useState } from 'react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  ScanFace,
   ShieldCheck,
-  RefreshCw
+  Trash2,
+  X,
 } from 'lucide-react';
+import AwsFaceLivenessCapture from '../../../biometric/AwsFaceLivenessCapture';
 import { biometricAPI } from '../../../../services/api/biometric.api';
 
 const EnrollmentModal = ({ person, type, onClose }) => {
-  const [status, setStatus] = useState('CHECKING'); // CHECKING, READY, ENROLLING, SUCCESS, ERROR
+  const [status, setStatus] = useState('CHECKING');
   const [enrollmentData, setEnrollmentData] = useState(null);
-  const [error, setError] = useState(null);
+  const [consentConfirmed, setConsentConfirmed] = useState(false);
+  const [session, setSession] = useState(null);
+  const [error, setError] = useState('');
 
   const fetchStatus = async () => {
     try {
       setStatus('CHECKING');
+      setError('');
       const data = await biometricAPI.getEnrollmentStatus(type.toLowerCase(), person.id);
       setEnrollmentData(data);
       setStatus('READY');
     } catch (err) {
-      console.error('Error fetching enrollment status:', err);
-      setError('Failed to communicate with Biometric Authority.');
+      setError(err.message || 'Failed to load biometric enrollment status.');
       setStatus('ERROR');
     }
   };
 
   useEffect(() => {
     fetchStatus();
-  }, [person.id, type]);
+  }, [person.id, type]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-    // Could add a toast here
+  const faceCredential = enrollmentData?.credentials?.find(
+    (credential) => credential.type === 'FACE' && credential.status === 'ACTIVE',
+  );
+
+  const startEnrollment = async () => {
+    try {
+      setStatus('STARTING');
+      setError('');
+      const nextSession = await biometricAPI.createFaceEnrollmentSession(type, person.id, consentConfirmed);
+      setSession(nextSession);
+      setStatus('CAPTURING');
+    } catch (err) {
+      setError(err.message || 'Unable to start face enrollment.');
+      setStatus('ERROR');
+    }
   };
 
+  const completeEnrollment = async () => {
+    try {
+      setStatus('COMPLETING');
+      await biometricAPI.completeFaceEnrollmentSession(session.sessionId);
+      setSession(null);
+      setStatus('SUCCESS');
+    } catch (err) {
+      setSession(null);
+      setError(err.message || 'Face enrollment was not accepted.');
+      setStatus('ERROR');
+    }
+  };
+
+  const handleLivenessError = (livenessError) => {
+    setSession(null);
+    setError(livenessError?.error?.message || 'The liveness check could not be completed. Start a new capture.');
+    setStatus('ERROR');
+  };
+
+  const revokeFace = async () => {
+    if (!faceCredential || !window.confirm('Revoke this face enrollment? The learner or staff member must enroll again before face attendance works.')) return;
+    try {
+      setStatus('STARTING');
+      await biometricAPI.revokeCredential(faceCredential.id);
+      setConsentConfirmed(false);
+      await fetchStatus();
+    } catch (err) {
+      setError(err.message || 'Unable to revoke face enrollment.');
+      setStatus('ERROR');
+    }
+  };
+
+  const personReference = person.admissionNumber || person.staffId || person.employeeCode || person.id.split('-')[0];
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl shadow-indigo-500/20 overflow-hidden border border-slate-200">
-        {/* Modal Header */}
-        <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-white">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+      <div className={`max-h-[96vh] w-full overflow-y-auto rounded-[2rem] border border-slate-200 bg-white shadow-2xl ${status === 'CAPTURING' ? 'max-w-4xl' : 'max-w-xl'}`}>
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white px-7 py-5">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-2xl">
-              <Fingerprint size={24} />
-            </div>
+            <div className="rounded-2xl bg-indigo-50 p-2.5 text-indigo-600"><ScanFace size={24} /></div>
             <div>
-              <h2 className="text-xl font-semibold text-slate-900 tracking-tight uppercase">Biometric Enrollment</h2>
-              <p className="text-[10px] text-slate-400 font-medium uppercase tracking-widest italic leading-none mt-1">Interface Node: Secure Authentication</p>
+              <h2 className="text-lg font-semibold text-slate-900">AWS face enrollment</h2>
+              <p className="mt-0.5 text-xs text-slate-500">Liveness verified · encrypted provider reference</p>
             </div>
           </div>
-          <button 
-            onClick={onClose}
-            className="p-2 hover:bg-slate-100 rounded-xl transition-all text-slate-400 hover:text-slate-600"
-          >
-            <X size={20} />
-          </button>
-        </div>
+          <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"><X size={20} /></button>
+        </header>
 
-        {/* Modal Body */}
-        <div className="p-8">
-          {/* User Preview */}
-          <div className="flex items-center gap-5 p-5 bg-slate-50 rounded-3xl border border-slate-100 mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200 flex items-center justify-center font-semibold text-xl text-indigo-600 shadow-sm">
+        <div className="p-7">
+          <div className="mb-6 flex items-center gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-lg font-semibold text-indigo-600 shadow-sm">
               {person.firstName?.[0]}{person.lastName?.[0]}
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-900 leading-tight">
-                {person.firstName} {person.lastName}
-              </p>
-              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mt-1">
-                {type} • {person.admissionNumber || person.employeeCode || 'ID: ' + person.id.split('-')[0]}
-              </p>
+              <p className="font-semibold text-slate-900">{person.firstName} {person.lastName}</p>
+              <p className="mt-1 text-xs text-slate-500">{type} · {personReference}</p>
             </div>
-            <div className="ml-auto">
-              {enrollmentData?.isEnrolled ? (
-                <span className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[9px] font-semibold uppercase tracking-widest ring-1 ring-emerald-500/20">
-                  <CheckCircle2 size={12} />
-                  Enrolled
-                </span>
-              ) : (
-                <span className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-full text-[9px] font-semibold uppercase tracking-widest ring-1 ring-amber-500/20">
-                  <AlertCircle size={12} />
-                  Not Enrolled
-                </span>
-              )}
-            </div>
+            <span className={`ml-auto rounded-full px-3 py-1 text-[10px] font-semibold ${faceCredential ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+              {faceCredential ? 'FACE ENROLLED' : 'NOT ENROLLED'}
+            </span>
           </div>
 
-          {status === 'CHECKING' && (
-            <div className="py-12 flex flex-col items-center justify-center">
-              <RefreshCw size={40} className="text-indigo-600 animate-spin mb-4" />
-              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Synchronizing Keys...</p>
-            </div>
+          {status === 'CHECKING' && <LoadingState label="Checking enrollment…" />}
+          {status === 'STARTING' && <LoadingState label="Creating a secure AWS session…" />}
+          {status === 'COMPLETING' && <LoadingState label="Verifying liveness and indexing face…" />}
+
+          {status === 'CAPTURING' && session && (
+            <AwsFaceLivenessCapture
+              session={session}
+              onAnalysisComplete={completeEnrollment}
+              onError={handleLivenessError}
+              onCancel={() => {
+                setSession(null);
+                setStatus('READY');
+              }}
+            />
           )}
 
           {status === 'READY' && (
-            <div className="space-y-6">
-              <div className="p-6 bg-indigo-600 rounded-[2rem] text-white shadow-xl shadow-indigo-600/20 relative overflow-hidden">
-                <ShieldCheck className="absolute -right-4 -bottom-4 text-white/10" size={120} />
-                <h3 className="text-sm font-semibold uppercase tracking-widest mb-4 flex items-center gap-2">
-                  <Info size={16} /> 
-                  Enrollment Protocol
-                </h3>
-                <p className="text-xs font-medium text-indigo-50 leading-relaxed mb-6">
-                  To complete enrollment, open the TrendScore Biometric Bridge on the local scanning workstation. Use the following dynamic token to authenticate the session:
-                </p>
-                
-                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 flex items-center justify-between border border-white/20">
-                  <code className="text-lg font-semibold tracking-widest font-mono">
-                    {person.admissionNumber || person.employeeCode || person.id.split('-')[0]}
-                  </code>
-                  <button 
-                    onClick={() => copyToClipboard(person.admissionNumber || person.employeeCode || person.id)}
-                    className="p-2 hover:bg-white/20 rounded-xl transition-all"
-                  >
-                    <Copy size={18} />
+            <div className="space-y-5">
+              {faceCredential ? (
+                <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-6">
+                  <div className="flex items-center gap-3 text-emerald-700"><CheckCircle2 size={24} /><h3 className="font-semibold">Face recognition is active</h3></div>
+                  <p className="mt-3 text-sm leading-6 text-emerald-800/80">
+                    Enrolled {new Date(faceCredential.enrolledAt).toLocaleString()} using {faceCredential.provider || 'the configured provider'}.
+                  </p>
+                  <button onClick={revokeFace} className="mt-5 flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-semibold text-rose-700 shadow-sm">
+                    <Trash2 size={15} /> Revoke face enrollment
                   </button>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                  <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Bridge Status</p>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-slate-300" />
-                    <p className="text-[10px] font-medium text-slate-600 italic">Waiting for connection...</p>
+              ) : (
+                <>
+                  <div className="rounded-3xl bg-slate-950 p-6 text-white">
+                    <div className="flex items-center gap-3"><ShieldCheck className="text-indigo-300" /><h3 className="font-semibold">Before capturing</h3></div>
+                    <ul className="mt-4 space-y-2 text-xs leading-5 text-white/70">
+                      <li>Use the learner or staff member who is being enrolled.</li>
+                      <li>Stand in even lighting and remove face coverings where appropriate.</li>
+                      <li>TrendSCORE stores an encrypted AWS face reference, not the camera video.</li>
+                    </ul>
                   </div>
-                </div>
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                  <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Template Version</p>
-                  <p className="text-[10px] font-medium text-slate-600">ISO-19794-2:2011</p>
-                </div>
-              </div>
+
+                  <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
+                    <input
+                      type="checkbox"
+                      checked={consentConfirmed}
+                      onChange={(event) => setConsentConfirmed(event.target.checked)}
+                      className="mt-0.5 h-4 w-4"
+                    />
+                    <span className="text-xs leading-5 text-slate-700">
+                      I confirm that documented parent/guardian consent (or staff consent) and the school’s approved biometric purpose are on record.
+                    </span>
+                  </label>
+
+                  <button
+                    onClick={startEnrollment}
+                    disabled={!consentConfirmed}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ScanFace size={18} /> Start live face enrollment
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {status === 'SUCCESS' && (
+            <div className="py-10 text-center">
+              <CheckCircle2 size={56} className="mx-auto text-emerald-500" />
+              <h3 className="mt-5 text-xl font-semibold text-slate-900">Face enrolled</h3>
+              <p className="mt-2 text-sm text-slate-500">This person can now use a configured phone face terminal.</p>
+              <button onClick={onClose} className="mt-6 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white">Done</button>
             </div>
           )}
 
           {status === 'ERROR' && (
-            <div className="py-12 flex flex-col items-center text-center">
-              <div className="p-4 bg-rose-50 text-rose-600 rounded-3xl mb-4">
-                <AlertCircle size={32} />
-              </div>
-              <h4 className="text-slate-900 font-semibold uppercase tracking-tight">System Outage</h4>
-              <p className="text-xs text-slate-400 mt-2 max-w-xs">{error}</p>
-              <button 
-                onClick={fetchStatus}
-                className="mt-6 px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-semibold uppercase tracking-widest shadow-lg shadow-indigo-600/20"
-              >
-                Retry Link
-              </button>
+            <div className="rounded-3xl border border-rose-200 bg-rose-50 p-6 text-center">
+              <AlertCircle size={40} className="mx-auto text-rose-600" />
+              <h3 className="mt-4 font-semibold text-slate-900">Face enrollment did not complete</h3>
+              <p className="mt-2 text-sm leading-6 text-rose-700">{error}</p>
+              <button onClick={fetchStatus} className="mt-5 rounded-xl bg-white px-5 py-2.5 text-xs font-semibold text-slate-700 shadow-sm">Return to enrollment</button>
             </div>
           )}
-        </div>
-
-        {/* Modal Footer */}
-        <div className="px-8 py-6 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-          <p className="text-[9px] font-medium text-slate-400 flex items-center gap-2">
-            <ShieldCheck size={14} className="text-indigo-400" />
-            End-to-End Encrypted Enrollment Channel
-          </p>
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={onClose}
-              className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest hover:text-slate-900 transition-colors"
-            >
-              Cancel
-            </button>
-            <button 
-              disabled={status !== 'READY'}
-              onClick={() => window.open('/biometric-bridge-download', '_blank')}
-              className="flex items-center gap-2 px-6 py-2.5 bg-white border border-slate-200 text-slate-900 rounded-xl text-[10px] font-semibold uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm disabled:opacity-50"
-            >
-              <ExternalLink size={14} />
-              Open Bridge
-            </button>
-          </div>
         </div>
       </div>
     </div>
   );
 };
+
+const LoadingState = ({ label }) => (
+  <div className="flex flex-col items-center py-14 text-center">
+    <Loader2 size={38} className="animate-spin text-indigo-600" />
+    <p className="mt-4 text-sm font-medium text-slate-500">{label}</p>
+  </div>
+);
 
 export default EnrollmentModal;

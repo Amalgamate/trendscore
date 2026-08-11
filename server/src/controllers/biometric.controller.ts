@@ -6,26 +6,22 @@
  */
 
 import { Request, Response } from 'express';
-import { randomBytes } from 'crypto';
 import { BiometricService } from '../services/biometric.service';
 import { AuthRequest } from '../middleware/permissions.middleware';
 import { ApiError } from '../utils/error.util';
 import prisma from '../config/database';
+import { biometricFaceService, requiredBearerToken } from '../services/biometric-face.service';
 
 const biometricService = new BiometricService();
 
 /** Minimum quality score accepted for fingerprint/face enrollment */
 const MIN_QUALITY_SCORE = 60;
 
-/** Resolve school from DB (req.user has no schoolId field) */
-async function resolveSchoolId(): Promise<string> {
-  const school = await prisma.school.findFirst({
-    where: { archived: false, active: true },
-    select: { id: true },
-    orderBy: { createdAt: 'asc' },
-  });
-  if (!school) throw new ApiError(500, 'No active school found');
-  return school.id;
+/** School context is populated before routes by schoolContextMiddleware. */
+function resolveSchoolId(req: AuthRequest): string {
+  const schoolId = req.school?.id;
+  if (!schoolId) throw new ApiError(400, 'School context is required');
+  return schoolId;
 }
 
 export class BiometricController {
@@ -38,16 +34,30 @@ export class BiometricController {
    */
   async registerDevice(req: AuthRequest, res: Response) {
     try {
-      const schoolId = await resolveSchoolId();
+      const schoolId = resolveSchoolId(req);
+      const { deviceId, name, type, location, ipAddress, serialNumber, firmwareVersion, syncMode } = req.body;
 
-      const device = await biometricService.registerDevice({
-        ...req.body,
+      const result = await biometricService.registerDevice({
+        deviceId,
+        name,
+        type,
+        location,
+        ipAddress,
+        serialNumber,
+        firmwareVersion,
+        syncMode,
         schoolId,
+        installedById: req.user?.userId,
       });
-      res.status(201).json({
+      res.status(result.created ? 201 : 200).json({
         success: true,
-        message: 'Device registered successfully',
-        data: device,
+        message: result.created
+          ? 'Device registered. Store the device token now; it will not be shown again.'
+          : 'Device metadata updated. Rotate the token if the original is unavailable.',
+        data: {
+          ...result.device,
+          ...(result.deviceToken && { deviceToken: result.deviceToken }),
+        },
       });
     } catch (error: any) {
       const status = error.statusCode || 400;
@@ -61,7 +71,7 @@ export class BiometricController {
    */
   async getDevices(req: AuthRequest, res: Response) {
     try {
-      const schoolId = await resolveSchoolId().catch(() => undefined);
+      const schoolId = resolveSchoolId(req);
       const devices  = await biometricService.getDevices(schoolId);
       res.json({ success: true, data: devices, count: devices.length });
     } catch (error: any) {
@@ -76,20 +86,32 @@ export class BiometricController {
    */
   async rotateDeviceToken(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
-      const device = await prisma.biometricDevice.findUnique({ where: { id } });
-      if (!device) throw new ApiError(404, 'Device not found');
-
-      const newToken = randomBytes(32).toString('hex');
-      await prisma.biometricDevice.update({
-        where: { id },
-        data:  { token: newToken, updatedAt: new Date() },
-      });
+      const schoolId = resolveSchoolId(req);
+      const result = await biometricService.rotateDeviceToken(req.params.id, schoolId);
 
       res.json({
         success: true,
         message: 'Device token rotated. Store this token securely — it will not be shown again.',
-        data: { deviceId: device.deviceId, newToken },
+        data: result,
+      });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
+  }
+
+  /** POST /api/biometric/devices/:id/activation — issue a short-lived phone setup code. */
+  async createTerminalActivation(req: AuthRequest, res: Response) {
+    try {
+      const schoolId = resolveSchoolId(req);
+      const activation = await biometricService.createTerminalActivation(
+        req.params.id,
+        schoolId,
+        req.user?.userId,
+      );
+      res.status(201).json({
+        success: true,
+        message: 'Activation code created. It expires in 10 minutes and can be used once.',
+        data: activation,
       });
     } catch (error: any) {
       res.status(error.statusCode || 500).json({ success: false, message: error.message });
@@ -102,26 +124,57 @@ export class BiometricController {
    */
   async updateDevice(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
-      const { name, location, type, ipAddress, syncMode, firmwareVersion, serialNumber } = req.body;
-
-      const existing = await prisma.biometricDevice.findUnique({ where: { id } });
-      if (!existing) throw new ApiError(404, 'Device not found');
-
-      const updated = await prisma.biometricDevice.update({
-        where: { id },
-        data: {
-          ...(name             && { name }),
-          ...(location         !== undefined && { location }),
-          ...(type             && { type }),
-          ...(ipAddress        !== undefined && { ipAddress }),
-          ...(syncMode         && { syncMode }),
-          ...(firmwareVersion  !== undefined && { firmwareVersion }),
-          ...(serialNumber     !== undefined && { serialNumber }),
-        },
-      });
+      const schoolId = resolveSchoolId(req);
+      const updated = await biometricService.updateDevice(req.params.id, schoolId, req.body);
 
       res.json({ success: true, data: updated });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
+  }
+
+  /** DELETE /api/biometric/devices/:id — decommission without deleting audit logs. */
+  async decommissionDevice(req: AuthRequest, res: Response) {
+    try {
+      const schoolId = resolveSchoolId(req);
+      const device = await biometricService.decommissionDevice(req.params.id, schoolId);
+      res.json({ success: true, message: 'Device decommissioned', data: device });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
+  }
+
+  /** POST /api/biometric/devices/:id/test — verify a recent authenticated heartbeat. */
+  async testDeviceConnection(req: AuthRequest, res: Response) {
+    try {
+      const schoolId = resolveSchoolId(req);
+      const result = await biometricService.testDeviceConnection(req.params.id, schoolId, req.user?.userId);
+      res.json({ success: true, data: result });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
+  }
+
+  /** GET /api/biometric/configuration — safe platform readiness metadata only. */
+  async getConfiguration(req: AuthRequest, res: Response) {
+    try {
+      resolveSchoolId(req);
+      const key = process.env.BIOMETRIC_ENCRYPTION_KEY || '';
+      res.json({
+        success: true,
+        data: {
+          encryptionConfigured: /^[0-9a-fA-F]{64}$/.test(key),
+          keyVersion: Number.parseInt(process.env.BIOMETRIC_KEY_VERSION || '1', 10),
+          guideVersion: '2026.08',
+          webhookPath: '/api/biometric/log',
+          phoneTerminalPath: '/#/terminal/biometric',
+          terminalEventPath: '/api/biometric/terminal/events',
+          terminalEventContractVersion: 1,
+          faceRecognitionConfigured: biometricFaceService.getConfiguration().configured,
+          faceRecognition: biometricFaceService.getConfiguration(),
+          supportedModes: ['PUSH', 'PULL', 'BOTH'],
+        },
+      });
     } catch (error: any) {
       res.status(error.statusCode || 500).json({ success: false, message: error.message });
     }
@@ -137,6 +190,7 @@ export class BiometricController {
    */
   async enrollCredential(req: AuthRequest, res: Response) {
     try {
+      const schoolId = resolveSchoolId(req);
       const { userId, learnerId, type, template, fingerIndex, quality } = req.body;
 
       if (!template) return res.status(400).json({ success: false, message: 'template is required' });
@@ -158,6 +212,7 @@ export class BiometricController {
       // Duplicate check — same person + same finger index + same type + ACTIVE
       const fingerIdx = fingerIndex ? parseInt(fingerIndex, 10) : null;
       const duplicateWhere: any = {
+        schoolId,
         status: 'ACTIVE',
         type,
         ...(userId    && { userId }),
@@ -180,6 +235,7 @@ export class BiometricController {
         : Buffer.from(template, 'base64');
 
       const credential = await biometricService.enrollCredential({
+        schoolId,
         userId, learnerId, type, template: templateBuffer,
         fingerIndex: fingerIdx ?? undefined,
         quality:     qualityScore ?? undefined,
@@ -195,12 +251,56 @@ export class BiometricController {
     }
   }
 
+  /** POST /api/biometric/face/enrollment/session — start consent-gated AWS liveness enrollment. */
+  async createFaceEnrollmentSession(req: AuthRequest, res: Response) {
+    try {
+      const schoolId = resolveSchoolId(req);
+      const personType = String(req.body.personType || '').toUpperCase();
+      const personId = String(req.body.personId || '').trim();
+      if (!['LEARNER', 'STAFF'].includes(personType) || !personId) {
+        throw new ApiError(400, 'personType must be LEARNER or STAFF and personId is required');
+      }
+      if (req.body.consentConfirmed !== true) {
+        throw new ApiError(422, 'Parent, guardian, or staff biometric consent must be confirmed before enrollment');
+      }
+      if (!req.user?.userId) throw new ApiError(401, 'Authenticated administrator is required');
+
+      const session = await biometricFaceService.createSession({
+        purpose: 'ENROLLMENT',
+        schoolId,
+        personType: personType as 'LEARNER' | 'STAFF',
+        personId,
+        createdById: req.user.userId,
+      });
+      res.status(201).json({ success: true, data: session });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
+  }
+
+  /** POST /api/biometric/face/enrollment/session/:sessionId/complete */
+  async completeFaceEnrollmentSession(req: AuthRequest, res: Response) {
+    try {
+      const schoolId = resolveSchoolId(req);
+      if (!req.user?.userId) throw new ApiError(401, 'Authenticated administrator is required');
+      const result = await biometricFaceService.completeEnrollment(
+        req.params.sessionId,
+        schoolId,
+        req.user.userId,
+      );
+      res.status(201).json({ success: true, message: 'Face enrolled successfully', data: result });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
+  }
+
   /**
    * GET /api/biometric/credentials
    * List credentials for a person (no templates returned).
    */
   async getCredentials(req: AuthRequest, res: Response) {
     try {
+      const schoolId = resolveSchoolId(req);
       const { userId, learnerId } = req.query;
       if (!userId && !learnerId) {
         return res.status(400).json({ success: false, message: 'userId or learnerId is required' });
@@ -208,12 +308,14 @@ export class BiometricController {
 
       const credentials = await prisma.biometricCredential.findMany({
         where: {
+          schoolId,
           ...(userId    && { userId:    userId as string }),
           ...(learnerId && { learnerId: learnerId as string }),
           status: 'ACTIVE',
         },
         select: {
           id: true, type: true, fingerIndex: true, quality: true,
+          provider: true, consentRecordedAt: true,
           keyVersion: true, enrolledAt: true, status: true, createdAt: true,
           // template is NEVER selected
         },
@@ -232,16 +334,37 @@ export class BiometricController {
    */
   async revokeCredential(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
-      const credential = await prisma.biometricCredential.findUnique({ where: { id } });
-      if (!credential) throw new ApiError(404, 'Credential not found');
+      const schoolId = resolveSchoolId(req);
+      const credential = await biometricFaceService.revokeCredential(req.params.id, schoolId);
+      res.json({ success: true, message: 'Credential revoked', data: credential });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
+  }
 
-      await prisma.biometricCredential.update({
-        where: { id },
-        data:  { status: 'REVOKED' },
+  /** GET /api/biometric/enroll/:personType/:personId */
+  async getEnrollmentStatus(req: AuthRequest, res: Response) {
+    try {
+      const schoolId = resolveSchoolId(req);
+      const personType = String(req.params.personType || '').toUpperCase();
+      const personId = req.params.personId;
+      if (!['LEARNER', 'STAFF'].includes(personType)) {
+        return res.status(400).json({ success: false, message: 'personType must be learner or staff' });
+      }
+
+      const credentials = await prisma.biometricCredential.findMany({
+        where: {
+          schoolId,
+          status: 'ACTIVE',
+          ...(personType === 'LEARNER' ? { learnerId: personId } : { userId: personId }),
+        },
+        select: {
+          id: true, type: true, fingerIndex: true, quality: true, provider: true,
+          consentRecordedAt: true, enrolledAt: true, status: true,
+        },
+        orderBy: { enrolledAt: 'desc' },
       });
-
-      res.json({ success: true, message: 'Credential revoked' });
+      res.json({ success: true, data: { isEnrolled: credentials.length > 0, credentials } });
     } catch (error: any) {
       res.status(error.statusCode || 500).json({ success: false, message: error.message });
     }
@@ -249,18 +372,152 @@ export class BiometricController {
 
   // ── Attendance Webhook ─────────────────────────────────────────────────────
 
+  /** POST /api/biometric/terminal/activate — exchange a one-time setup code for a terminal token. */
+  async activateTerminal(req: Request, res: Response) {
+    try {
+      const result = await biometricService.activateTerminal(req.body.deviceId, req.body.activationCode);
+      res.json({
+        success: true,
+        message: 'Phone terminal activated. The device token will not be returned again.',
+        data: result,
+      });
+    } catch (error: any) {
+      res.status(error.statusCode || 400).json({ success: false, message: error.message });
+    }
+  }
+
+  /** POST /api/biometric/terminal/face/session — start terminal liveness and matching. */
+  async createTerminalFaceSession(req: Request, res: Response) {
+    try {
+      const direction = String(req.body.direction || 'IN').toUpperCase();
+      if (!['IN', 'OUT'].includes(direction)) throw new ApiError(400, 'direction must be IN or OUT');
+      const session = await biometricFaceService.createTerminalSession(
+        String(req.body.deviceId || ''),
+        req.headers.authorization,
+        direction as 'IN' | 'OUT',
+      );
+      res.status(201).json({ success: true, data: session });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
+  }
+
+  /** POST /api/biometric/terminal/face/session/:sessionId/complete */
+  async completeTerminalFaceSession(req: Request, res: Response) {
+    try {
+      const token = requiredBearerToken(req.headers.authorization);
+      const result = await biometricFaceService.completeAttendance(
+        req.params.sessionId,
+        String(req.body.deviceId || ''),
+        token,
+      );
+      res.status(result.duplicate ? 200 : 201).json({
+        success: true,
+        message: result.duplicate ? 'Face attendance event already accepted' : 'Face attendance accepted',
+        data: {
+          duplicate: result.duplicate,
+          outcome: result.outcome,
+          logId: result.log.id,
+        },
+      });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
+  }
+
+  /** POST /api/biometric/terminal/events — replay-safe phone/offline event contract. */
+  async recordTerminalEvent(req: Request, res: Response) {
+    try {
+      const bearerToken = req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+      if (!bearerToken) throw new ApiError(401, 'Terminal bearer token is required');
+
+      const eventId = String(req.body.eventId || '').trim();
+      const deviceId = String(req.body.deviceId || '').trim();
+      const personId = String(req.body.personId || '').trim();
+      const personType = String(req.body.personType || '').toUpperCase();
+      const direction = String(req.body.direction || 'IN').toUpperCase();
+      const modality = String(req.body.modality || 'QR').toUpperCase();
+      const timestamp = new Date(req.body.timestamp);
+
+      if (!/^[A-Za-z0-9._:-]{8,128}$/.test(eventId)) {
+        throw new ApiError(400, 'eventId must be an 8-128 character terminal-generated identifier');
+      }
+      if (!deviceId || !personId || deviceId.length > 128 || personId.length > 128) {
+        throw new ApiError(400, 'A valid deviceId and personId are required');
+      }
+      if (!['LEARNER', 'STAFF'].includes(personType)) {
+        throw new ApiError(400, 'personType must be LEARNER or STAFF');
+      }
+      if (!['IN', 'OUT'].includes(direction)) throw new ApiError(400, 'direction must be IN or OUT');
+      if (!['QR', 'NFC', 'CARD', 'FACE', 'FINGERPRINT', 'MANUAL'].includes(modality)) {
+        throw new ApiError(400, 'Unsupported terminal modality');
+      }
+      if (Number.isNaN(timestamp.getTime())) throw new ApiError(400, 'timestamp must be a valid ISO 8601 value');
+      const ageMs = Date.now() - timestamp.getTime();
+      if (ageMs > 30 * 24 * 60 * 60 * 1000 || ageMs < -5 * 60 * 1000) {
+        throw new ApiError(400, 'timestamp must be within the last 30 days and no more than 5 minutes in the future');
+      }
+
+      const matchConfidence = req.body.matchConfidence === undefined
+        ? undefined
+        : Number(req.body.matchConfidence);
+      const livenessConfidence = req.body.livenessConfidence === undefined
+        ? undefined
+        : Number(req.body.livenessConfidence);
+      for (const [label, value] of [['matchConfidence', matchConfidence], ['livenessConfidence', livenessConfidence]] as const) {
+        if (value !== undefined && (!Number.isFinite(value) || value < 0 || value > 1)) {
+          throw new ApiError(400, `${label} must be between 0 and 1`);
+        }
+      }
+
+      const result = await biometricService.processAttendanceLog({
+        deviceId,
+        deviceToken: bearerToken,
+        eventId,
+        personId,
+        personType: personType as 'LEARNER' | 'STAFF',
+        timestamp,
+        direction: direction as 'IN' | 'OUT',
+        modality,
+        matchConfidence,
+        livenessStatus: req.body.livenessStatus,
+        livenessConfidence,
+        offlineCaptured: Boolean(req.body.offlineCaptured),
+      });
+
+      res.status(result.duplicate ? 200 : 201).json({
+        success: true,
+        message: result.duplicate ? 'Attendance event already accepted' : 'Attendance event accepted',
+        data: {
+          eventId,
+          logId: result.log.id,
+          processingStatus: result.log.status,
+          duplicate: result.duplicate,
+          outcome: result.outcome,
+        },
+      });
+    } catch (error: any) {
+      const status = error.statusCode || (error.message?.includes('Invalid device') ? 401 : 400);
+      res.status(status).json({ success: false, message: error.message });
+    }
+  }
+
   /**
-   * POST /api/biometric/log  (public — device token auth in body)
+   * POST /api/biometric/log  (public — bearer token, legacy body token supported)
    * Webhook called by hardware devices when a person scans.
    */
   async logAttendance(req: Request, res: Response) {
     try {
-      const { deviceId, deviceToken, personId, personType, timestamp, direction } = req.body;
+      const { deviceId, personId, timestamp } = req.body;
+      const bearerToken = req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+      const deviceToken = bearerToken || req.body.deviceToken;
+      const personType = String(req.body.personType || '').toUpperCase();
+      const direction = String(req.body.direction || 'IN').toUpperCase();
 
       if (!deviceId || !deviceToken || !personId || !personType || !timestamp) {
         return res.status(400).json({
           success: false,
-          message: 'Missing required fields: deviceId, deviceToken, personId, personType, timestamp',
+          message: 'Missing required fields: deviceId, device token, personId, personType, timestamp',
         });
       }
 
@@ -271,20 +528,33 @@ export class BiometricController {
           message: `personType must be one of: ${validTypes.join(', ')}`,
         });
       }
+      if (!['IN', 'OUT'].includes(direction)) {
+        return res.status(400).json({ success: false, message: 'direction must be IN or OUT' });
+      }
 
-      const log = await biometricService.processAttendanceLog({
+      const scanTimestamp = new Date(timestamp);
+      if (Number.isNaN(scanTimestamp.getTime())) {
+        return res.status(400).json({ success: false, message: 'timestamp must be a valid ISO 8601 value' });
+      }
+
+      const result = await biometricService.processAttendanceLog({
         deviceId,
         deviceToken,
         personId,
         personType: personType as 'LEARNER' | 'STAFF',
-        timestamp: new Date(timestamp),
-        direction: direction || 'IN',
+        timestamp: scanTimestamp,
+        direction: direction as 'IN' | 'OUT',
       });
 
       res.status(200).json({
         success: true,
         message: 'Attendance log processed',
-        data: { id: log.id, status: log.status },
+        data: {
+          id: result.log.id,
+          status: result.log.status,
+          duplicate: result.duplicate,
+          outcome: result.outcome,
+        },
       });
     } catch (error: any) {
       const status = error.message?.includes('Invalid') ? 401 : 400;
@@ -301,7 +571,7 @@ export class BiometricController {
   async getLogs(req: AuthRequest, res: Response) {
     try {
       const { startDate, endDate, deviceId, status } = req.query;
-      const schoolId = await resolveSchoolId().catch(() => undefined);
+      const schoolId = resolveSchoolId(req);
 
       const logs = await biometricService.getLogs({
         schoolId,
@@ -314,6 +584,17 @@ export class BiometricController {
       res.json({ success: true, data: logs, count: logs.length });
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  /** POST /api/biometric/logs/:id/process — retry a failed school-owned record. */
+  async retryLog(req: AuthRequest, res: Response) {
+    try {
+      const schoolId = resolveSchoolId(req);
+      const log = await biometricService.retryLog(req.params.id, schoolId);
+      res.json({ success: true, message: 'Biometric log reprocessed', data: log });
+    } catch (error: any) {
+      res.status(error.statusCode || 500).json({ success: false, message: error.message });
     }
   }
 }

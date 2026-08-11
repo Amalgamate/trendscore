@@ -38,9 +38,24 @@ export const tertiaryNavSections = [
     icon: Users,
     permission: null,
     items: [
-      { id: 'students-list',       label: 'Students List',   path: 'learners-list',       permission: 'VIEW_ALL_LEARNERS' },
-      { id: 'students-admissions', label: 'Admissions',      path: 'learners-admissions', permission: 'CREATE_LEARNER'    },
-      { id: 'students-id-print',   label: 'ID Card Printing',path: 'learners-id-print',   permission: 'VIEW_ALL_LEARNERS', icon: CreditCard },
+      { id: 'students-overview',   label: 'Students Overview', path: 'learners-overview', permission: 'VIEW_ALL_LEARNERS' },
+      { id: 'students-list',       label: 'Students List',     path: 'learners-list',     permission: 'VIEW_ALL_LEARNERS' },
+      { id: 'students-admissions', label: 'Admissions',        path: 'learners-admissions', permission: 'CREATE_LEARNER' },
+      { id: 'students-reports',    label: 'Student Reports',   path: 'learners-reports',  permission: 'VIEW_ALL_LEARNERS' },
+      {
+        id: 'students-transfers', label: 'Transfers & Exits', type: 'group', items: [
+          { id: 'students-transfers-in', label: 'Incoming Transfers', path: 'learners-transfers-in', permission: 'VIEW_ALL_LEARNERS' },
+          { id: 'students-transfer-out', label: 'Transfer Out', path: 'learners-transfer-out', permission: 'VIEW_ALL_LEARNERS' },
+          { id: 'students-exited', label: 'Exited Students', path: 'learners-exited', permission: 'VIEW_ALL_LEARNERS' },
+        ],
+      },
+      {
+        id: 'students-services', label: 'Student Services', type: 'group', items: [
+          { id: 'students-id-print', label: 'ID Card Printing', path: 'learners-id-print', permission: 'VIEW_ALL_LEARNERS', icon: CreditCard },
+          { id: 'students-documents', label: 'Student Documents', path: 'docs-center', params: { category: 'students' }, permission: 'VIEW_ALL_LEARNERS', icon: FileText },
+        ],
+      },
+      { id: 'parents-list', label: 'Parents & Guardians', path: 'parents-list', permission: 'VIEW_ALL_USERS' },
     ],
   },
   {

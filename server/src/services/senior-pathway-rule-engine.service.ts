@@ -215,9 +215,14 @@ export async function validateSeniorPathwaySelection(
       pushWarning(warnings, 'SCHOOL_OFFERINGS_NOT_CONFIGURED', 'No school subject offerings are configured; offering validation was skipped.', 'schoolId');
     } else {
       const offered = new Set(offeredRows.map((row) => row.officialLearningAreaId));
-      const missingOfferings = optionalSubjectIds.filter((id) => !offered.has(id));
+      const selectedSubjectIds = [...new Set([
+        ...compulsorySubjectIds,
+        ...optionalSubjectIds,
+        ...supportSubjectIds,
+      ])];
+      const missingOfferings = selectedSubjectIds.filter((id) => !offered.has(id));
       if (missingOfferings.length > 0) {
-        pushError(errors, 'SUBJECT_NOT_OFFERED', `School does not offer selected subject id(s): ${missingOfferings.join(', ')}`, 'optionalSubjectIds');
+        pushError(errors, 'SUBJECT_NOT_OFFERED', `School does not offer selected subject id(s): ${missingOfferings.join(', ')}`, 'subjects');
       }
     }
   }

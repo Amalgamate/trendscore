@@ -3,8 +3,30 @@ import pino from 'pino';
 const isProduction = process.env.NODE_ENV === 'production';
 const logLevel = process.env.LOG_LEVEL || 'info';
 
+// pino-http serializes request headers by default. Keep credentials out of
+// application and container logs even when a caller logs the surrounding
+// request/response object.
+export const LOG_REDACTION_PATHS = [
+  'req.headers.authorization',
+  'req.headers.cookie',
+  'res.headers["set-cookie"]',
+  'headers.authorization',
+  'headers.cookie',
+  'authorization',
+  'cookie',
+  'accessToken',
+  'refreshToken',
+  'deviceToken',
+  'password',
+  'secret',
+];
+
 const pinoInstance = pino({
   level: logLevel,
+  redact: {
+    paths: LOG_REDACTION_PATHS,
+    censor: '[REDACTED]',
+  },
   transport: isProduction
     ? undefined
     : {

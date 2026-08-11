@@ -25,7 +25,7 @@ import React, {
 import { AuthContext } from './AuthContext';
 import { impersonationApi } from '../services/api/impersonation.api';
 import axiosInstance from '../services/api/axiosConfig';
-import { getAuthItem } from '../utils/authStorage';
+import { clearImpersonationAccessToken, getAuthItem, setImpersonationAccessToken } from '../utils/authStorage';
 
 // ─── localStorage key constants ───────────────────────────────────────────────
 const LS_ORIGINAL_TOKEN = 'trendscore_impersonation_original_token';
@@ -76,6 +76,7 @@ export function ImpersonationProvider({ children }) {
       Object.keys(localStorage)
         .filter((k) => k.startsWith('trendscore_impersonation_'))
         .forEach((k) => localStorage.removeItem(k));
+      clearImpersonationAccessToken();
 
       setIsImpersonating(false);
       setImpersonatedUser(null);
@@ -172,6 +173,10 @@ export function ImpersonationProvider({ children }) {
     try {
       const result = await impersonationApi.startSession(targetUserId);
 
+      // The request layer gives this token priority over a stale admin token.
+      // It is session-only and removed whenever impersonation ends.
+      setImpersonationAccessToken(result.accessToken);
+
       // Switch AuthContext to the impersonated user (Req 3.11)
       // Pass null as refreshToken — impersonation sessions have no refresh token (Req 8.2)
       auth.login(result.impersonatedUser, result.accessToken, null);
@@ -189,6 +194,7 @@ export function ImpersonationProvider({ children }) {
       // Rollback: remove localStorage keys so there's no orphaned state (Req 3.13)
       localStorage.removeItem(LS_ORIGINAL_TOKEN);
       localStorage.removeItem(LS_ORIGINAL_USER);
+      clearImpersonationAccessToken();
 
       const message = err?.response?.data?.error
         ?? err?.response?.data?.message

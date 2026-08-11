@@ -153,9 +153,11 @@ export const PAGE_TITLES = {
   'planner-schemes': 'Schemes of Work',
 
   // Learners
+  'learners-overview': 'Students Overview',
   'learners-list': 'Scholars List',
   'teacher-learner-analysis': 'My Learners Analysis',
   'learners-admissions': 'Admissions',
+  'learners-reports': 'Student Reports',
   'learners-transfers-in': 'Incoming Transfers',
   'learners-exited': 'Exited Scholars',
   'learners-promotion': 'Promotion',

@@ -129,7 +129,9 @@ describe('PresenceService.emit()', () => {
     const result = await service.emit(BASE_EVENT);
 
     expect(mockPrisma.presenceEvent.create).toHaveBeenCalledTimes(1);
-    expect(mockPrisma.presenceEvent.findFirst).toHaveBeenCalledTimes(1);
+    // One source-projection lookup before create, then one idempotency lookup
+    // after the simulated concurrent insert wins the unique-key race.
+    expect(mockPrisma.presenceEvent.findFirst).toHaveBeenCalledTimes(2);
     expect(result.id).toBe('event-uuid-1');
     // Should NOT have written to failures table
     expect(mockPrisma.presenceEventFailure.create).not.toHaveBeenCalled();

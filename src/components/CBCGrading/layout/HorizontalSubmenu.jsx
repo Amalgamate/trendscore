@@ -216,13 +216,27 @@ const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
   const resolvedPage = CHILD_PAGE_PARENT[currentPage] || currentPage;
 
   const activeSection = useMemo(() => {
+    // Prefer a destination whose declared params match the current page. A
+    // shared route such as docs-center can intentionally appear under both
+    // the global Documents menu and the Students menu's Student Documents
+    // entry, so path-only matching would highlight the wrong horizontal bar.
+    const byExactDestination = (navSections || []).find((section) => {
+      const leaves = flattenLeafItems(section.items || []);
+      return leaves.some((leaf) => {
+        if (leaf.path !== resolvedPage) return false;
+        const expectedParams = leaf.params || {};
+        return Object.entries(expectedParams).every(([key, value]) => pageParams?.[key] === value);
+      });
+    });
+    if (byExactDestination) return byExactDestination;
+
     const byPage = (navSections || []).find((section) => {
       const leaves = flattenLeafItems(section.items || []);
       return leaves.some((leaf) => leaf.path === resolvedPage);
     });
     if (byPage) return byPage;
     return (navSections || []).find((s) => s.id === resolvedPage) || null;
-  }, [navSections, resolvedPage]);
+  }, [navSections, pageParams, resolvedPage]);
 
   const hasGroups = useMemo(
     () => (activeSection?.items || []).some(i => i.type === 'group'),

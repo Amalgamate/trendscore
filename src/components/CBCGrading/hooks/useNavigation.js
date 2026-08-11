@@ -27,7 +27,7 @@ import {
     Heart, Star, Sparkles
 } from 'lucide-react';
 
-const focusModules = ['dashboard', 'learners', 'teachers', 'attendance', 'assessment', 'finance', 'communications', 'planner', 'digital-learning', 'learning-hub', 'docs-center', 'settings', 'hr', 'inventory', 'transport', 'pathway-planner', 'presence', 'presence-analytics', 'boarding'];
+const focusModules = ['dashboard', 'learners', 'teachers', 'attendance', 'assessment', 'finance', 'communications', 'planner', 'digital-learning', 'learning-hub', 'docs-center', 'settings', 'hr', 'inventory', 'transport', 'biometric', 'pathway-planner', 'presence', 'presence-analytics', 'boarding'];
 const SCHOOL_SECTION_ORDER = ['learners', 'students', 'teachers', 'lecturers', 'attendance', 'assessment', 'secondary-assessment', 'tertiary-assessment'];
 
 const orderSectionsById = (sections = [], preferredOrder = SCHOOL_SECTION_ORDER) => {
@@ -164,12 +164,32 @@ export const allNavSections = [
         app: 'student-registry',
         permission: null,
         items: [
-            { id: 'learners-list',       label: 'Students List',      path: 'learners-list',       permission: 'VIEW_ALL_LEARNERS' },
-            { id: 'learners-admissions', label: 'Admissions',         path: 'learners-admissions', permission: 'CREATE_LEARNER'    },
-            { id: 'learners-promotion',  label: 'Promotion',          path: 'learners-promotion',  permission: 'PROMOTE_LEARNER', app: 'planner' },
-            { id: 'learners-uniform',    label: 'Uniform Allocation', path: 'learners-uniform',    permission: 'VIEW_ALL_LEARNERS', icon: Shirt, app: 'inventory' },
-            { id: 'learners-id-print',   label: 'ID Card Printing',   path: 'learners-id-print',   permission: 'VIEW_ALL_LEARNERS', icon: CreditCard },
-            { id: 'parents-list',        label: 'Parents List',       path: 'parents-list',        permission: 'VIEW_ALL_USERS' },
+            { id: 'learners-overview',   label: 'Students Overview',   path: 'learners-overview',   permission: 'VIEW_ALL_LEARNERS' },
+            { id: 'learners-list',       label: 'Students List',       path: 'learners-list',       permission: 'VIEW_ALL_LEARNERS' },
+            { id: 'learners-admissions', label: 'Admissions',          path: 'learners-admissions', permission: 'CREATE_LEARNER'    },
+            { id: 'learners-reports',    label: 'Student Reports',     path: 'learners-reports',    permission: 'VIEW_ALL_LEARNERS' },
+            {
+                id: 'learners-transfers',
+                label: 'Transfers & Exits',
+                type: 'group',
+                items: [
+                    { id: 'learners-transfers-in',  label: 'Incoming Transfers', path: 'learners-transfers-in',  permission: 'VIEW_ALL_LEARNERS' },
+                    { id: 'learners-transfer-out',  label: 'Transfer Out',       path: 'learners-transfer-out',  permission: 'VIEW_ALL_LEARNERS' },
+                    { id: 'learners-exited',        label: 'Exited Students',    path: 'learners-exited',        permission: 'VIEW_ALL_LEARNERS' },
+                ],
+            },
+            {
+                id: 'learners-services',
+                label: 'Student Services',
+                type: 'group',
+                items: [
+                    { id: 'learners-promotion',  label: 'Promotion',          path: 'learners-promotion',  permission: 'PROMOTE_LEARNER', app: 'planner' },
+                    { id: 'learners-uniform',    label: 'Uniform Allocation', path: 'learners-uniform',    permission: 'VIEW_ALL_LEARNERS', icon: Shirt, app: 'inventory' },
+                    { id: 'learners-id-print',   label: 'ID Card Printing',   path: 'learners-id-print',   permission: 'VIEW_ALL_LEARNERS', icon: CreditCard },
+                    { id: 'learners-documents',  label: 'Student Documents',  path: 'docs-center', params: { category: 'students' }, permission: 'VIEW_ALL_LEARNERS', icon: FileText },
+                ],
+            },
+            { id: 'parents-list',        label: 'Parents & Guardians', path: 'parents-list',        permission: 'VIEW_ALL_USERS' },
         ]
     },
     {
@@ -546,7 +566,7 @@ export const allNavSections = [
         permission: 'BIOMETRIC_ATTENDANCE',
         items: [
             { id: 'biometric-dashboard',  label: 'Biometric Authority',    path: 'biometric-dashboard',  permission: 'BIOMETRIC_ATTENDANCE' },
-            { id: 'biometric-enrollment', label: 'Fingerprint Enrollment', path: 'biometric-dashboard?tab=enrollment', permission: 'ENROLL_FINGERPRINTS' },
+            { id: 'biometric-enrollment', label: 'Face Enrollment', path: 'biometric-dashboard?tab=enrollment', permission: 'ENROLL_FINGERPRINTS' },
             { id: 'biometric-devices',    label: 'Terminal Management',    path: 'biometric-dashboard?tab=devices',    permission: 'MANAGE_BIOMETRIC_DEVICES' },
             { id: 'biometric-logs',       label: 'Attendance Data Feed',   path: 'biometric-dashboard?tab=logs',       permission: 'VIEW_BIOMETRIC_LOGS' },
             { id: 'biometric-api',        label: 'API & Bridge Info',      path: 'biometric-dashboard?tab=config',     permission: 'CONFIGURE_BIOMETRIC_API' }
@@ -564,14 +584,11 @@ export const allNavSections = [
     {
         id: 'pathway-planner',
         label: 'Junior Transition Centre',
-        badge: 'BETA',
         icon: Award,
         permission: null,
         items: [
             { id: 'pathways-admin-overview', label: 'Overview',             path: 'pathways-admin',         params: { tab: 'dashboard' }, permission: 'MANAGE_PATHWAY_CATALOG' },
-            { id: 'sec-pathway-overview',    label: 'Readiness Dashboard',  path: 'sec-pathway-overview',   permission: 'VIEW_ALL_LEARNERS' },
-            { id: 'sec-pathway-counsellor',  label: 'Learner Cases',        path: 'sec-pathway-counsellor', permission: 'VIEW_ALL_LEARNERS' },
-            { id: 'pathway-guide',           label: 'Guide',                path: 'pathway-guide',          permission: null },
+            { id: 'sec-pathway-counsellor',  label: 'Workbench',            path: 'sec-pathway-counsellor', permission: 'VIEW_ALL_LEARNERS' },
             {
                 id: 'pathway-catalogues',
                 label: 'Catalogues',
@@ -586,6 +603,7 @@ export const allNavSections = [
                 label: 'Configurations',
                 type: 'group',
                 items: [
+                    { id: 'sec-school-offerings',      label: 'School Offerings', path: 'sec-school-offerings',                          permission: 'MANAGE_PATHWAY_OFFERINGS' },
                     { id: 'pathways-admin-content',     label: 'Content',        path: 'pathways-admin', params: { tab: 'content' },     permission: 'MANAGE_PATHWAY_CATALOG' },
                     { id: 'pathways-admin-schools',     label: 'Senior Schools', path: 'pathways-admin', params: { tab: 'schools' },     permission: 'MANAGE_PATHWAY_CATALOG' },
                     { id: 'pathways-admin-corrections', label: 'Corrections',    path: 'pathways-admin', params: { tab: 'corrections' }, permission: 'MANAGE_PATHWAY_CATALOG' },
@@ -947,6 +965,11 @@ export const useNavigation = () => {
 
     const navSections = useMemo(() => {
         const isItemVisible = (item) => {
+            // A junior school guides transition decisions; it does not deliver
+            // Grade 10–12 subjects. School Offerings is therefore a senior-only
+            // setting and must not appear in the Junior Transition Centre.
+            if (institutionType !== 'SECONDARY' && item.id === 'sec-school-offerings') return false;
+
             if (item.path === 'learners-admissions' && isRole('TEACHER')) return true;
 
             // Teachers must NOT see admin-only learner management tabs.
@@ -1012,7 +1035,7 @@ export const useNavigation = () => {
             built = transformNavForParentRole(built);
         }
         return built;
-    }, [can, role, isRole, labels, accessUser, isModuleEnabled]);
+    }, [can, role, isRole, labels, accessUser, institutionType, isModuleEnabled]);
 
     const dashboardSection = navSections.find(s => s.id === 'dashboard');
     const lmsSection = navSections.find(s => s.id === 'digital-learning');

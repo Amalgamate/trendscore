@@ -8,6 +8,7 @@ import api from '../../../../services/api';
 import { useNotifications } from '../../hooks/useNotifications';
 import { useMobile } from '../../../../hooks/useMobileDetection';
 import { DataCard } from '../../shared';
+import { KpiCard } from '../../../../design-system/components';
 
 const InventoryItems = () => {
     const isMobile = useMobile();
@@ -102,17 +103,12 @@ const InventoryItems = () => {
                     { label: 'Low Stock', value: items.filter(i => (i.quantity || 0) <= (i.minimumStock || 5)).length, icon: AlertTriangle, color: 'amber' },
                     { label: 'Total Value', value: `Ksh ${items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0).toLocaleString()}`, icon: ArrowUpRight, color: 'green' },
                     { label: 'Asset Items', value: items.filter(i => i.type === 'ASSET').length, icon: ArrowDownLeft, color: 'purple' },
-                ].map((stat, i) => (
-                    <div key={i} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                        <div className="flex justify-between items-start mb-2">
-                            <div className={`p-2 rounded-lg bg-${stat.color}-50 text-${stat.color}-600`}>
-                                <stat.icon size={20} />
-                            </div>
-                        </div>
-                        <p className="text-gray-500 text-sm">{stat.label}</p>
-                        <p className="text-2xl font-medium text-gray-800">{stat.value}</p>
-                    </div>
-                ))}
+                ].map((stat, i) => {
+                    const tones = { blue: 'sky', amber: 'amber', green: 'emerald', purple: 'violet' };
+                    const orbs = ['top-right', 'bottom-left', 'bottom-right', 'top-center'];
+                    const Icon = stat.icon;
+                    return <KpiCard key={stat.label} label={stat.label} value={stat.value} icon={<Icon size={20} />} tone={tones[stat.color]} orbPosition={orbs[i]} />;
+                })}
             </div>
 
             {/* Filter Bar */}

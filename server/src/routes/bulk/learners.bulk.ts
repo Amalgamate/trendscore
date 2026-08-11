@@ -458,6 +458,7 @@ router.post(
             });
           }
           const studentAccount = await ensureStudentAccountForLearner({
+            learnerId: updatedLearner.id,
             admissionNumber: updatedLearner.admissionNumber,
             firstName: updatedLearner.firstName,
             lastName: updatedLearner.lastName,
@@ -496,6 +497,7 @@ router.post(
             });
           }
           const studentAccount = await ensureStudentAccountForLearner({
+            learnerId: learner.id,
             admissionNumber: learner.admissionNumber,
             firstName: learner.firstName,
             lastName: learner.lastName,
@@ -576,25 +578,37 @@ router.post(
       let existing = 0;
       const failures: Array<{ learnerId: string; admissionNumber: string; reason: string }> = [];
 
-      for (const learner of learners) {
-        try {
-          const result = await ensureStudentAccountForLearner({
-            admissionNumber: learner.admissionNumber,
-            firstName: learner.firstName,
-            lastName: learner.lastName,
-            middleName: learner.middleName || null,
-            phone: null
-          });
-          if (result.created) created += 1;
-          else existing += 1;
-        } catch (error) {
-          failures.push({
-            learnerId: learner.id,
-            admissionNumber: learner.admissionNumber,
-            reason: error instanceof Error ? error.message : 'Unknown error'
-          });
+      // Account provisioning performs several lookups per learner. Process a
+      // modest number concurrently instead of making the administrator wait for
+      // hundreds of sequential database round trips.
+      const queue = [...learners];
+      const workerCount = Math.min(12, queue.length);
+      const workers = Array.from({ length: workerCount }, async () => {
+        while (queue.length > 0) {
+          const learner = queue.shift();
+          if (!learner) break;
+          try {
+            const result = await ensureStudentAccountForLearner({
+              learnerId: learner.id,
+              admissionNumber: learner.admissionNumber,
+              firstName: learner.firstName,
+              lastName: learner.lastName,
+              middleName: learner.middleName || null,
+              phone: null
+            });
+            if (result.created) created += 1;
+            else existing += 1;
+          } catch (error) {
+            failures.push({
+              learnerId: learner.id,
+              admissionNumber: learner.admissionNumber,
+              reason: error instanceof Error ? error.message : 'Unknown error'
+            });
+          }
         }
-      }
+      });
+
+      await Promise.all(workers);
 
       return res.json({
         success: true,
