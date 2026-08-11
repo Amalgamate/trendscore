@@ -47,7 +47,7 @@ jobs:
 
           echo "## Storage before maintenance"
           df -h /srv /var/lib/docker 2>/dev/null || df -h
-          docker system df || true
+          sudo docker system df || true
 
           backup_root=/srv/zawadi/backups
           retained="${BACKUP_RETENTION}"
@@ -67,14 +67,14 @@ jobs:
 
           # Safe Docker cleanup: stopped containers, dangling images/networks,
           # and old build cache only. Do not prune volumes or tagged images.
-          docker container prune -f
-          docker image prune -f
-          docker network prune -f
-          docker builder prune -af --filter 'until=168h'
+          sudo docker container prune -f
+          sudo docker image prune -f
+          sudo docker network prune -f
+          sudo docker builder prune -af --filter 'until=168h'
           find /tmp -maxdepth 1 -type f -name 'trendscore-deploy-assets-*.tgz' -mtime +1 -print -delete
 
           echo "## Storage after maintenance"
           df -h /srv /var/lib/docker 2>/dev/null || df -h
-          docker system df || true
+          sudo docker system df || true
           sudo du -sh "${backup_root}"/* 2>/dev/null | sort -h || true
           REMOTE
