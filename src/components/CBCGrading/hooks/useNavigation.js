@@ -647,7 +647,7 @@ export const allNavSections = [
         icon: Brain,
         permission: 'VIEW_ALL_ATTENDANCE',
         items: [
-            { id: 'analytics-dashboard', label: 'Analytics Dashboard',  path: 'analytics-dashboard', permission: 'VIEW_ALL_ATTENDANCE' },
+            { id: 'analytics-dashboard', label: 'Signals & Exceptions', path: 'analytics-dashboard', permission: 'VIEW_ALL_ATTENDANCE' },
         ]
     },
 

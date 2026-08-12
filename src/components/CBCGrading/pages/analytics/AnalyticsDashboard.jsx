@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  BarChart3, Clock, Users,
+  BarChart3, Clock, Users, Info,
   Loader2, RefreshCw, Shield
 } from 'lucide-react';
 import api from '../../../../services/api';
@@ -44,12 +44,14 @@ const AnalyticsDashboard = () => {
   const [latePatterns, setLatePatterns] = useState([]);
   const [violations, setViolations]   = useState([]);
   const [loading, setLoading]         = useState(false);
+  const [loadFailed, setLoadFailed]   = useState(false);
   const [activeTab, setActiveTab]     = useState('overview');
   const [runningEW, setRunningEW]     = useState(false);
   const { showSuccess, showError } = useNotifications();
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
+    setLoadFailed(false);
     try {
       const [ov, ar, lp, viol] = await Promise.all([
         api.analytics.getOverview().catch(() => null),
@@ -61,7 +63,9 @@ const AnalyticsDashboard = () => {
       if (ar?.success)   setAtRisk(ar.data ?? []);
       if (lp?.success)   setLatePatterns(lp.data ?? []);
       if (viol?.success) setViolations(viol.data ?? []);
+      if (!ov?.success) setOverview(null);
     } catch {
+      setLoadFailed(true);
       showError('Failed to load analytics');
     } finally {
       setLoading(false);
@@ -109,10 +113,10 @@ const AnalyticsDashboard = () => {
         <div>
           <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-3 tracking-tight">
             <BarChart3 className="text-indigo-600" size={28} />
-            Attendance Analytics
+            Presence Intelligence
           </h1>
           <p className="text-sm text-gray-400 mt-0.5">
-            Presence trends, at-risk learners, and early warning violations.
+            Attendance signals, early warnings, and follow-up work.
           </p>
         </div>
         <div className="flex gap-2">
@@ -129,6 +133,13 @@ const AnalyticsDashboard = () => {
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
+      </div>
+
+      <div className="mb-5 flex items-start gap-3 rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
+        <Info size={18} className="mt-0.5 flex-shrink-0 text-indigo-600" />
+        <p className="text-xs leading-5 text-indigo-700">
+          Current checks evaluate attendance and boarding/transport event signals. Expected-versus-observed location intelligence is a future capability and is not inferred from an unmarked register.
+        </p>
       </div>
 
       {/* Today's headline */}
@@ -188,6 +199,12 @@ const AnalyticsDashboard = () => {
         </div>
       )}
 
+      {!loading && loadFailed && (
+        <div className="rounded-2xl border border-rose-100 bg-rose-50 p-6 text-center text-sm text-rose-700">
+          Analytics could not be loaded. Refresh to try again; no attendance records have been changed.
+        </div>
+      )}
+
       {/* Overview tab */}
       {!loading && activeTab === 'overview' && overview && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -207,8 +224,16 @@ const AnalyticsDashboard = () => {
         </div>
       )}
 
+      {!loading && !loadFailed && activeTab === 'overview' && !overview && (
+        <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-12 text-center">
+          <BarChart3 size={32} className="mx-auto mb-3 text-indigo-300" />
+          <p className="text-sm font-semibold text-gray-700">No attendance intelligence is available yet</p>
+          <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-gray-400">Attendance data will appear after today’s registers are marked or when the analytics service returns data.</p>
+        </div>
+      )}
+
       {/* At-risk tab */}
-      {!loading && activeTab === 'at-risk' && (
+      {!loading && !loadFailed && activeTab === 'at-risk' && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           {atRisk.length === 0 ? (
             <div className="p-16 text-center text-gray-400">
@@ -251,7 +276,7 @@ const AnalyticsDashboard = () => {
       )}
 
       {/* Late patterns tab */}
-      {!loading && activeTab === 'late' && (
+      {!loading && !loadFailed && activeTab === 'late' && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           {latePatterns.length === 0 ? (
             <div className="p-16 text-center text-gray-400">
@@ -287,7 +312,7 @@ const AnalyticsDashboard = () => {
       )}
 
       {/* Violations tab */}
-      {!loading && activeTab === 'violations' && (
+      {!loading && !loadFailed && activeTab === 'violations' && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           {violations.length === 0 ? (
             <div className="p-16 text-center text-gray-400">
