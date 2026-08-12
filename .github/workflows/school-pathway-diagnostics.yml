@@ -1,0 +1,89 @@
+name: School Pathway Diagnostics
+
+# Read-only support diagnostic for a learner's student-pathway experience.
+# Uses the protected deployment SSH channel; it never changes data or restarts services.
+on:
+  workflow_dispatch:
+    inputs:
+      school_slug:
+        description: "School instance id from deploy/instances.manifest.json"
+        required: true
+        default: "jrn"
+        type: string
+      learner_name:
+        description: "Learner full name to inspect"
+        required: true
+        default: "Aisha Kiptoo"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Diagnose learner pathway
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - name: Checkout deployment support scripts
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Inspect linked learner and pathway errors
+        env:
+          SCHOOL_ID: ${{ inputs.school_slug }}
+          LEARNER_NAME: ${{ inputs.learner_name }}
+        run: |
+          set -euo pipefail
+          learner_name_b64="$(printf %s "$LEARNER_NAME" | base64 -w0)"
+          ssh production "SCHOOL_ID='${SCHOOL_ID}' LEARNER_NAME_B64='${learner_name_b64}' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          manifest=/srv/zawadi/apps/deploy/instances.manifest.json
+          [[ -f "$manifest" ]] || { echo "Manifest not found"; exit 1; }
+          instance="$(jq -c --arg id "$SCHOOL_ID" '.instances[] | select(.id == $id)' "$manifest")"
+          [[ -n "$instance" ]] || { echo "Unknown school id: $SCHOOL_ID"; exit 1; }
+
+          kind="$(jq -r '.kind' <<<"$instance")"
+          project="$(jq -r '.compose_project // empty' <<<"$instance")"
+          if [[ "$kind" == "main" ]]; then
+            backend=zawadi-backend
+            db=zawadi-db
+          else
+            backend="$(sudo docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=backend' --format '{{.ID}}' | head -n1)"
+            db="$(sudo docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=db' --format '{{.ID}}' | head -n1)"
+          fi
+          [[ -n "$backend" && -n "$db" ]] || { echo "Could not find running backend/database containers"; exit 1; }
+
+          learner_name="$(printf %s "$LEARNER_NAME_B64" | base64 -d)"
+          echo "## Learner/system-user link"
+          sudo docker exec -i "$db" psql -v ON_ERROR_STOP=1 -v "learner_name=$learner_name" -P pager=off -c "
+            SELECT
+              u.id AS user_id,
+              u.email,
+              u.username,
+              u.role AS user_role,
+              u.status AS user_status,
+              l.id AS learner_id,
+              l.\"admissionNumber\",
+              l.grade,
+              l.\"studentUserId\",
+              l.status AS learner_status,
+              l.archived AS learner_archived
+            FROM users u
+            FULL OUTER JOIN learners l ON l.\"studentUserId\" = u.id
+            WHERE lower(concat_ws(' ', u.\"firstName\", u.\"lastName\")) = lower(:'learner_name')
+               OR lower(concat_ws(' ', l.\"firstName\", l.\"lastName\")) = lower(:'learner_name')
+            ORDER BY u.email NULLS LAST, l.\"admissionNumber\" NULLS LAST;"
+
+          echo "## Recent pathway/dashboard errors"
+          sudo docker logs --since 2h "$backend" 2>&1 \
+            | grep -Ei 'student dashboard error|learner record not found|unauthorized student|pathway.*error|/dashboard/student|P[0-9]{4}' \
+            | tail -n 100 || true
+          REMOTE
