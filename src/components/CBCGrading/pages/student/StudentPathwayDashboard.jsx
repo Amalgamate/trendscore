@@ -152,26 +152,35 @@ export default function StudentPathwayDashboard({ user, onNavigate, brandingSett
     }
   }, [learnerId, seniorExecution, setMode, setRecommendation, setSelection, setDecisionPlan, setProfile, setSavedCareers, setSchoolPreferences, setSchoolMatches, setStoreLoading]);
 
-  // Load metrics first to get learnerId
+  // Load metrics first to get learnerId. A failed profile request must end the
+  // loading state; otherwise the skeleton masks the actual supportable error
+  // indefinitely and its Retry button cannot recover an unlinked account.
+  const loadStudentProfile = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await dashboardAPI.getStudentMetrics();
+      const data = res?.data || res;
+      const lid = data?.learner?.id || data?.learnerId || data?.profile?.id;
+      if (!lid) {
+        throw new Error('Your student account is not linked to a learner profile yet. Please contact your school administrator.');
+      }
+
+      const isSeniorExecution = isSeniorExecutionLearner(data, user);
+      setSeniorExecution(isSeniorExecution);
+      setStage(isSeniorExecution ? 'senior' : 'junior');
+      setLearnerId(lid);
+    } catch (err) {
+      setError(err?.message || 'Failed to load your student profile. Please try again.');
+    } finally {
+      setLoading(false);
+      setStoreLoading('dashboard', false);
+    }
+  }, [setLearnerId, setStage, setStoreLoading, user]);
+
   useEffect(() => {
-    let cancelled = false;
-    dashboardAPI.getStudentMetrics()
-      .then((res) => {
-        if (cancelled) return;
-        const data = res?.data || res;
-        const lid = data?.learner?.id || data?.learnerId || data?.profile?.id;
-        const isSeniorExecution = isSeniorExecutionLearner(data, user);
-        setSeniorExecution(isSeniorExecution);
-        setStage(isSeniorExecution ? 'senior' : 'junior');
-        if (lid) {
-          setLearnerId(lid);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err?.message || 'Failed to load profile');
-      });
-    return () => { cancelled = true; };
-  }, [setLearnerId, setStage, user]);
+    loadStudentProfile();
+  }, [loadStudentProfile]);
 
   // Load all data when learnerId is available
   useEffect(() => {
@@ -239,7 +248,7 @@ export default function StudentPathwayDashboard({ user, onNavigate, brandingSett
           <p className="text-sm font-semibold text-gray-700">{error}</p>
           <button
             type="button"
-            onClick={loadAllData}
+            onClick={learnerId ? loadAllData : loadStudentProfile}
             className="mt-3 rounded-xl border border-gray-200 px-4 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50"
           >
             Retry
