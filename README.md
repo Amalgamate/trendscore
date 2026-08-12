@@ -1,471 +1,459 @@
 # TrendScore
 
-TrendScore is a CBE-ready School ERP for modern African schools. It helps schools manage academics, CBE assessments, fees, finance, staff, parents, communication, and analytics from one platform.
+<p align="center">
+  <img src="public/branding/logo.png" alt="TrendScore" width="260" />
+</p>
 
-- Website: https://www.trendscore.co.ke/
-- Repository: https://github.com/Amalgamate/trendscore
+<p align="center">
+  <strong>Where analytics meets pathways.</strong><br />
+  A multi-tenant school operations platform for Kenyan CBE schools.
+</p>
 
-![Status](https://img.shields.io/badge/Status-Active%20Build-orange)
-![Version](https://img.shields.io/badge/Version-1.0.0--Alpha-blue)
-![Curriculum](https://img.shields.io/badge/Curriculum-CBE%20Ready-green)
-![Payments](https://img.shields.io/badge/Payments-M--Pesa%20Integrated-brightgreen)
+<p align="center">
+  <a href="https://www.trendscore.co.ke/">Website</a> ·
+  <a href="#product-experience">Product experience</a> ·
+  <a href="#platform-catalogue">Platform catalogue</a> ·
+  <a href="#guided-pathways">Guided Pathways</a> ·
+  <a href="#local-development">Run locally</a> ·
+  <a href="#deployment">Deployment</a>
+</p>
 
-## Current Status
+<p align="center">
+  <img src="https://img.shields.io/badge/status-active%20development-fb7b1e" alt="Active development" />
+  <img src="https://img.shields.io/badge/curriculum-Kenyan%20CBE-0f766e" alt="Kenyan CBE" />
+  <img src="https://img.shields.io/badge/frontend-React%20%2B%20Vite-2563eb" alt="React and Vite" />
+  <img src="https://img.shields.io/badge/backend-Express%20%2B%20Prisma-111827" alt="Express and Prisma" />
+</p>
 
-TrendScore is in active v1.0 development. The core School ERP is functional and under continuous refinement, with the current focus on product identity cleanup, CBE/KJSEA grading correctness, approvals and governance workflows, reporting reliability, deployment hygiene, and preparing the public project for cleaner GitHub review.
+<p align="center">
+  <img src="public/screenshots/readme/trendscore-hero.png" alt="TrendScore connects school leaders, teachers, parents, and learners" width="100%" />
+</p>
 
-Current working areas:
+TrendScore brings the everyday work of a school into one secure, role-aware platform: learner records, CBE assessment, finance, people operations, communication, reporting, approvals, and learner pathways guidance. It is designed to support individual schools through school-scoped configuration and controlled deployments.
 
-- Core School ERP modules are implemented across frontend and backend.
-- CBE assessment, achievement levels, report cards, and administrative status-code handling are actively maintained.
-- Centralized approvals, workflow configuration, score unlock governance, and audit history are implemented.
-- M-Pesa payment workflows are integrated through payment service layers.
-- Deployment is managed through GitHub Actions, Docker builds, and a school-instance manifest.
-- Public positioning is now aligned around TrendScore at https://www.trendscore.co.ke/.
-- Digital Campus and Creators Hub are upcoming product tracks and should be treated as roadmap work, not fully shipped modules.
+> **Project status:** The core ERP and Guided Pathways workflows are actively implemented and evolving. Provider-backed integrations and future products are called out explicitly below so the catalogue distinguishes current capability from roadmap direction.
 
-## Product Direction
+## Module readiness
 
-TrendScore is organized around four product areas:
+**Status guide:** **Complete** means an end-to-end workflow is implemented in this repository; it still requires each school’s configuration, data, permissions, and release validation. **WIP** means the capability exists but is being expanded, hardened, or prepared for broader production use. **Not started** means there is no end-to-end product workflow yet.
 
-| Area | Status | Purpose |
+| Module | Readiness | Current position |
 | --- | --- | --- |
-| Platform | Active | Multi-school operating layer, setup, deployment, identity, settings, backups, and system governance. |
-| School ERP | Active | The main school management system for academics, finance, people, operations, and reports. |
-| Digital Campus | Upcoming | Online learning, learner workspaces, digital classes, assignments, content, and remote engagement. |
-| Creators Hub | Upcoming | A resource and content ecosystem for educators, content creators, templates, lessons, and assessments. |
+| Institution setup, branding, users, roles, and permissions | **Complete** | School setup, role-aware navigation, module access, account lifecycle, and authentication flows are implemented. |
+| Learners, guardians, admissions, classes, streams, and documents | **Complete** | Core learner and family operating records are implemented. |
+| CBE academics, assessment, grading, and report cards | **Complete** | Formative and summative workflows, scoring, status codes, reporting, and score governance are implemented. |
+| Guided Pathways | **WIP** | Full Grade 7–9 learner, parent, counsellor, and admin lifecycle is implemented; ongoing UAT, catalogue quality, and rollout hardening remain. |
+| Fees, invoicing, receipts, M-Pesa, and reconciliation | **WIP** | Core finance and provider-backed payment flows exist; payment callback and reconciliation hardening remains important. |
+| Internal accounting and payroll posting | **Complete** | Internal ledger, journals, expenses, payroll posting, bank imports, and reconciliation are implemented. |
+| External accounting connectors (QuickBooks, Xero, Sage) | **Not started** | No external-accounting adapter or synchronization workflow exists. |
+| HR, staff, leave, attendance, payroll, and duty roster | **Complete** | Operational people workflows are implemented. |
+| Biometric and face attendance | **WIP** | Phone face-liveness and ZKTeco integration paths are implemented; hardware rollout, consent, AWS setup, and device validation remain school-specific. |
+| Timetable, planner, schemes of work, transport, boarding, inventory, assets, and library | **Complete** | Core operational module flows are implemented. |
+| LMS and Digital Learning Hub | **WIP** | Courses, lessons, assignments, submissions, marking, resources, progress, analytics, and marketplace foundations exist; Digital Campus expansion continues. |
+| Notices, SMS, email, broadcasts, notifications, and templates | **Complete** | Provider configuration, templates, contact groups, inboxes, notifications, and delivery workflows are implemented. |
+| WhatsApp outbound notifications and reports | **WIP** | Official Meta Cloud API outbound adapter and legacy QR/Baileys sender are present; production consolidation is still required. |
+| School inside WhatsApp (inbound parent self-service) | **WIP** | Architecture and outbound foundation exist, but secure inbound conversation, identity, and parent-service workflows remain to be built. |
+| AI intelligence and in-app copilot | **WIP** | Deterministic intelligence, provider-backed chat, permissioned tools, and LMS AI features exist; additional tool coverage and governance hardening continue. |
+| USSD self-service | **Not started** | No menu, session, identity, or transaction flow has been implemented. |
+| Voice / VOIP | **Not started** | No SIP, WebRTC, telephony adapter, calling UI, recording, or call-log workflow has been implemented. |
+| Mobile native apps | **Not started** | The web application is responsive and PWA-capable; separate native apps are not implemented. |
+| Creators Hub | **Not started** | Product direction exists, but no complete standalone creator workflow has been released. |
 
-## Module Coverage Snapshot
+## At a glance
 
-| Module Area | Current Coverage |
+| Who it helps | What they can do |
 | --- | --- |
-| Administration and settings | School profile, branding, academic years, terms, roles, permissions, module gating, system settings, logs, backups, restore/reset, and system control. |
-| Learner and parent records | Admissions, learner profiles, parent and guardian links, student-user sync, class and stream placement, progression, exits, documents, and profile history. |
-| Academics and assessment | Formative, summative, CBE grading, administrative status codes, mark entry, score locking, unlock requests, reports, analytics, and report cards. |
-| Finance and accounting | Fee structures, invoices, balances, receipts, waivers, statements, M-Pesa reconciliation, expenses, journals, ledger hooks, and financial reports. |
-| HR and staff operations | Staff records, teacher assignments, staff documents, leave, attendance, payroll generation, and payroll payment tracking. |
-| Communication and engagement | Notices, messages, SMS, email, WhatsApp, push notifications, fee reminders, attendance alerts, support, and report distribution. |
-| Operations | Attendance, timetable, calendar, transport, hostel, movement tracking, inventory, assets, uniforms, library, and resource circulation. |
-| Approvals and governance | Central approval engine, workflow builder, approval dashboard, request history, role/user approvers, score unlock workflow, notifications, and audit trail. |
-| Learning and pathways | Learning Hub, LMS foundations, assignments/content foundations, secondary routes, senior school pathways, and institution-aware module behavior. |
-| Platform operations | Multi-school manifest, Docker publishing, Promote Release deployments, school-scoped environments, migrations, backups, and health checks. |
+| School leaders | Monitor operations, performance, finance, approvals, and school-wide activity. |
+| Teachers and counsellors | Manage classes, attendance, assessments, reports, learner guidance, and review queues. |
+| Parents and guardians | Follow learner progress, fees, notices, reports, and pathway decisions. |
+| Learners | Access learning and assessment information, complete pathway discovery, and make informed decisions. |
+| Finance and operations teams | Run billing, payments, inventory, transport, HR, payroll, and records workflows. |
+
+## Product experience
+
+<p align="center">
+  <img src="public/screenshots/readme/operations-dashboard.png" alt="Conceptual TrendScore operations dashboard across laptop and mobile" width="100%" />
+</p>
+
+<p align="center"><em>One connected operating view for school leaders, teams, and families.</em></p>
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="public/screenshots/readme/pathways-journey.png" alt="Conceptual learner Pathways journey from discovery through approval" width="100%" />
+      <br /><br />
+      <strong>Guided Pathways</strong><br />
+      Discovery, family review, counselling, approval, and a recorded learner decision.
+    </td>
+    <td width="50%" valign="top">
+      <img src="public/screenshots/readme/trendscore-hero.png" alt="TrendScore school community product vision" width="100%" />
+      <br /><br />
+      <strong>Every school role, connected</strong><br />
+      Operational insight for leaders, practical workflows for staff, and accessible touchpoints for parents and learners.
+    </td>
+  </tr>
+</table>
+
+> **About these visuals:** they are product-vision illustrations created for this catalogue, not screenshots of live functionality. The module-readiness table remains the source of truth for what is implemented, in progress, and planned.
+
+<details>
+<summary><strong>Current responsive sign-in captures</strong></summary>
+<br />
+
+<p align="center">
+  <img src="public/screenshots/dashboard-wide.png" alt="TrendScore desktop sign-in screen" width="72%" />
+</p>
+
+<p align="center">
+  <img src="public/screenshots/dashboard-mobile.png" alt="TrendScore mobile sign-in screen" width="260" />
+</p>
+</details>
+
+> Add representative, anonymised captures of the executive dashboard, assessment workspace, parent portal, and Pathways Decision Centre to `public/screenshots/` as those views are ready for public presentation. Replace the conceptual visuals above only when there are polished public-safe captures that better demonstrate the live product.
+
+## Platform catalogue
+
+### School foundation
+
+| Area | Capabilities |
+| --- | --- |
+| Institution setup | School profile, branding, academic years, terms, institution types, module gating, first-login setup, and school-specific settings. |
+| Identity and access | Superadmin bootstrap, user lifecycle management, roles, permissions, role preview, account switching, session controls, and protected routes. |
+| Learner and family records | Admissions, learner profiles, guardian links, class and stream placement, progression, exits, documents, and account synchronisation. |
+| Dashboards | Responsive dashboards and role-specific views for owners, administrators, teachers, accountants, parents, and learners. |
+
+### Academics and CBE assessment
+
+| Area | Capabilities |
+| --- | --- |
+| Curriculum setup | Learning areas, strands, sub-strands, scales, competency structures, classes, streams, subjects, and teacher assignments. |
+| Formative assessment | Observations, rubric-based scoring, values, core competencies, co-curricular activities, comments, and learner growth records. |
+| Summative assessment | Test setup, marks entry, bulk imports, performance bands, ranking, completion tracking, analytics, and printable report cards. |
+| Assessment governance | Score locking, controlled unlock requests, approval routing, administrative status codes, and audit history. |
+| Reports and intelligence | Term reports, learner profiles, class summaries, learning-area analysis, academic insights, risk signals, and report distribution. |
+
+### Guided Pathways
+
+TrendScore includes an end-to-end Grade 7–9 decision workflow that turns learner evidence into a shared, auditable guidance process.
+
+1. Administrators publish pathways, tracks, combinations, careers, schools, and current recommendation rules.
+2. Learners complete a guided discovery wizard with autosave and resume support.
+3. The platform presents evidence-based recommendations, alternatives, careers, subject combinations, and school matches.
+4. Learners build and submit a decision plan for parent review.
+5. Parents contribute family preferences, comments, approvals, or revision requests.
+6. Teachers or counsellors add guidance, action plans, and review decisions.
+7. Administrators monitor the funnel, correct reference data, approve, and lock final decisions.
+
+The workflow keeps submission snapshots, revision history, notifications, role boundaries, audit records, and locked-plan protection. See [the Pathways end-to-end scenario](pathways/E2E-Pathways-G7-G9-Test-Scenario.md) for UAT coverage across Grade 7, 8, and 9 journeys.
+
+### Finance, accounting, and payments
+
+| Area | Capabilities |
+| --- | --- |
+| Fees | Fee structures, invoices, balances, statements, receipts, waivers, adjustments, pledges, imports, and family-facing fee visibility. |
+| Payments | Payment recording, unmatched-payment handling, reconciliation workflows, M-Pesa/Daraja service integration paths, and payment reporting. |
+| Accounting | Internal double-entry accounting: chart of accounts, journals, journal entries, vendor and expense management, automated fee-invoice, fee-payment, and payroll ledger posting, bank-statement import, suggested matching, reconciliation, and financial reports. |
+| Payroll | Staff payroll generation, confirmation, payment tracking, and accounting integration hooks. |
+
+### People and school operations
+
+| Area | Capabilities |
+| --- | --- |
+| HR | Staff profiles, documents, leave, attendance, duty rosters, teacher assignments, and payroll workflows. |
+| Attendance | Learner and staff attendance, absence tracking, parent alerts, presence reporting, and biometric terminal integration paths. |
+| Timetable and planning | Timetable management, schemes of work, calendars, planner workflows, and scheduling helpers. |
+| Transport and boarding | Routes, drivers, learner assignments, trips, transport fees, tracking views, and boarding or hostel foundations. |
+| Resources | Inventory, assets, uniforms, library catalogue and circulation, resource libraries, and document management. |
 
-## Core School ERP Modules
+### Communication, support, and engagement
 
-### 1. Institution Setup and Administration
+| Area | Capabilities |
+| --- | --- |
+| School communication | Notices, messages, broadcasts, SMS, provider-configured email, WhatsApp service paths, report sharing, fee reminders, attendance alerts, contact groups, inbox/read receipts, and SMS balance or top-up workflows. |
+| Notifications | In-app and push-notification foundations, realtime Socket.IO events, user notification controls, and deep links. |
+| Support | Support hub, contextual module guides, role onboarding journeys, AI-assistant interface foundations, and system logs. |
+| Learning Management System | Course management and enrolment, lesson authoring with ordered content blocks and media upload, learner progress, sessions, assignments, draft and file submissions, marking and return-for-correction, revision resources, bookmarks, analytics, leaderboards, and learner or parent views. |
 
-TrendScore supports initial school setup, school profile configuration, branding, academic years, terms, user roles, permissions, and institution type selection. This allows the platform to adapt to CBC primary, junior school, senior school, and future tertiary workflows.
+### Governance, security, and platform operations
 
-Key capabilities:
+| Area | Capabilities |
+| --- | --- |
+| Approvals | Configurable multi-step workflows, role or named-user approvers, request dashboard, assigned-action queue, approval, rejection, cancellation, superadmin override, notifications, full request history, and score-unlock governance. |
+| Auditability | School-scoped logs, approval history, pathway decision history, operational records, and administrative traceability. |
+| Security | Role and permission guards, tenant-aware access control, safeguarded impersonation, session polling, force logout, and inactivity controls. |
+| Biometric attendance | Consent-gated AWS Rekognition face-liveness enrolment for learners and staff, encrypted credential handling, registered phone terminals and supported ZKTeco pull-mode devices, one-time activation, device-token rotation, connection testing, face attendance events, fallback attendance, offline terminal queue/retry, and audit-ready device and event logs. |
+| Reliability | Backups, restore/reset workflows, health checks, database tools, service-worker versioning, and PWA support. |
 
-- School profile and branding settings.
-- Superadmin bootstrap on first deployment.
-- Role-based access control for admins, teachers, accountants, parents, and platform users.
-- Module gating and per-school feature control.
-- System settings, support, logs, backups, and maintenance tools.
+## Product direction
 
-### 2. Learner, Admissions, and Parent Records
-
-The learner module manages the student lifecycle from admission to progression, transfer, archiving, and profile history. It keeps learner details connected to parent records, class placement, transport status, fee accounts, reports, and communication.
-
-Key capabilities:
-
-- Learner admission and profile management.
-- Parent and guardian links.
-- Class, stream, grade, and enrollment tracking.
-- Learner photos and document records.
-- Admission numbers and school-specific learner metadata.
-- Exited or archived learner handling.
-
-### 3. Academics and CBE Assessment
-
-The academic engine is built around Kenyan CBE workflows. It supports formative assessment, summative assessment, grading scales, learning areas, strands, sub-strands, test setup, performance bands, and report generation.
-
-Key capabilities:
-
-- Learning area management.
-- Formative observations and rubric-based scoring.
-- Summative tests and mark entry.
-- Score locking and controlled score unlock requests.
-- CBE achievement codes such as EE, ME, AE, and BE with detailed bands.
-- Administrative assessment status codes such as absent, transferred, withdrawn, or exempt cases.
-- Status-only results excluded from averages, ranking, analytics, and report calculations.
-- Assessment setup, completion, ranking, summaries, and printable report cards.
-
-### 4. Reports, Analytics, and Academic Intelligence
-
-TrendScore includes dashboards and reporting workflows for academic performance, learner progress, class summaries, subject performance, pathway insights, and report-card production.
-
-Key capabilities:
-
-- Termly report cards.
-- Formative and summative reports.
-- Learner profile reporting.
-- CBE achievement legends and status-code explanations.
-- Class and learning-area summaries.
-- Pathway prediction and senior school readiness insights.
-- Academic dashboards for school leaders and teachers.
-
-### 5. Fees, Invoicing, and M-Pesa Payments
-
-The finance module manages fee structures, invoices, balances, payments, waivers, statements, receipts, and parent-facing fee visibility. It is designed for Kenyan school finance workflows and M-Pesa payment reconciliation.
-
-Key capabilities:
-
-- Fee structures by term, class, and fee type.
-- Learner invoice generation.
-- Student statements and printable invoices.
-- Payment recording and reconciliation.
-- M-Pesa/Daraja integration support.
-- Unmatched payment handling.
-- Waivers and adjustments.
-- Parent fee statement visibility.
-
-### 6. Accounting and Financial Control
-
-TrendScore includes accounting workflows that connect school finance activity to a more structured ledger model. This supports better control over income, expenses, fee payments, payroll posting, journals, and financial reports.
-
-Key capabilities:
-
-- Chart of accounts.
-- Journals and journal entries.
-- Expense categories and expense recording.
-- Financial reports.
-- Bank reconciliation workflows.
-- Automatic ledger posting hooks for fee and payroll activity.
-- Accounting configuration screens.
-
-### 7. HR, Staff, and Payroll
-
-The HR module manages teachers, staff records, assignments, attendance, leave, payroll, and staff documents. It is designed to connect staff administration with class teaching duties and school operations.
-
-Key capabilities:
-
-- Teacher and staff profiles.
-- Staff directory and documents.
-- Subject and class assignment support.
-- Payroll generation and confirmation.
-- Payroll payment status tracking.
-- Leave management.
-- Staff attendance workflows.
-
-### 8. Communication, Notices, and Support
-
-TrendScore centralizes school communication across notices, messages, email, SMS, WhatsApp, and notification workflows. Communication settings are configurable so schools can connect the providers they use.
-
-Key capabilities:
-
-- Noticeboard and announcements.
-- Parent, teacher, and school messaging.
-- Email provider configuration.
-- SMS provider configuration.
-- WhatsApp service integration.
-- Push notifications.
-- Assessment report distribution.
-- Fee reminders and attendance alerts.
-- Support hub and help content.
-
-### 9. Attendance and Biometric Readiness
-
-Attendance workflows cover learner and staff attendance, with readiness for biometric bridge integration where schools use local scanning hardware.
-
-Key capabilities:
-
-- Daily learner attendance.
-- Staff attendance.
-- Attendance reports.
-- Absence tracking.
-- Parent alert workflows.
-- Biometric device and bridge integration paths.
-
-### 10. Timetable, Planner, and Calendar
-
-The planner tools help schools organize academic activities, schedules, and calendar workflows.
-
-Key capabilities:
-
-- Timetable management.
-- Academic calendar views.
-- Planning pages and scheduling helpers.
-- External calendar link support.
-- Operational reminders and activity planning.
-
-### 11. Transport, Hostel, and Movement Tracking
-
-The transport module supports route and driver workflows, learner transport assignment, transport fees, and related operational reporting. Hostel and boarding allocation workflows are also part of the wider operations track.
-
-Key capabilities:
-
-- Transport fee logic.
-- Route and driver management.
-- Learner transport assignments.
-- GPS tracking pages.
-- Transport reports.
-- Hostel allocation workflows.
-
-### 12. Inventory, Assets, Uniforms, and Library
-
-TrendScore includes inventory and asset tools for schools that need to track stock, assets, uniforms, books, and resource circulation.
-
-Key capabilities:
-
-- Inventory categories, stores, items, and stock movements.
-- Stock requisitions, transfers, and adjustments.
-- Asset register and asset assignments.
-- Uniform allocation.
-- Library catalog, circulation, and reports.
-- Resource library foundations.
-
-### 13. Learning Hub and LMS Foundations
-
-The current codebase includes LMS and learning hub foundations. These are the base layer for richer Digital Campus work.
-
-Key capabilities:
-
-- Courses and learning hub pages.
-- Assignment and content placeholders.
-- Learner-facing learning workflows.
-- Resource library integration.
-- Future online-class and digital-content expansion.
-
-### 14. Secondary, Senior School, and Pathways
-
-TrendScore is being extended beyond basic primary workflows into junior and senior school pathways, with support for senior subject selection, pathway analysis, and institution-type-specific modules.
-
-Key capabilities:
-
-- Secondary module routes and pages.
-- Senior school pathway models.
-- Pathway prediction and learner pathway profiles.
-- Senior school report foundations.
-- Institution-aware module behavior.
-
-### 15. Approvals, Workflows, and Score Unlock Governance
-
-TrendScore includes a centralized approval engine for actions that should not happen silently. Schools can configure approval workflows, assign approvers, review pending requests, track approval history, and keep an audit trail for sensitive academic and administrative actions.
-
-Key capabilities:
-
-- Approval dashboard for pending, assigned, submitted, approved, and rejected requests.
-- Workflow builder for module-specific approval rules.
-- Role-based and user-based approver steps.
-- Approval history with requester, module, status, dates, and decision trail.
-- Score unlock approval workflow for controlled mark edits after lock.
-- Notifications and deep links for approval actions.
-- School-scoped audit records for governance and accountability.
-
-### 16. User Management, Identity, and Self-Service
-
-TrendScore includes user management and identity workflows for staff, administrators, parents, and learners. These tools connect role permissions, account status, profile details, and school-scoped access into one operating layer.
-
-Key capabilities:
-
-- User creation, editing, activation, and deactivation.
-- Role and permission assignment.
-- Parent and learner account synchronization.
-- Shared self-service profile editing for authenticated users.
-- Read-only identity fields where system ownership must be preserved.
-- Superadmin bootstrap and first-login support.
-- Account-level audit and security controls.
-
-### 17. Documents, ID Cards, and Operational Records
-
-TrendScore includes document and operational record tools that help schools keep learner, staff, and institutional records organized.
-
-Key capabilities:
-
-- Document Center for school records and shared documents.
-- Learner and staff document attachments.
-- ID card generation and printing foundations.
-- Academic, financial, HR, and operational record links.
-- System logs for administrative traceability.
-- Backup, restore, and reset workflows for school operations.
-
-### 18. Tertiary and Student Affairs Foundations
-
-TrendScore is also prepared for institution types beyond junior and senior school. Tertiary and student-affairs foundations give the platform room to support higher-learning workflows without splitting from the core school operating layer.
-
-Key capabilities:
-
-- Institution-aware module behavior.
-- Tertiary navigation and student-affairs foundations.
-- Student profile and enrollment foundations.
-- Facilities, clearance, and operational workflow foundations.
-- LMS and learning-resource integration paths.
-
-### 19. Platform Deployment and School Operations
-
-TrendScore is deployed as a multi-school platform with controlled promotion workflows. Each school instance can be promoted independently using the same release pipeline and Docker image source.
-
-Key capabilities:
-
-- GitHub Actions CI and Docker image publishing.
-- Promote Release workflow for demo and production schools.
-- School-instance manifest for deployment targets.
-- School-scoped environment configuration.
-- Migration deployment as part of release promotion.
-- Health checks and deployment verification.
-- Backup-aware operating model for production schools.
-
-## Upcoming Product Tracks
-
-### Digital Campus
-
-Digital Campus is the upcoming online learning experience for schools using TrendScore. It is expected to build on the existing LMS, learner portal, learning hub, resource library, assignments, calendar, and communication layers.
-
-Planned direction:
-
-- Digital classrooms and online learning spaces.
-- Learner dashboards and assignment tracking.
-- Teacher content delivery workflows.
-- Course resources and school content libraries.
-- Parent visibility into learning progress.
-- Remote learning and blended learning support.
-
-### Creators Hub
-
-Creators Hub is the upcoming educator and content ecosystem around TrendScore. It is intended to support teachers, schools, and education creators who produce lessons, assessments, templates, guides, and learning resources.
-
-Planned direction:
-
-- Assessment templates and reusable CBE resources.
-- Lesson plans, worksheets, and learning materials.
-- Creator profiles and resource publishing.
-- School-approved content libraries.
-- Future marketplace or distribution workflows for educator-created content.
-
-### Mobile Apps
-
-Mobile apps remain part of the broader roadmap, especially for parent access, teacher attendance, notifications, report access, and fee visibility.
-
-Planned direction:
-
-- Parent app for fee statements, alerts, reports, and messages.
-- Teacher app for attendance, marks entry, and class communication.
-- Push notifications for urgent school updates.
-
-## CBE Assessment Workflow
-
-TrendScore follows a structured CBE workflow:
-
-1. Configure academic year, terms, classes, streams, learning areas, and grading scales.
-2. Create formative and summative assessment structures.
-3. Record learner observations, marks, rubric levels, or valid administrative status codes.
-4. Lock completed scores and route unlock requests through approvals where school governance requires it.
-5. Exclude status-only records from calculations where no academic score should be counted.
-6. Generate summaries, rankings, analytics, and report cards.
-7. Share reports through downloadable files or communication channels.
-
-## Formative vs Summative Assessment
-
-| Area | Formative Assessment | Summative Assessment |
+| Product area | Status | Direction |
 | --- | --- | --- |
-| Purpose | Assessment for learning during the term. | Assessment of learning at a defined point. |
-| Frequency | Ongoing, daily, weekly, or per strand. | Mid-term, end-term, yearly, or structured tests. |
-| Evidence | Rubrics, observations, skill mastery, comments. | Marks, percentages, grade bands, rankings, summaries. |
-| Reporting | Feeds learner growth and progress records. | Feeds report cards, term summaries, and class analytics. |
-| Weighting | Configurable by school policy. | Configurable by school policy. |
+| School ERP | Active | The main school operating system: academics, finance, people, operations, reporting, and governance. |
+| Guided Pathways | Active | Evidence-led learner discovery, school and career exploration, family review, counselling, and locked decisions. |
+| Digital Campus | In progress | Richer online learning, learner workspaces, assignments, content, and remote engagement. |
+| Creators Hub | Planned | A school-approved ecosystem for educator resources, lessons, assessments, and reusable templates. |
+| Mobile apps | Planned | Dedicated parent and teacher mobile experiences for alerts, reports, fees, attendance, and communication. |
+| USSD self-service | Planned | A provider-backed low-bandwidth channel for parent and school self-service; not yet implemented as a public platform workflow. |
+| Voice and VOIP | Planned | A provider-backed calling channel for school-office, staff, and family communication; not yet implemented as a SIP, WebRTC, or telephony workflow. |
+
+### Approvals and school governance
+
+TrendScore uses a central approval engine for actions that need accountable review rather than silent changes.
+
+1. An authorised user submits a request against a configured school workflow.
+2. The engine resolves the current approval step to designated roles or named users.
+3. Approvers receive an assigned-action queue, request detail, workflow-step visualisation, and contextual notifications.
+4. Each approver can approve or reject with a recorded decision; requesters can cancel eligible requests.
+5. The system advances through multi-step approval chains or records the terminal decision.
+6. School leaders can monitor pending work, awaiting-my-action items, submitted work, approvals, rejections, and historical records.
+7. A superadmin override is deliberately recorded where exceptional intervention is authorised.
+
+This engine is used for governance-sensitive actions such as controlled score unlocks and complements the locked-decision workflow in Guided Pathways.
+
+### LMS and Digital Learning Hub
+
+The LMS is more than a placeholder: it gives teachers a controlled publishing workflow and gives learners an activity trail from course enrolment to marked work.
+
+1. Teachers create courses and enrol learners.
+2. Teachers build draft lessons with ordered content blocks, then publish them when ready.
+3. Learners access enrolled courses, complete lesson blocks, and build visible progress records.
+4. Teachers create, publish, close, and mark assignments; learners can save draft work, submit files, and receive returned work for correction.
+5. Schools curate a revision library with upload, search, bookmarks, signed downloads, and archived content.
+6. Learning analytics provide course, class, learner, lesson-engagement, assignment, achievement, and leaderboard views.
+
+Enterprise-gated workflows include a moderated learning-resource marketplace, M-Pesa purchase handling, and rate-limited AI learning tools such as explanation, practice, flashcards, lesson-plan generation, assignment generation, and rubric generation.
+
+### Biometric attendance and face enrolment
+
+TrendScore’s biometric module is a governed attendance workflow, not simply a device connector.
+
+1. A school administrator registers a terminal, tests its connection, and creates a one-time activation code.
+2. The terminal is activated with a device-scoped token; platform biometric encryption and AWS credentials are never placed on the terminal.
+3. An authorised staff member starts consent-gated face enrolment for a learner or staff member.
+4. AWS Rekognition face-liveness validates the enrolment; the platform retains credential metadata rather than exposing biometric templates.
+5. An activated terminal records face attendance events, supports documented fallback attendance when recognition is unavailable, and queues/retries events when offline.
+6. Administrators review device state, enrolment state, logs, pending events, and configuration diagnostics; credentials can be revoked and terminals decommissioned when required.
+
+### AI and intelligence
+
+TrendScore combines deterministic school analytics with configurable AI-assisted experiences. Deterministic intelligence surfaces academic trends, attendance anomalies, fee-collection forecasts, learner risk signals, and plain-language recommendations from live school data. These insights can run without an external AI provider.
+
+When a school enables an approved provider, the platform supports an in-app AI copilot with contextual chat history and navigation support, plus AI-assisted report comments and communications. The provider layer supports OpenAI and Anthropic configuration through school communication settings and environment-managed credentials.
+
+The LMS adds enterprise-gated, rate-limited AI learning tools for age-appropriate explanation, simplification, flashcards, practice, mistake explanation, and generation support for lessons, assignments, and rubrics. AI features are permission-gated and should be enabled only after the school has configured its provider, data controls, and operating policy.
+
+### USSD direction
+
+USSD is listed as a planned low-bandwidth self-service channel for families and school communities. The present codebase includes SMS-provider configuration and a provider response field for a USSD account, but does **not** yet expose a complete USSD menu, session, authentication, or transaction workflow. It is therefore intentionally represented as roadmap work rather than a completed feature.
+
+### Communication and VOIP direction
+
+Today, TrendScore supports school-scoped SMS and email provider configuration, WhatsApp service integration paths, notices, broadcast recipients and contact groups, inbox/read receipts, SMS balance and top-up workflows, birthday messaging, report distribution, in-app notifications, and realtime events. Communication settings include provider testing and AI-assisted email drafting.
+
+Voice and VOIP are a planned extension of this communication layer. The repository does **not** currently contain a SIP client, WebRTC calling interface, telephony provider adapter, call routing, call recording, or call-log workflow, so the catalogue does not present VOIP as shipped functionality. A future implementation should use a provider adapter with school-scoped credentials, consent and retention controls, role-based call permissions, audit logs, and links back to the relevant learner, family, or support record.
+
+### School inside WhatsApp — readiness and implementation path
+
+TrendScore is preparing to let verified parents use key school services directly in WhatsApp. This is **WIP**, not a released parent self-service channel.
+
+| Layer | Current readiness | Notes |
+| --- | --- | --- |
+| Official Meta provider | **WIP** | The WhatsApp Cloud API adapter sends text and approved templates, including absence notifications, when `WABA_*` credentials are configured. |
+| Legacy sender | **WIP** | A QR/Baileys service supports report sharing, tests, and staff-initiated sends; it should be migrated behind a provider flag and retired from production parent journeys. |
+| Inbound webhook | **Not started** | The adapter can verify Meta’s GET challenge, but `/api/webhooks` currently mounts SMS callbacks only—there is no signed WhatsApp POST handler. |
+| Parent identity | **Not started** | Parent-to-learner access rules exist, but a WhatsApp phone-number binding, verification, and recovery process is not yet implemented. |
+| Parent conversation | **Not started** | There is no WhatsApp conversation state, durable message inbox, delivery-status processing, idempotency store, or human-handoff workflow. |
+| Read-only parent services | **Not started** | The existing parent, fee, attendance, report, and Pathways services need channel-safe, parent-scoped adapters. |
+| Conversational payments and approvals | **Not started** | These require canonical payment handling, explicit confirmation, idempotency, and audit guarantees before exposure in WhatsApp. |
+
+The target flow is deliberately channel-neutral so WhatsApp, future USSD, the parent portal, and a mobile app can use the same authorised business services:
+
+```text
+Parent WhatsApp
+  → Meta Cloud API signed webhook
+  → verify signature + deduplicate provider message ID
+  → resolve school from business phone number
+  → bind and verify parent identity
+  → conversation/session and human-handoff layer
+  → permission-checked TrendScore domain service
+  → audited reply, approved template, or confirmation prompt
+```
+
+Recommended delivery sequence:
+
+1. Keep official Meta Cloud API in **outbound-only** mode for absent-learner alerts, fee reminders, report-ready notices, and approval notifications.
+2. Add signed inbound webhook ingestion, normalized messages and statuses, durable inbox records, deduplication, monitoring, and a support handoff—without exposing school data yet.
+3. Add a parent linking flow: the parent confirms their WhatsApp number through the parent portal or an OTP, then is limited to linked active learners.
+4. Release a numbered, read-only menu for verified parents: fee balance, attendance summary, report availability, notices, and Pathways status.
+5. Add AI only as a presentation layer over permission-checked tools; it must never access Prisma or issue direct database mutations.
+6. Add write or financial actions only with explicit confirmation, idempotency keys, audit logs, a clear rollback path, and human escalation.
+
+The detailed architecture, security gates, rollout phases, and test expectations are maintained in [the AI-native WhatsApp transformation audit](docs/AI_TRANSFORMATION_AUDIT.md). Do not expose live learner data or conversational payment actions until its Phase 0 and inbound-channel controls are complete.
+
+### Email services and template creation
+
+Each school can configure and test its own communication providers from Communication Settings. The application supports **Resend** and SMTP-compatible email delivery, plus configurable SMS providers. Schools can set sender identity, provider credentials, and enabled or disabled status without exposing those credentials to ordinary users.
+
+Email workflows support operational templates such as welcome, onboarding, fee invoice, fee statement, parent portal, scheme review, fee-waiver, and generic messages. Administrators can test email delivery and use AI-assisted drafting to produce or refine a template from its audience, goal, tone, and current content. Templates should remain school-approved before use in a live broadcast.
+
+### School equipment and services
+
+TrendScore is web-based: a school does **not** need specialist hardware to run the core ERP. This guide separates baseline requirements from optional equipment tied to specific modules.
+
+| Category | What is needed | Used for |
+| --- | --- | --- |
+| Core access | Internet-connected desktop, laptop, tablet, or modern smartphone with a current browser | All dashboards, records, assessment, finance, communication, and reporting workflows. |
+| Network and continuity | Reliable internet, secure school Wi-Fi/LAN, power protection or UPS where practical, and a local connectivity fallback plan | Daily availability, device connectivity, cloud services, and reliable data capture. |
+| Printing and documents | A standard A4 printer; optionally a thermal receipt printer | Report cards, invoices, statements, ID cards, and point-of-payment receipts. |
+| Biometric attendance | A managed Android/iOS phone terminal with camera for face-liveness, or a supported networked ZKTeco attendance terminal; documented consent and stable local network | Automated learner or staff attendance. |
+| Transport | Driver smartphone with location access; optional vehicle GPS hardware supplied by the school or provider | Trip events, transport workflows, and tracking views. |
+| Payments | M-Pesa/Daraja business credentials and approved callback configuration | STK/payment reconciliation and fee-payment workflows. |
+| Communication | SMS-provider account, Resend or SMTP email account, and optional WhatsApp Business credentials | Parent alerts, broadcasts, receipts, reports, and two-way communication paths. |
+| Cloud AI and face services | Optional OpenAI or Anthropic credentials for AI features; AWS Rekognition credentials and biometric-encryption key for face workflows | AI copilot/LMS assistance and face-liveness enrolment. |
+
+Do not place server credentials, AWS keys, biometric-encryption keys, or school provider secrets on shared terminals. Use school-scoped configuration and least-privilege roles instead.
+
+### Accounting integration boundary
+
+TrendScore currently provides its **own integrated accounting ledger**, rather than a connector to an external accounting suite. Fees, payments, expenses, and payroll can post into the internal chart of accounts and journals; finance teams can import bank statements, review suggested journal matches, reconcile lines, and produce accounting reports inside TrendScore.
+
+The repository does **not** currently include QuickBooks, Xero, Sage, or external ERP export/import connectors. If an external-accounting integration is needed, it should be added as a deliberate provider adapter with mapped chart-of-account codes, idempotent sync, reconciliation rules, error queues, audit logs, and a clear system-of-record policy.
 
 ## Architecture
 
-TrendScore is maintained as a monorepo.
+TrendScore is maintained as a modular monorepo.
 
 | Path | Purpose |
 | --- | --- |
-| `/src` | React frontend for the School ERP user interface. |
-| `/public` | Public assets, app metadata, service worker, and web manifest. |
-| `/server` | Express API, Prisma models, services, controllers, routes, and backend jobs. |
-| `/deploy` | Deployment documentation and instance manifest. |
-| `.github/workflows` | CI, image publishing, and school-instance promotion workflows. |
+| [`src/`](src) | React application, UI components, state stores, API clients, and role-based experiences. |
+| [`server/`](server) | Express API, Prisma schema, routes, services, controllers, jobs, scripts, and tests. |
+| [`public/`](public) | Application assets, PWA metadata, service-worker files, branding, and screenshots. |
+| [`pathways/`](pathways) | Pathways UAT scenarios and implementation-supporting material. |
+| [`deploy/`](deploy) | Instance manifest and school deployment operating documentation. |
+| [`.github/workflows/`](.github/workflows) | CI, Docker publishing, promotion, storage maintenance, and biometric verification workflows. |
+| [`docs/`](docs) | Architecture, audit, and product documentation. |
 
-## Tech Stack
+### Technology
 
-- Frontend: React, Vite, Tailwind-style utility classes, Zustand-style state stores, Lucide icons.
-- Backend: Node.js, Express, TypeScript, Prisma ORM.
-- Database: PostgreSQL.
-- Realtime: Socket.io for realtime alerts and app events.
-- Payments: M-Pesa/Daraja integration paths and payment resolver services.
-- Communication: Email, SMS, WhatsApp, and push-notification services.
-- Media and documents: Cloudinary and document service layers.
-- Caching: Redis-ready cache architecture with development fallbacks.
-- Deployment: GitHub Actions, Docker image publishing, and school-instance promotion workflows.
+- **Frontend:** React 18, Vite, React Router, Zustand, Radix UI, Tailwind utilities, Recharts.
+- **Backend:** Node.js, Express, TypeScript, Prisma ORM, Zod.
+- **Data and realtime:** PostgreSQL, Socket.IO, Redis-ready caching architecture.
+- **Integrations:** M-Pesa/Daraja, SMS, email, WhatsApp, web push, Cloudinary, AWS Rekognition.
+- **Operations:** Docker, GitHub Actions, controlled school-instance promotion, health checks, and backups.
 
-## First Time Login
+## Local development
 
-The backend can create or update the first Superadmin account during startup.
+### Prerequisites
 
-Set these in `server/.env` before first boot:
+- Node.js 18 or newer
+- npm 9 or newer
+- PostgreSQL
+- A configured backend environment file
 
-```bash
-SUPER_ADMIN_EMAIL=admin@example.com
-SUPER_ADMIN_PASSWORD=change-this-password
-```
-
-Do not commit real credentials. Rotate credentials immediately if they were ever shared publicly.
-
-## Local Development
-
-### 1. Clone
+### Setup
 
 ```bash
 git clone https://github.com/Amalgamate/trendscore.git
 cd trendscore
-```
 
-### 2. Install frontend dependencies
-
-```bash
 npm install
-```
+npm --prefix server install
 
-### 3. Configure backend
-
-```bash
-cd server
-npm install
 cp .env.example .env
-npx prisma generate
-npx prisma migrate deploy
-npm run dev
+cp server/.env.example server/.env
+
+npm --prefix server run prisma:generate
+npm --prefix server exec prisma migrate deploy
 ```
 
-### 4. Run frontend
+For Windows PowerShell, use `Copy-Item .env.example .env` and `Copy-Item server/.env.example server/.env` instead of `cp` if needed.
+
+Before the first backend startup, configure at least the following in `server/.env`:
+
+```dotenv
+DATABASE_URL=postgresql://...
+JWT_SECRET=use-a-strong-secret
+JWT_REFRESH_SECRET=use-a-different-strong-secret
+SUPER_ADMIN_EMAIL=admin@example.com
+SUPER_ADMIN_PASSWORD=use-a-strong-password
+```
+
+Never commit real credentials, API keys, biometric-encryption keys, or production database URLs.
+
+### Run locally
 
 ```bash
-cd ..
 npm run dev
 ```
+
+This starts both services:
+
+| Service | Address |
+| --- | --- |
+| Frontend | <http://localhost:3000> |
+| Backend API | <http://localhost:5000> |
+| Health check | <http://localhost:5000/api/health> |
+
+Useful alternatives:
+
+```bash
+npm run dev:full      # Start the frontend after the API is reachable
+npm run dev:fast      # Faster local boot with reduced bootstrap work
+npm run kill-ports    # Release development ports
+npm run build         # Create a production frontend build
+```
+
+## Quality, tests, and operational commands
+
+```bash
+# Frontend
+npm run lint
+npm run test:ui
+npm run audit:design-system
+npm run audit:api-contract
+
+# Backend
+npm --prefix server run lint
+npm --prefix server run test
+npm --prefix server exec tsc --noEmit
+npm --prefix server exec prisma validate
+npm --prefix server run audit:responses
+```
+
+Useful non-production data and operations commands:
+
+```bash
+npm run seed:demo
+npm --prefix server run seed:evaluation-personas
+npm --prefix server run seed:ss:pathways
+npm --prefix server run seed:careers
+npm --prefix server run backup
+npm --prefix server run provision
+```
+
+Use seed data only in local, test, or explicitly approved demo environments.
 
 ## Deployment
 
-Deployment is designed around safe promotion rather than pushing every instance at once.
+TrendScore separates image publishing from school deployment. GitHub Actions can build and publish Docker images, but school deployments are manual, target one approved instance at a time, and are checked against [`deploy/instances.manifest.json`](deploy/instances.manifest.json).
 
-- Pushes to `main` build and publish Docker images; they do not deploy schools automatically.
-- Demo, production, pilot, or individual school deployments use the Promote Release workflow.
-- School instances are tracked in `deploy/instances.manifest.json`.
-- Deployment details live in `deploy/DEPLOYMENT.md` and `deploy/WORKFLOW.md`.
+Before a promotion proceeds, the workflow validates the selected school, environment, and deployment permission, then runs a scoped migration, deployment, and health check.
 
-## Verification Commands
+Read the operating guides before deploying:
 
-Useful checks before opening or merging a PR:
+- [Deployment workflow](deploy/WORKFLOW.md)
+- [Deployment model](deploy/DEPLOYMENT.md)
+- [Promotion workflow](.github/workflows/promote-release.yml)
 
-```bash
-npm run build
-cd server
-npx tsc --noEmit
-npx prisma validate
-```
+## Security notes
 
-Focused CBE grading tests should be run from `server` when needed:
+- Keep `.env` files and all credentials outside version control.
+- Use different JWT secrets and provider credentials for every environment.
+- Enable HTTPS, secure cookies, restrictive CORS, rate limiting, and CSP in production.
+- Treat role, tenant, parent-learner, and teacher-assignment boundaries as server-enforced controls.
+- Use the Pathways UAT scenario to test cross-role and cross-tenant access control before release.
+- Follow the [AI-native WhatsApp transformation audit](docs/AI_TRANSFORMATION_AUDIT.md) before expanding conversational or payment automation capabilities.
 
-```bash
-npx jest src/__tests__/cbe-grading.util.spec.ts --runInBand
-```
-
-## Repository Hygiene
-
-This repository now uses `.gitattributes` to normalize line endings and reduce noisy diffs across Windows and Linux environments. Local archive/debug artifacts should stay out of active product commits unless they are intentionally promoted into maintained tooling.
-
-## License and Ownership
+## License and ownership
 
 Copyright 2026 TrendScore. Managed by Amalgamate.
