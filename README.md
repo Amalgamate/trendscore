@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="https://www.trendscore.co.ke/">Website</a> ·
+  <a href="#product-experience">Product experience</a> ·
   <a href="#platform-catalogue">Platform catalogue</a> ·
   <a href="#guided-pathways">Guided Pathways</a> ·
   <a href="#local-development">Run locally</a> ·
@@ -22,6 +23,10 @@
   <img src="https://img.shields.io/badge/curriculum-Kenyan%20CBE-0f766e" alt="Kenyan CBE" />
   <img src="https://img.shields.io/badge/frontend-React%20%2B%20Vite-2563eb" alt="React and Vite" />
   <img src="https://img.shields.io/badge/backend-Express%20%2B%20Prisma-111827" alt="Express and Prisma" />
+</p>
+
+<p align="center">
+  <img src="public/screenshots/readme/trendscore-hero.png" alt="TrendScore connects school leaders, teachers, parents, and learners" width="100%" />
 </p>
 
 TrendScore brings the everyday work of a school into one secure, role-aware platform: learner records, CBE assessment, finance, people operations, communication, reporting, approvals, and learner pathways guidance. It is designed to support individual schools through school-scoped configuration and controlled deployments.
@@ -64,21 +69,47 @@ TrendScore brings the everyday work of a school into one secure, role-aware plat
 | Learners | Access learning and assessment information, complete pathway discovery, and make informed decisions. |
 | Finance and operations teams | Run billing, payments, inventory, transport, HR, payroll, and records workflows. |
 
-## Interface snapshots
+## Product experience
+
+<p align="center">
+  <img src="public/screenshots/readme/operations-dashboard.png" alt="Conceptual TrendScore operations dashboard across laptop and mobile" width="100%" />
+</p>
+
+<p align="center"><em>One connected operating view for school leaders, teams, and families.</em></p>
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="public/screenshots/readme/pathways-journey.png" alt="Conceptual learner Pathways journey from discovery through approval" width="100%" />
+      <br /><br />
+      <strong>Guided Pathways</strong><br />
+      Discovery, family review, counselling, approval, and a recorded learner decision.
+    </td>
+    <td width="50%" valign="top">
+      <img src="public/screenshots/readme/trendscore-hero.png" alt="TrendScore school community product vision" width="100%" />
+      <br /><br />
+      <strong>Every school role, connected</strong><br />
+      Operational insight for leaders, practical workflows for staff, and accessible touchpoints for parents and learners.
+    </td>
+  </tr>
+</table>
+
+> **About these visuals:** they are product-vision illustrations created for this catalogue, not screenshots of live functionality. The module-readiness table remains the source of truth for what is implemented, in progress, and planned.
+
+<details>
+<summary><strong>Current responsive sign-in captures</strong></summary>
+<br />
 
 <p align="center">
   <img src="public/screenshots/dashboard-wide.png" alt="TrendScore desktop sign-in screen" width="72%" />
 </p>
 
-<p align="center"><em>Desktop sign-in experience</em></p>
-
 <p align="center">
   <img src="public/screenshots/dashboard-mobile.png" alt="TrendScore mobile sign-in screen" width="260" />
 </p>
+</details>
 
-<p align="center"><em>Responsive mobile sign-in experience</em></p>
-
-> Add representative, anonymised captures of the executive dashboard, assessment workspace, parent portal, and Pathways Decision Centre to `public/screenshots/` as those views are ready for public presentation.
+> Add representative, anonymised captures of the executive dashboard, assessment workspace, parent portal, and Pathways Decision Centre to `public/screenshots/` as those views are ready for public presentation. Replace the conceptual visuals above only when there are polished public-safe captures that better demonstrate the live product.
 
 ## Platform catalogue
 
