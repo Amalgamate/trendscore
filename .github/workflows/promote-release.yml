@@ -128,6 +128,9 @@ jobs:
       - name: Upload deploy assets
         run: bash scripts/ci/sync-deploy-assets.sh
 
+      - name: Confirm production SSH connectivity
+        run: bash scripts/ci/wait-for-production-ssh.sh
+
       - name: Deploy matched school only
         env:
           IMAGE_TAG: ${{ needs.validate.outputs.image_tag }}
