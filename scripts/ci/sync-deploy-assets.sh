@@ -9,12 +9,32 @@ TMP_SCRIPT="/tmp/trendscore-deploy-release.sh"
 TMP_MAIN_COMPOSE="/tmp/trendscore-main-docker-compose.yml"
 TMP_STACK_COMPOSE="/tmp/trendscore-stack-docker-compose.yml"
 
-scp deploy/instances.manifest.json "production:${TMP_MANIFEST}"
-scp scripts/deploy-release.sh "production:${TMP_SCRIPT}"
-scp docker-compose.yml "production:${TMP_MAIN_COMPOSE}"
-scp deploy/docker-compose.stack.yml "production:${TMP_STACK_COMPOSE}"
+retry_transfer() {
+  local label="$1"
+  shift
+  local attempt=1
+  local max_attempts=5
+  local delay=3
 
-ssh production "set -euo pipefail
+  until "$@"; do
+    if [[ "${attempt}" -ge "${max_attempts}" ]]; then
+      echo "${label} failed after ${max_attempts} attempts" >&2
+      return 1
+    fi
+
+    echo "${label} failed (attempt ${attempt}/${max_attempts}); retrying in ${delay}s..." >&2
+    sleep "${delay}"
+    attempt=$((attempt + 1))
+    delay=$((delay * 2))
+  done
+}
+
+retry_transfer "Upload deployment manifest" scp deploy/instances.manifest.json "production:${TMP_MANIFEST}"
+retry_transfer "Upload deployment script" scp scripts/deploy-release.sh "production:${TMP_SCRIPT}"
+retry_transfer "Upload main compose file" scp docker-compose.yml "production:${TMP_MAIN_COMPOSE}"
+retry_transfer "Upload stack compose file" scp deploy/docker-compose.stack.yml "production:${TMP_STACK_COMPOSE}"
+
+retry_transfer "Install deployment assets" ssh production "set -euo pipefail
   sudo mkdir -p '${REMOTE_DEPLOY_DIR}'
   sudo cp '${TMP_MANIFEST}' '${REMOTE_DEPLOY_DIR}/instances.manifest.json'
   sudo cp '${TMP_SCRIPT}' '${REMOTE_DEPLOY_DIR}/deploy-release.sh'

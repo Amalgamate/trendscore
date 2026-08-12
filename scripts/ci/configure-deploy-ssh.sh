@@ -23,6 +23,10 @@ ssh-keyscan -H "${CLEAN_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || true
   echo "  IdentityFile ~/.ssh/deploy_key"
   echo "  IdentitiesOnly yes"
   echo "  StrictHostKeyChecking accept-new"
+  echo "  ConnectTimeout 20"
+  echo "  ConnectionAttempts 3"
+  echo "  ServerAliveInterval 15"
+  echo "  ServerAliveCountMax 3"
 } > ~/.ssh/config
 
 echo "SSH configured for ${DEPLOY_USER}@${CLEAN_HOST}"
