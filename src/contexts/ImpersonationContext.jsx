@@ -25,11 +25,18 @@ import React, {
 import { AuthContext } from './AuthContext';
 import { impersonationApi } from '../services/api/impersonation.api';
 import axiosInstance from '../services/api/axiosConfig';
-import { clearImpersonationAccessToken, getAuthItem, setImpersonationAccessToken } from '../utils/authStorage';
+import {
+  clearImpersonationAccessToken,
+  getAuthItem,
+  isRememberedSession,
+  setImpersonationAccessToken,
+} from '../utils/authStorage';
 
 // ─── localStorage key constants ───────────────────────────────────────────────
 const LS_ORIGINAL_TOKEN = 'trendscore_impersonation_original_token';
 const LS_ORIGINAL_USER  = 'trendscore_impersonation_original_user';
+const LS_ORIGINAL_REFRESH_TOKEN = 'trendscore_impersonation_original_refresh_token';
+const LS_ORIGINAL_PERSISTENCE = 'trendscore_impersonation_original_persistence';
 
 // ─── Context definition ────────────────────────────────────────────────────────
 const ImpersonationContext = createContext(null);
@@ -70,7 +77,11 @@ export function ImpersonationProvider({ children }) {
       if (!originalToken || !originalUserRaw) return false;
 
       const originalUser = JSON.parse(originalUserRaw);
-      auth.login(originalUser, originalToken);
+      const originalRefreshToken = localStorage.getItem(LS_ORIGINAL_REFRESH_TOKEN);
+      const originalPersistence = localStorage.getItem(LS_ORIGINAL_PERSISTENCE);
+      auth.login(originalUser, originalToken, originalRefreshToken, {
+        rememberMe: originalPersistence === 'remembered',
+      });
 
       // Remove all impersonation localStorage keys (Req 5.6)
       Object.keys(localStorage)
@@ -158,12 +169,20 @@ export function ImpersonationProvider({ children }) {
 
     // Capture original admin token and user BEFORE any changes (Req 3.10)
     const originalToken = getAuthItem('token') ?? '';
+    const originalRefreshToken = getAuthItem('refreshToken');
     const originalUser  = auth.user;
+    const originalPersistence = isRememberedSession() ? 'remembered' : 'session';
 
     // Persist original session to localStorage (Req 3.10)
     try {
       localStorage.setItem(LS_ORIGINAL_TOKEN, originalToken);
       localStorage.setItem(LS_ORIGINAL_USER, JSON.stringify(originalUser));
+      if (originalRefreshToken) {
+        localStorage.setItem(LS_ORIGINAL_REFRESH_TOKEN, originalRefreshToken);
+      } else {
+        localStorage.removeItem(LS_ORIGINAL_REFRESH_TOKEN);
+      }
+      localStorage.setItem(LS_ORIGINAL_PERSISTENCE, originalPersistence);
     } catch (storageErr) {
       setError('Failed to save session — localStorage may be full or disabled.');
       setIsLoading(false);
@@ -194,6 +213,8 @@ export function ImpersonationProvider({ children }) {
       // Rollback: remove localStorage keys so there's no orphaned state (Req 3.13)
       localStorage.removeItem(LS_ORIGINAL_TOKEN);
       localStorage.removeItem(LS_ORIGINAL_USER);
+      localStorage.removeItem(LS_ORIGINAL_REFRESH_TOKEN);
+      localStorage.removeItem(LS_ORIGINAL_PERSISTENCE);
       clearImpersonationAccessToken();
 
       const message = err?.response?.data?.error

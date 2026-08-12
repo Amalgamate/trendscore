@@ -95,6 +95,16 @@ axiosInstance.interceptors.response.use(
         const errorCode = getAuthErrorCode(error);
 
         if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+            // Impersonation sessions are deliberately short-lived and never
+            // receive a refresh token. Attempting the normal refresh flow for
+            // one therefore guarantees a refresh failure and clears both the
+            // impersonated and the saved administrator sessions. Leave the
+            // response untouched so ImpersonationContext can restore the
+            // administrator only when the impersonation JWT truly expires.
+            if (hasImpersonationSession()) {
+                return Promise.reject(error);
+            }
+
             if (errorCode === 'FORCE_LOGOUT') {
                 _clearAuth('forced');
                 return Promise.reject(error);
