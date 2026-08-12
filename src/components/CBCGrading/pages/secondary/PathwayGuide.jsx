@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, CheckCircle2, Circle, Compass, Sparkles, X } from 'lucide-react';
 
-const GUIDE_VERSION = 'v1';
+const GUIDE_VERSION = 'v3';
 
 // ─── Staff (primary / junior school) steps ────────────────────────────────────
 const juniorSteps = [
@@ -77,25 +77,47 @@ const seniorSteps = [
 // ─── Admin steps ──────────────────────────────────────────────────────────────
 const adminSteps = [
   {
+    id: 'offerings',
+    title: 'Set up this school’s offerings',
+    text: 'Start here. Choose the pathways and subjects the school genuinely teaches, then save. These choices control what can appear in Senior School tests and learner plans.',
+    action: 'Open School Offerings',
+    path: 'sec-school-offerings',
+  },
+  {
     id: 'catalogue',
-    title: 'Prepare the catalogue',
-    text: 'Maintain pathways, careers, subject combinations and trusted senior-school data.',
-    action: 'Open Configurations',
+    title: 'Prepare trusted pathway content',
+    text: 'Maintain the shared pathways, tracks, combinations and careers that students and families will see. Publish only accurate content.',
+    action: 'Open Content',
     path: 'pathways-admin',
     params: { tab: 'content' },
   },
   {
     id: 'schools',
     title: 'Verify senior schools',
-    text: 'Review schools, their available pathways and the information families will see.',
+    text: 'Check senior-school profiles and availability so the families’ school matches are reliable.',
     action: 'Open Senior Schools',
     path: 'pathways-admin',
     params: { tab: 'schools' },
   },
   {
+    id: 'readiness',
+    title: 'Monitor learner readiness',
+    text: 'Use Overview to see class readiness. Then open Workbench for a learner who needs support, review their evidence and guide the next step with the teacher and family.',
+    action: 'Open Overview',
+    path: 'pathways-admin',
+    params: { tab: 'dashboard' },
+  },
+  {
+    id: 'workbench',
+    title: 'Handle learner cases',
+    text: 'In Workbench, review a learner’s pathway recommendation, interests, careers and school options. Capture a clear plan before asking the parent to review it.',
+    action: 'Open Workbench',
+    path: 'sec-pathway-counsellor',
+  },
+  {
     id: 'quality',
     title: 'Check data quality',
-    text: 'Resolve incomplete data before it influences learner recommendations.',
+    text: 'Resolve missing or inconsistent data before it influences a learner recommendation or a parent conversation.',
     action: 'Open Data Quality',
     path: 'pathways-admin',
     params: { tab: 'quality' },
@@ -103,7 +125,7 @@ const adminSteps = [
   {
     id: 'insights',
     title: 'Review transition insights',
-    text: 'Use analytics to understand demand, decisions and areas that need support.',
+    text: 'Use analytics to spot demand, delayed decisions and groups of learners who need support. Adjust your school plan from the evidence.',
     action: 'Open Analytics',
     path: 'pathways-admin',
     params: { tab: 'analytics' },
@@ -169,11 +191,14 @@ export const getPathwayGuide = (user) => {
     };
   }
 
-  if (['SUPER_ADMIN', 'ADMIN'].includes(role)) {
+  if (['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].includes(role)) {
+    const isSecondary = String(user?.institutionType || '').toUpperCase() === 'SECONDARY';
     return {
-      title: 'Pathway Guide',
-      intro: 'Set up trusted catalogue data and help every school make good decisions.',
-      steps: adminSteps,
+      title: isSecondary ? 'Senior Pathway Admin Workflow' : 'Junior Transition Admin Workflow',
+      intro: isSecondary
+        ? 'Set up the subjects your senior school delivers, then use readiness and the workbench to support every learner, teacher and parent conversation.'
+        : 'Use evidence, careers and senior-school information to help each Grade 7–9 learner make a confident transition decision with their family.',
+      steps: isSecondary ? adminSteps : adminSteps.filter((step) => step.id !== 'offerings'),
     };
   }
 

@@ -37,10 +37,26 @@ export const secondaryNavSections = [
     icon: Users,
     permission: null,
     items: [
-      { id: 'students-list',       label: 'Students List',   path: 'learners-list',       permission: 'VIEW_ALL_LEARNERS' },
-      { id: 'students-admissions', label: 'Admissions',      path: 'learners-admissions', permission: 'CREATE_LEARNER'    },
-      { id: 'students-id-print',   label: 'ID Card Printing',path: 'learners-id-print',   permission: 'VIEW_ALL_LEARNERS', icon: CreditCard },
-      { id: 'parents-list',        label: 'Parents List',    path: 'parents-list',        permission: 'VIEW_ALL_USERS' },
+      { id: 'students-overview',   label: 'Students Overview', path: 'learners-overview', permission: 'VIEW_ALL_LEARNERS' },
+      { id: 'students-list',       label: 'Students List',     path: 'learners-list',     permission: 'VIEW_ALL_LEARNERS' },
+      { id: 'students-admissions', label: 'Admissions',        path: 'learners-admissions', permission: 'CREATE_LEARNER' },
+      { id: 'students-reports',    label: 'Student Reports',   path: 'learners-reports',  permission: 'VIEW_ALL_LEARNERS' },
+      {
+        id: 'students-transfers', label: 'Transfers & Exits', type: 'group', items: [
+          { id: 'students-transfers-in', label: 'Incoming Transfers', path: 'learners-transfers-in', permission: 'VIEW_ALL_LEARNERS' },
+          { id: 'students-transfer-out', label: 'Transfer Out', path: 'learners-transfer-out', permission: 'VIEW_ALL_LEARNERS' },
+          { id: 'students-exited', label: 'Exited Students', path: 'learners-exited', permission: 'VIEW_ALL_LEARNERS' },
+        ],
+      },
+      {
+        id: 'students-services', label: 'Student Services', type: 'group', items: [
+          { id: 'students-promotion', label: 'Promotion', path: 'learners-promotion', permission: 'PROMOTE_LEARNER', app: 'planner' },
+          { id: 'students-uniform', label: 'Uniform Allocation', path: 'learners-uniform', permission: 'VIEW_ALL_LEARNERS', app: 'inventory' },
+          { id: 'students-id-print', label: 'ID Card Printing', path: 'learners-id-print', permission: 'VIEW_ALL_LEARNERS', icon: CreditCard },
+          { id: 'students-documents', label: 'Student Documents', path: 'docs-center', params: { category: 'students' }, permission: 'VIEW_ALL_LEARNERS', icon: FileText },
+        ],
+      },
+      { id: 'parents-list', label: 'Parents & Guardians', path: 'parents-list', permission: 'VIEW_ALL_USERS' },
     ],
   },
   {
@@ -84,9 +100,7 @@ export const secondaryNavSections = [
     permission: null,
     items: [
       { id: 'pathways-admin-overview', label: 'Overview',             path: 'pathways-admin',         params: { tab: 'dashboard' }, permission: 'MANAGE_PATHWAY_CATALOG' },
-      { id: 'sec-pathway-overview',   label: 'Progress Dashboard',   path: 'sec-pathway-overview',   permission: 'VIEW_ALL_LEARNERS'      },
       { id: 'sec-pathway-counsellor', label: 'Counsellor Workbench', path: 'sec-pathway-counsellor', permission: 'VIEW_ALL_LEARNERS'      },
-      { id: 'pathway-guide',          label: 'Guide',                path: 'pathway-guide',          permission: null                     },
       {
         id: 'pathway-catalogues',
         label: 'Catalogues',
@@ -102,6 +116,7 @@ export const secondaryNavSections = [
         label: 'Configurations',
         type: 'group',
         items: [
+          { id: 'sec-school-offerings',      label: 'School Offerings', path: 'sec-school-offerings',                          permission: 'MANAGE_PATHWAY_OFFERINGS' },
           { id: 'pathways-admin-content',     label: 'Content',        path: 'pathways-admin', params: { tab: 'content' },     permission: 'MANAGE_PATHWAY_CATALOG' },
           { id: 'pathways-admin-schools',     label: 'Senior Schools', path: 'pathways-admin', params: { tab: 'schools' },     permission: 'MANAGE_PATHWAY_CATALOG' },
           { id: 'pathways-admin-corrections', label: 'Corrections',    path: 'pathways-admin', params: { tab: 'corrections' }, permission: 'MANAGE_PATHWAY_CATALOG' },

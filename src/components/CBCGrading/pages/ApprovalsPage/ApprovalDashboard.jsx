@@ -23,32 +23,13 @@ import {
 } from 'lucide-react';
 import { approvalAPI } from '../../../../services/api/approval.api';
 import { ApprovalRequestCard } from './components/ApprovalRequestCard';
+import { KpiCard as SharedKpiCard } from '../../../../design-system/components';
 
 // ── KPI Card ─────────────────────────────────────────────────────────────────
 
 function KpiCard({ icon: Icon, label, value, color, loading }) {
-  return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4">
-      <div
-        className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-        style={{ backgroundColor: color + '1A' }} // 10% tint
-      >
-        <Icon size={22} style={{ color }} />
-      </div>
-      <div className="min-w-0">
-        <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide truncate">
-          {label}
-        </p>
-        {loading ? (
-          <div className="mt-1 h-6 w-10 bg-gray-100 rounded animate-pulse" />
-        ) : (
-          <p className="text-2xl font-bold text-[#002C60] leading-tight">
-            {value ?? 0}
-          </p>
-        )}
-      </div>
-    </div>
-  );
+  const tone = { '#F59E0B': 'amber', '#3B82F6': 'sky', '#8B5CF6': 'violet', '#10B981': 'emerald', '#EF4444': 'rose' }[color] || 'indigo';
+  return <SharedKpiCard label={label} value={loading ? '—' : (value ?? 0)} icon={<Icon size={20} />} tone={tone} orbPosition="top-right" />;
 }
 
 // ── Module options ────────────────────────────────────────────────────────────

@@ -63,6 +63,13 @@ const LogViewer = () => {
     }
   };
 
+  const visibleLogs = logs.filter((log) => {
+    const query = filters.search.trim().toLowerCase();
+    return !query || [log.personId, log.personType, log.device?.name]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
+
   return (
     <div className="space-y-6">
       {/* Search & Filter Bar */}
@@ -86,6 +93,8 @@ const LogViewer = () => {
           <input 
             type="text"
             placeholder="Search by ID or Reference..."
+            value={filters.search}
+            onChange={(event) => setFilters({ ...filters, search: event.target.value })}
             className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-medium focus:ring-4 focus:ring-indigo-500/5 outline-none"
           />
         </div>
@@ -111,8 +120,8 @@ const LogViewer = () => {
                     <td colSpan="5" className="px-6 py-6"><div className="h-4 bg-slate-50 rounded-lg w-full" /></td>
                   </tr>
                 ))
-              ) : logs.length > 0 ? (
-                logs.map((log) => (
+              ) : visibleLogs.length > 0 ? (
+                visibleLogs.map((log) => (
                   <tr key={log.id} className="hover:bg-slate-50/50 transition-colors group">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-3">
@@ -130,20 +139,22 @@ const LogViewer = () => {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-semibold text-[10px]">
-                          {log.learnerId ? 'LN' : 'ST'}
+                          {log.personType === 'LEARNER' ? 'LN' : 'ST'}
                         </div>
                         <div>
                           <p className="text-xs font-medium text-slate-900">
-                            {log.learner?.firstName || log.user?.firstName || 'Unknown'} {log.learner?.lastName || log.user?.lastName || ''}
+                            {log.personType === 'LEARNER' ? 'Learner' : 'Staff'} scan
                           </p>
                           <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest">
-                            Ref: {log.externalId}
+                            Ref: {log.personId}
                           </p>
+                          {log.resultPayload?.message && <p className="mt-1 max-w-xs text-[9px] text-slate-400">{log.resultPayload.message}</p>}
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <p className="text-[10px] font-medium text-slate-600">{log.device?.name || 'Manual Upload'}</p>
+                      <p className="mt-1 text-[9px] uppercase tracking-wider text-slate-400">{log.modality || 'UNKNOWN'}{log.offlineCaptured ? ' · OFFLINE SYNC' : ''}</p>
                     </td>
                     <td className="px-6 py-4 text-center">
                       <span className={`inline-flex items-center px-3 py-1 rounded-full text-[9px] font-semibold uppercase tracking-widest ${getStatusStyle(log.status)}`}>
@@ -160,11 +171,11 @@ const LogViewer = () => {
                           <Play size={16} />
                         </button>
                       )}
-                      {log.status === 'FAILED' && log.error && (
+                      {log.status === 'FAILED' && log.errorMessage && (
                         <div className="group relative inline-block ml-2">
                           <AlertTriangle size={16} className="text-rose-500 cursor-help" />
                           <div className="absolute right-0 bottom-full mb-2 hidden group-hover:block w-48 p-2 bg-slate-900 text-white text-[9px] rounded-lg shadow-xl z-50">
-                            {log.error}
+                            {log.errorMessage}
                           </div>
                         </div>
                       )}

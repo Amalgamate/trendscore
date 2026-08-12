@@ -350,6 +350,9 @@ export class ConfigService {
 
     const config = await prisma.termConfig.findFirst({
       where: { isActive: true },
+      // Old term records can remain active in imported/demo data. Always use
+      // the most recent active academic context instead of database row order.
+      orderBy: [{ academicYear: 'desc' }, { createdAt: 'desc' }],
       include: {
         creator: {
           select: {

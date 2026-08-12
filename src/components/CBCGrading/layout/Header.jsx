@@ -447,17 +447,24 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
         </div>
       </div>
       <div className="flex items-center gap-2 lg:gap-4">
-        {showHelp && (
-          <button
-            type="button"
-            onClick={onOpenHelp}
-            className="hidden md:inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-[0.12em] text-gray-400 transition-colors hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-            aria-label="Open help for this page"
-            title="Open help for this page"
-          >
-            <HelpCircle size={11} aria-hidden="true" /> Help
-          </button>
-        )}
+        {showHelp && <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="hidden md:inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-[0.12em] text-gray-400 transition-colors hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                aria-label="Open help menu"
+                title="Help"
+              >
+                <HelpCircle size={11} aria-hidden="true" /> Help <ChevronDown size={11} aria-hidden="true" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-56 p-2">
+              <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400">Help</div>
+              <button type="button" onClick={onOpenHelp} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700">
+                <HelpCircle size={15} /> Help for this page
+              </button>
+            </PopoverContent>
+        </Popover>}
         {showOnboarding && (
           <button
             type="button"

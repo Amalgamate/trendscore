@@ -56,7 +56,12 @@ async function resolveLearnerId(req: AuthRequest): Promise<string> {
   ].filter(Boolean) as string[];
 
   const learner = await prisma.learner.findFirst({
-    where: { admissionNumber: { in: usernameCandidates } },
+    where: {
+      OR: [
+        { studentUserId: userId },
+        { admissionNumber: { in: usernameCandidates } },
+      ],
+    },
     select: { id: true },
   });
 

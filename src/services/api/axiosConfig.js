@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { getInstitutionType } from './institutionContext';
 import { clearAuthAndRedirect, getAuthErrorCode } from '../../utils/sessionLifecycle';
-import { getAuthItem, setAuthItem } from '../../utils/authStorage';
+import { getAuthItem, getImpersonationAccessToken, hasImpersonationSession, setAuthItem } from '../../utils/authStorage';
 
 // Use environment variable for API URL or fall back to automatic discovery for production stability
 const getApiBaseUrl = () => {
@@ -38,9 +38,19 @@ axiosInstance.interceptors.request.use(
     (config) => {
         // Preference for cookies (withCredentials: true), 
         // but allow Bearer fallback for mobile/capacitor clients
-        const token = getAuthItem('token');
-        // If we have a real JWT (starts with ey), send it as Header fallback
-        if (token && token.startsWith('ey')) {
+        const impersonationToken = getImpersonationAccessToken();
+        const impersonating = hasImpersonationSession();
+        const token = impersonationToken || getAuthItem('token');
+        // During impersonation, never let a stale admin bearer token override
+        // the short-lived impersonation cookie. New sessions carry the explicit
+        // impersonation token; existing sessions safely fall back to the cookie.
+        if (impersonating && !impersonationToken) {
+            // Axios may retain a header from a request created before the
+            // impersonation swap. Authentication gives Bearer precedence over
+            // cookies, so remove both casings and let the target-user cookie win.
+            delete config.headers.Authorization;
+            delete config.headers.authorization;
+        } else if (token && token.startsWith('ey')) {
             config.headers['Authorization'] = `Bearer ${token}`;
         }
         const institutionType = getInstitutionType();
@@ -85,6 +95,16 @@ axiosInstance.interceptors.response.use(
         const errorCode = getAuthErrorCode(error);
 
         if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+            // Impersonation sessions are deliberately short-lived and never
+            // receive a refresh token. Attempting the normal refresh flow for
+            // one therefore guarantees a refresh failure and clears both the
+            // impersonated and the saved administrator sessions. Leave the
+            // response untouched so ImpersonationContext can restore the
+            // administrator only when the impersonation JWT truly expires.
+            if (hasImpersonationSession()) {
+                return Promise.reject(error);
+            }
+
             if (errorCode === 'FORCE_LOGOUT') {
                 _clearAuth('forced');
                 return Promise.reject(error);

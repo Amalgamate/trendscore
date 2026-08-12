@@ -357,9 +357,15 @@ const UserManagement = () => {
     setTimeout(() => setNotification(null), 3000);
   }, []);
 
-  const currentUserRole = getStoredUser()?.role;
-  const canSyncStudentUsers = ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'].includes(currentUserRole);
-  const canManageVerification = ['SUPER_ADMIN', 'ADMIN'].includes(currentUserRole);
+  const currentUser = getStoredUser();
+  const currentUserRoles = [currentUser?.role, ...(Array.isArray(currentUser?.roles) ? currentUser.roles : [])]
+    .filter(Boolean)
+    .map((role) => String(role).toUpperCase());
+  // Keep this action visible in User Management. The server endpoint remains the
+  // source of truth for authorization, avoiding hidden controls when a legacy
+  // session stores the administrator role under a different field.
+  const canSyncStudentUsers = true;
+  const canManageVerification = currentUserRoles.some((role) => ['SUPER_ADMIN', 'SYSTEM_ADMINISTRATOR', 'ADMIN'].includes(role));
 
   const loadUsers = useCallback(async () => {
     try {
@@ -600,11 +606,13 @@ const UserManagement = () => {
   };
 
   const toggleSelectAll = () => {
-    if (selectedUsers.length === filteredUsers.length) {
-      setSelectedUsers([]);
-    } else {
-      setSelectedUsers(filteredUsers.map(u => u.id));
-    }
+    const visibleIds = filteredUsers.map((user) => user.id);
+    setSelectedUsers((current) => {
+      const selected = new Set(current);
+      if (allFilteredUsersSelected) visibleIds.forEach((id) => selected.delete(id));
+      else visibleIds.forEach((id) => selected.add(id));
+      return Array.from(selected);
+    });
   };
 
   const handleBulkRoleChange = async (newRole) => {
@@ -676,6 +684,7 @@ const UserManagement = () => {
 
   const handleSyncStudentUsers = async () => {
     if (!canSyncStudentUsers || syncingStudentUsers) return;
+    if (!window.confirm('Create system user accounts for every active learner that does not already have one? Existing student accounts will not be changed.')) return;
 
     try {
       setSyncingStudentUsers(true);
@@ -746,6 +755,9 @@ const UserManagement = () => {
 
     return matchesSearch;
   });
+
+  const selectedVisibleCount = filteredUsers.filter((user) => selectedUsers.includes(user.id)).length;
+  const allFilteredUsersSelected = filteredUsers.length > 0 && selectedVisibleCount === filteredUsers.length;
 
   const roleAccessRows = useMemo(() => {
     const systemRoles = ['ADMIN', 'TEACHER', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'ACCOUNTANT', 'RECEPTIONIST', 'PARENT', 'STUDENT'];
@@ -924,7 +936,7 @@ const UserManagement = () => {
                 }`}
               >
                 <RefreshCw size={14} className={syncingStudentUsers ? 'animate-spin' : ''} />
-                {syncingStudentUsers ? 'Syncing...' : 'Sync Students'}
+                {syncingStudentUsers ? 'Creating accounts...' : 'Make Learners System Users'}
               </button>
             )}
             <button className="inline-flex shrink-0 items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-all shadow-sm font-semibold text-xs">
@@ -1038,6 +1050,12 @@ const UserManagement = () => {
                   <div className="flex items-center gap-2 p-1.5 bg-purple-50 rounded-xl border border-purple-100 shadow-sm">
                     <span className="text-xs font-medium text-purple-700 px-2">{selectedUsers.length} Selected</span>
                     <button
+                      onClick={toggleSelectAll}
+                      className="px-2.5 py-1.5 border border-purple-200 bg-white text-purple-700 rounded-lg hover:bg-purple-100 text-xs font-medium transition"
+                    >
+                      {allFilteredUsersSelected ? 'Clear shown' : `Select all shown (${filteredUsers.length})`}
+                    </button>
+                    <button
                       onClick={() => setShowBulkActions(!showBulkActions)}
                       className="px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-xs font-medium transition"
                     >
@@ -1068,6 +1086,17 @@ const UserManagement = () => {
                   >
                     <X size={18} />
                   </button>
+                  {activeTab === 'students' && canSyncStudentUsers && (
+                    <button
+                      onClick={handleSyncStudentUsers}
+                      disabled={syncingStudentUsers}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Create accounts for every active learner without a system user"
+                    >
+                      <RefreshCw size={13} className={syncingStudentUsers ? 'animate-spin' : ''} />
+                      Make missing learner users
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -1111,8 +1140,10 @@ const UserManagement = () => {
                             <th className="px-4 py-3 text-left w-10">
                               <input
                                 type="checkbox"
-                                checked={selectedUsers.length === filteredUsers.length && filteredUsers.length > 0}
+                                checked={allFilteredUsersSelected}
                                 onChange={toggleSelectAll}
+                                aria-label={allFilteredUsersSelected ? 'Clear all shown users' : 'Select all shown users'}
+                                title={allFilteredUsersSelected ? 'Clear all shown users' : 'Select all shown users'}
                                 className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                               />
                             </th>
@@ -1818,28 +1849,29 @@ const UserManagement = () => {
                     </div>
                   </div>
 
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-semibold mb-2 text-gray-700">
-                      Password {!editingUser && <span className="text-red-500">*</span>}
-                      {editingUser && <span className="text-gray-500 text-xs ml-2">(leave blank to keep current)</span>}
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        value={formData.password}
-                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                        className="w-full px-4 py-2 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder={editingUser ? 'Enter new password to change' : 'Enter password'}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                      >
-                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                      </button>
+                  {!editingUser && (
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-semibold mb-2 text-gray-700">
+                        Password <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          value={formData.password}
+                          onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                          className="w-full px-4 py-2 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="Enter password"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                        >
+                          {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 <div className="flex gap-3 pt-4 border-t">

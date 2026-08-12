@@ -1,5 +1,7 @@
-const AUTH_KEYS = ['token', 'refreshToken', 'user', 'authToken'];
+const AUTH_KEYS = ['token', 'refreshToken', 'user', 'authToken', 'trendscore_impersonation_access_token'];
 const PERSISTENCE_KEY = 'authPersistence';
+const IMPERSONATION_ACCESS_TOKEN_KEY = 'trendscore_impersonation_access_token';
+const IMPERSONATION_MARKER_KEY = 'trendscore_impersonation_original_token';
 
 function safeGet(storage, key) {
   try { return storage?.getItem(key) || null; } catch { return null; }
@@ -20,6 +22,22 @@ export function isRememberedSession() {
 
 export function getAuthItem(key) {
   return safeGet(sessionStorage, key) ?? safeGet(localStorage, key);
+}
+
+export function getImpersonationAccessToken() {
+  return safeGet(sessionStorage, IMPERSONATION_ACCESS_TOKEN_KEY);
+}
+
+export function setImpersonationAccessToken(token) {
+  safeSet(sessionStorage, IMPERSONATION_ACCESS_TOKEN_KEY, token);
+}
+
+export function clearImpersonationAccessToken() {
+  safeSet(sessionStorage, IMPERSONATION_ACCESS_TOKEN_KEY, null);
+}
+
+export function hasImpersonationSession() {
+  return Boolean(safeGet(localStorage, IMPERSONATION_MARKER_KEY));
 }
 
 export function setAuthItem(key, value) {

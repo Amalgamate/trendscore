@@ -14,4 +14,16 @@ describe('module guide registry', () => {
   it('returns no launcher on an unrelated page', () => {
     expect(findModuleGuide('finance-dashboard', 'ADMIN')).toBeNull();
   });
+
+  it('shows the biometric guide across every biometric tab route', () => {
+    expect(findModuleGuide('biometric-dashboard', 'SUPER_ADMIN')?.id).toBe('biometric-attendance');
+    expect(findModuleGuide('biometric-dashboard?tab=enrollment', 'ADMIN')?.id).toBe('biometric-attendance');
+    expect(findModuleGuide('biometric-dashboard?tab=devices', 'ADMIN')?.id).toBe('biometric-attendance');
+    expect(findModuleGuide('biometric-dashboard?tab=logs', 'SUPER_ADMIN')?.id).toBe('biometric-attendance');
+    expect(findModuleGuide('biometric-dashboard?tab=config', 'SUPER_ADMIN')?.id).toBe('biometric-attendance');
+  });
+
+  it('keeps biometric administration instructions limited to biometric administrators', () => {
+    expect(findModuleGuide('biometric-dashboard', 'HEAD_TEACHER')).toBeNull();
+  });
 });

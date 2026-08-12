@@ -1,6 +1,7 @@
 export const GUIDE_VERSION = 1;
 
 const adminRoles = ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'];
+const biometricAdminRoles = ['SUPER_ADMIN', 'ADMIN'];
 
 export const moduleGuides = [
   {
@@ -83,6 +84,30 @@ export const moduleGuides = [
     tips: ['A provider acceptance is not the same as handset delivery.', 'Do not retry a duplicate failure until checking whether an earlier copy was delivered.'],
     support: { query: 'SMS', section: 'communications' },
   },
+  {
+    id: 'biometric-attendance',
+    title: 'Biometric Attendance',
+    pages: ['biometric-dashboard'],
+    roles: biometricAdminRoles,
+    summary: 'Set up secure face attendance from AWS readiness through terminal activation, consent-based enrollment, daily scanning, manual fallback and audit review.',
+    required: 'The biometric module enabled, a supported AWS Face Liveness configuration, an internet-connected phone, and documented consent before face enrollment.',
+    steps: [
+      { title: 'Confirm platform readiness', description: 'Open Setup & API and confirm Encryption ready and FACE READY. Do not continue with face enrollment when either check is missing.', page: 'biometric-dashboard?tab=config' },
+      { title: 'Register the phone terminal', description: 'In Terminal Management, create a PHONE terminal with a stable hardware ID, a clear name and its physical location.', page: 'biometric-dashboard?tab=devices' },
+      { title: 'Activate the phone', description: 'Choose Activate phone, open the terminal link on the intended phone and exchange the one-use 8-digit code within ten minutes.', page: 'biometric-dashboard?tab=devices' },
+      { title: 'Enroll a consenting person', description: 'Find the learner or staff member, confirm documented consent, and let that same person complete the live face challenge in suitable lighting.', page: 'biometric-dashboard?tab=enrollment' },
+      { title: 'Record a test attendance event', description: 'On the activated phone choose Check In or Check Out, start face recognition and complete the AWS liveness challenge. Use manual admission or staff ID only as fallback.' },
+      { title: 'Verify the result', description: 'Review Attendance Data Feed for the correct person, direction, FACE modality, liveness result, confidence and local timestamp, then test the terminal connection.', page: 'biometric-dashboard?tab=logs' },
+      { title: 'Maintain access safely', description: 'Revoke face enrollment when consent is withdrawn, rotate a lost terminal token, and decommission a retired or stolen phone without deleting its audit history.', page: 'biometric-dashboard?tab=devices' },
+    ],
+    tips: [
+      'The activated terminal must remain in the same browser profile; clearing its browser storage requires a new activation code.',
+      'Face recognition requires internet. Manual events can queue offline and synchronize when connectivity returns.',
+      'Never enter AWS credentials or the biometric encryption key into the browser, phone or school settings UI.',
+      'Every school has its own face collection, terminals, device tokens, consent records and face enrollments.',
+    ],
+    support: { section: 'biometrics' },
+  },
 
   // ── Phase 2.0 guides ────────────────────────────────────────────────────────
 
@@ -154,5 +179,6 @@ export const moduleGuides = [
 
 export function findModuleGuide(page, role) {
   const normalizedRole = String(role || '').toUpperCase();
-  return moduleGuides.find((guide) => guide.pages.includes(page) && guide.roles.includes(normalizedRole)) || null;
+  const normalizedPage = String(page || '').split('?')[0];
+  return moduleGuides.find((guide) => guide.pages.includes(normalizedPage) && guide.roles.includes(normalizedRole)) || null;
 }

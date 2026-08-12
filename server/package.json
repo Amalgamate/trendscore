@@ -65,6 +65,8 @@
   "author": "TrendScore",
   "license": "MIT",
   "dependencies": {
+    "@aws-sdk/client-rekognition": "^3.1106.0",
+    "@aws-sdk/client-sts": "^3.1106.0",
     "@prisma/client": "^5.22.0",
     "@react-email/components": "^1.0.6",
     "@react-email/render": "^2.0.4",

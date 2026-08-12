@@ -481,7 +481,7 @@ const uniqueSubjects = (subjects = []) => {
   });
 };
 
-const PathwaysHub = ({ initialMode = 'overview', adminTab, menuAction, menuActionRequest, onNavigate, user }) => {
+const PathwaysHub = ({ initialMode = 'overview', adminTab, adminReferenceType, menuAction, menuActionRequest, onNavigate, user }) => {
   const [loading, setLoading] = useState(true);
   const [pathways, setPathways] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -742,9 +742,15 @@ const PathwaysHub = ({ initialMode = 'overview', adminTab, menuAction, menuActio
           message="Click Seed to load pathways and subjects."
         />
       ) : mode === 'admin' ? (
-        <PathwayAdminConsole initialTab={adminTab} />
+        <PathwayAdminConsole initialTab={adminTab} initialReferenceType={adminReferenceType} onNavigate={onNavigate} user={user} />
       ) : mode === 'schools' ? (
         <SchoolCatalogue />
+      ) : mode === 'configure' && !secondaryInstitution ? (
+        <EmptyState
+          icon={BookOpen}
+          title="School Offerings are for Senior Schools"
+          message="Junior schools guide learners to a senior school; they do not configure Grade 10–12 subjects or Senior School tests."
+        />
       ) : mode === 'configure' && secondaryInstitution ? (
         <div className="space-y-4">
           <div className="rounded-2xl border bg-white p-4">

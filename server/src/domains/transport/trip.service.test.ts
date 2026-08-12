@@ -37,6 +37,10 @@ jest.mock('../presence/presence.service', () => ({
   presenceService: { emit: jest.fn().mockResolvedValue({}) },
 }));
 
+jest.mock('../../services/attendance-notification.service', () => ({
+  attendanceNotificationService: { notify: jest.fn().mockResolvedValue(undefined) },
+}));
+
 import prisma from '../../config/database';
 import { TripService } from './trip.service';
 import { presenceService } from '../presence/presence.service';

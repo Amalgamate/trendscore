@@ -8,8 +8,8 @@
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  RefreshCw, ChevronRight, BarChart2,
-  CheckCircle2, Loader2,
+  RefreshCw, ChevronRight, BarChart2, CheckCircle2, Loader2,
+  Search, SlidersHorizontal, ChevronDown, ArrowUpDown,
 } from 'lucide-react';
 import { classAPI, pathwayPlannerAPI } from '../../../../services/api';
 import { PathwayGuideWelcome } from './PathwayGuide';
@@ -40,8 +40,99 @@ function ProgressBar({ value, max, color }) {
   );
 }
 
+const PATHWAY_LABELS = {
+  STEM: 'STEM',
+  SOCIAL_SCIENCES: 'Social Sciences',
+  ARTS_SPORTS: 'Arts & Sports',
+};
+
+function LearnerJourney({ row }) {
+  if (!row.readiness?.hasRecommendation) return { label: 'Profile learner', tone: 'bg-slate-100 text-slate-600' };
+  if (!row.readiness?.hasCareer) return { label: 'Explore careers', tone: 'bg-violet-50 text-violet-700' };
+  if (!row.readiness?.hasSchool) return { label: 'Shortlist schools', tone: 'bg-sky-50 text-sky-700' };
+  if (!row.readiness?.hasDecision) return { label: 'Complete plan', tone: 'bg-amber-50 text-amber-700' };
+  if (row.needsReview) return { label: 'Needs review', tone: 'bg-rose-50 text-rose-700' };
+  return { label: 'On track', tone: 'bg-emerald-50 text-emerald-700' };
+}
+
+function LearnerTable({ rows, total, distribution, onDrill, cls }) {
+  const [query, setQuery] = useState('');
+  const [pathway, setPathway] = useState('');
+  const [journey, setJourney] = useState('');
+  const [sortBy, setSortBy] = useState('attention');
+  const [expandedId, setExpandedId] = useState(null);
+
+  const visibleRows = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    return [...rows]
+      .filter((row) => !normalized || `${row.firstName} ${row.lastName} ${row.admissionNumber || ''}`.toLowerCase().includes(normalized))
+      .filter((row) => !pathway || row.recommendedPathway === pathway)
+      .filter((row) => {
+        if (!journey) return true;
+        if (journey === 'attention') return !row.readiness?.hasCareer || !row.readiness?.hasSchool || row.needsReview;
+        return LearnerJourney({ row }).label === journey;
+      })
+      .sort((a, b) => {
+        if (sortBy === 'name') return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+        if (sortBy === 'confidence') return (a.confidenceScore ?? -1) - (b.confidenceScore ?? -1);
+        const aAttention = !a.readiness?.hasCareer || !a.readiness?.hasSchool || a.needsReview ? 0 : 1;
+        const bAttention = !b.readiness?.hasCareer || !b.readiness?.hasSchool || b.needsReview ? 0 : 1;
+        return aAttention - bAttention || `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+      });
+  }, [rows, query, pathway, journey, sortBy]);
+
+  const summaryChips = [
+    { code: '', label: `${total} learners`, tone: 'border-slate-200 bg-slate-50 text-slate-700' },
+    ...Object.entries(distribution || {}).map(([code, count]) => ({
+      code,
+      label: `${count} ${PATHWAY_LABELS[code] || code}`,
+      tone: code === 'ARTS_SPORTS' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : code === 'STEM' ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-amber-200 bg-amber-50 text-amber-700',
+    })),
+  ];
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 sm:p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-xs font-black text-slate-900">Learner transition queue</p>
+          <p className="mt-0.5 text-[10px] text-slate-500">Search, filter and expand a learner to see their next pathway action.</p>
+        </div>
+        <button type="button" onClick={() => onDrill(cls)} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-[10px] font-black text-violet-700 hover:bg-violet-50">
+          Open workbench <ChevronRight size={12} aria-hidden="true" />
+        </button>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {summaryChips.map((chip) => <button key={chip.label} type="button" onClick={() => setPathway(chip.code)} className={`rounded-full border px-2.5 py-1 text-[10px] font-black transition-colors ${chip.tone} ${pathway === chip.code ? 'ring-2 ring-violet-300 ring-offset-1' : ''}`}>{chip.label}</button>)}
+      </div>
+
+      <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_160px_160px_145px]">
+        <label className="relative block"><Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search learner or admission number" className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs outline-none focus:border-violet-400" /></label>
+        <label className="relative"><SlidersHorizontal size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><select value={pathway} onChange={(event) => setPathway(event.target.value)} className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-2 pl-8 pr-7 text-xs"><option value="">All pathways</option>{Object.entries(PATHWAY_LABELS).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select><ChevronDown size={13} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-400" /></label>
+        <select value={journey} onChange={(event) => setJourney(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"><option value="">All stages</option><option value="attention">Needs attention</option><option value="Explore careers">Explore careers</option><option value="Shortlist schools">Shortlist schools</option><option value="Complete plan">Complete plan</option><option value="Needs review">Needs review</option><option value="On track">On track</option></select>
+        <label className="relative"><ArrowUpDown size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><select value={sortBy} onChange={(event) => setSortBy(event.target.value)} className="w-full appearance-none rounded-lg border border-slate-200 bg-white py-2 pl-8 pr-3 text-xs"><option value="attention">Priority first</option><option value="confidence">Lowest confidence</option><option value="name">Name A–Z</option></select></label>
+      </div>
+
+      <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <table className="min-w-[850px] w-full text-left">
+          <thead className="bg-slate-50 text-[9px] font-black uppercase tracking-wider text-slate-500"><tr><th className="w-8 px-3 py-2.5" /><th className="px-3 py-2.5">Learner</th><th className="px-3 py-2.5">Recommendation</th><th className="px-3 py-2.5">Confidence</th><th className="px-3 py-2.5">Journey</th><th className="px-3 py-2.5">Selection</th><th className="px-3 py-2.5 text-right">Action</th></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {visibleRows.map((row) => {
+              const stage = LearnerJourney({ row });
+              const isExpanded = expandedId === row.learnerId;
+              return <React.Fragment key={row.learnerId}><tr className="text-xs hover:bg-violet-50/30"><td className="px-3 py-3"><button type="button" onClick={() => setExpandedId(isExpanded ? null : row.learnerId)} className="rounded p-0.5 text-slate-400 hover:bg-slate-100"><ChevronRight size={14} className={isExpanded ? 'rotate-90 transition-transform' : 'transition-transform'} /></button></td><td className="px-3 py-3"><div className="flex items-center gap-2"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-100 text-[10px] font-black text-violet-700">{`${row.firstName?.[0] || ''}${row.lastName?.[0] || ''}`}</span><span><b className="block text-slate-800">{row.firstName} {row.lastName}</b><small className="text-[10px] text-slate-400">{row.admissionNumber || 'No admission no.'}</small></span></div></td><td className="px-3 py-3">{row.recommendedPathway ? <span className="rounded-full px-2 py-1 text-[10px] font-black" style={{ backgroundColor: `${PATHWAY_COLORS[row.recommendedPathway] || '#64748b'}18`, color: PATHWAY_COLORS[row.recommendedPathway] || '#475569' }}>{PATHWAY_LABELS[row.recommendedPathway] || row.recommendedPathway}</span> : <span className="text-[10px] text-slate-400">Awaiting scores</span>}</td><td className="px-3 py-3 font-black text-slate-700">{row.confidenceScore == null ? '—' : `${Math.round(Number(row.confidenceScore))}%`}</td><td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${stage.tone}`}>{stage.label}</span></td><td className="max-w-[160px] px-3 py-3 text-[10px] text-slate-500">{row.combinationName || row.selectedPathwayName || 'Not selected'}</td><td className="px-3 py-3 text-right"><button type="button" onClick={() => onDrill(cls)} className="font-black text-violet-700 hover:text-violet-900">Open</button></td></tr>{isExpanded && <tr className="bg-slate-50/80"><td colSpan="7" className="px-5 py-3"><div className="grid gap-2 sm:grid-cols-4"><div className="rounded-lg bg-white p-2"><p className="text-[9px] font-black uppercase text-slate-400">Career exploration</p><p className="mt-1 text-xs font-bold text-slate-700">{row.readiness?.hasCareer ? 'Completed' : 'Not started'}</p></div><div className="rounded-lg bg-white p-2"><p className="text-[9px] font-black uppercase text-slate-400">School shortlist</p><p className="mt-1 text-xs font-bold text-slate-700">{row.readiness?.hasSchool ? 'Completed' : 'Not started'}</p></div><div className="rounded-lg bg-white p-2"><p className="text-[9px] font-black uppercase text-slate-400">Decision plan</p><p className="mt-1 text-xs font-bold text-slate-700">{row.decisionStatus || 'Not started'}</p></div><div className="rounded-lg bg-white p-2"><p className="text-[9px] font-black uppercase text-slate-400">Parent preference</p><p className="mt-1 text-xs font-bold text-slate-700">{row.parentPreference ? (PATHWAY_LABELS[row.parentPreference] || row.parentPreference) : 'Not provided'}</p></div></div></td></tr>}</React.Fragment>;
+            })}
+            {visibleRows.length === 0 && <tr><td colSpan="7" className="px-4 py-8 text-center text-xs text-slate-400">No learners match these filters.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function ClassRow({ cls, onDrill, junior }) {
   const [distrib, setDistrib]   = useState(null);
+  const [learners, setLearners] = useState([]);
   const [loading, setLoading]   = useState(false);
   const [expanded, setExpanded] = useState(false);
 
@@ -49,9 +140,13 @@ function ClassRow({ cls, onDrill, junior }) {
     if (distrib) return;
     setLoading(true);
     try {
-      const res = await pathwayPlannerAPI.getClassDistribution(cls.id);
-      setDistrib(res?.data || null);
-    } catch { setDistrib(null); }
+      const [distributionResult, learnersResult] = await Promise.allSettled([
+        pathwayPlannerAPI.getClassDistribution(cls.id),
+        pathwayPlannerAPI.getClassLearners(cls.id, { limit: 100 }),
+      ]);
+      setDistrib(distributionResult.status === 'fulfilled' ? distributionResult.value?.data || null : null);
+      setLearners(learnersResult.status === 'fulfilled' ? learnersResult.value?.data || [] : []);
+    } catch { setDistrib(null); setLearners([]); }
     finally { setLoading(false); }
   }, [cls.id, distrib]);
 
@@ -60,7 +155,10 @@ function ClassRow({ cls, onDrill, junior }) {
     if (!expanded) load();
   };
 
-  const total = distrib?.learnerCount ?? 0;
+  // Distribution is loaded lazily only after a class is expanded. Use the
+  // enrolment count returned by the class list for the collapsed card so a
+  // populated class never appears empty while its detail request is pending.
+  const total = distrib?.learnerCount ?? cls?._count?.enrollments ?? 0;
   const withRec = distrib?.recommendationCoverage ?? 0;
   const selStatus = distrib?.selectionStatus ?? {};
   const transition = distrib?.transitionReadiness ?? {};
@@ -96,8 +194,10 @@ function ClassRow({ cls, onDrill, junior }) {
 
           {!loading && distrib && (
             <>
+              {junior && <LearnerTable rows={learners} total={total} distribution={distrib.recommendations} onDrill={onDrill} cls={cls} />}
+
               {/* Recommendation coverage */}
-              <div>
+              {!junior && <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2 flex items-center gap-1.5">
                   <BarChart2 size={10} aria-hidden="true" /> Pathway Recommendations
                 </p>
@@ -115,21 +215,14 @@ function ClassRow({ cls, onDrill, junior }) {
                     ))}
                   </div>
                 )}
-              </div>
+              </div>}
 
               {/* Stage-specific progress */}
-              <div>
+              {!junior && <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2 flex items-center gap-1.5">
                   <CheckCircle2 size={10} aria-hidden="true" /> {junior ? 'Transition Readiness' : 'Selection Journey'}
                 </p>
-                {junior ? <div className="space-y-1.5">{[
-                  ['Recommendation ready', transition.recommendationReady, '#1d4ed8'],
-                  ['Career explored', transition.careerExplored, '#7c3aed'],
-                  ['School shortlisted', transition.schoolShortlisted, '#db2777'],
-                  ['Decision submitted', transition.decisionSubmitted, '#0d9488'],
-                  ['Parent reviewed', transition.parentReviewed, '#059669'],
-                  ['Counsellor reviewed', transition.counsellorReviewed, '#047857'],
-                ].map(([label, count, color]) => <div key={label}><p className="text-[10px] font-semibold mb-0.5" style={{ color }}>{label}</p><ProgressBar value={count || 0} max={total} color={color} /></div>)}</div> : <div className="space-y-1.5">
+                <div className="space-y-1.5">
                   {(['NONE','DRAFT','SUBMITTED','APPROVED','LOCKED']).map(s => {
                     const count = selStatus[s] ?? 0;
                     if (count === 0 && s === 'NONE') return null;
@@ -140,8 +233,8 @@ function ClassRow({ cls, onDrill, junior }) {
                       </div>
                     );
                   })}
-                </div>}
-              </div>
+                </div>
+              </div>}
 
               {!junior && <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -157,10 +250,10 @@ function ClassRow({ cls, onDrill, junior }) {
                 </div>
               </div>}
 
-              <button type="button" onClick={() => onDrill(cls)}
+              {!junior && <button type="button" onClick={() => onDrill(cls)}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[10px] font-black text-violet-700 hover:bg-violet-100 transition-colors">
                 <ChevronRight size={11} aria-hidden="true" /> Open Counsellor Workbench
-              </button>
+              </button>}
             </>
           )}
         </div>
@@ -169,7 +262,7 @@ function ClassRow({ cls, onDrill, junior }) {
   );
 }
 
-const PathwayClassOverview = ({ onNavigate, user }) => {
+const PathwayClassOverview = ({ onNavigate, user, embedded = false }) => {
   const [classes, setClasses]   = useState([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
@@ -206,8 +299,8 @@ const PathwayClassOverview = ({ onNavigate, user }) => {
   };
 
   return (
-    <div className="p-6 space-y-4">
-      <PathwayGuideWelcome user={user} onNavigate={onNavigate} />
+    <div className={embedded ? 'space-y-4' : 'p-6 space-y-4'}>
+      {!embedded && <PathwayGuideWelcome user={user} onNavigate={onNavigate} />}
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-black text-gray-900">{junior ? 'Junior Transition Centre' : 'Senior Pathway Progress Centre'}</h1>

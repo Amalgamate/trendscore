@@ -1,12 +1,38 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpen, ChevronLeft, ChevronRight, Download, Loader2, Save } from 'lucide-react';
+import { BookOpen, Briefcase, ChevronLeft, ChevronRight, ClipboardCheck, Download, FileText, Layers, Loader2, Save, School, Target } from 'lucide-react';
 import { pathwayPlannerAPI, seniorPathwayAPI, careerAPI } from '../../../../services/api';
+import PathwayClassOverview from './PathwayClassOverview';
 
 const REFERENCE_TYPES = ['PATHWAY', 'TRACK', 'COMBINATION', 'CAREER'];
 const ADMIN_TAB_IDS = new Set(['dashboard', 'content', 'schools', 'corrections', 'rules', 'imports', 'quality', 'analytics', 'history', 'audit']);
 const EMPTY_FORM = { id: '', code: '', name: '', title: '', description: '', shortSummary: '', fullDescription: '', labourMarketNotes: '', salaryRangeNotes: '', futureSkills: [], successStory: '', source: '', officialSource: '', pathwayId: '', trackId: '', recommendedPathway: '', recommendedTrackCode: '', subjectIds: [] };
 
-const Card = ({ label, value, tone = 'indigo' }) => <div className="rounded-xl border border-gray-200 bg-white p-3"><p className="text-[9px] font-black uppercase tracking-wider text-gray-400">{label}</p><p className={`mt-1 text-2xl font-black ${tone === 'rose' ? 'text-rose-700' : tone === 'amber' ? 'text-amber-700' : 'text-indigo-700'}`}>{value ?? 0}</p></div>;
+const CARD_TONES = {
+  indigo: { surface: 'border-indigo-500 bg-indigo-600', icon: 'bg-white/18 text-white shadow-indigo-950/20 ring-1 ring-white/25', accent: 'bg-white/15' },
+  sky: { surface: 'border-sky-500 bg-sky-600', icon: 'bg-white/18 text-white shadow-sky-950/20 ring-1 ring-white/25', accent: 'bg-white/15' },
+  violet: { surface: 'border-violet-500 bg-violet-600', icon: 'bg-white/18 text-white shadow-violet-950/20 ring-1 ring-white/25', accent: 'bg-white/15' },
+  emerald: { surface: 'border-emerald-500 bg-emerald-600', icon: 'bg-white/18 text-white shadow-emerald-950/20 ring-1 ring-white/25', accent: 'bg-white/15' },
+  amber: { surface: 'border-amber-400 bg-amber-500', icon: 'bg-white/18 text-white shadow-amber-950/20 ring-1 ring-white/25', accent: 'bg-white/15' },
+  rose: { surface: 'border-rose-500 bg-rose-600', icon: 'bg-white/18 text-white shadow-rose-950/20 ring-1 ring-white/25', accent: 'bg-white/15' },
+};
+
+const Card = ({ label, value, tone = 'indigo', icon: Icon = BookOpen, decoration = '-right-8 -top-10', onClick }) => {
+  const palette = CARD_TONES[tone] || CARD_TONES.indigo;
+  const content = <>
+    <span className={`pointer-events-none absolute h-32 w-32 rounded-full ${decoration} ${palette.accent}`} />
+    <div className="relative flex items-start justify-between gap-3">
+      <div>
+        <p className="text-[9px] font-black uppercase tracking-[0.12em] text-white/75">{label}</p>
+        <p className="mt-2 text-3xl font-black tracking-tight text-white">{value ?? 0}</p>
+      </div>
+      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl shadow-lg ${palette.icon}`}><Icon size={19} strokeWidth={2.25} /></span>
+    </div>
+    {onClick && <span className="relative mt-3 inline-flex items-center text-[9px] font-black uppercase tracking-wider text-white/90">View details <span className="ml-1 text-xs leading-none">→</span></span>}
+  </>;
+
+  if (!onClick) return <div className={`relative overflow-hidden rounded-2xl border p-4 ${palette.surface}`}>{content}</div>;
+  return <button type="button" onClick={onClick} title={`Open ${label}`} className={`relative overflow-hidden rounded-2xl border p-4 text-left transition duration-200 hover:-translate-y-1 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${palette.surface}`}>{content}</button>;
+};
 const Empty = ({ children }) => <div className="rounded-xl border border-dashed border-gray-200 bg-white p-6 text-center text-xs text-gray-500">{children}</div>;
 const downloadCsv = (fileName, rows) => {
   if (!rows?.length) return;
@@ -17,15 +43,15 @@ const downloadCsv = (fileName, rows) => {
   const link = document.createElement('a'); link.href = url; link.download = fileName; link.click(); URL.revokeObjectURL(url);
 };
 
-function Dashboard() {
+function Dashboard({ onOpen, onNavigate, user }) {
   const [data, setData] = useState(null);
   useEffect(() => { pathwayPlannerAPI.getAdminDashboard().then((response) => setData(response?.data || {})); }, []);
   if (!data) return <Loader2 className="mx-auto animate-spin text-indigo-500" />;
-  return <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><Card label="Published pathways" value={data.pathways} /><Card label="Tracks" value={data.tracks} /><Card label="Combinations" value={data.combinations} /><Card label="Published careers" value={data.careers} /><Card label="Active schools" value={data.schools} /><Card label="Pending corrections" value={data.pendingCorrections} tone="amber" /><Card label="Imports needing attention" value={data.imports} tone="rose" /><Card label="Low-fit matches" value={data.lowConfidence} tone="amber" /></div>;
+  return <div className="space-y-8"><section><div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><Card label="Published pathways" value={data.pathways} icon={BookOpen} decoration="-right-8 -top-10" onClick={() => onOpen('content', 'PATHWAY')} /><Card label="Tracks" value={data.tracks} tone="sky" icon={Layers} decoration="-right-8 -bottom-10" onClick={() => onOpen('content', 'TRACK')} /><Card label="Combinations" value={data.combinations} tone="violet" icon={FileText} decoration="right-14 -top-12" onClick={() => onOpen('content', 'COMBINATION')} /><Card label="Published careers" value={data.careers} tone="emerald" icon={Briefcase} decoration="-left-10 -bottom-12" onClick={() => onOpen('content', 'CAREER')} /><Card label="Active schools" value={data.schools} tone="sky" icon={School} decoration="right-8 -bottom-12" onClick={() => onOpen('schools')} /><Card label="Pending corrections" value={data.pendingCorrections} tone="amber" icon={ClipboardCheck} decoration="-left-12 -top-10" onClick={() => onOpen('corrections')} /><Card label="Imports needing attention" value={data.imports} tone="rose" icon={Download} decoration="-right-10 bottom-3" onClick={() => onOpen('imports')} /><Card label="Low-fit matches" value={data.lowConfidence} tone="amber" icon={Target} decoration="left-1/2 -top-14" onClick={() => onOpen('quality')} /></div></section><section className="border-t border-gray-200 pt-6"><PathwayClassOverview embedded onNavigate={onNavigate} user={user} /></section></div>;
 }
 
-function ContentManager() {
-  const [type, setType] = useState('PATHWAY');
+function ContentManager({ initialType = 'PATHWAY' }) {
+  const [type, setType] = useState(initialType);
   const [rows, setRows] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [pathways, setPathways] = useState([]);
@@ -37,6 +63,7 @@ function ContentManager() {
   const [seedMsg, setSeedMsg] = useState('');
   const load = useCallback(async () => { setLoading(true); try { const response = await pathwayPlannerAPI.getAdminReferences(type); setRows(response?.data || []); } catch (err) { setError(err?.message || 'Could not load content'); } finally { setLoading(false); } }, [type]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (REFERENCE_TYPES.includes(initialType)) setType(initialType); }, [initialType]);
   useEffect(() => {
     Promise.all([pathwayPlannerAPI.getAdminReferences('PATHWAY'), pathwayPlannerAPI.getAdminReferences('TRACK'), seniorPathwayAPI.getCatalog()])
       .then(([pathwayResponse, trackResponse, catalogResponse]) => {
@@ -191,9 +218,14 @@ function Quality() { const [data, setData] = useState(null); useEffect(() => { p
 function Analytics() { const [data, setData] = useState(null); useEffect(() => { pathwayPlannerAPI.getPathwayAnalytics().then((response) => setData(response?.data)); }, []); if (!data) return <Loader2 className="mx-auto animate-spin" />; const exportRows = [...(data.decisions || []).map((row) => ({ section: 'Decision status', label: row.status, count: row._count?._all || 0 })), ...(data.careerSupport || []).map((row) => ({ section: 'Career support', label: row.supportStatus, count: row._count?._all || 0 })), ...(data.pathways || []).map((row) => ({ section: 'Pathway demand', label: row.pathwayId, count: row._count?._all || 0 }))]; return <div className="space-y-3"><button type="button" onClick={() => downloadCsv('pathways-analytics.csv', exportRows)} className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 px-3 py-2 text-[10px] font-black text-indigo-700"><Download size={12} /> Export analytics</button><div className="grid grid-cols-2 gap-3 md:grid-cols-4"><Card label="Parent reviews" value={data.participation?.parentReviews} /><Card label="Counsellor notes" value={data.participation?.counsellorNotes} /><Card label="Revision requests" value={data.revisions} /><Card label="Shortlisted schools" value={data.popularSchools?.reduce((sum, item) => sum + item._count._all, 0)} /></div><div className="grid gap-3 md:grid-cols-3">{[['Decision status', data.decisions], ['Career support', data.careerSupport], ['Pathway demand', data.pathways]].map(([title, rows]) => <div key={title} className="rounded-xl border border-gray-200 bg-white p-3"><p className="text-xs font-black">{title}</p><div className="mt-2 space-y-1">{(rows || []).map((row, index) => <div key={index} className="flex justify-between text-[10px]"><span>{row.status || row.supportStatus || row.pathwayId}</span><b>{row._count?._all || 0}</b></div>)}</div></div>)}</div></div>; }
 function Audit() { const [rows, setRows] = useState([]); const [query, setQuery] = useState(''); const load = useCallback(() => pathwayPlannerAPI.getPathwayAuditLogs(query).then((response) => setRows(response?.data || [])), [query]); useEffect(() => { pathwayPlannerAPI.getPathwayAuditLogs().then((response) => setRows(response?.data || [])); }, []); return <div className="space-y-2"><div className="flex gap-2"><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search action or actor" className="flex-1 rounded-lg border border-gray-200 p-2 text-xs" /><button type="button" onClick={load} className="rounded-lg border border-gray-200 px-3 text-xs font-bold">Search</button><button type="button" onClick={() => downloadCsv('pathways-audit.csv', rows)} className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 px-3 text-[10px] font-black text-indigo-700"><Download size={12} /> Export</button></div>{rows.map((row) => <div key={row.id} className="flex items-start justify-between gap-3 rounded-xl border border-gray-200 bg-white p-3"><div><p className="text-[11px] font-black">{row.action}</p><p className="text-[9px] text-gray-500">{row.userEmail || 'System'} · {row.userRole || '—'} · {row.method} {row.path}</p></div><time className="text-[9px] text-gray-400">{new Date(row.createdAt).toLocaleString()}</time></div>)}</div>; }
 
-export default function PathwayAdminConsole({ initialTab = 'dashboard' }) {
+export default function PathwayAdminConsole({ initialTab = 'dashboard', onNavigate, user }) {
   const [tab, setTab] = useState('dashboard');
-  const views = { dashboard: <Dashboard />, content: <ContentManager />, schools: <SchoolAdministration />, corrections: <Corrections />, rules: <Rules />, imports: <Imports />, quality: <Quality />, analytics: <Analytics />, history: <VersionHistory />, audit: <Audit /> };
+  const [referenceType, setReferenceType] = useState('PATHWAY');
+  const openAdminTab = useCallback((nextTab, nextReferenceType) => {
+    if (nextReferenceType && REFERENCE_TYPES.includes(nextReferenceType)) setReferenceType(nextReferenceType);
+    if (ADMIN_TAB_IDS.has(nextTab)) setTab(nextTab);
+  }, []);
+  const views = { dashboard: <Dashboard onOpen={openAdminTab} onNavigate={onNavigate} user={user} />, content: <ContentManager initialType={referenceType} />, schools: <SchoolAdministration />, corrections: <Corrections />, rules: <Rules />, imports: <Imports />, quality: <Quality />, analytics: <Analytics />, history: <VersionHistory />, audit: <Audit /> };
   useEffect(() => {
     if (ADMIN_TAB_IDS.has(initialTab)) setTab(initialTab);
   }, [initialTab]);

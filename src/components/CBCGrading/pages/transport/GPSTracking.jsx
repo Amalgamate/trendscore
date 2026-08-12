@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import api from '../../../../services/api';
 import { useNotifications } from '../../hooks/useNotifications';
+import { KpiCard as SharedKpiCard } from '../../../../design-system/components';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -39,25 +40,8 @@ function StatusBadge({ status = 'UNKNOWN' }) {
 }
 
 function KpiCard({ icon: Icon, label, value, color = 'blue', sub }) {
-  const map = {
-    blue:   'bg-blue-50 text-blue-600',
-    green:  'bg-emerald-50 text-emerald-600',
-    amber:  'bg-amber-50 text-amber-600',
-    red:    'bg-red-50 text-red-500',
-    purple: 'bg-purple-50 text-purple-600',
-  };
-  return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center gap-4">
-      <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${map[color]}`}>
-        <Icon size={20} />
-      </div>
-      <div>
-        <p className="text-2xl font-semibold text-gray-900 leading-none">{value}</p>
-        <p className="text-xs font-medium text-gray-500 mt-0.5">{label}</p>
-        {sub && <p className="text-[11px] text-gray-400">{sub}</p>}
-      </div>
-    </div>
-  );
+  const tones = { blue: 'sky', green: 'emerald', amber: 'amber', red: 'rose', purple: 'violet' };
+  return <SharedKpiCard label={label} value={value} subvalue={sub} icon={<Icon size={20} />} tone={tones[color] || 'sky'} orbPosition="top-center" />;
 }
 
 // ─── route / vehicle card ─────────────────────────────────────────────────────

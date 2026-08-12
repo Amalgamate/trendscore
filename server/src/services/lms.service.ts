@@ -303,9 +303,10 @@ export class LMSService {
 
         const learner = await prisma.learner.findFirst({
             where: {
-                admissionNumber: {
-                    in: usernameCandidates
-                }
+                OR: [
+                    { studentUserId: userId },
+                    { admissionNumber: { in: usernameCandidates } },
+                ],
             }
         });
 

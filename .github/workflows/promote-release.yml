@@ -7,19 +7,24 @@ on:
   workflow_dispatch:
     inputs:
       school_slug:
-        description: "School slug to deploy, e.g. demo, lions-complex, zawadi-junior"
+        description: 'School slug to deploy, e.g. demo, lions-complex, zawadi-junior'
         required: true
         type: string
       environment:
-        description: "Deployment environment, e.g. demo, pilot, production"
+        description: 'Deployment environment, e.g. demo, pilot, production'
         required: true
         type: string
         default: production
       branch:
-        description: "Git branch/ref whose sha-<commit> images should be deployed"
+        description: 'Git branch/ref whose sha-<commit> images should be deployed'
         required: true
         type: string
         default: main
+      image_tag:
+        description: 'Optional existing image tag override (useful when only deployment tooling changed)'
+        required: false
+        type: string
+        default: ''
 
 concurrency:
   group: promote-release-${{ inputs.environment }}-${{ inputs.school_slug }}
@@ -52,12 +57,19 @@ jobs:
 
       - name: Resolve image tag
         id: image
+        env:
+          IMAGE_TAG_OVERRIDE: ${{ inputs.image_tag }}
         run: |
           set -euo pipefail
           COMMIT_SHA="$(git rev-parse HEAD)"
           echo "commit_sha=${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "image_tag=sha-${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "Resolved branch '${{ inputs.branch }}' to ${COMMIT_SHA}"
+          if [[ -n "${IMAGE_TAG_OVERRIDE}" ]]; then
+            echo "image_tag=${IMAGE_TAG_OVERRIDE}" >> "$GITHUB_OUTPUT"
+            echo "Using image tag override '${IMAGE_TAG_OVERRIDE}' for branch '${{ inputs.branch }}' (${COMMIT_SHA})"
+          else
+            echo "image_tag=sha-${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
+            echo "Resolved branch '${{ inputs.branch }}' to ${COMMIT_SHA}"
+          fi
 
       - name: Validate deployment target
         id: target
@@ -110,6 +122,17 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: bash scripts/ci/configure-deploy-ssh.sh
 
+      - name: Preflight deployment host storage
+        run: |
+          set -euo pipefail
+          ssh production 'set -euo pipefail
+            echo "Deployment host storage before asset upload:"
+            df -h /tmp /srv/zawadi
+            find /tmp -maxdepth 1 -type f -name "trendscore-deploy-assets-*.tgz" -mtime +1 -print -delete
+            echo "Deployment host storage after stale staging cleanup:"
+            df -h /tmp /srv/zawadi
+          '
+
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -128,8 +151,15 @@ jobs:
       - name: Upload deploy assets
         run: bash scripts/ci/sync-deploy-assets.sh
 
-      - name: Confirm production SSH connectivity
-        run: bash scripts/ci/wait-for-production-ssh.sh
+      - name: Sync protected AWS configuration
+        if: needs.validate.outputs.deploy_target == 'school'
+        env:
+          SCHOOL_ID: ${{ needs.validate.outputs.school_id }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REKOGNITION_LIVENESS_ROLE_ARN: ${{ vars.AWS_REKOGNITION_LIVENESS_ROLE_ARN }}
+        run: bash scripts/ci/sync-school-aws-config.sh
 
       - name: Deploy matched school only
         env:
@@ -146,6 +176,12 @@ jobs:
             echo "Single school deploy: ${SCHOOL_ID}"
             ssh production "${DEPLOY_CMD} SCHOOL_ID=${SCHOOL_ID} bash /srv/zawadi/apps/deploy/deploy-release.sh"
           fi
+
+      - name: Verify AWS biometric connection
+        if: needs.validate.outputs.deploy_target == 'school' && vars.AWS_REGION != ''
+        env:
+          SCHOOL_ID: ${{ needs.validate.outputs.school_id }}
+        run: bash scripts/ci/verify-school-biometric-aws.sh
 
       - name: Report success
         if: success()

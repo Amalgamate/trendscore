@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Users, 
   Search, 
-  UserCheck, 
   UserMinus, 
   Fingerprint, 
   Loader2, 
@@ -11,7 +10,6 @@ import {
   GraduationCap,
   Briefcase
 } from 'lucide-react';
-import { biometricAPI } from '../../../../services/api/biometric.api';
 import { learnerAPI } from '../../../../services/api/learner.api';
 import { userAPI } from '../../../../services/api/user.api';
 import EnrollmentModal from './EnrollmentModal';
@@ -33,22 +31,33 @@ const EnrollmentDashboard = () => {
   const [selectedPerson, setSelectedPerson] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const handleSearch = async () => {
-    if (searchQuery.length < 2) return;
-    
+  const handleSearch = useCallback(async () => {
+    const normalizedQuery = searchQuery.trim();
+    if (normalizedQuery.length === 1) {
+      setResults([]);
+      return;
+    }
+
     setLoading(true);
     try {
       let data = [];
       if (activeType === 'LEARNER') {
-        const learners = await learnerAPI.getAll({ search: searchQuery });
+        const learners = await learnerAPI.getAll({
+          ...(normalizedQuery ? { search: normalizedQuery } : {}),
+          limit: 50,
+        });
         const rows = Array.isArray(learners?.data) ? learners.data : (Array.isArray(learners) ? learners : []);
         data = rows.filter((learner) => {
           const learnerIsSecondary = isSecondaryGrade(learner?.grade);
           return isSecondaryPortal ? learnerIsSecondary : !learnerIsSecondary;
         });
       } else {
-        const users = await userAPI.getAll({ search: searchQuery });
-        data = users.filter(u => u.role !== 'PARENT' && u.role !== 'SUPER_ADMIN');
+        const users = await userAPI.getAll({
+          ...(normalizedQuery ? { search: normalizedQuery } : {}),
+          limit: 50,
+        });
+        const rows = Array.isArray(users?.data) ? users.data : (Array.isArray(users) ? users : []);
+        data = rows.filter(u => u.role !== 'PARENT' && u.role !== 'SUPER_ADMIN');
       }
       
       // For each result, we should ideally know if they are enrolled.
@@ -59,15 +68,15 @@ const EnrollmentDashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeType, isSecondaryPortal, searchQuery]);
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
-      if (searchQuery) handleSearch();
-    }, 500);
+      handleSearch();
+    }, searchQuery ? 500 : 0);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery, activeType]);
+  }, [handleSearch, searchQuery]);
 
   const openEnrollment = (person) => {
     setSelectedPerson(person);
@@ -151,7 +160,7 @@ const EnrollmentDashboard = () => {
                 className="w-full flex items-center justify-center gap-2 py-3 bg-slate-50 text-slate-600 rounded-xl text-xs font-semibold uppercase tracking-widest group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm group-hover:shadow-lg group-hover:shadow-indigo-600/20"
               >
                 <Fingerprint size={16} />
-                Enroll Biometrics
+                Check enrollment
                 <ChevronRight size={14} className="ml-auto" />
               </button>
             </div>

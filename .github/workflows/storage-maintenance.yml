@@ -1,0 +1,81 @@
+name: Production Storage Maintenance
+
+# Manual-only maintenance for the shared production host. It deliberately
+# avoids Docker volumes and tagged images so active services and rollback
+# images are not removed.
+on:
+  workflow_dispatch:
+    inputs:
+      backup_retention:
+        description: "Number of newest timestamped backups to retain per school"
+        required: true
+        default: "2"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  reclaim-storage:
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - name: Checkout maintenance scripts
+        uses: actions/checkout@v4
+
+      - name: Validate retention input
+        run: |
+          [[ "${{ inputs.backup_retention }}" =~ ^[1-9][0-9]*$ ]] || {
+            echo "backup_retention must be a positive integer" >&2
+            exit 1
+          }
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Reclaim safe storage
+        env:
+          BACKUP_RETENTION: ${{ inputs.backup_retention }}
+        run: |
+          set -euo pipefail
+          ssh production "BACKUP_RETENTION=${BACKUP_RETENTION} bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          echo "## Storage before maintenance"
+          df -h /srv /var/lib/docker 2>/dev/null || df -h
+          sudo docker system df || true
+
+          backup_root=/srv/zawadi/backups
+          retained="${BACKUP_RETENTION}"
+          if [[ -d "${backup_root}" ]]; then
+            while IFS= read -r -d '' school_dir; do
+              mapfile -t snapshots < <(
+                find "${school_dir}" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
+                  | grep -E '^[0-9]{8}T[0-9]{6}Z$' | sort -r || true
+              )
+              for snapshot in "${snapshots[@]:${retained}}"; do
+                target="${school_dir}/${snapshot}"
+                echo "Removing old backup: ${target}"
+                sudo rm -rf -- "${target}"
+              done
+            done < <(find "${backup_root}" -mindepth 1 -maxdepth 1 -type d -print0)
+          fi
+
+          # Safe Docker cleanup: stopped containers, unused images/networks,
+          # and old build cache. Images backing running containers and all
+          # Docker volumes are preserved.
+          sudo docker container prune -f
+          sudo docker image prune -a -f
+          sudo docker network prune -f
+          sudo docker builder prune -af --filter 'until=168h'
+          find /tmp -maxdepth 1 -type f -name 'trendscore-deploy-assets-*.tgz' -mtime +1 -print -delete
+
+          echo "## Storage after maintenance"
+          df -h /srv /var/lib/docker 2>/dev/null || df -h
+          sudo docker system df || true
+          sudo du -sh "${backup_root}"/* 2>/dev/null | sort -h || true
+          REMOTE

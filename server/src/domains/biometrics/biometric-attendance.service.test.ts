@@ -70,7 +70,9 @@ describe('resolveAttendanceStatus()', () => {
 // ── handleBiometricLearnerScan ────────────────────────────────────────────────
 
 describe('handleBiometricLearnerScan()', () => {
-  const LEARNER   = { id: 'learner-1', grade: 'Grade 5' };
+  const LEARNER   = {
+    id: 'learner-1', admissionNumber: 'ADM-001', firstName: 'Amina', lastName: 'Otieno', grade: 'Grade 5',
+  };
   const SCHOOL    = { attendanceLockEnabled: true, attendanceLockTime: '07:30' };
   const ADMIN     = { id: 'admin-1' };
   const TIMESTAMP = new Date('2026-08-04T04:15:00.000Z'); // 07:15 EAT — before lock
@@ -106,6 +108,19 @@ describe('handleBiometricLearnerScan()', () => {
       timestamp: lateTimestamp, deviceId: 'dev-1', schoolId: 'school-1',
     });
     expect(result.status).toBe(AttendanceStatus.LATE);
+  });
+
+  it('uses the EAT calendar date when an offline event crosses UTC midnight', async () => {
+    const afterMidnightEat = new Date('2026-08-03T21:30:00.000Z'); // 00:30 EAT on August 4
+
+    await handleBiometricLearnerScan({
+      admissionNumber: 'ADM-001', direction: 'IN',
+      timestamp: afterMidnightEat, deviceId: 'dev-1', schoolId: 'school-1',
+    });
+
+    expect(db.attendance.findUnique).toHaveBeenCalledWith({
+      where: { learnerId_date: { learnerId: 'learner-1', date: new Date('2026-08-04T00:00:00.000Z') } },
+    });
   });
 
   it('skips attendance creation for OUT direction', async () => {

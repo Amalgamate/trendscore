@@ -158,8 +158,8 @@ const BiometricManager = ({ currentPage }) => {
             </div>
           </div>
           <div className="pr-2">
-            <p className="text-[8px] font-semibold text-slate-400 uppercase tracking-widest leading-none">Global Status</p>
-            <p className="text-[10px] font-medium text-slate-900 mt-0.5">Secure Link Established</p>
+            <p className="text-[8px] font-semibold text-slate-400 uppercase tracking-widest leading-none">Tenant scope</p>
+            <p className="text-[10px] font-medium text-slate-900 mt-0.5">Current school only</p>
           </div>
         </div>
       </div>

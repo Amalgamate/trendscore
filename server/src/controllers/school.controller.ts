@@ -226,12 +226,22 @@ export const getPublicManifest = async (_req: Request, res: Response) => {
       name: true,
       primaryColor: true,
       brandColor: true,
+      faviconUrl: true,
       pwaLogoUrl: true,
       updatedAt: true,
     },
   });
 
-  const pwaIcon = resolveBrandingAssetUrl('pwa-logo', school?.pwaLogoUrl || '/logo512.png', school?.updatedAt) || '/logo512.png';
+  // Before the linked favicon flow was introduced, schools were seeded with
+  // the product's static /logo512.png. Treat that value as legacy fallback so
+  // a customised favicon also becomes the installed app icon. A genuinely
+  // custom pwaLogoUrl remains respected.
+  const hasCustomPwaIcon = Boolean(school?.pwaLogoUrl && school.pwaLogoUrl !== '/logo512.png');
+  const pwaAssetType = hasCustomPwaIcon ? 'pwa-logo' : 'favicon';
+  const pwaSource = hasCustomPwaIcon
+    ? school?.pwaLogoUrl
+    : (school?.faviconUrl || '/branding/favicon.png');
+  const pwaIcon = resolveBrandingAssetUrl(pwaAssetType, pwaSource, school?.updatedAt) || '/logo512.png';
   const themeColor = school?.primaryColor || school?.brandColor || '#520050';
   const appName = buildInstalledAppName(school?.name);
 
@@ -266,16 +276,15 @@ export const getPublicManifest = async (_req: Request, res: Response) => {
       { src: '/favicon-32x32.png', sizes: '32x32',  type: 'image/png' },
       { src: '/favicon-48x48.png', sizes: '48x48',  type: 'image/png' },
       // Mid-size brand icons from static assets
-      { src: '/logo44.png',  sizes: '44x44',   type: 'image/png', purpose: 'any' },
-      { src: '/logo71.png',  sizes: '71x71',   type: 'image/png', purpose: 'any' },
-      { src: '/logo150.png', sizes: '150x150', type: 'image/png', purpose: 'any' },
-      { src: '/logo192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: '/logo310.png', sizes: '310x310', type: 'image/png', purpose: 'any' },
-      // School-branded 512px icon (falls back to static if not customised)
-      { src: pwaIcon,        sizes: '512x512', type: 'image/png', purpose: 'any' },
-      // Maskable variant — required for Windows/Android adaptive icons
-      // Uses the static maskable asset; schools customise via the 512px upload
-      { src: '/logo-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      { src: pwaIcon, sizes: '44x44', type: 'image/png', purpose: 'any' },
+      { src: pwaIcon, sizes: '71x71', type: 'image/png', purpose: 'any' },
+      { src: pwaIcon, sizes: '150x150', type: 'image/png', purpose: 'any' },
+      // Use the school-linked icon for installable sizes. Keeping one source
+      // avoids Chrome/Android selecting a static product icon over the school
+      // favicon. The white-card generator leaves safe space for maskable use.
+      { src: pwaIcon, sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: pwaIcon, sizes: '310x310', type: 'image/png', purpose: 'any' },
+      { src: pwaIcon, sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
     ],
   });
 };

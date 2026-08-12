@@ -25,6 +25,7 @@ const PATHWAY_META = {
 
 const PathwaySelectionStep = ({ learnerId, existingSelection, onSuccess }) => {
   const [catalog, setCatalog]         = useState(null);
+  const [schoolOfferings, setSchoolOfferings] = useState([]);
   const [unlocked, setUnlocked]       = useState(false);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState(null);
@@ -40,12 +41,14 @@ const PathwaySelectionStep = ({ learnerId, existingSelection, onSuccess }) => {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const [catalogRes, unlockRes] = await Promise.all([
+      const [catalogRes, unlockRes, offeringsRes] = await Promise.all([
         api.seniorPathways.getCatalog(),
         pathwayPlannerAPI.getSelectionUnlock(learnerId),
+        api.seniorPathways.getSchoolOfferings(),
       ]);
       setCatalog(catalogRes?.data || null);
       setUnlocked(unlockRes?.data?.unlocked === true);
+      setSchoolOfferings(Array.isArray(offeringsRes?.data) ? offeringsRes.data : []);
 
       // Pre-fill from existing selection
       if (existingSelection?.pathway?.id)        setPathwayId(existingSelection.pathway.id);
@@ -74,8 +77,12 @@ const PathwaySelectionStep = ({ learnerId, existingSelection, onSuccess }) => {
       .catch(() => setCombinations([]));
   }, [selectedPathwayId, selectedTrackId]);
 
-  const selCombo = combinations.find(c => c.id === selectedComboId);
-
+  const offeredSubjectIds = new Set(
+    schoolOfferings
+      .map(offering => offering?.officialLearningArea?.id || offering?.officialLearningAreaId)
+      .filter(Boolean)
+  );
+  const hasConfiguredOfferings = offeredSubjectIds.size > 0;
   const coreSubjectIds = (catalog?.coreSubjects || [])
     .filter(s => {
       const code = s.officialCode;
@@ -90,10 +97,20 @@ const PathwaySelectionStep = ({ learnerId, existingSelection, onSuccess }) => {
     .filter(s => ['PE','ICT'].includes(s.officialCode))
     .map(s => s.id);
 
+  const hasRequiredSchoolSubjects = [...coreSubjectIds, ...supportSubjectIds]
+    .every(subjectId => offeredSubjectIds.has(subjectId));
+  const combinationIsOffered = (combination) =>
+    hasRequiredSchoolSubjects
+    && (combination?.items || []).every(item => offeredSubjectIds.has(item?.officialLearningArea?.id));
+  const availableCombinations = hasConfiguredOfferings
+    ? combinations.filter(combinationIsOffered)
+    : [];
+  const selCombo = availableCombinations.find(c => c.id === selectedComboId);
+
   const optionalSubjectIds = (selCombo?.items || [])
     .map(i => i.officialLearningArea?.id).filter(Boolean);
 
-  const canSubmit = !!selectedPathwayId && !!selectedComboId && coreSubjectIds.length >= 4;
+  const canSubmit = hasConfiguredOfferings && hasRequiredSchoolSubjects && !!selectedPathwayId && !!selectedComboId && coreSubjectIds.length >= 4;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -151,6 +168,20 @@ const PathwaySelectionStep = ({ learnerId, existingSelection, onSuccess }) => {
         Step 4 — Choose Your Subjects
       </p>
 
+      {!hasConfiguredOfferings && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900" role="alert">
+          <p className="font-bold">Your school has not published its subject offerings yet.</p>
+          <p className="mt-1 text-amber-800">Subject selection will open once the school lists the subjects it delivers. Please contact your school administrator or counsellor.</p>
+        </div>
+      )}
+
+      {hasConfiguredOfferings && !hasRequiredSchoolSubjects && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900" role="alert">
+          <p className="font-bold">Your school offerings are incomplete for this pathway.</p>
+          <p className="mt-1 text-amber-800">The required core or support subjects have not all been listed by the school, so a subject combination cannot be submitted yet.</p>
+        </div>
+      )}
+
       {/* Pathway picker */}
       <div className="space-y-2">
         <p className="text-xs font-bold text-gray-700">1. Select Pathway</p>
@@ -192,11 +223,11 @@ const PathwaySelectionStep = ({ learnerId, existingSelection, onSuccess }) => {
       )}
 
       {/* Combination picker */}
-      {combinations.length > 0 && (
+      {availableCombinations.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs font-bold text-gray-700">3. Select Subject Combination</p>
           <div className="space-y-2">
-            {combinations.map(c => {
+            {availableCombinations.map(c => {
               const subjects = (c.items || []).map(i => i.officialLearningArea?.officialName).filter(Boolean);
               return (
                 <button key={c.id} type="button"
@@ -215,6 +246,12 @@ const PathwaySelectionStep = ({ learnerId, existingSelection, onSuccess }) => {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {hasConfiguredOfferings && selectedPathwayId && combinations.length > 0 && availableCombinations.length === 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          This school does not currently offer an approved subject combination for the selected pathway and track. Choose another option or ask the school to update its offerings.
         </div>
       )}
 
