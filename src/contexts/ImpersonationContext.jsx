@@ -146,11 +146,20 @@ export function ImpersonationProvider({ children }) {
         const status = error?.response?.status;
         const code   = error?.response?.data?.code;
 
-        if (status === 401 && code === 'TOKEN_EXPIRED' && isImpersonating) {
-          // Token expired during impersonation — restore original session locally
-          // WITHOUT calling the stop API (token is already expired).
+        const hasSavedOriginalSession = Boolean(
+          localStorage.getItem(LS_ORIGINAL_TOKEN)
+          && localStorage.getItem(LS_ORIGINAL_USER)
+        );
+        const invalidImpersonationSession = status === 401
+          && ['TOKEN_EXPIRED', 'TOKEN_REVOKED', 'INVALID_TOKEN', 'AUTH_REQUIRED'].includes(code);
+
+        if (invalidImpersonationSession && (isImpersonating || hasSavedOriginalSession)) {
+          // An impersonation session has no refresh token. Its access token can
+          // expire, be revoked, or be missing after a browser restore. In all
+          // of those cases return to the saved administrator session instead
+          // of leaving a stale impersonation marker that blocks admin actions.
           restoreOriginalSession();
-          showToast('Impersonation session expired. Returned to your account.');
+          showToast('Impersonation session ended. Returned to your account.');
         }
 
         return Promise.reject(error);
