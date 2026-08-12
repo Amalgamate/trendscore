@@ -27,6 +27,7 @@
     "seed:timetable": "tsx prisma/seed-timetable.ts",
     "seed:timetable:verify": "tsx prisma/verify-timetable.ts",
     "seed:planner-demo": "tsx prisma/seed-planner-demo.ts",
+    "seed:evaluation-personas": "tsx prisma/seed-evaluation-personas.ts",
     "seed:careers": "ts-node prisma/seed-careers.ts",
     "backfill:fee-journal": "ts-node scripts/backfill-fee-payments-to-journal.ts",
     "prisma:generate": "prisma generate",
