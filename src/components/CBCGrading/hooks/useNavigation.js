@@ -406,7 +406,8 @@ export const allNavSections = [
         app: 'attendance',
         permission: null,
         items: [
-            { id: 'attendance-daily',          label: 'Daily Attendance',   path: 'attendance-daily',          permission: 'MARK_ATTENDANCE'               },
+            { id: 'attendance-daily',          label: 'Daily / Class Attendance', path: 'attendance-daily',          permission: 'MARK_ATTENDANCE'               },
+            { id: 'attendance-staff',          label: 'Staff Attendance',         path: 'hr-attendance',             permission: 'HR_MANAGEMENT', app: 'staff-hr' },
             { id: 'attendance-reports',        label: 'Attendance Reports', path: 'attendance-reports',        permission: 'GENERATE_ATTENDANCE_REPORTS'  },
             { id: 'attendance-configuration',  label: 'Configuration',      path: 'attendance-configuration',  permission: 'VIEW_ALL_ATTENDANCE'          }
         ]
@@ -437,7 +438,6 @@ export const allNavSections = [
             { id: 'hr-payroll',        label: 'Payroll Processing', path: 'hr-payroll',       permission: 'HR_MANAGEMENT', app: 'payroll' },
             { id: 'hr-leave',          label: 'Leave Management',  path: 'hr-leave',          permission: 'HR_MANAGEMENT' },
             { id: 'hr-documents',      label: 'Staff Documents',   path: 'hr-documents',      permission: 'HR_MANAGEMENT' },
-            { id: 'hr-attendance',     label: 'Attendance',        path: 'hr-attendance',     permission: 'HR_MANAGEMENT' },
             { id: 'hr-performance',    label: 'Performance',       path: 'hr-performance',    permission: 'HR_MANAGEMENT' }
         ]
     },
@@ -462,7 +462,7 @@ export const allNavSections = [
         app: 'transport',
         permission: null,
         items: [
-            { id: 'transport-routes',   label: 'Bus Routes & Roster',  path: 'transport-routes',   permission: 'TRANSPORT_MANAGEMENT' },
+            { id: 'transport-routes',   label: 'Routes & Roster',      path: 'transport-routes',   permission: 'TRANSPORT_MANAGEMENT' },
             { id: 'transport-tracking', label: 'GPS Tracking',         path: 'transport-tracking', permission: 'TRANSPORT_MANAGEMENT' },
             { id: 'transport-drivers',  label: 'Driver Management',    path: 'transport-drivers',  permission: 'TRANSPORT_MANAGEMENT' },
             { id: 'hostel-fees',        label: 'Transport Fee Manager',path: 'hostel-fees',        permission: 'TRANSPORT_MANAGEMENT' },
@@ -540,7 +540,7 @@ export const allNavSections = [
     },
     {
         id: 'biometric',
-        label: 'Biometric Attendance',
+        label: 'Identity & Biometrics',
         icon: Fingerprint,
         app: 'biometric',
         permission: 'BIOMETRIC_ATTENDANCE',
@@ -606,19 +606,18 @@ export const allNavSections = [
         icon: Building2,
         permission: 'MANAGE_FACILITIES',
         items: [
-            { id: 'facilities-classes',  label: 'Classes & Streams',      path: 'facilities-classes',  permission: 'MANAGE_FACILITIES' },
-            { id: 'hostel-allocation',   label: 'Hostel Room Allocation', path: 'hostel-allocation',   permission: 'MANAGE_FACILITIES' }
+            { id: 'facilities-classes',  label: 'Classes & Streams',      path: 'facilities-classes',  permission: 'MANAGE_FACILITIES' }
         ]
     },
 
     // ── Presence Platform (Phase 2.0) ─────────────────────────────────────────
     {
         id: 'presence',
-        label: 'Presence Platform',
+        label: 'Presence & Movement',
         icon: Activity,
         permission: null,
         items: [
-            { id: 'presence-dashboard', label: 'School Snapshot',    path: 'presence-dashboard',  permission: 'VIEW_ALL_PRESENCE' },
+            { id: 'presence-dashboard', label: 'Overview',           path: 'presence-dashboard',  permission: 'VIEW_ALL_PRESENCE' },
             { id: 'presence-timeline',  label: 'Learner Timeline',   path: 'presence-timeline',   permission: 'VIEW_PRESENCE_TIMELINE' },
         ]
     },
@@ -626,7 +625,7 @@ export const allNavSections = [
     // ── Analytics & Intelligence (Phase 2.0) ─────────────────────────────────
     {
         id: 'presence-analytics',
-        label: 'Attendance Intelligence',
+        label: 'Presence Intelligence',
         icon: Brain,
         permission: 'VIEW_ALL_ATTENDANCE',
         items: [
@@ -641,7 +640,8 @@ export const allNavSections = [
         icon: Home,
         permission: null,
         items: [
-            { id: 'boarding-dashboard', label: 'Boarding Hub', path: 'boarding-dashboard', permission: null },
+            { id: 'boarding-dashboard', label: 'Boarding Overview', path: 'boarding-dashboard', permission: null },
+            { id: 'hostel-allocation', label: 'Dormitory Allocation', path: 'hostel-allocation', permission: 'MANAGE_FACILITIES' },
         ]
     },
     {
@@ -1171,8 +1171,9 @@ export const useNavigation = () => {
 };
 
 /**
- * Organizes navigation into simplified grouped categories:
- * Home, Academics, Finance, Operations, Communication, Insights, More
+ * Organizes navigation into sidebar categories. Presence-related source modules
+ * deliberately appear together so users can follow a learner from observation
+ * to the operational workflow without merging the underlying domains.
  */
 export const groupNavigationByCategory = (nav) => {
     const appendUniqueSections = (target, sections = []) => {
@@ -1186,6 +1187,7 @@ export const groupNavigationByCategory = (nav) => {
     const groups = {
         home: { id: 'home', label: 'Home', icon: nav.dashboardSection?.icon, items: [] },
         academics: { id: 'academics', label: 'Academics', items: [] },
+        presenceMovement: { id: 'presence-movement', label: 'Learner Presence & Movement', icon: Activity, items: [] },
         finance: { id: 'finance', label: 'Finance', icon: CreditCard, items: [] },
         operations: { id: 'operations', label: 'Operations', icon: Wrench, items: [] },
         communication: { id: 'communication', label: 'Communication', icon: Mail, items: [] },
@@ -1200,7 +1202,10 @@ export const groupNavigationByCategory = (nav) => {
 
     // Populate Academics
     if (nav.schoolSections && nav.schoolSections.length > 0) {
-        appendUniqueSections(groups.academics.items, nav.schoolSections);
+        appendUniqueSections(
+            groups.academics.items,
+            nav.schoolSections.filter((section) => section.id !== 'attendance'),
+        );
     }
     if (nav.lmsSection) {
         appendUniqueSections(groups.academics.items, [nav.lmsSection]);
@@ -1215,8 +1220,21 @@ export const groupNavigationByCategory = (nav) => {
         groups.finance.items.push(financeSection);
     }
 
-    // Populate Operations
-    const operationsIds = ['hr', 'inventory', 'library', 'transport', 'biometric', 'presence', 'presence-analytics', 'boarding'];
+    // Presence & Movement: shared insight layer plus the distinct source workflows.
+    const presenceIds = ['presence', 'presence-analytics', 'attendance', 'biometric', 'boarding', 'transport'];
+    const availablePresenceSections = [
+        ...(nav.schoolSections || []),
+        ...(nav.backOfficeSections || []),
+    ];
+    appendUniqueSections(
+        groups.presenceMovement.items,
+        presenceIds
+            .map((id) => availablePresenceSections.find((section) => section.id === id))
+            .filter(Boolean),
+    );
+
+    // Populate remaining operational areas.
+    const operationsIds = ['hr', 'inventory', 'library'];
     const operationsSections = nav.backOfficeSections?.filter(s => operationsIds.includes(s.id)) || [];
     if (operationsSections.length > 0) {
         groups.operations.items.push(...operationsSections);
