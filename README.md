@@ -1,7 +1,7 @@
 # TrendScore
 
 <p align="center">
-  <img src="public/branding/logo.png" alt="TrendScore" width="260" />
+  <img src="public/github/TrendsCORE-Logo.png" alt="TrendScore" width="260" />
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-  <img src="public/screenshots/readme/trendscore-hero.png" alt="TrendScore connects school leaders, teachers, parents, and learners" width="100%" />
+  <img src="public/github/exec-60d77835-81be-4e27-a880-3cbe2a3ee6d8.png" alt="TrendScore connects school leaders, teachers, parents, and learners" width="100%" />
 </p>
 
 TrendScore brings the everyday work of a school into one secure, role-aware platform: learner records, CBE assessment, finance, people operations, communication, reporting, approvals, and learner pathways guidance. It is designed to support individual schools through school-scoped configuration and controlled deployments.
