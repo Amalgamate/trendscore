@@ -62,8 +62,10 @@ jobs:
           [[ -n "$backend" && -n "$db" ]] || { echo "Could not find running backend/database containers"; exit 1; }
 
           learner_name="$(printf %s "$LEARNER_NAME_B64" | base64 -d)"
+          db_user="$(sudo docker exec "$db" printenv POSTGRES_USER)"
+          db_name="$(sudo docker exec "$db" printenv POSTGRES_DB)"
           echo "## Learner/system-user link"
-          sudo docker exec -i "$db" psql -v ON_ERROR_STOP=1 -v "learner_name=$learner_name" -P pager=off -c "
+          sudo docker exec -i "$db" psql -U "$db_user" -d "$db_name" -v ON_ERROR_STOP=1 -v "learner_name=$learner_name" -P pager=off -c "
             SELECT
               u.id AS user_id,
               u.email,
