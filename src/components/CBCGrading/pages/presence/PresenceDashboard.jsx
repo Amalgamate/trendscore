@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Activity, Users, AlertTriangle, CheckCircle2, Clock,
+  Activity, Users, AlertTriangle, CheckCircle2, Clock, Info,
   RefreshCw, Search
 } from 'lucide-react';
 import api from '../../../../services/api';
@@ -95,10 +95,10 @@ const PresenceDashboard = () => {
         <div>
           <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-3 tracking-tight">
             <Activity className="text-blue-600" size={28} />
-            Presence Overview
+            Attendance Snapshot
           </h1>
           <p className="text-sm text-gray-400 mt-0.5">
-            Today's school-wide presence snapshot — updated in real time.
+            Today’s class-attendance position across the school.
           </p>
         </div>
         <button
@@ -111,15 +111,25 @@ const PresenceDashboard = () => {
         </button>
       </div>
 
+      <div className="mb-6 flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+        <Info size={18} className="mt-0.5 flex-shrink-0 text-blue-600" />
+        <div>
+          <p className="font-semibold">Attendance is not a live location.</p>
+          <p className="mt-0.5 text-xs leading-5 text-blue-700">
+            This view reports whether a learner has been marked for today’s class attendance. Current states such as On Campus, On Transport, In Dormitory and Unaccounted will appear here after the expected-presence engine is enabled.
+          </p>
+        </div>
+      </div>
+
       {/* Snapshot cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <StatCard icon={Users}        label="Total Learners"    value={snapshot?.totalLearners}   color="blue" />
         <StatCard icon={CheckCircle2} label="Present Today"     value={snapshot?.presentCount}    color="green"
           sub={snapshot ? `${snapshot.attendanceRate}% attendance rate` : undefined} />
-        <StatCard icon={AlertTriangle}label="Absent / Unmarked" value={snapshot ? (snapshot.absentCount + snapshot.unmarkedCount) : undefined} color="red"
+        <StatCard icon={AlertTriangle}label="Needs Attendance Marking" value={snapshot ? (snapshot.absentCount + snapshot.unmarkedCount) : undefined} color="amber"
           sub={snapshot ? `${snapshot.absentCount} absent · ${snapshot.unmarkedCount} unmarked` : undefined} />
-        <StatCard icon={Clock}        label="Staff Present"     value={snapshot?.staffPresent}    color="slate"
-          sub={snapshot?.staffAbsent ? `${snapshot.staffAbsent} absent` : undefined} />
+        <StatCard icon={Clock}        label="Staff Attendance"  value={snapshot?.staffPresent}    color="slate"
+          sub={snapshot ? `${snapshot.staffPresent ?? 0} present · ${snapshot.staffAbsent ?? 0} absent` : undefined} />
       </div>
 
       {/* Grade breakdown + absent list */}
@@ -141,11 +151,11 @@ const PresenceDashboard = () => {
           </div>
         </div>
 
-        {/* Absent / unmarked list */}
+        {/* Attendance follow-up list */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="p-4 border-b border-gray-50 flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-gray-700">
-              Absent / Unmarked ({absentList.length})
+              Learners Without a Mark ({absentList.length})
             </h2>
             <div className="relative flex-1 max-w-[180px]">
               <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -163,7 +173,7 @@ const PresenceDashboard = () => {
             {!loading && filteredAbsent.length === 0 && (
               <div className="p-8 text-center">
                 {absentList.length === 0
-                  ? <><CheckCircle2 className="mx-auto text-emerald-400 mb-2" size={28} /><p className="text-sm font-medium text-gray-600">All learners accounted for</p></>
+                  ? <><CheckCircle2 className="mx-auto text-emerald-400 mb-2" size={28} /><p className="text-sm font-medium text-gray-600">All learners have an attendance mark</p></>
                   : <p className="text-sm text-gray-400">No results match "{absentSearch}"</p>
                 }
               </div>
