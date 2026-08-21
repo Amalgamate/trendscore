@@ -3,11 +3,11 @@
  *
  * Manages the admin user impersonation session lifecycle:
  *   - startImpersonation(targetUserId): issues a real JWT swap into the target
- *     user's session and persists the original admin session to localStorage.
+ *     user's session and persists the original admin session per browser tab.
  *   - stopImpersonation(): revokes the impersonation token server-side and
- *     restores the original admin session from localStorage.
+ *     restores the original admin session from tab-scoped storage.
  *   - Mount hydration: on page refresh, restores isImpersonating = true if
- *     both localStorage keys are present and AuthContext has resolved.
+ *     both tab-scoped session keys are present and AuthContext has resolved.
  *   - Token-expiry recovery: if a 401/TOKEN_EXPIRED arrives mid-session, the
  *     original admin session is restored locally without calling the stop API.
  *
@@ -29,10 +29,11 @@ import {
   clearImpersonationAccessToken,
   getAuthItem,
   isRememberedSession,
+  migrateLegacyImpersonationSession,
   setImpersonationAccessToken,
 } from '../utils/authStorage';
 
-// ─── localStorage key constants ───────────────────────────────────────────────
+// ─── Tab-scoped session key constants ─────────────────────────────────────────
 const LS_ORIGINAL_TOKEN = 'trendscore_impersonation_original_token';
 const LS_ORIGINAL_USER  = 'trendscore_impersonation_original_user';
 const LS_ORIGINAL_REFRESH_TOKEN = 'trendscore_impersonation_original_refresh_token';
@@ -69,24 +70,25 @@ export function ImpersonationProvider({ children }) {
     }
   }, []);
 
-  // ── Restore original admin session from localStorage ─────────────────────
+  // ── Restore original admin session from tab-scoped storage ───────────────
   const restoreOriginalSession = useCallback(() => {
     try {
-      const originalToken = localStorage.getItem(LS_ORIGINAL_TOKEN);
-      const originalUserRaw = localStorage.getItem(LS_ORIGINAL_USER);
+      migrateLegacyImpersonationSession();
+      const originalToken = sessionStorage.getItem(LS_ORIGINAL_TOKEN);
+      const originalUserRaw = sessionStorage.getItem(LS_ORIGINAL_USER);
       if (!originalToken || !originalUserRaw) return false;
 
       const originalUser = JSON.parse(originalUserRaw);
-      const originalRefreshToken = localStorage.getItem(LS_ORIGINAL_REFRESH_TOKEN);
-      const originalPersistence = localStorage.getItem(LS_ORIGINAL_PERSISTENCE);
+      const originalRefreshToken = sessionStorage.getItem(LS_ORIGINAL_REFRESH_TOKEN);
+      const originalPersistence = sessionStorage.getItem(LS_ORIGINAL_PERSISTENCE);
       auth.login(originalUser, originalToken, originalRefreshToken, {
         rememberMe: originalPersistence === 'remembered',
       });
 
-      // Remove all impersonation localStorage keys (Req 5.6)
-      Object.keys(localStorage)
+      // Remove all impersonation keys for this tab (Req 5.6)
+      Object.keys(sessionStorage)
         .filter((k) => k.startsWith('trendscore_impersonation_'))
-        .forEach((k) => localStorage.removeItem(k));
+        .forEach((k) => sessionStorage.removeItem(k));
       clearImpersonationAccessToken();
 
       setIsImpersonating(false);
@@ -105,8 +107,9 @@ export function ImpersonationProvider({ children }) {
     hydratedRef.current = true;
 
     try {
-      const originalToken   = localStorage.getItem(LS_ORIGINAL_TOKEN);
-      const originalUserRaw = localStorage.getItem(LS_ORIGINAL_USER);
+      migrateLegacyImpersonationSession();
+      const originalToken   = sessionStorage.getItem(LS_ORIGINAL_TOKEN);
+      const originalUserRaw = sessionStorage.getItem(LS_ORIGINAL_USER);
 
       if (
         originalToken &&
@@ -132,7 +135,7 @@ export function ImpersonationProvider({ children }) {
       }
       // else: missing/corrupt keys or no user → isImpersonating stays false (Req 10.3)
     } catch {
-      // Corrupt localStorage data → treat as no session (Req 10.3)
+      // Corrupt stored session data → treat as no session (Req 10.3)
       setIsImpersonating(false);
       setImpersonatedUser(null);
     }
@@ -147,8 +150,8 @@ export function ImpersonationProvider({ children }) {
         const code   = error?.response?.data?.code;
 
         const hasSavedOriginalSession = Boolean(
-          localStorage.getItem(LS_ORIGINAL_TOKEN)
-          && localStorage.getItem(LS_ORIGINAL_USER)
+          sessionStorage.getItem(LS_ORIGINAL_TOKEN)
+          && sessionStorage.getItem(LS_ORIGINAL_USER)
         );
         const invalidImpersonationSession = status === 401
           && ['TOKEN_EXPIRED', 'TOKEN_REVOKED', 'INVALID_TOKEN', 'AUTH_REQUIRED'].includes(code);
@@ -182,18 +185,20 @@ export function ImpersonationProvider({ children }) {
     const originalUser  = auth.user;
     const originalPersistence = isRememberedSession() ? 'remembered' : 'session';
 
-    // Persist original session to localStorage (Req 3.10)
+    // Persist the original session only in this tab. localStorage is shared by
+    // all tabs and previously caused unrelated admin tabs to enter a partial
+    // impersonation state without the matching sessionStorage access token.
     try {
-      localStorage.setItem(LS_ORIGINAL_TOKEN, originalToken);
-      localStorage.setItem(LS_ORIGINAL_USER, JSON.stringify(originalUser));
+      sessionStorage.setItem(LS_ORIGINAL_TOKEN, originalToken);
+      sessionStorage.setItem(LS_ORIGINAL_USER, JSON.stringify(originalUser));
       if (originalRefreshToken) {
-        localStorage.setItem(LS_ORIGINAL_REFRESH_TOKEN, originalRefreshToken);
+        sessionStorage.setItem(LS_ORIGINAL_REFRESH_TOKEN, originalRefreshToken);
       } else {
-        localStorage.removeItem(LS_ORIGINAL_REFRESH_TOKEN);
+        sessionStorage.removeItem(LS_ORIGINAL_REFRESH_TOKEN);
       }
-      localStorage.setItem(LS_ORIGINAL_PERSISTENCE, originalPersistence);
+      sessionStorage.setItem(LS_ORIGINAL_PERSISTENCE, originalPersistence);
     } catch (storageErr) {
-      setError('Failed to save session — localStorage may be full or disabled.');
+      setError('Failed to save session — browser session storage may be full or disabled.');
       setIsLoading(false);
       return false;
     }
@@ -219,11 +224,11 @@ export function ImpersonationProvider({ children }) {
       });
       return true;
     } catch (err) {
-      // Rollback: remove localStorage keys so there's no orphaned state (Req 3.13)
-      localStorage.removeItem(LS_ORIGINAL_TOKEN);
-      localStorage.removeItem(LS_ORIGINAL_USER);
-      localStorage.removeItem(LS_ORIGINAL_REFRESH_TOKEN);
-      localStorage.removeItem(LS_ORIGINAL_PERSISTENCE);
+      // Rollback: remove tab-scoped keys so there's no orphaned state (Req 3.13)
+      sessionStorage.removeItem(LS_ORIGINAL_TOKEN);
+      sessionStorage.removeItem(LS_ORIGINAL_USER);
+      sessionStorage.removeItem(LS_ORIGINAL_REFRESH_TOKEN);
+      sessionStorage.removeItem(LS_ORIGINAL_PERSISTENCE);
       clearImpersonationAccessToken();
 
       const message = err?.response?.data?.error
@@ -243,7 +248,7 @@ export function ImpersonationProvider({ children }) {
     setError(null);
 
     // Guard: if original token is missing, force full logout (Req 5.8)
-    const originalToken = localStorage.getItem(LS_ORIGINAL_TOKEN);
+    const originalToken = sessionStorage.getItem(LS_ORIGINAL_TOKEN);
     if (!originalToken) {
       auth.logout();
       setIsImpersonating(false);

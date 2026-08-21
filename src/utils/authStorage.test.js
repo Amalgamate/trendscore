@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   clearAuthStorage,
   getAuthItem,
+  hasImpersonationSession,
   isRememberedSession,
+  migrateLegacyImpersonationSession,
   setAuthItem,
   storeAuthSession,
 } from './authStorage';
@@ -51,5 +53,30 @@ describe('authStorage', () => {
     clearAuthStorage();
     expect(getAuthItem('token')).toBeNull();
     expect(getAuthItem('user')).toBeNull();
+  });
+
+  it('does not treat another tab legacy marker as this tab impersonating', () => {
+    localStorage.setItem('trendscore_impersonation_original_token', 'other-tab-admin');
+
+    expect(hasImpersonationSession()).toBe(false);
+    expect(localStorage.getItem('trendscore_impersonation_original_token')).toBe('other-tab-admin');
+  });
+
+  it('does not suppress admin authentication while impersonation is only being prepared', () => {
+    sessionStorage.setItem('trendscore_impersonation_original_token', 'saved-admin');
+
+    expect(hasImpersonationSession()).toBe(false);
+  });
+
+  it('migrates a legacy impersonation session only when this tab owns its token', () => {
+    localStorage.setItem('trendscore_impersonation_original_token', 'saved-admin');
+    localStorage.setItem('trendscore_impersonation_original_user', '{"id":"admin-1"}');
+    sessionStorage.setItem('trendscore_impersonation_access_token', 'impersonation-token');
+
+    expect(migrateLegacyImpersonationSession()).toBe(true);
+    expect(hasImpersonationSession()).toBe(true);
+    expect(sessionStorage.getItem('trendscore_impersonation_original_token')).toBe('saved-admin');
+    expect(sessionStorage.getItem('trendscore_impersonation_original_user')).toBe('{"id":"admin-1"}');
+    expect(localStorage.getItem('trendscore_impersonation_original_token')).toBeNull();
   });
 });
