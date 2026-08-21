@@ -2,6 +2,7 @@ const AUTH_KEYS = ['token', 'refreshToken', 'user', 'authToken', 'trendscore_imp
 const PERSISTENCE_KEY = 'authPersistence';
 const IMPERSONATION_ACCESS_TOKEN_KEY = 'trendscore_impersonation_access_token';
 const IMPERSONATION_MARKER_KEY = 'trendscore_impersonation_original_token';
+const IMPERSONATION_KEY_PREFIX = 'trendscore_impersonation_';
 
 function safeGet(storage, key) {
   try { return storage?.getItem(key) || null; } catch { return null; }
@@ -28,6 +29,24 @@ export function getImpersonationAccessToken() {
   return safeGet(sessionStorage, IMPERSONATION_ACCESS_TOKEN_KEY);
 }
 
+// Impersonation is deliberately tab-scoped. The access token already lives in
+// sessionStorage; keeping its marker in localStorage made unrelated admin tabs
+// suppress their own bearer token and authenticate with the shared cookie.
+// Migrate an active legacy session only in the tab that owns its access token.
+export function migrateLegacyImpersonationSession() {
+  if (!safeGet(sessionStorage, IMPERSONATION_ACCESS_TOKEN_KEY)) return false;
+  if (safeGet(sessionStorage, IMPERSONATION_MARKER_KEY)) return true;
+  if (!safeGet(localStorage, IMPERSONATION_MARKER_KEY)) return false;
+
+  Object.keys(localStorage)
+    .filter((key) => key.startsWith(IMPERSONATION_KEY_PREFIX))
+    .forEach((key) => {
+      safeSet(sessionStorage, key, safeGet(localStorage, key));
+      safeSet(localStorage, key, null);
+    });
+  return Boolean(safeGet(sessionStorage, IMPERSONATION_MARKER_KEY));
+}
+
 export function setImpersonationAccessToken(token) {
   safeSet(sessionStorage, IMPERSONATION_ACCESS_TOKEN_KEY, token);
 }
@@ -37,7 +56,11 @@ export function clearImpersonationAccessToken() {
 }
 
 export function hasImpersonationSession() {
-  return Boolean(safeGet(localStorage, IMPERSONATION_MARKER_KEY));
+  const hasAccessToken = Boolean(safeGet(sessionStorage, IMPERSONATION_ACCESS_TOKEN_KEY));
+  if (!hasAccessToken) return false;
+
+  return Boolean(safeGet(sessionStorage, IMPERSONATION_MARKER_KEY))
+    || migrateLegacyImpersonationSession();
 }
 
 export function setAuthItem(key, value) {
