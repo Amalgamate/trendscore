@@ -24,11 +24,27 @@ import {
     Users2, Truck, Fingerprint, CreditCard, PieChart, BarChart3, AlertCircle,
     Package, Building2, HelpCircle, Receipt, FileText,
     Shirt, ClipboardList, Video, PlayCircle, Gift, Wrench, Activity, Brain, MoreHorizontal, Award,
-    Heart, Star, Sparkles
+    Heart, Star, Sparkles, Rocket
 } from 'lucide-react';
 
 const focusModules = ['dashboard', 'learners', 'teachers', 'attendance', 'assessment', 'finance', 'communications', 'planner', 'digital-learning', 'learning-hub', 'docs-center', 'settings', 'hr', 'inventory', 'transport', 'biometric', 'pathway-planner', 'presence', 'presence-analytics', 'boarding'];
 const SCHOOL_SECTION_ORDER = ['learners', 'students', 'teachers', 'lecturers', 'attendance', 'assessment', 'secondary-assessment', 'tertiary-assessment'];
+
+const STUDENT_PORTAL_ITEMS = [
+    { id: 'student-courses', label: 'My Courses', path: 'student-courses', icon: BookOpen, permission: null },
+    { id: 'student-assignments', label: 'My Assignments', path: 'student-assignments', icon: ClipboardList, permission: null },
+    { id: 'student-quizzes', label: 'Quizzes & Progress', path: 'student-quizzes', icon: BarChart3, permission: null },
+    { id: 'student-pathway-planner', label: 'My Pathway', path: 'student-pathway-planner', icon: Zap, permission: null },
+    { id: 'student-career-explorer', label: 'Career Explorer', path: 'student-career-explorer', icon: Rocket, permission: null },
+];
+
+const createStudentPortalSection = () => ({
+    id: 'student-portal',
+    label: 'Student Portal',
+    icon: PlayCircle,
+    showChildrenWhenCollapsed: true,
+    items: STUDENT_PORTAL_ITEMS,
+});
 
 const orderSectionsById = (sections = [], preferredOrder = SCHOOL_SECTION_ORDER) => {
     const orderIndex = new Map(preferredOrder.map((id, index) => [id, index]));
@@ -881,18 +897,7 @@ export const useNavigation = () => {
                 communicationSection: null,
                 schoolSections: [],
                 lmsSection: null,
-                studentLmsSection: {
-                    id: 'student-portal',
-                    label: 'Student Portal',
-                    icon: PlayCircle,
-                    items: [
-                        { id: 'student-courses', label: 'My Courses', path: 'student-courses', permission: null },
-                        { id: 'student-assignments', label: 'My Assignments', path: 'student-assignments', permission: null },
-                        { id: 'student-quizzes', label: 'Quizzes & Progress', path: 'student-quizzes', permission: null },
-                        { id: 'student-pathway-planner', label: 'My Pathway', path: 'student-pathway-planner', permission: null },
-                        { id: 'student-career-explorer', label: 'Career Explorer', path: 'student-career-explorer', permission: null },
-                    ]
-                },
+                studentLmsSection: createStudentPortalSection(),
                 backOfficeSections: [],
                 docsCenterSection: null,
                 systemAdminSections: [],
@@ -928,18 +933,7 @@ export const useNavigation = () => {
                 communicationSection: null,
                 schoolSections: [],
                 lmsSection: null,
-                studentLmsSection: {
-                    id: 'student-portal',
-                    label: 'Student Portal',
-                    icon: PlayCircle,
-                    items: [
-                        { id: 'student-courses', label: 'My Courses', path: 'student-courses', permission: null },
-                        { id: 'student-assignments', label: 'My Assignments', path: 'student-assignments', permission: null },
-                        { id: 'student-quizzes', label: 'Quizzes & Progress', path: 'student-quizzes', permission: null },
-                        { id: 'student-pathway-planner', label: 'My Pathway', path: 'student-pathway-planner', permission: null },
-                        { id: 'student-career-explorer', label: 'Career Explorer', path: 'student-career-explorer', permission: null },
-                    ]
-                },
+                studentLmsSection: createStudentPortalSection(),
                 backOfficeSections: [],
                 docsCenterSection: null,
                 systemAdminSections: [],
@@ -1041,18 +1035,7 @@ export const useNavigation = () => {
     const lmsSection = navSections.find(s => s.id === 'digital-learning');
     const studentLmsSection = useMemo(() => {
         if (role !== 'STUDENT') return null;
-        return {
-            id: 'student-portal',
-            label: 'Student Portal',
-            icon: PlayCircle,
-            items: [
-                { id: 'student-courses', label: 'My Courses', path: 'student-courses', permission: null },
-                { id: 'student-assignments', label: 'My Assignments', path: 'student-assignments', permission: null },
-                { id: 'student-quizzes', label: 'Quizzes & Progress', path: 'student-quizzes', permission: null },
-                { id: 'student-pathway-planner', label: 'My Pathway', path: 'student-pathway-planner', permission: null },
-                { id: 'student-career-explorer', label: 'Career Explorer', path: 'student-career-explorer', permission: null },
-            ]
-        };
+        return createStudentPortalSection();
     }, [role]);
 
     const schoolSections = useMemo(() => {

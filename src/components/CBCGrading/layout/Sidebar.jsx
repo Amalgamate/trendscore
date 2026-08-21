@@ -9,21 +9,14 @@ import {
   BarChart3,
   BookOpen,
   Building2,
-  Brain,
   ChevronDown,
-  CreditCard,
   FileText,
-  HelpCircle,
   Home,
   Mail,
-  MoreHorizontal,
   Receipt,
-  Rocket,
   ShieldAlert,
-  Wrench
 } from 'lucide-react';
 import { useNavigation, groupNavigationByCategory } from '../hooks/useNavigation';
-import { useInstitutionLabels } from '../../../hooks/useInstitutionLabels';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { getSchoolDisplayName } from '../../../utils/schoolDisplayName';
 import { hasPageAccess } from '../utils/appAccess';
@@ -234,7 +227,6 @@ const Sidebar = React.memo(({
   user,
   onOpenGitDialog,
 }) => {
-  const labels = useInstitutionLabels();
   const { role } = usePermissions();
 
   const theme = useMemo(() => getSidebarTheme(brandingSettings), [brandingSettings]);
@@ -285,14 +277,6 @@ const Sidebar = React.memo(({
 
     return () => window.clearTimeout(timer);
   }, [activeSectionId, sidebarOpen]);
-
-  const sharedNavProps = {
-    handleSectionClick,
-    sidebarOpen,
-    currentPage,
-    onNavigate,
-    accentColor: theme.accent,
-  };
 
   const sidebarW = sidebarOpen ? SIDEBAR_EXPANDED_W : SIDEBAR_COLLAPSED_W;
   const schoolDisplayName = getSchoolDisplayName(
@@ -511,18 +495,6 @@ const Sidebar = React.memo(({
   );
 });
 
-// ─── CategoryGroup ────────────────────────────────────────────────────────────
-const CategoryGroup = ({ label, sidebarOpen, children }) => (
-  <div className="mt-2 pt-2 border-t border-white/10 -mx-2 px-2">
-    {sidebarOpen && (
-      <div className="w-full flex items-center px-3 pointer-events-none" style={{ height: 36 }}>
-        <span className="text-[12px] font-extrabold uppercase tracking-[0.14em] text-white/60">{label}</span>
-      </div>
-    )}
-    <div className="space-y-0.5 pt-0.5">{children}</div>
-  </div>
-);
-
 // ─── SingleItem ───────────────────────────────────────────────────────────────
 const SingleItem = ({ section, currentPage, onNavigate, sidebarOpen, accentColor }) => {
   const isActive = currentPage === section.id;
@@ -575,6 +547,7 @@ const NavSection = React.memo(({
 }) => {
   const hasChildren = (section.items?.length || 0) > 0;
   const hideChildrenInSidebar = hasChildren && section.hideChildrenInSidebar;
+  const showChildrenWhenCollapsed = hasChildren && section.showChildrenWhenCollapsed;
 
   const isChildActive = useMemo(() => {
     if (!hasChildren) return false;
@@ -638,6 +611,33 @@ const NavSection = React.memo(({
       })}
     </div>
   );
+
+  if (!sidebarOpen && showChildrenWhenCollapsed) {
+    return (
+      <div className="space-y-0.5" aria-label={section.label}>
+        {section.items.filter((item) => item.type !== 'group').map((item) => {
+          const Icon = item.icon || section.icon;
+          const itemActive = currentPage === item.path || currentPage === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              title={item.label}
+              aria-label={item.label}
+              aria-current={itemActive ? 'page' : undefined}
+              onClick={() => !item.greyedOut && !item.comingSoon && onNavigate(item.path, item.params)}
+              onMouseEnter={() => prefetch(item.path)}
+              disabled={!!(item.greyedOut || item.comingSoon)}
+              className={`group relative flex h-11 w-full items-center justify-center rounded-lg transition-all duration-200 ${itemActive ? 'bg-white/10' : 'hover:bg-white/8'} ${item.greyedOut || item.comingSoon ? 'cursor-not-allowed opacity-40' : ''}`}
+            >
+              {itemActive && <span className="absolute bottom-3 left-0 top-3 w-0.5 rounded-r-full" style={{ backgroundColor: accentColor }} />}
+              <Icon size={18} className={`${getCollapsedIconColor(item.id, itemActive)} transition-all duration-300`} />
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -725,7 +725,10 @@ const LeafItem = ({ item, currentPage, onNavigate }) => {
             : 'text-white/55 hover:text-white hover:bg-white/5'}
       `}
     >
-      <span className="truncate flex-1">{item.label}</span>
+      <span className="flex min-w-0 flex-1 items-center gap-2">
+        {item.icon && <item.icon size={13} className="shrink-0 opacity-80" />}
+        <span className="truncate">{item.label}</span>
+      </span>
       {item.comingSoon && (
         <span className="ml-2 flex-shrink-0 text-[8px] bg-amber-400/15 text-amber-400 px-1.5 py-0.5 rounded font-semibold uppercase border border-amber-400/25 tracking-wide">
           Soon

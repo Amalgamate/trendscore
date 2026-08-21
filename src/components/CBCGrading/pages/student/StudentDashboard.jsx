@@ -743,6 +743,14 @@ const CartDrawer = ({ cart, onRemove, onClose, onCheckout }) => {
 
 const MARKETPLACE_TYPES = ['All', 'FREE', 'PAID', 'BUNDLE', 'SUBSCRIPTION'];
 
+const DASHBOARD_TABS = [
+  { id: 'overview', label: 'Overview', icon: BarChart2 },
+  { id: 'learning', label: 'Learning', icon: BookOpen },
+  { id: 'assignments', label: 'Assignments', icon: ClipboardList },
+  { id: 'progress', label: 'Progress', icon: TrendingUp },
+  { id: 'future', label: 'My Future', icon: Zap },
+];
+
 /* ═══════════════════════════════════════════════════════════════════════════════
    MAIN COMPONENT
 ═══════════════════════════════════════════════════════════════════════════════ */
@@ -754,6 +762,7 @@ const StudentDashboard = ({ user, onNavigate }) => {
   const [apiError, setApiError]       = useState(null);
   const [refreshing, setRefreshing]   = useState(false);
   const [noLearnerRecord, setNoLearnerRecord] = useState(false);
+  const [activeDashboardTab, setActiveDashboardTab] = useState('overview');
 
   /* ── Achievements (real XP / level / streak / badges) ─────────────────────────────── */
   const [achievements, setAchievements] = useState(null);
@@ -896,6 +905,22 @@ const StudentDashboard = ({ user, onNavigate }) => {
   const submittedCount = assignments.filter(a => a.submitted).length;
   const pendingCount   = assignments.length - submittedCount;
   const messages       = metrics?.stats?.messages ?? 0;
+  const assignmentMissing = assignments.filter((assignment) => assignment.statusSummary === 'MISSING' || assignment.isOverdue).length;
+  const assignmentDrafts = assignments.filter((assignment) => assignment.statusSummary === 'IN_PROGRESS').length;
+  const assignmentMarked = assignments.filter((assignment) => assignment.statusSummary === 'MARKED').length;
+  const completedCourses = courses.filter((course) => Number(course.progressPercent || 0) >= 100).length;
+  const activeCourses = courses.filter((course) => Number(course.progressPercent || 0) > 0 && Number(course.progressPercent || 0) < 100).length;
+  const averageCourseProgress = courses.length
+    ? Math.round(courses.reduce((sum, course) => sum + Number(course.progressPercent || 0), 0) / courses.length)
+    : 0;
+  const completedCourseItems = courses.reduce((sum, course) => sum + Number(course.completedItems || 0), 0);
+  const attendancePresent = metrics?.stats?.attendancePresent ?? 0;
+  const attendanceAbsent = metrics?.stats?.attendanceAbsent ?? 0;
+  const attendanceLate = metrics?.stats?.attendanceLate ?? 0;
+  const xpTotal = achievements?.xpTotal ?? 0;
+  const achievementLevel = achievements?.level ?? 1;
+  const streakDays = achievements?.streakDays ?? 0;
+  const badgesEarned = achievements?.achievements?.length ?? metrics?.stats?.badgesEarned ?? 0;
 
   // Report card derived values
   const reportSubjects = reportCard?.subjects ?? [];
@@ -920,11 +945,45 @@ const StudentDashboard = ({ user, onNavigate }) => {
   };
 
   /* ── Stat tiles ──────────────────────────────────────────────────────────── */
-  const statTiles = [
-    { label: 'Assignments Due', value: fmt(pendingCount), sub: pendingCount === 1 ? 'Needs attention' : 'Need attention', icon: ClipboardList, accent: '#030b82', spark: true,  onClick: () => onNavigate('student-assignments') },
-    { label: 'Attendance',  value: attendanceRate ? pct(attendanceRate) : '--', sub: 'View my report', icon: CheckCircle2, accent: '#ff7900', spark: true,  onClick: () => onNavigate('student-attendance') },
-    { label: 'Unread Messages', value: fmt(messages), sub: 'Open inbox', icon: MessageSquare, accent: '#06285a', spark: false, onClick: () => onNavigate('communication') },
-  ];
+  const statTilesByTab = {
+    overview: [
+      { label: 'Assignments Due', value: fmt(pendingCount), sub: 'Open assignments', icon: ClipboardList, accent: '#030b82', onClick: () => onNavigate('student-assignments') },
+      { label: 'Attendance', value: attendanceRate ? pct(attendanceRate) : '--', sub: 'View my report', icon: CheckCircle2, accent: '#ff7900', onClick: () => onNavigate('student-attendance') },
+      { label: 'My Courses', value: fmt(courses.length), sub: `${activeCourses} in progress`, icon: BookOpen, accent: '#8b5cf6', onClick: () => onNavigate('student-courses') },
+      { label: 'Average Score', value: avgScore ? pct(avgScore) : '--', sub: 'View results', icon: TrendingUp, accent: '#10b981', onClick: () => onNavigate('student-results') },
+      { label: 'Unread Messages', value: fmt(messages), sub: 'Open inbox', icon: MessageSquare, accent: '#06285a', onClick: () => onNavigate('communication') },
+    ],
+    learning: [
+      { label: 'Enrolled Courses', value: fmt(courses.length), sub: 'All courses', icon: BookOpen, accent: '#030b82', onClick: () => onNavigate('student-courses') },
+      { label: 'In Progress', value: fmt(activeCourses), sub: 'Continue learning', icon: TrendingUp, accent: '#ff7900' },
+      { label: 'Completed', value: fmt(completedCourses), sub: 'Courses finished', icon: CheckCircle2, accent: '#10b981' },
+      { label: 'Average Progress', value: pct(averageCourseProgress), sub: 'Across courses', icon: BarChart2, accent: '#8b5cf6' },
+      { label: 'Items Completed', value: fmt(completedCourseItems), sub: 'Lessons and activities', icon: Award, accent: '#06285a' },
+    ],
+    assignments: [
+      { label: 'To Do', value: fmt(pendingCount), sub: 'Needs action', icon: ClipboardList, accent: '#030b82', onClick: () => onNavigate('student-assignments') },
+      { label: 'In Progress', value: fmt(assignmentDrafts), sub: 'Saved drafts', icon: FileText, accent: '#ff7900' },
+      { label: 'Missing', value: fmt(assignmentMissing), sub: 'Past due', icon: AlertTriangle, accent: '#ef4444' },
+      { label: 'Submitted', value: fmt(submittedCount), sub: 'Turned in', icon: CheckCircle2, accent: '#10b981' },
+      { label: 'Marked', value: fmt(assignmentMarked), sub: 'Feedback ready', icon: Award, accent: '#8b5cf6' },
+    ],
+    progress: [
+      { label: 'Attendance Health', value: attendanceRate ? pct(attendanceRate) : '--', sub: 'Current term', icon: CheckCircle2, accent: '#ff7900', onClick: () => onNavigate('student-attendance') },
+      { label: 'Present Days', value: fmt(attendancePresent), sub: 'Attendance marks', icon: CheckCircle2, accent: '#10b981' },
+      { label: 'Absent Days', value: fmt(attendanceAbsent), sub: 'Review absences', icon: XCircle, accent: '#ef4444' },
+      { label: 'Late Days', value: fmt(attendanceLate), sub: 'Late arrivals', icon: AlertTriangle, accent: '#f59e0b' },
+      { label: 'Average Score', value: avgScore ? pct(avgScore) : '--', sub: `${reportSubjects.length} subjects`, icon: TrendingUp, accent: '#030b82', onClick: () => onNavigate('student-results') },
+    ],
+    future: [
+      { label: 'Learning Level', value: fmt(achievementLevel), sub: 'Current level', icon: Trophy, accent: '#ff7900' },
+      { label: 'Total XP', value: fmt(xpTotal), sub: 'Experience earned', icon: Zap, accent: '#030b82' },
+      { label: 'Learning Streak', value: `${fmt(streakDays)}d`, sub: 'Keep it going', icon: TrendingUp, accent: '#ef4444' },
+      { label: 'Badges', value: fmt(badgesEarned), sub: 'Achievements', icon: Award, accent: '#8b5cf6' },
+      { label: 'Subjects', value: fmt(reportSubjects.length), sub: 'Explore pathways', icon: BookOpen, accent: '#10b981', onClick: () => onNavigate('student-pathway-planner') },
+    ],
+  };
+  const statTiles = statTilesByTab[activeDashboardTab] || statTilesByTab.overview;
+  const activeTab = DASHBOARD_TABS.find((tab) => tab.id === activeDashboardTab) || DASHBOARD_TABS[0];
 
   /* ── Error state ─────────────────────────────────────────────────────────── */
   if (apiError && !metrics && !loading) return (
@@ -991,18 +1050,92 @@ const StudentDashboard = ({ user, onNavigate }) => {
         </div>
       )}
 
+      {/* Module tabs stay above KPIs so the numbers always match the selected area. */}
+      <nav aria-label="Student dashboard modules" className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
+        <div className="flex min-w-max gap-1">
+          {DASHBOARD_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const selected = activeDashboardTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                aria-selected={selected}
+                role="tab"
+                onClick={() => setActiveDashboardTab(tab.id)}
+                className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black transition-all ${selected ? 'bg-[#06285a] text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-[#06285a]'}`}
+              >
+                <Icon size={15} /> {tab.label}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
       {/* ── Group 1: immediate priorities ─────────────────────── */}
       <section aria-labelledby="student-needs-attention" className="space-y-3">
         <div>
-          <h2 id="student-needs-attention" className="text-sm font-black uppercase tracking-wider text-[#06285a]">Needs attention</h2>
-          <p className="mt-0.5 text-xs text-slate-500">The important things to check today.</p>
+          <h2 id="student-needs-attention" className="text-sm font-black uppercase tracking-wider text-[#06285a]">{activeTab.label} snapshot</h2>
+          <p className="mt-0.5 text-xs text-slate-500">The most useful indicators for this part of your dashboard.</p>
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
           {statTiles.map(tile => (
             <StatTile key={tile.label} {...tile} loading={loading} />
           ))}
         </div>
       </section>
+
+      {activeDashboardTab === 'learning' && (
+        <Panel
+          title="Continue Learning"
+          icon={BookOpen}
+          action={<button type="button" onClick={() => onNavigate('student-courses')} className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-[10px] font-black uppercase text-[#06285a]">All Courses <ChevronRight size={10} /></button>}
+        >
+          {coursesLoading ? (
+            <div className="flex gap-3 overflow-x-auto">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-[152px] w-64 shrink-0" />)}</div>
+          ) : courses.length ? (
+            <div className="flex gap-3 overflow-x-auto pb-1">{courses.map((course) => <CourseProgressCard key={course.courseId} course={course} onNavigate={onNavigate} />)}</div>
+          ) : <EmptyPanel icon={BookOpen} title="You are not enrolled in any courses yet" subtitle="Your teacher will enroll you when a course is available." />}
+        </Panel>
+      )}
+
+      {activeDashboardTab === 'assignments' && (
+        <Panel
+          title="Assignment Actions"
+          icon={ClipboardList}
+          action={<button type="button" onClick={() => onNavigate('student-assignments')} className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-[10px] font-black uppercase text-[#06285a]">Open board <ChevronRight size={10} /></button>}
+        >
+          <div className="grid gap-2 lg:grid-cols-2">
+            {assignments.length ? assignments.slice(0, 6).map((assignment, index) => <AssignmentRow key={assignment.id} item={assignment} index={index} />) : <div className="lg:col-span-2"><EmptyPanel icon={ClipboardList} title="No assignments yet" /></div>}
+          </div>
+        </Panel>
+      )}
+
+      {activeDashboardTab === 'progress' && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <button type="button" onClick={() => onNavigate('student-attendance')} className="rounded-2xl bg-gradient-to-br from-[#06285a] to-[#030b82] p-6 text-left text-white shadow-sm transition hover:-translate-y-0.5">
+            <p className="text-xs font-black uppercase tracking-widest text-white/60">Attendance report</p>
+            <div className="mt-3 flex items-end justify-between"><div><p className="text-4xl font-black">{attendanceRate ? pct(attendanceRate) : '--'}</p><p className="mt-1 text-sm text-white/70">{attendancePresent} present · {attendanceAbsent} absent · {attendanceLate} late</p></div><ChevronRight size={22} /></div>
+          </button>
+          <button type="button" onClick={() => onNavigate('student-results')} className="rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#ff7900]/40">
+            <p className="text-xs font-black uppercase tracking-widest text-slate-400">Academic results</p>
+            <div className="mt-3 flex items-end justify-between"><div><p className="text-4xl font-black text-[#06285a]">{avgScore ? pct(avgScore) : '--'}</p><p className="mt-1 text-sm text-slate-500">{reportGrade} · {reportSubjects.length} subjects</p></div><ChevronRight size={22} className="text-[#ff7900]" /></div>
+          </button>
+        </div>
+      )}
+
+      {activeDashboardTab === 'future' && (
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <button type="button" onClick={() => onNavigate('student-pathway-planner')} className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-left transition hover:-translate-y-0.5 hover:bg-emerald-100"><Zap className="text-emerald-600" /><p className="mt-5 text-lg font-black text-[#06285a]">My Pathway</p><p className="mt-1 text-sm text-slate-600">Connect subjects, strengths and senior-school options.</p></button>
+            <button type="button" onClick={() => onNavigate('student-career-explorer')} className="rounded-2xl border border-violet-200 bg-violet-50 p-6 text-left transition hover:-translate-y-0.5 hover:bg-violet-100"><Star className="text-violet-600" /><p className="mt-5 text-lg font-black text-[#06285a]">Career Explorer</p><p className="mt-1 text-sm text-slate-600">Explore careers related to your interests and learning areas.</p></button>
+          </div>
+          <AchievementsPanel achievements={achievements} loading={achievementsLoading} onNavigate={onNavigate} />
+        </div>
+      )}
+
+      {activeDashboardTab === 'overview' && (
+        <>
 
       {/* ── Group 2: learning first ───────────────────────────── */}
       <div>
@@ -1391,6 +1524,8 @@ const StudentDashboard = ({ user, onNavigate }) => {
           )}
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 };
