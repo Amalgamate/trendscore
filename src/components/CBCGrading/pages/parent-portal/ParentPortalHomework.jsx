@@ -45,6 +45,12 @@ function statusConfig(statusSummary, isOverdue) {
       return { label: 'Submitted', cls: 'bg-blue-100 text-blue-700 border border-blue-200', icon: CheckCircle2 };
     case 'LATE':
       return { label: 'Late', cls: 'bg-amber-100 text-amber-700 border border-amber-200', icon: Clock };
+    case 'IN_PROGRESS':
+      return { label: 'In progress', cls: 'bg-violet-100 text-violet-700 border border-violet-200', icon: Clock };
+    case 'RETURNED':
+      return { label: 'Needs revision', cls: 'bg-orange-100 text-orange-700 border border-orange-200', icon: AlertCircle };
+    case 'RESUBMITTED':
+      return { label: 'Resubmitted', cls: 'bg-blue-100 text-blue-700 border border-blue-200', icon: CheckCircle2 };
     default:
       return { label: 'Not submitted', cls: 'bg-gray-100 text-gray-600 border border-gray-200', icon: BookOpen };
   }
@@ -53,7 +59,7 @@ function statusConfig(statusSummary, isOverdue) {
 /** Count pending (not submitted, not overdue-only-no-submission) assignments */
 function pendingCount(assignments) {
   return assignments.filter(
-    (a) => a.statusSummary === 'NOT_SUBMITTED' && !a.isOverdue,
+    (a) => ['NOT_STARTED', 'IN_PROGRESS', 'RETURNED'].includes(a.statusSummary) && !a.isOverdue,
   ).length;
 }
 
@@ -125,7 +131,7 @@ function ChildHomeworkCard({ child }) {
   const photoSrc = child?.photoUrl || child?.profilePicture || null;
 
   const filtered = filter === 'pending'
-    ? assignments.filter((a) => a.statusSummary === 'NOT_SUBMITTED' || a.isOverdue)
+    ? assignments.filter((a) => ['NOT_STARTED', 'IN_PROGRESS', 'RETURNED', 'MISSING'].includes(a.statusSummary) || a.isOverdue)
     : filter === 'graded'
     ? assignments.filter((a) => a.statusSummary === 'MARKED')
     : assignments;

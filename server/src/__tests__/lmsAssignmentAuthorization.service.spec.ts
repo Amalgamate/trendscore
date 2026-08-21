@@ -1,11 +1,14 @@
 const databaseMock = {
+  user: { findUnique: jest.fn() },
+  learner: { findFirst: jest.fn() },
   class: { findFirst: jest.fn() },
   classSchedule: { findFirst: jest.fn() },
-  classEnrollment: { findFirst: jest.fn() },
+  classEnrollment: { findFirst: jest.fn(), findMany: jest.fn() },
   subjectAssignment: { findFirst: jest.fn() },
   learningAssignment: {
     create: jest.fn(),
     findFirst: jest.fn(),
+    findMany: jest.fn(),
     findUnique: jest.fn(),
     update: jest.fn(),
   },
@@ -420,5 +423,73 @@ describe('LMS assignment teacher authorization', () => {
         }),
       }),
     );
+  });
+
+  it('fetches assignments across every active class linked to the student account', async () => {
+    databaseMock.user.findUnique.mockResolvedValue({
+      id: 'student-user-1',
+      username: 'ADM-001',
+      email: 'adm-001@school.test',
+      role: 'STUDENT',
+    });
+    databaseMock.learner.findFirst.mockResolvedValue({ id: 'learner-1' });
+    databaseMock.classEnrollment.findMany.mockResolvedValue([
+      { classId: 'class-1' },
+      { classId: 'class-2' },
+    ]);
+    databaseMock.learningAssignment.findMany.mockResolvedValue([
+      {
+        id: 'closed-1',
+        status: 'CLOSED',
+        dueDate: new Date(Date.now() + 86_400_000),
+        allowLateSubmit: false,
+        questions: [],
+        submissions: [],
+      },
+      {
+        id: 'draft-1',
+        status: 'PUBLISHED',
+        dueDate: new Date(Date.now() + 86_400_000),
+        allowLateSubmit: true,
+        questions: [],
+        submissions: [{ status: 'DRAFT' }],
+      },
+    ]);
+
+    const assignments = await LMSAssignmentService.getStudentAssignments(
+      'student-user-1',
+      'school-1',
+    );
+
+    expect(databaseMock.learner.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        OR: expect.arrayContaining([
+          { studentUserId: 'student-user-1' },
+          { admissionNumber: { in: expect.arrayContaining(['ADM-001', 'ADM/001']) } },
+        ]),
+      }),
+    }));
+    expect(databaseMock.learningAssignment.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        classId: { in: ['class-1', 'class-2'] },
+        status: { in: ['PUBLISHED', 'CLOSED'] },
+      }),
+    }));
+    expect(assignments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'closed-1', statusSummary: 'MISSING', canSubmit: false }),
+      expect.objectContaining({ id: 'draft-1', statusSummary: 'IN_PROGRESS', canSubmit: true }),
+    ]));
+  });
+
+  it('reports a missing class link instead of silently returning no assignments', async () => {
+    databaseMock.user.findUnique.mockResolvedValue({
+      id: 'student-user-1', username: 'ADM-001', email: null, role: 'STUDENT',
+    });
+    databaseMock.learner.findFirst.mockResolvedValue({ id: 'learner-1' });
+    databaseMock.classEnrollment.findMany.mockResolvedValue([]);
+
+    await expect(
+      LMSAssignmentService.getStudentAssignments('student-user-1', 'school-1'),
+    ).rejects.toMatchObject({ statusCode: 409, code: 'LMS_STUDENT_CLASS_NOT_LINKED' });
   });
 });

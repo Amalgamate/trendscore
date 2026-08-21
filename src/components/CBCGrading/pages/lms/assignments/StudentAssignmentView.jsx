@@ -28,14 +28,12 @@ import {
   Save,
   Send,
   Target,
-  Trash2,
   Upload,
   X,
   XCircle,
 } from 'lucide-react';
 
 import EmptyState from '../../../shared/EmptyState';
-import { useAuth } from '../../../../../hooks/useAuth';
 import { useNotifications } from '../../../hooks/useNotifications';
 import { lmsAPI } from '../../../../../services/api/lms.api';
 import { cn } from '../../../../../utils/cn';
@@ -116,10 +114,8 @@ function SkeletonView() {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function StudentAssignmentView({ assignmentId, onNavigate, user, pageParams }) {
+export default function StudentAssignmentView({ assignmentId, onNavigate, pageParams }) {
   const assignmentIdToUse = assignmentId ?? pageParams?.assignmentId ?? pageParams?.id;
-  const { user: authUser } = useAuth();
-  const userToUse = user ?? authUser;
   const { showSuccess, showError } = useNotifications();
 
   const fileInputRef = useRef(null);
@@ -311,7 +307,7 @@ export default function StudentAssignmentView({ assignmentId, onNavigate, user, 
         <div className="mx-auto max-w-4xl">
           <button
             type="button"
-            onClick={() => onNavigate?.('learning-assignments')}
+            onClick={() => onNavigate?.('student-assignments')}
             className="inline-flex items-center gap-2 mb-4 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-purple dark:hover:text-brand-purple transition"
           >
             <ArrowLeft size={16} />
@@ -322,7 +318,7 @@ export default function StudentAssignmentView({ assignmentId, onNavigate, user, 
             title="Assignment Not Found"
             message="The requested assignment could not be loaded."
             actionText="Back to Assignments"
-            onAction={() => onNavigate?.('learning-assignments')}
+            onAction={() => onNavigate?.('student-assignments')}
           />
         </div>
       </div>
@@ -343,7 +339,7 @@ export default function StudentAssignmentView({ assignmentId, onNavigate, user, 
         {/* ── Back button ── */}
         <button
           type="button"
-          onClick={() => onNavigate?.('learning-assignments')}
+          onClick={() => onNavigate?.('student-assignments')}
           className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-purple dark:hover:text-brand-purple transition"
         >
           <ArrowLeft size={16} />

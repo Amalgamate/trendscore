@@ -822,7 +822,9 @@ const StudentDashboard = ({ user, onNavigate }) => {
             teacher:   a.class?.name ?? '',
             rawDue:    a.dueDate ?? null,
             dueDate:   fmtDate(a.dueDate),
-            submitted:  Boolean(a.mySubmission),
+            submitted:  ['SUBMITTED', 'LATE', 'MARKED', 'RESUBMITTED'].includes(a.mySubmission?.status),
+            statusSummary: a.statusSummary,
+            isOverdue: Boolean(a.isOverdue),
             fileUrl:   null, // list endpoint doesn't return individual file URLs; see assignment detail for files
           }))
         );
@@ -919,11 +921,9 @@ const StudentDashboard = ({ user, onNavigate }) => {
 
   /* ── Stat tiles ──────────────────────────────────────────────────────────── */
   const statTiles = [
-    { label: 'Assignments', value: fmt(assignments.length), sub: `${pendingCount} pending`, icon: ClipboardList, accent: '#030b82', spark: true,  onClick: () => onNavigate('student-assignments') },
-    { label: 'Attendance',  value: attendanceRate ? pct(attendanceRate) : '--', sub: 'Current term', icon: CheckCircle2, accent: '#ff7900', spark: true,  onClick: () => onNavigate('attendance-analytics') },
-    { label: 'Avg Score',   value: avgScore ? `${avgScore}%` : '--', sub: reportTerm || 'Current term', icon: TrendingUp, accent: '#8b5cf6', spark: false, onClick: () => onNavigate('student-results') },
-    { label: 'My Pathway',  value: 'Explore',               sub: 'Your future',   icon: Zap,          accent: '#059669', spark: false, onClick: () => onNavigate('student-pathway-planner') },
-    { label: 'Messages',    value: fmt(messages),  sub: 'Inbox',               icon: MessageSquare, accent: '#06285a',  spark: false, onClick: () => onNavigate('communication') },
+    { label: 'Assignments Due', value: fmt(pendingCount), sub: pendingCount === 1 ? 'Needs attention' : 'Need attention', icon: ClipboardList, accent: '#030b82', spark: true,  onClick: () => onNavigate('student-assignments') },
+    { label: 'Attendance',  value: attendanceRate ? pct(attendanceRate) : '--', sub: 'View my report', icon: CheckCircle2, accent: '#ff7900', spark: true,  onClick: () => onNavigate('student-attendance') },
+    { label: 'Unread Messages', value: fmt(messages), sub: 'Open inbox', icon: MessageSquare, accent: '#06285a', spark: false, onClick: () => onNavigate('communication') },
   ];
 
   /* ── Error state ─────────────────────────────────────────────────────────── */
@@ -946,8 +946,8 @@ const StudentDashboard = ({ user, onNavigate }) => {
   if (loading && !metrics) return (
     <div className="space-y-4">
       <Skeleton className="h-16 w-full" />
-      <div className="grid grid-cols-4 gap-3">
-        {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-[120px]" />)}
+      <div className="grid grid-cols-3 gap-3">
+        {[0, 1, 2].map(i => <Skeleton key={i} className="h-[120px]" />)}
       </div>
       <div className="grid grid-cols-[1fr_1fr_22rem] gap-4">
         <Skeleton className="h-72" />
@@ -991,14 +991,26 @@ const StudentDashboard = ({ user, onNavigate }) => {
         </div>
       )}
 
-      {/* ── Row 1: Stat tiles ─────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {statTiles.map(tile => (
-          <StatTile key={tile.label} {...tile} loading={loading} />
-        ))}
+      {/* ── Group 1: immediate priorities ─────────────────────── */}
+      <section aria-labelledby="student-needs-attention" className="space-y-3">
+        <div>
+          <h2 id="student-needs-attention" className="text-sm font-black uppercase tracking-wider text-[#06285a]">Needs attention</h2>
+          <p className="mt-0.5 text-xs text-slate-500">The important things to check today.</p>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {statTiles.map(tile => (
+            <StatTile key={tile.label} {...tile} loading={loading} />
+          ))}
+        </div>
+      </section>
+
+      {/* ── Group 2: learning first ───────────────────────────── */}
+      <div>
+        <h2 className="text-sm font-black uppercase tracking-wider text-[#06285a]">My learning</h2>
+        <p className="mt-0.5 text-xs text-slate-500">Pick up where you left off and complete your work.</p>
       </div>
 
-      {/* ── Row 2: Continue Learning (real enrolled-course progress) ─────────── */}
+      {/* Continue Learning (real enrolled-course progress) */}
       <Panel
         title="Continue Learning"
         icon={BookOpen}
@@ -1024,7 +1036,12 @@ const StudentDashboard = ({ user, onNavigate }) => {
         )}
       </Panel>
 
-      {/* ── Row 3: Main layout ───────────────────────────────── */}
+      {/* ── Group 3: learning activity and progress ──────────── */}
+      <div className="border-t border-slate-200 pt-2">
+        <h2 className="text-sm font-black uppercase tracking-wider text-[#06285a]">Progress & results</h2>
+        <p className="mt-0.5 text-xs text-slate-500">Review completed work, attendance and academic progress.</p>
+      </div>
+
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
 
         {/* LEFT ──────────────────────────────────────────────── */}
@@ -1156,9 +1173,29 @@ const StudentDashboard = ({ user, onNavigate }) => {
             </Panel>
           </div>
 
-          {/* Past Papers Marketplace — real listings + real M-Pesa checkout */}
+          <div className="border-t border-slate-200 pt-2">
+            <h2 className="text-sm font-black uppercase tracking-wider text-[#06285a]">Explore & resources</h2>
+            <p className="mt-0.5 text-xs text-slate-500">Plan your future and find extra learning material.</p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onNavigate('student-pathway-planner')}
+            className="group flex w-full items-center gap-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-left transition hover:border-emerald-300 hover:bg-emerald-100/70"
+          >
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white">
+              <Zap size={20} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-black text-[#06285a]">Explore My Pathway</p>
+              <p className="mt-0.5 text-xs text-slate-600">Discover subjects, careers and options for your future.</p>
+            </div>
+            <ChevronRight size={18} className="shrink-0 text-emerald-600 transition-transform group-hover:translate-x-0.5" />
+          </button>
+
+          {/* Past Papers Marketplace — supplementary revision resources */}
           <Panel
-            title="Past Papers Marketplace"
+            title="Revision Resources"
             icon={BookOpen}
             action={
               !marketplaceUnavailable && (
@@ -1246,36 +1283,6 @@ const StudentDashboard = ({ user, onNavigate }) => {
         {/* RIGHT SIDEBAR ──────────────────────────────────────── */}
         <div className="space-y-4">
 
-          {/* Achievements — real XP, level, streak and badges */}
-          <AchievementsPanel achievements={achievements} loading={achievementsLoading} onNavigate={onNavigate} />
-
-          {/* Quick Actions */}
-          <Panel title="Quick Actions" icon={Zap}>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { label: 'My Courses',   icon: BookOpen,     to: 'student-courses',   orange: true  },
-                { label: 'Assignments',  icon: ClipboardList, to: 'student-assignments', orange: false },
-                { label: 'Past Papers',  icon: FileText,      to: null,                orange: false },
-                { label: 'My Progress',  icon: BarChart2,     to: 'student-progress',  orange: true  },
-              ].map(({ label, icon: Icon, to, orange }) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => to && onNavigate(to)}
-                  className="group flex items-center gap-2 rounded-xl border p-3 text-left text-xs font-bold transition-all duration-200"
-                  style={{
-                    borderColor: orange ? '#ff7900' : 'rgba(6,40,90,0.15)',
-                    background:  orange ? '#ff7900' : 'white',
-                    color: '#06285a',
-                  }}
-                >
-                  <Icon size={14} className="shrink-0" />
-                  <span className="truncate">{label}</span>
-                </button>
-              ))}
-            </div>
-          </Panel>
-
           {/* Attendance glance */}
           <div className="overflow-hidden rounded-xl p-4"
             style={{ background: 'linear-gradient(135deg,#06285a 0%,#030b82 100%)' }}>
@@ -1332,6 +1339,36 @@ const StudentDashboard = ({ user, onNavigate }) => {
               ) : (
                 <EmptyPanel icon={TrendingUp} title="No subject data yet" />
               )}
+            </div>
+          </Panel>
+
+          {/* Achievements — real XP, level, streak and badges */}
+          <AchievementsPanel achievements={achievements} loading={achievementsLoading} onNavigate={onNavigate} />
+
+          {/* Shortcuts kept together and visually subordinate to learning */}
+          <Panel title="Shortcuts" icon={Zap}>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: 'My Courses',   icon: BookOpen,      to: 'student-courses',     orange: true  },
+                { label: 'Assignments',  icon: ClipboardList, to: 'student-assignments', orange: false },
+                { label: 'My Progress',  icon: BarChart2,     to: 'student-progress',    orange: true  },
+                { label: 'My Pathway',   icon: Zap,           to: 'student-pathway-planner', orange: false },
+              ].map(({ label, icon: Icon, to, orange }) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => onNavigate(to)}
+                  className="group flex items-center gap-2 rounded-xl border p-3 text-left text-xs font-bold transition-all duration-200"
+                  style={{
+                    borderColor: orange ? '#ff7900' : 'rgba(6,40,90,0.15)',
+                    background:  orange ? '#ff7900' : 'white',
+                    color: '#06285a',
+                  }}
+                >
+                  <Icon size={14} className="shrink-0" />
+                  <span className="truncate">{label}</span>
+                </button>
+              ))}
             </div>
           </Panel>
 

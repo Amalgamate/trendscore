@@ -7,6 +7,7 @@
 
 import { PrismaClient, CourseStatus, ContentType, EnrollmentStatus } from '@prisma/client';
 import { ApiError } from '../utils/error.util';
+import { resolveStudentLearnerForUser } from './student-account-link.service';
 
 const prisma = new PrismaClient();
 
@@ -285,36 +286,7 @@ export class LMSService {
     }
 
     async getStudentLearnerByUserId(userId: string) {
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { id: true, username: true, email: true, role: true }
-        });
-
-        if (!user || user.role !== 'STUDENT') {
-            throw new ApiError(403, 'Unauthorized student access');
-        }
-
-        const usernameCandidates = [
-            user.username,
-            user.username?.replace(/-/g, '/'),
-            user.email?.split('@')[0],
-            user.email?.split('@')[0]?.replace(/-/g, '/')
-        ].filter(Boolean) as string[];
-
-        const learner = await prisma.learner.findFirst({
-            where: {
-                OR: [
-                    { studentUserId: userId },
-                    { admissionNumber: { in: usernameCandidates } },
-                ],
-            }
-        });
-
-        if (!learner) {
-            throw new ApiError(404, 'Learner record not found for this student');
-        }
-
-        return learner;
+        return resolveStudentLearnerForUser(userId);
     }
 
     async getStudentCourses(userId: string) {

@@ -10,6 +10,7 @@ import { reportDashboardService } from '../services/reportDashboard.service';
 import { parentAccessService } from '../services/parent-access.service';
 import { CanonicalInstitutionType } from '../utils/institutionNormalizer';
 import { hasAnyRole } from '../utils/roleNormalizer';
+import { LMSAssignmentService } from '../services/lms-assignment.service';
 
 import logger from '../utils/logger';
 // ─── TTL constants ─────────────────────────────────────────────────────────────
@@ -2210,8 +2211,10 @@ export class DashboardController {
         try {
             const userId = req.user?.userId;
             if (!userId) throw new ApiError(400, 'User ID is required');
+            const schoolId = req.school?.id;
+            if (!schoolId) throw new ApiError(400, 'School context is required');
 
-            const cacheKey = `dashboard:student:v1:${userId}`;
+            const cacheKey = `dashboard:student:v2:${userId}`;
             const cached = await redisCacheService.get<any>(cacheKey);
             if (cached) return res.json({ success: true, data: cached, _cached: true });
 
@@ -2236,25 +2239,9 @@ export class DashboardController {
                     },
                     orderBy: { enrolledAt: 'desc' },
                 }),
-                prisma.lMSContent.findMany({
-                    where: {
-                        archived: false,
-                        type: 'ASSIGNMENT',
-                        course: {
-                            enrollments: {
-                                some: { learnerId: learner.id, status: 'ACTIVE', archived: false },
-                            },
-                        },
-                    },
-                    include: {
-                        course: { select: { id: true, title: true, subject: true } },
-                        progress: {
-                            where: { enrollment: { learnerId: learner.id } },
-                            select: { completed: true, progress: true, lastAccessedAt: true },
-                        },
-                    },
-                    orderBy: { createdAt: 'desc' },
-                    take: 12,
+                LMSAssignmentService.getAssignmentsForLearner(learner.id, schoolId).catch((error) => {
+                    if (error instanceof ApiError && error.code === 'LMS_STUDENT_CLASS_NOT_LINKED') return [];
+                    throw error;
                 }),
                 prisma.summativeResult.findMany({
                     where: { learnerId: learner.id, archived: false },
@@ -2312,29 +2299,32 @@ export class DashboardController {
             });
 
             const assignments = assignmentsRaw.map((item) => {
-                const progress = item.progress[0];
-                const submitted = Boolean(progress?.completed);
-                const updatedAt = progress?.lastAccessedAt || item.createdAt;
+                const submissionStatus = item.mySubmission?.status;
+                const submitted = ['SUBMITTED', 'LATE', 'MARKED', 'RESUBMITTED'].includes(submissionStatus);
+                const updatedAt = item.mySubmission?.updatedAt || item.updatedAt;
                 return {
                     id: item.id,
-                    course: item.course.subject || item.course.title,
-                    courseTitle: item.course.title,
+                    course: item.learningArea?.name || item.class?.name,
+                    courseTitle: item.class?.name,
                     title: item.title,
-                    type: 'Assignment',
-                    dueDate: item.createdAt,
-                    date: item.createdAt,
-                    daysLeft: null,
-                    priority: submitted ? 'low' : 'medium',
+                    type: item.category || 'Assignment',
+                    dueDate: item.dueDate,
+                    date: item.publishedAt || item.createdAt,
+                    daysLeft: item.dueDate ? Math.ceil((new Date(item.dueDate).getTime() - Date.now()) / 86_400_000) : null,
+                    priority: item.isOverdue ? 'high' : submitted ? 'low' : 'medium',
                     submitted,
-                    status: submitted ? 'submitted' : 'pending',
-                    grade: submitted ? 'Submitted' : null,
-                    score: progress?.progress ?? null,
+                    status: item.statusSummary,
+                    statusSummary: item.statusSummary,
+                    isOverdue: item.isOverdue,
+                    grade: submissionStatus === 'MARKED' ? item.mySubmission?.marks : null,
+                    score: item.mySubmission?.marks ?? null,
                     updatedAt,
                 };
             });
 
             const presentDays = attendance.filter((item) => item.status === 'PRESENT').length;
             const absentDays = attendance.filter((item) => item.status === 'ABSENT').length;
+            const lateDays = attendance.filter((item) => item.status === 'LATE').length;
             const attendanceRate = attendance.length > 0 ? Math.round((presentDays / attendance.length) * 100) : 0;
 
             const scoredResults = summativeResults.filter((result) => typeof result.percentage === 'number');
@@ -2432,6 +2422,7 @@ export class DashboardController {
                     attendance: attendanceRate,
                     attendancePresent: presentDays,
                     attendanceAbsent: absentDays,
+                    attendanceLate: lateDays,
                     attendanceTotal: attendance.length,
                     averageScore,
                     overallAverage: averageScore,

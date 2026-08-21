@@ -21,6 +21,7 @@ import type {
   MarketplacePurchase,
   LMSSettings,
 } from '@prisma/client';
+import { resolveStudentUserIdsForLearners } from './student-account-link.service';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -32,28 +33,7 @@ import type {
  * Returns null if no matching user account is found.
  */
 async function resolveStudentUserId(learnerId: string): Promise<string | null> {
-  const learner = await prisma.learner.findUnique({
-    where: { id: learnerId },
-    select: { admissionNumber: true },
-  });
-  if (!learner) return null;
-
-  // Admission numbers may contain slashes stored as hyphens in username
-  const usernameCandidates = [
-    learner.admissionNumber,
-    learner.admissionNumber.replace(/\//g, '-'),
-  ];
-
-  const user = await prisma.user.findFirst({
-    where: {
-      username: { in: usernameCandidates },
-      role: 'STUDENT',
-      archived: false,
-    },
-    select: { id: true },
-  });
-
-  return user?.id ?? null;
+  return (await resolveStudentUserIdsForLearners([learnerId]))[0] ?? null;
 }
 
 /**
@@ -74,7 +54,7 @@ async function resolveParentUserId(learnerId: string): Promise<string | null> {
  */
 async function resolveClassStudentUserIds(
   classId: string,
-  schoolId: string,
+  _schoolId: string,
 ): Promise<string[]> {
   const enrollments = await prisma.classEnrollment.findMany({
     where: { classId, active: true, archived: false },
@@ -83,34 +63,7 @@ async function resolveClassStudentUserIds(
 
   if (enrollments.length === 0) return [];
 
-  const learnerIds = enrollments.map((e) => e.learnerId);
-
-  const learners = await prisma.learner.findMany({
-    where: {
-      id: { in: learnerIds },
-      archived: false,
-    },
-    select: { admissionNumber: true },
-  });
-
-  if (learners.length === 0) return [];
-
-  const usernameCandidates = learners.flatMap((l) => [
-    l.admissionNumber,
-    l.admissionNumber.replace(/\//g, '-'),
-  ]);
-
-  const users = await prisma.user.findMany({
-    where: {
-      username: { in: usernameCandidates },
-      role: 'STUDENT',
-      archived: false,
-      status: 'ACTIVE',
-    },
-    select: { id: true },
-  });
-
-  return users.map((u) => u.id);
+  return resolveStudentUserIdsForLearners(enrollments.map((enrollment) => enrollment.learnerId));
 }
 
 /**

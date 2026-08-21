@@ -20,6 +20,7 @@ import { runBiometricSyncWorker } from './domains/biometrics/biometric-sync.work
 import { runBiometricLogRetryWorker } from './domains/biometrics/biometric-log-retry.worker';
 import { runExeatOverdueWorker } from './domains/boarding/exeat-overdue.worker';
 import { earlyWarningService } from './domains/presence/early-warning.service';
+import { resolveStudentUserIdsForLearners } from './services/student-account-link.service';
 
 /**
  * Query all PUBLISHED assignments whose dueDate falls on tomorrow (in UTC),
@@ -97,28 +98,7 @@ async function sendAssignmentDueTomorrowReminders(): Promise<void> {
                 continue;
             }
 
-            // Resolve learner IDs → student user IDs
-            const learners = await prisma.learner.findMany({
-                where: { id: { in: pendingLearnerIds }, archived: false },
-                select: { admissionNumber: true },
-            });
-
-            const usernameCandidates = learners.flatMap((l) => [
-                l.admissionNumber,
-                l.admissionNumber.replace(/\//g, '-'),
-            ]);
-
-            const studentUsers = await prisma.user.findMany({
-                where: {
-                    username: { in: usernameCandidates },
-                    role: 'STUDENT',
-                    archived: false,
-                    status: 'ACTIVE',
-                },
-                select: { id: true },
-            });
-
-            const learnerUserIds = studentUsers.map((u) => u.id);
+            const learnerUserIds = await resolveStudentUserIdsForLearners(pendingLearnerIds);
 
             if (learnerUserIds.length === 0) continue;
 

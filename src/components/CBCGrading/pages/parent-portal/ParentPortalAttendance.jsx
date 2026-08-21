@@ -134,9 +134,9 @@ function PresenceTimelineMini({ learnerId }) {
   );
 }
 
-function ChildAttendanceCard({ child, onNavigate }) {
+export function LearnerAttendanceCard({ child, onNavigate, initiallyExpanded = false, showParentActions = true }) {
   const [detail, setDetail]     = useState(null);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(initiallyExpanded);
   const [loading, setLoading]   = useState(false);
   const [fetchError, setFetchError] = useState(null);
 
@@ -161,16 +161,9 @@ function ChildAttendanceCard({ child, onNavigate }) {
     });
   };
 
-  const rate      = Math.round(Number(child.attendanceRate || 0));
-  const barColor  = rate >= 90 ? 'bg-emerald-500' : rate >= 75 ? 'bg-amber-500' : 'bg-rose-500';
-  const textColor = rate >= 90 ? 'text-emerald-600' : rate >= 75 ? 'text-amber-600' : 'text-rose-600';
-  const photoSrc  = getChildPhoto(child);
-  const mood = rate >= 95
-    ? { label: 'Excellent rhythm', icon: ShieldCheck, bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' }
-    : rate >= 85
-      ? { label: 'Healthy attendance', icon: TrendingUp, bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' }
-      : { label: 'Needs attention', icon: AlertTriangle, bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' };
-  const MoodIcon = mood.icon;
+  useEffect(() => {
+    if (initiallyExpanded) loadDetail();
+  }, [initiallyExpanded, loadDetail]);
 
   // Use detail API data if available, else fall back to dashboard summary
   const summary  = detail?.summary || {};
@@ -187,6 +180,19 @@ function ChildAttendanceCard({ child, onNavigate }) {
   const lateDays    = hasSummary ? summary.late : dashLate;
   const absentDays  = hasSummary ? summary.absent : dashAbsent;
   const totalDays   = hasSummary ? summary.total : dashTotal;
+  const rate = Math.round(Number(hasSummary ? summary.attendanceRate : child.attendanceRate) || 0);
+  const hasAttendance = Number(totalDays || 0) > 0;
+  const barColor  = !hasAttendance ? 'bg-slate-300' : rate >= 90 ? 'bg-emerald-500' : rate >= 75 ? 'bg-amber-500' : 'bg-rose-500';
+  const textColor = !hasAttendance ? 'text-slate-500' : rate >= 90 ? 'text-emerald-600' : rate >= 75 ? 'text-amber-600' : 'text-rose-600';
+  const photoSrc  = getChildPhoto(child);
+  const mood = !hasAttendance
+    ? { label: 'No attendance recorded', advice: 'Your attendance health will appear after the school records attendance.', icon: CalendarDays, bg: 'bg-slate-50', text: 'text-slate-600', border: 'border-slate-200' }
+    : rate >= 95
+      ? { label: 'Excellent attendance', advice: 'Keep protecting this strong daily routine.', icon: ShieldCheck, bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' }
+      : rate >= 85
+        ? { label: 'Healthy attendance', advice: 'You are doing well. Aim for 95% by avoiding preventable absences and lateness.', icon: TrendingUp, bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' }
+        : { label: 'Attendance needs attention', advice: 'Attend consistently and speak to your parent or class teacher about any barriers.', icon: AlertTriangle, bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' };
+  const MoodIcon = mood.icon;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-blue-100 bg-white">
@@ -221,13 +227,14 @@ function ChildAttendanceCard({ child, onNavigate }) {
               <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
                 <div className={`h-full ${barColor} rounded-full`} style={{ width: `${rate}%` }} />
               </div>
-              <span className={`text-xs font-black flex-shrink-0 ${textColor}`}>{rate}%</span>
+              <span className={`text-xs font-black flex-shrink-0 ${textColor}`}>{hasAttendance ? `${rate}%` : '—'}</span>
             </div>
 
             <div className={`mt-3 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${mood.bg} ${mood.text} ${mood.border}`}>
               <MoodIcon size={12} />
               <span className="text-[10px] font-bold">{mood.label}</span>
             </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-gray-500">{mood.advice}</p>
         </div>
         </div>
       </button>
@@ -264,7 +271,7 @@ function ChildAttendanceCard({ child, onNavigate }) {
                 <PresenceTimelineMini learnerId={child.id} />
               </div>
 
-              <div className="px-3 pb-3 grid grid-cols-2 gap-2">
+              {showParentActions && <div className="px-3 pb-3 grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={(e) => {
@@ -293,7 +300,7 @@ function ChildAttendanceCard({ child, onNavigate }) {
                   </div>
                   <p className="text-[9px] text-gray-500 mt-0.5">Confirm a record quickly</p>
                 </button>
-              </div>
+              </div>}
 
               {/* Recent records */}
               {fetchError && (
@@ -393,7 +400,7 @@ const ParentPortalAttendance = ({ onNavigate }) => {
         {loading ? (
           [1, 2].map(i => <Skeleton key={i} className="h-16 w-full" />)
         ) : children.length > 0 ? (
-          children.map(child => <ChildAttendanceCard key={child.id} child={child} onNavigate={onNavigate} />)
+          children.map(child => <LearnerAttendanceCard key={child.id} child={child} onNavigate={onNavigate} />)
         ) : (
           <div className="bg-white border border-dashed border-gray-200 rounded-xl p-8 text-center">
             <Users size={28} className="mx-auto mb-2 text-gray-300" />

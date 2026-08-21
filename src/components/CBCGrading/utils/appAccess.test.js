@@ -57,6 +57,14 @@ describe('appAccess', () => {
     expect(hasPageAccess(student, 'learning-marking-interface')).toBe(false);
   });
 
+  it('lets students view only their student-facing attendance report', () => {
+    const student = { role: 'STUDENT' };
+
+    expect(hasPageAccess(student, 'student-attendance')).toBe(true);
+    expect(hasPageAccess(student, 'parent-portal-attendance')).toBe(false);
+    expect(hasPageAccess(student, 'attendance-reports')).toBe(false);
+  });
+
   it('lets super admins open non-fee settings regardless of package modules', () => {
     const superAdmin = { role: 'SUPER_ADMIN', enabledApps: ['school-settings'] };
     const schoolAdmin = { role: 'ADMIN', enabledApps: ['school-settings'] };

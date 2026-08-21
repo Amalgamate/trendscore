@@ -473,6 +473,33 @@ export class AttendanceController {
       }
     }
 
+    if (currentUserRole === 'STUDENT') {
+      const user = await prisma.user.findUnique({
+        where: { id: currentUserId },
+        select: { username: true, email: true },
+      });
+      const usernameCandidates = [
+        user?.username,
+        user?.username?.replace(/-/g, '/'),
+        user?.email?.split('@')[0],
+        user?.email?.split('@')[0]?.replace(/-/g, '/'),
+      ].filter(Boolean) as string[];
+      const ownLearner = await prisma.learner.findFirst({
+        where: {
+          id: learnerId,
+          archived: false,
+          OR: [
+            { studentUserId: currentUserId },
+            { admissionNumber: { in: usernameCandidates } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!ownLearner) {
+        throw new ApiError(403, 'You can only access your own attendance');
+      }
+    }
+
     if (currentUserRole === 'TEACHER') {
       const teacherClasses = await prisma.class.findMany({
         where: { teacherId: currentUserId },
