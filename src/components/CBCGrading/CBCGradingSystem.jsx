@@ -81,7 +81,6 @@ const extractLearner403Message = (err) => {
 export default function CBCGradingSystem({ user, onLogout, brandingSettings, setBrandingSettings }) {
   const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
   const mainContentRef = useRef(null);
-  const bannerRef = useRef(null);
   const { activeSlugs } = useModuleAccess();
   const accessUser = useMemo(() => ({ ...(user || {}), enabledApps: activeSlugs }), [activeSlugs, user]);
 
@@ -728,10 +727,9 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
 
   return (
     <div className="flex h-screen bg-[var(--app-page-bg)] overflow-hidden font-inter border-t-2 border-[var(--brand-teal)]">
-      {/* Impersonation banner — fixed above all content (Req 4.1, 4.4–4.6) */}
+      {/* Compact impersonation status bar fixed at the bottom of the viewport. */}
       {isImpersonating && impersonatedUser && (
         <ImpersonationBanner
-          ref={bannerRef}
           impersonatedUser={impersonatedUser}
           onExit={stopImpersonation}
           isExiting={impersonationLoading}
@@ -764,7 +762,10 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
             <HorizontalSubmenu currentPage={currentPage} pageParams={pageParams} onNavigate={handleNavigate} />
           </>
         )}
-        <main ref={mainContentRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[var(--app-page-bg)]">
+        <main
+          ref={mainContentRef}
+          className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[var(--app-page-bg)] ${isImpersonating ? 'pb-16' : ''}`}
+        >
           <div className={contentClassName}>
             <ErrorBoundary>
               <PageRouter

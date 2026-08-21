@@ -95,6 +95,7 @@ const ParentPortalMessages = lazy(() => import('../pages/parent-portal/ParentPor
 const ParentPortalMore = lazy(() => import('../pages/parent-portal/ParentPortalMore'));
 const ParentPortalResults = lazy(() => import('../pages/parent-portal/ParentPortalResults'));
 const ParentPortalAttendance = lazy(() => import('../pages/parent-portal/ParentPortalAttendance'));
+const StudentAttendance = lazy(() => import('../pages/student/StudentAttendance'));
 const ParentPortalTransport = lazy(() => import('../pages/parent-portal/ParentPortalTransport'));
 const ParentPortalDocuments = lazy(() => import('../pages/parent-portal/ParentPortalDocuments'));
 const ParentPortalSupport = lazy(() => import('../pages/parent-portal/ParentPortalSupport'));
@@ -789,6 +790,7 @@ const PageRouter = ({
           case 'student-courses': return <ErrorBoundary><MyCourses onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'student-assignments': return <ErrorBoundary><MyAssignments onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'student-results': return <ErrorBoundary><MyResults user={user} onNavigate={handleNavigate} /></ErrorBoundary>;
+          case 'student-attendance': return <ErrorBoundary><StudentAttendance user={user} onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'student-pathway-planner': return <ErrorBoundary><StudentPathwayDashboard user={user} onNavigate={handleNavigate} brandingSettings={brandingSettings} /></ErrorBoundary>;
           case 'student-career-explorer': return <ErrorBoundary><CareerExplorer user={user} onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'student-quizzes':

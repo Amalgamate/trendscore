@@ -31,6 +31,7 @@ describe('LMS Courses, Enrollments & Student Portal API', () => {
   let testUserId: string | null = null;
   let testStudentUserId: string | null = null;
   let testLearnerId: string | null = null;
+  let testClassId: string | null = null;
   let createdEnrollmentId: string | null = null;
 
   beforeAll(async () => {
@@ -119,6 +120,32 @@ describe('LMS Courses, Enrollments & Student Portal API', () => {
     });
     testStudentUserId = studentUser.id;
 
+    await prisma.learner.update({
+      where: { id: learner.id },
+      data: { studentUserId: studentUser.id },
+    });
+
+    // Assignment visibility follows the school's active class roster, not the
+    // legacy LMS course enrollment used by the course portal tests below.
+    const schoolClass = await prisma.class.upsert({
+      where: { classCode: 'LMS-E2E-CLASS' },
+      update: { active: true, archived: false },
+      create: {
+        classCode: 'LMS-E2E-CLASS',
+        name: 'LMS E2E Class',
+        grade: 'GRADE_10',
+        stream: 'LMS_E2E',
+        academicYear: 2099,
+        active: true,
+      },
+    });
+    testClassId = schoolClass.id;
+    await prisma.classEnrollment.upsert({
+      where: { classId_learnerId: { classId: schoolClass.id, learnerId: learner.id } },
+      update: { active: true, archived: false },
+      create: { classId: schoolClass.id, learnerId: learner.id },
+    });
+
     studentAuthToken = generateAccessToken({
       id: studentUser.id,
       email: studentUser.email,
@@ -130,6 +157,7 @@ describe('LMS Courses, Enrollments & Student Portal API', () => {
   afterAll(async () => {
     // Step 1: remove progress records and enrollments referencing this learner
     if (testLearnerId) {
+      await prisma.classEnrollment.deleteMany({ where: { learnerId: testLearnerId } });
       const enrollments = await prisma.lMSEnrollment.findMany({
         where: { learnerId: testLearnerId },
         select: { id: true },
@@ -170,6 +198,9 @@ describe('LMS Courses, Enrollments & Student Portal API', () => {
     }
     if (testUserId) {
       await prisma.user.deleteMany({ where: { id: testUserId } });
+    }
+    if (testClassId) {
+      await prisma.class.deleteMany({ where: { id: testClassId } });
     }
     await prisma.school.deleteMany({ where: { id: 'lms-e2e-school-id' } }).catch(() => null);
     await prisma.$disconnect();

@@ -176,6 +176,7 @@ const ROLE_PAGE_ALLOWLIST = {
     'student-quizzes',
     'student-course-view',
     'student-profile',
+    'student-attendance',
     'student-pathway-planner',
     'student-career-explorer',
     'pathway-guide',

@@ -18,6 +18,7 @@ import { auditService } from './audit.service';
 import { documentService } from './document.service';
 import { parentAccessService } from './parent-access.service';
 import { ApiError } from '../utils/error.util';
+import { resolveStudentLearnerForUser } from './student-account-link.service';
 import type {
   LearningAssignment,
   LearningSubmission,
@@ -93,6 +94,80 @@ const hideQuestionAnswers = <T extends { questions?: unknown }>(assignment: T): 
   };
 };
 
+const FINAL_SUBMISSION_STATUSES: SubmissionStatus[] = ['SUBMITTED', 'LATE', 'MARKED', 'RESUBMITTED'];
+
+const summarizeSubmission = (submission: { status: SubmissionStatus } | null, isOverdue: boolean) => {
+  if (!submission) return isOverdue ? 'MISSING' : 'NOT_STARTED';
+  switch (submission.status) {
+    case 'DRAFT': return 'IN_PROGRESS';
+    case 'LATE': return 'LATE';
+    case 'MARKED': return 'MARKED';
+    case 'RETURNED': return 'RETURNED';
+    case 'RESUBMITTED': return 'RESUBMITTED';
+    default: return 'SUBMITTED';
+  }
+};
+
+async function fetchAssignmentsForLearner(learnerId: string, schoolId: string): Promise<any[]> {
+  const enrollments = await prisma.classEnrollment.findMany({
+    where: { learnerId, active: true, archived: false },
+    select: { classId: true },
+  });
+  const classIds = [...new Set(enrollments.map((enrollment) => enrollment.classId))];
+  if (classIds.length === 0) {
+    throw new ApiError(409, 'No active class enrollment is linked to this student')
+      .withCode('LMS_STUDENT_CLASS_NOT_LINKED');
+  }
+
+  const assignments = await prisma.learningAssignment.findMany({
+    where: {
+      schoolId,
+      classId: { in: classIds },
+      status: { in: ['PUBLISHED', 'CLOSED'] },
+      archived: false,
+    },
+    include: {
+      learningArea: { select: { id: true, name: true } },
+      class: { select: { id: true, name: true } },
+      submissions: {
+        where: { learnerId, archived: false },
+        select: {
+          id: true,
+          status: true,
+          marks: true,
+          submittedAt: true,
+          markedAt: true,
+          attemptNumber: true,
+          feedback: true,
+          rubricScores: true,
+          updatedAt: true,
+        },
+        orderBy: { attemptNumber: 'desc' },
+        take: 1,
+      },
+      _count: { select: { submissions: true, files: true } },
+    },
+    orderBy: [{ dueDate: 'asc' }, { publishedAt: 'desc' }],
+  });
+
+  const now = new Date();
+  return assignments.map((assignment) => {
+    const submission = assignment.submissions[0] ?? null;
+    const hasTurnedIn = submission ? FINAL_SUBMISSION_STATUSES.includes(submission.status) : false;
+    const isOverdue = !hasTurnedIn && (
+      assignment.status === 'CLOSED' || Boolean(assignment.dueDate && assignment.dueDate < now)
+    );
+    return {
+      ...hideQuestionAnswers(assignment),
+      mySubmission: submission,
+      submissions: undefined,
+      statusSummary: summarizeSubmission(submission, isOverdue),
+      isOverdue,
+      canSubmit: assignment.status === 'PUBLISHED' && (!isOverdue || assignment.allowLateSubmit),
+    };
+  });
+}
+
 export interface SubmissionFileInput {
   originalname: string;
   mimetype: string;
@@ -109,6 +184,10 @@ export interface CreateSubmissionInput {
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 export class LMSAssignmentService {
+  static async getAssignmentsForLearner(learnerId: string, schoolId: string): Promise<any[]> {
+    return fetchAssignmentsForLearner(learnerId, schoolId);
+  }
+
   private static readonly OVERSIGHT_ROLES = new Set([
     'SUPER_ADMIN',
     'ADMIN',
@@ -657,7 +736,7 @@ export class LMSAssignmentService {
       return assignment as LearningAssignment & { files: any[] };
     }
 
-    if (assignment.status !== 'PUBLISHED') {
+    if (!['PUBLISHED', 'CLOSED'].includes(assignment.status)) {
       throw new ApiError(404, 'Assignment not found').withCode('LMS_ASSIGNMENT_NOT_FOUND');
     }
 
@@ -1392,78 +1471,8 @@ export class LMSAssignmentService {
     userId: string,
     schoolId: string,
   ): Promise<any[]> {
-    // 1. Resolve learner from user
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { username: true }, // username = admissionNumber
-    });
-
-    if (!user?.username) {
-      return []; // No learner found
-    }
-
-    const learner = await prisma.learner.findUnique({
-      where: { admissionNumber: user.username },
-      select: { id: true },
-    });
-
-    if (!learner) {
-      return []; // No learner record
-    }
-
-    // 2. Get learner's active class enrollment
-    const enrollment = await prisma.classEnrollment.findFirst({
-      where: {
-        learnerId: learner.id,
-        active: true,
-        archived: false,
-      },
-      select: { classId: true },
-    });
-
-    if (!enrollment) {
-      return []; // No active enrollment
-    }
-
-    // 3. Fetch published assignments for the learner's class
-    const assignments = await prisma.learningAssignment.findMany({
-      where: {
-        schoolId,
-        classId: enrollment.classId,
-        status: 'PUBLISHED',
-        archived: false,
-      },
-      include: {
-        learningArea: { select: { id: true, name: true } },
-        class: { select: { id: true, name: true } },
-        // Get learner's latest submission (any status)
-        submissions: {
-          where: { learnerId: learner.id },
-          select: {
-            id: true,
-            status: true,
-            marks: true,
-            submittedAt: true,
-            markedAt: true,
-            attemptNumber: true,
-          },
-          orderBy: { attemptNumber: 'desc' },
-          take: 1,
-        },
-        _count: { select: { submissions: true, files: true } },
-      },
-      orderBy: { dueDate: 'asc' },
-    });
-
-    // 4. Transform: attach mySubmission to each assignment
-    return assignments.map((assignment) => {
-      const safeAssignment = hideQuestionAnswers(assignment);
-      return {
-        ...safeAssignment,
-        mySubmission: assignment.submissions[0] ?? null,
-        submissions: undefined, // Remove array, use mySubmission instead
-      };
-    });
+    const learner = await resolveStudentLearnerForUser(userId);
+    return LMSAssignmentService.getAssignmentsForLearner(learner.id, schoolId);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1472,7 +1481,7 @@ export class LMSAssignmentService {
   // ══════════════════════════════════════════════════════════════════════════
 
   /**
-   * Get published assignments for a specific learner, with that learner's
+   * Get visible assignments for a specific learner, with that learner's
    * submission status attached to each. Intended for the parent portal.
    *
    * Authorization (PARENT → own children only, STUDENT → self only) is the
@@ -1481,79 +1490,13 @@ export class LMSAssignmentService {
    * Returns an array where each item includes:
    *   - assignment metadata (title, dueDate, totalMarks, learningArea, class)
    *   - mySubmission (latest submission for this learner, or null)
-   *   - statusSummary: 'NOT_SUBMITTED' | 'SUBMITTED' | 'LATE' | 'MARKED'
+   *   - statusSummary: learner-friendly assignment lifecycle state
    *   - isOverdue: boolean (dueDate in the past, no submitted submission)
    */
   static async getChildAssignments(
     learnerId: string,
     schoolId: string,
   ): Promise<any[]> {
-    // 1. Get the learner's active class enrollment
-    const enrollment = await prisma.classEnrollment.findFirst({
-      where: { learnerId, active: true, archived: false },
-      select: { classId: true },
-    });
-
-    if (!enrollment) return [];
-
-    // 2. Fetch published assignments for the learner's class
-    const assignments = await prisma.learningAssignment.findMany({
-      where: {
-        schoolId,
-        classId: enrollment.classId,
-        status: 'PUBLISHED',
-        archived: false,
-      },
-      include: {
-        learningArea: { select: { id: true, name: true } },
-        class: { select: { id: true, name: true } },
-        submissions: {
-          where: { learnerId },
-          select: {
-            id: true,
-            status: true,
-            marks: true,
-            submittedAt: true,
-            markedAt: true,
-            attemptNumber: true,
-            feedback: true,
-            rubricScores: true,
-          },
-          orderBy: { attemptNumber: 'desc' },
-          take: 1,
-        },
-        _count: { select: { submissions: true, files: true } },
-      },
-      orderBy: { dueDate: 'asc' },
-    });
-
-    const now = new Date();
-
-    // 3. Transform: compute statusSummary and isOverdue
-    return assignments.map((assignment) => {
-      const submission = assignment.submissions[0] ?? null;
-      const isOverdue = !!assignment.dueDate && assignment.dueDate < now && !submission;
-
-      let statusSummary: 'NOT_SUBMITTED' | 'SUBMITTED' | 'LATE' | 'MARKED' | 'RETURNED';
-      if (!submission) {
-        statusSummary = 'NOT_SUBMITTED';
-      } else if (submission.status === 'MARKED') {
-        statusSummary = 'MARKED';
-      } else if (submission.status === 'LATE') {
-        statusSummary = 'LATE';
-      } else if (submission.status === 'RETURNED') {
-        statusSummary = 'RETURNED';
-      } else {
-        statusSummary = 'SUBMITTED';
-      }
-
-      return {
-        ...assignment,
-        mySubmission: submission,
-        submissions: undefined,
-        statusSummary,
-        isOverdue,
-      };
-    });
+    return LMSAssignmentService.getAssignmentsForLearner(learnerId, schoolId);
   }
 }

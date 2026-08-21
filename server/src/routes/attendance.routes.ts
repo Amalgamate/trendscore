@@ -104,7 +104,7 @@ router.get(
 /**
  * @route   GET /api/attendance/learner/:learnerId
  * @desc    Get learner attendance summary
- * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER, TEACHER, PARENT (own children)
+ * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER, TEACHER, PARENT (own children), STUDENT (self)
  */
 router.get(
   '/learner/:learnerId',

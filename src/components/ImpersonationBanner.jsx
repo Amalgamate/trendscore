@@ -1,7 +1,7 @@
 /**
  * ImpersonationBanner
  *
- * A fixed full-width amber banner rendered at the top of the application shell
+ * A compact amber status bar rendered at the bottom of the application shell
  * while an impersonation session is active. It displays the impersonated user's
  * identity and provides a one-click exit control.
  *
@@ -11,9 +11,7 @@
  *  - bg-amber-500 / text-white gives ~4.6:1 contrast ratio → passes WCAG AA (4.5:1 min)
  *  - z-[9999] places the banner above the Header (z-50) and all standard page
  *    content, but below browser-native modals / notification overlays.
- *  - A forwarded ref is attached to the root <div> so the parent can read
- *    offsetHeight and apply a matching padding-top offset to avoid hidden content
- *    (Requirement 4.4).
+ *  - The narrow, centred layout keeps primary header and navigation controls clear.
  *
  * @component
  */
@@ -65,7 +63,7 @@ const ImpersonationBanner = React.forwardRef(function ImpersonationBanner(
   return (
     /*
      * Requirement 4.5: z-[9999] — above Header (z-50) and all standard page content.
-     * Requirement 4.6: fixed top-0 left-0 right-0 — stays at the top of the viewport.
+     * Requirement 4.6: fixed at the bottom of the viewport and clear of page controls.
      * Requirement 4.3: bg-amber-500 text-white — ~4.6:1 contrast ratio (WCAG AA ✓).
      */
     <div
@@ -73,10 +71,12 @@ const ImpersonationBanner = React.forwardRef(function ImpersonationBanner(
       role="banner"
       aria-label="Impersonation session active"
       className={cn(
-        'fixed top-0 left-0 right-0 z-[9999]',
+        'fixed bottom-3 left-1/2 z-[9999] -translate-x-1/2',
+        'w-[calc(100%_-_1.5rem)] max-w-3xl',
         'bg-amber-500 text-white',
-        'px-4 py-2',
-        'flex flex-row items-center justify-between gap-4',
+        'px-3 py-1.5 sm:px-4',
+        'flex flex-row items-center justify-between gap-3',
+        'rounded-lg shadow-lg ring-1 ring-black/10',
         'select-none'
       )}
     >
@@ -93,20 +93,20 @@ const ImpersonationBanner = React.forwardRef(function ImpersonationBanner(
          * Requirement 4.2: display full name, role, and email as visible text.
          * Requirement 4.9: use "—" placeholder for any null/undefined field.
          */}
-        <span className="text-sm font-medium leading-none whitespace-nowrap">
+        <span className="hidden sm:inline text-xs font-medium leading-none whitespace-nowrap">
           Viewing as
         </span>
-        <span className="text-sm font-semibold leading-none truncate">
+        <span className="text-xs font-semibold leading-none truncate">
           {name}
         </span>
         <span
-          className="hidden sm:inline text-sm leading-none opacity-80 whitespace-nowrap"
+          className="hidden md:inline text-xs leading-none opacity-80 whitespace-nowrap"
           aria-label={`role: ${role}`}
         >
           · {role}
         </span>
         <span
-          className="hidden md:inline text-sm leading-none opacity-80 truncate"
+          className="hidden lg:inline text-xs leading-none opacity-80 truncate"
           aria-label={`email: ${email}`}
         >
           · {email}
@@ -126,7 +126,7 @@ const ImpersonationBanner = React.forwardRef(function ImpersonationBanner(
         className={cn(
           'flex-shrink-0 flex items-center gap-1.5',
           'bg-white text-amber-700 font-semibold text-xs uppercase tracking-wide',
-          'px-3 py-1.5 rounded',
+          'px-2.5 py-1 rounded',
           'border border-white/40',
           'transition-all duration-150',
           isExiting
