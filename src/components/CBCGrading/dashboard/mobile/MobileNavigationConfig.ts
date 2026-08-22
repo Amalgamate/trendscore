@@ -323,13 +323,13 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
     ]
   },
 
-  // Parent - Mobile-first portal redesign
+  // Parent - Redesigned portal navigation
   PARENT: {
     role: 'PARENT',
     items: [
       {
         id: 'home',
-        label: 'Overview',
+        label: 'Home',
         icon: Home,
         path: 'parent-portal-home',
         color: 'text-brand-purple'
@@ -339,21 +339,23 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         label: 'Children',
         icon: Users,
         path: 'parent-portal-children',
+        activePaths: ['parent-portal-children'],
         color: 'text-blue-600'
       },
       {
-        id: 'pathway',
-        label: 'Pathway',
-        icon: Compass,
-        path: 'parent-portal-pathway',
-        activePaths: ['parent-portal-pathway', 'parent-portal-schools'],
-        color: 'text-violet-600'
+        id: 'academics',
+        label: 'Academics',
+        icon: Award,
+        path: 'parent-portal-academics',
+        activePaths: ['parent-portal-academics', 'parent-portal-results', 'parent-portal-homework'],
+        color: 'text-amber-600'
       },
       {
-        id: 'messages',
+        id: 'communication',
         label: 'Messages',
         icon: MessageSquare,
-        path: 'parent-portal-messages',
+        path: 'parent-portal-communication',
+        activePaths: ['parent-portal-communication', 'parent-portal-messages'],
         color: 'text-indigo-600'
       },
       {

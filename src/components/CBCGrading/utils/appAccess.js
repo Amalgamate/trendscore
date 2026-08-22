@@ -198,6 +198,10 @@ const ROLE_PAGE_ALLOWLIST = {
     'parent-portal-support',
     'parent-portal-pathway',
     'parent-portal-schools',
+    'parent-portal-academics',
+    'parent-portal-communication',
+    'parent-portal-school-today',
+    'parent-portal-suggestion',
     'fees-statements',
     'events-calendar',
     'learner-profile',
@@ -220,6 +224,10 @@ const PARENT_PORTAL_PAGES = new Set([
   'parent-portal-support',
   'parent-portal-pathway',
   'parent-portal-schools',
+  'parent-portal-academics',
+  'parent-portal-communication',
+  'parent-portal-school-today',
+  'parent-portal-suggestion',
   'events-calendar',
 ]);
 

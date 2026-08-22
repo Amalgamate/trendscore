@@ -103,6 +103,10 @@ const ParentPortalHomework = lazy(() => import('../pages/parent-portal/ParentPor
 const ParentPortalPathway = lazy(() => import('../pages/parent-portal/ParentPortalPathway'));
 const ParentPortalSchools = lazy(() => import('../pages/parent-portal/ParentPortalSchools'));
 const ParentPortalBoarding = lazy(() => import('../pages/parent-portal/ParentPortalBoarding'));
+const ParentPortalAcademics = lazy(() => import('../pages/parent-portal/ParentPortalAcademics'));
+const ParentPortalCommunicationCenter = lazy(() => import('../pages/parent-portal/ParentPortalCommunicationCenter'));
+const ParentPortalSchoolToday = lazy(() => import('../pages/parent-portal/ParentPortalSchoolToday'));
+const ParentPortalSuggestion = lazy(() => import('../pages/parent-portal/ParentPortalSuggestion'));
 const UniformAllocationPage = lazy(() => import('../pages/UniformAllocationPage'));
 const IDPrintingPage = lazy(() => import('../pages/IDPrintingPage'));
 const PathwaysHub = lazy(() => import('../pages/secondary/PathwaysHub'));
@@ -296,19 +300,23 @@ const LoadingOverlay = () => (
 );
 
 const PARENT_PORTAL_TITLES = {
-  'parent-portal-children': 'My Children',
-  'parent-portal-fees': 'School Fees',
-  'parent-portal-messages': 'Messages',
-  'parent-portal-more': 'Menu',
-  'parent-portal-results': 'Results',
-  'parent-portal-attendance': 'Attendance',
-  'parent-portal-transport': 'Transport',
-  'parent-portal-documents': 'Documents',
-  'parent-portal-support': 'Support',
-  'parent-portal-homework': 'Homework',
-  'parent-portal-pathway':  'Pathway Planner',
-  'parent-portal-schools':  'School Shortlist',
-  'fees-statements': 'Student Statements',
+  'parent-portal-children':       'My Children',
+  'parent-portal-fees':           'School Fees',
+  'parent-portal-messages':       'Messages',
+  'parent-portal-more':           'Menu',
+  'parent-portal-results':        'Results',
+  'parent-portal-attendance':     'Attendance',
+  'parent-portal-transport':      'Transport',
+  'parent-portal-documents':      'Documents',
+  'parent-portal-support':        'Support',
+  'parent-portal-homework':       'Homework',
+  'parent-portal-pathway':        'Pathway Planner',
+  'parent-portal-schools':        'School Shortlist',
+  'parent-portal-academics':      'Academics',
+  'parent-portal-communication':  'Communication Center',
+  'parent-portal-school-today':   'School Today',
+  'parent-portal-suggestion':     'Share Feedback',
+  'fees-statements':              'Student Statements',
 };
 
 const PageRouter = ({
@@ -637,6 +645,14 @@ const PageRouter = ({
             return renderParentPortalShell(<ParentPortalPathway onNavigate={handleNavigate} />);
           case 'parent-portal-schools':
             return renderParentPortalShell(<ParentPortalSchools onNavigate={handleNavigate} />);
+          case 'parent-portal-academics':
+            return renderParentPortalShell(<ParentPortalAcademics onNavigate={handleNavigate} />, { hideBack: false });
+          case 'parent-portal-communication':
+            return renderParentPortalShell(<ParentPortalCommunicationCenter user={user} onNavigate={handleNavigate} />, { hideBack: false });
+          case 'parent-portal-school-today':
+            return renderParentPortalShell(<ParentPortalSchoolToday onNavigate={handleNavigate} />, { hideBack: false });
+          case 'parent-portal-suggestion':
+            return renderParentPortalShell(<ParentPortalSuggestion onNavigate={handleNavigate} context={pageParams?.context || ''} />, { hideBack: false });
 
           // Others
           case 'timetable': return <PlannerLayout currentPage="planner-timetable" onNavigate={handleNavigate} />;
