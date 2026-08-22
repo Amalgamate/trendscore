@@ -1,0 +1,205 @@
+name: Deploy All Schools
+
+# One-click deployment of the latest main branch to every active production
+# school. Mirrors the single-school Promote Release pipeline but uses the
+# all_schools batch slug so deploy-release.sh iterates every active instance.
+#
+# Usage:
+#   Go to Actions → Deploy All Schools → Run workflow
+#   Confirm the branch (default: main) and optionally pin an image tag.
+#
+# Safety rules:
+#   - Images must already exist in GHCR (built by the CI / docker-publish workflow)
+#   - Validation runs against deploy/instances.manifest.json before any SSH work
+#   - DB backup runs per-instance inside deploy-release.sh before each container restart
+#   - demo (canary) is intentionally excluded from this workflow — deploy it
+#     separately via Promote Release with school_slug=demo, environment=demo
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch/ref whose sha-<commit> images should be deployed'
+        required: true
+        type: string
+        default: main
+      image_tag:
+        description: 'Optional image tag override (skip to auto-resolve from branch HEAD)'
+        required: false
+        type: string
+        default: ''
+      confirm:
+        description: 'Type "deploy" to confirm you want to push to ALL production schools'
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-all-schools
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  # ── Guard ──────────────────────────────────────────────────────────────────
+  # Fail fast if the operator did not type the confirmation word.
+  confirm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation
+        run: |
+          if [[ "${{ inputs.confirm }}" != "deploy" ]]; then
+            echo "::error::Confirmation input must be exactly 'deploy'. Got: '${{ inputs.confirm }}'"
+            exit 1
+          fi
+          echo "Confirmation accepted — proceeding with all-schools deployment."
+
+  # ── Validate + resolve image tag ──────────────────────────────────────────
+  validate:
+    runs-on: ubuntu-latest
+    needs: confirm
+    outputs:
+      deploy_target: ${{ steps.target.outputs.deploy_target }}
+      school_id:     ${{ steps.target.outputs.school_id }}
+      school_name:   ${{ steps.target.outputs.school_name }}
+      environment:   ${{ steps.target.outputs.environment }}
+      github_environment: ${{ steps.target.outputs.github_environment }}
+      branch:        ${{ steps.target.outputs.branch }}
+      image_tag:     ${{ steps.image.outputs.image_tag }}
+      commit_sha:    ${{ steps.image.outputs.commit_sha }}
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+
+      - name: Resolve image tag
+        id: image
+        env:
+          IMAGE_TAG_OVERRIDE: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          COMMIT_SHA="$(git rev-parse HEAD)"
+          echo "commit_sha=${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
+          if [[ -n "${IMAGE_TAG_OVERRIDE}" ]]; then
+            echo "image_tag=${IMAGE_TAG_OVERRIDE}" >> "$GITHUB_OUTPUT"
+            echo "Using override tag '${IMAGE_TAG_OVERRIDE}' (branch HEAD: ${COMMIT_SHA})"
+          else
+            echo "image_tag=sha-${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
+            echo "Resolved '${COMMIT_SHA}' from branch '${{ inputs.branch }}'"
+          fi
+
+      - name: Validate all_schools batch target
+        id: target
+        run: |
+          set -euo pipefail
+          node scripts/validate-deployment-target.js "all_schools" \
+            --environment "production" \
+            --branch "${{ inputs.branch }}" \
+            --manifest deploy/instances.manifest.json
+
+  # ── Deploy ─────────────────────────────────────────────────────────────────
+  deploy:
+    runs-on: ubuntu-latest
+    needs: validate
+    environment: deploy-production-school
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.branch }}
+          fetch-depth: 0
+
+      - name: Print deployment details
+        run: |
+          {
+            echo "## All-schools deployment"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| Target | \`All production schools\` |"
+            echo "| Environment | \`${{ needs.validate.outputs.environment }}\` |"
+            echo "| Branch | \`${{ needs.validate.outputs.branch }}\` |"
+            echo "| Commit | \`${{ needs.validate.outputs.commit_sha }}\` |"
+            echo "| Image tag | \`${{ needs.validate.outputs.image_tag }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "Target      : All production schools"
+          echo "Environment : ${{ needs.validate.outputs.environment }}"
+          echo "Branch      : ${{ needs.validate.outputs.branch }}"
+          echo "Commit      : ${{ needs.validate.outputs.commit_sha }}"
+          echo "Image tag   : ${{ needs.validate.outputs.image_tag }}"
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Preflight deployment host storage
+        run: |
+          set -euo pipefail
+          ssh production 'set -euo pipefail
+            echo "Storage before asset upload:"
+            df -h /tmp /srv/zawadi
+            find /tmp -maxdepth 1 -type f -name "trendscore-deploy-assets-*.tgz" -mtime +1 -print -delete
+            echo "Storage after stale staging cleanup:"
+            df -h /tmp /srv/zawadi
+          '
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate container images exist
+        run: |
+          set -euo pipefail
+          for image in ghcr.io/amalgamate/zawadi-frontend ghcr.io/amalgamate/zawadi-backend ghcr.io/amalgamate/zawadi-console; do
+            echo "Inspecting ${image}:${{ needs.validate.outputs.image_tag }}"
+            docker manifest inspect "${image}:${{ needs.validate.outputs.image_tag }}" >/dev/null
+          done
+
+      - name: Upload deploy assets
+        run: bash scripts/ci/sync-deploy-assets.sh
+
+      - name: Deploy all production schools
+        env:
+          IMAGE_TAG: ${{ needs.validate.outputs.image_tag }}
+        run: |
+          set -euo pipefail
+          ssh production \
+            "DEPLOY_TARGET=all_schools \
+             IMAGE_TAG=${IMAGE_TAG} \
+             MANIFEST_PATH=/srv/zawadi/apps/deploy/instances.manifest.json \
+             bash /srv/zawadi/apps/deploy/deploy-release.sh"
+
+      - name: Report success
+        if: success()
+        run: |
+          {
+            echo "## All-schools deployment succeeded"
+            echo ""
+            echo "All active production schools updated to image tag \`${{ needs.validate.outputs.image_tag }}\`."
+            echo ""
+            echo "Per-instance pipeline ran: verify target → DB backup → pull images → prisma migrate → restart containers → health check."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report failure
+        if: failure()
+        run: |
+          {
+            echo "## All-schools deployment failed"
+            echo ""
+            echo "Deployment stopped or partially failed."
+            echo "Check per-school logs on the server under \`/srv/zawadi/backups\` before retrying."
+            echo "Schools that completed before the failure are already on the new image."
+            echo "Re-run \`Promote Release\` for individual schools that failed."
+          } >> "$GITHUB_STEP_SUMMARY"

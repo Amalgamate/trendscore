@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronRight, FileText, Loader2, X } from 'lucide-react';
+import { ChevronRight, Download, FileText, Loader2, Printer, X } from 'lucide-react';
 import { reportAPI } from '../../../../services/api';
+import { captureSingleReport, printWindow } from '../../../../utils/simplePdfGenerator';
 import TermlyReportTemplate from '../../templates/TermlyReportTemplate';
 import {
   TERM_ORDER,
@@ -99,6 +100,7 @@ export default function ParentReportCards({ learner }) {
   const [termReport, setTermReport] = useState(null);
   const [termReportLoading, setTermReportLoading] = useState(false);
   const [termReportError, setTermReportError] = useState('');
+  const [pdfStatus, setPdfStatus] = useState(''); // '' | 'downloading' | 'printing'
 
   useEffect(() => {
     let active = true;
@@ -134,6 +136,25 @@ export default function ParentReportCards({ learner }) {
       setTermReportLoading(false);
     }
   }, [learner.id, year]);
+
+  const handleDownload = useCallback(async () => {
+    if (!termReport) return;
+    setPdfStatus('downloading');
+    const firstName = (learner.firstName || learner.name || 'Learner').split(' ')[0];
+    const filename = `ReportCard_${firstName}_${termLabel(termReport.term)}_${year}.pdf`;
+    const elementId = `parent-termly-report-${year}-${termReport.term}`;
+    await captureSingleReport(elementId, filename);
+    setPdfStatus('');
+  }, [termReport, learner, year]);
+
+  const handlePrint = useCallback(async () => {
+    if (!termReport) return;
+    setPdfStatus('printing');
+    const elementId = `parent-termly-report-${year}-${termReport.term}`;
+    const firstName = (learner.firstName || learner.name || 'Learner').split(' ')[0];
+    await printWindow(elementId, { title: `${firstName} — ${termLabel(termReport.term)} ${year} Report Card` });
+    setPdfStatus('');
+  }, [termReport, learner, year]);
 
   if (loading) return <ResultsLoadingState />;
   if (error) return <ResultsErrorState message={error} />;
@@ -197,7 +218,28 @@ export default function ParentReportCards({ learner }) {
         </ReportModal>
       )}
       {termReport && (
-        <ReportModal title={`${termLabel(termReport.term)} ${year} official report`} onClose={() => setTermReport(null)} wide>
+        <ReportModal title={`${termLabel(termReport.term)} ${year} official report`} onClose={() => { setTermReport(null); setPdfStatus(''); }} wide>
+          {/* ── Download / Print toolbar ── */}
+          <div className="flex items-center justify-end gap-2 px-4 pb-3 border-b border-gray-100 bg-white">
+            <button
+              type="button"
+              onClick={handlePrint}
+              disabled={!!pdfStatus}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              <Printer size={13} />
+              {pdfStatus === 'printing' ? 'Opening…' : 'Print'}
+            </button>
+            <button
+              type="button"
+              onClick={handleDownload}
+              disabled={!!pdfStatus}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#3B1FA3] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#2d1680] transition-colors disabled:opacity-50"
+            >
+              {pdfStatus === 'downloading' ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+              {pdfStatus === 'downloading' ? 'Generating…' : 'Download PDF'}
+            </button>
+          </div>
           <TermlyReportTemplate reportData={termReport.data} id={`parent-termly-report-${year}-${termReport.term}`} />
         </ReportModal>
       )}

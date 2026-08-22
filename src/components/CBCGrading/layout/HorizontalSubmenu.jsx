@@ -239,12 +239,12 @@ const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
   }, [navSections, pageParams, resolvedPage]);
 
   const hasGroups = useMemo(
-    () => (activeSection?.items || []).some(i => i.type === 'group'),
+    () => (activeSection?.items || []).filter(i => !i.hidden).some(i => i.type === 'group'),
     [activeSection]
   );
 
   const flatItems = useMemo(
-    () => flattenLeafItems(activeSection?.items || []).filter(i => !i.greyedOut && !HIDDEN_HORIZONTAL_PATHS.has(i.path)),
+    () => flattenLeafItems((activeSection?.items || []).filter(i => !i.hidden)).filter(i => !i.greyedOut && !HIDDEN_HORIZONTAL_PATHS.has(i.path)),
     [activeSection]
   );
 
@@ -291,8 +291,8 @@ const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
         <span className="h-4 w-px bg-gray-200 mr-2" />
 
         {hasGroups
-          ? (activeSection.items || []).map((item, idx) => {
-              const isLast = idx === activeSection.items.length - 1;
+          ? (activeSection.items || []).filter(item => !item.hidden).map((item, idx, visibleItems) => {
+              const isLast = idx === visibleItems.length - 1;
               if (item.type === 'group') {
                 return (
                   <React.Fragment key={item.id || idx}>

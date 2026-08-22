@@ -29,14 +29,20 @@ vi.mock('../../../contexts/ModuleAccessContext', () => ({
 }));
 
 describe('useNavigation biometric access', () => {
-  it('shows the enabled biometric section to a primary-school super admin', () => {
+  it('shows biometric items inside the unified attendance section for a primary-school super admin', () => {
     const { result } = renderHook(() => useNavigation());
-    const biometricSection = result.current.backOfficeSections.find(
-      (section) => section.id === 'biometric',
+    // Biometric is now a group inside the unified attendance section, which lives in backOfficeSections
+    const attendanceSection = result.current.backOfficeSections.find(
+      (section) => section.id === 'attendance',
     );
 
-    expect(biometricSection).toBeDefined();
-    expect(biometricSection.items.map((item) => item.id)).toEqual(expect.arrayContaining([
+    expect(attendanceSection).toBeDefined();
+
+    const biometricGroup = attendanceSection.items.find(
+      (item) => item.id === 'group-attendance-biometric',
+    );
+    expect(biometricGroup).toBeDefined();
+    expect(biometricGroup.items.map((item) => item.id)).toEqual(expect.arrayContaining([
       'biometric-dashboard',
       'biometric-devices',
       'biometric-logs',

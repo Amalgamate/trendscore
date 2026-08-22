@@ -27,7 +27,7 @@ import {
     Heart, Star, Sparkles, Rocket
 } from 'lucide-react';
 
-const focusModules = ['dashboard', 'learners', 'teachers', 'attendance', 'assessment', 'finance', 'communications', 'planner', 'digital-learning', 'learning-hub', 'docs-center', 'settings', 'hr', 'inventory', 'transport', 'biometric', 'pathway-planner', 'presence', 'presence-analytics', 'boarding'];
+const focusModules = ['dashboard', 'learners', 'teachers', 'attendance', 'assessment', 'finance', 'communications', 'planner', 'digital-learning', 'learning-hub', 'docs-center', 'settings', 'hr', 'inventory', 'transport', 'pathway-planner', 'boarding'];
 const SCHOOL_SECTION_ORDER = ['learners', 'students', 'teachers', 'lecturers', 'attendance', 'assessment', 'secondary-assessment', 'tertiary-assessment'];
 
 const STUDENT_PORTAL_ITEMS = [
@@ -241,6 +241,7 @@ export const allNavSections = [
                 label: 'Formative',
                 type: 'group',
                 icon: Sparkles,
+                hidden: true,
                 items: [
                     { id: 'assess-formative',        label: 'Record Assessment',  path: 'assess-formative',        permission: 'ACCESS_ASSESSMENT_MODULE', icon: Sparkles },
                     { id: 'assess-formative-report', label: 'Formative Progress', path: 'assess-formative-report', permission: 'ACCESS_ASSESSMENT_MODULE', icon: TrendingUp },
@@ -261,6 +262,7 @@ export const allNavSections = [
                 label: 'Holistic Development',
                 type: 'group',
                 icon: Star,
+                hidden: true,
                 items: [
                     { id: 'assess-holistic-summary',  label: 'Development Summary', path: 'assess-holistic-summary',  permission: 'ACCESS_ASSESSMENT_MODULE', icon: Activity },
                     { id: 'assess-core-competencies', label: 'Core Competencies', path: 'assess-core-competencies', permission: 'ACCESS_ASSESSMENT_MODULE', icon: Star },
@@ -300,13 +302,11 @@ export const allNavSections = [
         icon: BookOpen,
         app: 'lms-professional',
         permission: 'ACCESS_LMS',
-        badge: 'Beta',
-        badgeTone: 'green',
         items: [
             { id: 'learning-dashboard',    label: 'Dashboard',         path: 'learning-dashboard',    permission: 'ACCESS_LMS'             },
             { id: 'learning-assignments',  label: 'Assignments',       path: 'learning-assignments',  permission: 'ACCESS_LMS'             },
             { id: 'learning-lessons',      label: 'Lessons',           path: 'learning-lessons',      permission: 'ACCESS_LMS'             },
-            { id: 'learning-interactive',  label: 'Interactive',       path: 'learning-interactive',  permission: 'ACCESS_LMS'             },
+            { id: 'learning-interactive',  label: 'Quizzes & Activities', path: 'learning-interactive',  permission: 'ACCESS_LMS'             },
             { id: 'learning-revision',     label: 'Revision Library',  path: 'learning-revision',     permission: 'ACCESS_LMS'             },
             { id: 'learning-settings',     label: 'Settings',          path: 'learning-settings',     permission: 'SCHOOL_SETTINGS'        },
             { id: 'learning-marketplace',  label: 'Marketplace',       path: 'learning-marketplace',  permission: 'MARKETPLACE_PURCHASE', app: 'lms-enterprise' },
@@ -435,6 +435,8 @@ export const allNavSections = [
         ]
     },
 
+    // ── Unified Attendance Module — consolidates Daily Attendance, Presence,
+    //    Biometrics, and Analytics into a single top-level section. ─────────────
     {
         id: 'attendance',
         label: 'Attendance',
@@ -442,10 +444,59 @@ export const allNavSections = [
         app: 'attendance',
         permission: null,
         items: [
-            { id: 'attendance-daily',          label: 'Daily / Class Attendance', path: 'attendance-daily',          permission: 'MARK_ATTENDANCE'               },
-            { id: 'attendance-staff',          label: 'Staff Attendance',         path: 'hr-attendance',             permission: 'HR_MANAGEMENT', app: 'staff-hr' },
-            { id: 'attendance-reports',        label: 'Attendance Reports', path: 'attendance-reports',        permission: 'GENERATE_ATTENDANCE_REPORTS'  },
-            { id: 'attendance-configuration',  label: 'Configuration',      path: 'attendance-configuration',  permission: 'VIEW_ALL_ATTENDANCE'          }
+            {
+                id: 'group-attendance-daily',
+                label: 'Daily Attendance',
+                type: 'group',
+                icon: CheckSquare,
+                items: [
+                    { id: 'attendance-daily', label: 'Daily / Class Attendance', path: 'attendance-daily', permission: 'MARK_ATTENDANCE' },
+                    { id: 'attendance-staff', label: 'Staff Attendance',         path: 'hr-attendance',    permission: 'HR_MANAGEMENT', app: 'staff-hr' },
+                ]
+            },
+            {
+                id: 'group-attendance-presence',
+                label: 'Presence & Movement',
+                type: 'group',
+                icon: Activity,
+                items: [
+                    { id: 'presence-dashboard', label: 'Overview',         path: 'presence-dashboard', permission: 'VIEW_ALL_PRESENCE'      },
+                    { id: 'presence-timeline',  label: 'Learner Timeline', path: 'presence-timeline',  permission: 'VIEW_PRESENCE_TIMELINE' },
+                ]
+            },
+            {
+                id: 'group-attendance-biometric',
+                label: 'Identity & Biometrics',
+                type: 'group',
+                icon: Fingerprint,
+                app: 'biometric',
+                items: [
+                    { id: 'biometric-dashboard',  label: 'Biometric Authority',  path: 'biometric-dashboard',             permission: 'BIOMETRIC_ATTENDANCE'      },
+                    { id: 'biometric-enrollment', label: 'Face Enrollment',       path: 'biometric-dashboard?tab=enrollment', permission: 'ENROLL_FINGERPRINTS'    },
+                    { id: 'biometric-devices',    label: 'Terminal Management',   path: 'biometric-dashboard?tab=devices',    permission: 'MANAGE_BIOMETRIC_DEVICES' },
+                    { id: 'biometric-logs',       label: 'Attendance Data Feed',  path: 'biometric-dashboard?tab=logs',       permission: 'VIEW_BIOMETRIC_LOGS'      },
+                    { id: 'biometric-api',        label: 'API & Bridge Info',     path: 'biometric-dashboard?tab=config',     permission: 'CONFIGURE_BIOMETRIC_API'  },
+                ]
+            },
+            {
+                id: 'group-attendance-reports',
+                label: 'Reports & Analytics',
+                type: 'group',
+                icon: BarChart3,
+                items: [
+                    { id: 'attendance-reports',  label: 'Attendance Reports',   path: 'attendance-reports',  permission: 'GENERATE_ATTENDANCE_REPORTS' },
+                    { id: 'analytics-dashboard', label: 'Signals & Exceptions', path: 'analytics-dashboard', permission: 'VIEW_ALL_ATTENDANCE'         },
+                ]
+            },
+            {
+                id: 'group-attendance-config',
+                label: 'Configuration',
+                type: 'group',
+                icon: Settings,
+                items: [
+                    { id: 'attendance-configuration', label: 'Attendance Configuration', path: 'attendance-configuration', permission: 'VIEW_ALL_ATTENDANCE' },
+                ]
+            },
         ]
     },
     {
@@ -574,28 +625,6 @@ export const allNavSections = [
             { id: 'inventory-class-assignments',label: 'Class Assignments', path: 'inventory-class-assignments',permission: 'SCHOOL_SETTINGS' }
         ]
     },
-    {
-        id: 'biometric',
-        label: 'Identity & Biometrics',
-        icon: Fingerprint,
-        app: 'biometric',
-        permission: 'BIOMETRIC_ATTENDANCE',
-        items: [
-            { id: 'biometric-dashboard',  label: 'Biometric Authority',    path: 'biometric-dashboard',  permission: 'BIOMETRIC_ATTENDANCE' },
-            { id: 'biometric-enrollment', label: 'Face Enrollment', path: 'biometric-dashboard?tab=enrollment', permission: 'ENROLL_FINGERPRINTS' },
-            { id: 'biometric-devices',    label: 'Terminal Management',    path: 'biometric-dashboard?tab=devices',    permission: 'MANAGE_BIOMETRIC_DEVICES' },
-            { id: 'biometric-logs',       label: 'Attendance Data Feed',   path: 'biometric-dashboard?tab=logs',       permission: 'VIEW_BIOMETRIC_LOGS' },
-            { id: 'biometric-api',        label: 'API & Bridge Info',      path: 'biometric-dashboard?tab=config',     permission: 'CONFIGURE_BIOMETRIC_API' }
-        ]
-    },
-    // {
-    //     id: 'help',
-    //     label: 'Help & Support',
-    //     icon: HelpCircle,
-    //     permission: null,
-    //     items: []
-    // },
-
     // ── Pathway Planner — available to all institution types ─────────────────
     {
         id: 'pathway-planner',
@@ -641,29 +670,6 @@ export const allNavSections = [
         permission: 'MANAGE_FACILITIES',
         items: [
             { id: 'facilities-classes',  label: 'Classes & Streams',      path: 'facilities-classes',  permission: 'MANAGE_FACILITIES' }
-        ]
-    },
-
-    // ── Presence Platform (Phase 2.0) ─────────────────────────────────────────
-    {
-        id: 'presence',
-        label: 'Presence & Movement',
-        icon: Activity,
-        permission: null,
-        items: [
-            { id: 'presence-dashboard', label: 'Overview',           path: 'presence-dashboard',  permission: 'VIEW_ALL_PRESENCE' },
-            { id: 'presence-timeline',  label: 'Learner Timeline',   path: 'presence-timeline',   permission: 'VIEW_PRESENCE_TIMELINE' },
-        ]
-    },
-
-    // ── Analytics & Intelligence (Phase 2.0) ─────────────────────────────────
-    {
-        id: 'presence-analytics',
-        label: 'Presence Intelligence',
-        icon: Brain,
-        permission: 'VIEW_ALL_ATTENDANCE',
-        items: [
-            { id: 'analytics-dashboard', label: 'Signals & Exceptions', path: 'analytics-dashboard', permission: 'VIEW_ALL_ATTENDANCE' },
         ]
     },
 
@@ -1084,7 +1090,7 @@ export const useNavigation = () => {
             ];
         }
         return navSections.filter(s => 
-            ['hr', 'finance', 'inventory', 'library', 'transport', 'biometric', 'presence', 'presence-analytics', 'boarding'].includes(s.id)
+            ['hr', 'finance', 'inventory', 'library', 'transport', 'attendance', 'boarding'].includes(s.id)
         );
     }, [navSections, role]);
 
@@ -1226,8 +1232,9 @@ export const groupNavigationByCategory = (nav) => {
         groups.finance.items.push(financeSection);
     }
 
-    // Presence & Movement: shared insight layer plus the distinct source workflows.
-    const presenceIds = ['presence', 'presence-analytics', 'attendance', 'biometric', 'boarding', 'transport'];
+    // Presence & Movement: the unified attendance section covers all sub-domains
+    // (daily registers, presence tracking, biometrics, analytics).
+    const presenceIds = ['attendance', 'boarding', 'transport'];
     const availablePresenceSections = [
         ...(nav.schoolSections || []),
         ...(nav.backOfficeSections || []),
