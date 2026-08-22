@@ -263,6 +263,165 @@ function Step3Distribution({ mode, amount, strategy, setStrategy, custom, setCus
   );
 }
 
+// ─── Advance Payment ──────────────────────────────────────────────────────────
+// Shown when all balances are cleared, or as an optional section alongside
+// the normal payment flow. Lets a parent pay ahead for next term.
+
+function AdvancePayment({ children, user, onSuccess }) {
+  const [selectedChildId, setSelectedChildId] = useState(children[0]?.id || null);
+  const [amount, setAmount]   = useState('');
+  const [note, setNote]       = useState('');
+  const [open, setOpen]       = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [payingInvoice, setPayingInvoice] = useState(null);
+  const [error, setError]     = useState('');
+
+  const selectedChild = children.find(c => c.id === selectedChildId);
+
+  const handleProceed = () => {
+    setError('');
+    const n = Number(amount);
+    if (!selectedChildId) { setError('Please select a child'); return; }
+    if (!n || n < 1)      { setError('Enter a valid amount (minimum KES 1)'); return; }
+    // Use 'advance' as a sentinel invoiceId — the backend handles it as
+    // an unmatched payment that admin can allocate to next term's invoice.
+    setPayingInvoice({ id: 'advance', balance: n, note });
+    setShowModal(true);
+  };
+
+  const getChildPhoto = (child) => child?.photoUrl || child?.profilePicture || child?.photo || null;
+
+  return (
+    <>
+      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+        {/* Header — toggleable */}
+        <button
+          type="button"
+          onClick={() => setOpen(v => !v)}
+          className="w-full flex items-center justify-between px-4 py-4 text-left"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#3B1FA3]/10 flex items-center justify-center">
+              <span className="text-lg">💳</span>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-900">Pay in Advance</p>
+              <p className="text-xs text-gray-400">Pay next term fees or top up the account</p>
+            </div>
+          </div>
+          <div className={`w-5 h-5 rounded-full border-2 border-[#3B1FA3] flex items-center justify-center transition-transform ${open ? 'rotate-180' : ''}`}>
+            <svg width="10" height="6" fill="none" viewBox="0 0 10 6">
+              <path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#3B1FA3]" />
+            </svg>
+          </div>
+        </button>
+
+        {open && (
+          <div className="px-4 pb-4 border-t border-gray-100 space-y-4 pt-4">
+            {/* Child selector */}
+            {children.length > 1 && (
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">For which child?</p>
+                <div className="space-y-2">
+                  {children.map(c => {
+                    const isSel = selectedChildId === c.id;
+                    const photoSrc = getChildPhoto(c);
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setSelectedChildId(c.id)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 text-left transition-colors ${isSel ? 'border-[#3B1FA3] bg-[#3B1FA3]/5' : 'border-gray-200 hover:border-gray-300'}`}
+                      >
+                        <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${isSel ? 'border-[#3B1FA3] bg-[#3B1FA3]' : 'border-gray-300'}`} />
+                        {photoSrc ? (
+                          <img src={photoSrc} alt={c.name} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-[#3B1FA3]/10 text-[#3B1FA3] font-black text-xs flex items-center justify-center flex-shrink-0">
+                            {(c.name || '?')[0]}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className={`text-sm font-semibold truncate ${isSel ? 'text-[#3B1FA3]' : 'text-gray-800'}`}>{c.name}</p>
+                          <p className="text-[10px] text-gray-400">{c.grade}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Amount */}
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Amount to Pay</p>
+              <div className="flex items-center border-2 border-[#3B1FA3] rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-[#3B1FA3]/30">
+                <span className="px-3 py-3 text-sm font-bold text-gray-500 bg-gray-50 border-r border-gray-200">KES</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={amount}
+                  onChange={e => setAmount(e.target.value)}
+                  placeholder="e.g. 15,000"
+                  className="flex-1 px-3 py-3 text-xl font-bold text-gray-900 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Optional note */}
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Note (optional)</p>
+              <input
+                type="text"
+                value={note}
+                onChange={e => setNote(e.target.value)}
+                placeholder="e.g. Term 3 fees, advance payment"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#3B1FA3]/30"
+              />
+            </div>
+
+            {/* Info banner */}
+            <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5">
+              <span className="text-blue-500 mt-0.5 flex-shrink-0">ℹ</span>
+              <p className="text-[11px] text-blue-700 font-medium leading-relaxed">
+                Advance payments are recorded as credit on your child's account. The school will apply them to the next term's invoice automatically.
+              </p>
+            </div>
+
+            {error && (
+              <p className="text-xs text-rose-600 font-semibold">{error}</p>
+            )}
+
+            {/* CTA */}
+            <button
+              type="button"
+              onClick={handleProceed}
+              className="w-full py-3.5 bg-[#3B1FA3] text-white text-sm font-bold rounded-xl hover:bg-[#2d1680] transition-colors"
+            >
+              Pay with M-Pesa
+            </button>
+          </div>
+        )}
+      </div>
+
+      <MpesaPaymentModal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        invoice={payingInvoice}
+        parentPhone={user?.phone || user?.phoneNumber}
+        onPaymentSuccess={() => {
+          setShowModal(false);
+          setPayingInvoice(null);
+          setAmount('');
+          setNote('');
+          setOpen(false);
+          onSuccess?.();
+        }}
+      />
+    </>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const ParentPortalFees = ({ user, onNavigate }) => {
@@ -363,7 +522,6 @@ const ParentPortalFees = ({ user, onNavigate }) => {
               <h2 className="text-sm font-bold text-[#3B1FA3] mb-1">Smart Payment Flow</h2>
               <StepIndicator step={step} total={4} />
             </div>
-
             {/* Step 1 */}
             <Step1ChooseType
               selected={payMode}
@@ -411,11 +569,30 @@ const ParentPortalFees = ({ user, onNavigate }) => {
           </>
         )}
 
+        {/* Advance payment — always available when children are linked */}
+        {!loading && totalBalance > 0 && children.length > 0 && (
+          <AdvancePayment
+            children={children}
+            user={user}
+            onSuccess={load}
+          />
+        )}
+
         {!loading && totalBalance === 0 && children.length > 0 && (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 text-center">
-            <CheckCircle2 size={28} className="mx-auto mb-2 text-emerald-500" />
-            <p className="text-sm font-bold text-emerald-700">All fees are cleared!</p>
-            <p className="text-xs text-emerald-600 mt-1">No outstanding balances for any child.</p>
+          <div className="space-y-4">
+            {/* All cleared confirmation */}
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 text-center">
+              <CheckCircle2 size={28} className="mx-auto mb-2 text-emerald-500" />
+              <p className="text-sm font-bold text-emerald-700">All fees are cleared!</p>
+              <p className="text-xs text-emerald-600 mt-1">No outstanding balances for any child.</p>
+            </div>
+
+            {/* Advance payment section */}
+            <AdvancePayment
+              children={children}
+              user={user}
+              onSuccess={load}
+            />
           </div>
         )}
 
