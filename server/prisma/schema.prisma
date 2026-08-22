@@ -1834,7 +1834,11 @@ model CommunicationConfig {
   mpesaBusinessNo         String?
   mpesaSandbox            Boolean  @default(false)
   mpesaApiKey             String?
+  mpesaPasskey            String?
   mpesaEnabled            Boolean  @default(false)
+  mpesaOnboardingChecklist Json?
+  mpesaOnboardingUpdatedAt DateTime?
+  mpesaOnboardingUpdatedBy String?
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
   birthdayEnabled         Boolean  @default(false)

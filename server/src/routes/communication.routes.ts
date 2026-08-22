@@ -65,6 +65,10 @@ const saveCommunicationConfigSchema = z.object({
         provider: z.string().optional(),
         publicKey: z.string().optional(),
         secretKey: z.string().optional(),
+        apiKey: z.string().optional(),
+        passkey: z.string().optional(),
+        sandbox: z.boolean().optional(),
+        onboardingChecklist: z.record(z.string(), z.boolean()).optional(),
         businessNumber: z.string().optional()
     }).optional(),
     birthdays: z.object({

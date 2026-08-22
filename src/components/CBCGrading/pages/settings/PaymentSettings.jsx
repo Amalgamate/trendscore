@@ -1,11 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { DollarSign, Save, Loader, CreditCard, Shield, Globe, Terminal } from 'lucide-react';
 import { communicationAPI } from '../../../../services/api';
 import { useNotifications } from '../../hooks/useNotifications';
 import { PRODUCT_DISPLAY_NAME } from '../../../../config/productIdentity';
+import MpesaOnboardingChecklist from '../../../payments/MpesaOnboardingChecklist';
 
 const PaymentSettings = () => {
     const [loading, setLoading] = useState(false);
+    const [onboardingReady, setOnboardingReady] = useState(false);
+    const [onboardingChecklist, setOnboardingChecklist] = useState({});
     const { showSuccess, showError } = useNotifications();
 
     const [mpesaSettings, setMpesaSettings] = useState({
@@ -47,6 +50,7 @@ const PaymentSettings = () => {
                 hasApiKey: !!config.hasApiKey,
                 hasPasskey: !!config.hasPasskey
             });
+            setOnboardingChecklist(config.onboardingChecklist || {});
         } catch (error) {
             console.error('Failed to load payment config:', error);
             showError('Failed to load payment configuration');
@@ -56,6 +60,10 @@ const PaymentSettings = () => {
     };
 
     const handleSave = async () => {
+        if (mpesaSettings.enabled && !onboardingReady) {
+            showError('Complete all M-PESA activation prerequisites before enabling collections.');
+            return;
+        }
         try {
             setLoading(true);
 
@@ -68,7 +76,11 @@ const PaymentSettings = () => {
                     secretKey: mpesaSettings.secretKey || undefined,
                     apiKey: mpesaSettings.apiKey || undefined,
                     passkey: mpesaSettings.passkey || undefined,
-                    sandbox: mpesaSettings.sandbox
+                    sandbox: mpesaSettings.sandbox,
+                    onboardingChecklist: {
+                        ...onboardingChecklist,
+                        ...credentialReadiness
+                    }
                 }
             };
 
@@ -86,6 +98,18 @@ const PaymentSettings = () => {
     };
 
     const isKopoKopo = mpesaSettings.provider === 'kopokopo';
+    const handleReadinessChange = useCallback(({ ready }) => setOnboardingReady(ready), []);
+    const credentialReadiness = {
+        provider_account: Boolean(mpesaSettings.provider),
+        credentials: Boolean(
+            mpesaSettings.shortcode &&
+            (mpesaSettings.publicKey || mpesaSettings.hasPublicKey) &&
+            (mpesaSettings.secretKey || mpesaSettings.hasSecretKey) &&
+            (isKopoKopo
+                ? (mpesaSettings.apiKey || mpesaSettings.hasApiKey)
+                : (mpesaSettings.passkey || mpesaSettings.hasPasskey))
+        )
+    };
 
     return (
         <div className="space-y-6">
@@ -103,6 +127,15 @@ const PaymentSettings = () => {
                 </div>
 
                 <div className="p-8">
+                    <div className="mb-8">
+                        <MpesaOnboardingChecklist
+                            interactive
+                            credentialReadiness={credentialReadiness}
+                            onReadinessChange={handleReadinessChange}
+                            value={onboardingChecklist}
+                            onChange={setOnboardingChecklist}
+                        />
+                    </div>
                     {/* Provider Selection */}
                     <div className="mb-10">
                         <label className="block text-sm font-medium text-gray-700 mb-4 flex items-center gap-2">
@@ -297,7 +330,13 @@ const PaymentSettings = () => {
                                                 type="checkbox"
                                                 className="sr-only peer"
                                                 checked={mpesaSettings.enabled}
-                                                onChange={(e) => setMpesaSettings({ ...mpesaSettings, enabled: e.target.checked })}
+                                                onChange={(e) => {
+                                                    if (e.target.checked && !onboardingReady) {
+                                                        showError('Complete the M-PESA activation checklist first.');
+                                                        return;
+                                                    }
+                                                    setMpesaSettings({ ...mpesaSettings, enabled: e.target.checked });
+                                                }}
                                             />
                                             <div className="w-14 h-7 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-600"></div>
                                         </label>

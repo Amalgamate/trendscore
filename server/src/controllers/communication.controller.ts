@@ -21,6 +21,7 @@ import {
 } from '../services/ai-settings.service';
 
 import logger from '../utils/logger';
+import { isMpesaOnboardingComplete } from '../config/mpesa-onboarding';
 
 const sanitizeGeneratedEmailHtml = (html: string) =>
     html
@@ -118,7 +119,10 @@ export const getCommunicationConfig = async (req: AuthRequest, res: Response) =>
                 mpesa: {
                     enabled: false,
                     provider: 'intasend',
-                    hasSecretKey: false
+                    hasSecretKey: false,
+                    hasPasskey: false,
+                    onboardingChecklist: {},
+                    onboardingReady: false
                 },
                 birthdays: {
                     enabled: false,
@@ -169,6 +173,10 @@ export const getCommunicationConfig = async (req: AuthRequest, res: Response) =>
                 businessNumber: config.mpesaBusinessNo,
                 hasSecretKey: !!config.mpesaSecretKey,
                 hasApiKey: !!config.mpesaApiKey,
+                hasPasskey: !!config.mpesaPasskey,
+                onboardingChecklist: config.mpesaOnboardingChecklist || {},
+                onboardingReady: isMpesaOnboardingComplete(config.mpesaOnboardingChecklist),
+                onboardingUpdatedAt: config.mpesaOnboardingUpdatedAt,
                 sandbox: config.mpesaSandbox
             },
             birthdays: {
@@ -251,16 +259,25 @@ export const saveCommunicationConfig = async (req: AuthRequest, res: Response) =
     }
 
     if (mpesa) {
+        const onboardingChecklist = mpesa.onboardingChecklist ?? existingConfig?.mpesaOnboardingChecklist ?? {};
+        if (mpesa.enabled === true && !isMpesaOnboardingComplete(onboardingChecklist)) {
+            throw new ApiError(400, 'Complete all M-PESA activation prerequisites before enabling collections.');
+        }
         data.mpesaProvider = mpesa.provider || 'intasend';
         data.mpesaPublicKey = mpesa.publicKey || null;
         data.mpesaBusinessNo = mpesa.businessNumber || null;
         data.mpesaEnabled = mpesa.enabled !== undefined ? mpesa.enabled : false;
         data.mpesaSandbox = mpesa.sandbox !== undefined ? mpesa.sandbox : false;
+        data.mpesaOnboardingChecklist = onboardingChecklist;
+        data.mpesaOnboardingUpdatedAt = new Date();
+        data.mpesaOnboardingUpdatedBy = req.user?.userId || null;
         
         const mpesaSecretKey = normalizeOptionalString(mpesa.secretKey);
         const mpesaApiKey = normalizeOptionalString(mpesa.apiKey);
+        const mpesaPasskey = normalizeOptionalString(mpesa.passkey);
         if (mpesaSecretKey) data.mpesaSecretKey = encryptSetting('M-Pesa secret key', mpesaSecretKey);
         if (mpesaApiKey) data.mpesaApiKey = encryptSetting('M-Pesa API key', mpesaApiKey);
+        if (mpesaPasskey) data.mpesaPasskey = encryptSetting('M-Pesa passkey', mpesaPasskey);
     }
 
     if (birthdays) {

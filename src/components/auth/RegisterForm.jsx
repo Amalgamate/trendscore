@@ -9,6 +9,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../ui/card";
 import { cn } from "../../utils/cn";
+import MpesaOnboardingChecklist from '../payments/MpesaOnboardingChecklist';
 
 export default function RegisterForm({ onSwitchToLogin, onRegisterSuccess, brandingSettings }) {
   const [countryCode, setCountryCode] = useState('+254'); // Default to Kenya
@@ -711,6 +712,9 @@ export default function RegisterForm({ onSwitchToLogin, onRegisterSuccess, brand
 
             {/* Terms & Submit */}
             <div className="mt-12 pt-10 border-t border-gray-100/50">
+              <div className="mb-8">
+                <MpesaOnboardingChecklist compact />
+              </div>
               <div className="flex items-center justify-center mb-10 group">
                 <label className="flex items-center gap-3 cursor-pointer select-none">
                   <Checkbox
