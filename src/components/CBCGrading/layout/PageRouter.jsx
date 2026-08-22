@@ -181,6 +181,7 @@ const StudentAssignmentView = lazy(() => import('../pages/lms/assignments/Studen
 const MarkingInterface = lazy(() => import('../pages/lms/assignments/MarkingInterface'));
 // LMS Digital Learning Hub — Phase 1+
 const LMSPlaceholder = lazy(() => import('../pages/lms/LMSPlaceholder'));
+const QuizzesActivitiesPage = lazy(() => import('../pages/lms/QuizzesActivitiesPage'));
 const LMSSettingsPage = lazy(() => import('../pages/lms/settings/LMSSettingsPage'));
 const LMSLessonList = lazy(() => import('../pages/lms/lessons/LessonList'));
 const LMSLessonBuilderPage = lazy(() => import('../pages/lms/lessons/LessonBuilderPage'));
@@ -778,7 +779,7 @@ const PageRouter = ({
           case 'learning-lessons': return <LMSLessonList onNavigate={handleNavigate} user={user} />;
           case 'learning-lesson-builder': return <LMSLessonBuilderPage lessonId={pageParams?.lessonId} onNavigate={handleNavigate} pageParams={pageParams} />;
           case 'learning-lesson-viewer': return <LMSLessonViewerPage lessonId={pageParams?.lessonId} onNavigate={handleNavigate} pageParams={pageParams} />;
-          case 'learning-interactive': return <LMSPlaceholder title="Interactive Learning" description="Interactive learning content and activities are being prepared for the Digital Learning Hub." />;
+          case 'learning-interactive': return <QuizzesActivitiesPage onNavigate={handleNavigate} />;
           case 'learning-revision': return <LMSRevisionLibraryPage onNavigate={handleNavigate} />;
           case 'learning-marketplace': return <MarketplacePage onNavigate={handleNavigate} />;
           case 'learning-marketplace-create': return <MarketplaceCreatePage onNavigate={handleNavigate} pageParams={pageParams} />;

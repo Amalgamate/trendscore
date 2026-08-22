@@ -104,7 +104,6 @@ const getCollapsedIconColor = (id, isActive) => {
     case 'library':         return 'text-violet-500 drop-shadow-[0_0_6px_rgba(139,92,246,0.7)]  group-hover:text-violet-400 group-hover:drop-shadow-[0_0_10px_rgba(139,92,246,0.9)]';
     case 'transport':       return 'text-rose-500   drop-shadow-[0_0_6px_rgba(244,63,94,0.7)]   group-hover:text-rose-400   group-hover:drop-shadow-[0_0_10px_rgba(244,63,94,0.9)]';
     case 'inventory':       return 'text-yellow-500 drop-shadow-[0_0_6px_rgba(234,179,8,0.7)]   group-hover:text-yellow-400 group-hover:drop-shadow-[0_0_10px_rgba(234,179,8,0.9)]';
-    case 'biometric':       return 'text-emerald-400 drop-shadow-[0_0_6px_rgba(52,211,153,0.7)] group-hover:text-emerald-300 group-hover:drop-shadow-[0_0_10px_rgba(52,211,153,0.9)]';
     case 'settings':
     case 'dashboard':       return 'text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.7)] group-hover:text-white group-hover:drop-shadow-[0_0_10px_rgba(255,255,255,0.9)]';
     default:                return 'text-white/60 group-hover:text-white group-hover:drop-shadow-md';
@@ -167,7 +166,7 @@ const PREFETCH_MAP = {
   'learning-assignments': () => import('../pages/lms/assignments/AssignmentsPage'),
   'learning-lessons':     () => import('../pages/lms/lessons/LessonList'),
   'learning-lesson-builder': () => import('../pages/lms/lessons/LessonBuilderPage'),
-  'learning-interactive': () => import('../pages/lms/LMSPlaceholder'),
+  'learning-interactive': () => import('../pages/lms/QuizzesActivitiesPage'),
   'learning-revision':    () => import('../pages/lms/revision/RevisionLibraryPage'),
   'learning-analytics':   () => import('../pages/lms/analytics/LearningAnalyticsPage'),
   'learning-settings':    () => import('../pages/lms/settings/LMSSettingsPage'),
@@ -590,6 +589,7 @@ const NavSection = React.memo(({
   const sectionItemsBlock = (
     <div className={`ml-[11px] mt-1 border-l border-white/10 pl-3 space-y-0.5 ${isBottom ? 'mb-2' : 'mb-1'}`}>
       {section.items.map(item => {
+        if (item.hidden) return null;
         if (item.type === 'group') {
           const isPrimaryGroup =
             section.id === 'assessment' && (item.id === 'group-summative' || item.id === 'group-formative');

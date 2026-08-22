@@ -415,7 +415,8 @@ function StudentSection({ children, brandingSettings, loading, onNavigate, onEdi
 // ─── Quick Actions ────────────────────────────────────────────────────────────
 function QuickActions({ onNavigate }) {
   const actions = [
-    { label: 'Academic Reports', sub: 'View performance', icon: BarChart3, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', path: 'parent-portal-results' },
+    { label: 'Report Cards', sub: 'Preview & download', icon: FileTextIcon, color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-200', path: 'parent-portal-results' },
+    { label: 'Academic Results', sub: 'View performance', icon: BarChart3, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', path: 'parent-portal-results' },
     { label: 'Attendance', sub: 'View records', icon: ClipboardCheck, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200', path: 'parent-portal-attendance' },
   ];
 
@@ -425,7 +426,7 @@ function QuickActions({ onNavigate }) {
         <div className="min-w-0">
           <h3 className="text-sm font-bold text-gray-900">Quick Actions</h3>
           <p className="text-xs text-gray-500 mt-1 truncate">
-            {actions.length} shortcuts · Academic reports and attendance
+            {actions.length} shortcuts · Report cards, results and attendance
           </p>
         </div>
       </div>

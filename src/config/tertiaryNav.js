@@ -128,16 +128,43 @@ export const tertiaryNavSections = [
     ],
   },
 
-  // ── Attendance ────────────────────────────────────────────────────────────
+  // ── Unified Attendance Module ──────────────────────────────────────────────
   {
     id: 'attendance',
     label: 'Attendance',
     icon: ClipboardList,
     permission: null,
     items: [
-      { id: 'attendance-daily',   label: 'Lecture Attendance', path: 'attendance-daily',   permission: 'MARK_ATTENDANCE' },
-      { id: 'attendance-reports', label: 'Attendance Reports', path: 'attendance-reports', permission: 'GENERATE_ATTENDANCE_REPORTS' },
-      { id: 'attendance-configuration', label: 'Configuration', path: 'attendance-configuration', permission: 'VIEW_ALL_ATTENDANCE' },
+      {
+        id: 'group-attendance-daily',
+        label: 'Daily Attendance',
+        type: 'group',
+        icon: ClipboardList,
+        items: [
+          { id: 'attendance-daily',   label: 'Lecture Attendance', path: 'attendance-daily',   permission: 'MARK_ATTENDANCE' },
+          { id: 'attendance-reports', label: 'Attendance Reports', path: 'attendance-reports', permission: 'GENERATE_ATTENDANCE_REPORTS' },
+        ],
+      },
+      {
+        id: 'group-attendance-biometric',
+        label: 'Identity & Biometrics',
+        type: 'group',
+        icon: Fingerprint,
+        app: 'biometric',
+        items: [
+          { id: 'biometric-dashboard',  label: 'Biometric Authority',    path: 'biometric-dashboard',                permission: 'BIOMETRIC_ATTENDANCE' },
+          { id: 'biometric-enrollment', label: 'Fingerprint Enrollment', path: 'biometric-dashboard?tab=enrollment', permission: 'ENROLL_FINGERPRINTS'  },
+        ],
+      },
+      {
+        id: 'group-attendance-config',
+        label: 'Configuration',
+        type: 'group',
+        icon: Settings,
+        items: [
+          { id: 'attendance-configuration', label: 'Attendance Configuration', path: 'attendance-configuration', permission: 'VIEW_ALL_ATTENDANCE' },
+        ],
+      },
     ],
   },
 
@@ -248,16 +275,6 @@ export const tertiaryNavSections = [
       { id: 'inventory-stores',    label: 'Stores',          path: 'inventory-stores',    permission: 'SCHOOL_SETTINGS' },
       { id: 'inventory-movements', label: 'Stock Movements', path: 'inventory-movements', permission: 'SCHOOL_SETTINGS' },
       { id: 'inventory-assets',    label: 'Asset Register',  path: 'inventory-assets',    permission: 'SCHOOL_SETTINGS' },
-    ],
-  },
-  {
-    id: 'biometric',
-    label: 'Biometric Attendance',
-    icon: Fingerprint,
-    permission: 'BIOMETRIC_ATTENDANCE',
-    items: [
-      { id: 'biometric-dashboard',  label: 'Biometric Authority',    path: 'biometric-dashboard', permission: 'BIOMETRIC_ATTENDANCE' },
-      { id: 'biometric-enrollment', label: 'Fingerprint Enrollment', path: 'biometric-dashboard?tab=enrollment', permission: 'ENROLL_FINGERPRINTS' },
     ],
   },
   {
