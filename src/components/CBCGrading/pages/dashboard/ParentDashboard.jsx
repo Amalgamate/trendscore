@@ -976,10 +976,8 @@ const ParentDashboard = ({ user, onNavigate, onLogout, brandingSettings }) => {
       {/* School Pulse */}
       <SchoolPulse metrics={metrics} children={children} />
 
-      {/* Bottom 4-col section */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
-        <AlumniClubsCard onNavigate={onNavigate} betaEnabled={betaEnabled} />
-        <SchoolGalleryCard onNavigate={onNavigate} betaEnabled={betaEnabled} />
+      {/* Bottom 2-col section */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <LatestNewsletterCard onNavigate={onNavigate} betaEnabled={betaEnabled} />
         <AnnouncementsCard metrics={metrics} onNavigate={onNavigate} showFees={showFees} />
       </div>
