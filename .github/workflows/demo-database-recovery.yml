@@ -1,0 +1,94 @@
+name: Demo Database Recovery
+
+# Emergency recovery for the isolated demo canary only. This workflow preserves
+# database volumes, school backups, and tagged rollback images.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: demo-database-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - name: Checkout recovery support
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Recover demo database
+        run: |
+          set -euo pipefail
+          ssh production 'bash -s' <<'REMOTE'
+          set -euo pipefail
+
+          project=zawadi-demoschool
+          backend="$(sudo docker ps -a --filter "label=com.docker.compose.project=${project}" --filter 'label=com.docker.compose.service=backend' --format '{{.ID}}' | head -n1)"
+          db="$(sudo docker ps -a --filter "label=com.docker.compose.project=${project}" --filter 'label=com.docker.compose.service=db' --format '{{.ID}}' | head -n1)"
+          [[ -n "${backend}" && -n "${db}" ]] || { echo 'Demo backend/database containers not found'; exit 1; }
+
+          echo '## Storage before safe cleanup'
+          df -h / /srv/zawadi /var/lib/docker 2>/dev/null || df -h
+
+          # Preserve volumes, backups, and tagged images. Remove only stopped
+          # containers, dangling images, old build cache, and stale deploy files.
+          sudo docker container prune -f
+          sudo docker image prune -f
+          sudo docker builder prune -af --filter 'until=168h'
+          find /tmp -maxdepth 1 -type f -name 'trendscore-deploy-assets-*.tgz' -mtime +1 -print -delete
+
+          echo '## Storage after safe cleanup'
+          df -h / /srv/zawadi /var/lib/docker 2>/dev/null || df -h
+
+          wait_for_db() {
+            for attempt in $(seq 1 30); do
+              if sudo docker exec "${db}" pg_isready -q; then
+                echo "PostgreSQL ready on attempt ${attempt}"
+                return 0
+              fi
+              echo "Waiting for PostgreSQL recovery (${attempt}/30)"
+              sleep 2
+            done
+            return 1
+          }
+
+          if ! wait_for_db; then
+            echo 'PostgreSQL did not recover after cleanup; restarting demo DB only.'
+            sudo docker restart "${db}"
+            wait_for_db || {
+              echo '## Recent demo PostgreSQL logs'
+              sudo docker logs --tail 120 "${db}" 2>&1
+              exit 1
+            }
+          fi
+
+          db_user="$(sudo docker exec "${db}" printenv POSTGRES_USER)"
+          db_name="$(sudo docker exec "${db}" printenv POSTGRES_DB)"
+          sudo docker exec "${db}" psql -U "${db_user}" -d "${db_name}" -v ON_ERROR_STOP=1 -Atqc 'SELECT 1'
+
+          sudo docker restart "${backend}"
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:5006/api/health >/dev/null \
+              && curl -fsS http://127.0.0.1:5006/api/schools/public/branding >/dev/null \
+              && curl -fsS http://127.0.0.1:5006/api/auth/login-config >/dev/null; then
+              echo "Demo API and database-backed endpoints healthy on attempt ${attempt}"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo 'Demo API did not become healthy after database recovery.'
+          sudo docker logs --tail 120 "${backend}" 2>&1
+          exit 1
+          REMOTE
