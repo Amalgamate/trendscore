@@ -113,7 +113,16 @@ resolve_manifest_targets() {
       resolve_school_target "${SCHOOL_ID}" || fail "Unknown school_id (manifest or running stack): ${SCHOOL_ID}"
       ;;
     all_schools)
-      jq -c '.instances[] | select(.kind == "stack" or .kind == "main")' "${MANIFEST_PATH}"
+      jq -c '
+        .instances[]
+        | select(.tier == "production")
+        | select(.kind == "stack" or .kind == "main")
+        | select(.active != false)
+        | select(.archived != true)
+        | select((.status // "active") != "inactive" and (.status // "active") != "disabled")
+        | select(.deploy_allowed != false and .deployment_allowed != false)
+        | select((.deploy.allowed // true) != false)
+      ' "${MANIFEST_PATH}"
       ;;
     *)
       fail "Invalid DEPLOY_TARGET: ${DEPLOY_TARGET}"
