@@ -1618,7 +1618,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
                         onChange={handleChange}
                         className="w-4 h-4 rounded border-gray-300 text-brand-purple focus:ring-brand-purple accent-brand-purple cursor-pointer transition-transform group-active:scale-90"
                       />
-                      <span className="text-sm text-gray-600 font-medium transition-colors group-hover:text-gray-950">Remember me</span>
+                      <span className="text-sm text-gray-600 font-medium transition-colors group-hover:text-gray-950">Trust this device for 30 days</span>
                     </label>
                   </div>
 

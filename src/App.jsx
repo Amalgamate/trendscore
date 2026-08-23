@@ -25,6 +25,7 @@ import {
   clearAuthAndRedirect,
   getAuthErrorCode,
   getInactivityLogoutMs,
+  getSafeTimeoutDelay,
   SESSION_POLL_INTERVAL_MS,
 } from './utils/sessionLifecycle';
 
@@ -247,6 +248,7 @@ function AppContent() {
 
     sessionEndedRef.current = false;
     let inactivityTimer = null;
+    let inactivityDeadline = null;
     const inactivityLogoutMs = getInactivityLogoutMs();
 
     const endSession = (reason) => {
@@ -256,10 +258,21 @@ function AppContent() {
       clearAuthAndRedirect(reason);
     };
 
-    const resetInactivityTimer = () => {
+    const scheduleInactivityCheck = () => {
       if (sessionEndedRef.current) return;
       window.clearTimeout(inactivityTimer);
-      inactivityTimer = window.setTimeout(() => endSession('inactivity'), inactivityLogoutMs);
+      const remainingMs = inactivityDeadline - Date.now();
+      if (remainingMs <= 0) {
+        endSession('inactivity');
+        return;
+      }
+      inactivityTimer = window.setTimeout(scheduleInactivityCheck, getSafeTimeoutDelay(remainingMs));
+    };
+
+    const resetInactivityTimer = () => {
+      if (sessionEndedRef.current) return;
+      inactivityDeadline = Date.now() + inactivityLogoutMs;
+      scheduleInactivityCheck();
     };
 
     const handleActivity = () => resetInactivityTimer();

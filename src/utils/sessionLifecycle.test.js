@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   getInactivityLogoutMs,
+  getSafeTimeoutDelay,
   INACTIVITY_LOGOUT_MS,
+  MAX_SAFE_TIMEOUT_MS,
   REMEMBERED_INACTIVITY_LOGOUT_MS,
 } from './sessionLifecycle';
 
@@ -19,5 +21,10 @@ describe('session lifecycle duration', () => {
   it('uses the full 30-day inactivity limit for a remembered login', () => {
     localStorage.setItem('authPersistence', 'remembered');
     expect(getInactivityLogoutMs()).toBe(REMEMBERED_INACTIVITY_LOGOUT_MS);
+  });
+
+  it('chunks a 30-day wait below the browser timer limit', () => {
+    expect(getSafeTimeoutDelay(REMEMBERED_INACTIVITY_LOGOUT_MS)).toBe(MAX_SAFE_TIMEOUT_MS);
+    expect(getSafeTimeoutDelay(1_000)).toBe(1_000);
   });
 });
