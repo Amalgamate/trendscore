@@ -949,8 +949,6 @@ const StudentDashboard = ({ user, onNavigate }) => {
     overview: [
       { label: 'Assignments Due', value: fmt(pendingCount), sub: 'Open assignments', icon: ClipboardList, accent: '#030b82', onClick: () => onNavigate('student-assignments') },
       { label: 'Attendance', value: attendanceRate ? pct(attendanceRate) : '--', sub: 'View my report', icon: CheckCircle2, accent: '#ff7900', onClick: () => onNavigate('student-attendance') },
-      { label: 'My Courses', value: fmt(courses.length), sub: `${activeCourses} in progress`, icon: BookOpen, accent: '#8b5cf6', onClick: () => onNavigate('student-courses') },
-      { label: 'Average Score', value: avgScore ? pct(avgScore) : '--', sub: 'View results', icon: TrendingUp, accent: '#10b981', onClick: () => onNavigate('student-results') },
       { label: 'Unread Messages', value: fmt(messages), sub: 'Open inbox', icon: MessageSquare, accent: '#06285a', onClick: () => onNavigate('communication') },
     ],
     learning: [
@@ -1134,7 +1132,10 @@ const StudentDashboard = ({ user, onNavigate }) => {
         </div>
       )}
 
-      {activeDashboardTab === 'overview' && (
+      {/* Overview deliberately ends after the concise snapshot above. Detailed
+          courses, assignments, results, progress and pathways live in their
+          dedicated tabs, so the landing page does not repeat them. */}
+      {false && activeDashboardTab === 'overview' && (
         <>
 
       {/* ── Group 2: learning first ───────────────────────────── */}

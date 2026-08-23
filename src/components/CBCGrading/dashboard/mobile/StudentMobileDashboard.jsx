@@ -210,8 +210,9 @@ const StudentMobileDashboard = ({ user, onNavigate }) => {
 
       <div className="px-4 pt-4 space-y-5">
 
-        {/* Quick Actions */}
-        <div>
+        {/* Dedicated student tabs already provide these actions. Keep the
+            overview focused instead of repeating the navigation grid. */}
+        {false && <div>
           <p className="text-xs font-black text-gray-500 uppercase tracking-wider mb-3">Quick Actions</p>
           <div className="grid grid-cols-2 gap-2">
             {[
@@ -237,7 +238,7 @@ const StudentMobileDashboard = ({ user, onNavigate }) => {
               );
             })}
           </div>
-        </div>
+        </div>}
 
         {/* Attendance + Stat Cards */}
         <div className="grid grid-cols-2 gap-3">
@@ -246,13 +247,6 @@ const StudentMobileDashboard = ({ user, onNavigate }) => {
             <p className="text-[10px] font-bold text-gray-500 text-center">School Attendance</p>
           </div>
           <div className="grid grid-cols-1 gap-2">
-            <StatCard
-              icon={Trophy}
-              label="Average Score"
-              value={loading ? '…' : (avgScore > 0 ? `${avgScore}%` : '—')}
-              sub="across all subjects"
-              colorClass="bg-amber-50 text-amber-600"
-            />
             <StatCard
               icon={Target}
               label="Assignments Due"
@@ -264,7 +258,7 @@ const StudentMobileDashboard = ({ user, onNavigate }) => {
         </div>
 
         {/* My Courses */}
-        {(loading || courses.length > 0) && (
+        {false && (loading || courses.length > 0) && (
           <div>
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-black text-gray-900">My Courses</p>
