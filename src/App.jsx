@@ -24,7 +24,7 @@ import { getSchoolDisplayName } from './utils/schoolDisplayName';
 import {
   clearAuthAndRedirect,
   getAuthErrorCode,
-  INACTIVITY_LOGOUT_MS,
+  getInactivityLogoutMs,
   SESSION_POLL_INTERVAL_MS,
 } from './utils/sessionLifecycle';
 
@@ -240,12 +240,14 @@ function AppContent() {
 
   // Session lifecycle guard:
   // - Polls the backend so force-logout takes effect even on idle open tabs.
-  // - Logs out locally after 24 hours of inactivity.
+  // - Uses a 30-day inactivity window for remembered sessions and 24 hours
+  //   for browser-session-only logins.
   useEffect(() => {
     if (!isAuthenticated || loading) return undefined;
 
     sessionEndedRef.current = false;
     let inactivityTimer = null;
+    const inactivityLogoutMs = getInactivityLogoutMs();
 
     const endSession = (reason) => {
       if (sessionEndedRef.current) return;
@@ -257,7 +259,7 @@ function AppContent() {
     const resetInactivityTimer = () => {
       if (sessionEndedRef.current) return;
       window.clearTimeout(inactivityTimer);
-      inactivityTimer = window.setTimeout(() => endSession('inactivity'), INACTIVITY_LOGOUT_MS);
+      inactivityTimer = window.setTimeout(() => endSession('inactivity'), inactivityLogoutMs);
     };
 
     const handleActivity = () => resetInactivityTimer();

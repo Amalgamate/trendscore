@@ -1,8 +1,15 @@
 import { resetMobileOnboardingForLogout } from './mobileOnboardingStorage';
-import { clearAuthStorage } from './authStorage';
+import { clearAuthStorage, isRememberedSession } from './authStorage';
 
 export const SESSION_POLL_INTERVAL_MS = 30_000;
 export const INACTIVITY_LOGOUT_MS = 24 * 60 * 60 * 1000;
+export const REMEMBERED_INACTIVITY_LOGOUT_MS = 30 * 24 * 60 * 60 * 1000;
+
+export function getInactivityLogoutMs() {
+  return isRememberedSession()
+    ? REMEMBERED_INACTIVITY_LOGOUT_MS
+    : INACTIVITY_LOGOUT_MS;
+}
 
 export function clearAuthAndRedirect(reason = 'expired') {
   if (typeof window === 'undefined') return;

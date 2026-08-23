@@ -1,7 +1,10 @@
 import { redisCacheService } from './redis-cache.service';
 
 const GLOBAL_FORCE_LOGOUT_KEY = 'auth:global_force_logout_after';
-const REFRESH_TOKEN_MAX_AGE_SECONDS = 24 * 60 * 60;
+// The invalidation marker must outlive the longest refresh token. Otherwise a
+// remembered device that stays offline could become valid again after the
+// marker expires but before its 30-day token does.
+const REFRESH_TOKEN_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 const ACCESS_TOKEN_GRACE_SECONDS = 60 * 60;
 const GLOBAL_FORCE_LOGOUT_TTL_SECONDS = REFRESH_TOKEN_MAX_AGE_SECONDS + ACCESS_TOKEN_GRACE_SECONDS;
 

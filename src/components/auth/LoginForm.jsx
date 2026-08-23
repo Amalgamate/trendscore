@@ -1259,7 +1259,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
           {sessionExpiredReason === 'forced_logout'
             ? 'You were signed out by an administrator. Please sign in again.'
             : sessionExpiredReason === 'inactivity'
-              ? 'You were signed out after 24 hours of inactivity. Please sign in again.'
+              ? 'You were signed out after the allowed period of inactivity. Please sign in again.'
               : 'Your session has expired. Please sign in again.'}
         </div>
       )}
