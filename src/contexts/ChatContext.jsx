@@ -107,6 +107,22 @@ export const ChatProvider = ({ children }) => {
     }
   }, [openConversation]);
 
+  const createGroup = useCallback(async (name, participantIds) => {
+    try {
+      const resp = await api.chat.createGroup(name, participantIds);
+      if (!resp.success) return null;
+      const conv = { ...resp.data, unreadCount: 0 };
+      setConversations((prev) =>
+        prev.some((item) => item.id === conv.id) ? prev : [conv, ...prev]
+      );
+      socketRef.current?.emit('chat:join', conv.id);
+      return conv;
+    } catch (err) {
+      console.error('[Chat] createGroup failed:', err);
+      return null;
+    }
+  }, []);
+
   // ── Send message — bulletproof dedup ──────────────────────────────────────
   const sendMessage = useCallback(async (conversationId, body, options = {}) => {
     const tempId = `temp-${Date.now()}-${Math.random()}`;
@@ -150,13 +166,18 @@ export const ChatProvider = ({ children }) => {
         ownMessageIds.current.add(realId);
         pendingTempIds.current.delete(tempId);
 
-        // 3. Swap optimistic → real
-        setMessagesByConv((prev) => ({
-          ...prev,
-          [conversationId]: (prev[conversationId] ?? []).map((m) =>
-            m.id === tempId ? resp.data : m
-          ),
-        }));
+        // 3. Swap optimistic → real. A socket echo can beat the HTTP response,
+        // so remove any already-rendered copy of the confirmed ID first.
+        setMessagesByConv((prev) => {
+          const messages = prev[conversationId] ?? [];
+          const withoutConfirmedCopy = messages.filter((m) => m.id !== realId);
+          return {
+            ...prev,
+            [conversationId]: withoutConfirmedCopy.map((m) =>
+              m.id === tempId ? resp.data : m
+            ),
+          };
+        });
 
         setConversations((prev) =>
           prev.map((c) =>
@@ -352,12 +373,12 @@ export const ChatProvider = ({ children }) => {
 
   const value = useMemo(() => ({
     conversations, activeConversationId, messagesByConv, typingUsers,
-    isChatOpen, unreadTotal, setIsChatOpen, openConversation, startDirect,
+    isChatOpen, unreadTotal, setIsChatOpen, openConversation, startDirect, createGroup,
     sendMessage, sendTyping, toggleReaction, deleteMessage, editMessage,
     fetchInbox, loadMessages,
   }), [
     conversations, activeConversationId, messagesByConv, typingUsers,
-    isChatOpen, unreadTotal, openConversation, startDirect, sendMessage,
+    isChatOpen, unreadTotal, openConversation, startDirect, createGroup, sendMessage,
     sendTyping, toggleReaction, deleteMessage, editMessage, fetchInbox, loadMessages,
   ]);
 

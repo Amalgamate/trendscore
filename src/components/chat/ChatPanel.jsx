@@ -60,6 +60,35 @@ function generateRoomId() {
   return `${seg(4)}-${seg(4)}-${seg(4)}`;
 }
 
+const URL_PATTERN = /(https?:\/\/[^\s]+)/g;
+
+function MessageBody({ body, isOwn, onJoinVideo }) {
+  return String(body || '').split(URL_PATTERN).map((part, index) => {
+    if (!/^https?:\/\//i.test(part)) return <React.Fragment key={index}>{part}</React.Fragment>;
+    const cleanUrl = part.replace(/[),.!?]+$/, '');
+    const suffix = part.slice(cleanUrl.length);
+    const isJitsi = /^https:\/\/meet\.jit\.si\//i.test(cleanUrl);
+    return (
+      <React.Fragment key={index}>
+        <a
+          href={cleanUrl}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => {
+            if (!isJitsi || !onJoinVideo) return;
+            event.preventDefault();
+            onJoinVideo(cleanUrl);
+          }}
+          className={cn('font-semibold underline underline-offset-2', isOwn ? 'text-white' : 'text-blue-600')}
+        >
+          {cleanUrl}
+        </a>
+        {suffix}
+      </React.Fragment>
+    );
+  });
+}
+
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
 function Avatar({ user, size = 'md', online = false, className }) {
@@ -157,10 +186,27 @@ function AttachmentPreview({ files, onRemove }) {
 
 // ─── VideoRoomModal ───────────────────────────────────────────────────────────
 
-function VideoRoomModal({ onClose, onSend, conversationName }) {
+function VideoRoomModal({ onClose, onSend, onJoin, conversationName, excludedUserIds = [] }) {
   const [roomId] = useState(generateRoomId);
   const [copied, setCopied] = useState(false);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [sending, setSending] = useState(false);
   const roomUrl = `https://meet.jit.si/tread-${roomId}`;
+
+  useEffect(() => {
+    const value = query.trim();
+    if (value.length < 2) { setResults([]); return undefined; }
+    const timer = setTimeout(async () => {
+      const resp = await api.chat.searchUsers(value);
+      if (resp.success) {
+        const hiddenIds = new Set([...excludedUserIds, ...selected.map((user) => user.id)]);
+        setResults(resp.data.filter((user) => !hiddenIds.has(user.id)));
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [query, selected, excludedUserIds]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(roomUrl).then(() => {
@@ -169,9 +215,15 @@ function VideoRoomModal({ onClose, onSend, conversationName }) {
     });
   };
 
-  const handleSend = () => {
-    onSend(`📹 Video call invited you to join: ${roomUrl}`);
-    onClose();
+  const handleSend = async () => {
+    if (sending) return;
+    setSending(true);
+    const sent = await onSend(
+      `📹 Video call invited you to join: ${roomUrl}`,
+      selected.map((user) => user.id),
+    );
+    setSending(false);
+    if (sent !== false) onClose();
   };
 
   return (
@@ -203,18 +255,47 @@ function VideoRoomModal({ onClose, onSend, conversationName }) {
             </button>
           </div>
 
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+              Invite more people
+            </label>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {selected.map((user) => (
+                <button key={user.id} onClick={() => setSelected((items) => items.filter((item) => item.id !== user.id))}
+                  className="rounded-full bg-brand-purple/10 px-2 py-1 text-[10px] font-semibold text-brand-purple">
+                  {user.firstName} {user.lastName} ×
+                </button>
+              ))}
+            </div>
+            <input value={query} onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search names to create a group invite…"
+              className="mt-1.5 w-full rounded-lg border border-gray-200 px-2.5 py-2 text-xs focus:border-brand-purple focus:outline-none" />
+            {results.length > 0 && (
+              <div className="mt-1 max-h-24 overflow-y-auto rounded-lg border border-gray-100 bg-white shadow-sm">
+                {results.slice(0, 8).map((user) => (
+                  <button key={user.id} onClick={() => { setSelected((items) => [...items, user]); setQuery(''); setResults([]); }}
+                    className="flex w-full items-center justify-between px-2.5 py-2 text-left text-xs hover:bg-gray-50">
+                    <span>{user.firstName} {user.lastName}</span>
+                    <span className="text-[9px] uppercase text-gray-400">{user.role?.replace(/_/g, ' ')}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="flex gap-2 pt-1">
             <button
-              onClick={() => window.open(roomUrl, '_blank')}
+              onClick={() => { onJoin(roomUrl); onClose(); }}
               className="flex-1 flex items-center justify-center gap-1.5 py-2 border border-brand-purple/30 text-brand-purple text-xs font-semibold rounded-xl hover:bg-brand-purple/5 transition-colors"
             >
-              <ExternalLink size={12} /> Join Now
+              <Video size={12} /> Join in app
             </button>
             <button
               onClick={handleSend}
+              disabled={sending}
               className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-brand-purple text-white text-xs font-semibold rounded-xl hover:bg-brand-purple/90 transition-colors"
             >
-              <Send size={12} /> Send Invite
+              {sending ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Send Invite
             </button>
           </div>
         </div>
@@ -225,7 +306,7 @@ function VideoRoomModal({ onClose, onSend, conversationName }) {
 
 // ─── MessageBubble ────────────────────────────────────────────────────────────
 
-function MessageBubble({ message, isOwn, onReply, onDelete, onEdit, onReact, currentUserId }) {
+function MessageBubble({ message, isOwn, onReply, onDelete, onEdit, onReact, onJoinVideo, currentUserId }) {
   const [showActions, setShowActions] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -303,7 +384,7 @@ function MessageBubble({ message, isOwn, onReply, onDelete, onEdit, onReact, cur
               : 'bg-white text-gray-900 rounded-tl-sm border border-gray-100 shadow-sm',
             message._pending && 'opacity-60',
           )}>
-            {message.body}
+            <MessageBody body={message.body} isOwn={isOwn} onJoinVideo={onJoinVideo} />
             {message.editedAt && (
               <span className={cn('text-[9px] ml-1', isOwn ? 'text-white/50' : 'text-gray-400')}>·edited</span>
             )}
@@ -406,10 +487,14 @@ function MessageBubble({ message, isOwn, onReply, onDelete, onEdit, onReact, cur
 
 // ─── MessageThread ────────────────────────────────────────────────────────────
 
-function MessageThread({ conversationId, conv, currentUserId }) {
+function MessageThread({
+  conversationId, conv, currentUserId,
+  showVideoModal: showVideoModalFromHeader = false,
+  onVideoModalClose,
+}) {
   const {
     messagesByConv, sendMessage, sendTyping,
-    deleteMessage, toggleReaction, loadMessages, typingUsers,
+    deleteMessage, toggleReaction, loadMessages, typingUsers, createGroup, openConversation,
   } = useChat();
   const [input, setInput] = useState('');
   const [replyTo, setReplyTo] = useState(null);
@@ -418,6 +503,8 @@ function MessageThread({ conversationId, conv, currentUserId }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [showVideoModal, setShowVideoModal] = useState(false);
+  const [activeMeetingUrl, setActiveMeetingUrl] = useState(null);
+  const videoSendingRef = useRef(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -434,6 +521,19 @@ function MessageThread({ conversationId, conv, currentUserId }) {
     const other = conv.participants?.find((p) => p.userId !== currentUserId);
     return other?.user ? `${other.user.firstName} ${other.user.lastName}` : 'Direct Message';
   }, [conv, currentUserId]);
+  const conversationParticipantIds = useMemo(
+    () => (conv?.participants ?? []).map((participant) => participant.userId),
+    [conv?.participants],
+  );
+
+  useEffect(() => {
+    if (showVideoModalFromHeader) setShowVideoModal(true);
+  }, [showVideoModalFromHeader]);
+
+  const closeVideoModal = () => {
+    setShowVideoModal(false);
+    onVideoModalClose?.();
+  };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -493,8 +593,26 @@ function MessageThread({ conversationId, conv, currentUserId }) {
     }
   };
 
-  const handleVideoSend = (msg) => {
-    sendMessage(conversationId, msg);
+  const handleVideoSend = async (msg, extraParticipantIds = []) => {
+    if (videoSendingRef.current) return false;
+    videoSendingRef.current = true;
+    try {
+      if (extraParticipantIds.length > 0) {
+        const existingIds = (conv?.participants ?? [])
+          .map((participant) => participant.userId)
+          .filter((id) => id && id !== currentUserId);
+        const participantIds = [...new Set([...existingIds, ...extraParticipantIds])];
+        const group = await createGroup(`Video call · ${convName}`, participantIds);
+        if (!group) return false;
+        await sendMessage(group.id, msg);
+        await openConversation(group.id);
+        return true;
+      }
+      await sendMessage(conversationId, msg);
+      return true;
+    } finally {
+      videoSendingRef.current = false;
+    }
   };
 
   return (
@@ -502,9 +620,11 @@ function MessageThread({ conversationId, conv, currentUserId }) {
       {/* Video room modal */}
       {showVideoModal && (
         <VideoRoomModal
-          onClose={() => setShowVideoModal(false)}
+          onClose={closeVideoModal}
           onSend={handleVideoSend}
+          onJoin={setActiveMeetingUrl}
           conversationName={convName}
+          excludedUserIds={conversationParticipantIds}
         />
       )}
 
@@ -539,6 +659,7 @@ function MessageThread({ conversationId, conv, currentUserId }) {
             onReply={setReplyTo}
             onDelete={(id) => deleteMessage(conversationId, id)}
             onReact={(id, emoji) => toggleReaction(conversationId, id, emoji)}
+            onJoinVideo={setActiveMeetingUrl}
           />
         ))}
 
@@ -552,6 +673,30 @@ function MessageThread({ conversationId, conv, currentUserId }) {
 
         <div ref={bottomRef} />
       </div>
+
+      {activeMeetingUrl && (
+        <div className="fixed bottom-4 right-4 z-[100] flex h-[min(70vh,620px)] w-[min(92vw,860px)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+          <div className="flex items-center justify-between bg-gray-950 px-4 py-2.5 text-white">
+            <div className="flex items-center gap-2 text-xs font-bold"><Video size={14} /> Video session</div>
+            <div className="flex items-center gap-1">
+              <button onClick={() => window.open(activeMeetingUrl, '_blank', 'noopener,noreferrer')}
+                className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white" title="Open in new tab">
+                <ExternalLink size={14} />
+              </button>
+              <button onClick={() => setActiveMeetingUrl(null)}
+                className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white" title="Close video">
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+          <iframe
+            src={activeMeetingUrl}
+            title="TrendSCORE video session"
+            allow="camera; microphone; fullscreen; display-capture; autoplay"
+            className="min-h-0 flex-1 border-0"
+          />
+        </div>
+      )}
 
       {/* Reply preview */}
       {replyTo && (
