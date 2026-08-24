@@ -345,7 +345,10 @@ function TransportStudentsPanel({ navigateTo }) {
                                     {s.grade?.replace(/_/g, ' ')} {s.stream || ''}
                                 </td>
                                 <td className="p-4">
-                                    <span className="text-xs font-semibold text-indigo-600">{s.routeName || '—'}</span>
+                                    {s.routeName
+                                        ? <span className="text-xs font-semibold text-indigo-600">{s.routeName}</span>
+                                        : <span className="text-[10px] font-semibold text-amber-600 border border-amber-200 px-2 py-0.5 rounded-lg">No route assigned</span>
+                                    }
                                     {s.pickupPoint && (
                                         <p className="text-[10px] text-gray-400 mt-0.5">📍 {s.pickupPoint}</p>
                                     )}
