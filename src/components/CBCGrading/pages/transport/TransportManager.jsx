@@ -495,9 +495,11 @@ const TransportManager = () => {
     const fetchAllLearners = useCallback(async () => {
         if (allLearners.length > 0) return;
         try {
-            const res = await api.learner.getAll({ limit: 1000 });
+            const res = await api.learners.getAll({ limit: 1000 });
             setAllLearners(res.data || []);
-        } catch { /* non-fatal */ }
+        } catch (err) {
+            showError('Failed to load learner list for assignment');
+        }
     }, [allLearners.length]);
 
     useEffect(() => {
