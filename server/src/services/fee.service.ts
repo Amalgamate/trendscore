@@ -24,20 +24,30 @@ const SKIP_FEE_NOTIFICATIONS = process.env.SKIP_FEE_NOTIFICATIONS === 'true' || 
 
 const INVOICE_NUMBER_RETRY_COUNT = 3;
 
-function parseInvoiceNumber(raw: string | null): number {
+function parseStandardInvoiceSequence(raw: string | null, academicYear: number): number {
   if (!raw) return 0;
-  const match = raw.match(/(\d+)$/);
+  const match = raw.match(new RegExp(`^INV-${academicYear}-(\\d{6})$`));
   return match ? parseInt(match[1], 10) : 0;
 }
 
-async function getNextInvoiceNumber(client: any, academicYear: number): Promise<string> {
-  const result = await client.feeInvoice.aggregate({
-    _max: { invoiceNumber: true },
-    where: { academicYear }
+async function getMaxStandardInvoiceSequence(client: any, academicYear: number): Promise<number> {
+  const invoiceNumbers = await client.feeInvoice.findMany({
+    where: {
+      academicYear,
+      invoiceNumber: { startsWith: `INV-${academicYear}-` }
+    },
+    select: { invoiceNumber: true }
   });
 
-  const currentMax = result._max.invoiceNumber as string | null;
-  const nextSequence = parseInvoiceNumber(currentMax) + 1;
+  return invoiceNumbers.reduce(
+    (max: number, invoice: { invoiceNumber: string | null }) =>
+      Math.max(max, parseStandardInvoiceSequence(invoice.invoiceNumber, academicYear)),
+    0
+  );
+}
+
+async function getNextInvoiceNumber(client: any, academicYear: number): Promise<string> {
+  const nextSequence = await getMaxStandardInvoiceSequence(client, academicYear) + 1;
   return `INV-${academicYear}-${String(nextSequence).padStart(6, '0')}`;
 }
 

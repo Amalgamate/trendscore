@@ -92,10 +92,26 @@ function applyInvoiceInstitutionScope(req: AuthRequest, whereClause: any = {}) {
 }
 
 
-function parseInvoiceNumber(raw: string | null): number {
+function parseStandardInvoiceSequence(raw: string | null, academicYear: number): number {
   if (!raw) return 0;
-  const match = raw.match(/(\d+)$/);
+  const match = raw.match(new RegExp(`^INV-${academicYear}-(\\d{6})$`));
   return match ? parseInt(match[1], 10) : 0;
+}
+
+async function getMaxStandardInvoiceSequence(client: any, academicYear: number): Promise<number> {
+  const invoiceNumbers = await client.feeInvoice.findMany({
+    where: {
+      academicYear,
+      invoiceNumber: { startsWith: `INV-${academicYear}-` }
+    },
+    select: { invoiceNumber: true }
+  });
+
+  return invoiceNumbers.reduce(
+    (max: number, invoice: { invoiceNumber: string | null }) =>
+      Math.max(max, parseStandardInvoiceSequence(invoice.invoiceNumber, academicYear)),
+    0
+  );
 }
 
 async function mapWithConcurrency<T, R>(
@@ -122,12 +138,7 @@ async function mapWithConcurrency<T, R>(
 }
 
 async function getNextInvoiceNumber(client: any, academicYear: number): Promise<string> {
-  const result = await client.feeInvoice.aggregate({
-    _max: { invoiceNumber: true },
-    where: { academicYear }
-  });
-  const currentMax = result._max.invoiceNumber as string | null;
-  const nextSequence = parseInvoiceNumber(currentMax) + 1;
+  const nextSequence = await getMaxStandardInvoiceSequence(client, academicYear) + 1;
   return `INV-${academicYear}-${String(nextSequence).padStart(6, '0')}`;
 }
 
@@ -1515,11 +1526,7 @@ export class FeeController {
       try {
         results = await prisma.$transaction(async (tx: any) => {
           const invoices: any[] = [];
-          const maxResult = await tx.feeInvoice.aggregate({
-            _max: { invoiceNumber: true },
-            where: { academicYear: normalizedYear }
-          });
-          let nextSequence = parseInvoiceNumber(maxResult._max.invoiceNumber as string | null) + 1;
+          let nextSequence = await getMaxStandardInvoiceSequence(tx, normalizedYear) + 1;
 
           for (let idx = 0; idx < validDrafts.length; idx++) {
             const draft = validDrafts[idx];
