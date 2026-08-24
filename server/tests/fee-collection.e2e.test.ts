@@ -243,6 +243,35 @@ describe('Fee collection end-to-end', () => {
     expect(['PENDING', 'PARTIAL', 'PAID']).toContain(paymentResponse.body.data.invoice.status);
   });
 
+  it('marks an invoice as paid using the selected payment date', async () => {
+    if (!invoiceId) throw new Error('Expected invoice from previous setup');
+
+    const paymentDate = '2026-07-31';
+    const response = await request(app)
+      .post(`/api/fees/invoices/${invoiceId}/mark-paid`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        paymentDate,
+        paymentMethod: 'OTHER',
+        referenceNumber: 'RECON-TERM2',
+        notes: 'Manual paid reconciliation test'
+      })
+      .expect(201);
+
+    expect(response.body).toHaveProperty('success', true);
+    expect(response.body.data.invoice.status).toBe('PAID');
+
+    const invoice = await prisma.feeInvoice.findUnique({
+      where: { id: invoiceId },
+      include: { payments: { orderBy: { paymentDate: 'desc' } } }
+    });
+    expect(invoice?.status).toBe('PAID');
+    expect(Number(invoice?.balance || 0)).toBeLessThanOrEqual(0);
+    expect(invoice?.payments.some((payment) => payment.referenceNumber === 'RECON-TERM2')).toBe(true);
+    const reconciledPayment = invoice?.payments.find((payment) => payment.referenceNumber === 'RECON-TERM2');
+    expect(reconciledPayment?.paymentDate.toISOString().startsWith(paymentDate)).toBe(true);
+  });
+
   it('creates and updates a fee structure while preserving normalized grade/term values', async () => {
     const feeType = await prisma.feeType.findUnique({ where: { code: 'TUITION' } });
     if (!feeType) throw new Error('Missing TUITION fee type');
@@ -357,5 +386,20 @@ describe('Fee collection end-to-end', () => {
     expect(response.body.data[0]).toHaveProperty('feeStructureId', feeStructure.id);
 
     bulkInvoiceIds = response.body.data.map((invoice: any) => invoice.id);
+
+    const markPaidResponse = await request(app)
+      .post('/api/fees/invoices/mark-paid/bulk')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        invoiceIds: bulkInvoiceIds.slice(0, 2),
+        paymentDate: `${bulkAcademicYear}-08-24`,
+        paymentMethod: 'OTHER',
+        referenceNumber: 'BULK-RECON'
+      })
+      .expect(201);
+
+    expect(markPaidResponse.body).toHaveProperty('success', true);
+    expect(markPaidResponse.body.count).toBeGreaterThan(0);
+    expect(markPaidResponse.body.data.paid.length).toBe(markPaidResponse.body.count);
   });
 });

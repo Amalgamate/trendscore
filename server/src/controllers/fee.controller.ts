@@ -861,6 +861,230 @@ export class FeeController {
   }
 
   /**
+   * Manual mark-paid action.
+   * Creates a real FeePayment for the outstanding student balance and posts it
+   * to accounting using the selected payment date/method.
+   */
+  private parseReceiptSequence(receiptNumber?: string | null): number {
+    if (!receiptNumber) return 0;
+    const match = String(receiptNumber).match(/(\d+)$/);
+    return match ? parseInt(match[1], 10) : 0;
+  }
+
+  private buildReceiptNumber(sequence: number): string {
+    return `RCP-${new Date().getFullYear()}-${String(sequence).padStart(6, '0')}`;
+  }
+
+  private parseMarkPaidDate(paymentDate: string): Date {
+    const parsed = new Date(paymentDate);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new ApiError(400, 'Invalid paymentDate');
+    }
+    return parsed;
+  }
+
+  private getMarkPaidAmounts(invoice: any) {
+    const tuitionBalance = Math.max(0, Number(invoice?.balance || 0));
+    const transportBalance = Math.max(0, Number(invoice?.transportBalance || 0));
+    const sponsorBalance = Math.max(0, Number(invoice?.sponsorBalance || 0));
+    const amount = Number((tuitionBalance + transportBalance).toFixed(2));
+    return { tuitionBalance, transportBalance, sponsorBalance, amount };
+  }
+
+  private getMarkPaidSkipReason(invoice: any): string | null {
+    if (!invoice) return 'Invoice not found';
+    if (invoice.archived) return 'Invoice is archived';
+    if (invoice.status === 'PAID') return 'Invoice is already fully paid';
+    if (invoice.status === 'OVERPAID') return 'Invoice is overpaid';
+    if (invoice.status === 'WAIVED') return 'Invoice is fully waived';
+    if (invoice.status === 'CANCELLED') return 'Invoice is cancelled';
+
+    const { sponsorBalance, amount } = this.getMarkPaidAmounts(invoice);
+    if (sponsorBalance > 0.01) return 'Invoice has an outstanding sponsor balance';
+    if (amount <= 0.01) return 'Invoice has no outstanding student balance';
+    return null;
+  }
+
+  private async postMarkedPaidPayments(payments: any[], paymentMethod: string) {
+    if (!payments.length) return;
+    (async () => {
+      const settled = await Promise.allSettled(
+        payments.map((payment) => accountingService.postFeePaymentToLedger(payment, paymentMethod))
+      );
+      settled.forEach((item, index) => {
+        if (item.status === 'rejected') {
+          logger.error(`Post-mark-paid ledger error for payment ${payments[index]?.id}:`, item.reason);
+        }
+      });
+    })();
+  }
+
+  async markInvoicePaid(req: AuthRequest, res: Response) {
+    const { id } = req.params;
+    const { paymentDate, paymentMethod = 'OTHER', referenceNumber, notes } = req.body;
+    const userId = req.user!.userId;
+    const paidAt = this.parseMarkPaidDate(paymentDate);
+    const finalNotes = notes || 'Marked as paid manually from fee invoice list';
+
+    let result: any;
+    let lastPaymentError: any;
+
+    for (let attempt = 1; attempt <= RECEIPT_NUMBER_RETRY_COUNT; attempt++) {
+      try {
+        result = await prisma.$transaction(async (tx) => {
+          const invoice = await tx.feeInvoice.findUnique({
+            where: { id },
+            include: { learner: true, payments: true }
+          });
+          const skipReason = this.getMarkPaidSkipReason(invoice);
+          if (skipReason) throw new ApiError(invoice ? 400 : 404, skipReason);
+
+          const { tuitionBalance, transportBalance, amount } = this.getMarkPaidAmounts(invoice);
+          const maxResult = await tx.feePayment.aggregate({ _max: { receiptNumber: true } });
+          const receiptNumber = this.buildReceiptNumber(this.parseReceiptSequence(maxResult._max.receiptNumber as string | null) + 1);
+
+          const payment = await tx.feePayment.create({
+            data: {
+              receiptNumber,
+              invoiceId: id,
+              amount,
+              transportAmount: transportBalance,
+              paymentDate: paidAt,
+              paymentMethod,
+              referenceNumber: referenceNumber || null,
+              notes: finalNotes,
+              payerType: 'STUDENT',
+              recordedBy: userId
+            }
+          });
+
+          const updatedInvoice = await tx.feeInvoice.update({
+            where: { id },
+            data: {
+              paidAmount: { increment: tuitionBalance },
+              balance: { decrement: tuitionBalance },
+              transportPaid: { increment: transportBalance },
+              transportBalance: { decrement: transportBalance },
+              status: 'PAID' as PaymentStatus
+            },
+            include: {
+              learner: true,
+              payments: { orderBy: { paymentDate: 'desc' } },
+              feeStructure: { include: { feeItems: { include: { feeType: true } } } } as any
+            }
+          });
+
+          return { payment, invoice: updatedInvoice };
+        });
+        break;
+      } catch (error: any) {
+        lastPaymentError = error;
+        if (error?.code === 'P2002' && attempt < RECEIPT_NUMBER_RETRY_COUNT) continue;
+        throw error;
+      }
+    }
+
+    if (!result) throw lastPaymentError;
+    await this.postMarkedPaidPayments([result.payment], paymentMethod);
+
+    res.status(201).json({
+      success: true,
+      data: result,
+      message: `Invoice ${result.invoice.invoiceNumber} marked as paid`
+    });
+  }
+
+  async bulkMarkInvoicesPaid(req: AuthRequest, res: Response) {
+    const { invoiceIds, paymentDate, paymentMethod = 'OTHER', referenceNumber, notes } = req.body;
+    const userId = req.user!.userId;
+    const paidAt = this.parseMarkPaidDate(paymentDate);
+    const uniqueInvoiceIds = Array.from(new Set((invoiceIds || []).map((id: string) => String(id)))) as string[];
+    const finalNotes = notes || 'Marked as paid manually from bulk fee invoice action';
+
+    let result: any;
+    let lastPaymentError: any;
+
+    for (let attempt = 1; attempt <= RECEIPT_NUMBER_RETRY_COUNT; attempt++) {
+      try {
+        result = await prisma.$transaction(async (tx) => {
+          const invoices = await tx.feeInvoice.findMany({
+            where: { id: { in: uniqueInvoiceIds } },
+            include: { learner: true }
+          });
+          const invoiceById = new Map(invoices.map((invoice) => [invoice.id, invoice]));
+          const maxResult = await tx.feePayment.aggregate({ _max: { receiptNumber: true } });
+          let receiptSequence = this.parseReceiptSequence(maxResult._max.receiptNumber as string | null);
+          const paid: any[] = [];
+          const skipped: Array<{ invoiceId: string; invoiceNumber?: string; learnerName?: string; reason: string }> = [];
+
+          for (const invoiceId of uniqueInvoiceIds) {
+            const invoice = invoiceById.get(invoiceId);
+            const skipReason = this.getMarkPaidSkipReason(invoice);
+            if (skipReason) {
+              skipped.push({
+                invoiceId,
+                invoiceNumber: invoice?.invoiceNumber,
+                learnerName: invoice?.learner ? `${invoice.learner.firstName} ${invoice.learner.lastName}` : undefined,
+                reason: skipReason
+              });
+              continue;
+            }
+
+            const { tuitionBalance, transportBalance, amount } = this.getMarkPaidAmounts(invoice);
+            receiptSequence += 1;
+            const payment = await tx.feePayment.create({
+              data: {
+                receiptNumber: this.buildReceiptNumber(receiptSequence),
+                invoiceId,
+                amount,
+                transportAmount: transportBalance,
+                paymentDate: paidAt,
+                paymentMethod,
+                referenceNumber: referenceNumber || null,
+                notes: finalNotes,
+                payerType: 'STUDENT',
+                recordedBy: userId
+              }
+            });
+
+            const updatedInvoice = await tx.feeInvoice.update({
+              where: { id: invoiceId },
+              data: {
+                paidAmount: { increment: tuitionBalance },
+                balance: { decrement: tuitionBalance },
+                transportPaid: { increment: transportBalance },
+                transportBalance: { decrement: transportBalance },
+                status: 'PAID' as PaymentStatus
+              },
+              include: { learner: true }
+            });
+
+            paid.push({ payment, invoice: updatedInvoice });
+          }
+
+          return { paid, skipped };
+        });
+        break;
+      } catch (error: any) {
+        lastPaymentError = error;
+        if (error?.code === 'P2002' && attempt < RECEIPT_NUMBER_RETRY_COUNT) continue;
+        throw error;
+      }
+    }
+
+    if (!result) throw lastPaymentError;
+    await this.postMarkedPaidPayments(result.paid.map((item: any) => item.payment), paymentMethod);
+
+    res.status(201).json({
+      success: true,
+      data: result,
+      count: result.paid.length,
+      skippedCount: result.skipped.length,
+      message: `${result.paid.length} invoice${result.paid.length === 1 ? '' : 's'} marked as paid${result.skipped.length ? `, ${result.skipped.length} skipped` : ''}`
+    });
+  }
+
+  /**
    * Record payment.
    * Status transitions: PENDING/PARTIAL → PARTIAL | PAID | OVERPAID
    * All SmsService calls use the static sendSms() method.

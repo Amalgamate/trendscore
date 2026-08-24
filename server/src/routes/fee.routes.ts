@@ -86,6 +86,17 @@ const processPaymentSchema = z.object({
   }
 });
 
+const markInvoicePaidSchema = z.object({
+  paymentDate: z.string().min(1, 'paymentDate is required'),
+  paymentMethod: z.enum(['CASH', 'BANK_TRANSFER', 'CHEQUE', 'MPESA', 'CARD', 'OTHER']).default('OTHER'),
+  referenceNumber: z.string().max(100).nullable().optional(),
+  notes: z.string().max(500).nullable().optional()
+});
+
+const bulkMarkInvoicesPaidSchema = markInvoicePaidSchema.extend({
+  invoiceIds: z.array(z.string().min(1)).min(1, 'Select at least one invoice').max(500, 'Bulk mark paid is limited to 500 invoices at a time')
+});
+
 // FIX (Task 3 — P2): Validation for PATCH /invoices/:id
 // At least one of dueDate or totalAmount must be supplied.
 const updateInvoiceSchema = z.object({
@@ -305,6 +316,24 @@ router.post(
   validate(bulkGenerateInvoicesSchema),
   auditLog('BULK_CREATE_INVOICES'),
   asyncHandler(feeController.bulkGenerateInvoices.bind(feeController))
+);
+
+router.post(
+  '/invoices/mark-paid/bulk',
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  rateLimit({ windowMs: 60_000, maxRequests: 10 }),
+  validate(bulkMarkInvoicesPaidSchema),
+  auditLog('BULK_MARK_INVOICES_PAID'),
+  asyncHandler(feeController.bulkMarkInvoicesPaid.bind(feeController))
+);
+
+router.post(
+  '/invoices/:id/mark-paid',
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  rateLimit({ windowMs: 60_000, maxRequests: 30 }),
+  validate(markInvoicePaidSchema),
+  auditLog('MARK_INVOICE_PAID'),
+  asyncHandler(feeController.markInvoicePaid.bind(feeController))
 );
 
 /**

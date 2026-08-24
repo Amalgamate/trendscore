@@ -39,6 +39,14 @@ import { useMobile } from '../../../hooks/useMobileDetection';
 import { DataCard } from '../shared';
 
 const TERM_ORDER = { TERM_1: 1, TERM_2: 2, TERM_3: 3 };
+const PAYMENT_METHOD_OPTIONS = [
+  { value: 'OTHER', label: 'Other / Manual Reconciliation' },
+  { value: 'CASH', label: 'Cash' },
+  { value: 'MPESA', label: 'M-Pesa' },
+  { value: 'BANK_TRANSFER', label: 'Bank Transfer' },
+  { value: 'CHEQUE', label: 'Cheque' },
+  { value: 'CARD', label: 'Card' }
+];
 
 const getFeeCycleRank = (invoice) => {
   const year = Number(invoice?.academicYear || 0);
@@ -68,6 +76,15 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
   const [downloadingId, setDownloadingId] = useState(null);
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState([]);
   const [selectAllMatching, setSelectAllMatching] = useState(false);
+  const [showMarkPaidModal, setShowMarkPaidModal] = useState(false);
+  const [markPaidMode, setMarkPaidMode] = useState('single');
+  const [markPaidInvoice, setMarkPaidInvoice] = useState(null);
+  const [markPaidForm, setMarkPaidForm] = useState({
+    paymentDate: toInputDate(new Date()),
+    paymentMethod: 'OTHER',
+    referenceNumber: '',
+    notes: 'Marked as paid manually from fee balance reconciliation'
+  });
   const [totalInvoicesCount, setTotalInvoicesCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [statsLoading, setStatsLoading] = useState(true);
@@ -1088,6 +1105,88 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
   };
 
   const selectedCount = selectAllMatching ? totalInvoicesCount : selectedInvoiceIds.length;
+
+  const canMarkInvoicePaid = React.useCallback((invoice) => (
+    ['PENDING', 'PARTIAL'].includes(invoice?.status) && Number(getInvoiceCurrentDue(invoice) || 0) > 0
+  ), [getInvoiceCurrentDue]);
+
+  const selectedMarkPaidTotal = React.useMemo(() => (
+    invoices
+      .filter((invoice) => selectedInvoiceIds.includes(invoice.id) && canMarkInvoicePaid(invoice))
+      .reduce((sum, invoice) => sum + Number(getInvoiceCurrentDue(invoice) || 0), 0)
+  ), [invoices, selectedInvoiceIds, canMarkInvoicePaid, getInvoiceCurrentDue]);
+
+  const markPaidPreviewAmount = markPaidMode === 'single'
+    ? Number(getInvoiceCurrentDue(markPaidInvoice) || 0)
+    : selectedMarkPaidTotal;
+
+  const openMarkPaidModal = (invoice = null) => {
+    if (invoice && !canMarkInvoicePaid(invoice)) {
+      showError('Only pending or partial invoices with a balance can be marked as paid');
+      return;
+    }
+    if (!invoice && selectAllMatching) {
+      showError('For mark paid, select the exact rows to update. Select-all-matching is disabled for safety.');
+      return;
+    }
+    if (!invoice && selectedInvoiceIds.length === 0) return;
+
+    setMarkPaidMode(invoice ? 'single' : 'bulk');
+    setMarkPaidInvoice(invoice);
+    setMarkPaidForm((prev) => ({
+      ...prev,
+      paymentDate: prev.paymentDate || toInputDate(new Date())
+    }));
+    setShowMarkPaidModal(true);
+  };
+
+  const closeMarkPaidModal = () => {
+    setShowMarkPaidModal(false);
+    setMarkPaidInvoice(null);
+    setMarkPaidMode('single');
+  };
+
+  const handleMarkPaidSubmit = async () => {
+    if (!markPaidForm.paymentDate) {
+      showError('Please choose the date paid');
+      return;
+    }
+
+    const payload = {
+      paymentDate: markPaidForm.paymentDate,
+      paymentMethod: markPaidForm.paymentMethod,
+      referenceNumber: markPaidForm.referenceNumber?.trim() || null,
+      notes: markPaidForm.notes?.trim() || null
+    };
+
+    try {
+      setLoading(true);
+      if (markPaidMode === 'single') {
+        await api.fees.markInvoicePaid(markPaidInvoice.id, payload);
+        showSuccess('Invoice marked as paid');
+      } else {
+        if (selectAllMatching) {
+          showError('For mark paid, select the exact rows to update. Select-all-matching is disabled for safety.');
+          return;
+        }
+        const result = await api.fees.bulkMarkInvoicesPaid({
+          invoiceIds: selectedInvoiceIds,
+          ...payload
+        });
+        showSuccess(result?.message || `${selectedInvoiceIds.length} invoices marked as paid`);
+        setSelectedInvoiceIds([]);
+        setSelectAllMatching(false);
+      }
+      closeMarkPaidModal();
+      fetchInvoices();
+      fetchStatsInvoices();
+      fetchGrandTotals();
+    } catch (error) {
+      showError(error.message || 'Failed to mark invoice as paid');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     setSelectedInvoiceIds([]);
@@ -2346,6 +2445,16 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                                   </button>
                                 )}
 
+                                {canMarkInvoicePaid(invoice) && (
+                                  <button
+                                    onClick={() => openMarkPaidModal(invoice)}
+                                    className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded"
+                                    title="Mark as Paid"
+                                  >
+                                    <CheckCircle size={14} />
+                                  </button>
+                                )}
+
 
                                 {/* Record Pledge Button */}
                                 {invoice.status !== 'PAID' && (
@@ -2493,6 +2602,15 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
               <span className="font-semibold">{selectedCount} Invoices selected</span>
               <div className="h-6 w-px bg-gray-700" />
               <div className="flex items-center gap-3">
+                <button
+                  onClick={() => openMarkPaidModal()}
+                  disabled={loading || selectAllMatching}
+                  className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium transition-all ${selectAllMatching ? 'bg-gray-700 cursor-not-allowed opacity-60' : 'bg-emerald-600 hover:bg-emerald-500'}`}
+                  title={selectAllMatching ? 'Select exact rows before marking paid' : 'Mark selected invoices as paid'}
+                >
+                  <CheckCircle size={16} /> Mark Paid
+                </button>
+                <div className="h-6 w-px bg-gray-700" />
                 <span className="text-xs text-amber-300 uppercase tracking-wider font-semibold drop-shadow-[0_0_6px_rgba(251,191,36,0.65)]">Send Reminders:</span>
                 <button
                   onClick={() => handleBulkReminders('SMS')}
@@ -2881,6 +2999,120 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
 
 
 
+
+          {/* Mark Paid Modal */}
+          {showMarkPaidModal && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[210] p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+                <div className="bg-emerald-700 px-6 py-4 flex justify-between items-center text-white">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle size={22} />
+                    <div>
+                      <h3 className="text-lg font-semibold tracking-tight">
+                        {markPaidMode === 'single' ? 'Mark Invoice as Paid' : 'Mark Selected Invoices as Paid'}
+                      </h3>
+                      <p className="text-emerald-100 text-xs font-medium">
+                        Creates payment records and updates money collected
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={closeMarkPaidModal}
+                    className="hover:bg-white/20 p-1.5 rounded-lg transition-colors"
+                    aria-label="Close mark paid modal"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-5">
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                    <div className="flex items-start gap-3">
+                      <Info size={18} className="mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="font-semibold">
+                          {markPaidMode === 'single'
+                            ? `${markPaidInvoice?.learner?.firstName || ''} ${markPaidInvoice?.learner?.lastName || ''}`.trim()
+                            : `${selectedInvoiceIds.length} highlighted invoice${selectedInvoiceIds.length === 1 ? '' : 's'}`}
+                        </p>
+                        <p className="text-xs mt-1">
+                          Approx. balance to clear: KES {Number(markPaidPreviewAmount || 0).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">Date Paid *</label>
+                      <input
+                        type="date"
+                        value={markPaidForm.paymentDate}
+                        onChange={(e) => setMarkPaidForm((prev) => ({ ...prev, paymentDate: e.target.value }))}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                      />
+                      <p className="text-[11px] text-gray-500">Choose this yourself; backdating is allowed.</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">Payment Method *</label>
+                      <select
+                        value={markPaidForm.paymentMethod}
+                        onChange={(e) => setMarkPaidForm((prev) => ({ ...prev, paymentMethod: e.target.value }))}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                      >
+                        {PAYMENT_METHOD_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">Reference Number</label>
+                    <input
+                      type="text"
+                      value={markPaidForm.referenceNumber}
+                      onChange={(e) => setMarkPaidForm((prev) => ({ ...prev, referenceNumber: e.target.value }))}
+                      placeholder="Optional bank slip, M-Pesa code, or reconciliation ref"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">Notes</label>
+                    <textarea
+                      value={markPaidForm.notes}
+                      onChange={(e) => setMarkPaidForm((prev) => ({ ...prev, notes: e.target.value }))}
+                      rows={3}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm resize-none"
+                    />
+                  </div>
+
+                  <div className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+                    This does not send parent reminders. It records payment(s), sets eligible invoices to paid, and posts to accounting using the selected date.
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={handleMarkPaidSubmit}
+                      disabled={loading}
+                      className="flex-1 bg-emerald-700 text-white px-6 py-3 rounded-xl hover:bg-emerald-800 hover:shadow-lg font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {loading && <Loader2 size={18} className="animate-spin" />}
+                      <span>{loading ? 'Processing...' : 'Mark Paid'}</span>
+                    </button>
+                    <button
+                      onClick={closeMarkPaidModal}
+                      className="px-6 py-3 border-2 border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 font-medium transition-all"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Reset Confirmation Modal */}
           {showResetModal && (
