@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     Bus, MapPin, Users, Plus, Trash2, UserPlus,
-    Loader2, Pencil, X, AlertTriangle, CreditCard
+    Loader2, Pencil, X, AlertTriangle, CreditCard,
+    Phone, Search, RefreshCw
 } from 'lucide-react';
 import api from '../../../../services/api';
 import { useNotifications } from '../../hooks/useNotifications';
@@ -12,6 +13,8 @@ import usePageNavigation from '../../../../hooks/usePageNavigation';
 
 const EMPTY_VEHICLE = { registrationNumber: '', capacity: '', driverName: '', driverPhone: '' };
 const EMPTY_ROUTE   = { name: '', description: '', amount: '', vehicleId: '' };
+
+const fmt = (n) => `KES ${Number(n ?? 0).toLocaleString('en-KE', { minimumFractionDigits: 0 })}`;
 
 function CapacityBadge({ assigned, capacity }) {
     if (!capacity) return null;
@@ -42,41 +45,52 @@ function Modal({ title, onClose, children, wide = false }) {
     );
 }
 
-function FormField({ label, children }) {
+function FormField({ label, required, hint, children }) {
     return (
         <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-widest mb-1.5">{label}</label>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-widest mb-1.5">
+                {label} {required && <span className="text-red-500 normal-case">*</span>}
+            </label>
             {children}
+            {hint && <p className="text-[11px] text-gray-400 mt-1">{hint}</p>}
         </div>
     );
 }
 
 const inputCls = 'w-full border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition';
+const inputErrCls = 'w-full border border-red-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-400 transition bg-red-50';
 
 // ─── vehicle form ─────────────────────────────────────────────────────────────
 
-function VehicleForm({ data, onChange }) {
+function VehicleForm({ data, onChange, errors = {} }) {
     return (
         <div className="space-y-4">
-            <FormField label="Registration Number">
-                <input className={inputCls} value={data.registrationNumber}
+            <FormField label="Registration Number" required>
+                <input className={errors.registrationNumber ? inputErrCls : inputCls}
+                    value={data.registrationNumber}
                     onChange={e => onChange({ ...data, registrationNumber: e.target.value })}
-                    placeholder="e.g. KAB 123C" required />
+                    placeholder="e.g. KAB 123C" />
+                {errors.registrationNumber && <p className="text-xs text-red-500 font-medium mt-1">{errors.registrationNumber}</p>}
             </FormField>
-            <FormField label="Capacity (seats)">
-                <input className={inputCls} type="number" min="1" value={data.capacity}
-                    onChange={e => onChange({ ...data, capacity: e.target.value })}
-                    required />
+            <FormField label="Capacity (seats)" required>
+                <input className={errors.capacity ? inputErrCls : inputCls}
+                    type="number" min="1" value={data.capacity}
+                    onChange={e => onChange({ ...data, capacity: e.target.value })} />
+                {errors.capacity && <p className="text-xs text-red-500 font-medium mt-1">{errors.capacity}</p>}
             </FormField>
-            <FormField label="Driver Name">
-                <input className={inputCls} value={data.driverName}
+            <FormField label="Driver Name" required>
+                <input className={errors.driverName ? inputErrCls : inputCls}
+                    value={data.driverName}
                     onChange={e => onChange({ ...data, driverName: e.target.value })}
-                    required />
+                    placeholder="Full name of assigned driver" />
+                {errors.driverName && <p className="text-xs text-red-500 font-medium mt-1">{errors.driverName}</p>}
             </FormField>
-            <FormField label="Driver Phone">
-                <input className={inputCls} value={data.driverPhone}
+            <FormField label="Driver Phone" required hint="Required — used for parent communications and emergency contact.">
+                <input className={errors.driverPhone ? inputErrCls : inputCls}
+                    value={data.driverPhone}
                     onChange={e => onChange({ ...data, driverPhone: e.target.value })}
-                    placeholder="Optional" />
+                    placeholder="e.g. 0712 345 678" />
+                {errors.driverPhone && <p className="text-xs text-red-500 font-medium mt-1">{errors.driverPhone}</p>}
             </FormField>
         </div>
     );
@@ -84,34 +98,44 @@ function VehicleForm({ data, onChange }) {
 
 // ─── route form ───────────────────────────────────────────────────────────────
 
-function RouteForm({ data, onChange, vehicles }) {
+function RouteForm({ data, onChange, vehicles, errors = {} }) {
     return (
         <div className="space-y-4">
-            <FormField label="Route Name">
-                <input className={inputCls} value={data.name}
+            <FormField label="Route Name" required>
+                <input className={errors.name ? inputErrCls : inputCls}
+                    value={data.name}
                     onChange={e => onChange({ ...data, name: e.target.value })}
-                    placeholder="e.g. Westlands – Kileleshwa" required />
+                    placeholder="e.g. Westlands – Kileleshwa" />
+                {errors.name && <p className="text-xs text-red-500 font-medium mt-1">{errors.name}</p>}
             </FormField>
-            <FormField label="Fee Amount (KES)">
-                <input className={inputCls} type="number" step="0.01" min="0" value={data.amount}
-                    onChange={e => onChange({ ...data, amount: e.target.value })}
-                    required />
+            <FormField label="Transport Fee per Term (KES)" required hint="This amount is automatically added to every student's invoice when assigned to this route.">
+                <input className={errors.amount ? inputErrCls : inputCls}
+                    type="number" step="0.01" min="0" value={data.amount}
+                    onChange={e => onChange({ ...data, amount: e.target.value })} />
+                {errors.amount && <p className="text-xs text-red-500 font-medium mt-1">{errors.amount}</p>}
             </FormField>
-            <FormField label="Assigned Vehicle">
-                <select className={inputCls} value={data.vehicleId}
-                    onChange={e => onChange({ ...data, vehicleId: e.target.value })}>
-                    <option value="">— No vehicle —</option>
-                    {vehicles.map(v => (
-                        <option key={v.id} value={v.id}>
-                            {v.registrationNumber} · {v.driverName} ({v.capacity} seats)
-                        </option>
-                    ))}
-                </select>
+            <FormField label="Assigned Vehicle" hint={vehicles.length === 0 ? 'No vehicles configured yet — add a vehicle first to assign capacity.' : undefined}>
+                {vehicles.length === 0 ? (
+                    <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700 font-medium">
+                        <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                        No vehicles have been registered yet. Add a vehicle from the Fleet Vehicles tab, then come back to assign it to this route.
+                    </div>
+                ) : (
+                    <select className={inputCls} value={data.vehicleId}
+                        onChange={e => onChange({ ...data, vehicleId: e.target.value })}>
+                        <option value="">— No vehicle assigned —</option>
+                        {vehicles.map(v => (
+                            <option key={v.id} value={v.id}>
+                                {v.registrationNumber} · {v.driverName} ({v.capacity} seats)
+                            </option>
+                        ))}
+                    </select>
+                )}
             </FormField>
             <FormField label="Stops / Description">
                 <textarea className={inputCls} rows={3} value={data.description}
                     onChange={e => onChange({ ...data, description: e.target.value })}
-                    placeholder="List major pick-up stops…" />
+                    placeholder="List major pick-up stops, e.g. Westlands roundabout → Sarit Centre → Kileleshwa…" />
             </FormField>
         </div>
     );
@@ -145,6 +169,261 @@ function SummaryBar({ summary }) {
     );
 }
 
+// ─── empty-state helpers ──────────────────────────────────────────────────────
+
+function EmptyVehicles({ onAdd }) {
+    return (
+        <tr>
+            <td colSpan={5} className="p-0">
+                <div className="flex flex-col items-center justify-center py-16 px-8 text-center space-y-4">
+                    <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center">
+                        <Bus size={32} className="text-blue-400" />
+                    </div>
+                    <div>
+                        <p className="text-base font-semibold text-gray-700">No vehicles registered yet</p>
+                        <p className="text-sm text-gray-400 mt-1 max-w-sm">
+                            Add your school buses here first. Each vehicle needs a registration number,
+                            driver name, driver phone number, and seating capacity before it can be
+                            assigned to a route.
+                        </p>
+                    </div>
+                    <button onClick={onAdd}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition shadow-lg shadow-blue-600/20">
+                        <Plus size={16} /> Add First Vehicle
+                    </button>
+                </div>
+            </td>
+        </tr>
+    );
+}
+
+function EmptyRoutes({ onAdd, hasVehicles }) {
+    return (
+        <tr>
+            <td colSpan={5} className="p-0">
+                <div className="flex flex-col items-center justify-center py-16 px-8 text-center space-y-4">
+                    <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center">
+                        <MapPin size={32} className="text-indigo-400" />
+                    </div>
+                    <div>
+                        <p className="text-base font-semibold text-gray-700">No bus routes configured yet</p>
+                        <p className="text-sm text-gray-400 mt-1 max-w-sm">
+                            {hasVehicles
+                                ? 'Create a route for each bus path. Set the route name, pickup stops, and the transport fee per term. Students admitted as transport students will automatically be charged when assigned to a route.'
+                                : 'You need at least one vehicle before creating routes. Go to Fleet Vehicles and register your buses first.'}
+                        </p>
+                    </div>
+                    {hasVehicles ? (
+                        <button onClick={onAdd}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition shadow-lg shadow-indigo-600/20">
+                            <Plus size={16} /> Create First Route
+                        </button>
+                    ) : (
+                        <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700 font-medium max-w-sm">
+                            <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                            Register a vehicle first — routes must be linked to a vehicle to enforce capacity limits.
+                        </div>
+                    )}
+                </div>
+            </td>
+        </tr>
+    );
+}
+
+// ─── transport students inline panel ─────────────────────────────────────────
+
+function TransportStudentsPanel({ navigateTo }) {
+    const [roster, setRoster]       = useState([]);
+    const [loading, setLoading]     = useState(true);
+    const [query, setQuery]         = useState('');
+    const { showError }             = useNotifications();
+
+    const load = useCallback(async () => {
+        setLoading(true);
+        try {
+            const res = await api.transport.getReports();
+            if (res?.success) setRoster(res.data?.roster || []);
+        } catch {
+            showError('Failed to load transport students');
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => { load(); }, [load]);
+
+    const filtered = roster.filter(s => {
+        if (!query) return true;
+        const q = query.toLowerCase();
+        return s.name?.toLowerCase().includes(q)
+            || s.admissionNumber?.toLowerCase().includes(q)
+            || s.routeName?.toLowerCase().includes(q);
+    });
+
+    if (loading) {
+        return (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex items-center justify-center py-20">
+                <div className="flex items-center gap-3 text-gray-400 text-sm font-medium">
+                    <Loader2 size={20} className="animate-spin" /> Loading transport students…
+                </div>
+            </div>
+        );
+    }
+
+    if (roster.length === 0) {
+        return (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+                <div className="flex flex-col items-center justify-center py-16 px-8 text-center space-y-4">
+                    <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center">
+                        <Users size={32} className="text-blue-400" />
+                    </div>
+                    <div>
+                        <p className="text-base font-semibold text-gray-700">No transport students yet</p>
+                        <p className="text-sm text-gray-400 mt-1 max-w-sm">
+                            Students show here once they are admitted with the "Transport Student" flag enabled,
+                            or when you assign an existing student to a route from the Bus Routes &amp; Roster tab.
+                            Their transport fee is applied automatically.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            {/* toolbar */}
+            <div className="p-4 border-b border-gray-100 flex items-center gap-3">
+                <div className="relative flex-1 max-w-sm">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input value={query} onChange={e => setQuery(e.target.value)}
+                        placeholder="Search by name, admission no or route…"
+                        className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400" />
+                    {query && (
+                        <button onClick={() => setQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                            <X size={13} />
+                        </button>
+                    )}
+                </div>
+                <button onClick={load} className="flex items-center gap-1.5 px-3 py-2 text-gray-500 border border-gray-200 rounded-xl text-xs font-medium hover:bg-gray-50 transition">
+                    <RefreshCw size={13} /> Refresh
+                </button>
+                <button onClick={() => navigateTo('transport-students')}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-xl text-xs font-semibold hover:bg-blue-700 transition shadow-lg shadow-blue-600/20">
+                    <CreditCard size={13} /> Fee Tracker
+                </button>
+            </div>
+
+            {/* table */}
+            <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                    <thead className="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-semibold tracking-widest text-gray-400">
+                        <tr>
+                            <th className="p-4">Student</th>
+                            <th className="p-4">Grade</th>
+                            <th className="p-4">Route</th>
+                            <th className="p-4">Vehicle / Driver</th>
+                            <th className="p-4 text-right">Fee / Term</th>
+                            <th className="p-4">Contact</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                        {filtered.map((s, i) => (
+                            <tr key={s.learnerId || i} className="hover:bg-blue-50/10 transition">
+                                <td className="p-4">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-semibold text-xs flex-shrink-0">
+                                            {s.name?.split(' ').map(w => w[0]).slice(0, 2).join('')}
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-gray-900 text-sm">{s.name}</p>
+                                            <p className="text-[11px] text-gray-400 font-medium">{s.admissionNumber}</p>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td className="p-4 text-xs font-medium text-gray-600">
+                                    {s.grade?.replace(/_/g, ' ')} {s.stream || ''}
+                                </td>
+                                <td className="p-4">
+                                    <span className="text-xs font-semibold text-indigo-600">{s.routeName || '—'}</span>
+                                    {s.pickupPoint && (
+                                        <p className="text-[10px] text-gray-400 mt-0.5">📍 {s.pickupPoint}</p>
+                                    )}
+                                </td>
+                                <td className="p-4">
+                                    {s.vehicle ? (
+                                        <div>
+                                            <p className="text-xs font-semibold text-gray-700">{s.vehicle}</p>
+                                            <p className="text-[11px] text-gray-400">{s.driverName || '—'}</p>
+                                            {s.driverPhone && (
+                                                <a href={`tel:${s.driverPhone}`} className="text-[10px] text-blue-500 hover:underline flex items-center gap-1">
+                                                    <Phone size={9} /> {s.driverPhone}
+                                                </a>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <span className="text-[10px] text-amber-500 font-semibold border border-amber-200 px-2 py-0.5 rounded-lg">No vehicle</span>
+                                    )}
+                                </td>
+                                <td className="p-4 text-right font-semibold text-emerald-600 text-sm">
+                                    {s.feePerTerm > 0 ? fmt(s.feePerTerm) : <span className="text-gray-300 font-normal text-xs">Not set</span>}
+                                </td>
+                                <td className="p-4">
+                                    {s.phone ? (
+                                        <a href={`tel:${s.phone}`} className="flex items-center gap-1 text-xs text-blue-500 hover:underline font-medium">
+                                            <Phone size={11} /> {s.phone}
+                                        </a>
+                                    ) : (
+                                        <span className="text-[10px] text-gray-300 italic">No contact</span>
+                                    )}
+                                </td>
+                            </tr>
+                        ))}
+                        {filtered.length === 0 && (
+                            <tr>
+                                <td colSpan={6} className="py-12 text-center text-gray-400 text-sm italic">
+                                    No students match "{query}"
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                    {filtered.length > 0 && (
+                        <tfoot className="border-t-2 border-gray-100 bg-gray-50">
+                            <tr>
+                                <td colSpan={4} className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-widest">
+                                    {filtered.length} student{filtered.length !== 1 ? 's' : ''}
+                                </td>
+                                <td className="px-4 py-3 text-right text-xs font-semibold text-emerald-600">
+                                    {fmt(filtered.reduce((s, r) => s + (r.feePerTerm || 0), 0))} / term
+                                </td>
+                                <td />
+                            </tr>
+                        </tfoot>
+                    )}
+                </table>
+            </div>
+        </div>
+    );
+}
+
+// ─── vehicle form validation ──────────────────────────────────────────────────
+
+function validateVehicle(data) {
+    const errors = {};
+    if (!data.registrationNumber?.trim()) errors.registrationNumber = 'Registration number is required';
+    if (!data.capacity || isNaN(Number(data.capacity)) || Number(data.capacity) < 1) errors.capacity = 'Enter a valid seat count';
+    if (!data.driverName?.trim()) errors.driverName = 'Driver name is required';
+    if (!data.driverPhone?.trim()) errors.driverPhone = 'Driver phone number is required — parents and emergency contacts depend on this';
+    return errors;
+}
+
+function validateRoute(data) {
+    const errors = {};
+    if (!data.name?.trim()) errors.name = 'Route name is required';
+    if (data.amount === '' || isNaN(Number(data.amount)) || Number(data.amount) < 0) errors.amount = 'Enter a valid fee amount (0 if free)';
+    return errors;
+}
+
 // ─── main component ───────────────────────────────────────────────────────────
 
 const TransportManager = () => {
@@ -160,12 +439,14 @@ const TransportManager = () => {
     const [vehicleModal, setVehicleModal]   = useState(false);
     const [editingVehicle, setEditingVehicle] = useState(null);
     const [vehicleForm, setVehicleForm]     = useState(EMPTY_VEHICLE);
+    const [vehicleErrors, setVehicleErrors] = useState({});
     const [savingVehicle, setSavingVehicle] = useState(false);
 
     // Add / Edit route
     const [routeModal, setRouteModal]     = useState(false);
     const [editingRoute, setEditingRoute] = useState(null);
     const [routeForm, setRouteForm]       = useState(EMPTY_ROUTE);
+    const [routeErrors, setRouteErrors]   = useState({});
     const [savingRoute, setSavingRoute]   = useState(false);
 
     // Passenger management
@@ -227,6 +508,7 @@ const TransportManager = () => {
     const openAddVehicle = () => {
         setEditingVehicle(null);
         setVehicleForm(EMPTY_VEHICLE);
+        setVehicleErrors({});
         setVehicleModal(true);
     };
 
@@ -238,11 +520,14 @@ const TransportManager = () => {
             driverName:         v.driverName,
             driverPhone:        v.driverPhone || ''
         });
+        setVehicleErrors({});
         setVehicleModal(true);
     };
 
     const saveVehicle = async (e) => {
         e.preventDefault();
+        const errs = validateVehicle(vehicleForm);
+        if (Object.keys(errs).length > 0) { setVehicleErrors(errs); return; }
         setSavingVehicle(true);
         try {
             if (editingVehicle) {
@@ -273,6 +558,7 @@ const TransportManager = () => {
     const openAddRoute = () => {
         setEditingRoute(null);
         setRouteForm(EMPTY_ROUTE);
+        setRouteErrors({});
         setRouteModal(true);
     };
 
@@ -284,11 +570,14 @@ const TransportManager = () => {
             amount:      String(r.amount),
             vehicleId:   r.vehicleId || ''
         });
+        setRouteErrors({});
         setRouteModal(true);
     };
 
     const saveRoute = async (e) => {
         e.preventDefault();
+        const errs = validateRoute(routeForm);
+        if (Object.keys(errs).length > 0) { setRouteErrors(errs); return; }
         setSavingRoute(true);
         try {
             if (editingRoute) {
@@ -347,7 +636,7 @@ const TransportManager = () => {
                 passengerType: 'LEARNER'
             });
             if (res.success) {
-                showSuccess('Student assigned');
+                showSuccess('Student assigned to route — transport fee will be applied to their invoice');
                 setNewPassengerId('');
                 await refreshPassengers();
                 fetchRoutes();
@@ -359,10 +648,10 @@ const TransportManager = () => {
     };
 
     const removePassenger = async (assignmentId) => {
-        if (!window.confirm('Remove student from this route?')) return;
+        if (!window.confirm('Remove student from this route? Their transport flag will be cleared if this is their only route.')) return;
         try {
             await api.transport.deleteAssignment(assignmentId);
-            showSuccess('Student removed');
+            showSuccess('Student removed from route');
             await refreshPassengers();
             fetchRoutes();
             fetchSummary();
@@ -395,22 +684,16 @@ const TransportManager = () => {
                         Manage school buses, drivers and transport routes.
                     </p>
                 </div>
-                {activeTab !== 'students' && (
-                    <button
-                        onClick={activeTab === 'vehicles' ? openAddVehicle : openAddRoute}
-                        className="px-4 py-2.5 bg-blue-600 text-white rounded-xl font-medium flex items-center gap-2 hover:bg-blue-700 transition shadow-lg shadow-blue-600/20 active:scale-95 text-sm"
-                    >
-                        <Plus size={18} />
-                        {activeTab === 'vehicles' ? 'Add Vehicle' : 'Add Route'}
+                {activeTab === 'vehicles' && (
+                    <button onClick={openAddVehicle}
+                        className="px-4 py-2.5 bg-blue-600 text-white rounded-xl font-medium flex items-center gap-2 hover:bg-blue-700 transition shadow-lg shadow-blue-600/20 active:scale-95 text-sm">
+                        <Plus size={18} /> Add Vehicle
                     </button>
                 )}
-                {activeTab === 'students' && (
-                    <button
-                        onClick={() => navigateTo('transport-students')}
-                        className="px-4 py-2.5 bg-blue-600 text-white rounded-xl font-medium flex items-center gap-2 hover:bg-blue-700 transition shadow-lg shadow-blue-600/20 active:scale-95 text-sm"
-                    >
-                        <CreditCard size={18} />
-                        Open Full View
+                {activeTab === 'routes' && (
+                    <button onClick={openAddRoute}
+                        className="px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-medium flex items-center gap-2 hover:bg-indigo-700 transition shadow-lg shadow-indigo-600/20 active:scale-95 text-sm">
+                        <Plus size={18} /> Add Route
                     </button>
                 )}
             </div>
@@ -428,45 +711,27 @@ const TransportManager = () => {
                     <button key={id} onClick={() => setActiveTab(id)}
                         className={`pb-3 px-4 font-medium text-sm transition-all ${activeTab === id ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
                         {label}
+                        {id === 'students' && summary?.transportStudentCount > 0 && (
+                            <span className="ml-2 text-[10px] font-semibold px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded-full">
+                                {summary.transportStudentCount}
+                            </span>
+                        )}
                     </button>
                 ))}
             </div>
 
-            {/* ── Transport Students shortcut panel ─────────────────────────── */}
+            {/* Transport Students — inline list */}
             {activeTab === 'students' && (
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div className="flex flex-col items-center justify-center py-16 space-y-4 text-gray-400 px-8 text-center">
-                        <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center">
-                            <CreditCard size={32} className="text-blue-500" />
-                        </div>
-                        <div>
-                            <p className="font-semibold text-xl text-gray-800">Transport Student Fee Tracker</p>
-                            <p className="text-sm text-gray-400 mt-1.5 max-w-sm mx-auto">
-                                View every transport student with their fee invoices, balances, payment status and send SMS/WhatsApp reminders — all in one place.
-                            </p>
-                        </div>
-                        {summary && (
-                            <div className="flex items-center gap-6 py-3 px-6 bg-blue-50 rounded-xl text-sm font-medium text-blue-700">
-                                <span>{summary.transportStudentCount ?? 0} students enrolled</span>
-                                <span className="text-blue-300">·</span>
-                                <span>{summary.routeCount ?? 0} active routes</span>
-                            </div>
-                        )}
-                        <button
-                            onClick={() => navigateTo('transport-students')}
-                            className="px-8 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition shadow-lg shadow-blue-600/20 flex items-center gap-2 text-sm mt-2"
-                        >
-                            <CreditCard size={18} /> Open Transport Students
-                        </button>
-                    </div>
-                </div>
+                <TransportStudentsPanel navigateTo={navigateTo} />
             )}
 
-            {/* Table — only shown for vehicles / routes tabs */}
+            {/* Table — vehicles / routes */}
             {activeTab !== 'students' && (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden min-h-[360px]">
                     {loading ? (
-                        <div className="p-12 text-center text-gray-400 font-medium animate-pulse">Loading…</div>
+                        <div className="p-12 text-center text-gray-400 font-medium flex items-center justify-center gap-2">
+                            <Loader2 size={18} className="animate-spin" /> Loading…
+                        </div>
                     ) : activeTab === 'vehicles' ? (
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-semibold tracking-widest text-gray-400">
@@ -479,47 +744,51 @@ const TransportManager = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
-                                {vehicles.map(v => (
-                                    <tr key={v.id} className="hover:bg-blue-50/10 transition group">
-                                        <td className="p-4 border-none">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-9 h-9 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
-                                                    <Bus size={16} />
+                                {vehicles.length === 0
+                                    ? <EmptyVehicles onAdd={openAddVehicle} />
+                                    : vehicles.map(v => (
+                                        <tr key={v.id} className="hover:bg-blue-50/10 transition group">
+                                            <td className="p-4 border-none">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-9 h-9 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
+                                                        <Bus size={16} />
+                                                    </div>
+                                                    <span className="font-semibold tracking-tight text-gray-900">{v.registrationNumber}</span>
                                                 </div>
-                                                <span className="font-semibold tracking-tight text-gray-900">{v.registrationNumber}</span>
-                                            </div>
-                                        </td>
-                                        <td className="p-4 border-none">
-                                            <p className="font-medium text-gray-800 text-sm">{v.driverName}</p>
-                                            <p className="text-xs text-gray-400">{v.driverPhone || '—'}</p>
-                                        </td>
-                                        <td className="p-4 text-gray-600 font-medium border-none text-sm">{v.capacity} seats</td>
-                                        <td className="p-4 border-none">
-                                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-semibold rounded-lg uppercase">
-                                                {v.status || 'ACTIVE'}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-right border-none">
-                                            <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button onClick={() => openEditVehicle(v)}
-                                                    className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition" title="Edit">
-                                                    <Pencil size={15} />
-                                                </button>
-                                                <button onClick={() => deleteVehicle(v.id)}
-                                                    className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition" title="Archive">
-                                                    <Trash2 size={15} />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                                {vehicles.length === 0 && (
-                                    <tr>
-                                        <td colSpan={5} className="p-12 text-center text-gray-400 italic text-sm">
-                                            No vehicles registered yet.
-                                        </td>
-                                    </tr>
-                                )}
+                                            </td>
+                                            <td className="p-4 border-none">
+                                                <p className="font-medium text-gray-800 text-sm">{v.driverName}</p>
+                                                {v.driverPhone ? (
+                                                    <a href={`tel:${v.driverPhone}`} className="text-xs text-blue-500 hover:underline flex items-center gap-1 mt-0.5">
+                                                        <Phone size={10} /> {v.driverPhone}
+                                                    </a>
+                                                ) : (
+                                                    <span className="text-[10px] text-amber-500 font-semibold border border-amber-200 px-1.5 py-0.5 rounded mt-0.5 inline-block">
+                                                        No phone — update required
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="p-4 text-gray-600 font-medium border-none text-sm">{v.capacity} seats</td>
+                                            <td className="p-4 border-none">
+                                                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-semibold rounded-lg uppercase">
+                                                    {v.status || 'ACTIVE'}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 text-right border-none">
+                                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button onClick={() => openEditVehicle(v)}
+                                                        className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition" title="Edit">
+                                                        <Pencil size={15} />
+                                                    </button>
+                                                    <button onClick={() => deleteVehicle(v.id)}
+                                                        className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition" title="Archive">
+                                                        <Trash2 size={15} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                }
                             </tbody>
                         </table>
                     ) : (
@@ -527,77 +796,78 @@ const TransportManager = () => {
                             <thead className="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-semibold tracking-widest text-gray-400">
                                 <tr>
                                     <th className="p-4">Route</th>
-                                    <th className="p-4">Fee</th>
+                                    <th className="p-4">Fee / Term</th>
                                     <th className="p-4">Vehicle</th>
                                     <th className="p-4">Passengers</th>
                                     <th className="p-4 text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
-                                {routes.map(r => {
-                                    const { assigned, capacity, isFull } = getRouteCapacityInfo(r);
-                                    return (
-                                        <tr key={r.id} className="hover:bg-indigo-50/10 transition group">
-                                            <td className="p-4 border-none">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-9 h-9 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center flex-shrink-0">
-                                                        <MapPin size={16} />
+                                {routes.length === 0
+                                    ? <EmptyRoutes onAdd={openAddRoute} hasVehicles={vehicles.length > 0} />
+                                    : routes.map(r => {
+                                        const { assigned, capacity, isFull } = getRouteCapacityInfo(r);
+                                        return (
+                                            <tr key={r.id} className="hover:bg-indigo-50/10 transition group">
+                                                <td className="p-4 border-none">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-9 h-9 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center flex-shrink-0">
+                                                            <MapPin size={16} />
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-semibold tracking-tight text-gray-900 text-sm">{r.name}</p>
+                                                            {r.description && <p className="text-[11px] text-gray-400 truncate max-w-[200px]">{r.description}</p>}
+                                                        </div>
                                                     </div>
-                                                    <div>
-                                                        <p className="font-semibold tracking-tight text-gray-900 text-sm">{r.name}</p>
-                                                        {r.description && <p className="text-[11px] text-gray-400 truncate max-w-[200px]">{r.description}</p>}
+                                                </td>
+                                                <td className="p-4 font-semibold text-emerald-600 border-none text-sm">
+                                                    {parseFloat(r.amount) > 0 ? `KES ${parseFloat(r.amount).toLocaleString()}` : <span className="text-amber-500 text-xs">Fee not set</span>}
+                                                </td>
+                                                <td className="p-4 border-none">
+                                                    {r.vehicle ? (
+                                                        <div>
+                                                            <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-[10px] font-semibold rounded-lg">
+                                                                {r.vehicle.registrationNumber}
+                                                            </span>
+                                                            {r.vehicle.driverPhone && (
+                                                                <p className="text-[10px] text-gray-400 mt-0.5">{r.vehicle.driverName}</p>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center gap-1 text-[10px] text-amber-600 font-semibold border border-amber-200 px-2 py-0.5 rounded-lg w-fit">
+                                                            <AlertTriangle size={10} /> No vehicle
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="p-4 border-none">
+                                                    <button
+                                                        onClick={() => openPassengerModal(r)}
+                                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium text-xs transition-all
+                                                            ${isFull
+                                                                ? 'bg-red-50 text-red-700 hover:bg-red-100'
+                                                                : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                                                    >
+                                                        <Users size={13} />
+                                                        {assigned} student{assigned !== 1 ? 's' : ''}
+                                                        <CapacityBadge assigned={assigned} capacity={capacity} />
+                                                    </button>
+                                                </td>
+                                                <td className="p-4 text-right border-none">
+                                                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button onClick={() => openEditRoute(r)}
+                                                            className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition" title="Edit">
+                                                            <Pencil size={15} />
+                                                        </button>
+                                                        <button onClick={() => deleteRoute(r.id)}
+                                                            className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition" title="Archive">
+                                                            <Trash2 size={15} />
+                                                        </button>
                                                     </div>
-                                                </div>
-                                            </td>
-                                            <td className="p-4 font-semibold text-emerald-600 border-none text-sm">
-                                                KES {parseFloat(r.amount).toLocaleString()}
-                                            </td>
-                                            <td className="p-4 border-none">
-                                                {r.vehicle ? (
-                                                    <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-[10px] font-semibold rounded-lg">
-                                                        {r.vehicle.registrationNumber}
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-[10px] text-amber-500 font-semibold border border-amber-200 px-2 py-0.5 rounded-lg">
-                                                        Unassigned
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td className="p-4 border-none">
-                                                <button
-                                                    onClick={() => openPassengerModal(r)}
-                                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium text-xs transition-all
-                                                        ${isFull
-                                                            ? 'bg-red-50 text-red-700 hover:bg-red-100'
-                                                            : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
-                                                >
-                                                    <Users size={13} />
-                                                    {assigned} students
-                                                    <CapacityBadge assigned={assigned} capacity={capacity} />
-                                                </button>
-                                            </td>
-                                            <td className="p-4 text-right border-none">
-                                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button onClick={() => openEditRoute(r)}
-                                                        className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition" title="Edit">
-                                                        <Pencil size={15} />
-                                                    </button>
-                                                    <button onClick={() => deleteRoute(r.id)}
-                                                        className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition" title="Archive">
-                                                        <Trash2 size={15} />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                                {routes.length === 0 && (
-                                    <tr>
-                                        <td colSpan={5} className="p-12 text-center text-gray-400 italic text-sm">
-                                            No routes registered yet.
-                                        </td>
-                                    </tr>
-                                )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                }
                             </tbody>
                         </table>
                     )}
@@ -608,7 +878,7 @@ const TransportManager = () => {
             {vehicleModal && (
                 <Modal title={editingVehicle ? 'Edit Vehicle' : 'Add Vehicle'} onClose={() => setVehicleModal(false)}>
                     <form onSubmit={saveVehicle} className="space-y-4">
-                        <VehicleForm data={vehicleForm} onChange={setVehicleForm} />
+                        <VehicleForm data={vehicleForm} onChange={v => { setVehicleForm(v); setVehicleErrors({}); }} errors={vehicleErrors} />
                         <div className="flex justify-end gap-2 pt-2">
                             <button type="button" onClick={() => setVehicleModal(false)}
                                 className="px-4 py-2 text-gray-500 hover:bg-gray-100 font-medium rounded-xl text-sm transition">
@@ -628,7 +898,7 @@ const TransportManager = () => {
             {routeModal && (
                 <Modal title={editingRoute ? 'Edit Route' : 'Add Route'} onClose={() => setRouteModal(false)}>
                     <form onSubmit={saveRoute} className="space-y-4">
-                        <RouteForm data={routeForm} onChange={setRouteForm} vehicles={vehicles} />
+                        <RouteForm data={routeForm} onChange={r => { setRouteForm(r); setRouteErrors({}); }} vehicles={vehicles} errors={routeErrors} />
                         <div className="flex justify-end gap-2 pt-2">
                             <button type="button" onClick={() => setRouteModal(false)}
                                 className="px-4 py-2 text-gray-500 hover:bg-gray-100 font-medium rounded-xl text-sm transition">
@@ -660,6 +930,9 @@ const TransportManager = () => {
                                         {selectedRoute.vehicle && (
                                             <> · {selectedRoute.vehicle.capacity} seat capacity</>
                                         )}
+                                        {selectedRoute.vehicle?.driverName && (
+                                            <> · Driver: {selectedRoute.vehicle.driverName}</>
+                                        )}
                                     </p>
                                 </div>
                             </div>
@@ -674,7 +947,10 @@ const TransportManager = () => {
 
                             {/* Add student section */}
                             <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">Assign Student</p>
+                                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Assign Student to this Route</p>
+                                <p className="text-xs text-gray-400 mb-3">
+                                    The transport fee ({parseFloat(selectedRoute.amount) > 0 ? `KES ${parseFloat(selectedRoute.amount).toLocaleString()}` : 'not configured'}) will be applied to their invoice immediately.
+                                </p>
                                 <div className="flex items-end gap-3">
                                     <div className="flex-1">
                                         <SmartLearnerSearch
@@ -735,7 +1011,8 @@ const TransportManager = () => {
                                 ) : (
                                     <div className="py-10 text-center bg-gray-50 rounded-xl border-2 border-dashed border-gray-100">
                                         <Users size={32} className="mx-auto text-gray-300 mb-2" />
-                                        <p className="text-gray-400 font-medium text-sm">No students assigned yet.</p>
+                                        <p className="text-gray-500 font-semibold text-sm">No students on this route yet</p>
+                                        <p className="text-gray-400 text-xs mt-1">Use the search above to find and assign students. Their transport fee will be charged automatically.</p>
                                     </div>
                                 )}
                             </div>
@@ -750,8 +1027,8 @@ const TransportManager = () => {
                                 <CreditCard size={14} /> View Fee Balances
                             </button>
                             <button onClick={() => setPassengerModal(false)}
-                                className="px-5 py-2 bg-gray-900 text-white rounded-xl font-medium hover:bg-black transition shadow-lg text-sm active:scale-95">
-                                Done
+                                className="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded-xl font-medium text-sm transition">
+                                Close
                             </button>
                         </div>
                     </div>
