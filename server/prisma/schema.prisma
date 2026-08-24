@@ -3183,14 +3183,11 @@ model TransportVehicle {
   driverName         String
   driverPhone        String?
   status             String           @default("ACTIVE")
-  // Multi-tenancy — nullable to allow gradual backfill on existing deployments
-  schoolId           String?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   archived           Boolean          @default(false)
   routes             TransportRoute[]
 
-  @@index([schoolId])
   @@map("transport_vehicles")
 }
 
@@ -3201,8 +3198,6 @@ model TransportRoute {
   amount      Decimal               @default(0.00) @db.Decimal(10, 2)
   vehicleId   String?
   status      String                @default("ACTIVE")
-  // Multi-tenancy — nullable to allow gradual backfill
-  schoolId    String?
   createdAt   DateTime              @default(now())
   updatedAt   DateTime              @updatedAt
   archived    Boolean               @default(false)
@@ -3211,7 +3206,6 @@ model TransportRoute {
   vehicle     TransportVehicle?     @relation(fields: [vehicleId], references: [id])
 
   @@index([vehicleId])
-  @@index([schoolId])
   @@map("transport_routes")
 }
 
