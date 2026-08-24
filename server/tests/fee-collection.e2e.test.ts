@@ -27,6 +27,19 @@ jest.mock('../src/services/email.service', () => ({
   }
 }));
 
+jest.mock('../src/services/accounting.service', () => ({
+  accountingService: {
+    postFeeInvoiceToLedger: jest.fn(async () => undefined),
+    postFeePaymentToLedger: jest.fn(async () => undefined)
+  }
+}));
+
+jest.mock('../src/services/compliance.service', () => ({
+  complianceService: {
+    syncInvoiceToETIMS: jest.fn(async () => true)
+  }
+}));
+
 jest.mock('../src/services/redis-cache.service', () => ({
   redisCacheService: {
     get: jest.fn(async () => null),
@@ -82,6 +95,8 @@ describe('Fee collection end-to-end', () => {
   let invoiceId: string | null = null;
   let parentId: string | null = null;
   let updatedFeeStructureId: string | null = null;
+  let bulkFeeStructureId: string | null = null;
+  let bulkInvoiceIds: string[] = [];
 
   beforeAll(async () => {
     const currentYear = new Date().getFullYear();
@@ -187,6 +202,13 @@ describe('Fee collection end-to-end', () => {
     if (updatedFeeStructureId) {
       await prisma.feeStructure.deleteMany({ where: { id: updatedFeeStructureId } });
     }
+    if (bulkInvoiceIds.length > 0) {
+      await prisma.feeInvoice.deleteMany({ where: { id: { in: bulkInvoiceIds } } });
+    }
+    if (bulkFeeStructureId) {
+      await prisma.feeInvoice.deleteMany({ where: { feeStructureId: bulkFeeStructureId } });
+      await prisma.feeStructure.deleteMany({ where: { id: bulkFeeStructureId } });
+    }
     await prisma.$disconnect();
   });
 
@@ -268,5 +290,72 @@ describe('Fee collection end-to-end', () => {
     expect(updateResponse.body.data.name).toBe(`${structureName} - updated`);
     expect(updateResponse.body.data.feeItems).toHaveLength(1);
     expect(updateResponse.body.data.feeItems[0].amount).toBe('7500');
+  });
+
+  it('bulk creates whole-school invoices using matching grade structures', async () => {
+    if (!learnerId) throw new Error('Expected learner from previous setup');
+
+    const feeType = await prisma.feeType.findUnique({ where: { code: 'TUITION' } });
+    if (!feeType) throw new Error('Missing TUITION fee type');
+
+    const bulkAcademicYear = 2090;
+    await prisma.feeInvoice.deleteMany({
+      where: { learnerId, term: 'TERM_3', academicYear: bulkAcademicYear }
+    });
+
+    const feeStructure = await prisma.feeStructure.upsert({
+      where: {
+        grade_term_academicYear: {
+          grade: 'GRADE_1',
+          term: 'TERM_3',
+          academicYear: bulkAcademicYear
+        }
+      },
+      update: {
+        name: `Grade 1 TERM 3 Whole School Fees ${bulkAcademicYear}`,
+        active: true,
+        archived: false,
+        feeItems: {
+          deleteMany: {},
+          create: [{ feeTypeId: feeType.id, amount: '12000', mandatory: true }]
+        }
+      },
+      create: {
+        name: `Grade 1 TERM 3 Whole School Fees ${bulkAcademicYear}`,
+        description: 'Whole-school bulk generation test fee structure',
+        grade: 'GRADE_1',
+        term: 'TERM_3',
+        academicYear: bulkAcademicYear,
+        mandatory: true,
+        active: true,
+        createdBy: 'test-super-admin-id',
+        feeItems: {
+          create: [{ feeTypeId: feeType.id, amount: '12000', mandatory: true }]
+        }
+      }
+    });
+    bulkFeeStructureId = feeStructure.id;
+
+    await prisma.feeInvoice.deleteMany({
+      where: { feeStructureId: feeStructure.id, term: 'TERM_3', academicYear: bulkAcademicYear }
+    });
+
+    const response = await request(app)
+      .post('/api/fees/invoices/bulk')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        scope: 'WHOLE_SCHOOL',
+        term: 'TERM_3',
+        academicYear: bulkAcademicYear,
+        dueDate: `${bulkAcademicYear}-08-23`
+      })
+      .expect(201);
+
+    expect(response.body).toHaveProperty('success', true);
+    expect(response.body.count).toBeGreaterThan(0);
+    expect(response.body.message).toContain('whole school scope');
+    expect(response.body.data[0]).toHaveProperty('feeStructureId', feeStructure.id);
+
+    bulkInvoiceIds = response.body.data.map((invoice: any) => invoice.id);
   });
 });

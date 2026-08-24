@@ -44,6 +44,9 @@ function normalizeEnumValue(value?: string): string | undefined {
 
 const INVOICE_NUMBER_RETRY_COUNT = 3;
 const RECEIPT_NUMBER_RETRY_COUNT = 3;
+const BULK_INVOICE_CALCULATION_CONCURRENCY = Number(process.env.BULK_INVOICE_CALCULATION_CONCURRENCY || 10);
+const BULK_INVOICE_TRANSACTION_TIMEOUT_MS = Number(process.env.BULK_INVOICE_TRANSACTION_TIMEOUT_MS || 60000);
+const BULK_INVOICE_TRANSACTION_MAX_WAIT_MS = Number(process.env.BULK_INVOICE_TRANSACTION_MAX_WAIT_MS || 10000);
 
 function getPreviousTermContext(termRaw: string, academicYearRaw: number): { term: string; academicYear: number } | null {
   const term = normalizeEnumValue(termRaw);
@@ -93,6 +96,29 @@ function parseInvoiceNumber(raw: string | null): number {
   if (!raw) return 0;
   const match = raw.match(/(\d+)$/);
   return match ? parseInt(match[1], 10) : 0;
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const limit = Math.max(1, Math.floor(concurrency) || 1);
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex++;
+      results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, () => worker())
+  );
+
+  return results;
 }
 
 async function getNextInvoiceNumber(client: any, academicYear: number): Promise<string> {
@@ -1375,6 +1401,7 @@ export class FeeController {
       const structures = await prisma.feeStructure.findMany({
         where: {
           active: true,
+          archived: false,
           term: normalizedTerm,
           academicYear: normalizedYear
         },
@@ -1443,8 +1470,10 @@ export class FeeController {
     }
 
     // Resolve amounts per learner so structure/transport are accurate for each record.
-    const invoiceDrafts = await Promise.all(
-      learnersToInvoice.map(async (learner) => {
+    const invoiceDrafts = await mapWithConcurrency(
+      learnersToInvoice,
+      BULK_INVOICE_CALCULATION_CONCURRENCY,
+      async (learner) => {
         const resolvedStructure = normalizedScope === 'WHOLE_SCHOOL'
           ? structureByGrade.get(String(learner.grade || ''))
           : { id: feeStructureId };
@@ -1471,7 +1500,7 @@ export class FeeController {
           feeStructureId: resolvedStructure.id,
           calculation,
         };
-      })
+      }
     );
     const validDrafts = invoiceDrafts.filter(Boolean) as Array<any>;
 
@@ -1488,14 +1517,14 @@ export class FeeController {
           const invoices: any[] = [];
           const maxResult = await tx.feeInvoice.aggregate({
             _max: { invoiceNumber: true },
-            where: { academicYear }
+            where: { academicYear: normalizedYear }
           });
           let nextSequence = parseInvoiceNumber(maxResult._max.invoiceNumber as string | null) + 1;
 
           for (let idx = 0; idx < validDrafts.length; idx++) {
             const draft = validDrafts[idx];
             const learner = draft.learner;
-            const invoiceNumber = `INV-${academicYear}-${String(nextSequence).padStart(6, '0')}`;
+            const invoiceNumber = `INV-${normalizedYear}-${String(nextSequence).padStart(6, '0')}`;
             nextSequence++;
 
             const invoice = await tx.feeInvoice.create({
@@ -1529,6 +1558,9 @@ export class FeeController {
           }
 
           return invoices;
+        }, {
+          maxWait: BULK_INVOICE_TRANSACTION_MAX_WAIT_MS,
+          timeout: BULK_INVOICE_TRANSACTION_TIMEOUT_MS,
         });
         break;
       } catch (error: any) {
