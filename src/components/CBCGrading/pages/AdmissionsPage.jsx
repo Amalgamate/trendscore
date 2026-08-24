@@ -87,6 +87,7 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
   const [availableStreams, setAvailableStreams] = useState([]);
   const [availableGrades, setAvailableGrades] = useState([]);
   const [availableRoutes, setAvailableRoutes] = useState([]);
+  const [existingTransportAssignment, setExistingTransportAssignment] = useState(null); // for edit mode
   const [isDraft, setIsDraft] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [changeReason, setChangeReason] = useState('');
@@ -139,6 +140,24 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
     };
     fetchRoutes();
   }, []);
+
+  // In edit mode, load the learner's existing transport assignment so we can
+  // pre-select their route and detect changes on save.
+  useEffect(() => {
+    if (!isEdit) return;
+    const editLearnerId = activeLearner?.id || learnerId;
+    if (!editLearnerId) return;
+    transportAPI.getLearnerAssignments(editLearnerId)
+      .then(res => {
+        const active = (res?.data || []).find(a => !a.archived);
+        setExistingTransportAssignment(active || null);
+        if (active?.routeId) {
+          setFormData(prev => ({ ...prev, transportRouteId: active.routeId }));
+        }
+      })
+      .catch(() => {}); // non-fatal
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeLearner?.id, isEdit]);
 
   const initialFormData = React.useMemo(() => {
     const now = new Date();
@@ -551,20 +570,44 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
         if (result?.success) {
           console.log('✅ Save successful, showing success message...');
 
-          // ── Auto-assign transport route if selected ───────────────────────
-          // Must happen AFTER learner is created so the assignment can reference their ID.
-          // The assignment controller auto-syncs the open invoice transport amount.
-          const newLearnerId = result.data?.id || result.learner?.id;
-          if (!isEdit && newLearnerId && sanitizedPayload.isTransportStudent && formData.transportRouteId) {
+          // ── Transport assignment sync ─────────────────────────────────────
+          // Runs for both new admissions and edits.
+          const savedLearnerId = isEdit
+            ? (activeLearner?.id || targetLearnerId)
+            : (result.data?.id || result.learner?.id);
+
+          if (savedLearnerId) {
             try {
-              await transportAPI.createAssignment({
-                routeId: formData.transportRouteId,
-                passengerId: newLearnerId,
-                passengerType: 'LEARNER',
-              });
+              const wantsTransport  = !!sanitizedPayload.isTransportStudent;
+              const selectedRouteId = formData.transportRouteId || null;
+              const existingAssign  = existingTransportAssignment;
+              const existingRouteId = existingAssign?.routeId || null;
+
+              if (wantsTransport && selectedRouteId) {
+                if (!existingAssign) {
+                  // No assignment yet — create one
+                  await transportAPI.createAssignment({
+                    routeId: selectedRouteId,
+                    passengerId: savedLearnerId,
+                    passengerType: 'LEARNER',
+                  });
+                } else if (existingRouteId !== selectedRouteId) {
+                  // Route changed — remove old, create new
+                  await transportAPI.deleteAssignment(existingAssign.id);
+                  await transportAPI.createAssignment({
+                    routeId: selectedRouteId,
+                    passengerId: savedLearnerId,
+                    passengerType: 'LEARNER',
+                  });
+                }
+                // else route unchanged — nothing to do
+              } else if (!wantsTransport && existingAssign) {
+                // Transport turned off — remove the assignment
+                await transportAPI.deleteAssignment(existingAssign.id);
+              }
             } catch (assignErr) {
-              console.warn('[Admissions] Transport assignment failed (non-fatal):', assignErr?.message);
-              showError(`Student admitted but transport route assignment failed: ${assignErr?.message || 'please assign manually'}. You can assign the route from Transport Manager.`);
+              console.warn('[Admissions] Transport assignment sync failed:', assignErr?.message);
+              showError(`Student saved but transport route sync failed: ${assignErr?.message || 'please assign manually in Transport Manager.'}`);
             }
           }
           localStorage.removeItem('admission-form-draft');
