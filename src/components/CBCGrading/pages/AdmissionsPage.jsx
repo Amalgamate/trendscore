@@ -567,8 +567,6 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
               showError(`Student admitted but transport route assignment failed: ${assignErr?.message || 'please assign manually'}. You can assign the route from Transport Manager.`);
             }
           }
-          showSuccess(result?.message || 'Student admission successful!');
-
           localStorage.removeItem('admission-form-draft');
           if (!isEdit) {
             // Clear form with fresh date

@@ -600,11 +600,11 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
         notify.showSuccess(`Learner ${targetLearnerId ? 'updated' : 'added'} successfully!`);
         if (targetLearnerId) {
           setEditingLearner(result.data || { ...editingLearner, ...payload, id: targetLearnerId });
-        } else {
-          // For new admissions, return to list after successful create.
-          setCurrentPage('learners-list');
-          setEditingLearner(null);
         }
+        // NOTE: For new admissions we do NOT navigate here — AdmissionsPage needs
+        // to complete any post-save work (e.g. transport assignment) before the
+        // component unmounts. AdmissionsPage calls onCancel / navigates itself
+        // after finishing its post-save logic.
       } else {
         notify.showError(result.error || 'Failed to save learner');
       }
