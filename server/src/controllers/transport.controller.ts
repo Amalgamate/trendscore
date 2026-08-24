@@ -40,6 +40,7 @@ export class TransportController {
 
             if (!registrationNumber?.trim()) throw new ApiError(400, 'Registration number is required');
             if (!driverName?.trim())         throw new ApiError(400, 'Driver name is required');
+            if (!driverPhone?.trim())        throw new ApiError(400, 'Driver phone number is required');
             if (!capacity || isNaN(Number(capacity))) throw new ApiError(400, 'Valid capacity is required');
 
             const existing = await prisma.transportVehicle.findUnique({

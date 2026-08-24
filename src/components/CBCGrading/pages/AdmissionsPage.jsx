@@ -4,10 +4,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Save, X, ArrowRight, ArrowLeft, CheckCircle, User, Users as UsersIcon, Trash2, Loader, Settings } from 'lucide-react';
+import { Save, X, ArrowRight, ArrowLeft, CheckCircle, User, Users as UsersIcon, Trash2, Loader, Settings, Bus } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 import { useAuth } from '../../../hooks/useAuth';
-import { configAPI, learnerAPI } from '../../../services/api';
+import { configAPI, learnerAPI, transportAPI } from '../../../services/api';
 import { toInputDate } from '../utils/dateHelpers';
 import ParentGuardianStep from './steps/ParentGuardianStep';
 import { useMediaQuery } from '../hooks/useMediaQuery';
@@ -86,6 +86,7 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
   const [currentStep, setCurrentStep] = useState(1);
   const [availableStreams, setAvailableStreams] = useState([]);
   const [availableGrades, setAvailableGrades] = useState([]);
+  const [availableRoutes, setAvailableRoutes] = useState([]);
   const [isDraft, setIsDraft] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [changeReason, setChangeReason] = useState('');
@@ -126,6 +127,19 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
     fetchGrades();
   }, [showError]);
 
+  // Fetch transport routes for the transport student toggle
+  useEffect(() => {
+    const fetchRoutes = async () => {
+      try {
+        const resp = await transportAPI.getRoutes();
+        if (resp?.success) setAvailableRoutes(resp.data || []);
+      } catch (error) {
+        console.error('Failed to fetch transport routes:', error);
+      }
+    };
+    fetchRoutes();
+  }, []);
+
   const initialFormData = React.useMemo(() => {
     const now = new Date();
     const iso = now.toISOString().split('T')[0];
@@ -144,6 +158,7 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
       doctorName: '', doctorPhone: '', specialNeeds: '', photo: null,
       emergencyContact: '', emergencyPhone: '',
       isTransportStudent: false,
+      transportRouteId: '',
       isScholarshipStudent: false,
       scholarshipType: '',
       scholarshipAmount: ''
@@ -535,6 +550,23 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
 
         if (result?.success) {
           console.log('✅ Save successful, showing success message...');
+
+          // ── Auto-assign transport route if selected ───────────────────────
+          // Must happen AFTER learner is created so the assignment can reference their ID.
+          // The assignment controller auto-syncs the open invoice transport amount.
+          const newLearnerId = result.data?.id || result.learner?.id;
+          if (!isEdit && newLearnerId && sanitizedPayload.isTransportStudent && formData.transportRouteId) {
+            try {
+              await transportAPI.createAssignment({
+                routeId: formData.transportRouteId,
+                passengerId: newLearnerId,
+                passengerType: 'LEARNER',
+              });
+            } catch (assignErr) {
+              console.warn('[Admissions] Transport assignment failed (non-fatal):', assignErr?.message);
+              showError(`Student admitted but transport route assignment failed: ${assignErr?.message || 'please assign manually'}. You can assign the route from Transport Manager.`);
+            }
+          }
           showSuccess(result?.message || 'Student admission successful!');
 
           localStorage.removeItem('admission-form-draft');
@@ -839,6 +871,66 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
                     {/* end of Academic Information grid */}
                   </div>
                 </div>
+
+                {/* Transport Student */}
+                <div className="border-t pt-6 mt-6">
+                  <div className="flex items-center gap-3 mb-1">
+                    <Bus size={16} className="text-blue-500" />
+                    <h4 className="text-lg font-medium text-gray-800">Transport</h4>
+                  </div>
+                  <p className="text-xs text-gray-400 mb-4">Enable if this student will use the school bus. An additional transport fee will be applied to their invoice automatically.</p>
+
+                  {/* Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({
+                      ...prev,
+                      isTransportStudent: !prev.isTransportStudent,
+                      transportRouteId: prev.isTransportStudent ? '' : prev.transportRouteId,
+                    }))}
+                    className={`flex items-center gap-3 w-full md:w-auto px-4 py-3 rounded-xl border-2 transition-all text-sm font-semibold ${
+                      formData.isTransportStudent
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className={`w-10 h-5 rounded-full flex items-center transition-all ${formData.isTransportStudent ? 'bg-blue-500 justify-end' : 'bg-gray-200 justify-start'}`}>
+                      <div className="w-4 h-4 rounded-full bg-white shadow mx-0.5" />
+                    </div>
+                    {formData.isTransportStudent ? 'Transport Student — bus fee will be charged' : 'Not a transport student'}
+                  </button>
+
+                  {/* Route selector — shown when transport is enabled */}
+                  {formData.isTransportStudent && (
+                    <div className="mt-4 max-w-sm">
+                      <label className="block text-xs font-medium text-gray-500 uppercase tracking-tight mb-1">
+                        Assign to Route
+                        <span className="normal-case font-normal text-gray-400 ml-1">(recommended — sets the transport fee amount)</span>
+                      </label>
+                      {availableRoutes.length === 0 ? (
+                        <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                          No active routes found. Student will be marked as a transport student but route must be assigned later in Transport Manager.
+                        </p>
+                      ) : (
+                        <select
+                          name="transportRouteId"
+                          value={formData.transportRouteId}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 bg-white border border-blue-200 rounded-md text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        >
+                          <option value="">Select a route (optional)</option>
+                          {availableRoutes.map(route => (
+                            <option key={route.id} value={route.id}>
+                              {route.name}
+                              {Number(route.amount) > 0 ? ` — KES ${Number(route.amount).toLocaleString('en-KE')}/term` : ''}
+                              {route.vehicle ? ` (${route.vehicle.registrationNumber})` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
             {/* Step 2: Parent/Guardian Information */}
@@ -900,6 +992,39 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
                     <div className="space-y-2 text-sm">
                       <p className="flex justify-between"><span className="text-gray-500">Adm No:</span> <span className="font-semibold text-gray-800">{formData.admissionNumber || 'Auto-generated'}</span></p>
                       <p className="flex justify-between"><span className="text-gray-500">Birth Entry Number:</span> <span className="font-semibold text-emerald-600 font-mono">{formData.upiNumber || 'N/A'}</span></p>
+                    </div>
+                  </div>
+                  {/* Transport summary */}
+                  <div className={`border rounded-md p-3 ${formData.isTransportStudent ? 'border-blue-100 bg-blue-50/40' : 'border-gray-100 bg-gray-50/30'}`}>
+                    <h4 className={`text-xs font-medium uppercase tracking-widest mb-2 border-b pb-1 flex items-center gap-1.5 ${formData.isTransportStudent ? 'text-blue-600 border-blue-100' : 'text-gray-400 border-gray-100'}`}>
+                      <Bus size={11} /> Transport
+                    </h4>
+                    <div className="space-y-2 text-sm">
+                      <p className="flex justify-between">
+                        <span className="text-gray-500">Transport Student:</span>
+                        <span className={`font-semibold ${formData.isTransportStudent ? 'text-blue-700' : 'text-gray-500'}`}>
+                          {formData.isTransportStudent ? '✓ Yes' : 'No'}
+                        </span>
+                      </p>
+                      {formData.isTransportStudent && (
+                        <p className="flex justify-between">
+                          <span className="text-gray-500">Route:</span>
+                          <span className="font-semibold text-blue-700">
+                            {formData.transportRouteId
+                              ? (availableRoutes.find(r => r.id === formData.transportRouteId)?.name || 'Selected')
+                              : 'Not assigned yet'}
+                          </span>
+                        </p>
+                      )}
+                      {formData.isTransportStudent && formData.transportRouteId && (() => {
+                        const route = availableRoutes.find(r => r.id === formData.transportRouteId);
+                        return route && Number(route.amount) > 0 ? (
+                          <p className="flex justify-between">
+                            <span className="text-gray-500">Transport Fee:</span>
+                            <span className="font-semibold text-blue-700">KES {Number(route.amount).toLocaleString('en-KE')}/term</span>
+                          </p>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
                 </div>
