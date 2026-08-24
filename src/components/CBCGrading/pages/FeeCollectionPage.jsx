@@ -494,7 +494,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
 
   const fetchLearners = React.useCallback(async () => {
     try {
-      const response = await api.learners.getAll({ status: 'ACTIVE' });
+      const response = await api.learners.getAll({ status: 'ACTIVE', limit: 2000 });
       const rows = Array.isArray(response.data) ? response.data : [];
       const scoped = rows.filter((learner) => {
         const learnerIsSecondary = isSecondaryGrade(learner?.grade);
@@ -1806,6 +1806,16 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                   onSelect={(id) => {
                     setSearchLearnerId(id || null);
                     setCurrentPage(1);
+                  }}
+                  onSearch={async (query) => {
+                    try {
+                      const res = await api.learners.getAll({ search: query, status: 'ACTIVE', limit: 50 });
+                      const rows = Array.isArray(res.data) ? res.data : [];
+                      return rows.filter((learner) => {
+                        const learnerIsSecondary = isSecondaryGrade(learner?.grade);
+                        return isSecondaryPortal ? learnerIsSecondary : !learnerIsSecondary;
+                      });
+                    } catch { return []; }
                   }}
                   placeholder="Search student..."
                   compact

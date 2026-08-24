@@ -117,9 +117,11 @@ export class LearnerController {
     if (status) whereClause.status = String(status).toUpperCase() as LearnerStatus;
     if (search) {
       whereClause.OR = [
-        { firstName: { contains: search as string, mode: 'insensitive' } },
-        { lastName:  { contains: search as string, mode: 'insensitive' } },
+        { firstName:       { contains: search as string, mode: 'insensitive' } },
+        { lastName:        { contains: search as string, mode: 'insensitive' } },
+        { middleName:      { contains: search as string, mode: 'insensitive' } },
         { admissionNumber: { contains: search as string, mode: 'insensitive' } },
+        { upiNumber:       { contains: search as string, mode: 'insensitive' } },
       ];
     }
     if (status === 'DROPPED_OUT') delete whereClause.archived;
