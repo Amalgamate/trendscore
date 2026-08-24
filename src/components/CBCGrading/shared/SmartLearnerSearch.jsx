@@ -8,17 +8,21 @@ import { Search, X, Check, User, Hash, GraduationCap } from 'lucide-react';
  * An intelligent, content-aware search component for selecting learners.
  * Searches across name, admission number, and grade.
  * 
- * @param {Array} learners - List of learner objects
- * @param {string} selectedLearnerId - Currently selected learner ID
- * @param {Function} onSelect - Callback when a learner is selected (returns learner ID)
- * @param {string} placeholder - Input placeholder text
- * @param {boolean} disabled - Whether the input is disabled
- * @param {string} className - Additional CSS classes
+ * @param {Array}    learners          - Local list of learner objects (used when onSearch is not provided)
+ * @param {string}   selectedLearnerId - Currently selected learner ID
+ * @param {Function} onSelect          - Callback when a learner is selected (returns learner ID)
+ * @param {Function} onSearch          - Optional async fn(query) → learner[]. When provided the component
+ *                                       delegates search to the server (debounced 300ms) instead of
+ *                                       filtering the local array. Falls back to local array when query
+ *                                       is empty so recently-used learners still show immediately.
+ * @param {string}   placeholder       - Input placeholder text
+ * @param {boolean}  disabled          - Whether the input is disabled
  */
 const SmartLearnerSearch = ({ 
   learners = [], 
   selectedLearnerId, 
   onSelect, 
+  onSearch,           // optional: async (query) => learner[]
   placeholder = "Search learner by name, adm no...", 
   disabled = false,
   className = "",
@@ -29,6 +33,9 @@ const SmartLearnerSearch = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
+  const [serverResults, setServerResults] = useState(null); // null = not searched yet
+  const [isSearching, setIsSearching] = useState(false);
+  const debounceRef = useRef(null);
   const wrapperRef = useRef(null);
   const inputRef = useRef(null);
   const listRef = useRef(null);
@@ -51,7 +58,14 @@ const SmartLearnerSearch = ({
 
   // Filter learners based on search term
   const filteredLearners = useMemo(() => {
-    if (!searchTerm) return learners.slice(0, 50); // Return first 50 if no search
+    // Server-search mode: use whatever the server returned (or empty while loading)
+    if (onSearch) {
+      if (!searchTerm) return learners.slice(0, 50); // show local list when empty
+      return serverResults ?? [];
+    }
+
+    // Client-side mode (no onSearch prop)
+    if (!searchTerm) return learners.slice(0, 50);
     
     // If search term matches the selected learner exactly, return all (or relevant)
     if (selectedLearner) {
@@ -63,17 +77,12 @@ const SmartLearnerSearch = ({
 
     const lowerTerm = searchTerm.toLowerCase();
     return learners.filter(learner => {
-      const fullName = `${learner.firstName} ${learner.lastName}`.toLowerCase();
+      const fullName = `${learner.firstName} ${learner.middleName || ''} ${learner.lastName}`.toLowerCase();
       const admNo = (learner.admissionNumber || learner.admNo || '').toString().toLowerCase();
       const grade = (learner.grade || '').toString().toLowerCase();
-      
-      return (
-        fullName.includes(lowerTerm) ||
-        admNo.includes(lowerTerm) ||
-        grade.includes(lowerTerm)
-      );
-    }).slice(0, 50); // Limit results for performance
-  }, [learners, searchTerm, selectedLearner]);
+      return fullName.includes(lowerTerm) || admNo.includes(lowerTerm) || grade.includes(lowerTerm);
+    }).slice(0, 50);
+  }, [learners, searchTerm, selectedLearner, onSearch, serverResults]);
 
   // Handle outside click to close dropdown
   useEffect(() => {
@@ -107,11 +116,34 @@ const SmartLearnerSearch = ({
   }, [highlightedIndex, isOpen]);
 
   const handleInputChange = (e) => {
-    setSearchTerm(e.target.value);
+    const value = e.target.value;
+    setSearchTerm(value);
     setIsOpen(true);
     setHighlightedIndex(0);
-    if (e.target.value === '') {
+    if (value === '') {
       onSelect('');
+      setServerResults(null);
+      return;
+    }
+
+    // Server-search: debounce the API call
+    if (onSearch) {
+      clearTimeout(debounceRef.current);
+      if (value.trim().length < 2) {
+        setServerResults(null);
+        return;
+      }
+      setIsSearching(true);
+      debounceRef.current = setTimeout(async () => {
+        try {
+          const results = await onSearch(value.trim());
+          setServerResults(Array.isArray(results) ? results : []);
+        } catch {
+          setServerResults([]);
+        } finally {
+          setIsSearching(false);
+        }
+      }, 300);
     }
   };
 
@@ -153,6 +185,7 @@ const SmartLearnerSearch = ({
     const admNo = learner.admissionNumber || learner.admNo || '';
     setSearchTerm(`${learner.firstName} ${learner.lastName} (${admNo})`);
     setIsOpen(false);
+    setServerResults(null);
   };
 
   const handleKeyDown = (e) => {
@@ -196,9 +229,15 @@ const SmartLearnerSearch = ({
     e.stopPropagation();
     onSelect('');
     setSearchTerm('');
+    setServerResults(null);
     setIsOpen(true);
     inputRef.current?.focus();
   };
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, []);
 
   return (
     <div ref={wrapperRef} className={`relative ${className}`}>
@@ -245,7 +284,15 @@ const SmartLearnerSearch = ({
             }} 
             ref={listRef}
           >
-            {filteredLearners.length > 0 ? (
+            {isSearching ? (
+              <div className="px-4 py-6 text-center text-gray-400 text-xs font-medium flex items-center justify-center gap-2">
+                <svg className="animate-spin h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+                Searching…
+              </div>
+            ) : filteredLearners.length > 0 ? (
               <ul className="py-1">
                 {filteredLearners.map((learner, index) => {
                   const isSelected = learner.id === selectedLearnerId;
@@ -269,7 +316,7 @@ const SmartLearnerSearch = ({
                         </div>
                         <div>
                           <div className={`text-xs font-medium ${isSelected ? 'text-blue-900' : 'text-gray-900'}`}>
-                            {learner.firstName} {learner.lastName}
+                            {learner.firstName} {learner.middleName ? `${learner.middleName} ` : ''}{learner.lastName}
                           </div>
                           <div className="flex items-center gap-3 text-[10px] text-gray-500">
                             <span className="flex items-center gap-1">
@@ -293,7 +340,14 @@ const SmartLearnerSearch = ({
             ) : (
               <div className="px-4 py-8 text-center text-gray-500">
                 <User className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                <p className="text-xs">No learners found</p>
+                <p className="text-xs font-medium text-gray-400">
+                  {onSearch && searchTerm.length >= 2
+                    ? `No students found for "${searchTerm}"`
+                    : 'No learners found'}
+                </p>
+                {onSearch && searchTerm.length >= 2 && (
+                  <p className="text-[10px] text-gray-300 mt-1">Try a different name or admission number</p>
+                )}
               </div>
             )}
           </div>,
