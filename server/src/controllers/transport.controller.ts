@@ -525,15 +525,16 @@ export class TransportController {
             });
 
             // ── 4. All transport learner IDs for grade distribution ──────────
+            // Source of truth: isTransportStudent flag, NOT assignments.
+            // A student may be marked as a transport student before being assigned
+            // to a route, or may have been admitted with the flag set manually.
             const allAssignments = await prisma.transportAssignment.findMany({
                 where: { archived: false, passengerType: 'LEARNER' },
                 select: { passengerId: true, routeId: true, pickupPoint: true, dropoffPoint: true }
             });
 
-            const learnerIds = [...new Set(allAssignments.map(a => a.passengerId))];
-
             const learners = await prisma.learner.findMany({
-                where: { id: { in: learnerIds }, archived: false },
+                where: { isTransportStudent: true, archived: false },
                 select: {
                     id: true,
                     firstName: true,
@@ -543,8 +544,11 @@ export class TransportController {
                     stream: true,
                     primaryContactPhone: true,
                     guardianPhone: true
-                }
+                },
+                orderBy: [{ grade: 'asc' }, { lastName: 'asc' }, { firstName: 'asc' }]
             });
+
+            const learnerIds = learners.map(l => l.id);
 
             // ── 5. Compute route utilisation rows ────────────────────────────
             const routeRows = routes.map(r => {
@@ -590,27 +594,31 @@ export class TransportController {
                 .sort((a, b) => a.grade.localeCompare(b.grade));
 
             // ── 7. Full student roster ───────────────────────────────────────
+            // Iterate all transport students (by flag), merging in route data
+            // where an assignment exists. Students with no assignment yet still
+            // appear — they're transport students without a route.
             const routeById = Object.fromEntries(routes.map(r => [r.id, r]));
-            const roster = allAssignments.map(a => {
-                const learner = learners.find(l => l.id === a.passengerId);
-                const route   = routeById[a.routeId];
-                return learner ? {
+            const assignmentByLearner = new Map(allAssignments.map(a => [a.passengerId, a]));
+            const roster = learners.map(learner => {
+                const assignment = assignmentByLearner.get(learner.id);
+                const route      = assignment ? routeById[assignment.routeId] : null;
+                return {
                     learnerId:       learner.id,
                     admissionNumber: learner.admissionNumber,
                     name:            `${learner.firstName} ${learner.lastName}`,
                     grade:           learner.grade,
                     stream:          learner.stream,
                     phone:           learner.primaryContactPhone || learner.guardianPhone || null,
-                    routeId:         a.routeId,
-                    routeName:       route?.name ?? 'Unknown',
+                    routeId:         assignment?.routeId ?? null,
+                    routeName:       route?.name ?? null,
                     feePerTerm:      Number(route?.amount ?? 0),
                     driverName:      route?.vehicle?.driverName ?? null,
                     driverPhone:     route?.vehicle?.driverPhone ?? null,
                     vehicle:         route?.vehicle?.registrationNumber ?? null,
-                    pickupPoint:     a.pickupPoint,
-                    dropoffPoint:    a.dropoffPoint
-                } : null;
-            }).filter(Boolean).sort((a: any, b: any) => a.grade.localeCompare(b.grade) || a.name.localeCompare(b.name));
+                    pickupPoint:     assignment?.pickupPoint ?? null,
+                    dropoffPoint:    assignment?.dropoffPoint ?? null,
+                };
+            });
 
             // ── 8. Billing totals ────────────────────────────────────────────
             const billingTotals: {
@@ -633,7 +641,7 @@ export class TransportController {
                 totalCapacity:  vehicles.reduce((s, v) => s + (v.capacity ?? 0), 0),
                 totalAssigned:  allAssignments.length,
                 totalRoutes:    routes.length,
-                totalStudents:  learnerIds.length,
+                totalStudents:  learners.length,
                 overCapacity:   routeRows.filter(r => r.isFull).length
             };
 
