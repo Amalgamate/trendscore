@@ -3,7 +3,7 @@ import {
     User, Calendar, MapPin, Users, Heart,
     GraduationCap, Receipt, FileText, Activity,
     AlertCircle, Camera, Plus, Bus, Zap, TrendingUp, Brain,
-    Bookmark, Gift, CreditCard
+    Bookmark, Gift, CreditCard, X, Loader2, CheckCircle, Phone
 } from 'lucide-react';
 import api from '../../../../services/api';
 import { useAuth } from '../../../../hooks/useAuth';
@@ -100,6 +100,9 @@ const LearnerProfile = ({ learner: initialLearner, onBack, brandingSettings, onN
     const [invoices, setInvoices] = useState([]);
     const [assessments, setAssessments] = useState([]);
     const [transportAssignments, setTransportAssignments] = useState([]);
+    const [availableRoutes, setAvailableRoutes] = useState([]);
+    const [showRouteModal, setShowRouteModal] = useState(false);
+    const [savingTransport, setSavingTransport] = useState(false);
     const [aiData, setAiData] = useState({ feedback: '', risk: '', trend: null });
 
     const [showPhotoModal, setShowPhotoModal] = useState(false);
@@ -150,6 +153,9 @@ const LearnerProfile = ({ learner: initialLearner, onBack, brandingSettings, onN
             } else if (targetTab === 'transport') {
                 const res = await api.transport.getLearnerAssignments(currentLearner.id);
                 setTransportAssignments(res.success ? (res.data || []) : []);
+                // Also load available routes so the picker modal works
+                const routeRes = await api.transport.getRoutes();
+                if (routeRes.success) setAvailableRoutes(routeRes.data || []);
             } else if (targetTab === 'ai-insights') {
                 const [feedbackRes, riskRes, trendRes] = await Promise.all([
                     api.ai.generateFeedback(currentLearner.id, 'TERM_1', 2026),
@@ -242,6 +248,76 @@ const LearnerProfile = ({ learner: initialLearner, onBack, brandingSettings, onN
             await fetchTabData('financials');
         } catch (error) {
             showError(error.message || 'Failed to revise invoice');
+        }
+    };
+
+    // ── Transport toggle & assignment handlers ────────────────────────────────
+
+    const handleTransportToggle = async () => {
+        const newValue = !currentLearner.isTransportStudent;
+        setSavingTransport(true);
+        try {
+            if (!newValue) {
+                // Turning OFF — remove all active assignments, then update flag
+                const active = transportAssignments.filter(a => !a.archived);
+                await Promise.all(active.map(a => api.transport.deleteAssignment(a.id)));
+                await api.learners.update(currentLearner.id, { isTransportStudent: false });
+                setTransportAssignments([]);
+                setCurrentLearner(prev => ({ ...prev, isTransportStudent: false }));
+                showSuccess('Transport removed — fee will no longer be charged');
+            } else {
+                // Turning ON — update flag, then open route picker if routes exist
+                await api.learners.update(currentLearner.id, { isTransportStudent: true });
+                setCurrentLearner(prev => ({ ...prev, isTransportStudent: true }));
+                if (availableRoutes.length > 0) {
+                    setShowRouteModal(true);
+                } else {
+                    showSuccess('Marked as transport student. Assign a route from the Transport module to set the fee.');
+                }
+            }
+        } catch (err) {
+            showError(err?.message || 'Failed to update transport status');
+        } finally {
+            setSavingTransport(false);
+        }
+    };
+
+    const handleAssignRoute = async (routeId) => {
+        setSavingTransport(true);
+        try {
+            // Remove any existing active assignment first
+            const active = transportAssignments.filter(a => !a.archived);
+            await Promise.all(active.map(a => api.transport.deleteAssignment(a.id)));
+            const res = await api.transport.createAssignment({
+                routeId,
+                passengerId: currentLearner.id,
+                passengerType: 'LEARNER',
+            });
+            if (res.success) {
+                const fresh = await api.transport.getLearnerAssignments(currentLearner.id);
+                setTransportAssignments(fresh.success ? (fresh.data || []) : []);
+                setShowRouteModal(false);
+                const route = availableRoutes.find(r => r.id === routeId);
+                showSuccess(`Assigned to ${route?.name || 'route'} — transport fee applied to invoice`);
+            }
+        } catch (err) {
+            showError(err?.message || 'Failed to assign route');
+        } finally {
+            setSavingTransport(false);
+        }
+    };
+
+    const handleRemoveAssignment = async (assignmentId) => {
+        setSavingTransport(true);
+        try {
+            await api.transport.deleteAssignment(assignmentId);
+            const fresh = await api.transport.getLearnerAssignments(currentLearner.id);
+            setTransportAssignments(fresh.success ? (fresh.data || []) : []);
+            showSuccess('Removed from route');
+        } catch (err) {
+            showError(err?.message || 'Failed to remove assignment');
+        } finally {
+            setSavingTransport(false);
         }
     };
 
@@ -588,93 +664,206 @@ const LearnerProfile = ({ learner: initialLearner, onBack, brandingSettings, onN
 
                         {/* TRANSPORT TAB */}
                         {activeTab === 'transport' && (
-                            <div className="animate-fade-in">
-                                <div className="mb-4 flex items-center gap-3">
-                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold uppercase ${
-                                        currentLearner.isTransportStudent
-                                            ? 'bg-emerald-100 text-emerald-700'
-                                            : 'bg-gray-100 text-gray-500'
-                                    }`}>
-                                        <Bus size={12} />
-                                        {currentLearner.isTransportStudent ? 'Transport Student' : 'Not a Transport Student'}
-                                    </span>
-                                    {onNavigate && (
-                                        <button
-                                            onClick={() => onNavigate('transport-routes')}
-                                            className="text-xs text-blue-600 font-medium hover:underline"
-                                        >
-                                            Manage in Transport module →
-                                        </button>
-                                    )}
+                            <div className="animate-fade-in space-y-4">
+
+                                {/* Toggle card */}
+                                <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+                                    <div className="flex items-center justify-between gap-4 flex-wrap">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${currentLearner.isTransportStudent ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
+                                                <Bus size={18} />
+                                            </div>
+                                            <div>
+                                                <p className="font-semibold text-gray-900 text-sm">
+                                                    {currentLearner.isTransportStudent ? 'Transport Student' : 'Not a Transport Student'}
+                                                </p>
+                                                <p className="text-xs text-gray-400 mt-0.5">
+                                                    {currentLearner.isTransportStudent
+                                                        ? 'A transport fee will be added to this student\'s invoice'
+                                                        : 'Toggle on to mark as transport student and assign a route'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            {/* Toggle */}
+                                            <button
+                                                type="button"
+                                                disabled={savingTransport}
+                                                onClick={handleTransportToggle}
+                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${currentLearner.isTransportStudent ? 'bg-blue-500' : 'bg-gray-200'}`}
+                                            >
+                                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${currentLearner.isTransportStudent ? 'translate-x-6' : 'translate-x-1'}`} />
+                                            </button>
+                                            {savingTransport && <Loader2 size={14} className="animate-spin text-blue-400" />}
+                                        </div>
+                                    </div>
                                 </div>
 
-                                {transportAssignments.length > 0 ? (
-                                    <div className="space-y-4">
-                                        {transportAssignments.map(a => (
-                                            <div key={a.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                                                <div className="flex items-start gap-4">
-                                                    <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
-                                                        <Bus size={18} />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="font-semibold text-gray-900 text-base">{a.route?.name || 'Unknown Route'}</p>
-                                                        {a.route?.description && (
-                                                            <p className="text-xs text-gray-400 mt-0.5">{a.route.description}</p>
-                                                        )}
-                                                        <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
-                                                            <div>
-                                                                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Route Fee</p>
-                                                                <p className="text-sm font-semibold text-emerald-600">
-                                                                    KES {Number(a.route?.amount || 0).toLocaleString()}
-                                                                </p>
+                                {/* Route assignment */}
+                                {currentLearner.isTransportStudent && (
+                                    <div>
+                                        {transportAssignments.filter(a => !a.archived).length > 0 ? (
+                                            <div className="space-y-3">
+                                                {transportAssignments.filter(a => !a.archived).map(a => (
+                                                    <div key={a.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                                                        <div className="flex items-start gap-4">
+                                                            <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
+                                                                <Bus size={18} />
                                                             </div>
-                                                            {a.route?.vehicle && (
-                                                                <div>
-                                                                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Vehicle</p>
-                                                                    <p className="text-sm font-medium text-gray-700">{a.route.vehicle.registrationNumber}</p>
-                                                                </div>
-                                                            )}
-                                                            {a.route?.vehicle?.driverName && (
-                                                                <div>
-                                                                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Driver</p>
-                                                                    <p className="text-sm font-medium text-gray-700">{a.route.vehicle.driverName}</p>
-                                                                    {a.route.vehicle.driverPhone && (
-                                                                        <p className="text-[11px] text-gray-400">{a.route.vehicle.driverPhone}</p>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="font-semibold text-gray-900 text-base">{a.route?.name || 'Unknown Route'}</p>
+                                                                {a.route?.description && (
+                                                                    <p className="text-xs text-gray-400 mt-0.5">{a.route.description}</p>
+                                                                )}
+                                                                <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+                                                                    <div>
+                                                                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Route Fee</p>
+                                                                        <p className="text-sm font-semibold text-emerald-600">KES {Number(a.route?.amount || 0).toLocaleString()}</p>
+                                                                    </div>
+                                                                    {a.route?.vehicle && (
+                                                                        <div>
+                                                                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Vehicle</p>
+                                                                            <p className="text-sm font-medium text-gray-700">{a.route.vehicle.registrationNumber}</p>
+                                                                        </div>
+                                                                    )}
+                                                                    {a.route?.vehicle?.driverName && (
+                                                                        <div>
+                                                                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Driver</p>
+                                                                            <p className="text-sm font-medium text-gray-700">{a.route.vehicle.driverName}</p>
+                                                                            {a.route.vehicle.driverPhone && (
+                                                                                <a href={`tel:${a.route.vehicle.driverPhone}`} className="text-[11px] text-blue-500 hover:underline flex items-center gap-1 mt-0.5">
+                                                                                    <Phone size={9} />{a.route.vehicle.driverPhone}
+                                                                                </a>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                    {(a.pickupPoint || a.dropoffPoint) && (
+                                                                        <div>
+                                                                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Stop</p>
+                                                                            {a.pickupPoint  && <p className="text-[11px] font-medium text-gray-700">📍 {a.pickupPoint}</p>}
+                                                                            {a.dropoffPoint && <p className="text-[11px] font-medium text-gray-700">🏁 {a.dropoffPoint}</p>}
+                                                                        </div>
                                                                     )}
                                                                 </div>
-                                                            )}
-                                                            {(a.pickupPoint || a.dropoffPoint) && (
-                                                                <div>
-                                                                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Stop</p>
-                                                                    {a.pickupPoint  && <p className="text-[11px] font-medium text-gray-700">📍 {a.pickupPoint}</p>}
-                                                                    {a.dropoffPoint && <p className="text-[11px] font-medium text-gray-700">🏁 {a.dropoffPoint}</p>}
-                                                                </div>
-                                                            )}
+                                                            </div>
+                                                            <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                                                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase bg-emerald-100 text-emerald-700">{a.status}</span>
+                                                                {availableRoutes.length > 0 && (
+                                                                    <button
+                                                                        onClick={() => setShowRouteModal(true)}
+                                                                        disabled={savingTransport}
+                                                                        className="text-[11px] text-blue-600 font-medium hover:underline disabled:opacity-50"
+                                                                    >
+                                                                        Change route
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    onClick={() => handleRemoveAssignment(a.id)}
+                                                                    disabled={savingTransport}
+                                                                    className="text-[11px] text-red-400 font-medium hover:text-red-600 hover:underline disabled:opacity-50"
+                                                                >
+                                                                    Remove
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                    <span className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase ${
-                                                        a.status === 'ACTIVE'
-                                                            ? 'bg-emerald-100 text-emerald-700'
-                                                            : 'bg-gray-100 text-gray-500'
-                                                    }`}>
-                                                        {a.status}
-                                                    </span>
-                                                </div>
+                                                ))}
+                                                {/* Assign to different route */}
+                                                {availableRoutes.length > 1 && (
+                                                    <button
+                                                        onClick={() => setShowRouteModal(true)}
+                                                        className="w-full py-2.5 border-2 border-dashed border-blue-200 rounded-xl text-xs font-semibold text-blue-500 hover:bg-blue-50 transition"
+                                                    >
+                                                        + Change to a different route
+                                                    </button>
+                                                )}
                                             </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center flex flex-col items-center">
-                                        <Bus size={48} className="mb-4 text-gray-200" />
-                                        <p className="font-medium text-gray-500">Not assigned to any transport route</p>
-                                        {onNavigate && (
-                                            <button
-                                                onClick={() => onNavigate('transport-routes')}
-                                                className="mt-4 text-sm text-blue-600 font-medium hover:underline"
-                                            >
-                                                Go to Transport module to assign →
-                                            </button>
+                                        ) : (
+                                            /* No assignment yet */
+                                            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-8 text-center flex flex-col items-center gap-3">
+                                                <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center">
+                                                    <Bus size={24} className="text-amber-400" />
+                                                </div>
+                                                <div>
+                                                    <p className="font-semibold text-gray-700 text-sm">No route assigned yet</p>
+                                                    <p className="text-xs text-gray-400 mt-1">Assign a route so the correct transport fee is applied to this student's invoice.</p>
+                                                </div>
+                                                {availableRoutes.length > 0 ? (
+                                                    <button
+                                                        onClick={() => setShowRouteModal(true)}
+                                                        disabled={savingTransport}
+                                                        className="px-5 py-2 bg-blue-600 text-white rounded-xl text-xs font-semibold hover:bg-blue-700 transition shadow-lg shadow-blue-600/20 disabled:opacity-50 flex items-center gap-2"
+                                                    >
+                                                        {savingTransport ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                                                        Assign to Route
+                                                    </button>
+                                                ) : (
+                                                    <div className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                                                        No routes configured. Add routes in the Transport module first.
+                                                    </div>
+                                                )}
+                                            </div>
                                         )}
+                                    </div>
+                                )}
+
+                                {/* Route picker modal */}
+                                {showRouteModal && (
+                                    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                                            <div className="p-5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center justify-between">
+                                                <div>
+                                                    <p className="font-semibold text-base">Assign Transport Route</p>
+                                                    <p className="text-blue-100 text-xs mt-0.5">{currentLearner.firstName} {currentLearner.lastName}</p>
+                                                </div>
+                                                <button onClick={() => setShowRouteModal(false)} className="w-8 h-8 bg-white/10 hover:bg-white/20 rounded-xl flex items-center justify-center transition">
+                                                    <X size={15} />
+                                                </button>
+                                            </div>
+                                            <div className="p-5 space-y-3">
+                                                <p className="text-xs text-gray-500">Select the route this student will use. The route fee will be applied to their invoice immediately.</p>
+                                                {availableRoutes.map(route => {
+                                                    const isCurrentRoute = transportAssignments.some(a => a.routeId === route.id && !a.archived);
+                                                    return (
+                                                        <button
+                                                            key={route.id}
+                                                            onClick={() => handleAssignRoute(route.id)}
+                                                            disabled={savingTransport || isCurrentRoute}
+                                                            className={`w-full flex items-center justify-between p-3.5 rounded-xl border-2 transition text-left disabled:opacity-60 ${
+                                                                isCurrentRoute
+                                                                    ? 'border-emerald-300 bg-emerald-50'
+                                                                    : 'border-gray-100 hover:border-blue-300 hover:bg-blue-50'
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-center gap-3">
+                                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isCurrentRoute ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-50 text-blue-500'}`}>
+                                                                    <Bus size={15} />
+                                                                </div>
+                                                                <div>
+                                                                    <p className="font-semibold text-gray-900 text-sm">{route.name}</p>
+                                                                    <p className="text-[11px] text-gray-400 mt-0.5">
+                                                                        KES {Number(route.amount || 0).toLocaleString()}/term
+                                                                        {route.vehicle && ` · ${route.vehicle.registrationNumber}`}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                            {isCurrentRoute
+                                                                ? <CheckCircle size={16} className="text-emerald-500 flex-shrink-0" />
+                                                                : savingTransport
+                                                                    ? <Loader2 size={14} className="animate-spin text-blue-400 flex-shrink-0" />
+                                                                    : null
+                                                            }
+                                                        </button>
+                                                    );
+                                                })}
+                                                <button
+                                                    onClick={() => setShowRouteModal(false)}
+                                                    className="w-full py-2.5 text-gray-500 hover:bg-gray-100 rounded-xl font-semibold text-sm transition mt-2"
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </div>
