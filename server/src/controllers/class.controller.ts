@@ -68,6 +68,9 @@ export class ClassController {
     if (academicYear) whereClause.academicYear = parseInt(academicYear as string);
     if (term) whereClause.term = term as Term;
 
+    // Track whether the caller pinned a specific term/year or we resolved it
+    const callerPinnedTermYear = !!(academicYear || term);
+
     if (!academicYear && !term) {
       const context = await this.getActiveContext();
       whereClause.academicYear = context.academicYear;
@@ -82,7 +85,7 @@ export class ClassController {
       whereClause.teacherId = req.user.userId;
     }
 
-    const classes = await prisma.class.findMany({
+    let classes = await prisma.class.findMany({
       where: whereClause,
       include: {
         teacher: { select: { id: true, firstName: true, lastName: true, email: true } },
@@ -90,6 +93,34 @@ export class ClassController {
       },
       orderBy: [{ grade: 'asc' }, { stream: 'asc' }],
     });
+
+    // If the active-term query returned nothing (classes haven't been set up for
+    // this term yet) and the caller didn't pin a specific term/year, fall back to
+    // the most recent term that actually has classes for this institution so the
+    // attendance, grading, and other pages never show an empty dropdown.
+    if (classes.length === 0 && !callerPinnedTermYear) {
+      const latestClassForInstitution = await prisma.class.findFirst({
+        where: { institutionType, active: whereClause.active },
+        orderBy: [{ academicYear: 'desc' }, { createdAt: 'desc' }],
+        select: { academicYear: true, term: true },
+      });
+
+      if (latestClassForInstitution) {
+        const fallbackWhere = {
+          ...whereClause,
+          academicYear: latestClassForInstitution.academicYear,
+          term: latestClassForInstitution.term,
+        };
+        classes = await prisma.class.findMany({
+          where: fallbackWhere,
+          include: {
+            teacher: { select: { id: true, firstName: true, lastName: true, email: true } },
+            _count: { select: { enrollments: { where: { active: true } } } },
+          },
+          orderBy: [{ grade: 'asc' }, { stream: 'asc' }],
+        });
+      }
+    }
 
     // Augment each class with a learner count by grade (covers students admitted
     // without an explicit ClassEnrollment record)
