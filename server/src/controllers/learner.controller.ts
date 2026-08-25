@@ -137,6 +137,7 @@ export class LearnerController {
             primaryContactPhone: true, primaryContactName: true,
             primaryContactType: true, primaryContactEmail: true,
             guardianPhone: true, guardianName: true,
+            isTransportStudent: true,
             createdBy: true,
             enrollments: {
               where: { active: true },
