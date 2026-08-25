@@ -27,7 +27,7 @@ import {
     Heart, Star, Sparkles, Rocket
 } from 'lucide-react';
 
-const focusModules = ['dashboard', 'learners', 'teachers', 'attendance', 'assessment', 'finance', 'communications', 'planner', 'digital-learning', 'learning-hub', 'docs-center', 'settings', 'hr', 'inventory', 'transport', 'pathway-planner', 'boarding'];
+const focusModules = ['dashboard', 'learners', 'teachers', 'attendance', 'assessment', 'finance', 'communications', 'planner', 'digital-learning', 'learning-hub', 'docs-center', 'settings', 'hr', 'inventory', 'transport', 'pathway-planner'];
 const SCHOOL_SECTION_ORDER = ['learners', 'students', 'teachers', 'lecturers', 'attendance', 'assessment', 'secondary-assessment', 'tertiary-assessment'];
 
 const STUDENT_PORTAL_ITEMS = [
@@ -465,17 +465,26 @@ export const allNavSections = [
                 ]
             },
             {
+                id: 'group-attendance-boarding',
+                label: 'Boarding',
+                type: 'group',
+                icon: Building2,
+                items: [
+                    { id: 'boarding-dashboard', label: 'Boarding Operations', path: 'boarding-dashboard', permission: 'VIEW_BOARDING' },
+                ]
+            },
+            {
                 id: 'group-attendance-biometric',
                 label: 'Identity & Biometrics',
                 type: 'group',
                 icon: Fingerprint,
                 app: 'biometric',
                 items: [
-                    { id: 'biometric-dashboard',  label: 'Biometric Authority',  path: 'biometric-dashboard',             permission: 'BIOMETRIC_ATTENDANCE'      },
-                    { id: 'biometric-enrollment', label: 'Face Enrollment',       path: 'biometric-dashboard?tab=enrollment', permission: 'ENROLL_FINGERPRINTS'    },
-                    { id: 'biometric-devices',    label: 'Terminal Management',   path: 'biometric-dashboard?tab=devices',    permission: 'MANAGE_BIOMETRIC_DEVICES' },
-                    { id: 'biometric-logs',       label: 'Attendance Data Feed',  path: 'biometric-dashboard?tab=logs',       permission: 'VIEW_BIOMETRIC_LOGS'      },
-                    { id: 'biometric-api',        label: 'API & Bridge Info',     path: 'biometric-dashboard?tab=config',     permission: 'CONFIGURE_BIOMETRIC_API'  },
+                    { id: 'biometric-dashboard',  label: 'Biometric Authority',  path: 'biometric-dashboard',                permission: 'BIOMETRIC_ATTENDANCE'      },
+                    { id: 'biometric-enrollment', label: 'Face Enrollment',       path: 'biometric-dashboard?tab=enrollment', permission: 'ENROLL_FINGERPRINTS'       },
+                    { id: 'biometric-devices',    label: 'Terminal Management',   path: 'biometric-dashboard?tab=devices',    permission: 'MANAGE_BIOMETRIC_DEVICES'  },
+                    { id: 'biometric-logs',       label: 'Attendance Data Feed',  path: 'biometric-dashboard?tab=logs',       permission: 'VIEW_BIOMETRIC_LOGS'       },
+                    { id: 'biometric-api',        label: 'API & Bridge Info',     path: 'biometric-dashboard?tab=config',     permission: 'CONFIGURE_BIOMETRIC_API'   },
                 ]
             },
             {
@@ -673,17 +682,10 @@ export const allNavSections = [
         ]
     },
 
-    // ── Boarding Module (Phase 2.0) ────────────────────────────────────────────
-    {
-        id: 'boarding',
-        label: 'Boarding',
-        icon: Home,
-        permission: null,
-        items: [
-            { id: 'boarding-dashboard', label: 'Boarding Overview', path: 'boarding-dashboard', permission: null },
-            { id: 'hostel-allocation', label: 'Dormitory Allocation', path: 'hostel-allocation', permission: 'MANAGE_FACILITIES' },
-        ]
-    },
+    // ── Boarding Module (Phase 2.0) — surfaced inside the Attendance section ──
+    // The boarding-dashboard path is accessible via Attendance → Boarding.
+    // The standalone 'boarding' section is intentionally removed to avoid
+    // showing the same page twice in the sidebar.
     {
         id: 'settings',
         label: 'Settings',
@@ -1090,7 +1092,7 @@ export const useNavigation = () => {
             ];
         }
         return navSections.filter(s => 
-            ['hr', 'finance', 'inventory', 'library', 'transport', 'attendance', 'boarding'].includes(s.id)
+            ['hr', 'finance', 'inventory', 'library', 'transport', 'attendance'].includes(s.id)
         );
     }, [navSections, role]);
 
@@ -1233,8 +1235,8 @@ export const groupNavigationByCategory = (nav) => {
     }
 
     // Presence & Movement: the unified attendance section covers all sub-domains
-    // (daily registers, presence tracking, biometrics, analytics).
-    const presenceIds = ['attendance', 'boarding', 'transport'];
+    // (daily registers, presence tracking, biometrics, boarding, analytics).
+    const presenceIds = ['attendance', 'transport'];
     const availablePresenceSections = [
         ...(nav.schoolSections || []),
         ...(nav.backOfficeSections || []),

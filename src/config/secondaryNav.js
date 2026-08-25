@@ -177,17 +177,61 @@ export const secondaryNavSections = [
   // ── Presence & Attendance ─────────────────────────────────────────────────
   {
     id: 'presence-attendance',
-    label: 'Presence & Attendance',
+    label: 'Attendance',
     icon: Activity,
     permission: null,
     items: [
-      { id: 'presence-dashboard',        label: 'Today',               path: 'presence-dashboard',        permission: null },
-      { id: 'attendance-daily',          label: 'Class Register',      path: 'attendance-daily',          permission: 'MARK_ATTENDANCE' },
-      { id: 'attendance-reports',        label: 'Reports',             path: 'attendance-reports',        permission: 'GENERATE_ATTENDANCE_REPORTS' },
-      { id: 'analytics-dashboard',       label: 'Insights & Alerts',   path: 'analytics-dashboard',       permission: null },
-      { id: 'boarding-dashboard',        label: 'Boarding Operations', path: 'boarding-dashboard',        permission: 'VIEW_BOARDING' },
-      { id: 'biometric-dashboard',       label: 'Devices & Biometrics', path: 'biometric-dashboard',       permission: 'BIOMETRIC_ATTENDANCE' },
-      { id: 'attendance-configuration',  label: 'Attendance Settings', path: 'attendance-configuration',  permission: 'VIEW_ALL_ATTENDANCE' },
+      {
+        id: 'group-attendance-daily',
+        label: 'Daily Attendance',
+        type: 'group',
+        items: [
+          { id: 'attendance-daily',  label: 'Class Register',  path: 'attendance-daily',  permission: 'MARK_ATTENDANCE'  },
+          { id: 'attendance-staff',  label: 'Staff Attendance', path: 'hr-attendance',    permission: 'HR_MANAGEMENT', app: 'staff-hr' },
+        ],
+      },
+      {
+        id: 'group-attendance-presence',
+        label: 'Presence & Movement',
+        type: 'group',
+        items: [
+          { id: 'presence-dashboard', label: 'Today\'s Overview',  path: 'presence-dashboard', permission: 'VIEW_ALL_PRESENCE'      },
+          { id: 'presence-timeline',  label: 'Learner Timeline',   path: 'presence-timeline',  permission: 'VIEW_PRESENCE_TIMELINE' },
+        ],
+      },
+      {
+        id: 'group-attendance-boarding',
+        label: 'Boarding',
+        type: 'group',
+        items: [
+          { id: 'boarding-dashboard', label: 'Boarding Operations', path: 'boarding-dashboard', permission: 'VIEW_BOARDING' },
+        ],
+      },
+      {
+        id: 'group-attendance-biometric',
+        label: 'Identity & Biometrics',
+        type: 'group',
+        items: [
+          { id: 'biometric-dashboard', label: 'Devices & Biometrics', path: 'biometric-dashboard', permission: 'BIOMETRIC_ATTENDANCE' },
+        ],
+      },
+      {
+        id: 'group-attendance-reports',
+        label: 'Reports & Analytics',
+        type: 'group',
+        items: [
+          { id: 'attendance-reports',  label: 'Attendance Reports', path: 'attendance-reports',  permission: 'GENERATE_ATTENDANCE_REPORTS' },
+          { id: 'analytics-dashboard', label: 'Insights & Alerts',  path: 'analytics-dashboard', permission: null                         },
+        ],
+      },
+      {
+        id: 'group-attendance-config',
+        label: 'Configuration',
+        type: 'group',
+        items: [
+          { id: 'attendance-configuration', label: 'Attendance Settings', path: 'attendance-configuration', permission: 'VIEW_ALL_ATTENDANCE' },
+        ],
+      },
     ],
   },
 

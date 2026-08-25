@@ -14,8 +14,20 @@ export class TimetableController {
     try { return ok(res, await timetableService.createBellSchedule(req.body), 201); } catch (error) { return next(error); }
   };
 
+  updateBellSchedule = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try { return ok(res, await timetableService.updateBellSchedule(req.params.bellScheduleId, req.body)); } catch (error) { return next(error); }
+  };
+
+  updateBellPeriod = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try { return ok(res, await timetableService.updateBellPeriod(req.params.periodId, req.body)); } catch (error) { return next(error); }
+  };
+
   createRoom = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try { return ok(res, await timetableService.createRoom(req.body), 201); } catch (error) { return next(error); }
+  };
+
+  updateRoom = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try { return ok(res, await timetableService.updateRoom(req.params.roomId, req.body)); } catch (error) { return next(error); }
   };
 
   upsertAllocation = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -30,6 +42,10 @@ export class TimetableController {
     try {
       return ok(res, await timetableService.createPlan({ ...req.body, createdById: req.user?.userId }), 201);
     } catch (error) { return next(error); }
+  };
+
+  listVersions = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try { return ok(res, await timetableService.listVersions(req.params.planId)); } catch (error) { return next(error); }
   };
 
   entries = async (req: AuthRequest, res: Response, next: NextFunction) => {

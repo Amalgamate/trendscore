@@ -57,10 +57,33 @@ const entrySchema = z.object({
 
 router.get('/foundation', requirePermission('ACCESS_TIMETABLE'), timetableController.foundation);
 router.post('/bell-schedules', requirePermission('EDIT_TIMETABLE'), validate(bellScheduleSchema), timetableController.createBellSchedule);
+router.patch('/bell-schedules/:bellScheduleId', requirePermission('EDIT_TIMETABLE'), validate(z.object({
+  name: z.string().min(2).max(100).optional(),
+  description: z.string().max(500).optional(),
+  isDefault: z.boolean().optional(),
+  active: z.boolean().optional(),
+}).refine(v => Object.keys(v).length > 0, 'At least one field is required')), timetableController.updateBellSchedule);
+router.patch('/bell-schedules/periods/:periodId', requirePermission('EDIT_TIMETABLE'), validate(z.object({
+  name: z.string().min(2).max(100).optional(),
+  type: z.nativeEnum(TimetablePeriodType).optional(),
+  instructional: z.boolean().optional(),
+  active: z.boolean().optional(),
+}).refine(v => Object.keys(v).length > 0, 'At least one field is required')), timetableController.updateBellPeriod);
 router.post('/rooms', requirePermission('EDIT_TIMETABLE'), validate(roomSchema), timetableController.createRoom);
+router.patch('/rooms/:roomId', requirePermission('EDIT_TIMETABLE'), validate(z.object({
+  name: z.string().min(2).max(100).optional(),
+  code: z.string().max(30).optional(),
+  type: z.nativeEnum(TimetableRoomType).optional(),
+  capacity: z.number().int().positive().optional(),
+  building: z.string().max(100).optional(),
+  floor: z.string().max(50).optional(),
+  active: z.boolean().optional(),
+  notes: z.string().max(500).optional(),
+}).refine(v => Object.keys(v).length > 0, 'At least one field is required')), timetableController.updateRoom);
 router.put('/instructional-allocations', requirePermission('EDIT_TIMETABLE'), validate(allocationSchema), timetableController.upsertAllocation);
 router.put('/teacher-availability', requirePermission('EDIT_TIMETABLE'), validate(availabilitySchema), timetableController.upsertAvailability);
 router.post('/plans', requirePermission('EDIT_TIMETABLE'), validate(planSchema), timetableController.createPlan);
+router.get('/plans/:planId/versions', requirePermission('ACCESS_TIMETABLE'), timetableController.listVersions);
 router.get('/versions/:versionId/entries', requirePermission('ACCESS_TIMETABLE'), timetableController.entries);
 router.put('/versions/:versionId/entries', requirePermission('EDIT_TIMETABLE'), validate(z.object({ entries: z.array(entrySchema) })), timetableController.replaceEntries);
 router.patch('/versions/:versionId/entries/:entryId', requirePermission('EDIT_TIMETABLE'), validate(z.object({

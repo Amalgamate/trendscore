@@ -29,8 +29,30 @@ export class TimetableService {
     });
   }
 
+  async updateBellSchedule(id: string, data: { name?: string; description?: string; isDefault?: boolean; active?: boolean }) {
+    return prisma.$transaction(async tx => {
+      if (data.isDefault) await tx.bellSchedule.updateMany({ where: { id: { not: id } }, data: { isDefault: false } });
+      return tx.bellSchedule.update({
+        where: { id },
+        data,
+        include: { periods: { orderBy: { sequence: 'asc' } } }
+      });
+    });
+  }
+
+  async updateBellPeriod(periodId: string, data: { name?: string; type?: any; instructional?: boolean; active?: boolean }) {
+    return prisma.bellPeriod.update({
+      where: { id: periodId },
+      data
+    });
+  }
+
   createRoom(data: Prisma.TimetableRoomCreateInput) {
     return prisma.timetableRoom.create({ data });
+  }
+
+  updateRoom(id: string, data: { name?: string; code?: string; type?: any; capacity?: number; building?: string; floor?: string; active?: boolean; notes?: string }) {
+    return prisma.timetableRoom.update({ where: { id }, data });
   }
 
   upsertAllocation(data: Prisma.InstructionalAllocationUncheckedCreateInput) {
@@ -56,6 +78,18 @@ export class TimetableService {
       const plan = await tx.timetablePlan.create({ data });
       const version = await tx.timetableVersion.create({ data: { planId: plan.id, version: 1, createdById: data.createdById } });
       return { ...plan, versions: [version] };
+    });
+  }
+
+  async listVersions(planId: string) {
+    return prisma.timetableVersion.findMany({
+      where: { planId },
+      orderBy: { version: 'desc' },
+      select: {
+        id: true, version: true, status: true, changeNote: true,
+        createdAt: true, publishedAt: true, approvedAt: true,
+        _count: { select: { entries: true } }
+      }
     });
   }
 
