@@ -6,7 +6,7 @@ import { useNotifications } from '../../hooks/useNotifications';
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
 // ── Publish confirmation dialog ───────────────────────────────────────────────
-const PublishConfirmDialog = ({ plan, version, entryCount, onConfirm, onCancel, publishing }) => (
+const PublishConfirmDialog = ({ plan, version, entryCount, overrideCount, onConfirm, onCancel, publishing }) => (
   <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm">
     <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-200 p-6 space-y-5">
       <div className="flex items-start gap-4">
@@ -26,6 +26,11 @@ const PublishConfirmDialog = ({ plan, version, entryCount, onConfirm, onCancel, 
         <p className="font-semibold">Before you publish:</p>
         <ul className="list-disc list-inside space-y-0.5 font-normal">
           <li>All existing class schedules for this term will be replaced.</li>
+          {overrideCount > 0 && (
+            <li className="font-semibold text-amber-900">
+              {overrideCount} manual override{overrideCount !== 1 ? 's' : ''} will be replaced by the engine schedule.
+            </li>
+          )}
           <li>Any previous published version will be archived.</li>
           <li>Teacher, student, and dashboard views will update immediately.</li>
         </ul>
@@ -67,6 +72,7 @@ const TimetableDraftEditor = ({ plan, version: initialVersion, bellSchedule, onB
   const [action, setAction] = useState('');
   const [showPublishDialog, setShowPublishDialog] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [overrideCount, setOverrideCount] = useState(0);
 
   const periods = useMemo(
     () => (bellSchedule?.periods || []).filter(item => item.active && item.instructional).sort((a, b) => a.sequence - b.sequence),
@@ -89,6 +95,16 @@ const TimetableDraftEditor = ({ plan, version: initialVersion, bellSchedule, onB
       setEntries(entryResponse.data || entryResponse || []);
       setConflicts(conflictResponse.data || conflictResponse || []);
       setAnalytics(analyticsResponse.data || analyticsResponse || { teachers: [], classes: [], rooms: [] });
+
+      // Fetch override count so the publish dialog can inform the admin
+      if (version.status === 'APPROVED') {
+        try {
+          const overridesResp = await api.timetable.getOverrideCount(version.id);
+          setOverrideCount((overridesResp.data ?? overridesResp)?.overrideCount ?? 0);
+        } catch {
+          setOverrideCount(0);
+        }
+      }
     } catch (error) {
       showError(error.message || 'Failed to open timetable draft');
     } finally {
@@ -289,6 +305,7 @@ const TimetableDraftEditor = ({ plan, version: initialVersion, bellSchedule, onB
           plan={plan}
           version={version}
           entryCount={entries.length}
+          overrideCount={overrideCount}
           onConfirm={handlePublish}
           onCancel={() => setShowPublishDialog(false)}
           publishing={publishing}

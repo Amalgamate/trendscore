@@ -363,6 +363,15 @@ model ClassSchedule {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   learningAreaId String?
+  // ── Manual override tracking ─────────────────────────────────────────────
+  // When an ADMIN or HEAD_TEACHER makes a quick one-off change to a published
+  // timetable, these fields mark it as a manual override so:
+  //  1. The UI can show an amber indicator on the lesson card.
+  //  2. The publish flow can warn how many overrides will be replaced.
+  isOverride     Boolean       @default(false)
+  overrideNote   String?       // required reason supplied by the editor
+  overriddenAt   DateTime?     // when the override was made
+  overriddenBy   String?       // userId of the editor
   class          Class         @relation(fields: [classId], references: [id], onDelete: Cascade)
   learningArea   LearningArea? @relation(fields: [learningAreaId], references: [id])
   teacher        User?         @relation("TeacherSchedules", fields: [teacherId], references: [id])
@@ -370,6 +379,7 @@ model ClassSchedule {
   @@index([classId])
   @@index([day])
   @@index([subject])
+  @@index([isOverride])
   @@map("class_schedules")
 }
 

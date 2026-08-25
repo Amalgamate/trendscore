@@ -80,5 +80,6 @@ router.post('/versions/:versionId/generate', requirePermission('EDIT_TIMETABLE')
   randomSeed: z.number().int().optional()
 })), timetableController.generate);
 router.post('/versions/:versionId/publish', requirePermission('EDIT_TIMETABLE'), timetableController.publish);
+router.get('/versions/:versionId/override-count', requirePermission('ACCESS_TIMETABLE'), timetableController.overrideCount);
 
 export default router;

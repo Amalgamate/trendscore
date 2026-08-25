@@ -58,6 +58,10 @@ export class TimetableController {
   publish = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try { return ok(res, await timetableService.publish(req.params.versionId)); } catch (error) { return next(error); }
   };
+
+  overrideCount = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try { return ok(res, await timetableService.getOverrideCount(req.params.versionId)); } catch (error) { return next(error); }
+  };
 }
 
 export const timetableController = new TimetableController();
