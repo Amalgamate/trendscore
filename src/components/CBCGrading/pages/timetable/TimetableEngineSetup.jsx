@@ -3,6 +3,7 @@ import { AlertTriangle, BookOpenCheck, Building2, CalendarClock, CheckCircle2, C
 import api from '../../../../services/api';
 import { useNotifications } from '../../hooks/useNotifications';
 import TimetableDraftEditor from './TimetableDraftEditor';
+import TimetableWalkthrough from './TimetableWalkthrough';
 
 const fieldClass = 'w-full h-11 px-3 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400';
 const labelClass = 'block text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5';
@@ -230,6 +231,9 @@ const TimetableEngineSetup = ({ open, onClose, teachers = [], learningAreas = []
               {/* ── Overview ── */}
               {section === 'overview' && (
                 <div className="space-y-5">
+                  {/* Walkthrough */}
+                  <TimetableWalkthrough onNavigateTab={(tab) => setSection(tab)} />
+
                   <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                     <Metric icon={Clock3}       label="Bell schedules"   value={data.bellSchedules.length} tone="bg-indigo-50 text-indigo-600" />
                     <Metric icon={Building2}    label="Managed rooms"    value={data.rooms.length}         tone="bg-amber-50 text-amber-600" />
