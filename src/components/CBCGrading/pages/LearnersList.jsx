@@ -3,7 +3,7 @@
  */
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Upload, Eye, Edit, Trash2, LogOut, ChevronLeft, ChevronRight, Search, RefreshCw, Users, MoreVertical, MessageCircle, MessageSquare, X, Loader2, Send, Filter, Plus } from 'lucide-react';
+import { Upload, Eye, Edit, Trash2, LogOut, ChevronLeft, ChevronRight, Search, RefreshCw, Users, MoreVertical, MessageCircle, MessageSquare, X, Loader2, Send, Filter, Plus, Bus } from 'lucide-react';
 import StatusBadge from '../shared/StatusBadge';
 import EmptyState from '../shared/EmptyState';
 import { usePermissions } from '../../../hooks/usePermissions';
@@ -48,6 +48,8 @@ const LearnersList = ({
   const activeFilterCount = (filterGrade !== 'all' ? 1 : 0) + (filterStatus !== 'all' ? 1 : 0) + (filterStream !== 'all' ? 1 : 0);
   const clearAllFiltersLearners = () => { setFilterGrade('all'); setFilterStatus('all'); setFilterStream('all'); };
   const [isDeleting, setIsDeleting] = useState(false);
+  const [transportTogglingId, setTransportTogglingId] = useState(null);
+  const [localTransportState, setLocalTransportState] = useState({});
   const [showQuickContact, setShowQuickContact] = useState(false);
   const [selectedGuardian, setSelectedGuardian] = useState(null);
   const [quickMessage, setQuickMessage] = useState('');
@@ -58,6 +60,23 @@ const LearnersList = ({
   const { grades } = useSchoolData();
   const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
   const { showSuccess, showError } = useNotifications();
+
+  const handleTransportToggle = async (e, learner) => {
+    e.stopPropagation();
+    const newValue = !(localTransportState[learner.id] ?? learner.isTransportStudent);
+    setTransportTogglingId(learner.id);
+    setLocalTransportState(prev => ({ ...prev, [learner.id]: newValue }));
+    try {
+      await learnerAPI.update(learner.id, { isTransportStudent: newValue });
+      showSuccess(`${learner.firstName} ${newValue ? 'marked as transport student' : 'removed from transport'}`);
+    } catch (err) {
+      // Revert on failure
+      setLocalTransportState(prev => ({ ...prev, [learner.id]: !newValue }));
+      showError(err?.message || 'Failed to update transport status');
+    } finally {
+      setTransportTogglingId(null);
+    }
+  };
 
   const formatGradeLabel = (g) => {
     const s = String(g || '');
@@ -836,6 +855,27 @@ const LearnersList = ({
                             <LogOut size={16} />
                           </button>
                         )}
+                        {canEditLearner && (isTeacher ? canTeacherModify(learner) : true) && (() => {
+                          const isTransport = localTransportState[learner.id] ?? !!learner.isTransportStudent;
+                          const isToggling = transportTogglingId === learner.id;
+                          return (
+                            <button
+                              onClick={(e) => handleTransportToggle(e, learner)}
+                              disabled={isToggling}
+                              className={`p-1.5 rounded-lg transition disabled:opacity-50 ${
+                                isTransport
+                                  ? 'text-blue-600 bg-blue-50 hover:bg-blue-100'
+                                  : 'text-gray-400 hover:text-blue-500 hover:bg-blue-50'
+                              }`}
+                              title={isTransport ? 'Transport student — click to remove' : 'Mark as transport student'}
+                            >
+                              {isToggling
+                                ? <Loader2 size={16} className="animate-spin" />
+                                : <Bus size={16} />
+                              }
+                            </button>
+                          );
+                        })()}
                         {canDeleteLearner && (isTeacher ? canTeacherModify(learner) : true) && (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleIndividualDelete(learner.id); }}

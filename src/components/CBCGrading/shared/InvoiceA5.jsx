@@ -378,14 +378,13 @@ export default function InvoiceA5({ invoice, schoolInfo, onClose }) {
               ))
             )}
 
-            {/* Transport row if visible in total but not in items */}
-            {learner.isTransportStudent && !displayItems.find(i => (i.feeType?.code || i.code) === 'TRANSPORT') && (
+            {/* Transport row — shown when transport is billed but not in snapshot items */}
+            {Number(invoice.transportBilled || 0) > 0 && !displayItems.find(i => (i.feeType?.code || i.code) === 'TRANSPORT') && (
               <TableRow
                 name="Transport Fee"
-                type="OPTIONAL"
-                amount="—"
+                type="TRANSPORT"
+                amount={fmt(Number(invoice.transportBilled))}
                 idx={displayItems.length}
-                italic
               />
             )}
           </div>
@@ -432,6 +431,9 @@ export default function InvoiceA5({ invoice, schoolInfo, onClose }) {
           }}>
             {invoice.grossAmount !== null && invoice.grossAmount !== undefined && (
               <TotalRow label="Standard Fees" value={`KES ${fmt(invoice.grossAmount)}`} />
+            )}
+            {Number(invoice.transportBilled || 0) > 0 && (
+              <TotalRow label="Transport Fee" value={`KES ${fmt(invoice.transportBilled)}`} color="#2563eb" />
             )}
             {Number(invoice.adjustmentAmount || 0) !== 0 && (
               <TotalRow label="Adjustments" value={`KES ${fmt(invoice.adjustmentAmount)}`} color="#0D9488" />
