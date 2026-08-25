@@ -448,7 +448,12 @@ export class ClassController {
 
   async createClassSchedule(req: AuthRequest, res: Response) {
     const { id } = req.params;
-    const { subject, day, startTime, endTime, room, teacherId, learningAreaId, semester, academicYear } = req.body;
+    const { subject, day, startTime, endTime, room, teacherId, learningAreaId, semester, academicYear, overrideNote } = req.body;
+
+    // Mark as a manual override when an admin/head teacher adds a lesson
+    // to an already-published schedule. The overrideNote is required at the
+    // route validation layer so it will always be present here.
+    const isOverride = Boolean(overrideNote);
 
     const schedule = await prisma.classSchedule.create({
       data: {
@@ -462,6 +467,10 @@ export class ClassController {
         learningAreaId,
         semester,
         academicYear: parseInt(academicYear as string) || new Date().getFullYear(),
+        isOverride,
+        overrideNote: isOverride ? overrideNote : null,
+        overriddenAt: isOverride ? new Date() : null,
+        overriddenBy: isOverride ? (req.user?.userId ?? null) : null,
       },
       include: {
         teacher: { select: { id: true, firstName: true, lastName: true } },
@@ -474,8 +483,10 @@ export class ClassController {
 
   async updateClassSchedule(req: AuthRequest, res: Response) {
     const { scheduleId } = req.params;
-    const { subject, day, startTime, endTime, room, teacherId, learningAreaId, semester, academicYear } = req.body;
+    const { subject, day, startTime, endTime, room, teacherId, learningAreaId, semester, academicYear, overrideNote } = req.body;
 
+    // Every manual update to a published schedule is an override.
+    // overrideNote is required at the route validation layer.
     const schedule = await prisma.classSchedule.update({
       where: { id: scheduleId },
       data: {
@@ -488,6 +499,10 @@ export class ClassController {
         learningAreaId,
         semester,
         academicYear: academicYear ? parseInt(academicYear as string) : undefined,
+        isOverride: true,
+        overrideNote,
+        overriddenAt: new Date(),
+        overriddenBy: req.user?.userId ?? null,
       },
       include: {
         teacher: { select: { id: true, firstName: true, lastName: true } },

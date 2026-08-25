@@ -118,6 +118,26 @@ export class TimetableService {
     return prisma.$transaction(async tx => { const version = await tx.timetableVersion.create({ data: { planId: source.planId, version: (latest._max.version || 0) + 1, changeNote: `Restored from version ${source.version}`, createdById } }); if (source.entries.length) await tx.timetableEntry.createMany({ data: source.entries.map(({ id, createdAt, updatedAt, versionId: _, ...entry }) => ({ ...entry, versionId: version.id })) }); return version; });
   }
 
+  /** Count manual overrides currently on ClassSchedule for the plan's term/year.
+   *  Used by the publish confirmation dialog to warn admins before they wipe overrides. */
+  async getOverrideCount(versionId: string) {
+    const version = await prisma.timetableVersion.findUniqueOrThrow({
+      where: { id: versionId },
+      include: { plan: true, entries: { select: { classId: true } } }
+    });
+    const classIds = [...new Set(version.entries.map(e => e.classId))];
+    if (!classIds.length) return { overrideCount: 0 };
+    const overrideCount = await prisma.classSchedule.count({
+      where: {
+        classId: { in: classIds },
+        academicYear: version.plan.academicYear,
+        semester: version.plan.term,
+        isOverride: true,
+      }
+    });
+    return { overrideCount };
+  }
+
   async publish(versionId: string) {
     const version = await prisma.timetableVersion.findUniqueOrThrow({
       where: { id: versionId },
@@ -128,6 +148,19 @@ export class TimetableService {
     if (conflicts.some(conflict => conflict.severity === 'ERROR')) throw new Error('Resolve all hard conflicts before publishing.');
 
     const classIds = [...new Set(version.entries.map(entry => entry.classId))];
+
+    // Count manual overrides that exist for this term — informational only.
+    // Publishing always proceeds; the warning is surfaced in the UI so admins
+    // know how many quick-edit changes will be replaced by this publish.
+    const overrideCount = await prisma.classSchedule.count({
+      where: {
+        classId: { in: classIds },
+        academicYear: version.plan.academicYear,
+        semester: version.plan.term,
+        isOverride: true,
+      }
+    });
+
     await prisma.$transaction(async tx => {
       await tx.classSchedule.deleteMany({
         where: { classId: { in: classIds }, academicYear: version.plan.academicYear, semester: version.plan.term }
@@ -143,14 +176,16 @@ export class TimetableService {
           teacherId: entry.teacherId,
           learningAreaId: entry.learningAreaId,
           semester: version.plan.term,
-          academicYear: version.plan.academicYear
+          academicYear: version.plan.academicYear,
+          // Engine-published rows are canonical — not overrides
+          isOverride: false,
         })) });
       }
       await tx.timetableVersion.updateMany({ where: { planId: version.planId, status: 'PUBLISHED' }, data: { status: TimetableVersionStatus.ARCHIVED } });
       await tx.timetableVersion.update({ where: { id: versionId }, data: { status: TimetableVersionStatus.PUBLISHED, publishedAt: new Date() } });
       await tx.timetablePlan.update({ where: { id: version.planId }, data: { status: 'ACTIVE' } });
     });
-    return { versionId, publishedEntries: version.entries.length };
+    return { versionId, publishedEntries: version.entries.length, replacedOverrides: overrideCount };
   }
 }
 

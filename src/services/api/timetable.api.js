@@ -15,5 +15,6 @@ export const timetableAPI = {
   transition: (versionId, status) => fetchWithAuth(`/timetable/versions/${versionId}/transition`, { method: 'POST', body: JSON.stringify({ status }) }),
   cloneVersion: (versionId) => fetchWithAuth(`/timetable/versions/${versionId}/clone`, { method: 'POST' }),
   generate: (versionId, options = {}) => fetchWithAuth(`/timetable/versions/${versionId}/generate`, { method: 'POST', body: JSON.stringify(options) }),
-  publish: (versionId) => fetchWithAuth(`/timetable/versions/${versionId}/publish`, { method: 'POST' })
+  publish: (versionId) => fetchWithAuth(`/timetable/versions/${versionId}/publish`, { method: 'POST' }),
+  getOverrideCount: (versionId) => fetchWithAuth(`/timetable/versions/${versionId}/override-count`),
 };

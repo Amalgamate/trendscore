@@ -145,6 +145,7 @@ const TimetablePage = () => {
   const [subjectId, setSubjectId] = useState('');
   const [teacherId, setTeacherId] = useState('');
   const [room, setRoom] = useState('');
+  const [overrideNote, setOverrideNote] = useState('');
   const [lessonDay, setLessonDay] = useState('Monday');
   const [isDownloadingWeekPdf, setIsDownloadingWeekPdf] = useState(false);
   const [isSharingWeekPdf, setIsSharingWeekPdf] = useState(false);
@@ -152,6 +153,8 @@ const TimetablePage = () => {
   const { user } = useAuth();
   const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
   const canEditTimetable = can('EDIT_TIMETABLE');
+  // Only ADMIN and HEAD_TEACHER can make quick override edits to a published timetable
+  const canOverride = ['ADMIN', 'HEAD_TEACHER', 'SUPER_ADMIN'].includes(user?.role);
 
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
@@ -299,7 +302,9 @@ const TimetablePage = () => {
       teacherId: schedule.teacherId,
       teacherName: schedule.teacher ? `${schedule.teacher.firstName} ${schedule.teacher.lastName}` : 'Unassigned',
       grade: classLabel,
-      room: schedule.room || 'N/A'
+      room: schedule.room || 'N/A',
+      isOverride: schedule.isOverride || false,
+      overrideNote: schedule.overrideNote || '',
     };
   };
 
@@ -359,6 +364,10 @@ const TimetablePage = () => {
       showError('You do not have permission to edit the timetable.');
       return;
     }
+    if (!canOverride) {
+      showError('Only Admins and Head Teachers can make quick edits to a published timetable.');
+      return;
+    }
     if (selectedClassId === 'all') {
       if (!lesson.classId) {
         showError('Select a specific class before editing this lesson.');
@@ -371,6 +380,7 @@ const TimetablePage = () => {
     setSubjectId(lesson.subjectId || '');
     setTeacherId(lesson.teacherId || '');
     setRoom(lesson.room || '');
+    setOverrideNote('');
     setLessonDay(day);
     setIsModalOpen(true);
   };
@@ -378,6 +388,10 @@ const TimetablePage = () => {
   const openAddModal = (day, timeSlot) => {
     if (!canEditTimetable) {
       showError('You do not have permission to edit the timetable.');
+      return;
+    }
+    if (!canOverride) {
+      showError('Only Admins and Head Teachers can make quick edits to a published timetable.');
       return;
     }
     if (selectedClassId === 'all') {
@@ -390,6 +404,7 @@ const TimetablePage = () => {
     setSubjectId('');
     setTeacherId('');
     setRoom('');
+    setOverrideNote('');
     setLessonDay(day);
     setSelectedDay(day);
     setIsModalOpen(true);
@@ -403,6 +418,11 @@ const TimetablePage = () => {
     }
     if (!timeLine || !subjectId || !selectedClassId || selectedClassId === 'all') {
       showError("Please select a Class, Subject and Time");
+      return;
+    }
+
+    if (!overrideNote.trim()) {
+      showError("Please provide a reason for this change (e.g. 'Teacher absent — cover arranged')");
       return;
     }
 
@@ -444,7 +464,8 @@ const TimetablePage = () => {
       endTime: parsedTime.endTime,
       learningAreaId: subjectId,
       teacherId: teacherId || null,
-      room: room || 'Classroom'
+      room: room || 'Classroom',
+      overrideNote: overrideNote.trim() || undefined,
     };
 
     try {
@@ -880,7 +901,7 @@ const TimetablePage = () => {
           <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
             {mobileLessons.length > 0 ? (
               mobileLessons.map((lesson) => {
-                const canOpenLesson = canEditTimetable && selectedClassId !== 'all';
+                const canOpenLesson = canEditTimetable && canOverride && selectedClassId !== 'all';
                 return (
                   <button
                     key={`${lesson.classId || selectedClassId}-${lesson.id}`}
@@ -899,7 +920,12 @@ const TimetablePage = () => {
                       </div>
                     </div>
                     <div className="min-w-0 px-4 py-3">
-                      <div className="truncate text-sm font-bold text-[#17213d]">{lesson.subject || 'Untitled Lesson'}</div>
+                      <div className="truncate text-sm font-bold text-[#17213d] flex items-center gap-1.5">
+                        {lesson.isOverride && (
+                          <span title={`Manual override: ${lesson.overrideNote}`} className="inline-block w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                        )}
+                        {lesson.subject || 'Untitled Lesson'}
+                      </div>
                       <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs font-medium text-[#56627d]">
                         <span className="truncate">{lesson.teacherName || 'Unassigned'}</span>
                         <span aria-hidden="true">•</span>
@@ -995,10 +1021,15 @@ const TimetablePage = () => {
                                 {lessons.map(lesson => (
                                   <div 
                                     key={lesson.id} 
-                                    className={`lesson-card ${canEditTimetable ? 'cursor-pointer' : ''}`}
-                                    onClick={() => { if (canEditTimetable) { setSelectedDay(day); openEditModal(lesson, day); } }}
+                                    className={`lesson-card ${canEditTimetable && canOverride ? 'cursor-pointer' : ''}`}
+                                    onClick={() => { if (canEditTimetable && canOverride) { setSelectedDay(day); openEditModal(lesson, day); } }}
                                   >
-                                    <div className="lesson-card-subject">{lesson.subject}</div>
+                                    <div className="lesson-card-subject flex items-center gap-1">
+                                      {lesson.isOverride && (
+                                        <span title={`Manual override: ${lesson.overrideNote}`} className="inline-block w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                                      )}
+                                      {lesson.subject}
+                                    </div>
                                     <div className="lesson-card-details">
                                       <span className="lesson-card-detail-item">{lesson.teacherName}</span>
                                       <span className="lesson-card-detail-item">{lesson.room}</span>
@@ -1007,7 +1038,7 @@ const TimetablePage = () => {
                                 ))}
                               </div>
                             ) : (
-                              canEditTimetable ? (
+                              canEditTimetable && canOverride ? (
                                 <button
                                   type="button"
                                   className="empty-slot"
@@ -1118,6 +1149,21 @@ const TimetablePage = () => {
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Room/Location</label>
                 <input type="text" value={room} onChange={e => setRoom(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-purple" placeholder="e.g. Room 101" />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Reason for change <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={overrideNote}
+                  onChange={e => setOverrideNote(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-purple"
+                  placeholder="e.g. Teacher absent — cover arranged"
+                  required
+                  maxLength={300}
+                />
+                <p className="mt-1 text-xs text-gray-400">This is recorded as a manual override on the published timetable.</p>
               </div>
               {lessonDay === getCurrentWeekday() && teacherId && !isTeacherClockedIn(teacherId) && (
                 <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs font-semibold">
