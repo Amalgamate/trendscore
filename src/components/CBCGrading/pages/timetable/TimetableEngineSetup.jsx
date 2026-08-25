@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BookOpenCheck, Building2, CalendarClock, CheckCircle2, Clock3, Loader2, Play, RefreshCw, ShieldCheck, Users, X } from 'lucide-react';
+import { AlertTriangle, BookOpenCheck, Building2, CalendarClock, CheckCircle2, Clock3, Loader2, Play, RefreshCw, ShieldCheck, Upload, Users, X } from 'lucide-react';
 import api from '../../../../services/api';
 import { useNotifications } from '../../hooks/useNotifications';
 import TimetableDraftEditor from './TimetableDraftEditor';
@@ -40,6 +40,7 @@ const TimetableEngineSetup = ({ open, onClose, teachers = [], learningAreas = []
   const [plan, setPlan] = useState({ name: `Main Timetable ${currentYear}`, academicYear: currentYear, term: 'TERM_1', bellScheduleId: '' });
   const [generation, setGeneration] = useState(null);
   const [generatingVersion, setGeneratingVersion] = useState('');
+  const [publishingVersion, setPublishingVersion] = useState('');
   const [editing, setEditing] = useState(null);
 
   const load = async () => {
@@ -80,6 +81,18 @@ const TimetableEngineSetup = ({ open, onClose, teachers = [], learningAreas = []
     } catch (error) {
       showError(error.message || 'Automatic timetable generation failed');
     } finally { setGeneratingVersion(''); }
+  };
+
+  const publishPlan = async (versionId, planName) => {
+    if (!window.confirm(`Publish "${planName}"?\n\nExisting class schedules for this term will be replaced and this version will go live.`)) return;
+    setPublishingVersion(versionId);
+    try {
+      await api.timetable.publish(versionId);
+      showSuccess(`${planName} is now live — class schedules updated.`);
+      await load();
+    } catch (error) {
+      showError(error.message || 'Publish failed');
+    } finally { setPublishingVersion(''); }
   };
 
   if (!open) return null;
@@ -183,9 +196,70 @@ const TimetableEngineSetup = ({ open, onClose, teachers = [], learningAreas = []
                   {data.plans.map(item => {
                     const version = item.versions?.[0];
                     const editable = version && ['DRAFT', 'DEPARTMENT_REVIEW', 'DEPUTY_REVIEW', 'PRINCIPAL_REVIEW', 'APPROVED'].includes(version.status);
+                    const isPublishable = canEdit && version?.status === 'APPROVED';
+                    const isPublished   = version?.status === 'PUBLISHED';
+                    const isLocked      = version?.status === 'LOCKED';
+                    const isArchived    = version?.status === 'ARCHIVED';
+
+                    const badgeCls = isPublished  ? 'bg-emerald-600 text-white'
+                                   : isLocked     ? 'bg-slate-700 text-white'
+                                   : isArchived   ? 'bg-gray-200 text-gray-500'
+                                   : version?.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-700'
+                                   : ['DEPARTMENT_REVIEW','DEPUTY_REVIEW','PRINCIPAL_REVIEW'].includes(version?.status) ? 'bg-amber-50 text-amber-700'
+                                   : 'bg-gray-100 text-gray-600';
+
                     return <div key={item.id} className="bg-white border border-gray-200 rounded-xl p-4">
-                      <div className="flex justify-between gap-3"><div><h4 className="font-semibold text-gray-900">{item.name}</h4><p className="text-xs text-gray-500">{item.term.replace('_', ' ')} · {item.academicYear} · {item.bellSchedule.name}</p></div><span className="text-[10px] uppercase font-semibold bg-gray-100 rounded-full px-2 py-1 h-fit">{version?.status || item.status}</span></div>
-                      {version && <div className="mt-4 flex items-center justify-between gap-3 border-t border-gray-100 pt-3"><p className="text-[11px] text-gray-500">Version {version.version}</p><div className="flex gap-2"><button type="button" onClick={() => setEditing({ plan: item, version })} className="h-9 px-3 rounded-lg border border-gray-200 text-gray-700 text-xs font-semibold">Edit grid</button><button type="button" disabled={!canEdit || !editable || generatingVersion === version.id} onClick={() => generatePlan(version.id)} className="h-9 px-3 rounded-lg bg-indigo-600 text-white text-xs font-semibold flex items-center gap-2 disabled:opacity-40">{generatingVersion === version.id ? <><RefreshCw size={14} className="animate-spin" /> Generating…</> : <><Play size={14} /> Generate timetable</>}</button></div></div>}
+                      <div className="flex justify-between gap-3">
+                        <div>
+                          <h4 className="font-semibold text-gray-900">{item.name}</h4>
+                          <p className="text-xs text-gray-500">{item.term.replace('_', ' ')} · {item.academicYear} · {item.bellSchedule.name}</p>
+                        </div>
+                        <span className={`text-[10px] uppercase font-semibold rounded-full px-2 py-1 h-fit ${badgeCls}`}>
+                          {version?.status?.replaceAll('_', ' ') || item.status}
+                        </span>
+                      </div>
+                      {version && (
+                        <div className="mt-4 flex items-center justify-between gap-3 border-t border-gray-100 pt-3">
+                          <p className="text-[11px] text-gray-500">Version {version.version}</p>
+                          <div className="flex gap-2 flex-wrap justify-end">
+                            <button type="button" onClick={() => setEditing({ plan: item, version })} className="h-9 px-3 rounded-lg border border-gray-200 text-gray-700 text-xs font-semibold hover:bg-gray-50">
+                              {isPublished || isLocked || isArchived ? 'View grid' : 'Edit grid'}
+                            </button>
+                            {/* Generate — only for editable, non-published drafts */}
+                            {editable && !isPublishable && (
+                              <button
+                                type="button"
+                                disabled={!canEdit || !editable || generatingVersion === version.id}
+                                onClick={() => generatePlan(version.id)}
+                                className="h-9 px-3 rounded-lg bg-indigo-600 text-white text-xs font-semibold flex items-center gap-2 disabled:opacity-40 hover:bg-indigo-700"
+                              >
+                                {generatingVersion === version.id
+                                  ? <><RefreshCw size={14} className="animate-spin" /> Generating…</>
+                                  : <><Play size={14} /> Generate timetable</>}
+                              </button>
+                            )}
+                            {/* Publish — only for APPROVED versions */}
+                            {isPublishable && (
+                              <button
+                                type="button"
+                                disabled={publishingVersion === version.id}
+                                onClick={() => publishPlan(version.id, item.name)}
+                                className="h-9 px-4 rounded-lg bg-emerald-600 text-white text-xs font-semibold flex items-center gap-2 disabled:opacity-40 hover:bg-emerald-700"
+                              >
+                                {publishingVersion === version.id
+                                  ? <><Loader2 size={14} className="animate-spin" /> Publishing…</>
+                                  : <><Upload size={14} /> Publish</>}
+                              </button>
+                            )}
+                            {/* Published indicator */}
+                            {isPublished && (
+                              <span className="h-9 px-3 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold flex items-center gap-2">
+                                <CheckCircle2 size={14} /> Live
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>;
                   })}
                 </div>
