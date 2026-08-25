@@ -65,14 +65,24 @@ export class AutomaticGeneratorService {
         include: { learningArea: true }
       }),
       prisma.subjectAssignment.findMany({
-        where: { active: true }, include: { teacher: { select: { id: true, firstName: true, lastName: true } } }
+        // Scope to grades that actually appear in this plan's class list.
+        // normalize() strips non-alphanumeric chars so GRADE_7 == Grade7 == grade 7.
+        where: {
+          active: true,
+          grade: { in: gradeKeys.flatMap(g => [g, g.replace(/_/g, ' ')]) }
+        },
+        include: { teacher: { select: { id: true, firstName: true, lastName: true } } }
       }),
       prisma.teacherAvailability.findMany({ where: { teacherId: { in: [] } } }),
       prisma.timetableRoom.findMany({ where: { active: true }, orderBy: { name: 'asc' } }),
       prisma.roomAvailability.findMany()
     ]);
-    // Fetch only relevant teacher rules after matching assignments across the school's grade naming conventions.
-    const relevantAssignments = assignments.filter(item => gradeKeys.some(grade => normalize(grade) === normalize(item.grade)));
+    // Secondary normalize pass: the DB grade values may still differ in casing/spacing
+    // from the class grade values even after the `in` filter above (e.g. "GRADE 7" vs
+    // "GRADE_7"). Keep the normalize() filter as the authoritative match.
+    const relevantAssignments = assignments.filter(item =>
+      gradeKeys.some(grade => normalize(grade) === normalize(item.grade))
+    );
     const teacherIds = [...new Set(relevantAssignments.map(item => item.teacherId))];
     const availability = teacherIds.length
       ? await prisma.teacherAvailability.findMany({ where: { teacherId: { in: teacherIds } } })
