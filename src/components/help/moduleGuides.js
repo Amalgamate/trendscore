@@ -175,6 +175,76 @@ export const moduleGuides = [
     ],
     support: { query: 'Boarding', section: 'boarding' },
   },
+
+  // ── Timetable Engine ────────────────────────────────────────────────────────
+  {
+    id: 'timetable-generator',
+    title: 'Timetable Generator',
+    pages: ['planner-timetable'],
+    roles: adminRoles,
+    summary: 'Generate a conflict-free weekly timetable for all classes in minutes using the Kenya CBE scheduling engine. The engine respects teacher availability, room types, double lessons, and locked periods.',
+    required: 'Active classes for the current term, subject assignments linking teachers to grades and learning areas, and at least one bell schedule configured.',
+    steps: [
+      {
+        title: 'Create a bell schedule',
+        description: 'Open Engine Setup → Bell schedules. Enter the school start time, period duration in minutes, and number of periods. Click "Create schedule". After creation, click any period\'s type chip to mark it as a Break so the engine skips it.',
+        page: 'planner-timetable',
+      },
+      {
+        title: 'Set weekly allocations',
+        description: 'Go to Allocations and set how many periods per week each grade should have for each learning area. For example: Grade 7 — Mathematics — 5 periods. These targets drive the generator.',
+        page: 'planner-timetable',
+      },
+      {
+        title: 'Assign teachers to subjects',
+        description: 'In Subject Assignments, link each teacher to the grade and learning area they teach. The generator uses these assignments to pick the right teacher for each lesson. A lesson with no matching assignment is scheduled as "Teacher unassigned".',
+        page: 'assess-learning-areas',
+      },
+      {
+        title: 'Mark teacher availability (optional)',
+        description: 'Go to Availability and add any blocked windows — for example, a part-time teacher who is unavailable on Friday afternoons. The engine will not schedule lessons for that teacher during those windows.',
+        page: 'planner-timetable',
+      },
+      {
+        title: 'Register specialist rooms (optional)',
+        description: 'Go to Rooms and add labs, computer rooms or any space that specific subjects require. Then set the required room type on the relevant allocation. The engine will only schedule that subject when the room is free.',
+        page: 'planner-timetable',
+      },
+      {
+        title: 'Create a timetable plan',
+        description: 'Go to Plans, give the plan a name, select the academic year, term and bell schedule, then click "Create draft plan". A version 1 draft is created immediately.',
+        page: 'planner-timetable',
+      },
+      {
+        title: 'Generate the timetable',
+        description: 'Click "Generate timetable" on your draft plan. The engine runs in seconds and shows a result card with lesson count, unresolved allocations, and hard conflicts. Review the unresolved list — it tells you exactly which subject/class combination could not be placed and why.',
+        page: 'planner-timetable',
+      },
+      {
+        title: 'Review and edit in the grid',
+        description: 'Click "Edit grid" to open the drag-and-drop editor. Drag any unlocked lesson to a different period. Click the lock icon to pin important lessons before regenerating. Conflicts are highlighted in red — hover to see the reason.',
+        page: 'planner-timetable',
+      },
+      {
+        title: 'Submit for review and approve',
+        description: 'When the grid looks right, click "Submit review" to move it through the approval workflow: Department Review → Deputy → Principal → Approved. Each reviewer can send it back or advance it.',
+        page: 'planner-timetable',
+      },
+      {
+        title: 'Publish to live schedule',
+        description: 'Once approved, the green "Publish" button appears. Click it — the engine writes all lessons into the live class schedule immediately. Teachers and students will see the new timetable right away. Any manual edits made since the last publish are shown as a warning before you confirm.',
+        page: 'planner-timetable',
+      },
+    ],
+    tips: [
+      'Run the generator once to get a baseline, then lock your most important lessons (assemblies, PE) before regenerating.',
+      'If a subject shows as unresolved, check that the teacher assignment exists for that exact grade and learning area.',
+      'Mark break periods in the bell schedule before generating — the engine skips non-instructional periods.',
+      'Use "New version" to fork the current draft and experiment without losing the approved baseline.',
+      'The live timetable stays intact until you publish a new version — teachers can make quick manual overrides any time.',
+    ],
+    support: { query: 'Timetable Generator', section: 'planner' },
+  },
 ];
 
 export function findModuleGuide(page, role) {

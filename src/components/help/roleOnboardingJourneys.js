@@ -11,6 +11,7 @@ export const roleOnboardingJourneys = {
       { key: 'learners', title: 'Import and verify learners', description: 'Use the current template, review validation and confirm the learner list.', page: 'system-maintenance' },
       { key: 'communication', title: 'Configure communication', description: 'Set up SMS, email or WhatsApp and verify the selected channel.', page: 'settings-communication' },
       { key: 'presence_snapshot', title: 'Check the Presence snapshot', description: 'Once the first register is marked, visit the School Snapshot to confirm presence data is flowing.', page: 'presence-dashboard' },
+      { key: 'timetable', title: 'Generate the school timetable', description: 'Open Planner → Timetable → Engine Setup to create a bell schedule, set weekly allocations and run the auto-generator.', page: 'planner-timetable' },
       { key: 'analytics_review', title: 'Review Analytics (after 1 week)', description: 'After 7+ days of attendance, open Analytics to see trends, at-risk learners and late patterns.', page: 'analytics-dashboard' },
     ],
   },
