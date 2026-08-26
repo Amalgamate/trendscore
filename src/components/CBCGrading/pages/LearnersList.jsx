@@ -3,7 +3,7 @@
  */
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Upload, Eye, Edit, Trash2, LogOut, ChevronLeft, ChevronRight, Search, RefreshCw, Users, MoreVertical, MessageCircle, MessageSquare, X, Loader2, Send, Filter, Plus, Bus } from 'lucide-react';
+import { Upload, Eye, Edit, Trash2, LogOut, ChevronLeft, ChevronRight, Search, RefreshCw, Users, MoreVertical, MessageCircle, MessageSquare, X, Loader2, Send, Filter, Plus, Bus, UserCheck, UserX, Venus, Mars } from 'lucide-react';
 import StatusBadge from '../shared/StatusBadge';
 import EmptyState from '../shared/EmptyState';
 import { usePermissions } from '../../../hooks/usePermissions';
@@ -44,6 +44,7 @@ const LearnersList = ({
   const [showQuickActions, setShowQuickActions] = useState(false);
   const [showGlobalFilters, setShowGlobalFilters] = useState(false);
   const [totalStudentsCount, setTotalStudentsCount] = useState(null);
+  const [learnerStats, setLearnerStats] = useState(null);
 
   const activeFilterCount = (filterGrade !== 'all' ? 1 : 0) + (filterStatus !== 'all' ? 1 : 0) + (filterStream !== 'all' ? 1 : 0);
   const clearAllFiltersLearners = () => { setFilterGrade('all'); setFilterStatus('all'); setFilterStream('all'); };
@@ -165,9 +166,13 @@ const LearnersList = ({
     const loadTotalStudents = async () => {
       try {
         const stats = await learnerAPI.getStats();
-        const total = stats?.data?.totalActive ?? stats?.data?.total;
+        const data = stats?.data;
+        const total = data?.active ?? data?.totalActive ?? data?.total;
         if (isMounted && Number.isFinite(total)) {
           setTotalStudentsCount(total);
+        }
+        if (isMounted && data) {
+          setLearnerStats(data);
         }
       } catch (error) {
         // Keep fallback to pagination total when stats endpoint is unavailable.
@@ -378,8 +383,50 @@ const LearnersList = ({
     }
   };
 
+  // ── KPI card data derived from learnerStats ─────────────────────────────
+  const kpiActive   = learnerStats?.active   ?? totalStudentsCount ?? pagination?.total ?? visibleStudentsCount;
+  const kpiMale     = learnerStats?.byGender?.MALE   ?? 0;
+  const kpiFemale   = learnerStats?.byGender?.FEMALE ?? 0;
+  const kpiExited   = learnerStats?.byStatus?.EXITED ?? 0;
+  const kpiTotal    = learnerStats?.total ?? kpiActive;
+
+  // Solid card colors matching the dashboard palette
+  const KPI_COLORS = {
+    navy:    '#172554',
+    teal:    '#0F766E',
+    forest:  '#1B5E20',
+    crimson: '#9F1239',
+  };
+
+  const KpiCard = ({ color, icon: Icon, label, value, sub }) => (
+    <div
+      className="relative overflow-hidden p-5 text-white select-none"
+      style={{ backgroundColor: color }}
+    >
+      {/* watermark */}
+      <div className="pointer-events-none absolute -bottom-4 -right-4 text-white/10">
+        <Icon size={90} strokeWidth={1} />
+      </div>
+      <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/70 mb-3">{label}</p>
+      <div className="flex items-end justify-between gap-2">
+        <p className="text-4xl font-black tracking-tight leading-none text-white">{value ?? '—'}</p>
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center bg-white/20 border border-white/30">
+          <Icon size={18} strokeWidth={2.2} className="text-white/90" />
+        </span>
+      </div>
+      {sub && <p className="mt-1.5 text-sm font-semibold text-white/70">{sub}</p>}
+    </div>
+  );
+
   return (
     <div className="space-y-4">
+      {/* ── KPI Cards ── */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        <KpiCard color={KPI_COLORS.navy}    icon={Users}     label="Total Enrolled"  value={kpiTotal}   sub="All students" />
+        <KpiCard color={KPI_COLORS.teal}    icon={UserCheck} label="Active Students" value={kpiActive}  sub="Currently enrolled" />
+        <KpiCard color={KPI_COLORS.forest}  icon={Mars}      label="Boys"            value={kpiMale}    sub={kpiTotal > 0 ? `${Math.round((kpiMale / kpiTotal) * 100)}% of enrolment` : null} />
+        <KpiCard color={KPI_COLORS.crimson} icon={Venus}     label="Girls"           value={kpiFemale}  sub={kpiTotal > 0 ? `${Math.round((kpiFemale / kpiTotal) * 100)}% of enrolment` : null} />
+      </div>
       {/* Compact Quick Actions Toolbar */}
       <div className="toolbar-card">
         <div className="flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center">

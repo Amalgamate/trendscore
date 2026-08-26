@@ -180,20 +180,8 @@ export const allNavSections = [
         app: 'student-registry',
         permission: null,
         items: [
-            { id: 'learners-overview',   label: 'Students Overview',   path: 'learners-overview',   permission: 'VIEW_ALL_LEARNERS' },
             { id: 'learners-list',       label: 'Students List',       path: 'learners-list',       permission: 'VIEW_ALL_LEARNERS' },
-            { id: 'learners-admissions', label: 'Admissions',          path: 'learners-admissions', permission: 'CREATE_LEARNER'    },
             { id: 'learners-reports',    label: 'Student Reports',     path: 'learners-reports',    permission: 'VIEW_ALL_LEARNERS' },
-            {
-                id: 'learners-transfers',
-                label: 'Transfers & Exits',
-                type: 'group',
-                items: [
-                    { id: 'learners-transfers-in',  label: 'Incoming Transfers', path: 'learners-transfers-in',  permission: 'VIEW_ALL_LEARNERS' },
-                    { id: 'learners-transfer-out',  label: 'Transfer Out',       path: 'learners-transfer-out',  permission: 'VIEW_ALL_LEARNERS' },
-                    { id: 'learners-exited',        label: 'Exited Students',    path: 'learners-exited',        permission: 'VIEW_ALL_LEARNERS' },
-                ],
-            },
             {
                 id: 'learners-services',
                 label: 'Student Services',
