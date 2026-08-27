@@ -20,7 +20,62 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: bash scripts/ci/configure-deploy-ssh.sh
 
-      - name: Fetch full recent backend logs from WASO (last 200)
+      - name: Check and fix duplicate schools + lock institution type in WASO
+        env:
+          COMPOSE_PROJECT: zawadi-waso-cs
         run: |
           set -euo pipefail
-          ssh production "sudo docker logs zawadi-waso-cs-backend-1 --tail=200 2>&1 | grep -v '304\|public/branding\|public/manifest\|login-config' | tail -80"
+          ssh production "
+            set -euo pipefail
+
+            CONTAINER=\$(sudo docker ps \
+              --filter 'label=com.docker.compose.project=${COMPOSE_PROJECT}' \
+              --filter 'label=com.docker.compose.service=backend' \
+              --format '{{.Names}}' | head -n1)
+
+            echo \"Container: \${CONTAINER}\"
+
+            sudo docker exec \"\${CONTAINER}\" node -e \"
+              const { PrismaClient } = require('@prisma/client');
+              const prisma = new PrismaClient();
+
+              async function main() {
+                // List all schools
+                const schools = await prisma.school.findMany({
+                  orderBy: { createdAt: 'asc' },
+                  select: { id: true, name: true, active: true, archived: true, institutionType: true, institutionTypeLocked: true, createdAt: true }
+                });
+                console.log('All schools (' + schools.length + '):');
+                schools.forEach(s => console.log(' -', s.name, '| active:', s.active, '| archived:', s.archived, '| typeLocked:', s.institutionTypeLocked, '| type:', s.institutionType));
+
+                // Archive the dummy seed school if it exists
+                const dummySeed = schools.find(s => s.name === 'TRENDSCORE DEMO ACADEMY');
+                if (dummySeed) {
+                  await prisma.school.update({ where: { id: dummySeed.id }, data: { archived: true, active: false } });
+                  console.log('Archived dummy seed school:', dummySeed.name);
+                } else {
+                  console.log('No dummy seed school found, nothing to archive.');
+                }
+
+                // Find the real school and lock the institution type
+                const realSchool = schools.find(s => s.name !== 'TRENDSCORE DEMO ACADEMY' && !s.archived);
+                if (realSchool) {
+                  const updated = await prisma.school.update({
+                    where: { id: realSchool.id },
+                    data: {
+                      institutionType: realSchool.institutionType || 'PRIMARY_CBC',
+                      institutionTypeLocked: true,
+                      active: true
+                    }
+                  });
+                  console.log('Locked institution type for:', updated.name, '| type:', updated.institutionType);
+                } else {
+                  console.log('No real school found to lock.');
+                }
+
+                await prisma.\\\$disconnect();
+              }
+
+              main().catch(e => { console.error(e); process.exit(1); });
+            \"
+          "
