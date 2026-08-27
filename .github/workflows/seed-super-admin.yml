@@ -43,19 +43,19 @@ jobs:
           ssh production "
             set -euo pipefail
 
-            CONTAINER=\$(docker ps \
+            CONTAINER=\$(sudo docker ps \
               --filter 'label=com.docker.compose.project=${COMPOSE_PROJECT}' \
               --filter 'label=com.docker.compose.service=${SERVICE}' \
               --format '{{.Names}}' | head -n1)
 
             if [[ -z \"\${CONTAINER}\" ]]; then
               echo '❌ No running container found — listing all ${COMPOSE_PROJECT} containers:'
-              docker ps --filter 'label=com.docker.compose.project=${COMPOSE_PROJECT}' --format '{{.Names}}'
+              sudo docker ps --filter 'label=com.docker.compose.project=${COMPOSE_PROJECT}' --format '{{.Names}}'
               exit 1
             fi
 
             echo \"✅ Found container: \${CONTAINER}\"
-            docker exec \"\${CONTAINER}\" node dist/scripts/setup-system.js
+            sudo docker exec \"\${CONTAINER}\" node dist/scripts/setup-system.js
             echo '✅ Seed complete'
           "
 
