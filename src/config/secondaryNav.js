@@ -37,8 +37,8 @@ export const secondaryNavSections = [
     icon: Users,
     permission: null,
     items: [
-      { id: 'students-list',       label: 'Students List',     path: 'learners-list',     permission: 'VIEW_ALL_LEARNERS' },
-      { id: 'students-reports',    label: 'Student Reports',   path: 'learners-reports',  permission: 'VIEW_ALL_LEARNERS' },
+      { id: 'students-list',       label: 'Students List',       path: 'learners-list',     permission: 'VIEW_ALL_LEARNERS' },
+      { id: 'parents-list',        label: 'Parents & Guardians', path: 'parents-list',      permission: 'VIEW_ALL_USERS' },
       {
         id: 'students-services', label: 'Student Services', type: 'group', items: [
           { id: 'students-promotion', label: 'Promotion', path: 'learners-promotion', permission: 'PROMOTE_LEARNER', app: 'planner' },
@@ -47,7 +47,7 @@ export const secondaryNavSections = [
           { id: 'students-documents', label: 'Student Documents', path: 'docs-center', params: { category: 'students' }, permission: 'VIEW_ALL_LEARNERS', icon: FileText },
         ],
       },
-      { id: 'parents-list', label: 'Parents & Guardians', path: 'parents-list', permission: 'VIEW_ALL_USERS' },
+      { id: 'students-reports',    label: 'Reports',             path: 'learners-reports',  permission: 'VIEW_ALL_LEARNERS' },
     ],
   },
   {
