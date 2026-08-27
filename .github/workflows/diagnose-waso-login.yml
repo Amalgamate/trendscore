@@ -20,11 +20,7 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: bash scripts/ci/configure-deploy-ssh.sh
 
-      - name: Fetch recent backend error logs from WASO
-        env:
-          COMPOSE_PROJECT: zawadi-waso-cs
+      - name: Fetch full recent backend logs from WASO (last 200)
         run: |
           set -euo pipefail
-          ssh production "
-            sudo docker logs zawadi-waso-cs-backend-1 --tail=100 2>&1 | grep -i 'error\|prisma\|school\|PUT\|500\|institution' | tail -50
-          "
+          ssh production "sudo docker logs zawadi-waso-cs-backend-1 --tail=200 2>&1 | grep -v '304\|public/branding\|public/manifest\|login-config' | tail -80"
