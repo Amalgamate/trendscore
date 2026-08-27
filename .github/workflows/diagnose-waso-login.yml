@@ -1,0 +1,58 @@
+name: Diagnose WASO Login (One-Shot)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Diagnose WASO DB users
+        env:
+          COMPOSE_PROJECT: zawadi-waso-cs
+        run: |
+          set -euo pipefail
+          ssh production "
+            set -euo pipefail
+
+            CONTAINER=\$(sudo docker ps \
+              --filter 'label=com.docker.compose.project=${COMPOSE_PROJECT}' \
+              --filter 'label=com.docker.compose.service=backend' \
+              --format '{{.Names}}' | head -n1)
+
+            echo \"Container: \${CONTAINER}\"
+
+            sudo docker exec \"\${CONTAINER}\" node -e \"
+              const { PrismaClient } = require('@prisma/client');
+              const prisma = new PrismaClient();
+              async function main() {
+                const users = await prisma.user.findMany({
+                  where: { role: 'SUPER_ADMIN' },
+                  select: { id: true, email: true, phone: true, status: true, role: true, archived: true }
+                });
+                console.log('SUPER_ADMIN users:', JSON.stringify(users, null, 2));
+                const byPhone = await prisma.user.findMany({
+                  where: { phone: { in: ['+254713612141','254713612141','0713612141','713612141'] } },
+                  select: { id: true, email: true, phone: true, status: true, role: true, archived: true }
+                });
+                console.log('Users matching phone:', JSON.stringify(byPhone, null, 2));
+                const school = await prisma.school.findFirst({ select: { id: true, name: true, active: true } });
+                console.log('School:', JSON.stringify(school, null, 2));
+                await prisma.\\\$disconnect();
+              }
+              main().catch(e => { console.error(e); process.exit(1); });
+            \"
+          "
