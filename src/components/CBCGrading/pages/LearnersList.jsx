@@ -3,7 +3,7 @@
  */
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Upload, Eye, Edit, Trash2, LogOut, ChevronLeft, ChevronRight, Search, RefreshCw, Users, MoreVertical, MessageCircle, MessageSquare, X, Loader2, Send, Filter, Plus, Bus, UserCheck, UserX, Venus, Mars } from 'lucide-react';
+import { Upload, Eye, Edit, Trash2, LogOut, ChevronLeft, ChevronRight, Search, RefreshCw, Users, MoreVertical, MessageCircle, MessageSquare, X, Loader2, Send, Filter, Plus, Bus, UserCheck, UserX, Users2 } from 'lucide-react';
 import StatusBadge from '../shared/StatusBadge';
 import EmptyState from '../shared/EmptyState';
 import { usePermissions } from '../../../hooks/usePermissions';
@@ -424,8 +424,8 @@ const LearnersList = ({
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
         <KpiCard color={KPI_COLORS.navy}    icon={Users}     label="Total Enrolled"  value={kpiTotal}   sub="All students" />
         <KpiCard color={KPI_COLORS.teal}    icon={UserCheck} label="Active Students" value={kpiActive}  sub="Currently enrolled" />
-        <KpiCard color={KPI_COLORS.forest}  icon={Mars}      label="Boys"            value={kpiMale}    sub={kpiTotal > 0 ? `${Math.round((kpiMale / kpiTotal) * 100)}% of enrolment` : null} />
-        <KpiCard color={KPI_COLORS.crimson} icon={Venus}     label="Girls"           value={kpiFemale}  sub={kpiTotal > 0 ? `${Math.round((kpiFemale / kpiTotal) * 100)}% of enrolment` : null} />
+        <KpiCard color={KPI_COLORS.forest}  icon={Users2}    label="Boys"            value={kpiMale}    sub={kpiTotal > 0 ? `${Math.round((kpiMale / kpiTotal) * 100)}% of enrolment` : null} />
+        <KpiCard color={KPI_COLORS.crimson} icon={UserCheck} label="Girls"           value={kpiFemale}  sub={kpiTotal > 0 ? `${Math.round((kpiFemale / kpiTotal) * 100)}% of enrolment` : null} />
       </div>
       {/* Compact Quick Actions Toolbar */}
       <div className="toolbar-card">
