@@ -20,7 +20,7 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: bash scripts/ci/configure-deploy-ssh.sh
 
-      - name: Fix WASO admin phone conflicts
+      - name: Check and fix all 3 designated admin phones in WASO
         env:
           COMPOSE_PROJECT: zawadi-waso-cs
         run: |
@@ -39,42 +39,39 @@ jobs:
               const { PrismaClient } = require('@prisma/client');
               const prisma = new PrismaClient();
 
+              async function checkAndFix(variants, label) {
+                const users = await prisma.user.findMany({
+                  where: { phone: { in: variants }, archived: false },
+                  select: { id: true, email: true, phone: true, role: true }
+                });
+                console.log(label + ' — users found: ' + users.length);
+                users.forEach(u => console.log('  ' + u.role + ' | ' + u.email + ' | ' + u.phone));
+
+                const nonAdmin = users.filter(u => u.role !== 'SUPER_ADMIN');
+                if (nonAdmin.length > 0) {
+                  const cleared = await prisma.user.updateMany({
+                    where: { id: { in: nonAdmin.map(u => u.id) } },
+                    data: { phone: null }
+                  });
+                  console.log('  -> Cleared from ' + cleared.count + ' non-SUPER_ADMIN users');
+                } else {
+                  console.log('  -> Clean, no conflicts');
+                }
+              }
+
               async function main() {
-                const PHONE_VARIANTS = ['+254713612141', '254713612141', '0713612141', '713612141'];
-
-                // 1. Count before
-                const before = await prisma.user.findMany({
-                  where: { phone: { in: PHONE_VARIANTS }, archived: false },
-                  select: { id: true, email: true, phone: true, role: true }
-                });
-                console.log('Users with this phone BEFORE fix:', before.length);
-                before.forEach(u => console.log(' -', u.role, u.email, u.phone));
-
-                // 2. Clear phone from ALL non-SUPER_ADMIN users who have it
-                const cleared = await prisma.user.updateMany({
-                  where: {
-                    phone: { in: PHONE_VARIANTS },
-                    NOT: { role: 'SUPER_ADMIN' }
-                  },
-                  data: { phone: null }
-                });
-                console.log('Cleared phone from non-SUPER_ADMIN users:', cleared.count);
-
-                // 3. Set SUPER_ADMIN phone to canonical E164
-                const fixed = await prisma.user.updateMany({
-                  where: { role: 'SUPER_ADMIN', email: 'admin@trendscore.app' },
-                  data: { phone: '+254713612141' }
-                });
-                console.log('Set SUPER_ADMIN phone to +254713612141, count:', fixed.count);
-
-                // 4. Verify
-                const after = await prisma.user.findMany({
-                  where: { phone: { in: PHONE_VARIANTS } },
-                  select: { id: true, email: true, phone: true, role: true }
-                });
-                console.log('Users with this phone AFTER fix:', after.length);
-                after.forEach(u => console.log(' -', u.role, u.email, u.phone));
-
+                await checkAndFix(
+                  ['+254713612141','254713612141','0713612141','713612141'],
+                  '0713612141 (your number)'
+                );
+                await checkAndFix(
+                  ['+254720705588','254720705588','0720705588','720705588'],
+                  '0720705588 (second designated)'
+                );
+                await checkAndFix(
+                  ['+254797985794','254797985794','0797985794','797985794'],
+                  '0797985794 (third designated)'
+                );
                 await prisma.\\\$disconnect();
               }
 
