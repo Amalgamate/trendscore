@@ -20,61 +20,11 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: bash scripts/ci/configure-deploy-ssh.sh
 
-      - name: Check and fix all 3 designated admin phones in WASO
+      - name: Fetch recent backend error logs from WASO
         env:
           COMPOSE_PROJECT: zawadi-waso-cs
         run: |
           set -euo pipefail
           ssh production "
-            set -euo pipefail
-
-            CONTAINER=\$(sudo docker ps \
-              --filter 'label=com.docker.compose.project=${COMPOSE_PROJECT}' \
-              --filter 'label=com.docker.compose.service=backend' \
-              --format '{{.Names}}' | head -n1)
-
-            echo \"Container: \${CONTAINER}\"
-
-            sudo docker exec \"\${CONTAINER}\" node -e \"
-              const { PrismaClient } = require('@prisma/client');
-              const prisma = new PrismaClient();
-
-              async function checkAndFix(variants, label) {
-                const users = await prisma.user.findMany({
-                  where: { phone: { in: variants }, archived: false },
-                  select: { id: true, email: true, phone: true, role: true }
-                });
-                console.log(label + ' — users found: ' + users.length);
-                users.forEach(u => console.log('  ' + u.role + ' | ' + u.email + ' | ' + u.phone));
-
-                const nonAdmin = users.filter(u => u.role !== 'SUPER_ADMIN');
-                if (nonAdmin.length > 0) {
-                  const cleared = await prisma.user.updateMany({
-                    where: { id: { in: nonAdmin.map(u => u.id) } },
-                    data: { phone: null }
-                  });
-                  console.log('  -> Cleared from ' + cleared.count + ' non-SUPER_ADMIN users');
-                } else {
-                  console.log('  -> Clean, no conflicts');
-                }
-              }
-
-              async function main() {
-                await checkAndFix(
-                  ['+254713612141','254713612141','0713612141','713612141'],
-                  '0713612141 (your number)'
-                );
-                await checkAndFix(
-                  ['+254720705588','254720705588','0720705588','720705588'],
-                  '0720705588 (second designated)'
-                );
-                await checkAndFix(
-                  ['+254797985794','254797985794','0797985794','797985794'],
-                  '0797985794 (third designated)'
-                );
-                await prisma.\\\$disconnect();
-              }
-
-              main().catch(e => { console.error(e); process.exit(1); });
-            \"
+            sudo docker logs zawadi-waso-cs-backend-1 --tail=100 2>&1 | grep -i 'error\|prisma\|school\|PUT\|500\|institution' | tail -50
           "
