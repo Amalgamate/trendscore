@@ -20,7 +20,7 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: bash scripts/ci/configure-deploy-ssh.sh
 
-      - name: Check and fix duplicate schools + lock institution type in WASO
+      - name: Leave only WASO-COMPREHENSIVE SCHOOL active and locked
         env:
           COMPOSE_PROJECT: zawadi-waso-cs
         run: |
@@ -40,38 +40,30 @@ jobs:
               const prisma = new PrismaClient();
 
               async function main() {
-                // List all schools
                 const schools = await prisma.school.findMany({
                   orderBy: { createdAt: 'asc' },
-                  select: { id: true, name: true, active: true, archived: true, institutionType: true, institutionTypeLocked: true, createdAt: true }
+                  select: { id: true, name: true, active: true, archived: true, institutionType: true, institutionTypeLocked: true }
                 });
-                console.log('All schools (' + schools.length + '):');
-                schools.forEach(s => console.log(' -', s.name, '| active:', s.active, '| archived:', s.archived, '| typeLocked:', s.institutionTypeLocked, '| type:', s.institutionType));
+                console.log('Schools before fix:');
+                schools.forEach(s => console.log(' -', JSON.stringify(s)));
 
-                // Archive the dummy seed school if it exists
-                const dummySeed = schools.find(s => s.name === 'TRENDSCORE DEMO ACADEMY');
-                if (dummySeed) {
-                  await prisma.school.update({ where: { id: dummySeed.id }, data: { archived: true, active: false } });
-                  console.log('Archived dummy seed school:', dummySeed.name);
-                } else {
-                  console.log('No dummy seed school found, nothing to archive.');
+                // The real school
+                const real = schools.find(s => s.name === 'WASO-COMPREHENSIVE SCHOOL');
+                if (!real) { console.log('ERROR: WASO-COMPREHENSIVE SCHOOL not found!'); process.exit(1); }
+
+                // Archive everything that is not the real school
+                const toArchive = schools.filter(s => s.id !== real.id);
+                for (const s of toArchive) {
+                  await prisma.school.update({ where: { id: s.id }, data: { archived: true, active: false } });
+                  console.log('Archived:', s.name);
                 }
 
-                // Find the real school and lock the institution type
-                const realSchool = schools.find(s => s.name !== 'TRENDSCORE DEMO ACADEMY' && !s.archived);
-                if (realSchool) {
-                  const updated = await prisma.school.update({
-                    where: { id: realSchool.id },
-                    data: {
-                      institutionType: realSchool.institutionType || 'PRIMARY_CBC',
-                      institutionTypeLocked: true,
-                      active: true
-                    }
-                  });
-                  console.log('Locked institution type for:', updated.name, '| type:', updated.institutionType);
-                } else {
-                  console.log('No real school found to lock.');
-                }
+                // Ensure the real school is active and locked
+                await prisma.school.update({
+                  where: { id: real.id },
+                  data: { active: true, archived: false, institutionTypeLocked: true, institutionType: 'PRIMARY_CBC' }
+                });
+                console.log('✅ WASO-COMPREHENSIVE SCHOOL is now the only active school, institution type locked to PRIMARY_CBC');
 
                 await prisma.\\\$disconnect();
               }
