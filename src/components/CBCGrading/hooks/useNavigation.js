@@ -181,7 +181,7 @@ export const allNavSections = [
         permission: null,
         items: [
             { id: 'learners-list',       label: 'Students List',       path: 'learners-list',       permission: 'VIEW_ALL_LEARNERS' },
-            { id: 'learners-reports',    label: 'Student Reports',     path: 'learners-reports',    permission: 'VIEW_ALL_LEARNERS' },
+            { id: 'parents-list',        label: 'Parents & Guardians', path: 'parents-list',        permission: 'VIEW_ALL_USERS' },
             {
                 id: 'learners-services',
                 label: 'Student Services',
@@ -193,7 +193,7 @@ export const allNavSections = [
                     { id: 'learners-documents',  label: 'Student Documents',  path: 'docs-center', params: { category: 'students' }, permission: 'VIEW_ALL_LEARNERS', icon: FileText },
                 ],
             },
-            { id: 'parents-list',        label: 'Parents & Guardians', path: 'parents-list',        permission: 'VIEW_ALL_USERS' },
+            { id: 'learners-reports',    label: 'Reports',             path: 'learners-reports',    permission: 'VIEW_ALL_LEARNERS' },
         ]
     },
     {
