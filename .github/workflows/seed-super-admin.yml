@@ -1,0 +1,74 @@
+name: Seed Super Admin (One-Shot)
+
+# One-shot workflow to seed the SUPER_ADMIN user into a school instance DB.
+# Use when a school container exists but its database has no super admin record.
+
+on:
+  workflow_dispatch:
+    inputs:
+      compose_project:
+        description: 'Docker Compose project name (e.g. zawadi-waso-cs)'
+        required: true
+        type: string
+        default: zawadi-waso-cs
+      service:
+        description: 'Backend service name inside the compose project'
+        required: false
+        type: string
+        default: backend
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Seed SUPER_ADMIN into ${{ inputs.compose_project }}
+        run: |
+          set -euo pipefail
+          COMPOSE_PROJECT="${{ inputs.compose_project }}"
+          SERVICE="${{ inputs.service }}"
+
+          ssh production bash -s << 'ENDSSH'
+            set -euo pipefail
+            COMPOSE_PROJECT="${{ inputs.compose_project }}"
+            SERVICE="${{ inputs.service }}"
+
+            # Find the running backend container for this compose project
+            CONTAINER=$(docker ps --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}" \
+                                   --filter "label=com.docker.compose.service=${SERVICE}" \
+                                   --format "{{.Names}}" | head -n1)
+
+            if [[ -z "${CONTAINER}" ]]; then
+              echo "❌ No running container found for project=${COMPOSE_PROJECT} service=${SERVICE}"
+              docker ps --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}" --format "{{.Names}}"
+              exit 1
+            fi
+
+            echo "✅ Found container: ${CONTAINER}"
+
+            # Run setup-system script inside the container
+            docker exec "${CONTAINER}" node dist/scripts/setup-system.js
+            echo "✅ Seed complete"
+          ENDSSH
+
+      - name: Report
+        if: success()
+        run: |
+          {
+            echo "## Seed succeeded"
+            echo ""
+            echo "SUPER_ADMIN user seeded into \`${{ inputs.compose_project }}\`."
+            echo "Login with phone \`0713612141\` and password \`Admin@123!\`."
+          } >> "$GITHUB_STEP_SUMMARY"
