@@ -145,20 +145,33 @@ function RouteForm({ data, onChange, vehicles, errors = {} }) {
 
 function SummaryBar({ summary }) {
     if (!summary) return null;
+    const COLORS = ['#1d4ed8', '#b45309', '#065f46', '#7c3aed']; // Blue, Amber, Green, Violet
     const cards = [
-        { label: 'Vehicles',           value: summary.vehicleCount },
-        { label: 'Routes',             value: summary.routeCount },
-        { label: 'Assignments',        value: summary.assignmentCount },
-        { label: 'Transport Students', value: summary.transportStudentCount },
+        { label: 'Vehicles',           value: summary.vehicleCount, icon: Bus },
+        { label: 'Routes',             value: summary.routeCount, icon: MapPin },
+        { label: 'Assignments',        value: summary.assignmentCount, icon: UserPlus },
+        { label: 'Transport Students', value: summary.transportStudentCount, icon: Users },
     ];
     return (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            {cards.map(c => (
-                <div key={c.label} className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-                    <p className="text-2xl font-semibold text-gray-900">{c.value ?? '—'}</p>
-                    <p className="text-xs text-gray-400 font-medium mt-0.5">{c.label}</p>
-                </div>
-            ))}
+            {cards.map((c, idx) => {
+                const Icon = c.icon;
+                const bgColor = COLORS[idx % COLORS.length];
+                return (
+                    <div key={c.label} className="relative overflow-hidden p-5 text-white select-none" style={{ backgroundColor: bgColor }}>
+                        <div className="pointer-events-none absolute -bottom-4 -right-4 text-white/10">
+                            <Icon size={90} strokeWidth={1} />
+                        </div>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/70 mb-3">{c.label}</p>
+                        <div className="flex items-end justify-between gap-2">
+                            <p className="text-4xl font-black tracking-tight leading-none text-white">{c.value ?? '—'}</p>
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center bg-white/20 border border-white/30 self-start">
+                                <Icon size={18} strokeWidth={2.2} className="text-white/90" />
+                            </span>
+                        </div>
+                    </div>
+                );
+            })}
             {summary.overCapacityRoutes?.length > 0 && (
                 <div className="col-span-2 md:col-span-4 flex items-center gap-2 p-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-700 font-medium">
                     <AlertTriangle size={16} />
