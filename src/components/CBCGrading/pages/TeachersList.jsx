@@ -15,7 +15,7 @@ import BulkOperationsModal from '../shared/bulk/BulkOperationsModal';
 import TeacherClassAssignmentModal from '../shared/TeacherClassAssignmentModal';
 import { communicationAPI, hrAPI } from '../../../services/api';
 import { formatPhoneNumber } from '../../../utils/phoneFormatter';
-import StaffPopup from '../../dashboard/widgets/StaffPopup';
+import StaffPopup from '../dashboard/widgets/StaffPopup';
 
 const TeachersList = ({
   teachers,
