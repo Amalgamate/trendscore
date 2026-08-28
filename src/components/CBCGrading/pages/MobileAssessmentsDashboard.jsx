@@ -24,18 +24,6 @@ const TERM_LABELS = {
   TERM_3: 'Term 3',
 };
 
-const EXAM_TYPE_OPTIONS = [
-  { value: 'all', label: 'All Test Types' },
-  { value: 'OPENER', label: 'Opener' },
-  { value: 'CAT', label: 'CAT' },
-  { value: 'MID_TERM', label: 'Mid Term' },
-  { value: 'END_TERM', label: 'End Term' },
-  { value: 'WEEKLY', label: 'Weekly' },
-  { value: 'MONTHLY', label: 'Monthly' },
-  { value: 'MOCK', label: 'Mock' },
-  { value: 'OTHER', label: 'Other' },
-];
-
 const getTermLabel = (term) => TERM_LABELS[term] || String(term || '').replace(/_/g, ' ') || 'Current Term';
 const formatPercent = (value) => `${Number(value || 0).toFixed(Number(value || 0) % 1 ? 1 : 0)}%`;
 
@@ -45,24 +33,25 @@ const ProgressBar = ({ value = 0, tone = 'bg-violet-600' }) => (
   </div>
 );
 
-const StatCard = ({ icon: Icon, label, value, helper, color, bg, progress, tone, gradient = 'from-slate-100 to-slate-200' }) => (
-  <div className={`min-h-[112px] flex rounded-lg p-[1px] bg-gradient-to-br ${gradient} shadow-sm transition-all duration-300 hover:shadow-md`}>
-    <div className="w-full min-h-[110px] rounded-[7px] bg-white p-4 flex flex-col justify-between">
-      <div className="flex items-start gap-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg" style={{ color, backgroundColor: bg }}>
-          <Icon size={24} strokeWidth={2.4} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-black uppercase tracking-[0.08em] text-slate-500">{label}</p>
-          <p className="mt-1 text-2xl font-black leading-none text-slate-950">{value}</p>
-          <p className="mt-1 truncate text-xs font-semibold text-slate-500">{helper}</p>
-        </div>
+const StatCard = ({ icon: Icon, label, value, helper, bgColor, progress, progressColor }) => (
+  <div className="relative overflow-hidden p-5 text-white select-none" style={{ backgroundColor: bgColor }}>
+    <div className="pointer-events-none absolute -bottom-4 -right-4 text-white/10">
+      <Icon size={90} strokeWidth={1} />
+    </div>
+    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/70 mb-3">{label}</p>
+    <div className="flex items-end justify-between gap-2">
+      <div>
+        <p className="text-4xl font-black tracking-tight leading-none text-white">{value ?? '—'}</p>
+        {helper && <p className="mt-1.5 text-sm font-semibold text-white/70">{helper}</p>}
+        {progress !== undefined && (
+          <div className="mt-3 h-2 w-full rounded-full bg-white/20 overflow-hidden">
+            <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, Math.max(0, progress))}%`, backgroundColor: progressColor || 'rgba(255,255,255,0.9)' }} />
+          </div>
+        )}
       </div>
-      {progress !== undefined && (
-        <div className="mt-4">
-          <ProgressBar value={progress} tone={tone} />
-        </div>
-      )}
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center bg-white/20 border border-white/30 self-start">
+        <Icon size={18} strokeWidth={2.2} className="text-white/90" />
+      </span>
     </div>
   </div>
 );
@@ -194,7 +183,6 @@ const MobileAssessmentsDashboard = ({ learners = [], onNavigate }) => {
   const [filters, setFilters] = useState({
     academicYear: getCurrentAcademicYear(),
     term: getCurrentTerm(),
-    testType: 'all',
   });
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -223,7 +211,7 @@ const MobileAssessmentsDashboard = ({ learners = [], onNavigate }) => {
   useEffect(() => {
     loadDashboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.academicYear, filters.term, filters.testType]);
+  }, [filters.academicYear, filters.term]);
 
   const summary = dashboard?.summary || {};
   const go = (page) => () => onNavigate?.(page);
@@ -265,18 +253,6 @@ const MobileAssessmentsDashboard = ({ learners = [], onNavigate }) => {
                 ))}
               </select>
             </label>
-            <label className="flex h-11 items-center border border-slate-300 bg-white px-4">
-              <select
-                aria-label="Exam type"
-                className="min-w-[150px] bg-transparent text-sm font-semibold text-slate-950 outline-none"
-                value={filters.testType}
-                onChange={(event) => setFilters((current) => ({ ...current, testType: event.target.value }))}
-              >
-                {EXAM_TYPE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
           </div>
         </section>
 
@@ -288,10 +264,38 @@ const MobileAssessmentsDashboard = ({ learners = [], onNavigate }) => {
         )}
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard icon={Users} label="Learners in Scope" value={summary.learners ?? fallback.learners} helper={`${fallback.grades} grades - ${fallback.streams} streams`} color="#7c3aed" bg="#f1e9ff" gradient="from-violet-500/30 via-indigo-500/15 to-purple-500/30" />
-          <StatCard icon={BookOpen} label="Tests Configured" value={summary.tests ?? 0} helper={`${summary.subjects ?? 0} learning areas`} color="#3678f5" bg="#e8f0ff" gradient="from-blue-500/30 via-indigo-500/15 to-cyan-500/30" />
-          <StatCard icon={ClipboardList} label="Mark Entry" value={formatPercent(summary.markEntryCompletionRate)} helper={`${summary.accountedEntries ?? 0}/${summary.expectedEntries ?? 0} entries accounted`} color="#16a34a" bg="#e7f8ee" progress={summary.markEntryCompletionRate || 0} tone="bg-emerald-600" gradient="from-emerald-500/30 via-teal-500/15 to-green-500/30" />
-          <StatCard icon={FileText} label="Report Ready" value={formatPercent(summary.reportReadyRate)} helper={`${summary.reportReadyLearners ?? 0} learners ready`} color="#f97316" bg="#fff1e7" progress={summary.reportReadyRate || 0} tone="bg-orange-500" gradient="from-orange-500/30 via-amber-500/15 to-yellow-500/30" />
+          <StatCard 
+            icon={Users} 
+            label="Learners in Scope" 
+            value={summary.learners ?? fallback.learners} 
+            helper={`${fallback.grades} grades - ${fallback.streams} streams`} 
+            bgColor="#172554"
+          />
+          <StatCard 
+            icon={BookOpen} 
+            label="Tests Configured" 
+            value={summary.tests ?? 0} 
+            helper={`${summary.subjects ?? 0} learning areas`} 
+            bgColor="#0F766E"
+          />
+          <StatCard 
+            icon={ClipboardList} 
+            label="Mark Entry" 
+            value={formatPercent(summary.markEntryCompletionRate)} 
+            helper={`${summary.accountedEntries ?? 0}/${summary.expectedEntries ?? 0} entries accounted`} 
+            bgColor="#1B5E20"
+            progress={summary.markEntryCompletionRate || 0}
+            progressColor="rgba(255,255,255,0.9)"
+          />
+          <StatCard 
+            icon={FileText} 
+            label="Report Ready" 
+            value={formatPercent(summary.reportReadyRate)} 
+            helper={`${summary.reportReadyLearners ?? 0} learners ready`} 
+            bgColor="#78350F"
+            progress={summary.reportReadyRate || 0}
+            progressColor="rgba(255,255,255,0.9)"
+          />
         </section>
 
         {loading && (
