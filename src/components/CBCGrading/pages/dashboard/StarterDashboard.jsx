@@ -23,6 +23,30 @@ const uniqueCount = (items, key) => {
   return values.size;
 };
 
+// Solid color palette — same across all dashboards
+const SOLID_COLORS = {
+  navy:    '#172554',
+  violet:  '#4C1D95',
+  emerald: '#1B5E20',
+  amber:   '#78350F',
+};
+
+const StatCard = ({ label, value, detail, icon: Icon, color }) => (
+  <div className="relative overflow-hidden p-5 text-white select-none" style={{ backgroundColor: color }}>
+    <div className="pointer-events-none absolute -bottom-4 -right-4 text-white/10">
+      <Icon size={90} strokeWidth={1} />
+    </div>
+    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/70 mb-3">{label}</p>
+    <div className="flex items-end justify-between gap-2">
+      <p className="text-4xl font-black tracking-tight leading-none text-white">{value}</p>
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center bg-white/20 border border-white/30">
+        <Icon size={18} strokeWidth={2.2} className="text-white/90" />
+      </span>
+    </div>
+    {detail && <p className="mt-1.5 text-sm font-semibold text-white/70">{detail}</p>}
+  </div>
+);
+
 const StarterDashboard = ({
   learners = [],
   pagination,
@@ -57,28 +81,28 @@ const StarterDashboard = ({
         value: formatNumber(liveMetrics?.students ?? totalLearners),
         detail: 'Active student records',
         icon: Users,
-        tone: 'bg-blue-50 text-blue-700 border-blue-100',
+        color: SOLID_COLORS.navy,
       },
       {
         label: 'Staff',
         value: formatNumber(liveMetrics?.staff ?? teachers.length),
         detail: 'Teaching team records',
         icon: GraduationCap,
-        tone: 'bg-violet-50 text-violet-700 border-violet-100',
+        color: SOLID_COLORS.violet,
       },
       {
         label: 'Grades',
         value: formatNumber(liveMetrics?.grades ?? uniqueCount(learners, 'grade')),
         detail: 'Grades with students',
         icon: BookOpen,
-        tone: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+        color: SOLID_COLORS.emerald,
       },
       {
         label: 'Streams',
         value: formatNumber(liveMetrics?.streams ?? uniqueCount(learners, 'stream')),
         detail: 'Class streams in use',
         icon: CheckSquare,
-        tone: 'bg-amber-50 text-amber-700 border-amber-100',
+        color: SOLID_COLORS.amber,
       },
     ];
   }, [learners, liveMetrics, pagination?.total, teachers.length]);
@@ -105,23 +129,9 @@ const StarterDashboard = ({
         </section>
 
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {stats.map((item) => {
-            const Icon = item.icon;
-            return (
-              <div key={item.label} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-wider text-slate-400">{item.label}</p>
-                    <p className="mt-2 text-3xl font-black text-slate-950">{item.value}</p>
-                    <p className="mt-1 text-sm font-medium text-slate-500">{item.detail}</p>
-                  </div>
-                  <span className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border ${item.tone}`}>
-                    <Icon size={19} />
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+          {stats.map((item) => (
+            <StatCard key={item.label} {...item} />
+          ))}
         </section>
 
         <section className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
