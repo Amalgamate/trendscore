@@ -425,7 +425,7 @@ const LearnersList = ({
       <div className="toolbar-card">
         <div className="flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center">
 
-          <div className="flex flex-row gap-2 w-full xl:w-auto flex-1 items-center">
+          <div className="flex flex-row gap-2 w-full xl:w-auto items-center" style={{ maxWidth: isMobile ? '100%' : '400px' }}>
             {/* Search */}
             <div className="relative flex-grow">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
@@ -504,22 +504,24 @@ const LearnersList = ({
               </div>
             </div>
 
-            {canCreateLearner ? (
+            {canCreateLearner && (
               <>
-                {isMobile && (
-                  <button
-                    type="button"
-                    onClick={onAddLearner}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-md bg-brand-purple px-3 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-brand-purple/90 active:scale-[0.98]"
-                  >
-                    <Plus size={15} />
-                    Add Student
-                  </button>
-                )}
+                {/* Add Student Button - visible on all screens */}
+                <button
+                  type="button"
+                  onClick={onAddLearner}
+                  className="inline-flex h-11 items-center gap-2 rounded-xl bg-brand-teal px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-teal/90 active:scale-[0.98]"
+                >
+                  <Plus size={18} />
+                  <span className="hidden sm:inline">Add Student</span>
+                  <span className="inline sm:hidden">Add</span>
+                </button>
+
+                {/* 3-Dot Menu */}
                 <div className="relative">
                   <button
                     onClick={() => setShowQuickActions(!showQuickActions)}
-                    className="p-2 bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 rounded-lg transition"
+                    className="p-2 bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100 rounded-lg transition"
                     title="Quick Actions"
                   >
                     <MoreVertical size={20} />
@@ -545,9 +547,8 @@ const LearnersList = ({
                     </>
                   )}
                 </div>
-
               </>
-            ) : null}
+            )}
           </div>
         </div>
       </div>
