@@ -387,11 +387,9 @@ const LearnersList = ({
   const kpiActive   = learnerStats?.active   ?? totalStudentsCount ?? pagination?.total ?? visibleStudentsCount;
   const kpiMale     = learnerStats?.byGender?.MALE   ?? 0;
   const kpiFemale   = learnerStats?.byGender?.FEMALE ?? 0;
-  const kpiExited   = learnerStats?.byStatus?.EXITED ?? 0;
   const kpiTotal    = learnerStats?.total ?? kpiActive;
 
-  // Solid card colors matching the dashboard palette
-  const KPI_COLORS = {
+  const SOLID_COLORS = {
     navy:    '#172554',
     teal:    '#0F766E',
     forest:  '#1B5E20',
@@ -399,11 +397,7 @@ const LearnersList = ({
   };
 
   const KpiCard = ({ color, icon: Icon, label, value, sub }) => (
-    <div
-      className="relative overflow-hidden p-5 text-white select-none"
-      style={{ backgroundColor: color }}
-    >
-      {/* watermark */}
+    <div className="relative overflow-hidden p-5 text-white select-none" style={{ backgroundColor: color }}>
       <div className="pointer-events-none absolute -bottom-4 -right-4 text-white/10">
         <Icon size={90} strokeWidth={1} />
       </div>
@@ -422,10 +416,10 @@ const LearnersList = ({
     <div className="space-y-4">
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <KpiCard color={KPI_COLORS.navy}    icon={Users}     label="Total Enrolled"  value={kpiTotal}   sub="All students" />
-        <KpiCard color={KPI_COLORS.teal}    icon={UserCheck} label="Active Students" value={kpiActive}  sub="Currently enrolled" />
-        <KpiCard color={KPI_COLORS.forest}  icon={Users2}    label="Boys"            value={kpiMale}    sub={kpiTotal > 0 ? `${Math.round((kpiMale / kpiTotal) * 100)}% of enrolment` : null} />
-        <KpiCard color={KPI_COLORS.crimson} icon={UserCheck} label="Girls"           value={kpiFemale}  sub={kpiTotal > 0 ? `${Math.round((kpiFemale / kpiTotal) * 100)}% of enrolment` : null} />
+        <KpiCard color={SOLID_COLORS.navy}    icon={Users}     label="Total Enrolled"  value={kpiTotal}   sub="All students" />
+        <KpiCard color={SOLID_COLORS.teal}    icon={UserCheck} label="Active Students" value={kpiActive}  sub="Currently enrolled" />
+        <KpiCard color={SOLID_COLORS.forest}  icon={Users2}    label="Boys"            value={kpiMale}    sub={kpiTotal > 0 ? `${Math.round((kpiMale / kpiTotal) * 100)}% of enrolment` : null} />
+        <KpiCard color={SOLID_COLORS.crimson} icon={UserCheck} label="Girls"           value={kpiFemale}  sub={kpiTotal > 0 ? `${Math.round((kpiFemale / kpiTotal) * 100)}% of enrolment` : null} />
       </div>
       {/* Compact Quick Actions Toolbar */}
       <div className="toolbar-card">

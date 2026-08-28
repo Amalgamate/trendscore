@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Upload, Eye, Edit, Trash2, GraduationCap, BookOpen, Search, RefreshCw, MoreVertical, Filter, X, MessageCircle, MessageSquare, Loader2, Send } from 'lucide-react';
+import { Plus, Upload, Eye, Edit, Trash2, GraduationCap, BookOpen, Search, RefreshCw, MoreVertical, Filter, X, MessageCircle, MessageSquare, Loader2, Send, Users2 } from 'lucide-react';
 import StatusBadge from '../shared/StatusBadge';
 import EmptyState from '../shared/EmptyState';
 import { DataCard } from '../shared';
@@ -13,8 +13,9 @@ import { usePermissions } from '../../../hooks/usePermissions';
 import { useMobile } from '../../../hooks/useMobileDetection';
 import BulkOperationsModal from '../shared/bulk/BulkOperationsModal';
 import TeacherClassAssignmentModal from '../shared/TeacherClassAssignmentModal';
-import { communicationAPI } from '../../../services/api';
+import { communicationAPI, hrAPI } from '../../../services/api';
 import { formatPhoneNumber } from '../../../utils/phoneFormatter';
+import StaffPopup from '../../dashboard/widgets/StaffPopup';
 
 const TeachersList = ({
   teachers,
@@ -37,7 +38,24 @@ const TeachersList = ({
   const [bulkChannel, setBulkChannel] = useState('sms');
   const [bulkMessage, setBulkMessage] = useState('');
   const [isSendingBulkMessage, setIsSendingBulkMessage] = useState(false);
+  const [todayPresent, setTodayPresent] = useState(null);
+  const [todayAbsent, setTodayAbsent]   = useState(null);
+  const [tutorsPopup, setTutorsPopup]   = useState({ open: false, statusFilter: 'PRESENT', title: 'Present Tutors Today' });
   const isMobile = useMobile();
+
+  // Fetch today's teacher attendance counts
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    hrAPI.getAttendanceReport({ date: today, limit: 200 })
+      .then(res => {
+        const totals = res?.data?.totals ?? res?.totals;
+        if (totals) {
+          setTodayPresent(totals.attendedDays ?? null);
+          setTodayAbsent(totals.absentDays ?? null);
+        }
+      })
+      .catch(() => { /* non-blocking */ });
+  }, []);
 
   const activeFilterCount = filterStatus !== 'all' ? 1 : 0;
   const [selectedTeacherForAssignment, setSelectedTeacherForAssignment] = useState(null);
@@ -168,8 +186,100 @@ const TeachersList = ({
     }
   };
 
+  const activeTeachers   = teachers.filter(t => t.status === 'ACTIVE').length;
+  const assignedTeachers = teachers.filter(t =>
+    t.subject || t.subjectAssignments?.length > 0
+  ).length;
+  const maleTeachers     = teachers.filter(t => String(t.gender || '').toUpperCase() === 'MALE').length;
+  const femaleTeachers   = teachers.filter(t => String(t.gender || '').toUpperCase() === 'FEMALE').length;
+  const totalTeachers    = pagination?.total ?? teachers.length;
+
+  const SOLID_COLORS = {
+    navy:    '#172554',
+    teal:    '#0F766E',
+    forest:  '#1B5E20',
+    amber:   '#78350F',
+  };
+
+  const KpiCard = ({ color, icon: Icon, label, value, sub, chips }) => (
+    <div className="relative overflow-hidden p-5 text-white select-none" style={{ backgroundColor: color }}>
+      <div className="pointer-events-none absolute -bottom-4 -right-4 text-white/10">
+        <Icon size={90} strokeWidth={1} />
+      </div>
+      <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/70 mb-3">{label}</p>
+      <div className="flex items-end justify-between gap-2">
+        <div>
+          <p className="text-4xl font-black tracking-tight leading-none text-white">{value ?? '—'}</p>
+          {sub && <p className="mt-1.5 text-sm font-semibold text-white/70">{sub}</p>}
+          {chips && (
+            <div className="mt-2 flex items-center gap-3">
+              {chips.map(chip => (
+                chip.onClick ? (
+                  <button
+                    key={chip.label}
+                    type="button"
+                    onClick={chip.onClick}
+                    className="flex items-center gap-1 rounded px-1 py-0.5 hover:bg-white/15 transition-colors"
+                  >
+                    <span className="text-lg font-black text-white leading-none">{chip.value ?? '—'}</span>
+                    <span className="text-[10px] font-semibold text-white/60 uppercase">{chip.label}</span>
+                  </button>
+                ) : (
+                  <div key={chip.label} className="flex items-center gap-1">
+                    <span className="text-lg font-black text-white leading-none">{chip.value ?? '—'}</span>
+                    <span className="text-[10px] font-semibold text-white/60 uppercase">{chip.label}</span>
+                  </div>
+                )
+              ))}
+            </div>
+          )}
+        </div>
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center bg-white/20 border border-white/30 self-start">
+          <Icon size={18} strokeWidth={2.2} className="text-white/90" />
+        </span>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-4">
+      {/* ── KPI Cards ── */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        <KpiCard
+          color={SOLID_COLORS.navy}
+          icon={GraduationCap}
+          label="Total Tutors"
+          value={totalTeachers}
+          sub="All teaching staff"
+        />
+        <KpiCard
+          color={SOLID_COLORS.teal}
+          icon={Users2}
+          label="Gender Split"
+          value={totalTeachers}
+          chips={[
+            { label: 'Male',   value: maleTeachers   },
+            { label: 'Female', value: femaleTeachers  },
+          ]}
+        />
+        <KpiCard
+          color={SOLID_COLORS.forest}
+          icon={GraduationCap}
+          label="Attendance Today"
+          value={todayPresent !== null ? todayPresent : activeTeachers}
+          chips={[
+            { label: 'Present', value: todayPresent ?? '—', onClick: () => setTutorsPopup({ open: true, statusFilter: 'PRESENT', title: 'Present Tutors Today' }) },
+            { label: 'Absent',  value: todayAbsent  ?? '—', onClick: () => setTutorsPopup({ open: true, statusFilter: 'ABSENT',  title: 'Absent Tutors Today'  }) },
+          ]}
+        />
+        <KpiCard
+          color={SOLID_COLORS.amber}
+          icon={BookOpen}
+          label="Subject Assigned"
+          value={assignedTeachers}
+          sub={totalTeachers > 0 ? `${Math.round((assignedTeachers / totalTeachers) * 100)}% coverage` : null}
+        />
+      </div>
       {/* Compact Quick Actions Toolbar */}
       <div className="toolbar-card">
         <div className="flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center">
@@ -567,10 +677,17 @@ const TeachersList = ({
           </div>
         </div>
       )}
+
+      {/* Staff Attendance Drill-down Popup */}
+      <StaffPopup
+        open={tutorsPopup.open}
+        onClose={() => setTutorsPopup(p => ({ ...p, open: false }))}
+        mode="attendance"
+        title={tutorsPopup.title}
+        statusFilter={tutorsPopup.statusFilter}
+      />
     </div>
   );
 };
 
 export default TeachersList;
-
-

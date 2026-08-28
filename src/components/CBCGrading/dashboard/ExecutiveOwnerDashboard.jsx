@@ -38,6 +38,7 @@ import { dashboardAPI, transportAPI } from '../../../services/api';
 import { QuickActions } from '../shared';
 import { useModuleAccess } from '../../../contexts/ModuleAccessContext';
 import { hasPageAccess } from '../utils/appAccess';
+import StaffPopup from './widgets/StaffPopup';
 
 
 const moduleToneMap = {
@@ -337,6 +338,7 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeModule, setActiveModule] = useState('');
+  const [tutorsPopup, setTutorsPopup] = useState({ open: false, statusFilter: 'PRESENT', title: 'Present Tutors Today' });
   const moduleSectionRef = useRef(null);
   const isMobile = mode === 'mobile';
 
@@ -1073,6 +1075,90 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
 
       {/* Quick Actions navigation strip */}
       <QuickActions onNavigate={onNavigate} currentPage="dashboard" user={accessUser} />
+
+      {/* Tutors Attendance KPI row */}
+      {!isMobile && (
+        <div className="px-6 lg:px-10 pt-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {/* Total Tutors */}
+            <div className="relative overflow-hidden p-5 text-white select-none" style={{ backgroundColor: '#172554' }}>
+              <div className="pointer-events-none absolute -bottom-4 -right-4 text-white/10">
+                <GraduationCap size={90} strokeWidth={1} />
+              </div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/70 mb-3">Total Tutors</p>
+              <div className="flex items-end justify-between gap-2">
+                <p className="text-4xl font-black tracking-tight leading-none text-white">{integer(stats.activeTeachers ?? 0)}</p>
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center bg-white/20 border border-white/30">
+                  <GraduationCap size={18} strokeWidth={2.2} className="text-white/90" />
+                </span>
+              </div>
+              <p className="mt-1.5 text-sm font-semibold text-white/70">Active teaching staff</p>
+            </div>
+
+            {/* Attendance Today */}
+            <div className="relative overflow-hidden p-5 text-white select-none col-span-1 sm:col-span-2" style={{ backgroundColor: '#1B5E20' }}>
+              <div className="pointer-events-none absolute -bottom-4 -right-4 text-white/10">
+                <GraduationCap size={90} strokeWidth={1} />
+              </div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/70 mb-3">Tutor Attendance Today</p>
+              <div className="flex items-end justify-between gap-2">
+                <div>
+                  <p className="text-4xl font-black tracking-tight leading-none text-white">
+                    {stats.presentTeachers ?? integer(stats.activeTeachers ?? 0)}
+                  </p>
+                  <div className="mt-2 flex items-center gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setTutorsPopup({ open: true, statusFilter: 'PRESENT', title: 'Present Tutors Today' })}
+                      className="flex items-center gap-1.5 rounded px-1 py-0.5 hover:bg-white/15 transition-colors"
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-300" />
+                      <span className="text-sm font-black text-white">{stats.presentTeachers ?? '—'}</span>
+                      <span className="text-[10px] font-semibold text-white/60 uppercase">Present</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTutorsPopup({ open: true, statusFilter: 'ABSENT', title: 'Absent Tutors Today' })}
+                      className="flex items-center gap-1.5 rounded px-1 py-0.5 hover:bg-white/15 transition-colors"
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full bg-red-300" />
+                      <span className="text-sm font-black text-white">{stats.absentTeachers ?? '—'}</span>
+                      <span className="text-[10px] font-semibold text-white/60 uppercase">Absent</span>
+                    </button>
+                  </div>
+                </div>
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center bg-white/20 border border-white/30 self-start">
+                  <GraduationCap size={18} strokeWidth={2.2} className="text-white/90" />
+                </span>
+              </div>
+            </div>
+
+            {/* Teacher Attendance Rate */}
+            <div className="relative overflow-hidden p-5 text-white select-none" style={{ backgroundColor: '#0F766E' }}>
+              <div className="pointer-events-none absolute -bottom-4 -right-4 text-white/10">
+                <GraduationCap size={90} strokeWidth={1} />
+              </div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/70 mb-3">Attendance Rate</p>
+              <div className="flex items-end justify-between gap-2">
+                <p className="text-4xl font-black tracking-tight leading-none text-white">{percent(stats.teacherAttendanceRate ?? 0)}</p>
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center bg-white/20 border border-white/30">
+                  <GraduationCap size={18} strokeWidth={2.2} className="text-white/90" />
+                </span>
+              </div>
+              <p className="mt-1.5 text-sm font-semibold text-white/70">Tutors present today</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Staff Attendance Drill-down Popup */}
+      <StaffPopup
+        open={tutorsPopup.open}
+        onClose={() => setTutorsPopup(p => ({ ...p, open: false }))}
+        mode="attendance"
+        title={tutorsPopup.title}
+        statusFilter={tutorsPopup.statusFilter}
+      />
 
       {/* Hero Metric Cards — temporarily hidden */}
       {false && (
