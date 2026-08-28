@@ -73,7 +73,7 @@ const CompactLearnerHeader = ({
         </div>
 
         <div className="flex overflow-x-auto border-t border-gray-100 bg-gray-50/70 px-4 py-2 no-print">
-            {tabs.map((tab) => (
+            {tabs.filter(tab => !tab.hidden).map((tab) => (
                 <button
                     key={tab.id}
                     onClick={() => onTabChange(tab.id)}
@@ -213,8 +213,8 @@ const LearnerProfile = ({ learner: initialLearner, onBack, brandingSettings, onN
         { id: 'overview',    label: 'Overview',    icon: User          },
         { id: 'financials',  label: 'Financials',  icon: Receipt       },
         { id: 'academic',    label: 'Academic',    icon: GraduationCap },
-        { id: 'transport',   label: 'Transport',   icon: Bus           },
-        { id: 'ai-insights', label: 'AI Insights', icon: Brain         },
+        { id: 'transport',   label: 'Transport',   icon: Bus,           hidden: true },
+        { id: 'ai-insights', label: 'AI Insights', icon: Brain,         hidden: true },
         ...(isSecondaryLearner ? [{ id: 'pathways', label: 'Pathways', icon: Activity }] : []),
         { id: 'medical',     label: 'Medical',     icon: Heart         },
         { id: 'documents',   label: 'Documents',   icon: FileText      },
