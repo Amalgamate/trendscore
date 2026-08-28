@@ -1,4 +1,4 @@
-﻿﻿﻿/**
+/**
  * ParentPortalPathway — Parent-facing pathway view
  *
  * Per-child expandable cards. Each card shows:

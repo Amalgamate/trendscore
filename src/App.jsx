@@ -104,7 +104,12 @@ function AppContent() {
   const handleSplashReady = useCallback(() => setSplashDone(true), []);
 
   // Fetch school branding (runs immediately, unauthenticated endpoint)
+  // Use a ref to prevent duplicate fetches during React StrictMode double-render
+  const brandingFetchedRef = useRef(false);
   useEffect(() => {
+    if (brandingFetchedRef.current) return; // Already fetched
+    brandingFetchedRef.current = true;
+    
     let cancelled = false;
     const fetchBranding = async () => {
       try {
@@ -128,7 +133,7 @@ function AppContent() {
     };
     fetchBranding();
     return () => { cancelled = true; };
-  }, [isAuthenticated]);
+  }, []); // Empty deps - only fetch once on mount
 
   // Favicon
   useEffect(() => {
