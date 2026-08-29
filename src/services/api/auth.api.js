@@ -61,6 +61,19 @@ export const authAPI = {
       body: JSON.stringify({ token, newPassword, passwordConfirm: passwordConfirm ?? newPassword }),
     }),
 
+  /**
+   * Change password for the currently authenticated user.
+   * Used when mustChangePassword=true (the INITIAL_SETUP_REQUIRED flow).
+   * Requires an active session cookie — no token parameter needed.
+   */
+  changePassword: async (newPassword, passwordConfirm) => {
+    const response = await axiosInstance.post('/auth/change-password', {
+      newPassword,
+      passwordConfirm: passwordConfirm ?? newPassword,
+    });
+    return response.data;
+  },
+
   /** Send a password-reset email to the given address (unauthenticated — no session required). */
   forgotPassword: async (email) => {
     const response = await axiosInstance.post('/auth/forgot-password', { email });
