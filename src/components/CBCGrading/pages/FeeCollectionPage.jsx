@@ -214,6 +214,16 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
   }, [statsInvoices]);
 
   const getInvoiceCarryFwd = React.useCallback((invoice) => {
+    // Primary source: carryForwardAmount stamped by the backend at bulk-generate time.
+    // This is exactly the previous term's closing balance — no stacking of older B/Fs.
+    // Use ?? -1 so that NULL falls through but explicit 0 (no carry-forward) returns 0.
+    const storedBF = invoice?.carryForwardAmount !== undefined && invoice?.carryForwardAmount !== null
+      ? Number(invoice.carryForwardAmount)
+      : -1;
+    if (storedBF >= 0) return storedBF;
+
+    // Fallback for invoices created before carryForwardAmount field existed:
+    // look up the previous term's balance from the loaded invoice set.
     const learnerId = String(invoice?.learnerId || invoice?.learner?.id || '').trim();
     const term = String(invoice?.term || '').trim();
     const year = Number(invoice?.academicYear);
@@ -226,7 +236,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
       }
     }
 
-    // Fallback: for first-time/legacy invoices where B/F was embedded in billed total.
+    // Last resort: billed minus fee structure amount (legacy path).
     const billed = Number(invoice?.totalAmount || 0);
     const termFee = getInvoiceTermFee(invoice);
     return Math.max(0, billed - termFee);
