@@ -185,6 +185,24 @@ async function findNextAvailableAdmissionNumber(
  * @param admNo  - raw value from spreadsheet / API input
  * @param db     - optional Prisma client (defaults to the module-level prisma instance)
  */
+/**
+ * normalizeAdmissionNumber
+ * -----------------------
+ * Resolves any admission number format variation to a canonical DB record.
+ *
+ * Handles the two populations that co-exist in JRN/zawadi:
+ *  - Legacy short numerics:   "1100", "969"  (now migrated to prefixed in DB)
+ *  - Auto-generated prefixed: "ADM-2026-1100", "ADM-2026-0969"
+ *
+ * Strategy (in order):
+ *  1. Exact match on the raw value (fastest, covers 99% of cases)
+ *  2. If the raw value is purely numeric, try ADM-{YEAR}-{padded} expansions
+ *     for current year and the 2 preceding years (handles year ambiguity)
+ *  3. If the raw value has a prefix, extract trailing digits and try
+ *     ADM-{YEAR}-{padded} expansions as above (normalises variant prefixes)
+ *
+ * Returns the matched Learner row, or null if no match.
+ */
 export async function resolveAdmissionNumber(
   admNo: string,
   db: any = prisma
@@ -198,22 +216,31 @@ export async function resolveAdmissionNumber(
   const exact = await db.learner.findUnique({ where: { admissionNumber: raw }, select });
   if (exact) return exact;
 
-  // 2. Raw is pure digits → try suffix match (legacy short → prefixed DB)
-  if (/^\d+$/.test(raw)) {
-    const hits = await db.learner.findMany({
-      where: { admissionNumber: { endsWith: `-${raw}` } },
-      select,
-      take: 2
-    });
-    if (hits.length >= 1) return hits[0];
-  }
-
-  // 3. Raw has a prefix → extract trailing numeric part and try exact numeric match
+  // Extract numeric part — works for both "1100" and "ADM-2026-1100"
   const numericSuffix = raw.replace(/^.*?(\d+)$/, '$1');
-  if (numericSuffix && numericSuffix !== raw) {
-    const numHit = await db.learner.findUnique({ where: { admissionNumber: numericSuffix }, select });
-    if (numHit) return numHit;
-  }
+  if (!numericSuffix || numericSuffix === raw && !/^\d+$/.test(raw)) return null;
+
+  const padded = numericSuffix.padStart(4, '0');
+  const currentYear = new Date().getFullYear();
+
+  // 2. Try ADM-{YEAR}-{padded} for current year and 2 prior years
+  const candidates = [currentYear, currentYear - 1, currentYear - 2]
+    .map(y => `ADM-${y}-${padded}`);
+
+  const hits = await db.learner.findMany({
+    where: { admissionNumber: { in: candidates } },
+    select,
+    take: 1
+  });
+  if (hits.length > 0) return hits[0];
+
+  // 3. endsWith fallback for any other prefix pattern
+  const suffix = await db.learner.findMany({
+    where: { admissionNumber: { endsWith: `-${padded}` } },
+    select,
+    take: 1
+  });
+  if (suffix.length > 0) return suffix[0];
 
   return null;
 }
@@ -231,57 +258,65 @@ export async function buildLearnerMapFromAdmNos(
   const unique = Array.from(new Set(rawAdmNos.map(a => String(a || '').trim()).filter(Boolean)));
   if (!unique.length) return new Map();
 
-  // Separate into pure-numeric and prefixed groups
-  const pureNumeric = unique.filter(a => /^\d+$/.test(a));
-  const prefixed    = unique.filter(a => !/^\d+$/.test(a));
+  const currentYear = new Date().getFullYear();
+  const years = [currentYear, currentYear - 1, currentYear - 2];
 
-  // Collect all candidate admission numbers to fetch in one query
+  // Build the full candidate set:
+  // For each raw value, add: exact, ADM-YYYY-NNNN (for 3 years), endsWith variant
   const exactCandidates = new Set<string>(unique);
+  const numericMap = new Map<string, string>(); // padded → raw (for reverse lookup)
 
-  // For pure-numeric values, also query their prefixed variants via endsWith
-  // For prefixed values, also query the trailing numeric form
-  for (const a of pureNumeric) {
-    // will be resolved via endsWith below — no extra candidates needed
-  }
-  for (const a of prefixed) {
-    const numPart = a.replace(/^.*?(\d+)$/, '$1');
-    if (numPart && numPart !== a) exactCandidates.add(numPart);
+  for (const raw of unique) {
+    const numPart = raw.replace(/^.*?(\d+)$/, '$1');
+    if (!numPart) continue;
+    const padded = numPart.padStart(4, '0');
+    for (const y of years) {
+      const candidate = `ADM-${y}-${padded}`;
+      exactCandidates.add(candidate);
+      numericMap.set(candidate, raw);
+    }
+    // also map the plain padded form back to raw
+    numericMap.set(padded, raw);
+    numericMap.set(numPart, raw);
   }
 
-  // Fetch all exact candidates in one round-trip
-  const exactHits = await db.learner.findMany({
+  // Single bulk fetch
+  const hits = await db.learner.findMany({
     where: { admissionNumber: { in: Array.from(exactCandidates) } },
     select: { id: true, admissionNumber: true, grade: true, firstName: true, lastName: true }
   });
 
-  // Build a lookup by admissionNumber
-  const byAdmNo = new Map<string, any>(exactHits.map((l: any) => [l.admissionNumber, l]));
+  // Build reverse index: admissionNumber → learner
+  const byAdmNo = new Map<string, any>(hits.map((l: any) => [l.admissionNumber, l]));
 
-  // For pure-numeric values not matched exactly, try endsWith
-  const unresolved = pureNumeric.filter(a => !byAdmNo.has(a));
-  if (unresolved.length) {
-    const suffixHits = await db.learner.findMany({
-      where: {
-        OR: unresolved.map(a => ({ admissionNumber: { endsWith: `-${a}` } }))
-      },
-      select: { id: true, admissionNumber: true, grade: true, firstName: true, lastName: true }
-    });
-    for (const l of suffixHits) {
-      // Find which raw admNo this learner maps to
-      const numPart = l.admissionNumber.replace(/^.*?(\d+)$/, '$1');
-      if (numPart && unresolved.includes(numPart) && !byAdmNo.has(numPart)) {
-        byAdmNo.set(numPart, l);
-      }
-    }
-  }
-
-  // Build the final map: rawAdmNo → learner
+  // Map each raw input → learner
   const result = new Map<string, any>();
   for (const raw of unique) {
-    const learner = byAdmNo.get(raw)
-      ?? byAdmNo.get(raw.replace(/^.*?(\d+)$/, '$1'))
-      ?? null;
-    if (learner) result.set(raw, learner);
+    if (byAdmNo.has(raw)) {
+      result.set(raw, byAdmNo.get(raw));
+      continue;
+    }
+    // Try year expansions
+    const numPart = raw.replace(/^.*?(\d+)$/, '$1');
+    const padded = numPart.padStart(4, '0');
+    let found = false;
+    for (const y of years) {
+      const candidate = `ADM-${y}-${padded}`;
+      if (byAdmNo.has(candidate)) {
+        result.set(raw, byAdmNo.get(candidate));
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      // endsWith fallback — individual query only for unresolved
+      const suffix = await db.learner.findMany({
+        where: { admissionNumber: { endsWith: `-${padded}` } },
+        select: { id: true, admissionNumber: true, grade: true, firstName: true, lastName: true },
+        take: 1
+      });
+      if (suffix.length > 0) result.set(raw, suffix[0]);
+    }
   }
   return result;
 }
