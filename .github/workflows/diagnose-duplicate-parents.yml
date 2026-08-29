@@ -1,0 +1,165 @@
+name: Diagnose Duplicate Parents
+
+# Read-only diagnostic: finds duplicate parent accounts and duplicate phone numbers
+# in a school's database. Never modifies data.
+on:
+  workflow_dispatch:
+    inputs:
+      school_slug:
+        description: "School instance id from deploy/instances.manifest.json"
+        required: true
+        default: "jrn"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Find duplicate parents
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Run duplicate-parent diagnostics
+        env:
+          SCHOOL_ID: ${{ inputs.school_slug }}
+        run: |
+          set -euo pipefail
+          ssh production "SCHOOL_ID='${SCHOOL_ID}' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          manifest=/srv/zawadi/apps/deploy/instances.manifest.json
+          [[ -f "$manifest" ]] || { echo "Manifest not found"; exit 1; }
+          instance="$(jq -c --arg id "$SCHOOL_ID" '.instances[] | select(.id == $id)' "$manifest")"
+          [[ -n "$instance" ]] || { echo "Unknown school id: $SCHOOL_ID"; exit 1; }
+
+          kind="$(jq -r '.kind' <<<"$instance")"
+          project="$(jq -r '.compose_project // empty' <<<"$instance")"
+          if [[ "$kind" == "main" ]]; then
+            db=zawadi-db
+          else
+            db="$(sudo docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=db' --format '{{.ID}}' | head -n1)"
+          fi
+          [[ -n "$db" ]] || { echo "Could not find running db container for $SCHOOL_ID"; exit 1; }
+
+          db_user="$(sudo docker exec "$db" printenv POSTGRES_USER)"
+          db_name="$(sudo docker exec "$db" printenv POSTGRES_DB)"
+
+          run_sql() {
+            sudo docker exec -i "$db" psql -U "$db_user" -d "$db_name" -v ON_ERROR_STOP=1 -P pager=off "$@"
+          }
+
+          echo ""
+          echo "================================================================"
+          echo "  DUPLICATE PARENT DIAGNOSTICS — school: $SCHOOL_ID"
+          echo "================================================================"
+
+          echo ""
+          echo "## 1. Users with role=PARENT sharing the same full name"
+          echo "   (shows each group with their IDs, emails, phone, status)"
+          run_sql -c "
+            SELECT
+              lower(concat_ws(' ', \"firstName\", \"lastName\")) AS full_name,
+              count(*) AS account_count,
+              array_agg(id ORDER BY \"createdAt\") AS user_ids,
+              array_agg(email ORDER BY \"createdAt\") AS emails,
+              array_agg(COALESCE(phone, '—') ORDER BY \"createdAt\") AS phones,
+              array_agg(status ORDER BY \"createdAt\") AS statuses,
+              array_agg(\"createdAt\"::date ORDER BY \"createdAt\") AS created_dates
+            FROM users
+            WHERE role = 'PARENT'
+            GROUP BY lower(concat_ws(' ', \"firstName\", \"lastName\"))
+            HAVING count(*) > 1
+            ORDER BY count(*) DESC, full_name;"
+
+          echo ""
+          echo "## 2. Users with role=PARENT sharing the same phone number"
+          echo "   (phone duplicates, including nulls excluded)"
+          run_sql -c "
+            SELECT
+              phone,
+              count(*) AS account_count,
+              array_agg(id ORDER BY \"createdAt\") AS user_ids,
+              array_agg(concat_ws(' ', \"firstName\", \"lastName\") ORDER BY \"createdAt\") AS names,
+              array_agg(email ORDER BY \"createdAt\") AS emails,
+              array_agg(status ORDER BY \"createdAt\") AS statuses,
+              array_agg(\"createdAt\"::date ORDER BY \"createdAt\") AS created_dates
+            FROM users
+            WHERE role = 'PARENT'
+              AND phone IS NOT NULL
+              AND trim(phone) <> ''
+            GROUP BY phone
+            HAVING count(*) > 1
+            ORDER BY count(*) DESC, phone;"
+
+          echo ""
+          echo "## 3. Parent-learner links per duplicate name group"
+          echo "   (how many children each duplicated parent account is linked to)"
+          run_sql -c "
+            WITH dup_parents AS (
+              SELECT id, concat_ws(' ', \"firstName\", \"lastName\") AS full_name, email, phone, status, \"createdAt\"
+              FROM users
+              WHERE role = 'PARENT'
+                AND lower(concat_ws(' ', \"firstName\", \"lastName\")) IN (
+                  SELECT lower(concat_ws(' ', \"firstName\", \"lastName\"))
+                  FROM users
+                  WHERE role = 'PARENT'
+                  GROUP BY lower(concat_ws(' ', \"firstName\", \"lastName\"))
+                  HAVING count(*) > 1
+                )
+            )
+            SELECT
+              dp.full_name,
+              dp.id AS parent_user_id,
+              dp.email,
+              dp.phone,
+              dp.status,
+              dp.\"createdAt\"::date AS created,
+              count(pl.\"learnerId\") AS linked_children,
+              array_agg(
+                concat_ws(' ', l.\"firstName\", l.\"lastName\") || ' [' || COALESCE(l.\"admissionNumber\", '—') || ']'
+                ORDER BY l.\"firstName\"
+              ) FILTER (WHERE l.id IS NOT NULL) AS children
+            FROM dup_parents dp
+            LEFT JOIN \"parentLearnerLinks\" pl ON pl.\"parentUserId\" = dp.id
+            LEFT JOIN learners l ON l.id = pl.\"learnerId\"
+            GROUP BY dp.id, dp.full_name, dp.email, dp.phone, dp.status, dp.\"createdAt\"
+            ORDER BY dp.full_name, dp.\"createdAt\";"
+
+          echo ""
+          echo "## 4. Summary counts"
+          run_sql -c "
+            SELECT
+              (SELECT count(*) FROM users WHERE role = 'PARENT') AS total_parent_accounts,
+              (SELECT count(DISTINCT lower(concat_ws(' ', \"firstName\", \"lastName\")))
+               FROM users WHERE role = 'PARENT') AS unique_parent_names,
+              (SELECT count(*) FROM users WHERE role = 'PARENT'
+               AND lower(concat_ws(' ', \"firstName\", \"lastName\")) IN (
+                 SELECT lower(concat_ws(' ', \"firstName\", \"lastName\"))
+                 FROM users WHERE role = 'PARENT'
+                 GROUP BY lower(concat_ws(' ', \"firstName\", \"lastName\"))
+                 HAVING count(*) > 1
+               )) AS parents_in_dup_name_groups,
+              (SELECT count(*) FROM users WHERE role = 'PARENT'
+               AND phone IS NOT NULL AND trim(phone) <> ''
+               AND phone IN (
+                 SELECT phone FROM users WHERE role = 'PARENT'
+                   AND phone IS NOT NULL AND trim(phone) <> ''
+                 GROUP BY phone HAVING count(*) > 1
+               )) AS parents_with_dup_phone;"
+
+          echo ""
+          echo "================================================================"
+          echo "  END OF REPORT"
+          echo "================================================================"
+          REMOTE
