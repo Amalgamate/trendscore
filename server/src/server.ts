@@ -109,7 +109,8 @@ app.use(cors({
 // Global IP-based rate limiting  
 app.use(ipRateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 1000, // 1000 requests per 15 minutes
+  // Much higher limit in dev to accommodate HMR, React StrictMode double-renders
+  maxRequests: process.env.NODE_ENV === 'production' ? 1000 : 10000,
   message: 'Too many requests from this IP. Please try again later.'
 }));
 
