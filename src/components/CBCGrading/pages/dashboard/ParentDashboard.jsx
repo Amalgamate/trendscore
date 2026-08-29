@@ -548,7 +548,7 @@ const ParentDashboard = ({ user, onNavigate, onLogout, brandingSettings }) => {
     const ParentChildProfile = React.lazy(() => import('../parent/ParentChildProfile'));
     return (
       <React.Suspense fallback={<div className="flex justify-center py-24"><Loader2 size={24} className="animate-spin text-[#3B1FA3]" /></div>}>
-        <ParentChildProfile child={selectedChild} onBack={() => setSelectedChild(null)} initialTab="overview" />
+        <ParentChildProfile child={selectedChild} onBack={() => setSelectedChild(null)} initialTab="results" />
       </React.Suspense>
     );
   }

@@ -32,6 +32,19 @@ const academicYears = () => {
 
 const unwrapData = (r) => r?.data?.data || r?.data || null;
 
+function waitForElement(id, timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const tick = () => {
+      const el = document.getElementById(id);
+      if (el) return resolve(el);
+      if (Date.now() - started > timeoutMs) return reject(new Error('Report card is not ready to download'));
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+}
+
 // ─── Grade badge ──────────────────────────────────────────────────────────────
 
 function GradeBadge({ grade, size = 'md' }) {
@@ -334,14 +347,46 @@ export default function ParentReportCards({ learner }) {
     }
   }, [learner.id, year]);
 
+  const downloadReportPdf = useCallback(async (term) => {
+    const firstName = (learner.firstName || learner.name || 'Learner').split(' ')[0];
+    const filename  = `ReportCard_${firstName}_${termLabel(term)}_${year}.pdf`;
+    await waitForElement(`parent-termly-report-${year}-${term}`);
+    await captureSingleReport(`parent-termly-report-${year}-${term}`, filename);
+  }, [learner, year]);
+
   const handleDownload = useCallback(async () => {
     if (!termReport) return;
     setPdfStatus('downloading');
-    const firstName = (learner.firstName || learner.name || 'Learner').split(' ')[0];
-    const filename  = `ReportCard_${firstName}_${termLabel(termReport.term)}_${year}.pdf`;
-    await captureSingleReport(`parent-termly-report-${year}-${termReport.term}`, filename);
-    setPdfStatus('');
-  }, [termReport, learner, year]);
+    try {
+      await downloadReportPdf(termReport.term);
+    } catch (e) {
+      setTermReportError(e?.message || 'Could not download results');
+    } finally {
+      setPdfStatus('');
+    }
+  }, [termReport, downloadReportPdf]);
+
+  const handleDownloadResults = useCallback(async () => {
+    const term = summary.latest?.term;
+    if (!term) return;
+    setPdfStatus('downloading');
+    setTermReportError('');
+    try {
+      let report = termReport?.term === term ? termReport : null;
+      if (!report) {
+        const res  = await reportAPI.getTermlyReport(learner.id, { term, academicYear: year });
+        const data = unwrapData(res);
+        if (!data) throw new Error('Report card data is unavailable');
+        report = { term, data };
+        setTermReport(report);
+      }
+      await downloadReportPdf(term);
+    } catch (e) {
+      setTermReportError(e?.message || 'Could not download results');
+    } finally {
+      setPdfStatus('');
+    }
+  }, [summary.latest?.term, termReport, learner.id, year, downloadReportPdf]);
 
   const handlePrint = useCallback(async () => {
     if (!termReport) return;
@@ -374,18 +419,29 @@ export default function ParentReportCards({ learner }) {
     <div className="space-y-4">
 
       {/* ── Header: title + year selector ─────────────────────────────── */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h3 className="text-base font-black text-gray-900">Academic Scoresheet</h3>
           <p className="text-xs text-gray-400 mt-0.5">{learner.name} · {learner.grade}</p>
         </div>
-        <select
-          value={year}
-          onChange={e => setYear(e.target.value)}
-          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-800 shadow-sm"
-        >
-          {academicYears().map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
+        <div className="flex items-center gap-2">
+          <select
+            value={year}
+            onChange={e => setYear(e.target.value)}
+            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-800 shadow-sm"
+          >
+            {academicYears().map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <button
+            type="button"
+            onClick={handleDownloadResults}
+            disabled={!summary.hasData || !summary.latest || !!pdfStatus}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#3B1FA3] px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#2d1680] disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+          >
+            {pdfStatus === 'downloading' ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+            {pdfStatus === 'downloading' ? 'Generating…' : 'Download Results'}
+          </button>
+        </div>
       </div>
 
       {/* ── Year summary strip ─────────────────────────────────────────── */}
