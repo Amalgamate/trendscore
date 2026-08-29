@@ -213,6 +213,28 @@ async function main() {
     // Build a synthetic email from parentCode (no real email for parents)
     const syntheticEmail = `${winnerParentCode.toLowerCase()}@trendscore.co.ke`;
 
+    // ── 6. Archive all losers FIRST to free phone/email unique constraints ──
+    // Must happen before updating winner phone, otherwise the partial unique
+    // index on (phone WHERE role=PARENT AND archived=false) may conflict.
+    for (const loser of losers) {
+      // Null out loser's email/username/parentCode to free unique constraints
+      const loserArchiveEmail = `archived-${loser.id}@trendscore.co.ke`;
+      await prisma.user.update({
+        where: { id: loser.id },
+        data: {
+          email: loserArchiveEmail,
+          username: null,
+          parentCode: null,
+          phone: null,         // free the phone before winner claims it
+          archived: true,
+          archivedAt: new Date(),
+          archivedBy: 'merge-duplicate-parents-script',
+          status: 'INACTIVE',
+        },
+      });
+      console.log(`    Archived loser: ${loser.id}`);
+    }
+
     await prisma.user.update({
       where: { id: winner.id },
       data: {
@@ -228,26 +250,6 @@ async function main() {
       },
     });
     console.log(`    Winner updated → email: ${syntheticEmail}, phone: ${winnerPhone}, passwordResetToken set`);
-
-    // ── 6. Archive all losers ──────────────────────────────────────────────
-    for (const loser of losers) {
-      // Null out loser's email/username/parentCode to free unique constraints
-      const loserArchiveEmail = `archived-${loser.id}@trendscore.co.ke`;
-      await prisma.user.update({
-        where: { id: loser.id },
-        data: {
-          email: loserArchiveEmail,
-          username: null,
-          parentCode: null,
-          phone: null,
-          archived: true,
-          archivedAt: new Date(),
-          archivedBy: 'merge-duplicate-parents-script',
-          status: 'INACTIVE',
-        },
-      });
-      console.log(`    Archived loser: ${loser.id}`);
-    }
 
     mergedCount++;
   }
