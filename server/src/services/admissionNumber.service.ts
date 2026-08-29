@@ -188,37 +188,30 @@ async function findNextAvailableAdmissionNumber(
 export async function resolveAdmissionNumber(
   admNo: string,
   db: any = prisma
-): Promise<{ id: string; admissionNumber: string } | null> {
+): Promise<{ id: string; admissionNumber: string; firstName: string; lastName: string; grade: string } | null> {
   const raw = String(admNo || '').trim();
   if (!raw) return null;
 
+  const select = { id: true, admissionNumber: true, firstName: true, lastName: true, grade: true };
+
   // 1. Exact match
-  const exact = await db.learner.findUnique({
-    where: { admissionNumber: raw },
-    select: { id: true, admissionNumber: true }
-  });
+  const exact = await db.learner.findUnique({ where: { admissionNumber: raw }, select });
   if (exact) return exact;
 
   // 2. Raw is pure digits → try suffix match (legacy short → prefixed DB)
   if (/^\d+$/.test(raw)) {
     const hits = await db.learner.findMany({
       where: { admissionNumber: { endsWith: `-${raw}` } },
-      select: { id: true, admissionNumber: true },
+      select,
       take: 2
     });
-    if (hits.length === 1) return hits[0];
-    // If multiple hit (unlikely but possible with sequential numbering edge-case),
-    // prefer the one that ends with exactly the numeric part with a dash separator.
-    if (hits.length > 1) return hits[0];
+    if (hits.length >= 1) return hits[0];
   }
 
   // 3. Raw has a prefix → extract trailing numeric part and try exact numeric match
   const numericSuffix = raw.replace(/^.*?(\d+)$/, '$1');
   if (numericSuffix && numericSuffix !== raw) {
-    const numHit = await db.learner.findUnique({
-      where: { admissionNumber: numericSuffix },
-      select: { id: true, admissionNumber: true }
-    });
+    const numHit = await db.learner.findUnique({ where: { admissionNumber: numericSuffix }, select });
     if (numHit) return numHit;
   }
 
