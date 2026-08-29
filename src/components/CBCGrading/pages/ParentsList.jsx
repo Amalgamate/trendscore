@@ -435,10 +435,10 @@ const ParentsList = ({ parents = [], pagination, onFetchParents, onAddParent, on
               className={`rounded-xl border p-3 text-left transition ${metricsFilter === 'linked' ? 'ring-2 ring-blue-500 border-blue-400 bg-blue-100' : 'border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100 hover:shadow-sm'}`}
             >
               <div className="flex items-center justify-between">
-                <p className="text-[11px] uppercase tracking-wider text-blue-700 font-semibold">Students Total</p>
+                <p className="text-[11px] uppercase tracking-wider text-blue-700 font-semibold">Total Parents</p>
                 <Users size={16} className="text-blue-700" />
               </div>
-              <p className="text-2xl font-bold text-blue-900 mt-2">{studentsTotal}</p>
+              <p className="text-2xl font-bold text-blue-900 mt-2">{metrics.totalParents}</p>
             </button>
             <button
               type="button"
