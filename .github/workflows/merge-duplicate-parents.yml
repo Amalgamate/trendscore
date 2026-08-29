@@ -1,0 +1,140 @@
+name: Merge Duplicate Parents (One-Shot)
+
+# Destructive one-shot cleanup workflow.
+# ORDER OF OPERATIONS (must be run after the new Docker image is deployed):
+#   1. Runs the DB migration to add the partial unique index on parent phone.
+#   2. Runs the merge-duplicate-parents.mjs script inside the backend container.
+#   3. Prints a summary of the result.
+#
+# SAFETY:
+#   - Requires `confirm=merge` input — prevents accidental triggers.
+#   - Use --dry-run first to preview.
+#   - Takes a DB backup before any changes.
+#   - Only touches PARENT role accounts. All other users are untouched.
+#
+on:
+  workflow_dispatch:
+    inputs:
+      school_slug:
+        description: "School instance id (default: jrn)"
+        required: true
+        default: "jrn"
+        type: string
+      dry_run:
+        description: "Set to 'true' to preview without making changes"
+        required: true
+        default: "true"
+        type: string
+      confirm:
+        description: "Type 'merge' to confirm live run (required when dry_run=false)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate inputs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation
+        run: |
+          if [[ "${{ inputs.dry_run }}" == "false" && "${{ inputs.confirm }}" != "merge" ]]; then
+            echo "ERROR: For a live run (dry_run=false), you must set confirm=merge"
+            exit 1
+          fi
+          echo "Validation passed. dry_run=${{ inputs.dry_run }}"
+
+  merge:
+    name: Run merge
+    runs-on: ubuntu-latest
+    needs: validate
+    environment: deploy-production-school
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Run migration + merge script
+        env:
+          SCHOOL_ID: ${{ inputs.school_slug }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          ssh production "SCHOOL_ID='${SCHOOL_ID}' DRY_RUN='${DRY_RUN}' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          manifest=/srv/zawadi/apps/deploy/instances.manifest.json
+          [[ -f "$manifest" ]] || { echo "Manifest not found"; exit 1; }
+          instance="$(jq -c --arg id "$SCHOOL_ID" '.instances[] | select(.id == $id)' "$manifest")"
+          [[ -n "$instance" ]] || { echo "Unknown school id: $SCHOOL_ID"; exit 1; }
+
+          kind="$(jq -r '.kind' <<<"$instance")"
+          project="$(jq -r '.compose_project // empty' <<<"$instance")"
+          if [[ "$kind" == "main" ]]; then
+            backend=zawadi-backend
+            db=zawadi-db
+          else
+            backend="$(sudo docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=backend' --format '{{.Names}}' | head -n1)"
+            db="$(sudo docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=db' --format '{{.ID}}' | head -n1)"
+          fi
+          [[ -n "$backend" && -n "$db" ]] || { echo "Could not find running backend/db containers"; exit 1; }
+          echo "Backend: $backend  |  DB: $db"
+
+          db_user="$(sudo docker exec "$db" printenv POSTGRES_USER)"
+          db_name="$(sudo docker exec "$db" printenv POSTGRES_DB)"
+
+          # ── 1. Backup ──────────────────────────────────────────────────────────
+          echo ""
+          echo "=== Step 1: Taking DB backup ==="
+          backup_file="/srv/zawadi/backups/${SCHOOL_ID}-pre-dedup-$(date +%Y%m%d-%H%M%S).sql.gz"
+          sudo docker exec "$db" pg_dump -U "$db_user" "$db_name" | gzip > "$backup_file"
+          echo "Backup saved to: $backup_file"
+
+          # ── 2. Run DB migration (partial unique index on parent phone) ──────────
+          echo ""
+          echo "=== Step 2: Apply parent-phone-unique migration ==="
+          sudo docker exec -i "$db" psql -U "$db_user" -d "$db_name" -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE UNIQUE INDEX IF NOT EXISTS "users_parent_phone_unique"
+            ON "users" ("phone")
+            WHERE "role" = 'PARENT'
+              AND "archived" = false
+              AND "phone" IS NOT NULL
+              AND "phone" <> '';
+
+          CREATE INDEX IF NOT EXISTS "users_parent_name_role_idx"
+            ON "users" (LOWER("firstName"), LOWER("lastName"), "role")
+            WHERE "archived" = false;
+          SQL
+          echo "Migration applied."
+
+          # ── 3. Copy merge script into container and run it ─────────────────────
+          echo ""
+          echo "=== Step 3: Run merge-duplicate-parents script (dry_run=${DRY_RUN}) ==="
+
+          # The script is in the image at /app/scripts/ (copied during Docker build)
+          dry_flag=""
+          [[ "$DRY_RUN" == "true" ]] && dry_flag="--dry-run"
+
+          sudo docker exec "$backend" node /app/scripts/merge-duplicate-parents.mjs $dry_flag
+
+          # ── 4. Post-run count ──────────────────────────────────────────────────
+          echo ""
+          echo "=== Step 4: Post-run summary ==="
+          sudo docker exec -i "$db" psql -U "$db_user" -d "$db_name" -v ON_ERROR_STOP=1 -P pager=off -c "
+            SELECT
+              (SELECT count(*) FROM users WHERE role='PARENT' AND archived=false)  AS active_parents,
+              (SELECT count(*) FROM users WHERE role='PARENT' AND archived=true)   AS archived_parents,
+              (SELECT count(*) FROM users WHERE role='PARENT' AND archived=false AND \"passwordResetToken\" IS NOT NULL) AS pending_password_change,
+              (SELECT count(DISTINCT lower(concat_ws(' ', \"firstName\", \"lastName\")))
+               FROM users WHERE role='PARENT' AND archived=false)                  AS unique_names;"
+
+          REMOTE

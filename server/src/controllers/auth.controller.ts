@@ -15,7 +15,7 @@ import { authLoginService } from '../services/auth-login.service';
 import { authPhoneOtpService } from '../services/auth-phone-otp.service';
 import { authTokenService } from '../services/auth-token.service';
 import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
-import { buildParentLoginEmail } from '../services/parent.service';
+import { buildParentLoginEmail, getParentPhoneLookupCandidates, getParentLoginEmailCandidates, normalizeParentPhoneForFamily } from '../services/parent.service';
 import { studentPhoneLookupService } from '../services/studentPhoneLookup.service';
 import { studentPhoneLoginService } from '../services/studentPhoneLogin.service';
 
@@ -50,16 +50,41 @@ export class AuthController {
     }
 
     if (requestedRole === 'PARENT') {
-      const parentLoginEmail = buildParentLoginEmail(phone);
-      if (!parentLoginEmail) {
+      const normalizedPhone = normalizeParentPhoneForFamily(phone);
+      if (!normalizedPhone) {
         throw new ApiError(400, 'Parent phone number is required before issuing a login account');
       }
+      // Check for an existing parent by phone (all format variants) before creating a duplicate
+      const phoneCandidates = getParentPhoneLookupCandidates(normalizedPhone);
+      const emailCandidates = getParentLoginEmailCandidates(normalizedPhone);
+      const existingParent = await prisma.user.findFirst({
+        where: {
+          role: 'PARENT',
+          archived: false,
+          OR: [
+            { phone: { in: phoneCandidates } },
+            { email: { in: emailCandidates } },
+          ],
+        },
+        select: { id: true, parentCode: true, email: true },
+      });
+      if (existingParent) {
+        throw new ApiError(400, 'A parent account already exists for this phone number. Use your Parent ID or phone to log in.');
+      }
+      // Use parentCode-based synthetic email — not the phone-based legacy format
+      // The parentCode and synthetic email are assigned by getOrCreateParent().
+      // For direct registration we build them inline here.
+      const parentLoginEmail = buildParentLoginEmail(normalizedPhone);
+      if (!parentLoginEmail) throw new ApiError(400, 'Invalid phone number');
       email = parentLoginEmail;
+      phone = normalizedPhone; // store in canonical 254XXXXXXXXX form
     } else if (!email) {
       throw new ApiError(400, 'Email is required');
     }
 
-    const existingUser = await prisma.user.findUnique({ where: { email } });
+    const existingUser = await prisma.user.findFirst({
+      where: { OR: [{ email }, ...(email ? [] : [])] },
+    });
     if (existingUser) throw new ApiError(400, 'User already exists');
 
     const passwordPolicy = requestedRole === 'PARENT' ? PARENT_PASSWORD_POLICY : DEFAULT_PASSWORD_POLICY;
@@ -365,6 +390,49 @@ export class AuthController {
 
     authTokenService.setTokenCookies(res, result.token, result.refreshToken, req.body.rememberMe === true);
     res.json(result);
+  }
+
+  /**
+   * @route  POST /api/auth/change-password
+   * @desc   Change password for the currently authenticated user.
+   *         Used by the force-change-password flow (mustChangePassword = true).
+   *         The parent policy applies for PARENT role; default policy for all others.
+   *         On success, clears passwordResetToken so mustChangePassword becomes false.
+   * @access Authenticated (any role)
+   */
+  async changePassword(req: AuthRequest, res: Response) {
+    const { newPassword, passwordConfirm } = req.body;
+    if (!newPassword || !passwordConfirm) throw new ApiError(400, 'newPassword and passwordConfirm are required');
+    if (newPassword !== passwordConfirm) throw new ApiError(400, 'Passwords do not match');
+    if (newPassword.toLowerCase() === 'changeme') throw new ApiError(400, 'Please choose a stronger password');
+
+    const userId = req.user!.userId;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true },
+    });
+    if (!user) throw new ApiError(404, 'User not found');
+
+    const policy = user.role === 'PARENT' ? PARENT_PASSWORD_POLICY : DEFAULT_PASSWORD_POLICY;
+    const validation = validatePassword(newPassword, policy);
+    if (!validation.valid) throw new ApiError(400, validation.errors.join(', '));
+
+    const hashedPassword = await bcrypt.hash(newPassword, 11);
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        password: hashedPassword,
+        passwordResetToken: null,   // clears mustChangePassword flag
+        passwordResetExpiry: null,
+        loginAttempts: 0,
+        lockedUntil: null,
+      },
+    });
+
+    // Invalidate any cached auth state for this user
+    await redisCacheService.delete(`auth:v2:user:${userId}`);
+
+    res.json({ success: true, message: 'Password changed successfully' });
   }
 
   async getSeededUsers(_req: Request, res: Response) {

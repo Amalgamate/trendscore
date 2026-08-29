@@ -110,6 +110,18 @@ if (process.env.NODE_ENV === 'development') {
 // Protected routes
 router.get('/me', authenticate, asyncHandler(authController.me.bind(authController)));
 
+/**
+ * @route  POST /api/auth/change-password
+ * @desc   Authenticated force-change-password. Used when mustChangePassword=true.
+ *         Clears passwordResetToken on success so the flag is lifted.
+ * @access Authenticated (any role)
+ */
+router.post('/change-password',
+  authenticate,
+  authRateLimit(10, 60_000),
+  asyncHandler(authController.changePassword.bind(authController))
+);
+
 router.post('/logout',
   authenticate,
   asyncHandler(authController.logout.bind(authController))

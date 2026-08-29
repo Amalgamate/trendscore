@@ -1,6 +1,6 @@
-name: Diagnose Duplicate Parents
+name: Diagnose Duplicates (Parents + Students)
 
-# Read-only diagnostic: finds duplicate parent accounts and duplicate phone numbers
+# Read-only diagnostic: finds duplicate parent and student/learner accounts
 # in a school's database. Never modifies data.
 on:
   workflow_dispatch:
@@ -132,7 +132,7 @@ jobs:
               ) FILTER (WHERE l.id IS NOT NULL) AS children
             FROM dup_parents dp
             LEFT JOIN \"parentLearnerLinks\" pl ON pl.\"parentUserId\" = dp.id
-            LEFT JOIN learners l ON l.id = pl.\"learnerId\"
+            LEFT JOIN learners l ON l.\"parentId\" = dp.id
             GROUP BY dp.id, dp.full_name, dp.email, dp.phone, dp.status, dp.\"createdAt\"
             ORDER BY dp.full_name, dp.\"createdAt\";"
 
@@ -157,6 +157,58 @@ jobs:
                    AND phone IS NOT NULL AND trim(phone) <> ''
                  GROUP BY phone HAVING count(*) > 1
                )) AS parents_with_dup_phone;"
+
+          echo ""
+          echo "================================================================"
+          echo "  ## 5. STUDENT / LEARNER DUPLICATES"
+          echo "================================================================"
+
+          echo ""
+          echo "## 5a. Learners sharing full name + date of birth (true duplicates)"
+          run_sql -c "
+            SELECT
+              lower(concat_ws(' ', \"firstName\", \"lastName\")) AS full_name,
+              \"dateOfBirth\"::date AS dob,
+              count(*) AS record_count,
+              array_agg(\"admissionNumber\" ORDER BY \"createdAt\") AS admission_numbers,
+              array_agg(grade ORDER BY \"createdAt\") AS grades,
+              array_agg(status ORDER BY \"createdAt\") AS statuses,
+              array_agg(\"studentUserId\" ORDER BY \"createdAt\") AS student_user_ids
+            FROM learners
+            WHERE archived = false
+            GROUP BY lower(concat_ws(' ', \"firstName\", \"lastName\")), \"dateOfBirth\"::date
+            HAVING count(*) > 1
+            ORDER BY count(*) DESC, full_name;"
+
+          echo ""
+          echo "## 5b. Student user accounts sharing same admission number prefix"
+          run_sql -c "
+            SELECT
+              split_part(email, '@', 1) AS admission_prefix,
+              count(*) AS account_count,
+              array_agg(id ORDER BY \"createdAt\") AS user_ids,
+              array_agg(email ORDER BY \"createdAt\") AS emails,
+              array_agg(COALESCE(phone, '—') ORDER BY \"createdAt\") AS phones,
+              array_agg(status ORDER BY \"createdAt\") AS statuses
+            FROM users
+            WHERE role = 'STUDENT'
+              AND archived = false
+              AND email LIKE '%@%'
+            GROUP BY split_part(email, '@', 1)
+            HAVING count(*) > 1
+            ORDER BY count(*) DESC, admission_prefix;"
+
+          echo ""
+          echo "## 5c. Summary"
+          run_sql -c "
+            SELECT
+              (SELECT count(*) FROM learners WHERE archived=false)  AS total_active_learners,
+              (SELECT count(*) FROM users WHERE role='STUDENT' AND archived=false) AS total_student_accounts,
+              (SELECT count(*) FROM (
+                SELECT lower(concat_ws(' ', \"firstName\", \"lastName\")), \"dateOfBirth\"::date
+                FROM learners WHERE archived=false
+                GROUP BY 1,2 HAVING count(*) > 1
+              ) t) AS dup_name_dob_groups;"
 
           echo ""
           echo "================================================================"

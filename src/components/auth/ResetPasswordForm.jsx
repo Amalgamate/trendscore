@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Lock, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Lock, Eye, EyeOff, AlertCircle, CheckCircle, Info } from 'lucide-react';
 import { authAPI } from '../../services/api/auth.api';
 import { PRODUCT_DISPLAY_NAME } from '../../config/productIdentity';
 
@@ -12,6 +12,12 @@ export default function ResetPasswordForm({ onResetSuccess }) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
+
+  // Detect whether this is the post-login force-change flow
+  const isForceChange = useMemo(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    return searchParams.get('token') === 'INITIAL_SETUP_REQUIRED';
+  }, []);
 
   const getPasswordStrength = (password) => {
     if (!password) return { strength: 0, label: '', color: '' };
@@ -34,11 +40,16 @@ export default function ResetPasswordForm({ onResetSuccess }) {
 
   const validateForm = () => {
     const newErrors = {};
+    // Force-change path uses parent-friendly policy (min 6 chars, no special chars required).
+    // Regular reset path keeps the stricter default policy.
+    const minLength = isForceChange ? 6 : 8;
 
     if (!formData.password) {
       newErrors.password = 'Password is required';
-    } else if (formData.password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
+    } else if (formData.password.length < minLength) {
+      newErrors.password = `Password must be at least ${minLength} characters`;
+    } else if (formData.password.toLowerCase() === 'changeme') {
+      newErrors.password = 'Please choose a different password';
     }
 
     if (!formData.confirmPassword) {
@@ -59,16 +70,21 @@ export default function ResetPasswordForm({ onResetSuccess }) {
     setErrors({});
 
     try {
-      const searchParams = new URLSearchParams(window.location.hash.split('?')[1]);
-      const token = searchParams.get('token');
+      let response;
 
-      if (!token) {
-        setErrors({ form: 'Missing reset token. Please check your link.' });
-        setIsLoading(false);
-        return;
+      if (isForceChange) {
+        // Authenticated flow: session cookie is present, no token needed
+        response = await authAPI.changePassword(formData.password, formData.confirmPassword);
+      } else {
+        const searchParams = new URLSearchParams(window.location.search);
+        const token = searchParams.get('token');
+        if (!token) {
+          setErrors({ form: 'Missing reset token. Please check your link.' });
+          setIsLoading(false);
+          return;
+        }
+        response = await authAPI.resetPassword(token, formData.password, formData.confirmPassword);
       }
-
-      const response = await authAPI.resetPassword(token, formData.password, formData.confirmPassword);
 
       if (response.success) {
         onResetSuccess();
@@ -102,11 +118,27 @@ export default function ResetPasswordForm({ onResetSuccess }) {
             <span className="text-teal-600 font-light">Score</span>
           </span>
         </div>
-        <h1 className="text-3xl font-medium text-gray-900 mb-2">Reset Password</h1>
-        <p className="text-gray-600">Create a new strong password for your {PRODUCT_DISPLAY_NAME} account</p>
+        <h1 className="text-3xl font-medium text-gray-900 mb-2">
+          {isForceChange ? 'Set Your Password' : 'Reset Password'}
+        </h1>
+        <p className="text-gray-600">
+          {isForceChange
+            ? 'Your account was set up with a temporary password. Please choose a new one to continue.'
+            : `Create a new strong password for your ${PRODUCT_DISPLAY_NAME} account`}
+        </p>
       </div>
 
       <div className="bg-white rounded-2xl shadow-xl p-8">
+        {/* Force-change informational banner */}
+        {isForceChange && (
+          <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <Info className="h-5 w-5 text-blue-500 mt-0.5 shrink-0" />
+            <div className="text-sm text-blue-800">
+              <p className="font-semibold mb-1">Welcome to the Parent Portal</p>
+              <p>Your temporary password was <strong>changeme</strong>. You must set a new password before you can access your child's reports and information.</p>
+            </div>
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -162,17 +194,21 @@ export default function ResetPasswordForm({ onResetSuccess }) {
             <div className="mt-2 space-y-1">
               <p className="text-xs text-gray-500">Password must contain:</p>
               <ul className="text-xs text-gray-500 space-y-1 ml-4">
-                <li className={formData.password.length >= 8 ? 'text-green-600' : ''}>
-                  ✓ At least 8 characters
+                <li className={formData.password.length >= (isForceChange ? 6 : 8) ? 'text-green-600' : ''}>
+                  ✓ At least {isForceChange ? 6 : 8} characters
                 </li>
-                <li className={/[a-z]/.test(formData.password) && /[A-Z]/.test(formData.password) ? 'text-green-600' : ''}>
-                  ✓ Uppercase and lowercase letters
-                </li>
+                {!isForceChange && (
+                  <>
+                    <li className={/[a-z]/.test(formData.password) && /[A-Z]/.test(formData.password) ? 'text-green-600' : ''}>
+                      ✓ Uppercase and lowercase letters
+                    </li>
+                    <li className={/[^a-zA-Z0-9]/.test(formData.password) ? 'text-green-600' : ''}>
+                      ✓ At least one special character
+                    </li>
+                  </>
+                )}
                 <li className={/\d/.test(formData.password) ? 'text-green-600' : ''}>
                   ✓ At least one number
-                </li>
-                <li className={/[^a-zA-Z0-9]/.test(formData.password) ? 'text-green-600' : ''}>
-                  ✓ At least one special character
                 </li>
               </ul>
             </div>
@@ -225,10 +261,10 @@ export default function ResetPasswordForm({ onResetSuccess }) {
             {isLoading ? (
               <div className="flex items-center justify-center gap-2">
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>Resetting Password...</span>
+                <span>{isForceChange ? 'Saving...' : 'Resetting Password...'}</span>
               </div>
             ) : (
-              'Reset Password'
+              isForceChange ? 'Set My Password' : 'Reset Password'
             )}
           </button>
         </form>
