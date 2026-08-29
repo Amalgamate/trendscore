@@ -1,16 +1,14 @@
 /**
  * ParentChildProfile
  * Design ref: purple header card + avatar + name + grade/class + Present today badge
- * Tabs: Overview · Results · Attendance · Fees · Info
- * Overview: outstanding balance card, latest assessment subject grid,
- *           attendance donut + counts, recent announcements
+ * Tabs: Results · Attendance · Fees
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  ArrowLeft, MoreVertical, CreditCard,
+  ArrowLeft, MoreVertical,
   CheckCircle2, Loader2,
-  ChevronRight, Receipt, Bell,
+  ChevronRight, Receipt,
 } from 'lucide-react';
 import api from '../../../../services/api';
 import { cn } from '../../../../utils/cn';
@@ -61,128 +59,6 @@ function AttendanceDonut({ rate = 0, size = 80 }) {
         Overall
       </text>
     </svg>
-  );
-}
-
-// ─── Overview Tab ─────────────────────────────────────────────────────────────
-
-function OverviewTab({ child, showFees }) {
-  const bal         = Number(child.feeBalance || 0);
-  const attendance  = Math.round(Number(child.attendanceRate || 0));
-  const subjects    = child.subjects || child.recentSubjects || [];
-  const notices     = child.notices || child.recentAnnouncements || [];
-
-  const subjectColors = ['text-emerald-600', 'text-blue-600', 'text-[#3B1FA3]', 'text-amber-500'];
-
-  return (
-    <div className="space-y-4">
-
-      {showFees && (
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="flex items-start justify-between mb-3">
-            <div>
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Outstanding Balance</p>
-              <p className={`text-2xl font-bold ${bal > 0 ? 'text-gray-900' : 'text-emerald-600'}`}>
-                KES {fmt(bal)}
-              </p>
-              {child.nextPaymentDate && (
-                <p className="text-xs text-gray-500 mt-1">Next Payment Date<br /><span className="font-semibold text-gray-700">{child.nextPaymentDate}</span></p>
-              )}
-            </div>
-            {bal > 0 && (
-              <div className="w-9 h-9 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                <CreditCard size={16} className="text-amber-600" />
-              </div>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <button className="py-2.5 bg-[#3B1FA3] text-white text-xs font-bold rounded-xl hover:bg-[#2d1680] transition flex items-center justify-center gap-1.5">
-              <CreditCard size={13} /> Pay Now
-            </button>
-            <button className="py-2.5 border border-gray-200 text-gray-700 text-xs font-bold rounded-xl hover:bg-gray-50 transition">
-              Statement
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Latest Assessment */}
-      {subjects.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-bold text-gray-900">Latest Assessment</p>
-            <button className="text-xs text-[#3B1FA3] font-semibold flex items-center gap-0.5">
-              View all <ChevronRight size={12} />
-            </button>
-          </div>
-          <div className="grid grid-cols-4 gap-2">
-            {subjects.slice(0, 4).map((s, i) => {
-              const score = s.score ?? s.percentage ?? s.marks ?? s.averageScore;
-              return (
-                <div key={i} className="text-center">
-                  <p className={`text-lg font-bold ${subjectColors[i % subjectColors.length]}`}>
-                    {score != null ? `${Math.round(score)}%` : (s.grade || '—')}
-                  </p>
-                  <p className="text-[9px] text-gray-500 truncate">{s.name || s.subject || s.learningArea || `Subject ${i+1}`}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Attendance */}
-      <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-bold text-gray-900">Attendance (This Term)</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <AttendanceDonut rate={attendance} size={80} />
-          <div className="flex-1 space-y-1.5">
-            {[
-              { label: 'Present', value: child.attendanceSummary?.presentDays ?? child.presentDays ?? '—', color: 'text-emerald-600' },
-              { label: 'Late',    value: child.attendanceSummary?.lateDays    ?? child.lateDays    ?? '—', color: 'text-amber-500'   },
-              { label: 'Absent',  value: child.attendanceSummary?.absentDays  ?? child.absentDays  ?? '—', color: 'text-rose-600'    },
-            ].map(s => (
-              <div key={s.label} className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">{s.label}</span>
-                <span className={`text-sm font-bold ${s.color}`}>{s.value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <button className="w-full mt-3 py-2 border border-gray-200 text-xs font-semibold text-gray-700 rounded-xl hover:bg-gray-50 transition">
-          View Attendance
-        </button>
-      </div>
-
-      {/* Recent Announcements */}
-      <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-bold text-gray-900">Recent Announcements</p>
-          <button className="text-xs text-[#3B1FA3] font-semibold">View all</button>
-        </div>
-        {notices.length > 0 ? (
-          <div className="space-y-2">
-            {notices.slice(0, 3).map((n, i) => (
-              <div key={i} className="flex items-start gap-2.5">
-                <div className="w-7 h-7 bg-[#3B1FA3]/10 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <Bell size={12} className="text-[#3B1FA3]" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-gray-900 truncate">{n.title || n.subject}</p>
-                  <p className="text-[10px] text-gray-400">{n.timeLabel || (n.createdAt ? new Date(n.createdAt).toLocaleDateString() : 'Recent')}</p>
-                </div>
-                {n.unread && <div className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0 mt-1.5" />}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-400 text-center py-2">No recent announcements</p>
-        )}
-      </div>
-
-    </div>
   );
 }
 
@@ -332,49 +208,27 @@ function FeesTab({ learnerId }) {
   );
 }
 
-// ─── Info Tab ─────────────────────────────────────────────────────────────────
-
-function InfoTab({ child }) {
-  const rows = [
-    { label: 'Full Name',        value: child.name              },
-    { label: 'Admission No.',    value: child.admissionNumber   },
-    { label: 'Grade',            value: child.grade             },
-    { label: 'Class',            value: child.className         },
-    { label: 'Class Teacher',    value: child.classTeacher      },
-    { label: 'Date of Birth',    value: child.dateOfBirth ? fmtDate(child.dateOfBirth) : null },
-    { label: 'Gender',           value: child.gender            },
-  ].filter(r => r.value);
-
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-      {rows.map((r, i) => (
-        <div key={i} className="flex items-center justify-between px-4 py-3 border-b border-gray-50 last:border-0">
-          <span className="text-xs text-gray-500">{r.label}</span>
-          <span className="text-xs font-semibold text-gray-900">{r.value}</span>
-        </div>
-      ))}
-      {rows.length === 0 && <p className="text-xs text-gray-400 text-center py-6">No information available</p>}
-    </div>
-  );
-}
-
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'overview',    label: 'Overview',    icon: null          },
   { id: 'results',     label: 'Results',     icon: null          },
   { id: 'attendance',  label: 'Attendance',  icon: null          },
   { id: 'fees',        label: 'Fees',        icon: null          },
-  { id: 'info',        label: 'Info',        icon: null          },
 ];
 
-export default function ParentChildProfile({ child, onBack, initialTab = 'overview' }) {
+function resolveInitialTab(initialTab, showFees) {
+  if (initialTab === 'overview' || initialTab === 'info' || (initialTab === 'fees' && !showFees)) return 'results';
+  return initialTab;
+}
+
+export default function ParentChildProfile({ child, onBack, initialTab = 'results' }) {
   const { activeSlugs } = useModuleAccess();
   const showFees = hasPageAccess({ enabledApps: activeSlugs }, 'parent-portal-fees');
   const visibleTabs = showFees ? TABS : TABS.filter((item) => item.id !== 'fees');
-  const [tab, setTab] = useState(showFees || initialTab !== 'fees' ? initialTab : 'overview');
+  const [tab, setTab] = useState(() => resolveInitialTab(initialTab, showFees));
   useEffect(() => {
-    if (!showFees && tab === 'fees') setTab('overview');
+    if (!showFees && tab === 'fees') setTab('results');
+    if (tab === 'overview' || tab === 'info') setTab('results');
   }, [showFees, tab]);
   if (!child) return null;
 
@@ -382,9 +236,10 @@ export default function ParentChildProfile({ child, onBack, initialTab = 'overvi
 
   return (
     <div className="min-h-screen bg-[var(--app-page-bg)] pb-24">
+      <div className="px-4 pt-4 space-y-4">
 
       {/* Purple header card */}
-      <div className="bg-[#3B1FA3] px-4 pt-4 pb-0">
+      <div className="bg-[#3B1FA3] rounded-2xl px-4 pt-4 pb-0 overflow-hidden">
         {/* Back + menu row */}
         <div className="flex items-center justify-between mb-4">
           <button onClick={onBack} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors">
@@ -431,14 +286,13 @@ export default function ParentChildProfile({ child, onBack, initialTab = 'overvi
       </div>
 
       {/* Tab content */}
-      <div className="px-4 py-4">
-        {tab === 'overview'   && <OverviewTab   child={child} showFees={showFees} />}
+      <div>
         {tab === 'results'    && <ResultsTab    child={child} />}
         {tab === 'attendance' && <AttendanceTab learnerId={child.id} />}
         {showFees && tab === 'fees' && <FeesTab learnerId={child.id} />}
-        {tab === 'info'       && <InfoTab       child={child} />}
       </div>
 
+      </div>
     </div>
   );
 }

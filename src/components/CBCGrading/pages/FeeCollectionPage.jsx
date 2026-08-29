@@ -97,6 +97,9 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
   const [statusFilter, setStatusFilter] = useState('all');
   const [termFilter, setTermFilter] = useState('all');
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
+  // Overview-specific term/year scope — separate from the invoices table filters
+  const [overviewTerm, setOverviewTerm] = useState(''); // '' = auto (latest cycle)
+  const [overviewYear, setOverviewYear] = useState(''); // '' = auto (latest cycle)
   const [startDate, setStartDate] = useState('');
 
   useEffect(() => {
@@ -199,6 +202,13 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
   }, [statsInvoices]);
 
   const getInvoiceCarryFwd = React.useCallback((invoice) => {
+    // Primary source: carryForwardAmount stamped by the backend at bulk-generate time.
+    // This is exactly the previous term's closing balance — no stacking of older B/Fs.
+    const storedBF = Number(invoice?.carryForwardAmount ?? -1);
+    if (storedBF >= 0) return storedBF;
+
+    // Fallback for invoices created before carryForwardAmount existed (e.g. Term 2 here):
+    // look up the previous term's balance column from the loaded invoice set.
     const learnerId = String(invoice?.learnerId || invoice?.learner?.id || '').trim();
     const term = String(invoice?.term || '').trim();
     const year = Number(invoice?.academicYear);
@@ -211,7 +221,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
       }
     }
 
-    // Fallback: for first-time/legacy invoices where B/F was embedded in billed total.
+    // Last resort: billed minus the fee structure amount (legacy path).
     const billed = Number(invoice?.totalAmount || 0);
     const termFee = getInvoiceTermFee(invoice);
     return Math.max(0, billed - termFee);
@@ -478,7 +488,10 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
   const fetchStatsInvoices = React.useCallback(async () => {
     try {
       setStatsLoading(true);
-      const response = await api.fees.getAllInvoices({ limit: 'all' });
+      const params = { limit: 'all' };
+      if (overviewTerm) params.term = overviewTerm;
+      if (overviewYear) params.academicYear = overviewYear;
+      const response = await api.fees.getAllInvoices(params);
       const rows = Array.isArray(response.data) ? response.data : [];
       const scoped = rows.filter((inv) => {
         const learnerIsSecondary = isSecondaryGrade(inv?.learner?.grade);
@@ -490,7 +503,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
     } finally {
       setStatsLoading(false);
     }
-  }, [isSecondaryPortal, isSecondaryGrade]);
+  }, [overviewTerm, overviewYear, isSecondaryPortal, isSecondaryGrade]);
 
   const fetchLearners = React.useCallback(async () => {
     try {
@@ -517,12 +530,25 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
 
   useEffect(() => {
     fetchInvoices();
-    fetchStatsInvoices();
     fetchLearners();
     fetchBranding();
     // Fetch unmatched payment badge count
     api.mpesa?.getUnmatchedCount?.().then(res => setUnmatchedCount(res?.count || 0)).catch(() => { });
-  }, [fetchInvoices, fetchStatsInvoices, fetchLearners, fetchBranding]);
+  }, [fetchInvoices, fetchLearners, fetchBranding]);
+
+  // Seed the overview term/year selectors from the active term config once on mount.
+  useEffect(() => {
+    api.config.getActiveTermConfig().then((resp) => {
+      const payload = resp?.data ?? resp ?? null;
+      if (payload?.term) setOverviewTerm(payload.term);
+      if (payload?.academicYear) setOverviewYear(String(payload.academicYear));
+    }).catch(() => { /* leave as '' — auto mode */ });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-fetch stats whenever the overview term/year selector changes.
+  useEffect(() => {
+    fetchStatsInvoices();
+  }, [fetchStatsInvoices]);
 
   // Recompute grand B/F + current-term totals whenever filters change.
   // This is intentionally separate from fetchInvoices so that paging does NOT
@@ -1265,24 +1291,31 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
   ), [allLearners]);
 
   // Metrics must honor selected scope (especially term) to avoid cross-term totals.
+  // The overview tab uses overviewTerm/overviewYear; the invoices table uses termFilter.
   const scopedStatsInvoices = React.useMemo(() => {
     return (statsInvoices || []).filter((inv) => {
       const learnerIsSecondary = isSecondaryGrade(inv?.learner?.grade);
       const matchInstitution = isSecondaryPortal ? learnerIsSecondary : !learnerIsSecondary;
-      const matchTerm = termFilter === 'all' || String(inv.term || '') === termFilter;
+      // Overview selectors take precedence for the stats path; fall back to termFilter for invoices tab.
+      const activeTerm = overviewTerm || termFilter;
+      const matchTerm = activeTerm === 'all' || !activeTerm || String(inv.term || '') === activeTerm;
+      const matchYear = !overviewYear || String(inv.academicYear || '') === overviewYear;
       const matchGrade = gradeFilter === 'all' || String(inv?.learner?.grade || '') === gradeFilter;
       const matchLearner = !searchLearnerId || String(inv?.learnerId || '') === String(searchLearnerId);
       const invDate = inv.createdAt ? new Date(inv.createdAt) : null;
       const matchStart = !startDate || (invDate && invDate >= new Date(startDate));
       const matchEnd = !endDate || (invDate && invDate <= new Date(endDate));
-      return matchInstitution && matchTerm && matchGrade && matchLearner && matchStart && matchEnd;
+      return matchInstitution && matchTerm && matchYear && matchGrade && matchLearner && matchStart && matchEnd;
     });
-  }, [statsInvoices, termFilter, gradeFilter, searchLearnerId, startDate, endDate, isSecondaryPortal, isSecondaryGrade]);
+  }, [statsInvoices, overviewTerm, overviewYear, termFilter, gradeFilter, searchLearnerId, startDate, endDate, isSecondaryPortal, isSecondaryGrade]);
 
   const currentCycleStatsInvoices = React.useMemo(() => {
-    if (termFilter !== 'all' || searchLearnerId) return scopedStatsInvoices;
+    // When a specific term is selected (via overview selector or invoices filter), use it as-is.
+    // When nothing is selected, auto-pick the latest cycle.
+    const hasTerm = overviewTerm || termFilter !== 'all';
+    if (hasTerm || searchLearnerId) return scopedStatsInvoices;
     return getLatestFeeCycleRows(scopedStatsInvoices);
-  }, [scopedStatsInvoices, termFilter, searchLearnerId]);
+  }, [scopedStatsInvoices, overviewTerm, termFilter, searchLearnerId]);
 
   // ——— Computed KES totals for each metric card —————————————
   const stats = React.useMemo(() => {
@@ -1316,7 +1349,10 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
     // For later terms, B/F is previous-term closing balance carry-forward.
     const bfFromCarryRaw = src.reduce((sum, i) => sum + Number(getInvoiceCarryFwd(i) || 0), 0);
     const bfFromBilledDeltaRaw = Math.max(0, totalBilledRaw - structureThisTermFeeRaw);
-    const bfAmountRaw = termFilter === 'TERM_1' ? bfFromBilledDeltaRaw : bfFromCarryRaw;
+    // For Term 1, carryForwardAmount is 0 (nothing to carry from prior year in this cycle),
+    // so fall back to the billed-delta method. For all other terms use the stored carry-forward.
+    const activeTerm = overviewTerm || termFilter;
+    const bfAmountRaw = activeTerm === 'TERM_1' ? bfFromBilledDeltaRaw : bfFromCarryRaw;
     const thisTermFeeRaw = Math.max(0, totalBilledRaw - bfAmountRaw);
     const waivedTotalRaw = src.reduce((s, i) => s + getApprovedWaiverAmount(i), 0);
     const actualCollectedRaw = src.reduce((s, i) => s + getInvoiceCashPaid(i), 0);
@@ -1396,7 +1432,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
         return recentMode === 'BANK_TRANSFER' ? s + getInvoiceCashPaid(i) : s;
       }, 0))
     };
-  }, [currentCycleStatsInvoices, metricsStructureExpectedMap, getInvoiceCarryFwd, normalizeGradeKey, termFilter, getApprovedWaiverAmount, getInvoiceCashPaid, getInvoiceCurrentDue, getInvoiceNetOverpaid, getInvoiceSettledAmount, getPaymentFeeAmount]);
+  }, [currentCycleStatsInvoices, metricsStructureExpectedMap, getInvoiceCarryFwd, normalizeGradeKey, overviewTerm, termFilter, getApprovedWaiverAmount, getInvoiceCashPaid, getInvoiceCurrentDue, getInvoiceNetOverpaid, getInvoiceSettledAmount, getPaymentFeeAmount]);
 
 
   if (loading && !showCreateModal) return <LoadingSpinner />;
@@ -1431,6 +1467,68 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
               </div>
             )}
             <div className={`overflow-hidden space-y-6 ${statsLoading ? 'hidden' : ''}`}>
+              {/* ── Term & Year Selector ─────────────────────────────────────── */}
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-gray-400">Viewing</span>
+                  {overviewTerm && overviewYear && (
+                    <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700 border border-blue-100">
+                      {({ TERM_1: 'Term 1', TERM_2: 'Term 2', TERM_3: 'Term 3' })[overviewTerm] || overviewTerm} · {overviewYear}
+                    </span>
+                  )}
+                  {(!overviewTerm || !overviewYear) && (
+                    <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500">Latest cycle</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Term pills */}
+                  <div className="flex items-center gap-1">
+                    {[['TERM_1', 'Term 1'], ['TERM_2', 'Term 2'], ['TERM_3', 'Term 3']].map(([val, label]) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setOverviewTerm(prev => prev === val ? '' : val)}
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+                          overviewTerm === val
+                            ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
+                            : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="h-4 w-px bg-gray-200" />
+                  {/* Year dropdown */}
+                  <select
+                    value={overviewYear}
+                    onChange={e => setOverviewYear(e.target.value)}
+                    className="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-700 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-300"
+                    aria-label="Select academic year"
+                  >
+                    <option value="">Auto year</option>
+                    {Array.from(
+                      new Set([
+                        ...Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - 2 + i)),
+                        ...statsInvoices.map(inv => String(inv.academicYear || '')).filter(Boolean)
+                      ])
+                    ).sort().map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                  {/* Clear button — only show when something is selected */}
+                  {(overviewTerm || overviewYear) && (
+                    <button
+                      type="button"
+                      onClick={() => { setOverviewTerm(''); setOverviewYear(''); }}
+                      className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-500 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+              </div>
+              {/* ─────────────────────────────────────────────────────────────── */}
               <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm md:hidden">
                 <div className="border-b border-gray-100 bg-gray-50 px-4 py-3">
                   <p className="text-[11px] font-bold uppercase tracking-widest text-gray-500">School Fee Summary</p>
