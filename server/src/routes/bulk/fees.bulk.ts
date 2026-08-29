@@ -6,6 +6,7 @@ import { Term, PaymentMethod, PaymentStatus } from '@prisma/client';
 import prisma from '../../config/database';
 import multer from 'multer';
 import { accountingService } from '../../services/accounting.service';
+import { buildLearnerMapFromAdmNos } from '../../services/admissionNumber.service';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const ExcelJS: typeof import('exceljs') = require('exceljs');
@@ -134,10 +135,10 @@ router.post(
         data.map(row => String(row['Adm No'] ?? row['Admission Number'] ?? '').trim()).filter(Boolean)
       ));
 
-      const learners = await prisma.learner.findMany({
-        where: { admissionNumber: { in: uniqueAdmNos } }
-      });
-      const learnerMap = new Map(learners.map(l => [l.admissionNumber, l]));
+      // buildLearnerMapFromAdmNos handles both "1100" (legacy) and "ADM-2026-1100"
+      // (prefixed) admission number formats, resolving either direction automatically.
+      const learnerMap = await buildLearnerMapFromAdmNos(uniqueAdmNos, prisma);
+      const learners = Array.from(learnerMap.values());
       const learnerIds = learners.map(l => l.id);
 
       // [OPTIMIZATION] 3. Pre-fetch existing Invoices
@@ -451,7 +452,12 @@ router.post(
              else parsedPaymentMethod = 'OTHER';
           }
 
-          const learner = await prisma.learner.findUnique({ where: { admissionNumber: admNo } });
+          const learner = await (async () => {
+            const exact = await prisma.learner.findUnique({ where: { admissionNumber: admNo } });
+            if (exact) return exact;
+            const { resolveAdmissionNumber } = await import('../../services/admissionNumber.service');
+            return resolveAdmissionNumber(admNo, prisma);
+          })();
           if (!learner) {
             results.failed++;
             results.errors.push({ row: index + 2, admNo, error: 'Student not found' });
@@ -651,7 +657,12 @@ router.post(
             continue;
           }
 
-          const learner = await prisma.learner.findUnique({ where: { admissionNumber: admNo } });
+          const learner = await (async () => {
+            const exact = await prisma.learner.findUnique({ where: { admissionNumber: admNo } });
+            if (exact) return exact;
+            const { resolveAdmissionNumber } = await import('../../services/admissionNumber.service');
+            return resolveAdmissionNumber(admNo, prisma);
+          })();
           if (!learner) {
             results.failed++;
             results.errors.push({ row: index + 3, admNo, error: 'Student not found' });
