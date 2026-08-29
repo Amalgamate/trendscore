@@ -888,11 +888,15 @@ const PageRouter = ({
           case 'fees-structure': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="structure" />;
           case 'fees-types': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="types" />;
           case 'fees-pledges': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="pledges" />;
-          case 'fees-overview': return isMobile
-            ? <MobileFeesPage onNavigate={handleNavigate} />
-            : <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="overview" />;
+          case 'fees-overview':
           case 'fees-invoices':
-          case 'fees-collection': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="invoices" />;
+          case 'fees-collection': return isMobile
+            ? <MobileFeesPage onNavigate={handleNavigate} />
+            : <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="invoices" />;
+          case 'fees-collection-summary': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="collection-summary" />;
+          case 'fees-balances': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="balances" />;
+          case 'fees-followup': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="followup" />;
+          case 'fees-insights': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="insights" />;
           case 'fees-invoice-detail': return <InvoiceDetailPage invoice={pageParams.invoice} />;
           case 'fees-record-payment': return <RecordPaymentPage invoice={pageParams.invoice} initialMode={pageParams.initialMode} />;
           case 'fees-waivers': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="waivers" />;
