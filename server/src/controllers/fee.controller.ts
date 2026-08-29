@@ -532,6 +532,7 @@ export class FeeController {
         totalAmount: true,
         paidAmount: true,
         balance: true,
+        carryForwardAmount: true,
         status: true,
         feeStructure: {
           select: { feeItems: { select: { amount: true } } }
