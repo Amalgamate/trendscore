@@ -18,7 +18,7 @@ const QuickActions = ({ onNavigate, currentPage, user }) => {
   const accessUser = { ...(user || {}), enabledApps: activeSlugs };
   const actions = [
     { label: 'Annual Planner', icon: Activity, path: 'annual-planner', color: '#1d4ed8', activeBg: 'bg-blue-50 text-blue-800 border-blue-200' },
-    { label: 'Financials', icon: CircleDollarSign, path: 'fees-overview', color: '#10b981', activeBg: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+    { label: 'Financials', icon: CircleDollarSign, path: 'fees-invoices', color: '#10b981', activeBg: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
     { label: 'Approvals', icon: GraduationCap, path: 'settings-approvals', color: '#6366f1', activeBg: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
     { label: 'Leave Management', icon: Clock, path: 'hr-leave', color: '#f59e0b', activeBg: 'bg-amber-50 text-amber-700 border-amber-100' },
     { label: 'Time Table', icon: Calendar, path: 'planner-timetable', color: '#8b5cf6', activeBg: 'bg-purple-50 text-purple-700 border-purple-100' },

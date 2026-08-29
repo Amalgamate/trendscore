@@ -8,7 +8,7 @@ import {
   Plus, CheckCircle, AlertCircle, Clock, FileText, Download,
   X, Loader2, MessageSquare, Phone, Info, User, ShieldCheck, Mail, Upload,
   Trash2, Gift, ThumbsUp, ArrowUpDown, ArrowUp, ArrowDown, Users,
-  Filter, Search, DollarSign, Wallet, Banknote, Building2
+  Filter, Search, DollarSign, Wallet, Banknote, Building2, ChevronUp, ChevronDown
 } from 'lucide-react';
 import { generateDocument } from '../../../utils/simplePdfGenerator';
 import EmptyState from '../shared/EmptyState';
@@ -30,7 +30,12 @@ import { useFeeActions } from '../../../contexts/FeeActionsContext';
 import usePageNavigation from '../../../hooks/usePageNavigation';
 import { downloadFeeTemplate } from '../../../utils/feeTemplateGenerator';
 import UnmatchedPaymentsPanel from './fees/UnmatchedPaymentsPanel';
-import FeeOverviewDashboard from './fees/FeeOverviewDashboard';
+import FeeOverviewDashboard, {
+  FeeCollectionSummaryPage,
+  FeeBalancesPage,
+  FeeFollowupPage,
+  FeeInsightsPage,
+} from './fees/FeeOverviewDashboard';
 import FeePledgesPage from './fees/FeePledgesPage';
 import FeeTypesPage from './FeeTypesPage';
 import FeeStructurePage from './FeeStructurePage';
@@ -97,9 +102,6 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
   const [statusFilter, setStatusFilter] = useState('all');
   const [termFilter, setTermFilter] = useState('all');
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
-  // Overview-specific term/year scope — separate from the invoices table filters
-  const [overviewTerm, setOverviewTerm] = useState(''); // '' = auto (latest cycle)
-  const [overviewYear, setOverviewYear] = useState(''); // '' = auto (latest cycle)
   const [startDate, setStartDate] = useState('');
 
   useEffect(() => {
@@ -138,12 +140,22 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem('feeCollection.showBalanceBreakdown') === 'true';
   });
+  // Metric cards are hidden by default; user can toggle them on
+  const [showMetrics, setShowMetrics] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('feeCollection.showMetrics') === 'true';
+  });
   const normalizeGradeKey = React.useCallback((value) => String(value || '').trim().toUpperCase().replace(/\s+/g, '_'), []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem('feeCollection.showBalanceBreakdown', String(showBalanceBreakdown));
   }, [showBalanceBreakdown]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('feeCollection.showMetrics', String(showMetrics));
+  }, [showMetrics]);
 
   const metricsStructureExpectedMap = React.useMemo(() => {
     const m = new Map();
@@ -202,13 +214,6 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
   }, [statsInvoices]);
 
   const getInvoiceCarryFwd = React.useCallback((invoice) => {
-    // Primary source: carryForwardAmount stamped by the backend at bulk-generate time.
-    // This is exactly the previous term's closing balance — no stacking of older B/Fs.
-    const storedBF = Number(invoice?.carryForwardAmount ?? -1);
-    if (storedBF >= 0) return storedBF;
-
-    // Fallback for invoices created before carryForwardAmount existed (e.g. Term 2 here):
-    // look up the previous term's balance column from the loaded invoice set.
     const learnerId = String(invoice?.learnerId || invoice?.learner?.id || '').trim();
     const term = String(invoice?.term || '').trim();
     const year = Number(invoice?.academicYear);
@@ -221,7 +226,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
       }
     }
 
-    // Last resort: billed minus the fee structure amount (legacy path).
+    // Fallback: for first-time/legacy invoices where B/F was embedded in billed total.
     const billed = Number(invoice?.totalAmount || 0);
     const termFee = getInvoiceTermFee(invoice);
     return Math.max(0, billed - termFee);
@@ -488,10 +493,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
   const fetchStatsInvoices = React.useCallback(async () => {
     try {
       setStatsLoading(true);
-      const params = { limit: 'all' };
-      if (overviewTerm) params.term = overviewTerm;
-      if (overviewYear) params.academicYear = overviewYear;
-      const response = await api.fees.getAllInvoices(params);
+      const response = await api.fees.getAllInvoices({ limit: 'all' });
       const rows = Array.isArray(response.data) ? response.data : [];
       const scoped = rows.filter((inv) => {
         const learnerIsSecondary = isSecondaryGrade(inv?.learner?.grade);
@@ -503,7 +505,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
     } finally {
       setStatsLoading(false);
     }
-  }, [overviewTerm, overviewYear, isSecondaryPortal, isSecondaryGrade]);
+  }, [isSecondaryPortal, isSecondaryGrade]);
 
   const fetchLearners = React.useCallback(async () => {
     try {
@@ -530,25 +532,12 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
 
   useEffect(() => {
     fetchInvoices();
+    fetchStatsInvoices();
     fetchLearners();
     fetchBranding();
     // Fetch unmatched payment badge count
     api.mpesa?.getUnmatchedCount?.().then(res => setUnmatchedCount(res?.count || 0)).catch(() => { });
-  }, [fetchInvoices, fetchLearners, fetchBranding]);
-
-  // Seed the overview term/year selectors from the active term config once on mount.
-  useEffect(() => {
-    api.config.getActiveTermConfig().then((resp) => {
-      const payload = resp?.data ?? resp ?? null;
-      if (payload?.term) setOverviewTerm(payload.term);
-      if (payload?.academicYear) setOverviewYear(String(payload.academicYear));
-    }).catch(() => { /* leave as '' — auto mode */ });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Re-fetch stats whenever the overview term/year selector changes.
-  useEffect(() => {
-    fetchStatsInvoices();
-  }, [fetchStatsInvoices]);
+  }, [fetchInvoices, fetchStatsInvoices, fetchLearners, fetchBranding]);
 
   // Recompute grand B/F + current-term totals whenever filters change.
   // This is intentionally separate from fetchInvoices so that paging does NOT
@@ -1291,31 +1280,24 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
   ), [allLearners]);
 
   // Metrics must honor selected scope (especially term) to avoid cross-term totals.
-  // The overview tab uses overviewTerm/overviewYear; the invoices table uses termFilter.
   const scopedStatsInvoices = React.useMemo(() => {
     return (statsInvoices || []).filter((inv) => {
       const learnerIsSecondary = isSecondaryGrade(inv?.learner?.grade);
       const matchInstitution = isSecondaryPortal ? learnerIsSecondary : !learnerIsSecondary;
-      // Overview selectors take precedence for the stats path; fall back to termFilter for invoices tab.
-      const activeTerm = overviewTerm || termFilter;
-      const matchTerm = activeTerm === 'all' || !activeTerm || String(inv.term || '') === activeTerm;
-      const matchYear = !overviewYear || String(inv.academicYear || '') === overviewYear;
+      const matchTerm = termFilter === 'all' || String(inv.term || '') === termFilter;
       const matchGrade = gradeFilter === 'all' || String(inv?.learner?.grade || '') === gradeFilter;
       const matchLearner = !searchLearnerId || String(inv?.learnerId || '') === String(searchLearnerId);
       const invDate = inv.createdAt ? new Date(inv.createdAt) : null;
       const matchStart = !startDate || (invDate && invDate >= new Date(startDate));
       const matchEnd = !endDate || (invDate && invDate <= new Date(endDate));
-      return matchInstitution && matchTerm && matchYear && matchGrade && matchLearner && matchStart && matchEnd;
+      return matchInstitution && matchTerm && matchGrade && matchLearner && matchStart && matchEnd;
     });
-  }, [statsInvoices, overviewTerm, overviewYear, termFilter, gradeFilter, searchLearnerId, startDate, endDate, isSecondaryPortal, isSecondaryGrade]);
+  }, [statsInvoices, termFilter, gradeFilter, searchLearnerId, startDate, endDate, isSecondaryPortal, isSecondaryGrade]);
 
   const currentCycleStatsInvoices = React.useMemo(() => {
-    // When a specific term is selected (via overview selector or invoices filter), use it as-is.
-    // When nothing is selected, auto-pick the latest cycle.
-    const hasTerm = overviewTerm || termFilter !== 'all';
-    if (hasTerm || searchLearnerId) return scopedStatsInvoices;
+    if (termFilter !== 'all' || searchLearnerId) return scopedStatsInvoices;
     return getLatestFeeCycleRows(scopedStatsInvoices);
-  }, [scopedStatsInvoices, overviewTerm, termFilter, searchLearnerId]);
+  }, [scopedStatsInvoices, termFilter, searchLearnerId]);
 
   // ——— Computed KES totals for each metric card —————————————
   const stats = React.useMemo(() => {
@@ -1349,10 +1331,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
     // For later terms, B/F is previous-term closing balance carry-forward.
     const bfFromCarryRaw = src.reduce((sum, i) => sum + Number(getInvoiceCarryFwd(i) || 0), 0);
     const bfFromBilledDeltaRaw = Math.max(0, totalBilledRaw - structureThisTermFeeRaw);
-    // For Term 1, carryForwardAmount is 0 (nothing to carry from prior year in this cycle),
-    // so fall back to the billed-delta method. For all other terms use the stored carry-forward.
-    const activeTerm = overviewTerm || termFilter;
-    const bfAmountRaw = activeTerm === 'TERM_1' ? bfFromBilledDeltaRaw : bfFromCarryRaw;
+    const bfAmountRaw = termFilter === 'TERM_1' ? bfFromBilledDeltaRaw : bfFromCarryRaw;
     const thisTermFeeRaw = Math.max(0, totalBilledRaw - bfAmountRaw);
     const waivedTotalRaw = src.reduce((s, i) => s + getApprovedWaiverAmount(i), 0);
     const actualCollectedRaw = src.reduce((s, i) => s + getInvoiceCashPaid(i), 0);
@@ -1432,7 +1411,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
         return recentMode === 'BANK_TRANSFER' ? s + getInvoiceCashPaid(i) : s;
       }, 0))
     };
-  }, [currentCycleStatsInvoices, metricsStructureExpectedMap, getInvoiceCarryFwd, normalizeGradeKey, overviewTerm, termFilter, getApprovedWaiverAmount, getInvoiceCashPaid, getInvoiceCurrentDue, getInvoiceNetOverpaid, getInvoiceSettledAmount, getPaymentFeeAmount]);
+  }, [currentCycleStatsInvoices, metricsStructureExpectedMap, getInvoiceCarryFwd, normalizeGradeKey, termFilter, getApprovedWaiverAmount, getInvoiceCashPaid, getInvoiceCurrentDue, getInvoiceNetOverpaid, getInvoiceSettledAmount, getPaymentFeeAmount]);
 
 
   if (loading && !showCreateModal) return <LoadingSpinner />;
@@ -1450,451 +1429,247 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
 
       {activeTab === 'structure' && <FeeStructurePage />}
 
-      {/* Fee Overview / Invoices */}
-      {(activeTab === 'overview' || activeTab === 'invoices') && (
+      {activeTab === 'collection-summary' && (
+        <FeeCollectionSummaryPage
+          stats={stats}
+          invoices={currentCycleStatsInvoices}
+          statsLoading={statsLoading}
+          termFilter={termFilter}
+          lastUpdated={new Date().toISOString()}
+          onRefresh={() => { fetchStatsInvoices(); fetchInvoices(); }}
+        />
+      )}
+
+      {activeTab === 'balances' && (
+        <FeeBalancesPage
+          invoices={currentCycleStatsInvoices}
+          stats={stats}
+          statsLoading={statsLoading}
+          onSendReminders={(invoiceIds, channel, filterLabel) => handleBulkReminders(channel, invoiceIds, filterLabel)}
+          reminderLoading={loading}
+        />
+      )}
+
+      {activeTab === 'followup' && (
+        <FeeFollowupPage
+          invoices={currentCycleStatsInvoices}
+          statsLoading={statsLoading}
+          onNavigateToInvoices={() => setActiveTab('invoices')}
+          onStatusFilter={(s) => { setStatusFilter(s); setActiveTab('invoices'); }}
+        />
+      )}
+
+      {activeTab === 'insights' && (
+        <FeeInsightsPage
+          invoices={currentCycleStatsInvoices}
+          stats={stats}
+          statsLoading={statsLoading}
+        />
+      )}
+
+      {/* Fee Invoices — with optional metric cards */}
+      {activeTab === 'invoices' && (
         <div className="space-y-6">
 
-          {activeTab === 'overview' && (
-          <div className="grid">
-            {statsLoading && (
-              <div className="overflow-hidden">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                  {[...Array(4)].map((_, i) => (
-                    <div key={i} className="rounded-2xl bg-gray-100 animate-pulse h-28" />
-                  ))}
-                </div>
-                <div className="rounded-2xl bg-gray-100 animate-pulse h-16" />
-              </div>
-            )}
-            <div className={`overflow-hidden space-y-6 ${statsLoading ? 'hidden' : ''}`}>
-              {/* ── Term & Year Selector ─────────────────────────────────────── */}
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold uppercase tracking-widest text-gray-400">Viewing</span>
-                  {overviewTerm && overviewYear && (
-                    <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700 border border-blue-100">
-                      {({ TERM_1: 'Term 1', TERM_2: 'Term 2', TERM_3: 'Term 3' })[overviewTerm] || overviewTerm} · {overviewYear}
-                    </span>
-                  )}
-                  {(!overviewTerm || !overviewYear) && (
-                    <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500">Latest cycle</span>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* Term pills */}
-                  <div className="flex items-center gap-1">
-                    {[['TERM_1', 'Term 1'], ['TERM_2', 'Term 2'], ['TERM_3', 'Term 3']].map(([val, label]) => (
-                      <button
-                        key={val}
-                        type="button"
-                        onClick={() => setOverviewTerm(prev => prev === val ? '' : val)}
-                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
-                          overviewTerm === val
-                            ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
-                            : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
-                        }`}
-                      >
-                        {label}
-                      </button>
+          {/* ── Metric cards (collapsible, hidden by default) ─────────── */}
+          {showMetrics && (
+            <div className="space-y-4">
+              {statsLoading && (
+                <div className="overflow-hidden">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className="rounded-2xl bg-gray-100 animate-pulse h-28" />
                     ))}
                   </div>
-                  <span className="h-4 w-px bg-gray-200" />
-                  {/* Year dropdown */}
-                  <select
-                    value={overviewYear}
-                    onChange={e => setOverviewYear(e.target.value)}
-                    className="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-700 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-300"
-                    aria-label="Select academic year"
-                  >
-                    <option value="">Auto year</option>
-                    {Array.from(
-                      new Set([
-                        ...Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - 2 + i)),
-                        ...statsInvoices.map(inv => String(inv.academicYear || '')).filter(Boolean)
-                      ])
-                    ).sort().map(y => (
-                      <option key={y} value={y}>{y}</option>
-                    ))}
-                  </select>
-                  {/* Clear button — only show when something is selected */}
-                  {(overviewTerm || overviewYear) && (
-                    <button
-                      type="button"
-                      onClick={() => { setOverviewTerm(''); setOverviewYear(''); }}
-                      className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-500 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600"
-                    >
-                      Reset
-                    </button>
-                  )}
+                  <div className="rounded-2xl bg-gray-100 animate-pulse h-16" />
                 </div>
-              </div>
-              {/* ─────────────────────────────────────────────────────────────── */}
-              <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm md:hidden">
-                <div className="border-b border-gray-100 bg-gray-50 px-4 py-3">
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-gray-500">School Fee Summary</p>
-                  <p className="mt-0.5 text-xs font-medium text-gray-600">A quick owner view of collections and balances.</p>
+              )}
+              <div className={`space-y-4 ${statsLoading ? 'hidden' : ''}`}>
+                {/* Mobile summary table */}
+                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm md:hidden">
+                  <div className="border-b border-gray-100 bg-gray-50 px-4 py-3">
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-gray-500">School Fee Summary</p>
+                    <p className="mt-0.5 text-xs font-medium text-gray-600">A quick owner view of collections and balances.</p>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left">
+                      <thead className="bg-white">
+                        <tr className="border-b border-gray-100">
+                          <th className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">Item</th>
+                          <th className="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider text-gray-400">Amount</th>
+                          <th className="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider text-gray-400">Count</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        <tr onClick={() => setStatusFilter('all')} className="cursor-pointer bg-emerald-50/70">
+                          <td className="px-4 py-3">
+                            <p className="text-xs font-bold text-gray-900">Expected income</p>
+                            <p className="text-[11px] font-medium text-gray-500">Total fees billed for this period</p>
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-gray-900">{stats.totalBilled}</td>
+                          <td className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold text-gray-600">{stats.totalCount}</td>
+                        </tr>
+                        <tr className="bg-white">
+                          <td className="px-4 py-3">
+                            <p className="text-xs font-bold text-gray-900">Total collected</p>
+                            <p className="text-[11px] font-medium text-gray-500">Cash already received</p>
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-emerald-700">{stats.actualCollected}</td>
+                          <td className="px-4 py-3 text-right text-xs font-semibold text-gray-400">-</td>
+                        </tr>
+                        <tr onClick={() => { setStatusFilter('pending'); setCurrentPage(1); }} className="cursor-pointer bg-red-50/70">
+                          <td className="px-4 py-3">
+                            <p className="text-xs font-bold text-gray-900">Not paid anything</p>
+                            <p className="text-[11px] font-medium text-gray-500">Learners with no payment recorded</p>
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-red-700">{stats.pendingAmt}</td>
+                          <td className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold text-gray-600">{stats.pendingCount}</td>
+                        </tr>
+                        <tr onClick={() => { setStatusFilter('partial'); setCurrentPage(1); }} className="cursor-pointer bg-amber-50/70">
+                          <td className="px-4 py-3">
+                            <p className="text-xs font-bold text-gray-900">Partial payments</p>
+                            <p className="text-[11px] font-medium text-gray-500">Paid something, still owing</p>
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-amber-700">{stats.partialBalanceAmt}</td>
+                          <td className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold text-gray-600">{stats.partialCount}</td>
+                        </tr>
+                        <tr onClick={() => { setStatusFilter('paid'); setCurrentPage(1); }} className="cursor-pointer bg-teal-50/70">
+                          <td className="px-4 py-3">
+                            <p className="text-xs font-bold text-gray-900">Completely cleared</p>
+                            <p className="text-[11px] font-medium text-gray-500">Accounts with zero balance</p>
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-teal-700">{stats.paidAmt}</td>
+                          <td className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold text-gray-600">{stats.paidCount}</td>
+                        </tr>
+                        <tr className="bg-purple-50/70">
+                          <td className="px-4 py-3">
+                            <p className="text-xs font-bold text-gray-900">Overpaid / credit</p>
+                            <p className="text-[11px] font-medium text-gray-500">Advance payments or credit balances</p>
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-purple-700">{stats.overpaidAmt}</td>
+                          <td className="px-4 py-3 text-right text-xs font-semibold text-gray-400">-</td>
+                        </tr>
+                        <tr className="bg-blue-50/70">
+                          <td className="px-4 py-3">
+                            <p className="text-xs font-bold text-gray-900">Waived / discounted</p>
+                            <p className="text-[11px] font-medium text-gray-500">Approved fee reductions</p>
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-blue-700">- {stats.waivedTotal}</td>
+                          <td className="px-4 py-3 text-right text-xs font-semibold text-gray-400">-</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-left">
-                    <thead className="bg-white">
-                      <tr className="border-b border-gray-100">
-                        <th className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">Item</th>
-                        <th className="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider text-gray-400">Amount</th>
-                        <th className="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wider text-gray-400">Count</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      <tr
-                        onClick={() => setStatusFilter('all')}
-                        className="cursor-pointer bg-emerald-50/70"
-                      >
-                        <td className="px-4 py-3">
-                          <p className="text-xs font-bold text-gray-900">Expected income</p>
-                          <p className="text-[11px] font-medium text-gray-500">Total fees billed for this period</p>
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-gray-900">{stats.totalBilled}</td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold text-gray-600">{stats.totalCount}</td>
-                      </tr>
-                      <tr className="bg-white">
-                        <td className="px-4 py-3">
-                          <p className="text-xs font-bold text-gray-900">Total collected</p>
-                          <p className="text-[11px] font-medium text-gray-500">Cash already received</p>
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-emerald-700">{stats.actualCollected}</td>
-                        <td className="px-4 py-3 text-right text-xs font-semibold text-gray-400">-</td>
-                      </tr>
-                      <tr
-                        onClick={() => { setStatusFilter('pending'); setCurrentPage(1); }}
-                        className="cursor-pointer bg-red-50/70"
-                      >
-                        <td className="px-4 py-3">
-                          <p className="text-xs font-bold text-gray-900">Not paid anything</p>
-                          <p className="text-[11px] font-medium text-gray-500">Learners with no payment recorded</p>
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-red-700">{stats.pendingAmt}</td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold text-gray-600">{stats.pendingCount}</td>
-                      </tr>
-                      <tr
-                        onClick={() => { setStatusFilter('partial'); setCurrentPage(1); }}
-                        className="cursor-pointer bg-amber-50/70"
-                      >
-                        <td className="px-4 py-3">
-                          <p className="text-xs font-bold text-gray-900">Partial payments</p>
-                          <p className="text-[11px] font-medium text-gray-500">Paid something, still owing</p>
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-amber-700">{stats.partialBalanceAmt}</td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold text-gray-600">{stats.partialCount}</td>
-                      </tr>
-                      <tr
-                        onClick={() => { setStatusFilter('paid'); setCurrentPage(1); }}
-                        className="cursor-pointer bg-teal-50/70"
-                      >
-                        <td className="px-4 py-3">
-                          <p className="text-xs font-bold text-gray-900">Completely cleared</p>
-                          <p className="text-[11px] font-medium text-gray-500">Accounts with zero balance</p>
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-teal-700">{stats.paidAmt}</td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-xs font-semibold text-gray-600">{stats.paidCount}</td>
-                      </tr>
-                      <tr className="bg-purple-50/70">
-                        <td className="px-4 py-3">
-                          <p className="text-xs font-bold text-gray-900">Overpaid / credit</p>
-                          <p className="text-[11px] font-medium text-gray-500">Advance payments or credit balances</p>
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-purple-700">{stats.overpaidAmt}</td>
-                        <td className="px-4 py-3 text-right text-xs font-semibold text-gray-400">-</td>
-                      </tr>
-                      <tr className="bg-blue-50/70">
-                        <td className="px-4 py-3">
-                          <p className="text-xs font-bold text-gray-900">Waived / discounted</p>
-                          <p className="text-[11px] font-medium text-gray-500">Approved fee reductions</p>
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-black text-blue-700">- {stats.waivedTotal}</td>
-                        <td className="px-4 py-3 text-right text-xs font-semibold text-gray-400">-</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
 
-              {/* Stats Cards */}
-              <div className="hidden md:grid md:grid-cols-4 md:gap-4">
-
-                {/* Total Invoices — Indigo */}
-                <div
-                  onClick={() => setStatusFilter(statusFilter === 'all' ? 'all' : 'all')}
-                  className={`relative overflow-hidden rounded-none bg-emerald-50 p-4 text-slate-950 cursor-pointer transition-all duration-200 md:rounded-2xl md:bg-indigo-600 md:p-5 md:shadow-lg md:shadow-indigo-500/20 md:text-white md:hover:scale-[1.03] md:hover:shadow-xl ${statusFilter === 'all' ? 'ring-2 ring-emerald-300 md:ring-4 md:ring-white/50 md:scale-[1.03]' : 'md:opacity-80 md:hover:opacity-100'
-                    }`}
-                >
-                  <div className="flex items-center gap-4 md:items-start md:justify-between md:gap-0">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-emerald-500 text-white md:hidden">
-                      <FileText size={20} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-600 md:block md:text-xs md:font-medium md:tracking-widest md:text-indigo-200">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 md:hidden" />
-                        Expected Income
-                      </p>
-                      <p className="text-xl font-semibold leading-none text-slate-950 md:text-2xl md:font-medium md:text-white">{stats.totalBilled} <span className="text-[10px] font-bold uppercase text-slate-600 md:hidden">KES</span></p>
-                      <div className="mt-1.5 hidden space-y-0.5 text-xs leading-tight text-indigo-100/95 md:block">
-                        <p>Balance B/F: <span className="font-medium">{stats.bfAmount}</span></p>
-                        <p>This Term Fee: <span className="font-medium">{stats.thisTermFee}</span></p>
+                {/* Desktop 4 stat cards */}
+                <div className="hidden md:grid md:grid-cols-4 md:gap-4">
+                  <div onClick={() => setStatusFilter(statusFilter === 'all' ? 'all' : 'all')} className={`relative overflow-hidden rounded-none bg-emerald-50 p-4 text-slate-950 cursor-pointer transition-all duration-200 md:rounded-2xl md:bg-indigo-600 md:p-5 md:shadow-lg md:shadow-indigo-500/20 md:text-white md:hover:scale-[1.03] md:hover:shadow-xl ${statusFilter === 'all' ? 'ring-2 ring-emerald-300 md:ring-4 md:ring-white/50 md:scale-[1.03]' : 'md:opacity-80 md:hover:opacity-100'}`}>
+                    <div className="flex items-center gap-4 md:items-start md:justify-between md:gap-0">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-emerald-500 text-white md:hidden"><FileText size={20} /></div>
+                      <div className="min-w-0 flex-1">
+                        <p className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-600 md:block md:text-xs md:font-medium md:tracking-widest md:text-indigo-200"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500 md:hidden" />Expected Income</p>
+                        <p className="text-xl font-semibold leading-none text-slate-950 md:text-2xl md:font-medium md:text-white">{stats.totalBilled} <span className="text-[10px] font-bold uppercase text-slate-600 md:hidden">KES</span></p>
+                        <div className="mt-1.5 hidden space-y-0.5 text-xs leading-tight text-indigo-100/95 md:block">
+                          <p>Balance B/F: <span className="font-medium">{stats.bfAmount}</span></p>
+                          <p>This Term Fee: <span className="font-medium">{stats.thisTermFee}</span></p>
+                        </div>
+                        <p className="mt-1.5 hidden text-lg font-semibold text-indigo-300 md:block">{stats.totalCount} Students</p>
                       </div>
-                      <p className="mt-1.5 hidden text-lg font-semibold text-indigo-300 md:block">{stats.totalCount} Students</p>
+                      <div className="hidden p-2.5 bg-white/15 rounded-xl md:block"><FileText size={22} className="text-white" /></div>
                     </div>
-                    <div className="hidden p-2.5 bg-white/15 rounded-xl md:block">
-                      <FileText size={22} className="text-white" />
-                    </div>
+                    <div className="absolute -bottom-3 -right-3 hidden w-20 h-20 bg-white/5 rounded-full md:block" /><div className="absolute -bottom-6 -right-6 hidden w-28 h-28 bg-white/5 rounded-full md:block" />
                   </div>
-                  <div className="absolute -bottom-3 -right-3 hidden w-20 h-20 bg-white/5 rounded-full md:block" />
-                  <div className="absolute -bottom-6 -right-6 hidden w-28 h-28 bg-white/5 rounded-full md:block" />
-                </div>
-
-                {/* Pending — Amber */}
-                <div
-                  onClick={() => { setStatusFilter(prev => prev === 'pending' ? 'all' : 'pending'); setCurrentPage(1); }}
-                  className={`relative overflow-hidden rounded-none bg-red-50 p-4 text-slate-950 cursor-pointer transition-all duration-200 md:rounded-2xl md:bg-red-600 md:p-5 md:shadow-lg md:shadow-red-500/20 md:text-white md:hover:scale-[1.03] md:hover:shadow-xl ${statusFilter === 'pending' ? 'ring-2 ring-red-300 md:ring-4 md:ring-white/50 md:scale-[1.03]' : 'md:opacity-80 md:hover:opacity-100'
-                    }`}
-                >
-                  <div className="flex items-center gap-4 md:items-start md:justify-between md:gap-0">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-red-500 text-white md:hidden">
-                      <AlertCircle size={20} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-red-500 md:block md:text-xs md:font-medium md:tracking-widest md:text-red-100">
-                        <span className="h-1.5 w-1.5 rounded-full bg-red-500 md:hidden" />
-                        Not Paid Anything
-                      </p>
-                      <p className="text-xl font-semibold leading-none text-slate-950 md:text-2xl md:font-medium md:text-white">{stats.pendingAmt} <span className="text-[10px] font-bold uppercase text-slate-600 md:hidden">KES</span></p>
-                      <p className="mt-1.5 hidden text-lg font-semibold text-red-200 md:block">{stats.pendingCount} Students</p>
-                    </div>
-                    <div className="hidden p-2.5 bg-white/15 rounded-xl md:block">
-                      <Clock size={22} className="text-white" />
-                    </div>
-                  </div>
-                  <div className="absolute -bottom-3 -right-3 hidden w-20 h-20 bg-white/5 rounded-full md:block" />
-                  <div className="absolute -bottom-6 -right-6 hidden w-28 h-28 bg-white/5 rounded-full md:block" />
-                </div>
-
-                {/* Partial — Sky Blue (Now Orange) */}
-                <div
-                  onClick={() => { setStatusFilter(prev => prev === 'partial' ? 'all' : 'partial'); setCurrentPage(1); }}
-                  className={`relative overflow-hidden rounded-none bg-orange-50 p-4 text-slate-950 cursor-pointer transition-all duration-200 md:rounded-2xl md:bg-orange-500 md:p-5 md:shadow-lg md:shadow-orange-500/20 md:text-white md:hover:scale-[1.03] md:hover:shadow-xl ${statusFilter === 'partial' ? 'ring-2 ring-orange-300 md:ring-4 md:ring-white/50 md:scale-[1.03]' : 'md:opacity-80 md:hover:opacity-100'
-                    }`}
-                >
-                  <div className="flex items-center gap-4 md:items-start md:justify-between md:gap-0">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-orange-500 text-white md:hidden">
-                      <AlertCircle size={20} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-orange-500 md:block md:text-xs md:font-medium md:tracking-widest md:text-orange-100">
-                        <span className="h-1.5 w-1.5 rounded-full bg-orange-500 md:hidden" />
-                        Partial Payments
-                      </p>
-                      <p className="text-xl font-semibold leading-none text-slate-950 md:mb-2 md:text-2xl md:font-medium md:text-white">{stats.partialAmt} <span className="text-[10px] font-bold uppercase text-slate-600 md:hidden">KES</span></p>
-                      <div className="hidden flex-col items-start gap-1 md:flex">
-                        <p className="text-base font-medium text-orange-100 uppercase tracking-tight leading-none">BAL: {stats.partialBalanceAmt}</p>
-                        <p className="text-lg font-semibold text-orange-200">{stats.partialCount} Students</p>
+                  <div onClick={() => { setStatusFilter(prev => prev === 'pending' ? 'all' : 'pending'); setCurrentPage(1); }} className={`relative overflow-hidden rounded-none bg-red-50 p-4 text-slate-950 cursor-pointer transition-all duration-200 md:rounded-2xl md:bg-red-600 md:p-5 md:shadow-lg md:shadow-red-500/20 md:text-white md:hover:scale-[1.03] md:hover:shadow-xl ${statusFilter === 'pending' ? 'ring-2 ring-red-300 md:ring-4 md:ring-white/50 md:scale-[1.03]' : 'md:opacity-80 md:hover:opacity-100'}`}>
+                    <div className="flex items-center gap-4 md:items-start md:justify-between md:gap-0">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-red-500 text-white md:hidden"><AlertCircle size={20} /></div>
+                      <div className="min-w-0 flex-1">
+                        <p className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-red-500 md:block md:text-xs md:font-medium md:tracking-widest md:text-red-100"><span className="h-1.5 w-1.5 rounded-full bg-red-500 md:hidden" />Not Paid Anything</p>
+                        <p className="text-xl font-semibold leading-none text-slate-950 md:text-2xl md:font-medium md:text-white">{stats.pendingAmt} <span className="text-[10px] font-bold uppercase text-slate-600 md:hidden">KES</span></p>
+                        <p className="mt-1.5 hidden text-lg font-semibold text-red-200 md:block">{stats.pendingCount} Students</p>
                       </div>
+                      <div className="hidden p-2.5 bg-white/15 rounded-xl md:block"><Clock size={22} className="text-white" /></div>
                     </div>
-                    <div className="hidden p-2.5 bg-white/15 rounded-xl md:block">
-                      <AlertCircle size={22} className="text-white" />
-                    </div>
+                    <div className="absolute -bottom-3 -right-3 hidden w-20 h-20 bg-white/5 rounded-full md:block" /><div className="absolute -bottom-6 -right-6 hidden w-28 h-28 bg-white/5 rounded-full md:block" />
                   </div>
-                  <div className="absolute -bottom-3 -right-3 hidden w-20 h-20 bg-white/5 rounded-full md:block" />
-                  <div className="absolute -bottom-6 -right-6 hidden w-28 h-28 bg-white/5 rounded-full md:block" />
-                </div>
-
-                {/* Fully Paid — Emerald */}
-                <div
-                  onClick={() => { setStatusFilter(prev => prev === 'paid' ? 'all' : 'paid'); setCurrentPage(1); }}
-                  className={`relative overflow-hidden rounded-none bg-teal-50 p-4 text-slate-950 cursor-pointer transition-all duration-200 md:rounded-2xl md:bg-emerald-600 md:p-5 md:shadow-lg md:shadow-emerald-500/20 md:text-white md:hover:scale-[1.03] md:hover:shadow-xl ${statusFilter === 'paid' ? 'ring-2 ring-teal-300 md:ring-4 md:ring-white/50 md:scale-[1.03]' : 'md:opacity-80 md:hover:opacity-100'
-                    }`}
-                >
-                  <div className="flex items-center gap-4 md:items-start md:justify-between md:gap-0">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-teal-500 text-white md:hidden">
-                      <CheckCircle size={20} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-teal-600 md:block md:text-xs md:font-medium md:tracking-widest md:text-emerald-100">
-                        <span className="h-1.5 w-1.5 rounded-full bg-teal-500 md:hidden" />
-                        Completely Cleared
-                      </p>
-                      <p className="text-xl font-semibold leading-none text-slate-950 md:text-2xl md:font-medium md:text-white">{stats.paidAmt} <span className="text-[10px] font-bold uppercase text-slate-600 md:hidden">KES</span></p>
-                      <p className="mt-1.5 hidden text-lg font-semibold text-emerald-200 md:block">{stats.paidCount} Students</p>
-                    </div>
-                    <div className="hidden p-2.5 bg-white/15 rounded-xl md:block">
-                      <CheckCircle size={22} className="text-white" />
-                    </div>
-                  </div>
-                  <div className="absolute -bottom-3 -right-3 hidden w-20 h-20 bg-white/5 rounded-full md:block" />
-                  <div className="absolute -bottom-6 -right-6 hidden w-28 h-28 bg-white/5 rounded-full md:block" />
-                </div>
-
-              </div>
-
-              {/* Financial Reconciliation Strip — Redesigned for Premium Look */}
-              <div className="relative hidden overflow-hidden bg-white border-[0.5px] border-gray-300 rounded-2xl p-0 shadow-sm md:flex flex-col lg:flex-row items-stretch gap-0">
-
-                {/* Total Collections - Emerald */}
-                <div className="flex-1 flex items-center gap-4 p-4 bg-emerald-50/80 border-r-[0.5px] border-emerald-200/80 hover:bg-emerald-50 transition-colors">
-                  <div className="w-10 h-10 bg-emerald-500 text-white rounded-xl shadow-sm flex items-center justify-center shrink-0">
-                    <Wallet size={20} />
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className="text-[10px] font-medium text-emerald-700 uppercase tracking-widest flex items-center gap-1.5 leading-none">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Total Collections
-                    </p>
-                    <span className="text-xl font-medium text-gray-900 tracking-tight leading-none block">
-                      {stats.actualCollected.replace('KES ', '')}
-                      <span className="text-[10px] font-medium text-gray-500 ml-1">KES</span>
-                    </span>
-                  </div>
-                </div>
-
-                {/* Total Balances - Red */}
-                <div className="flex-1 flex items-center gap-4 p-4 bg-red-50/80 border-r-[0.5px] border-red-200/80 hover:bg-red-50 transition-colors">
-                  <div className="w-10 h-10 bg-red-500 text-white rounded-xl shadow-sm flex items-center justify-center shrink-0">
-                    <AlertCircle size={20} />
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className="text-[10px] font-medium text-red-700 uppercase tracking-widest flex items-center gap-1.5 leading-none">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                      Total Balances
-                    </p>
-                    <span className="text-xl font-medium text-gray-900 tracking-tight leading-none block">
-                      {stats.totalBalance.replace('KES ', '')}
-                      <span className="text-[10px] font-medium text-gray-500 ml-1">KES</span>
-                    </span>
-                  </div>
-                </div>
-
-                {/* Total Overpaid - Purple */}
-                <div className="flex-1 flex items-center gap-4 p-4 bg-purple-50/80 border-r-[0.5px] border-purple-200/80 hover:bg-purple-50 transition-colors">
-                  <div className="w-10 h-10 bg-purple-500 text-white rounded-xl shadow-sm flex items-center justify-center shrink-0">
-                    <ShieldCheck size={20} />
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className="text-[10px] font-medium text-purple-700 uppercase tracking-widest flex items-center gap-1.5 leading-none">
-                      <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
-                      Total Overpaid
-                    </p>
-                    <span className="text-xl font-medium text-gray-900 tracking-tight leading-none block">
-                      {stats.overpaidAmt.replace('KES ', '')}
-                      <span className="text-[10px] font-medium text-gray-500 ml-1">KES</span>
-                    </span>
-                  </div>
-                </div>
-
-                {/* Adjustments Section — Waivers (Teal) */}
-                <div className="flex-1 flex items-center gap-4 p-4 bg-teal-50/80 border-r-[0.5px] border-teal-200/80 hover:bg-teal-50 transition-colors">
-                  <div className="w-10 h-10 bg-teal-500 text-white rounded-xl shadow-sm flex items-center justify-center shrink-0">
-                    <Gift size={20} />
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className="text-[10px] font-medium text-teal-700 uppercase tracking-widest flex items-center gap-1.5 leading-none">
-                      <span className="w-1.5 h-1.5 rounded-full bg-teal-400" />
-                      Total Waived
-                    </p>
-                    <span className="text-xl font-medium text-gray-900 tracking-tight leading-none block">
-                      - {stats.waivedTotal.replace('KES ', '')}
-                      <span className="text-[10px] font-medium text-gray-500 ml-1">KES</span>
-                    </span>
-                  </div>
-                </div>
-
-                {/* Breakdown Section — Mpesa/Cash/Bank (Lime/Blue/Indigo) */}
-                <div className="flex-[2.5] flex items-center justify-around p-4 bg-gradient-to-r from-lime-50/20 via-blue-50/20 to-indigo-50/20">
-
-                  {/* Mpesa */}
-                  <div
-                    onClick={() => setPaymentMethodFilter(prev => prev === 'MPESA' ? 'all' : 'MPESA')}
-                    className={`flex-1 flex items-center gap-4 pr-4 border-r border-gray-300 justify-center cursor-pointer transition-all duration-200 hover:scale-[1.02] ${paymentMethodFilter === 'MPESA' ? 'bg-lime-50/50 ring-2 ring-lime-400 ring-inset rounded-l-xl' : ''
-                      }`}
-                  >
-                    <div className={`w-10 h-10 bg-lime-500 text-white rounded-xl shadow-sm shadow-lime-200 flex items-center justify-center font-medium text-base shrink-0 ${paymentMethodFilter === 'MPESA' ? 'ring-2 ring-white' : ''}`}>
-                      M
-                    </div>
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <span className={`w-1.5 h-1.5 rounded-full bg-lime-500 ${paymentMethodFilter === 'MPESA' ? 'animate-ping' : 'animate-pulse'}`} />
-                        <span className="text-[10px] font-medium text-lime-700 uppercase tracking-widest">Mpesa</span>
+                  <div onClick={() => { setStatusFilter(prev => prev === 'partial' ? 'all' : 'partial'); setCurrentPage(1); }} className={`relative overflow-hidden rounded-none bg-orange-50 p-4 text-slate-950 cursor-pointer transition-all duration-200 md:rounded-2xl md:bg-orange-500 md:p-5 md:shadow-lg md:shadow-orange-500/20 md:text-white md:hover:scale-[1.03] md:hover:shadow-xl ${statusFilter === 'partial' ? 'ring-2 ring-orange-300 md:ring-4 md:ring-white/50 md:scale-[1.03]' : 'md:opacity-80 md:hover:opacity-100'}`}>
+                    <div className="flex items-center gap-4 md:items-start md:justify-between md:gap-0">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-orange-500 text-white md:hidden"><AlertCircle size={20} /></div>
+                      <div className="min-w-0 flex-1">
+                        <p className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-orange-500 md:block md:text-xs md:font-medium md:tracking-widest md:text-orange-100"><span className="h-1.5 w-1.5 rounded-full bg-orange-500 md:hidden" />Partial Payments</p>
+                        <p className="text-xl font-semibold leading-none text-slate-950 md:mb-2 md:text-2xl md:font-medium md:text-white">{stats.partialAmt} <span className="text-[10px] font-bold uppercase text-slate-600 md:hidden">KES</span></p>
+                        <div className="hidden flex-col items-start gap-1 md:flex">
+                          <p className="text-base font-medium text-orange-100 uppercase tracking-tight leading-none">BAL: {stats.partialBalanceAmt}</p>
+                          <p className="text-lg font-semibold text-orange-200">{stats.partialCount} Students</p>
+                        </div>
                       </div>
-                      <span className="text-xl font-medium text-gray-900 tracking-tight leading-none block">
-                        {stats.mpesaTotal.replace('KES ', '')}
-                        <span className="text-[10px] font-medium text-gray-500 ml-1">KES</span>
-                      </span>
+                      <div className="hidden p-2.5 bg-white/15 rounded-xl md:block"><AlertCircle size={22} className="text-white" /></div>
                     </div>
+                    <div className="absolute -bottom-3 -right-3 hidden w-20 h-20 bg-white/5 rounded-full md:block" /><div className="absolute -bottom-6 -right-6 hidden w-28 h-28 bg-white/5 rounded-full md:block" />
                   </div>
-
-                  {/* Cash */}
-                  <div
-                    onClick={() => setPaymentMethodFilter(prev => prev === 'CASH' ? 'all' : 'CASH')}
-                    className={`flex-1 flex items-center gap-4 px-4 border-r border-gray-300 justify-center cursor-pointer transition-all duration-200 hover:scale-[1.02] ${paymentMethodFilter === 'CASH' ? 'bg-blue-50/50 ring-2 ring-blue-400 ring-inset' : ''
-                      }`}
-                  >
-                    <div className={`w-10 h-10 bg-blue-500 text-white rounded-xl shadow-sm shadow-blue-200 flex items-center justify-center shrink-0 ${paymentMethodFilter === 'CASH' ? 'ring-2 ring-white' : ''}`}>
-                      <Banknote size={20} />
-                    </div>
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                        <span className="text-[10px] font-medium text-blue-700 uppercase tracking-widest">Cash</span>
+                  <div onClick={() => { setStatusFilter(prev => prev === 'paid' ? 'all' : 'paid'); setCurrentPage(1); }} className={`relative overflow-hidden rounded-none bg-teal-50 p-4 text-slate-950 cursor-pointer transition-all duration-200 md:rounded-2xl md:bg-emerald-600 md:p-5 md:shadow-lg md:shadow-emerald-500/20 md:text-white md:hover:scale-[1.03] md:hover:shadow-xl ${statusFilter === 'paid' ? 'ring-2 ring-teal-300 md:ring-4 md:ring-white/50 md:scale-[1.03]' : 'md:opacity-80 md:hover:opacity-100'}`}>
+                    <div className="flex items-center gap-4 md:items-start md:justify-between md:gap-0">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-teal-500 text-white md:hidden"><CheckCircle size={20} /></div>
+                      <div className="min-w-0 flex-1">
+                        <p className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-teal-600 md:block md:text-xs md:font-medium md:tracking-widest md:text-emerald-100"><span className="h-1.5 w-1.5 rounded-full bg-teal-500 md:hidden" />Completely Cleared</p>
+                        <p className="text-xl font-semibold leading-none text-slate-950 md:text-2xl md:font-medium md:text-white">{stats.paidAmt} <span className="text-[10px] font-bold uppercase text-slate-600 md:hidden">KES</span></p>
+                        <p className="mt-1.5 hidden text-lg font-semibold text-emerald-200 md:block">{stats.paidCount} Students</p>
                       </div>
-                      <span className="text-xl font-medium text-gray-900 tracking-tight leading-none block">
-                        {stats.cashTotal.replace('KES ', '')}
-                        <span className="text-[10px] font-medium text-gray-500 ml-1">KES</span>
-                      </span>
+                      <div className="hidden p-2.5 bg-white/15 rounded-xl md:block"><CheckCircle size={22} className="text-white" /></div>
+                    </div>
+                    <div className="absolute -bottom-3 -right-3 hidden w-20 h-20 bg-white/5 rounded-full md:block" /><div className="absolute -bottom-6 -right-6 hidden w-28 h-28 bg-white/5 rounded-full md:block" />
+                  </div>
+                </div>
+
+                {/* Financial Reconciliation Strip */}
+                <div className="relative hidden overflow-hidden bg-white border-[0.5px] border-gray-300 rounded-2xl p-0 shadow-sm md:flex flex-col lg:flex-row items-stretch gap-0">
+                  <div className="flex-1 flex items-center gap-4 p-4 bg-emerald-50/80 border-r-[0.5px] border-emerald-200/80 hover:bg-emerald-50 transition-colors">
+                    <div className="w-10 h-10 bg-emerald-500 text-white rounded-xl shadow-sm flex items-center justify-center shrink-0"><Wallet size={20} /></div>
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] font-medium text-emerald-700 uppercase tracking-widest flex items-center gap-1.5 leading-none"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />Total Collections</p>
+                      <span className="text-xl font-medium text-gray-900 tracking-tight leading-none block">{stats.actualCollected.replace('KES ', '')}<span className="text-[10px] font-medium text-gray-500 ml-1">KES</span></span>
                     </div>
                   </div>
-
-                  {/* Bank */}
-                  <div
-                    onClick={() => setPaymentMethodFilter(prev => prev === 'BANK_TRANSFER' ? 'all' : 'BANK_TRANSFER')}
-                    className={`flex-1 flex items-center gap-4 pl-4 justify-center cursor-pointer transition-all duration-200 hover:scale-[1.02] ${paymentMethodFilter === 'BANK_TRANSFER' ? 'bg-indigo-50/50 ring-2 ring-indigo-400 ring-inset rounded-r-xl' : ''
-                      }`}
-                  >
-                    <div className={`w-10 h-10 bg-indigo-600 text-white rounded-xl shadow-sm shadow-indigo-200 flex items-center justify-center shrink-0 ${paymentMethodFilter === 'BANK_TRANSFER' ? 'ring-2 ring-white' : ''}`}>
-                      <Building2 size={20} />
-                    </div>
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                        <span className="text-[10px] font-medium text-indigo-700 uppercase tracking-widest">Bank/Cheque</span>
-                      </div>
-                      <span className="text-xl font-medium text-gray-900 tracking-tight leading-none block">
-                        {stats.bankTotal.replace('KES ', '')}
-                        <span className="text-[10px] font-medium text-gray-500 ml-1">KES</span>
-                      </span>
+                  <div className="flex-1 flex items-center gap-4 p-4 bg-red-50/80 border-r-[0.5px] border-red-200/80 hover:bg-red-50 transition-colors">
+                    <div className="w-10 h-10 bg-red-500 text-white rounded-xl shadow-sm flex items-center justify-center shrink-0"><AlertCircle size={20} /></div>
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] font-medium text-red-700 uppercase tracking-widest flex items-center gap-1.5 leading-none"><span className="w-1.5 h-1.5 rounded-full bg-red-500" />Total Balances</p>
+                      <span className="text-xl font-medium text-gray-900 tracking-tight leading-none block">{stats.totalBalance.replace('KES ', '')}<span className="text-[10px] font-medium text-gray-500 ml-1">KES</span></span>
                     </div>
                   </div>
-
+                  <div className="flex-1 flex items-center gap-4 p-4 bg-purple-50/80 border-r-[0.5px] border-purple-200/80 hover:bg-purple-50 transition-colors">
+                    <div className="w-10 h-10 bg-purple-500 text-white rounded-xl shadow-sm flex items-center justify-center shrink-0"><ShieldCheck size={20} /></div>
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] font-medium text-purple-700 uppercase tracking-widest flex items-center gap-1.5 leading-none"><span className="w-1.5 h-1.5 rounded-full bg-purple-500" />Total Overpaid</p>
+                      <span className="text-xl font-medium text-gray-900 tracking-tight leading-none block">{stats.overpaidAmt.replace('KES ', '')}<span className="text-[10px] font-medium text-gray-500 ml-1">KES</span></span>
+                    </div>
+                  </div>
+                  <div className="flex-1 flex items-center gap-4 p-4 bg-teal-50/80 border-r-[0.5px] border-teal-200/80 hover:bg-teal-50 transition-colors">
+                    <div className="w-10 h-10 bg-teal-500 text-white rounded-xl shadow-sm flex items-center justify-center shrink-0"><Gift size={20} /></div>
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] font-medium text-teal-700 uppercase tracking-widest flex items-center gap-1.5 leading-none"><span className="w-1.5 h-1.5 rounded-full bg-teal-400" />Total Waived</p>
+                      <span className="text-xl font-medium text-gray-900 tracking-tight leading-none block">- {stats.waivedTotal.replace('KES ', '')}<span className="text-[10px] font-medium text-gray-500 ml-1">KES</span></span>
+                    </div>
+                  </div>
+                  <div className="flex-[2.5] flex items-center justify-around p-4 bg-gradient-to-r from-lime-50/20 via-blue-50/20 to-indigo-50/20">
+                    <div onClick={() => setPaymentMethodFilter(prev => prev === 'MPESA' ? 'all' : 'MPESA')} className={`flex-1 flex items-center gap-4 pr-4 border-r border-gray-300 justify-center cursor-pointer transition-all duration-200 hover:scale-[1.02] ${paymentMethodFilter === 'MPESA' ? 'bg-lime-50/50 ring-2 ring-lime-400 ring-inset rounded-l-xl' : ''}`}>
+                      <div className={`w-10 h-10 bg-lime-500 text-white rounded-xl shadow-sm shadow-lime-200 flex items-center justify-center font-medium text-base shrink-0 ${paymentMethodFilter === 'MPESA' ? 'ring-2 ring-white' : ''}`}>M</div>
+                      <div className="flex flex-col"><div className="flex items-center gap-1.5 mb-1"><span className={`w-1.5 h-1.5 rounded-full bg-lime-500 ${paymentMethodFilter === 'MPESA' ? 'animate-ping' : 'animate-pulse'}`} /><span className="text-[10px] font-medium text-lime-700 uppercase tracking-widest">Mpesa</span></div><span className="text-xl font-medium text-gray-900 tracking-tight leading-none block">{stats.mpesaTotal.replace('KES ', '')}<span className="text-[10px] font-medium text-gray-500 ml-1">KES</span></span></div>
+                    </div>
+                    <div onClick={() => setPaymentMethodFilter(prev => prev === 'CASH' ? 'all' : 'CASH')} className={`flex-1 flex items-center gap-4 px-4 border-r border-gray-300 justify-center cursor-pointer transition-all duration-200 hover:scale-[1.02] ${paymentMethodFilter === 'CASH' ? 'bg-blue-50/50 ring-2 ring-blue-400 ring-inset' : ''}`}>
+                      <div className={`w-10 h-10 bg-blue-500 text-white rounded-xl shadow-sm shadow-blue-200 flex items-center justify-center shrink-0 ${paymentMethodFilter === 'CASH' ? 'ring-2 ring-white' : ''}`}><Banknote size={20} /></div>
+                      <div className="flex flex-col"><div className="flex items-center gap-1.5 mb-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-500" /><span className="text-[10px] font-medium text-blue-700 uppercase tracking-widest">Cash</span></div><span className="text-xl font-medium text-gray-900 tracking-tight leading-none block">{stats.cashTotal.replace('KES ', '')}<span className="text-[10px] font-medium text-gray-500 ml-1">KES</span></span></div>
+                    </div>
+                    <div onClick={() => setPaymentMethodFilter(prev => prev === 'BANK_TRANSFER' ? 'all' : 'BANK_TRANSFER')} className={`flex-1 flex items-center gap-4 pl-4 justify-center cursor-pointer transition-all duration-200 hover:scale-[1.02] ${paymentMethodFilter === 'BANK_TRANSFER' ? 'bg-indigo-50/50 ring-2 ring-indigo-400 ring-inset rounded-r-xl' : ''}`}>
+                      <div className={`w-10 h-10 bg-indigo-600 text-white rounded-xl shadow-sm shadow-indigo-200 flex items-center justify-center shrink-0 ${paymentMethodFilter === 'BANK_TRANSFER' ? 'ring-2 ring-white' : ''}`}><Building2 size={20} /></div>
+                      <div className="flex flex-col"><div className="flex items-center gap-1.5 mb-1"><span className="w-1.5 h-1.5 rounded-full bg-indigo-500" /><span className="text-[10px] font-medium text-indigo-700 uppercase tracking-widest">Bank/Cheque</span></div><span className="text-xl font-medium text-gray-900 tracking-tight leading-none block">{stats.bankTotal.replace('KES ', '')}<span className="text-[10px] font-medium text-gray-500 ml-1">KES</span></span></div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
           )}
-
-          {/* Overview Dashboard — below the stats cards, overview tab only */}
-          {activeTab === 'overview' && (
-            <FeeOverviewDashboard
-              stats={stats}
-              invoices={currentCycleStatsInvoices}
-              statsLoading={statsLoading}
-              termFilter={termFilter}
-              onNavigateToInvoices={() => setActiveTab('invoices')}
-              onStatusFilter={(s) => { setStatusFilter(s); setActiveTab('invoices'); }}
-              lastUpdated={new Date().toISOString()}
-              onRefresh={() => { fetchStatsInvoices(); fetchInvoices(); }}
-              onSendReminders={(invoiceIds, channel, filterLabel) => handleBulkReminders(channel, invoiceIds, filterLabel)}
-              reminderLoading={loading}
-            />
-          )}
-
           {/* Unified Action & Filter Toolbar */}
-          {activeTab === 'invoices' && (
-          <>
           <div className="bg-white rounded-xl shadow-sm p-4 border-[0.5px] border-gray-200">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-3">
               <div className="min-w-[260px] flex-1 lg:max-w-md">
@@ -1954,6 +1729,16 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                 >
                   <Download size={13} strokeWidth={2.5} />
                   Export
+                </button>
+                <span className="h-4 w-px bg-gray-200" />
+                <button
+                  type="button"
+                  onClick={() => setShowMetrics(m => !m)}
+                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${showMetrics ? 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100' : 'text-gray-500 hover:bg-gray-50'}`}
+                  title={showMetrics ? 'Hide metric cards' : 'Show metric cards'}
+                >
+                  {showMetrics ? <ChevronUp size={13} strokeWidth={2.5} /> : <ChevronDown size={13} strokeWidth={2.5} />}
+                  {showMetrics ? 'Hide Metrics' : 'Show Metrics'}
                 </button>
               </div>
             </div>
@@ -2746,8 +2531,6 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
 
           {/* Create Invoice Modal */}
 
-          </>
-          )}
           {showCreateModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden">

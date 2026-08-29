@@ -618,3 +618,192 @@ function LegendRow({ color, label, value, pct }) {
     </div>
   );
 }
+
+/* ─── Named section exports for horizontal nav routing ─────────────────── */
+
+/**
+ * Shared hook for the analytics derived from invoices.
+ * Re-used by every standalone section component.
+ */
+function useFeeAnalytics(invoices) {
+  return useMemo(() => {
+    if (!invoices?.length) return null;
+    const src = invoices;
+    const gradeMap = {};
+    src.forEach(inv => {
+      const g = inv?.learner?.grade || 'Unknown';
+      if (!gradeMap[g]) gradeMap[g] = { grade: g, count: 0, collected: 0, billed: 0 };
+      gradeMap[g].count++;
+      gradeMap[g].billed += Number(inv.totalAmount || 0);
+      if (inv.payments?.length) {
+        gradeMap[g].collected += inv.payments.reduce((s, p) => s + Number(p.amount || 0), 0);
+      } else {
+        gradeMap[g].collected += Number(inv.paidAmount || 0);
+      }
+    });
+    const grades = Object.values(gradeMap).map(g => ({
+      ...g,
+      rate: g.billed > 0 ? Math.round((g.collected / g.billed) * 100) : 0,
+    }));
+    const bestGrade = [...grades].sort((a, b) => b.rate - a.rate)[0];
+    const worstGrade = [...grades].sort((a, b) => a.rate - b.rate)[0];
+    const studentsWithBalance = src
+      .map(inv => {
+        const balance = Number(inv.balance || 0) || Math.max(0, Number(inv.totalAmount || 0) - Number(inv.paidAmount || 0));
+        return { name: inv?.learner?.name || 'Unknown', grade: inv?.learner?.grade || '', balance };
+      })
+      .filter(s => s.balance > 0)
+      .sort((a, b) => b.balance - a.balance);
+    const largestOutstanding = studentsWithBalance[0];
+    const nothingPaid = src.filter(i => Number(i.paidAmount || 0) === 0);
+    const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const overdue30 = src.filter(i => {
+      const due = i.dueDate ? new Date(i.dueDate) : null;
+      return due && due < thirtyDaysAgo && Number(i.balance || 0) > 0;
+    });
+    const withPledges = src.filter(i => (i.pledges || []).some(p => p.status === 'PENDING' || p.status === 'DUE'));
+    const pledgeAmount = withPledges.reduce((s, i) =>
+      s + (i.pledges || []).filter(p => p.status === 'PENDING' || p.status === 'DUE').reduce((ss, p) => ss + Number(p.pledgedAmount || 0), 0), 0);
+    const nextWeek = new Date(); nextWeek.setDate(nextWeek.getDate() + 7);
+    const dueSoonPledges = src.reduce((s, i) =>
+      s + (i.pledges || []).filter(p => {
+        const d = p.pledgeDate ? new Date(p.pledgeDate) : null;
+        return (p.status === 'PENDING' || p.status === 'DUE') && d && d <= nextWeek;
+      }).reduce((ss, p) => ss + Number(p.pledgedAmount || 0), 0), 0);
+    const twoWeeksAgo = new Date(); twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+    const needReminders = src.filter(i => {
+      const lastPay = i.payments?.reduce((latest, p) => {
+        const d = new Date(p.paymentDate || p.createdAt || p.paidAt || 0);
+        return d > latest ? d : latest;
+      }, new Date(0));
+      const hasBalance = Number(i.balance || 0) > 0 || Number(i.totalAmount || 0) > Number(i.paidAmount || 0);
+      return hasBalance && (!lastPay || lastPay < twoWeeksAgo);
+    });
+    return { bestGrade, worstGrade, largestOutstanding, nothingPaid, overdue30, withPledges, pledgeAmount, dueSoonPledges, needReminders };
+  }, [invoices]);
+}
+
+/** Collection Summary section */
+export function FeeCollectionSummaryPage({ stats, invoices, statsLoading, termFilter, onRefresh, lastUpdated }) {
+  if (statsLoading) return <div className="rounded-2xl bg-gray-100 animate-pulse h-56" />;
+  const collected = stats?.actualCollectedRaw || 0;
+  const outstanding = Math.max(0, (stats?.totalBilledRaw || 0) - collected - (stats?.waivedTotalRaw || 0));
+  const waived = stats?.waivedTotalRaw || 0;
+  const total = collected + outstanding + waived || 1;
+  const termLabel = termFilter === 'all' ? 'This Term' : termFilter?.replace('_', ' ');
+  const now = lastUpdated ? new Date(lastUpdated) : new Date();
+  const timeStr = now.toLocaleString('en-KE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-bold text-gray-900">Collection Summary</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Expected, collected, outstanding and waived amounts.</p>
+        </div>
+        <button onClick={onRefresh} className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-gray-600 transition-colors">
+          <RefreshCw size={11} /> Last updated: {timeStr}
+        </button>
+      </div>
+      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm p-5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700 mb-4">{termLabel} · {fmt(collected)} collected</p>
+        <div className="flex flex-col items-center gap-5 sm:flex-row">
+          <DonutChart collected={collected} outstanding={outstanding} waived={waived} total={total} />
+          <div className="w-full min-w-0 flex-1">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl bg-emerald-50 p-3">
+                <p className="flex items-center gap-2 text-xs font-semibold text-emerald-700"><span className="h-2.5 w-2.5 rounded-full bg-[#22C55E]" />Collected</p>
+                <p className="mt-1 text-sm font-black text-gray-900">{fmt(collected)}</p>
+              </div>
+              <div className="rounded-xl bg-amber-50 p-3">
+                <p className="flex items-center gap-2 text-xs font-semibold text-amber-700"><span className="h-2.5 w-2.5 rounded-full bg-[#F59E0B]" />Outstanding</p>
+                <p className="mt-1 text-sm font-black text-gray-900">{fmt(outstanding)}</p>
+              </div>
+              <div className="rounded-xl bg-blue-50 p-3">
+                <p className="flex items-center gap-2 text-xs font-semibold text-blue-700"><span className="h-2.5 w-2.5 rounded-full bg-[#3B82F6]" />Waived / Discounted</p>
+                <p className="mt-1 text-sm font-black text-gray-900">{fmt(waived)}</p>
+              </div>
+            </div>
+            <div className="mt-3 border-t border-gray-100 pt-3">
+              <p className="text-[11px] font-medium text-gray-500">Total Expected: <span className="font-semibold text-gray-700">{fmt(total)}</span></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Balances & Reminders section */
+export function FeeBalancesPage({ invoices, stats, statsLoading, onSendReminders, reminderLoading }) {
+  if (statsLoading) return <div className="rounded-2xl bg-gray-100 animate-pulse h-56" />;
+  const outstanding = Math.max(0, (stats?.totalBilledRaw || 0) - (stats?.actualCollectedRaw || 0) - (stats?.waivedTotalRaw || 0));
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-sm font-bold text-gray-900">Balances &amp; Reminders</h2>
+        <p className="text-xs text-gray-400 mt-0.5">Filter unpaid and partial balances, then send payment reminders.</p>
+      </div>
+      <div className="overflow-hidden rounded-2xl border border-amber-100 bg-white shadow-sm p-5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-amber-700 mb-4">{fmt(outstanding)} balance</p>
+        <PaymentByGrade invoices={invoices} onSendReminders={onSendReminders} reminderLoading={reminderLoading} />
+      </div>
+    </div>
+  );
+}
+
+/** Follow-up Actions section */
+export function FeeFollowupPage({ invoices, statsLoading, onNavigateToInvoices, onStatusFilter }) {
+  const analytics = useFeeAnalytics(invoices);
+  if (statsLoading) return <div className="rounded-2xl bg-gray-100 animate-pulse h-56" />;
+  const flagCount = (analytics?.nothingPaid?.length || 0) + (analytics?.overdue30?.length || 0);
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-sm font-bold text-gray-900">Follow-up Actions</h2>
+        <p className="text-xs text-gray-400 mt-0.5">Accounts that need fee collection attention.</p>
+      </div>
+      <div className="overflow-hidden rounded-2xl border border-red-100 bg-white shadow-sm p-5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-red-700 mb-4">{flagCount} flagged</p>
+        <div className="divide-y divide-gray-50">
+          {analytics?.nothingPaid?.length > 0 && <AlertItem icon={Users} iconBg="bg-red-500" text={`${analytics.nothingPaid.length} students have not paid anything`} sub={`Total balance: ${fmt(analytics.nothingPaid.reduce((s, i) => s + Number(i.totalAmount || 0), 0))}`} onClick={() => onStatusFilter?.('pending')} />}
+          {analytics?.overdue30?.length > 0 && <AlertItem icon={Clock} iconBg="bg-orange-500" text={`${fmt(analytics.overdue30.reduce((s, i) => s + Number(i.balance || 0), 0))} overdue by 30+ days`} sub={`From ${analytics.overdue30.length} students`} onClick={() => onNavigateToInvoices?.()} />}
+          {analytics?.bestGrade && analytics?.worstGrade && analytics.bestGrade.grade !== analytics.worstGrade.grade && <AlertItem icon={TrendingDown} iconBg="bg-amber-500" text={`${analytics.worstGrade.grade} collection rate only ${analytics.worstGrade.rate}%`} sub="Below school average" onClick={() => onNavigateToInvoices?.()} />}
+          {analytics?.withPledges?.length > 0 && <AlertItem icon={Calendar} iconBg="bg-blue-500" text={`${analytics.withPledges.length} fee promises due this week`} sub={`Total amount: ${fmt(analytics.dueSoonPledges)}`} onClick={() => onNavigateToInvoices?.()} />}
+          {analytics?.needReminders?.length > 0 && <AlertItem icon={MessageSquare} iconBg="bg-violet-500" text={`${analytics.needReminders.length} parents need reminders`} sub="SMS not sent" onClick={() => onNavigateToInvoices?.()} />}
+          {!analytics?.nothingPaid?.length && !analytics?.overdue30?.length && (
+            <div className="py-6 text-center"><CheckCircle size={32} className="mx-auto mb-2 text-emerald-400" /><p className="text-xs font-medium text-gray-500">All clear! No urgent actions.</p></div>
+          )}
+        </div>
+        <button onClick={() => onNavigateToInvoices?.()} className="mt-3 flex w-full items-center justify-center gap-1 text-xs font-semibold text-red-600 hover:text-red-700 transition-colors">
+          View All Alerts <ChevronRight size={12} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Performance Insights section */
+export function FeeInsightsPage({ invoices, stats, statsLoading }) {
+  const analytics = useFeeAnalytics(invoices);
+  if (statsLoading) return <div className="rounded-2xl bg-gray-100 animate-pulse h-56" />;
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-sm font-bold text-gray-900">Performance Insights</h2>
+        <p className="text-xs text-gray-400 mt-0.5">Collection trends and high-priority fee signals.</p>
+      </div>
+      <div className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm p-5">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700 mb-4">{analytics?.bestGrade ? `${analytics.bestGrade.grade} leading` : 'No insights yet'}</p>
+        <div className="flex flex-wrap gap-3">
+          {analytics?.bestGrade && <InsightCard icon={Trophy} iconBg="bg-emerald-500" label="Best Collecting Class" value={analytics.bestGrade.grade} sub={`${analytics.bestGrade.rate}% Collection Rate`} valueColor="text-emerald-600" />}
+          {analytics?.worstGrade && analytics.worstGrade.grade !== analytics?.bestGrade?.grade && <InsightCard icon={Frown} iconBg="bg-red-500" label="Lowest Collecting Class" value={analytics.worstGrade.grade} sub={`${analytics.worstGrade.rate}% Collection Rate`} valueColor="text-red-600" />}
+          {analytics?.largestOutstanding && <InsightCard icon={AlertCircle} iconBg="bg-amber-500" label="Largest Outstanding" value={fmt(analytics.largestOutstanding.balance)} sub={`${analytics.largestOutstanding.name} (${analytics.largestOutstanding.grade})`} valueColor="text-amber-600" />}
+          <InsightCard icon={Target} iconBg="bg-blue-500" label="Expected This Week" value={fmt(analytics?.dueSoonPledges || 0)} sub="From promises & history" valueColor="text-blue-600" />
+          {stats && (
+            <InsightCard icon={Zap} iconBg="bg-violet-500" label="Collection Efficiency" value={stats.collectionEfficiency || '0%'} sub="Net of waivers" valueColor="text-violet-600" />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
