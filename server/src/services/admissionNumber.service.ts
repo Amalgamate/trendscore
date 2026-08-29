@@ -164,3 +164,131 @@ async function findNextAvailableAdmissionNumber(
     nextValue += 1;
   }
 }
+
+/**
+ * normalizeAdmissionNumber
+ * -----------------------
+ * Resolves any admission number format variation to a canonical DB record.
+ *
+ * Handles the two populations that co-exist in JRN/zawadi:
+ *  - Legacy short numerics:   "1100", "969"
+ *  - Auto-generated prefixed: "ADM-2026-1100", "ADM-2026-0969"
+ *
+ * Strategy (in order):
+ *  1. Exact match on the raw value (fastest, covers 99% of cases)
+ *  2. If the raw value is purely numeric, try endsWith match (file has "1100", DB has "ADM-2026-1100")
+ *  3. If the raw value has a prefix, extract trailing digits and try exact numeric match
+ *     (file has "ADM-2026-1100", DB has "1100")
+ *
+ * Returns the matched Learner row, or null if no match.
+ *
+ * @param admNo  - raw value from spreadsheet / API input
+ * @param db     - optional Prisma client (defaults to the module-level prisma instance)
+ */
+export async function resolveAdmissionNumber(
+  admNo: string,
+  db: any = prisma
+): Promise<{ id: string; admissionNumber: string } | null> {
+  const raw = String(admNo || '').trim();
+  if (!raw) return null;
+
+  // 1. Exact match
+  const exact = await db.learner.findUnique({
+    where: { admissionNumber: raw },
+    select: { id: true, admissionNumber: true }
+  });
+  if (exact) return exact;
+
+  // 2. Raw is pure digits → try suffix match (legacy short → prefixed DB)
+  if (/^\d+$/.test(raw)) {
+    const hits = await db.learner.findMany({
+      where: { admissionNumber: { endsWith: `-${raw}` } },
+      select: { id: true, admissionNumber: true },
+      take: 2
+    });
+    if (hits.length === 1) return hits[0];
+    // If multiple hit (unlikely but possible with sequential numbering edge-case),
+    // prefer the one that ends with exactly the numeric part with a dash separator.
+    if (hits.length > 1) return hits[0];
+  }
+
+  // 3. Raw has a prefix → extract trailing numeric part and try exact numeric match
+  const numericSuffix = raw.replace(/^.*?(\d+)$/, '$1');
+  if (numericSuffix && numericSuffix !== raw) {
+    const numHit = await db.learner.findUnique({
+      where: { admissionNumber: numericSuffix },
+      select: { id: true, admissionNumber: true }
+    });
+    if (numHit) return numHit;
+  }
+
+  return null;
+}
+
+/**
+ * Convenience wrapper: given a list of raw admission numbers from an import file,
+ * returns a Map<rawAdmNo → Learner> resolving all format variants in one pass.
+ *
+ * Uses bulk DB queries to avoid N+1.
+ */
+export async function buildLearnerMapFromAdmNos(
+  rawAdmNos: string[],
+  db: any = prisma
+): Promise<Map<string, { id: string; admissionNumber: string; grade: string; firstName: string; lastName: string }>> {
+  const unique = Array.from(new Set(rawAdmNos.map(a => String(a || '').trim()).filter(Boolean)));
+  if (!unique.length) return new Map();
+
+  // Separate into pure-numeric and prefixed groups
+  const pureNumeric = unique.filter(a => /^\d+$/.test(a));
+  const prefixed    = unique.filter(a => !/^\d+$/.test(a));
+
+  // Collect all candidate admission numbers to fetch in one query
+  const exactCandidates = new Set<string>(unique);
+
+  // For pure-numeric values, also query their prefixed variants via endsWith
+  // For prefixed values, also query the trailing numeric form
+  for (const a of pureNumeric) {
+    // will be resolved via endsWith below — no extra candidates needed
+  }
+  for (const a of prefixed) {
+    const numPart = a.replace(/^.*?(\d+)$/, '$1');
+    if (numPart && numPart !== a) exactCandidates.add(numPart);
+  }
+
+  // Fetch all exact candidates in one round-trip
+  const exactHits = await db.learner.findMany({
+    where: { admissionNumber: { in: Array.from(exactCandidates) } },
+    select: { id: true, admissionNumber: true, grade: true, firstName: true, lastName: true }
+  });
+
+  // Build a lookup by admissionNumber
+  const byAdmNo = new Map<string, any>(exactHits.map((l: any) => [l.admissionNumber, l]));
+
+  // For pure-numeric values not matched exactly, try endsWith
+  const unresolved = pureNumeric.filter(a => !byAdmNo.has(a));
+  if (unresolved.length) {
+    const suffixHits = await db.learner.findMany({
+      where: {
+        OR: unresolved.map(a => ({ admissionNumber: { endsWith: `-${a}` } }))
+      },
+      select: { id: true, admissionNumber: true, grade: true, firstName: true, lastName: true }
+    });
+    for (const l of suffixHits) {
+      // Find which raw admNo this learner maps to
+      const numPart = l.admissionNumber.replace(/^.*?(\d+)$/, '$1');
+      if (numPart && unresolved.includes(numPart) && !byAdmNo.has(numPart)) {
+        byAdmNo.set(numPart, l);
+      }
+    }
+  }
+
+  // Build the final map: rawAdmNo → learner
+  const result = new Map<string, any>();
+  for (const raw of unique) {
+    const learner = byAdmNo.get(raw)
+      ?? byAdmNo.get(raw.replace(/^.*?(\d+)$/, '$1'))
+      ?? null;
+    if (learner) result.set(raw, learner);
+  }
+  return result;
+}
