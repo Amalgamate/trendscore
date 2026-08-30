@@ -597,9 +597,20 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
                         <button
                           key={n.id}
                           onClick={() => {
-                            if (n.link) onNavigate?.(n.link.replace('/app/', ''));
                             markAsRead(n.id);
                             setShowNotifications(false);
+                            // Fee-config approval notifications carry a deep-link
+                            // and a learnerId in metadata — route directly to the
+                            // learner's financials tab so the approver can act.
+                            const meta = (() => {
+                              try { return typeof n.metadata === 'string' ? JSON.parse(n.metadata) : (n.metadata || {}); }
+                              catch { return {}; }
+                            })();
+                            if (meta.kind === 'FEE_CONFIGURATION_APPROVAL' && meta.learnerId) {
+                              onNavigate?.('learner-profile', { learnerId: meta.learnerId, tab: 'financials' });
+                              return;
+                            }
+                            if (n.link) onNavigate?.(n.link.replace(/^\/app\//, '').split('?')[0]);
                           }}
                           className="w-full text-left p-3 hover:bg-gray-50 rounded-lg transition-all group flex items-start gap-3"
                         >
