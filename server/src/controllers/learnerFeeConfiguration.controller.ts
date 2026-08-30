@@ -228,6 +228,21 @@ export class LearnerFeeConfigurationController {
     res.json({ success: true, data, message: 'Fee configuration revoked' });
   }
 
+  async destroy(req: AuthRequest, res: Response) {
+    const configuration = await prisma.learnerFeeConfiguration.findUnique({ where: { id: req.params.id } });
+    if (!configuration) throw new ApiError(404, 'Fee configuration not found');
+    // Only non-approved configs can be deleted. Approved ones must be revoked first
+    // to preserve the audit trail of what scholarships were active.
+    if (configuration.status === 'APPROVED') {
+      throw new ApiError(
+        400,
+        'This configuration has been approved. Revoke it first before deleting.'
+      );
+    }
+    await prisma.learnerFeeConfiguration.delete({ where: { id: req.params.id } });
+    res.json({ success: true, message: 'Fee configuration deleted' });
+  }
+
   async preview(req: AuthRequest, res: Response) {
     const { learnerId, feeStructureId, term, academicYear, configuration } = req.body;
     const [learner, feeStructure] = await Promise.all([
