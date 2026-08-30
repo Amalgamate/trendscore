@@ -32,6 +32,8 @@ export const feeAPI = {
     fetchWithAuth(`/fees/configurations/${id}/approve`, { method: 'PATCH', body: JSON.stringify({}) }),
   revokeLearnerFeeConfiguration: async (id) =>
     fetchWithAuth(`/fees/configurations/${id}/revoke`, { method: 'PATCH', body: JSON.stringify({}) }),
+  deleteLearnerFeeConfiguration: async (id) =>
+    fetchWithAuth(`/fees/configurations/${id}`, { method: 'DELETE' }),
   previewLearnerFeeConfiguration: async (data) =>
     fetchWithAuth('/fees/configurations/preview', { method: 'POST', body: JSON.stringify(data) }),
   reviseInvoiceFromConfiguration: async (id, reason) =>

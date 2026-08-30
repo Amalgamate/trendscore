@@ -265,11 +265,21 @@ router.patch(
   asyncHandler(learnerFeeConfigurationController.revoke.bind(learnerFeeConfigurationController))
 );
 
+// Delete a DRAFT or PENDING_APPROVAL configuration. APPROVED configs must be
+// revoked first — this prevents accidental removal of active scholarship records.
+router.delete(
+  '/configurations/:id',
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  auditLog('DELETE_LEARNER_FEE_CONFIGURATION'),
+  asyncHandler(learnerFeeConfigurationController.destroy.bind(learnerFeeConfigurationController))
+);
+
 router.post(
   '/configurations/preview',
   requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
   asyncHandler(learnerFeeConfigurationController.preview.bind(learnerFeeConfigurationController))
 );
+
 
 // ─── Invoices ──────────────────────────────────────────────────────────────
 
