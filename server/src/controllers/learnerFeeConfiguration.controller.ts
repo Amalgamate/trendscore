@@ -105,12 +105,17 @@ export class LearnerFeeConfigurationController {
       || learner.name
       || 'Learner';
 
+    // Deep-link to the learner's financials tab so the approver lands directly
+    // on the fee configuration panel. The format is understood by both the bell
+    // click handler and the NotificationCenter router.
+    const deepLink = `/app/learner-profile?learnerId=${configuration.learnerId}&tab=financials`;
+
     try {
       await NotificationService.notifyRoles(['ADMIN', 'SUPER_ADMIN'], {
         title: 'Fee configuration approval needed',
         message: `${learnerName} has a fee configuration waiting for approval.`,
         type: NotificationType.WARNING,
-        link: '/finance/fees',
+        link: deepLink,
         showAsPopup: true,
         metadata: {
           kind: 'FEE_CONFIGURATION_APPROVAL',
@@ -213,7 +218,14 @@ export class LearnerFeeConfigurationController {
         revokedAt: null,
       },
     });
-    res.json({ success: true, data, message: 'Fee configuration approved' });
+    // Immediately revise all unpaid invoices in scope so the scholarship takes
+    // effect without requiring the admin to also click "Revise Invoice" manually.
+    const revisedInvoices = await this.reviseUnpaidInvoicesForConfiguration(
+      data,
+      req.user!.userId,
+      `Fee configuration approved: ${data.name}`
+    );
+    res.json({ success: true, data, revisedInvoices, message: 'Fee configuration approved' });
   }
 
   async revoke(req: AuthRequest, res: Response) {

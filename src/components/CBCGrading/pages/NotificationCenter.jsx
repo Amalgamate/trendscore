@@ -178,23 +178,63 @@ function AIBriefingCard({ currentPage, onNavigate }) {
   );
 }
 
+// ─── Helper: parse notification metadata safely ───────────────────────────────
+
+function parseMeta(notification) {
+  const raw = notification?.metadata;
+  if (!raw) return {};
+  if (typeof raw === 'string') { try { return JSON.parse(raw); } catch { return {}; } }
+  return raw;
+}
+
 // ─── Single Notification Row ──────────────────────────────────────────────────
 
 function NotificationRow({ notification, onMarkRead, onNavigate }) {
   const cfg = TYPE_CONFIG[notification.type] || fallbackConfig;
   const Icon = cfg.icon;
   const isUnread = !notification.isRead;
+  const [approving, setApproving] = useState(false);
+  const [approveError, setApproveError] = useState('');
+  const [approved, setApproved] = useState(false);
+  const { fetchNotifications } = useUserNotifications();
+
+  const meta = parseMeta(notification);
+  const isFeeApproval = meta.kind === 'FEE_CONFIGURATION_APPROVAL';
+
+  // Navigate to the right destination for this notification type
+  const navigateToTarget = () => {
+    if (isFeeApproval && meta.learnerId) {
+      onNavigate?.('learner-profile', { learnerId: meta.learnerId, tab: 'financials' });
+      return;
+    }
+    if (notification.link) {
+      const page   = notification.link.replace(/^\/app\//, '').split('?')[0];
+      const paramStr = notification.link.includes('?') ? notification.link.split('?')[1] : '';
+      const params   = paramStr ? Object.fromEntries(new URLSearchParams(paramStr).entries()) : {};
+      onNavigate?.(page, params);
+    }
+  };
 
   const handleClick = () => {
     if (isUnread) onMarkRead(notification.id);
-    if (notification.link) {
-      // Strip /app/ prefix to get the page key
-      const page = notification.link.replace(/^\/app\//, '').split('?')[0];
-      const paramStr = notification.link.includes('?') ? notification.link.split('?')[1] : '';
-      const params = paramStr
-        ? Object.fromEntries(new URLSearchParams(paramStr).entries())
-        : {};
-      onNavigate?.(page, params);
+    navigateToTarget();
+  };
+
+  // Inline approve — lets ADMIN/SUPER_ADMIN approve without leaving the center
+  const handleApprove = async (e) => {
+    e.stopPropagation();
+    if (!meta.configurationId) { setApproveError('Missing configuration ID'); return; }
+    setApproving(true);
+    setApproveError('');
+    try {
+      await api.fees.approveLearnerFeeConfiguration(meta.configurationId);
+      await onMarkRead(notification.id);
+      await fetchNotifications();
+      setApproved(true);
+    } catch (err) {
+      setApproveError(err?.message || 'Approval failed');
+    } finally {
+      setApproving(false);
     }
   };
 
@@ -205,6 +245,7 @@ function NotificationRow({ notification, onMarkRead, onNavigate }) {
       className={cn(
         'w-full flex items-start gap-3 px-4 py-3.5 text-left transition-colors group border-b border-gray-50 last:border-0',
         isUnread ? 'bg-white hover:bg-violet-50/40' : 'bg-white/60 hover:bg-gray-50',
+        approved && 'opacity-60',
       )}
     >
       {/* Type icon */}
@@ -231,7 +272,40 @@ function NotificationRow({ notification, onMarkRead, onNavigate }) {
         )}>
           {notification.message}
         </p>
-        {notification.link && (
+
+        {/* Fee-config approval actions */}
+        {isFeeApproval && isUnread && !approved && (
+          <div className="mt-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={handleApprove}
+              disabled={approving}
+              className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[10px] font-black text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-wait"
+            >
+              {approving ? <Loader2 size={9} className="animate-spin" /> : <CheckCircle2 size={9} />}
+              {approving ? 'Approving…' : 'Approve'}
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); if (isUnread) onMarkRead(notification.id); navigateToTarget(); }}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black text-slate-600 hover:bg-slate-50"
+            >
+              Open profile <ArrowRight size={9} />
+            </button>
+            {approveError && (
+              <span className="text-[10px] font-semibold text-red-500">{approveError}</span>
+            )}
+          </div>
+        )}
+
+        {approved && (
+          <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600">
+            <CheckCircle2 size={9} /> Approved
+          </span>
+        )}
+
+        {/* Standard "Open" link for non-fee notifications */}
+        {!isFeeApproval && notification.link && (
           <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-violet-600 group-hover:text-violet-800">
             Open <ArrowRight size={9} />
           </span>
