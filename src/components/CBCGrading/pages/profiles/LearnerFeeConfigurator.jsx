@@ -205,6 +205,27 @@ export default function LearnerFeeConfigurator({ learner, user, onChanged }) {
   const canEdit    = ['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN'].includes(user?.role);
   const scholarshipLock = form.scholarshipType === 'FULL' || form.scholarshipType === 'HALF';
 
+  // ── Seed form with the active term from the server ────────────────────────
+  // This runs once on mount so the configurator defaults to the school's current
+  // active term (e.g. TERM_3 2026) instead of always showing TERM_1.
+  useEffect(() => {
+    api.config.getActiveTermConfig()
+      .then((resp) => {
+        const payload = resp?.data ?? resp ?? null;
+        if (payload?.term && payload?.academicYear) {
+          setForm((prev) => ({
+            ...prev,
+            startTerm:         payload.term,
+            startAcademicYear: Number(payload.academicYear),
+            // Keep custom end year in sync with start year for YEAR preset
+            customEndAcademicYear: Number(payload.academicYear),
+          }));
+        }
+      })
+      .catch(() => {/* leave defaults */});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Resolved end dates from the duration preset ───────────────────────────
   const resolvedEnd = useMemo(() => {
     const preset = DURATION_PRESETS.find((p) => p.value === form.duration) || DURATION_PRESETS[2];
@@ -341,7 +362,16 @@ export default function LearnerFeeConfigurator({ learner, user, onChanged }) {
   };
 
   const resetForm = () => {
-    setForm(emptyForm(learner.id));
+    // Preserve the current startTerm/startAcademicYear so after saving the
+    // form stays on the active term rather than snapping back to TERM_1.
+    const activeTerm         = form.startTerm;
+    const activeAcademicYear = form.startAcademicYear;
+    setForm({
+      ...emptyForm(learner.id),
+      startTerm:             activeTerm,
+      startAcademicYear:     activeAcademicYear,
+      customEndAcademicYear: activeAcademicYear,
+    });
     setEditingId(null);
     setPreview(null);
   };
