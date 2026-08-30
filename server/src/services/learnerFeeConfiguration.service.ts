@@ -131,9 +131,23 @@ export async function calculateLearnerInvoice(input: {
       legacyStudentTotal: input.learner.scholarshipType === 'PARTIAL'
         ? Number(input.learner.scholarshipAmount || 0)
         : null,
+      scholarshipType: input.learner.scholarshipType === 'FULL' ? 'FULL' : 'NONE',
+      scholarshipAmount: null,
       adjustments: [],
     };
   }
+
+  // ── Normalise scholarship type ──────────────────────────────────────────
+  // scholarshipType drives top-level behaviour and takes precedence over the
+  // legacy fullExemption boolean so both new and old records work correctly.
+  const scholarshipType: string = String(configuration?.scholarshipType || 'NONE').toUpperCase();
+  const isFullScholarship  = scholarshipType === 'FULL'  || !!configuration?.fullExemption;
+  const isHalfScholarship  = scholarshipType === 'HALF';
+  const isPartialAmount    = scholarshipType === 'PARTIAL_AMOUNT';
+  const partialCap: number | null = isPartialAmount
+    ? Math.max(0, Number(configuration?.scholarshipAmount ?? 0))
+    : null;
+
   const adjustments = Array.isArray(configuration?.adjustments)
     ? configuration.adjustments as FeeAdjustment[]
     : [];
@@ -146,63 +160,121 @@ export async function calculateLearnerInvoice(input: {
     const standardAmount = Number(item.amount || 0);
     const code = item.feeType?.code || null;
     const adjustment = adjustmentMap.get(item.feeTypeId) || adjustmentCodeMap.get(String(code || '').toUpperCase());
-    const amounts = applyFeeAdjustment(standardAmount, adjustment, !!configuration?.fullExemption);
+
+    // Full scholarship → every item is zeroed out
+    if (isFullScholarship) {
+      return {
+        feeTypeId: item.feeTypeId,
+        code,
+        name: item.feeType?.name || 'Fee item',
+        standardAmount: money(standardAmount),
+        mode: 'SCHOLARSHIP_FULL',
+        value: 0,
+        studentAmount: 0,
+        sponsorAmount: 0,
+        adjustmentAmount: money(standardAmount),
+      };
+    }
+
+    // Half scholarship → 50 % discount on every item (ignores per-item adjustments)
+    if (isHalfScholarship) {
+      const half = money(standardAmount * 0.5);
+      return {
+        feeTypeId: item.feeTypeId,
+        code,
+        name: item.feeType?.name || 'Fee item',
+        standardAmount: money(standardAmount),
+        mode: 'SCHOLARSHIP_HALF',
+        value: half,
+        studentAmount: half,
+        sponsorAmount: 0,
+        adjustmentAmount: money(standardAmount - half),
+      };
+    }
+
+    // Partial-amount / standard → apply per-item adjustments as normal
+    // (the cap is enforced after all items are computed, below)
+    const amounts = applyFeeAdjustment(standardAmount, adjustment, false);
     return {
       feeTypeId: item.feeTypeId,
       code,
       name: item.feeType?.name || 'Fee item',
       standardAmount: money(standardAmount),
-      mode: configuration?.fullExemption ? 'EXEMPT' : (adjustment?.mode || 'STANDARD'),
+      mode: adjustment?.mode || 'STANDARD',
       value: Number(adjustment?.value || 0),
       ...amounts,
     };
   });
 
   const existingKeys = new Set(lineItems.flatMap((item: any) => [item.feeTypeId, item.code].filter(Boolean)));
-  const customAdjustments = adjustments.filter((item) => {
-    const code = String(item.code || item.feeTypeId || '').toUpperCase();
-    if (code === 'TRANSPORT') return false;
-    if (!item.included || existingKeys.has(item.feeTypeId) || existingKeys.has(code)) return false;
-    return item.source === 'custom' || !allItems.some((feeItem: any) =>
-      feeItem.feeTypeId === item.feeTypeId || String(feeItem.feeType?.code || '').toUpperCase() === code
-    );
-  });
 
-  customAdjustments.forEach((item) => {
-    if (configuration?.fullExemption) return;
-    const standardAmount = Number(item.standardAmount || item.value || 0);
-    const amounts = applyFeeAdjustment(standardAmount, { ...item, mode: 'CUSTOM_AMOUNT' }, false);
-    lineItems.push({
-      feeTypeId: item.feeTypeId || item.code || item.name || 'CUSTOM_FEE',
-      code: item.code || item.feeTypeId || 'CUSTOM',
-      name: item.name || item.code || 'Custom fee item',
-      standardAmount: money(standardAmount),
-      mode: 'CUSTOM_AMOUNT',
-      value: Number(item.value || 0),
-      ...amounts,
+  // Custom add-on adjustments are skipped for blanket scholarship types — they
+  // would be meaningless when every item is already zeroed or halved.
+  if (!isFullScholarship && !isHalfScholarship) {
+    const customAdjustments = adjustments.filter((item) => {
+      const code = String(item.code || item.feeTypeId || '').toUpperCase();
+      if (code === 'TRANSPORT') return false;
+      if (!item.included || existingKeys.has(item.feeTypeId) || existingKeys.has(code)) return false;
+      return item.source === 'custom' || !allItems.some((feeItem: any) =>
+        feeItem.feeTypeId === item.feeTypeId || String(feeItem.feeType?.code || '').toUpperCase() === code
+      );
     });
-  });
 
-  const transportAdjustment = adjustmentMap.get('TRANSPORT') || adjustmentCodeMap.get('TRANSPORT');
-  const includeTransport = input.includeTransport ?? (!!input.learner.isTransportStudent || !!transportAdjustment?.included);
-  let transportAmount = 0;
-  if (includeTransport && !configuration?.fullExemption) {
-    transportAmount = transportAdjustment?.included
-      ? money(Number(transportAdjustment.value || transportAdjustment.standardAmount || 0))
-      : money(await resolveConfiguredTransportAmount(input.learner.id, allItems, client));
-    lineItems.push({
-      feeTypeId: 'TRANSPORT',
-      code: 'TRANSPORT',
-      name: 'Transport',
-      standardAmount: transportAmount,
-      mode: 'STANDARD',
-      value: 0,
-      studentAmount: transportAmount,
-      sponsorAmount: 0,
-      adjustmentAmount: 0,
+    customAdjustments.forEach((item) => {
+      const standardAmount = Number(item.standardAmount || item.value || 0);
+      const amounts = applyFeeAdjustment(standardAmount, { ...item, mode: 'CUSTOM_AMOUNT' }, false);
+      lineItems.push({
+        feeTypeId: item.feeTypeId || item.code || item.name || 'CUSTOM_FEE',
+        code: item.code || item.feeTypeId || 'CUSTOM',
+        name: item.name || item.code || 'Custom fee item',
+        standardAmount: money(standardAmount),
+        mode: 'CUSTOM_AMOUNT',
+        value: Number(item.value || 0),
+        ...amounts,
+      });
     });
   }
 
+  // ── Transport ────────────────────────────────────────────────────────────
+  const transportAdjustment = adjustmentMap.get('TRANSPORT') || adjustmentCodeMap.get('TRANSPORT');
+  const includeTransport = input.includeTransport ?? (!!input.learner.isTransportStudent || !!transportAdjustment?.included);
+  let transportAmount = 0;
+  if (includeTransport && !isFullScholarship) {
+    const rawTransport = transportAdjustment?.included
+      ? money(Number(transportAdjustment.value || transportAdjustment.standardAmount || 0))
+      : money(await resolveConfiguredTransportAmount(input.learner.id, allItems, client));
+
+    if (isHalfScholarship) {
+      // Half scholarship halves transport too
+      transportAmount = money(rawTransport * 0.5);
+      lineItems.push({
+        feeTypeId: 'TRANSPORT',
+        code: 'TRANSPORT',
+        name: 'Transport',
+        standardAmount: rawTransport,
+        mode: 'SCHOLARSHIP_HALF',
+        value: transportAmount,
+        studentAmount: transportAmount,
+        sponsorAmount: 0,
+        adjustmentAmount: money(rawTransport - transportAmount),
+      });
+    } else {
+      transportAmount = rawTransport;
+      lineItems.push({
+        feeTypeId: 'TRANSPORT',
+        code: 'TRANSPORT',
+        name: 'Transport',
+        standardAmount: transportAmount,
+        mode: 'STANDARD',
+        value: 0,
+        studentAmount: transportAmount,
+        sponsorAmount: 0,
+        adjustmentAmount: 0,
+      });
+    }
+  }
+
+  // ── Legacy partial scholarship cap (backward compat) ─────────────────────
   if (configuration?.legacyStudentTotal !== null && configuration?.legacyStudentTotal !== undefined) {
     let reduction = Math.max(
       0,
@@ -218,6 +290,22 @@ export async function calculateLearnerInvoice(input: {
     }
   }
 
+  // ── PARTIAL_AMOUNT scholarship cap ───────────────────────────────────────
+  // Cap the total the student pays to scholarshipAmount, distributing the
+  // reduction from the bottom of the item list upward (same pattern as legacy).
+  if (isPartialAmount && partialCap !== null) {
+    const currentTotal = money(lineItems.reduce((sum: number, item: any) => sum + item.studentAmount, 0));
+    let reduction = Math.max(0, currentTotal - partialCap);
+    for (let index = lineItems.length - 1; index >= 0 && reduction > 0; index--) {
+      const reducible = Math.min(lineItems[index].studentAmount, reduction);
+      lineItems[index].studentAmount = money(lineItems[index].studentAmount - reducible);
+      lineItems[index].adjustmentAmount = money(lineItems[index].adjustmentAmount + reducible);
+      lineItems[index].mode = 'SCHOLARSHIP_PARTIAL';
+      reduction = money(reduction - reducible);
+    }
+  }
+
+  // ── Totals ────────────────────────────────────────────────────────────────
   const grossAmount = money(lineItems.reduce((sum: number, item: any) => sum + item.standardAmount, 0));
   const sponsorAmount = money(lineItems.reduce((sum: number, item: any) => sum + item.sponsorAmount, 0));
   const adjustmentAmount = money(lineItems.reduce((sum: number, item: any) => sum + item.adjustmentAmount, 0));
@@ -243,7 +331,9 @@ export async function calculateLearnerInvoice(input: {
       configurationName: configuration?.name || null,
       sponsorName: configuration?.sponsorName || null,
       sponsorReference: configuration?.sponsorReference || null,
-      fullExemption: !!configuration?.fullExemption,
+      fullExemption: isFullScholarship,
+      scholarshipType,
+      scholarshipAmount: partialCap,
       lineItems,
       totals: { grossAmount, adjustmentAmount, sponsorAmount, studentAmount, carryForwardAmount, totalAmount },
     },

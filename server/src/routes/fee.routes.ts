@@ -153,7 +153,8 @@ const feeAdjustmentSchema = z.object({
   included: z.boolean().optional(),
 });
 
-const feeConfigurationSchema = z.object({
+// Base object — used for PATCH (partial updates) where .partial() must be callable.
+const feeConfigurationBaseSchema = z.object({
   learnerId: z.string().min(1),
   name: z.string().min(2).max(120),
   status: z.enum(['DRAFT', 'PENDING_APPROVAL']).optional(),
@@ -162,11 +163,25 @@ const feeConfigurationSchema = z.object({
   endTerm: z.enum(['TERM_1', 'TERM_2', 'TERM_3']).nullable().optional(),
   endAcademicYear: z.number().int().min(2000).nullable().optional(),
   fullExemption: z.boolean().optional(),
+  scholarshipType: z.enum(['NONE', 'FULL', 'HALF', 'PARTIAL_AMOUNT']).optional(),
+  scholarshipAmount: z.number().nonnegative().nullable().optional(),
   sponsorName: z.string().max(150).nullable().optional(),
   sponsorReference: z.string().max(150).nullable().optional(),
   reason: z.string().max(500).nullable().optional(),
   notes: z.string().max(1000).nullable().optional(),
   adjustments: z.array(feeAdjustmentSchema),
+});
+
+// Full schema for POST — adds the cross-field validation rule.
+const feeConfigurationSchema = feeConfigurationBaseSchema.superRefine((data, ctx) => {
+  if (data.scholarshipType === 'PARTIAL_AMOUNT' &&
+      (data.scholarshipAmount === undefined || data.scholarshipAmount === null)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['scholarshipAmount'],
+      message: 'scholarshipAmount is required when scholarshipType is PARTIAL_AMOUNT',
+    });
+  }
 });
 
 // ─── Global Middleware ─────────────────────────────────────────────────────
@@ -231,7 +246,7 @@ router.post(
 router.patch(
   '/configurations/:id',
   requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
-  validate(feeConfigurationSchema.partial()),
+  validate(feeConfigurationBaseSchema.partial()),
   auditLog('UPDATE_LEARNER_FEE_CONFIGURATION'),
   asyncHandler(learnerFeeConfigurationController.update.bind(learnerFeeConfigurationController))
 );
