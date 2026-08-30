@@ -1561,6 +1561,14 @@ model LearnerFeeConfiguration {
   endTerm           Term?
   endAcademicYear   Int?
   fullExemption     Boolean   @default(false)
+  /// Scholarship type applied to this configuration.
+  /// NONE       – no scholarship; individual fee-item adjustments apply as-is.
+  /// FULL        – student pays nothing (equivalent to fullExemption=true).
+  /// HALF        – every fee item is halved (50% discount).
+  /// PARTIAL_AMOUNT – student pays a fixed custom amount; excess is discounted.
+  scholarshipType   String    @default("NONE")
+  /// Used when scholarshipType = PARTIAL_AMOUNT; the total the student must pay.
+  scholarshipAmount Decimal?  @db.Decimal(10, 2)
   sponsorName       String?
   sponsorReference  String?
   reason            String?

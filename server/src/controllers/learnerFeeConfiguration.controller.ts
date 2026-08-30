@@ -136,9 +136,15 @@ export class LearnerFeeConfigurationController {
   }
 
   async create(req: AuthRequest, res: Response) {
+    const scholarshipType = String(req.body.scholarshipType || 'NONE').toUpperCase();
+    // Keep fullExemption in sync so the legacy calculation path also works
+    const fullExemption = scholarshipType === 'FULL' ? true : (req.body.fullExemption ?? false);
     const data = await prisma.learnerFeeConfiguration.create({
       data: {
         ...req.body,
+        scholarshipType,
+        scholarshipAmount: req.body.scholarshipAmount !== undefined ? req.body.scholarshipAmount : null,
+        fullExemption,
         status: req.body.status === 'PENDING_APPROVAL' ? 'PENDING_APPROVAL' : 'DRAFT',
         createdById: req.user!.userId,
       },
@@ -151,10 +157,17 @@ export class LearnerFeeConfigurationController {
   async update(req: AuthRequest, res: Response) {
     const existing = await prisma.learnerFeeConfiguration.findUnique({ where: { id: req.params.id } });
     if (!existing) throw new ApiError(404, 'Fee configuration not found');
+    const scholarshipType = req.body.scholarshipType
+      ? String(req.body.scholarshipType).toUpperCase()
+      : String((existing as any).scholarshipType || 'NONE').toUpperCase();
+    const fullExemption = scholarshipType === 'FULL' ? true : (req.body.fullExemption ?? (existing as any).fullExemption ?? false);
     const data = await prisma.learnerFeeConfiguration.update({
       where: { id: req.params.id },
       data: {
         ...req.body,
+        scholarshipType,
+        scholarshipAmount: req.body.scholarshipAmount !== undefined ? req.body.scholarshipAmount : (existing as any).scholarshipAmount,
+        fullExemption,
         status: existing.status === 'APPROVED' ? 'APPROVED' : req.body.status,
       },
       include: { learner: true },
