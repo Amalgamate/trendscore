@@ -34,18 +34,25 @@ const learnerSchema = z.object({
   'Leaner Name': z.string().optional(),
   'Name': z.string().optional(),
   'Adm No': z.string().optional(),
-  'Class': z.string().min(1, 'Class is required'),
+  'Class': z.string().min(1, 'Class or Grade is required'),
   'Stream': z.string().optional(),
   'Term': z.string().optional(),
   'Year': z.string().optional(),
   'Gender': z.string().optional(),
   'DOB': z.string().optional(),
   'Date of Birth': z.string().optional(),
+  'Age': z.string().optional(),
   'Birth Entry Number': z.string().optional(),
+  'ULI': z.string().optional(),
   'Special Needs': z.string().optional(),
+  'SNE Status': z.string().optional(),
+  'Index Number': z.string().optional(),
   'Parent/Guardian': z.string().optional(),
+  'Parent Name': z.string().optional(),
   'Phone 1': z.string().optional(),
   'Phone 2': z.string().optional(),
+  'Parent Phone': z.string().optional(),
+  'Relationship': z.string().optional(),
   'Reg Date': z.string().optional(),
   'Bal Due': z.string().optional(),
 }).refine(data => data['Learner Name'] || data['Leaner Name'] || data['Name'] || data['Surname'] || data['First Name'] || data['Other Names'], {
@@ -64,11 +71,16 @@ const HEADER_ALIASES: Record<string, string> = {
   SERIALNUMBER: 'S/No',
   SURNAME: 'Surname',
   LASTNAME: 'Surname',
+  LEARNERLASTNAME: 'Surname',
   FIRSTNAME: 'First Name',
   GIVENNAME: 'First Name',
+  LEARNERSFIRSTNAME: 'First Name',
+  LEARNERFIRSTNAME: 'First Name',
   OTHERNAMES: 'Other Names',
   MIDDLENAME: 'Other Names',
   MIDDLENAMES: 'Other Names',
+  LEARNERMIDDLENAME: 'Other Names',
+  LEARNERSMIDDLENAME: 'Other Names',
   LEARNERNAME: 'Learner Name',
   LEANERNAME: 'Learner Name',
   STUDENTNAME: 'Learner Name',
@@ -93,6 +105,7 @@ const HEADER_ALIASES: Record<string, string> = {
   DOB: 'DOB',
   DATEOFBIRTH: 'Date of Birth',
   BIRTHDATE: 'Date of Birth',
+  AGE: 'Age',
   BIRTHENTRYNUMBER: 'Birth Entry Number',
   BIRTHENTRYNO: 'Birth Entry Number',
   BIRTHENTRY: 'Birth Entry Number',
@@ -100,6 +113,20 @@ const HEADER_ALIASES: Record<string, string> = {
   BIRTHCERTIFICATENO: 'Birth Entry Number',
   BIRTHCERTNO: 'Birth Entry Number',
   BCNO: 'Birth Entry Number',
+  UNIQUELEARNERIDENTIFIERULI: 'Birth Entry Number',
+  UNIQUELEARNERIDENTIFIER: 'Birth Entry Number',
+  ULI: 'Birth Entry Number',
+  UPI: 'Birth Entry Number',
+  UPINUMBER: 'Birth Entry Number',
+  NEMISUPI: 'Birth Entry Number',
+  KEMISULI: 'Birth Entry Number',
+  KCPEKCSEINDEXNUMBER: 'Index Number',
+  KCPEINDEXNUMBER: 'Index Number',
+  KCSEINDEXNUMBER: 'Index Number',
+  INDEXNUMBER: 'Index Number',
+  INDEXNO: 'Index Number',
+  SNESTATUS: 'SNE Status',
+  SNETYPE: 'Special Needs',
   DISABILITYTYPEIFANY: 'Special Needs',
   DISABILITYTYPE: 'Special Needs',
   DISABILITY: 'Special Needs',
@@ -110,17 +137,25 @@ const HEADER_ALIASES: Record<string, string> = {
   PARENT: 'Parent/Guardian',
   PARENTNAME: 'Parent/Guardian',
   GUARDIANNAME: 'Parent/Guardian',
+  PARENTSNAME: 'Parent/Guardian',
   PHONE1: 'Phone 1',
   PHONE: 'Phone 1',
   PHONENO: 'Phone 1',
   PHONENUMBER: 'Phone 1',
+  PARENTPHONE: 'Phone 1',
+  GUARDIANPHONE: 'Phone 1',
   CONTACT: 'Phone 1',
   CONTACTNO: 'Phone 1',
   PHONE2: 'Phone 2',
   ALTERNATEPHONE: 'Phone 2',
+  RELATIONSHIP: 'Relationship',
+  GUARDIANRELATION: 'Relationship',
   REGDATE: 'Reg Date',
   REGISTRATIONDATE: 'Reg Date',
   ADMISSIONDATE: 'Reg Date',
+  CREATEDDATE: 'Reg Date',
+  CREATEDBY: 'Created By',
+  INSTITUTION: 'Institution',
   BALDUE: 'Bal Due',
   BALANCE: 'Bal Due',
 };
@@ -347,6 +382,43 @@ function resolveGrade(raw: string): string {
   return 'GRADE_1'; // absolute last resort
 }
 
+async function enrollLearnerInClass(learner: {
+  id: string;
+  grade: string;
+  stream?: string | null;
+}) {
+  try {
+    const classCandidates = await prisma.class.findMany({
+      where: {
+        grade: learner.grade,
+        active: true,
+        archived: false,
+      },
+      select: { id: true, stream: true },
+      orderBy: [{ academicYear: 'desc' }, { updatedAt: 'desc' }],
+    });
+
+    const targetClass = (learner.stream
+      ? classCandidates.find((item) => item.stream?.toUpperCase() === learner.stream?.toUpperCase())
+      : null) || classCandidates[0];
+
+    if (targetClass) {
+      await prisma.classEnrollment.upsert({
+        where: {
+          classId_learnerId: {
+            classId: targetClass.id,
+            learnerId: learner.id,
+          },
+        },
+        update: { active: true, archived: false },
+        create: { classId: targetClass.id, learnerId: learner.id, active: true },
+      });
+    }
+  } catch (err: any) {
+    console.warn('[bulk enroll] Notice on class enrollment:', err?.message || err);
+  }
+}
+
 /**
  * POST /api/bulk/learners/upload
  */
@@ -367,6 +439,10 @@ router.post(
     const parsedRows = await parseUploadRows(req.file);
     const importRows = parsedRows.filter((row) => !shouldSkipParsedRow(row.data));
     const skippedRows = parsedRows.length - importRows.length;
+
+    // Fetch school default stream if available
+    const schoolStreams = await prisma.streamConfig.findMany({ select: { name: true } });
+    const defaultStream = schoolStreams.length > 0 ? schoolStreams[0].name : undefined;
 
     for (const row of importRows) {
       try {
@@ -396,21 +472,40 @@ router.post(
         const csvData = item.data;
         const grade = resolveGrade((csvData['Class'] || '').toString());
         const academicYear = Number.parseInt(String(csvData['Year'] || ''), 10) || new Date().getFullYear();
-        const streamCode = csvData['Stream'] || 'A';
+        const streamCode = String(csvData['Stream'] || defaultStream || '').trim() || undefined;
         const providedAdmNo = String(csvData['Adm No'] || '').trim();
-        const admNo = providedAdmNo || await generateBulkAdmissionNumber(streamCode, academicYear);
 
         const { rawName, firstName, middleName, lastName } = buildLearnerNameParts(csvData);
-        const birthEntryNumber = normalizeCellValue(csvData['Birth Entry Number']);
+        const birthEntryNumber = normalizeCellValue(csvData['Birth Entry Number'] || csvData['ULI']);
+
+        // Date of birth: compute from Age if exact DOB is absent (common in KEMIS)
+        let dob = parseUploadDate(csvData['DOB'] || csvData['Date of Birth'], new Date(2015, 0, 1));
+        const rawAge = normalizeCellValue(csvData['Age']);
+        if ((!csvData['DOB'] && !csvData['Date of Birth']) && rawAge) {
+          const ageNum = Number.parseInt(rawAge, 10);
+          if (!Number.isNaN(ageNum) && ageNum > 0 && ageNum < 40) {
+            dob = new Date(new Date().getFullYear() - ageNum, 0, 1);
+          }
+        }
+
+        // Special Needs
+        let specialNeeds = normalizeCellValue(csvData['Special Needs']);
+        const sneStatus = normalizeCellValue(csvData['SNE Status']).toUpperCase();
+        if (specialNeeds === 'NA' || specialNeeds === 'NONE' || specialNeeds === 'NO') {
+          specialNeeds = '';
+        }
+        if (sneStatus === 'YES' && !specialNeeds) {
+          specialNeeds = 'Special Needs Education (SNE)';
+        }
 
         let parentId: string | undefined;
-        const parentName = csvData['Parent/Guardian'];
-        const parentPhone = csvData['Phone 1'] ? String(csvData['Phone 1']).trim() : null;
+        const parentName = csvData['Parent/Guardian'] || csvData['Parent Name'] || (lastName ? `${lastName} Family` : 'Parent');
+        const parentPhone = csvData['Phone 1'] || csvData['Parent Phone'] ? String(csvData['Phone 1'] || csvData['Parent Phone']).trim() : null;
 
         if (parentPhone) {
           const parent = await parentService.getOrCreateParent({
             phone: parentPhone,
-            name: parentName || 'Parent',
+            name: parentName,
             skipNotifications: true
           });
           if (parent) parentId = parent.id;
@@ -424,11 +519,16 @@ router.post(
         else if (rawGender.startsWith('M')) gender = 'MALE';
         else if (rawGender.startsWith('O')) gender = 'OTHER';
 
-        const dob = parseUploadDate(csvData['DOB'] || csvData['Date of Birth'], new Date(2010, 0, 1));
+        // Check if learner already exists by admission number OR UPI/ULI
+        let existing = providedAdmNo
+          ? await prisma.learner.findUnique({ where: { admissionNumber: providedAdmNo } })
+          : null;
 
-        const existing = await prisma.learner.findUnique({
-          where: { admissionNumber: admNo }
-        });
+        if (!existing && birthEntryNumber) {
+          existing = await prisma.learner.findUnique({ where: { upiNumber: birthEntryNumber } });
+        }
+
+        const admNo = providedAdmNo || existing?.admissionNumber || await generateBulkAdmissionNumber(streamCode || 'A', academicYear);
 
         if (existing) {
           const updatedLearner = await prisma.learner.update({
@@ -438,25 +538,33 @@ router.post(
               middleName,
               lastName,
               grade,
-              stream: csvData['Stream'] || undefined,
+              stream: streamCode || existing.stream,
               gender: gender,
               dateOfBirth: dob,
-              upiNumber: birthEntryNumber || undefined,
-              specialNeeds: csvData['Special Needs'] || undefined,
-              parentId: parentId,
-              guardianName: csvData['Parent/Guardian'] || undefined,
-              guardianPhone: csvData['Phone 1'] || undefined,
+              upiNumber: birthEntryNumber || existing.upiNumber || undefined,
+              specialNeeds: specialNeeds || existing.specialNeeds || undefined,
+              parentId: parentId || existing.parentId,
+              guardianName: parentName || existing.guardianName,
+              guardianPhone: parentPhone || existing.guardianPhone,
             }
           });
+
           if (parentPhone && parentName) {
             await parentService.syncPrimaryParentForLearner({
               learnerId: updatedLearner.id,
               admissionNumber: updatedLearner.admissionNumber,
               phone: parentPhone,
               name: parentName,
-              relationship: 'Guardian',
+              relationship: csvData['Relationship'] || 'Guardian',
             });
           }
+
+          await enrollLearnerInClass({
+            id: updatedLearner.id,
+            grade: updatedLearner.grade,
+            stream: updatedLearner.stream,
+          });
+
           const studentAccount = await ensureStudentAccountForLearner({
             learnerId: updatedLearner.id,
             admissionNumber: updatedLearner.admissionNumber,
@@ -466,7 +574,7 @@ router.post(
             phone: null
           });
           if (studentAccount.created) studentAccountsCreated += 1;
-          updated.push({ line: item.line, id: existing.id, admNo, name: rawName });
+          updated.push({ line: item.line, id: existing.id, admNo: updatedLearner.admissionNumber, name: rawName });
         } else {
           const learner = await prisma.learner.create({
             data: {
@@ -481,21 +589,29 @@ router.post(
               status: 'ACTIVE',
               admissionDate,
               upiNumber: birthEntryNumber || undefined,
-              specialNeeds: csvData['Special Needs'] || undefined,
-              guardianName: csvData['Parent/Guardian'] || undefined,
-              guardianPhone: csvData['Phone 1'] || undefined,
+              specialNeeds: specialNeeds || undefined,
+              guardianName: parentName || undefined,
+              guardianPhone: parentPhone || undefined,
               parentId: parentId,
             }
           });
+
           if (parentPhone && parentName) {
             await parentService.syncPrimaryParentForLearner({
               learnerId: learner.id,
               admissionNumber: learner.admissionNumber,
               phone: parentPhone,
               name: parentName,
-              relationship: 'Guardian',
+              relationship: csvData['Relationship'] || 'Guardian',
             });
           }
+
+          await enrollLearnerInClass({
+            id: learner.id,
+            grade: learner.grade,
+            stream: learner.stream,
+          });
+
           const studentAccount = await ensureStudentAccountForLearner({
             learnerId: learner.id,
             admissionNumber: learner.admissionNumber,
@@ -505,7 +621,7 @@ router.post(
             phone: null
           });
           if (studentAccount.created) studentAccountsCreated += 1;
-          created.push({ line: item.line, id: learner.id, admNo, name: rawName });
+          created.push({ line: item.line, id: learner.id, admNo: learner.admissionNumber, name: rawName });
         }
       } catch (error) {
         failed.push({
@@ -688,37 +804,155 @@ router.get(
 
 /**
  * GET /api/bulk/learners/template
+ * Standard CSV Template
  */
 router.get(
   '/template',
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   (_req: Request, res: Response) => {
-  const fields = ['S/No', 'Surname', 'First Name', 'Other Names', 'Gender', 'Date of Birth', 'Birth Entry Number', 'Disability type (if any)', 'Learner Name', 'Adm No', 'Class', 'Stream', 'Term', 'Year', 'Parent/Guardian', 'Phone 1', 'Phone 2', 'Reg Date', 'Bal Due'];
-  const template = [{
-    'S/No': '1',
-    'Surname': 'Doe',
-    'First Name': 'John',
-    'Other Names': 'Mwangi',
-    'Gender': 'Male',
-    'Date of Birth': '02/01/2018',
-    'Birth Entry Number': '123456789',
-    'Disability type (if any)': '',
-    'Learner Name': '',
-    'Adm No': '1001',
-    'Class': 'Grade 1',
-    'Stream': 'A',
-    'Term': 'Term 1',
-    'Year': '2026',
-    'Parent/Guardian': 'Jane Doe',
-    'Phone 1': '0712345678',
-    'Phone 2': '0798765432',
-    'Reg Date': '02/01/2026',
-    'Bal Due': '0.00'
-  }];
+  const fields = [
+    'S/No',
+    'Unique Learner Identifier (ULI)',
+    'Learners First Name',
+    'Learner Middle Name',
+    'Learner Last Name',
+    'Grade',
+    'Gender',
+    'Age',
+    'Date of Birth',
+    'SNE Status',
+    'SNE Type',
+    'KCPE/KCSE Index Number',
+    'Admission Number',
+    'Stream',
+    'Parent/Guardian Name',
+    'Parent Phone',
+    'Relationship',
+    'Reg Date'
+  ];
+  const template = [
+    {
+      'S/No': '1',
+      'Unique Learner Identifier (ULI)': 'KEN202611RMCJE8YO-0',
+      'Learners First Name': 'Munira',
+      'Learner Middle Name': 'Hussein',
+      'Learner Last Name': 'Boru',
+      'Grade': 'Grade 4',
+      'Gender': 'Female',
+      'Age': '9',
+      'Date of Birth': '2017-04-12',
+      'SNE Status': 'NO',
+      'SNE Type': 'NA',
+      'KCPE/KCSE Index Number': 'B007601065',
+      'Admission Number': '',
+      'Stream': 'Blue',
+      'Parent/Guardian Name': 'Hussein Boru',
+      'Parent Phone': '0712345678',
+      'Relationship': 'Father',
+      'Reg Date': '29-07-2026'
+    },
+    {
+      'S/No': '2',
+      'Unique Learner Identifier (ULI)': 'KEN202611YC9KSJI-6',
+      'Learners First Name': 'Farhat',
+      'Learner Middle Name': 'Abdishakur',
+      'Learner Last Name': 'Mohamed',
+      'Grade': 'Grade 4',
+      'Gender': 'Female',
+      'Age': '9',
+      'Date of Birth': '2017-06-20',
+      'SNE Status': 'NO',
+      'SNE Type': 'NA',
+      'KCPE/KCSE Index Number': 'B007600983',
+      'Admission Number': '',
+      'Stream': 'Blue',
+      'Parent/Guardian Name': 'Abdishakur Mohamed',
+      'Parent Phone': '0722000111',
+      'Relationship': 'Father',
+      'Reg Date': '29-07-2026'
+    }
+  ];
   const parser = new Parser({ fields });
   const csv = parser.parse(template);
   res.header('Content-Type', 'text/csv');
-  res.header('Content-Disposition', 'attachment; filename="learners_template.csv"');
+  res.header('Content-Disposition', 'attachment; filename="trendscore_learners_template.csv"');
+  res.send(csv);
+});
+
+/**
+ * GET /api/bulk/learners/template/kemis
+ * Direct KEMIS Standard CSV Template
+ */
+router.get(
+  '/template/kemis',
+  rateLimit({ windowMs: 60_000, maxRequests: 100 }),
+  (_req: Request, res: Response) => {
+  const fields = [
+    'S. No',
+    'Unique Learner Identifier(ULI)',
+    'KCPE/KCSE Index Number',
+    'Learners First Name',
+    'Learner Middle Name',
+    'Learner Last Name',
+    'Institution',
+    'Grade',
+    'Gender',
+    'SNE Status',
+    'SNE Type',
+    'Age',
+    'Created Date',
+    'Created By',
+    'Stream',
+    'Parent Name',
+    'Parent Phone',
+    'Relationship'
+  ];
+  const template = [
+    {
+      'S. No': '1',
+      'Unique Learner Identifier(ULI)': 'KEN202611RMCJE8YO-0',
+      'KCPE/KCSE Index Number': 'B007601065',
+      'Learners First Name': 'Munira',
+      'Learner Middle Name': 'Hussein',
+      'Learner Last Name': 'Boru',
+      'Institution': 'IBSE ACADEMY',
+      'Grade': 'Grade 4',
+      'Gender': 'Female',
+      'SNE Status': 'NO',
+      'SNE Type': 'NA',
+      'Age': '9',
+      'Created Date': '29-07-2026',
+      'Created By': 'IBSE ACADEMY',
+      'Stream': 'Blue',
+      'Parent Name': 'Hussein Boru',
+      'Parent Phone': '0712345678',
+      'Relationship': 'Father'
+    },
+    {
+      'S. No': '2',
+      'Unique Learner Identifier(ULI)': 'KEN202611YC9KSJI-6',
+      'KCPE/KCSE Index Number': 'B007600983',
+      'Learners First Name': 'Farhat',
+      'Learner Middle Name': 'Abdishakur',
+      'Learner Last Name': 'Mohamed',
+      'Institution': 'IBSE ACADEMY',
+      'Grade': 'Grade 4',
+      'Gender': 'Female',
+      'SNE Status': 'NO',
+      'SNE Type': 'NA',
+      'Age': '9',
+      'Created Date': '29-07-2026',
+      'Created By': 'IBSE ACADEMY',
+      'Stream': 'Blue',
+      'Parent Name': 'Abdishakur Mohamed',
+      'Parent Phone': '0722000111',
+      'Relationship': 'Father'
+    }
+  ];
+  const parser = new Parser({ fields });
+  const csv = parser.parse(template);
+  res.header('Content-Type', 'text/csv');
+  res.header('Content-Disposition', 'attachment; filename="kemis_learners_template.csv"');
   res.send(csv);
 });
 

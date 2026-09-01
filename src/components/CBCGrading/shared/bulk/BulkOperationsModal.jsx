@@ -96,10 +96,6 @@ const BulkOperationsModal = ({
 
       const result = response.data;
       setUploadResult(result);
-
-      // We don't call onUploadComplete() here anymore because we want 
-      // the user to see the summary first. We'll call it in handleFinish.
-      // However, we can proactively trigger a partial refresh if needed.
     } catch (error) {
       console.error('Upload error:', error);
       const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || 'Upload failed. Please try again.';
@@ -129,6 +125,26 @@ const BulkOperationsModal = ({
     } catch (error) {
       console.error('Template download error:', error);
       alert('Failed to download template. Please check your connection and try again.');
+    }
+  };
+
+  const downloadKemisTemplate = async () => {
+    try {
+      const response = await axiosInstance.get(`/bulk/learners/template/kemis`, {
+        responseType: 'blob'
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `kemis_learners_template.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('KEMIS template download error:', error);
+      alert('Failed to download KEMIS template. Please check your connection and try again.');
     }
   };
 
@@ -255,34 +271,57 @@ const BulkOperationsModal = ({
 
         <div className="p-6 space-y-6 overflow-y-auto">
           {/* Quick Actions */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className={`grid ${entityType === 'learners' ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
             <button
               onClick={downloadTemplate}
-              className="flex flex-col items-center justify-center gap-2 p-4 border border-[#00A09D]/20 rounded-2xl hover:border-[#00A09D] hover:bg-[#00A09D]/5 transition-all group active:scale-95"
+              className="flex flex-col items-center justify-center gap-1.5 p-3 border border-[#00A09D]/20 rounded-xl hover:border-[#00A09D] hover:bg-[#00A09D]/5 transition-all group active:scale-95"
             >
-              <div className="p-2 bg-[#00A09D]/10 rounded-xl group-hover:bg-[#00A09D]/20 transition-colors">
-                <FileDown size={22} className="text-[#00A09D]" />
+              <div className="p-2 bg-[#00A09D]/10 rounded-lg group-hover:bg-[#00A09D]/20 transition-colors">
+                <FileDown size={18} className="text-[#00A09D]" />
               </div>
-              <span className="text-xs font-medium text-[#00A09D] uppercase tracking-wider">Template</span>
+              <span className="text-[11px] font-medium text-[#00A09D] text-center leading-tight">Standard Template</span>
             </button>
+
+            {entityType === 'learners' && (
+              <button
+                onClick={downloadKemisTemplate}
+                className="flex flex-col items-center justify-center gap-1.5 p-3 border border-sky-200 rounded-xl hover:border-sky-500 hover:bg-sky-50 transition-all group active:scale-95"
+              >
+                <div className="p-2 bg-sky-100 rounded-lg group-hover:bg-sky-200 transition-colors">
+                  <FileDown size={18} className="text-sky-700" />
+                </div>
+                <span className="text-[11px] font-medium text-sky-700 text-center leading-tight">KEMIS Template</span>
+              </button>
+            )}
 
             <button
               onClick={handleExport}
               disabled={exporting}
-              className="flex flex-col items-center justify-center gap-2 p-4 border border-[var(--brand-purple)]/20 rounded-2xl hover:border-[var(--brand-purple)] hover:bg-[var(--brand-purple)]/5 transition-all group disabled:bg-gray-50 disabled:opacity-50 active:scale-95"
+              className="flex flex-col items-center justify-center gap-1.5 p-3 border border-[var(--brand-purple)]/20 rounded-xl hover:border-[var(--brand-purple)] hover:bg-[var(--brand-purple)]/5 transition-all group disabled:bg-gray-50 disabled:opacity-50 active:scale-95"
             >
-              <div className="p-2 bg-[var(--brand-purple)]/10 rounded-xl group-hover:bg-[var(--brand-purple)]/20 transition-colors">
+              <div className="p-2 bg-[var(--brand-purple)]/10 rounded-lg group-hover:bg-[var(--brand-purple)]/20 transition-colors">
                 {exporting ? (
-                  <Loader size={22} className="animate-spin text-[var(--brand-purple)]" />
+                  <Loader size={18} className="animate-spin text-[var(--brand-purple)]" />
                 ) : (
-                  <Download size={22} className="text-[var(--brand-purple)]" />
+                  <Download size={18} className="text-[var(--brand-purple)]" />
                 )}
               </div>
-              <span className="text-xs font-medium text-[var(--brand-purple)] uppercase tracking-wider">
-                {exporting ? 'Exporting...' : 'Export All Students'}
+              <span className="text-[11px] font-medium text-[var(--brand-purple)] text-center leading-tight">
+                {exporting ? 'Exporting...' : 'Export All'}
               </span>
             </button>
           </div>
+
+          {entityType === 'learners' && (
+            <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-900 space-y-1">
+              <p className="font-semibold flex items-center gap-1 text-blue-950">
+                <span>🇰🇪</span> Direct KEMIS Import Supported
+              </p>
+              <p className="text-[11px] text-blue-800 leading-relaxed">
+                You can upload a raw KEMIS export directly. If you add <strong>Parent Phone</strong> to the sheet, parent accounts and sibling family links are automatically matched.
+              </p>
+            </div>
+          )}
 
           {/* Upload Section */}
           <div className="space-y-4">
@@ -386,7 +425,7 @@ const BulkOperationsModal = ({
               )}
             </div>
 
-            {/* Upload Results - Enhanced Detailed Feedback */}
+            {/* Upload Results */}
             {uploadResult && (
               <div className={`rounded-2xl border-2 transition-all p-5 animate-in slide-in-from-bottom-2 duration-300 ${uploadResult.success
                 ? 'bg-emerald-50/50 border-emerald-100'
@@ -427,6 +466,10 @@ const BulkOperationsModal = ({
                             <p className="text-[10px] font-medium text-gray-400 uppercase leading-tight">Added</p>
                             <p className="text-lg font-semibold text-emerald-700 leading-none mt-1">{uploadResult.summary.created}</p>
                           </div>
+                          <div className="bg-white p-2 rounded-xl border border-emerald-100 flex-1 text-center shadow-sm">
+                            <p className="text-[10px] font-medium text-gray-400 uppercase leading-tight">Updated</p>
+                            <p className="text-lg font-semibold text-emerald-700 leading-none mt-1">{uploadResult.summary.updated || 0}</p>
+                          </div>
                           <div className={`bg-white p-2 rounded-xl border flex-1 text-center shadow-sm ${uploadResult.summary.failed > 0 ? 'border-rose-100' : 'border-emerald-100'}`}>
                             <p className="text-[10px] font-medium text-gray-400 uppercase leading-tight">Failed</p>
                             <p className={`text-lg font-semibold leading-none mt-1 ${uploadResult.summary.failed > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{uploadResult.summary.failed}</p>
@@ -434,23 +477,23 @@ const BulkOperationsModal = ({
                         </div>
 
                         {/* Show errors if any */}
-                        {uploadResult.details && (uploadResult.details.failed.length > 0 || uploadResult.details.validationErrors.length > 0) && (
+                        {uploadResult.details && (uploadResult.details.failed?.length > 0 || uploadResult.details.validationErrors?.length > 0) && (
                           <details className="mt-2 group">
                             <summary className="cursor-pointer text-xs font-medium text-rose-600 group-open:mb-2 flex items-center gap-2 p-2 hover:bg-rose-100/30 rounded-lg transition-colors">
                               <AlertCircle size={14} />
-                              Review Issues ({uploadResult.details.failed.length + uploadResult.details.validationErrors.length})
+                              Review Issues ({(uploadResult.details.failed?.length || 0) + (uploadResult.details.validationErrors?.length || 0)})
                             </summary>
                             <div className="max-h-40 overflow-y-auto bg-white border border-rose-100 rounded-xl p-3 text-[11px] space-y-2 shadow-inner">
-                              {uploadResult.details.failed.map((err, idx) => (
+                              {uploadResult.details.failed?.map((err, idx) => (
                                 <div key={idx} className="flex gap-3 items-start border-b border-rose-50 pb-1.5 last:border-0 last:pb-0">
                                   <span className="font-medium text-gray-400 min-w-[24px]">L{err.line}</span>
                                   <div className="flex-1 min-w-0">
-                                    <p className="font-medium text-gray-800 truncate">{err.email || err.admissionNumber || 'Record'}</p>
+                                    <p className="font-medium text-gray-800 truncate">{err.admNo || err.name || 'Record'}</p>
                                     <p className="text-rose-600">{err.reason}</p>
                                   </div>
                                 </div>
                               ))}
-                              {uploadResult.details.validationErrors.map((err, idx) => (
+                              {uploadResult.details.validationErrors?.map((err, idx) => (
                                 <div key={idx} className="flex gap-3 items-start border-b border-rose-50 pb-1.5 last:border-0 last:pb-0">
                                   <span className="font-medium text-gray-400 min-w-[24px]">L{err.line}</span>
                                   <div className="flex-1 min-w-0">
