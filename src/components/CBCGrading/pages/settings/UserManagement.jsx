@@ -8,7 +8,6 @@ import {
   Copy, Power, Plus, CheckCircle
 } from 'lucide-react';
 import { userAPI, learnerAPI } from '../../../../services/api';
-import { getStoredUser } from '../../../../services/schoolContext';
 import { PERMISSIONS, ROLE_NAMES } from '../../../../config/permissions';
 import ModuleTabNav from '../../shared/ModuleTabNav';
 import ResetPasswordModal from '../../shared/ResetPasswordModal';
@@ -357,15 +356,11 @@ const UserManagement = () => {
     setTimeout(() => setNotification(null), 3000);
   }, []);
 
-  const currentUser = getStoredUser();
-  const currentUserRoles = [currentUser?.role, ...(Array.isArray(currentUser?.roles) ? currentUser.roles : [])]
-    .filter(Boolean)
-    .map((role) => String(role).toUpperCase());
   // Keep this action visible in User Management. The server endpoint remains the
-  // source of truth for authorization, avoiding hidden controls when a legacy
-  // session stores the administrator role under a different field.
+  // source of truth for authorization, avoiding hidden controls when a session
+  // has stale or incomplete role data.
   const canSyncStudentUsers = true;
-  const canManageVerification = currentUserRoles.some((role) => ['SUPER_ADMIN', 'SYSTEM_ADMINISTRATOR', 'ADMIN'].includes(role));
+  const canManageVerification = true;
 
   const loadUsers = useCallback(async () => {
     try {
