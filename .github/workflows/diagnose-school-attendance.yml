@@ -1,0 +1,87 @@
+name: Diagnose School Attendance (One-Shot)
+
+# Diagnoses class, stream, and learner matching issues for attendance.
+
+on:
+  workflow_dispatch:
+    inputs:
+      school_slug:
+        description: 'School slug (e.g. ibse)'
+        required: true
+        type: string
+        default: ibse
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Inspect classes and learners for ${{ inputs.school_slug }}
+        env:
+          TARGET: ${{ inputs.school_slug }}
+        run: |
+          set -euo pipefail
+          ssh production "
+            set -euo pipefail
+
+            CONTAINER=\$(sudo docker ps \
+              --filter 'label=com.docker.compose.service=backend' \
+              --format '{{.Names}}|{{.Label \"com.docker.compose.project\"}}' \
+              | awk -F'|' -v t=\"${TARGET}\" '
+                \$2 == t || \$2 == \"zawadi-\" t || \$1 ~ t { print \$1; exit }
+              ')
+
+            echo \"✅ Container: \${CONTAINER}\"
+
+            sudo docker exec \"\${CONTAINER}\" node -e \"
+              const { PrismaClient } = require('@prisma/client');
+              const prisma = new PrismaClient();
+
+              async function main() {
+                console.log('=== CLASSES ===');
+                const classes = await prisma.class.findMany({
+                  select: { id: true, name: true, grade: true, stream: true, active: true, archived: true, _count: { select: { enrollments: true } } }
+                });
+                console.log(JSON.stringify(classes, null, 2));
+
+                console.log('=== LEARNERS SUMMARY (BY GRADE & STREAM) ===');
+                const learners = await prisma.learner.findMany({
+                  where: { status: 'ACTIVE' },
+                  select: { id: true, admissionNumber: true, firstName: true, lastName: true, grade: true, stream: true, status: true, _count: { select: { enrollments: true } } }
+                });
+                console.log(\\\`Total active learners: \\\${learners.length}\\\`);
+
+                const gradeStreamCounts = {};
+                learners.forEach(l => {
+                  const key = \\\`grade='\\\${l.grade}', stream='\\\${l.stream}'\\\`;
+                  gradeStreamCounts[key] = (gradeStreamCounts[key] || 0) + 1;
+                });
+                console.log('Learners grouped by grade & stream:', JSON.stringify(gradeStreamCounts, null, 2));
+
+                console.log('=== CLASS ENROLLMENTS ===');
+                const enrollments = await prisma.classEnrollment.findMany({
+                  select: { id: true, classId: true, learnerId: true, active: true }
+                });
+                console.log(\\\`Total class enrollments: \\\${enrollments.length}\\\`);
+
+                await prisma.\\\$disconnect();
+              }
+
+              main().catch(err => {
+                console.error(err);
+                process.exit(1);
+              });
+            \"
+          "
