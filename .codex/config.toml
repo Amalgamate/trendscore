@@ -1,0 +1,9 @@
+[shell_environment_policy]
+inherit = "core"
+
+[shell_environment_policy.set]
+ANTHROPIC_BASE_URL = "https://router.bynara.id"
+ANTHROPIC_AUTH_TOKEN = "sk-nry-EC14yvtHi-kz1wUiy-Eh7V4yYpKowgmmWcqrUQdfpcY"
+ANTHROPIC_DEFAULT_OPUS_MODEL = "mimo-v2.5"
+ANTHROPIC_DEFAULT_SONNET_MODEL = "mimo-v2.5-pro-ultraspeed"
+ANTHROPIC_DEFAULT_HAIKU_MODEL = "claude-fable-5"

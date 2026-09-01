@@ -210,9 +210,14 @@ export const recalculateClassScores = async (req: Request, res: Response) => {
 };
 
 export const seedStreams = async (req: Request, res: Response) => {
-  const streams = ['A', 'B', 'C', 'D'];
-  for (const s of streams) await configService.upsertStreamConfig({ name: s });
-  res.json({ success: true, message: 'Streams seeded' });
+  const customStreams = Array.isArray(req.body?.streams)
+    ? req.body.streams.map((s: unknown) => String(s).trim()).filter(Boolean)
+    : [];
+  if (!customStreams.length) {
+    throw new ApiError(400, 'Please provide an array of stream names to seed (e.g. ["Blue", "Green"])');
+  }
+  for (const s of customStreams) await configService.upsertStreamConfig({ name: s });
+  res.json({ success: true, message: `Seeded ${customStreams.length} stream(s)` });
 };
 
 export const seedClasses = async (req: AuthRequest, res: Response) => {
@@ -237,40 +242,47 @@ export const seedClasses = async (req: AuthRequest, res: Response) => {
           'GRADE_9',
         ] as const);
 
+  const configuredStreams = await prisma.streamConfig.findMany({ select: { name: true } });
+  const streamList = configuredStreams.map((s) => s.name.trim()).filter(Boolean);
+
+  if (!streamList.length) {
+    throw new ApiError(400, 'No streams configured for this school. Please create streams first before generating classes.');
+  }
+
   const results = [];
   let skipped = 0;
-  const classesByGrade = new Map<string, string>();
+  const classesByGradeStream = new Map<string, string>();
+
   for (const grade of grades) {
-    const stream = 'A';
-    const name =
-      institutionType === 'SECONDARY'
-        ? `Grade ${String(grade).replace('GRADE', '')} ${stream}`
-        : `${String(grade).replace('_', ' ')} ${stream}`;
+    for (const stream of streamList) {
+      const name =
+        institutionType === 'SECONDARY'
+          ? `Grade ${String(grade).replace('GRADE', '')} ${stream}`
+          : `${String(grade).replace('_', ' ')} ${stream}`;
 
-    const existing = await prisma.class.findFirst({
-      where: { institutionType, grade, stream, academicYear: year, term },
-    });
-
-    if (!existing) {
-      const classCode = await generateClassCode();
-
-      const newClass = await prisma.class.create({
-        data: { classCode, name, grade, institutionType, stream, academicYear: year, term, active: true },
+      const existing = await prisma.class.findFirst({
+        where: { institutionType, grade, stream, academicYear: year, term },
       });
-      results.push(newClass);
-      classesByGrade.set(grade, newClass.id);
-    } else {
-      skipped++;
-      classesByGrade.set(grade, existing.id);
+
+      if (!existing) {
+        const classCode = await generateClassCode();
+
+        const newClass = await prisma.class.create({
+          data: { classCode, name, grade, institutionType, stream, academicYear: year, term, active: true },
+        });
+        results.push(newClass);
+        classesByGradeStream.set(`${grade}_${stream}`, newClass.id);
+      } else {
+        skipped++;
+        classesByGradeStream.set(`${grade}_${stream}`, existing.id);
+      }
     }
   }
 
-  // A seeded class structure should be immediately useful. Attach only eligible
-  // learners who have no active class enrollment; existing class assignments are
-  // intentionally preserved.
+  // Attach eligible learners who have matching grade & stream and no active enrollment
   const eligibleLearners = await prisma.learner.findMany({
-    where: { grade: { in: [...grades] }, archived: false },
-    select: { id: true, grade: true },
+    where: { grade: { in: [...grades] }, archived: false, status: 'ACTIVE' },
+    select: { id: true, grade: true, stream: true },
   });
   const existingEnrollmentRows = eligibleLearners.length
     ? await prisma.classEnrollment.findMany({
@@ -281,7 +293,10 @@ export const seedClasses = async (req: AuthRequest, res: Response) => {
   const enrolledLearnerIds = new Set(existingEnrollmentRows.map((enrollment) => enrollment.learnerId));
   const enrollmentRows = eligibleLearners
     .filter((learner) => !enrolledLearnerIds.has(learner.id))
-    .map((learner) => ({ classId: classesByGrade.get(learner.grade), learnerId: learner.id }))
+    .map((learner) => {
+      const streamKey = learner.stream ? `${learner.grade}_${learner.stream}` : `${learner.grade}_${streamList[0]}`;
+      return { classId: classesByGradeStream.get(streamKey), learnerId: learner.id };
+    })
     .filter((enrollment): enrollment is { classId: string; learnerId: string } => Boolean(enrollment.classId));
 
   if (enrollmentRows.length) {
@@ -290,7 +305,7 @@ export const seedClasses = async (req: AuthRequest, res: Response) => {
 
   res.json({
     success: true,
-    message: `Seeded ${results.length} classes for ${institutionType} — ${year} ${term}`,
+    message: `Seeded ${results.length} classes across ${streamList.length} stream(s) for ${institutionType} — ${year} ${term}`,
     created: results.length,
     skipped,
     enrolled: enrollmentRows.length,

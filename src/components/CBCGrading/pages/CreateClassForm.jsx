@@ -1,19 +1,11 @@
-/**
- * CreateClassForm Component
- * Form to create new classes with:
- * - Grade select dropdown (fetches all available grades)
- * - Teacher select dropdown
- * - Auto-generated class code (system generates)
- */
-
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, AlertCircle, Loader } from 'lucide-react';
+import { ArrowLeft, AlertCircle, Loader, Layers, ArrowRight } from 'lucide-react';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '../../../components/ui';
 import { useSchoolData } from '../../../contexts/SchoolDataContext';
 import { useAuth } from '../../../hooks/useAuth';
 import { getCurrentSchoolId, getStoredUser } from '../../../services/schoolContext';
 import usePageNavigation from '../../../hooks/usePageNavigation';
-import api from '../../../services/api';
+import api, { configAPI } from '../../../services/api';
 import toast from 'react-hot-toast';
 
 const CreateClassForm = () => {
@@ -21,15 +13,17 @@ const CreateClassForm = () => {
   const { user } = useAuth();
   const { grades } = useSchoolData();
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [teachers, setTeachers] = useState([]);
   const [branches, setBranches] = useState([]);
+  const [streams, setStreams] = useState([]);
   const [schoolId, setSchoolId] = useState(null);
   const [error, setError] = useState('');
 
   const [formData, setFormData] = useState({
     name: '',
     grade: grades.length > 0 ? grades[0] : 'GRADE_1',
-    stream: 'A',
+    stream: '',
     branchId: '',
     teacherId: '',
     capacity: 40,
@@ -52,6 +46,7 @@ const CreateClassForm = () => {
   }, [user]);
 
   const fetchInitialData = async (sid) => {
+    setInitialLoading(true);
     try {
       // Fetch teachers for this school
       const teachersResponse = await api.teachers.getAll({ schoolId: sid });
@@ -62,13 +57,24 @@ const CreateClassForm = () => {
       const branchesData = Array.isArray(branchesResponse) ? branchesResponse : branchesResponse?.data || [];
       setBranches(branchesData);
 
-      // Set default branch if only one exists
-      if (branchesData.length === 1) {
-        setFormData(prev => ({ ...prev, branchId: branchesData[0].id }));
-      }
+      // Fetch configured streams for this school
+      const streamsResponse = await configAPI.getStreamConfigs();
+      const streamsData = Array.isArray(streamsResponse)
+        ? streamsResponse
+        : streamsResponse?.data || [];
+      setStreams(streamsData);
+
+      // Set defaults
+      setFormData(prev => ({
+        ...prev,
+        ...(branchesData.length === 1 ? { branchId: branchesData[0].id } : {}),
+        stream: streamsData.length > 0 ? streamsData[0].name : ''
+      }));
     } catch (error) {
       console.error('Error fetching initial data:', error);
       setError('Failed to load form data');
+    } finally {
+      setInitialLoading(false);
     }
   };
 
@@ -91,8 +97,12 @@ const CreateClassForm = () => {
         throw new Error('Please fill in all required fields');
       }
 
+      if (streams.length === 0) {
+        throw new Error('Please configure at least one stream in Academic Settings before creating a class.');
+      }
+
       // Auto-generate name if not provided
-      const finalName = formData.name || `${formData.grade.replace('_', ' ')} ${formData.stream}`;
+      const finalName = formData.name || `${formData.grade.replace(/_/g, ' ')} ${formData.stream}`.trim();
 
       // Call API to create class
       await api.classes.create({
@@ -123,6 +133,40 @@ const CreateClassForm = () => {
           <p className="text-sm text-gray-500 mt-1">Add a new class to your school. Class code will be auto-generated.</p>
         </div>
       </div>
+
+      {/* No Streams Warning Dialog */}
+      {!initialLoading && streams.length === 0 && (
+        <div className="p-5 bg-amber-50 border border-amber-200 rounded-xl shadow-sm space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-amber-100 rounded-lg text-amber-700 mt-0.5">
+              <Layers size={20} />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-amber-900">No Streams Configured</h3>
+              <p className="text-sm text-amber-800 mt-1">
+                Your school does not have any streams configured yet (e.g. Blue, Green). Classes require a stream so learners can be grouped and enrolled correctly.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 pt-2">
+            <Button
+              type="button"
+              onClick={() => navigateTo('academic-settings')}
+              className="bg-amber-600 hover:bg-amber-700 text-white text-xs px-3 py-2"
+            >
+              Configure Streams in Academic Settings <ArrowRight size={14} className="ml-1" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigateTo('classes')}
+              className="text-xs px-3 py-2 border-amber-300 text-amber-800 hover:bg-amber-100"
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Form Card */}
       <Card>
@@ -166,18 +210,29 @@ const CreateClassForm = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Stream
+                  Stream *
                 </label>
                 <select
                   name="stream"
                   value={formData.stream}
                   onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-purple focus:border-transparent"
+                  required
+                  disabled={streams.length === 0}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-purple focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
                 >
-                  <option value="A">Stream A</option>
-                  <option value="B">Stream B</option>
-                  <option value="C">Stream C</option>
+                  {streams.length === 0 ? (
+                    <option value="">No streams created yet</option>
+                  ) : (
+                    streams.map(s => (
+                      <option key={s.id || s.name} value={s.name}>
+                        {s.name}
+                      </option>
+                    ))
+                  )}
                 </select>
+                {streams.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">Please create streams first.</p>
+                )}
               </div>
             </div>
 

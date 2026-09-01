@@ -156,7 +156,7 @@ const ClassList = () => {
                     {/* Class Info */}
                     <div>
                       <h3 className="text-xl font-semibold text-gray-900">{classItem.name}</h3>
-                      <p className="text-sm text-gray-500 mt-1">Stream: {classItem.stream || 'A'}</p>
+                      <p className="text-sm text-gray-500 mt-1">Stream: {classItem.stream || '—'}</p>
                       <p className="text-xs text-gray-400 mt-1">Academic Year: {classItem.academicYear}</p>
                     </div>
 

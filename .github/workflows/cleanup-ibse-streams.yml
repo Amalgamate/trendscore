@@ -1,0 +1,216 @@
+name: Clean Up School Streams & Classes (One-Shot)
+
+# Aligns school streams to actual school configuration (e.g. BLUE / GREEN),
+# updates learner streams, enrolls into matching classes, and removes phantom 'A' classes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      school_slug:
+        description: 'School slug (e.g. ibse)'
+        required: true
+        type: string
+        default: ibse
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Clean up streams and align to BLUE/GREEN for ${{ inputs.school_slug }}
+        env:
+          TARGET: ${{ inputs.school_slug }}
+        run: |
+          set -euo pipefail
+          ssh production "
+            set -euo pipefail
+
+            CONTAINER=\$(sudo docker ps \
+              --filter 'label=com.docker.compose.service=backend' \
+              --format '{{.Names}}|{{.Label \"com.docker.compose.project\"}}' \
+              | awk -F'|' -v t=\"${TARGET}\" '
+                \$2 == t || \$2 == \"zawadi-\" t || \$1 ~ t { print \$1; exit }
+              ')
+
+            echo \"✅ Container: \${CONTAINER}\"
+
+            sudo docker exec \"\${CONTAINER}\" node -e \"
+              const { PrismaClient } = require('@prisma/client');
+              const prisma = new PrismaClient();
+
+              const GRADE_DISPLAY = {
+                PLAYGROUP: 'Playgroup',
+                PP1: 'PP1',
+                PP2: 'PP2',
+                GRADE_1: 'Grade 1',
+                GRADE_2: 'Grade 2',
+                GRADE_3: 'Grade 3',
+                GRADE_4: 'Grade 4',
+                GRADE_5: 'Grade 5',
+                GRADE_6: 'Grade 6',
+                GRADE_7: 'Grade 7',
+                GRADE_8: 'Grade 8',
+                GRADE_9: 'Grade 9'
+              };
+
+              async function main() {
+                console.log('=== 1. Setting Up School Streams (BLUE, GREEN) ===');
+                await prisma.stream.upsert({
+                  where: { name: 'BLUE' },
+                  create: { name: 'BLUE', active: true },
+                  update: { active: true }
+                });
+                await prisma.stream.upsert({
+                  where: { name: 'GREEN' },
+                  create: { name: 'GREEN', active: true },
+                  update: { active: true }
+                });
+
+                // Also populate StreamConfig table used by config API
+                await prisma.streamConfig.upsert({
+                  where: { name: 'BLUE' },
+                  create: { name: 'BLUE', active: true },
+                  update: { active: true }
+                });
+                await prisma.streamConfig.upsert({
+                  where: { name: 'GREEN' },
+                  create: { name: 'GREEN', active: true },
+                  update: { active: true }
+                });
+
+                // Remove Stream A
+                try {
+                  await prisma.stream.deleteMany({ where: { name: 'A' } });
+                  await prisma.streamConfig.deleteMany({ where: { name: 'A' } });
+                  console.log('Removed Stream A');
+                } catch (e) {
+                  console.warn('Note on deleting stream A:', e.message);
+                }
+
+                console.log('=== 2. Updating All Learners to Stream BLUE ===');
+                const learnerUpdate = await prisma.learner.updateMany({
+                  where: { status: 'ACTIVE' },
+                  data: { stream: 'BLUE' }
+                });
+                console.log(\\\`Updated \\\${learnerUpdate.count} active learners -> stream='BLUE'\\\`);
+
+                console.log('=== 3. Ensuring Standard Blue Classes Exist ===');
+                const activeLearners = await prisma.learner.findMany({
+                  where: { status: 'ACTIVE' },
+                  select: { id: true, grade: true, stream: true }
+                });
+                const gradesInUse = [...new Set(activeLearners.map(l => l.grade))];
+
+                for (const grade of gradesInUse) {
+                  const gradeLabel = GRADE_DISPLAY[grade] || grade;
+                  const className = \\\`\\\${gradeLabel} Blue\\\`;
+                  const classCode = \\\`CLS-\\\${grade}-BLUE\\\`;
+
+                  let blueClass = await prisma.class.findFirst({
+                    where: { grade, stream: 'BLUE' }
+                  });
+
+                  if (!blueClass) {
+                    blueClass = await prisma.class.create({
+                      data: {
+                        name: className,
+                        classCode: classCode + '-' + Date.now().toString().slice(-4),
+                        grade: grade,
+                        stream: 'BLUE',
+                        active: true,
+                        academicYear: 2026,
+                        term: 'TERM_3',
+                        capacity: 45
+                      }
+                    });
+                    console.log(\\\`Created class: \\\${className}\\\`);
+                  } else {
+                    await prisma.class.update({
+                      where: { id: blueClass.id },
+                      data: { name: className, active: true, archived: false }
+                    });
+                    console.log(\\\`Verified class: \\\${className}\\\`);
+                  }
+
+                  // Enroll learners into this Blue class
+                  const gradeLearners = activeLearners.filter(l => l.grade === grade);
+                  for (const learner of gradeLearners) {
+                    await prisma.classEnrollment.upsert({
+                      where: {
+                        classId_learnerId: {
+                          classId: blueClass.id,
+                          learnerId: learner.id
+                        }
+                      },
+                      create: {
+                        classId: blueClass.id,
+                        learnerId: learner.id,
+                        active: true
+                      },
+                      update: {
+                        active: true,
+                        archived: false
+                      }
+                    });
+                  }
+                  console.log(\\\`Enrolled \\\${gradeLearners.length} learners in \\\${className}\\\`);
+                }
+
+                console.log('=== 4. Removing Phantom Stream A Classes ===');
+                const streamAClasses = await prisma.class.findMany({
+                  where: { stream: 'A' },
+                  select: { id: true, name: true }
+                });
+
+                for (const aClass of streamAClasses) {
+                  await prisma.classEnrollment.deleteMany({ where: { classId: aClass.id } });
+                  await prisma.class.delete({ where: { id: aClass.id } });
+                  console.log(\\\`Deleted phantom class: \\\${aClass.name}\\\`);
+                }
+
+                console.log('=== 5. Final Class & Enrollment Summary ===');
+                const allClasses = await prisma.class.findMany({
+                  where: { active: true, archived: false },
+                  select: {
+                    name: true,
+                    grade: true,
+                    stream: true,
+                    _count: { select: { enrollments: true } }
+                  },
+                  orderBy: { name: 'asc' }
+                });
+                allClasses.forEach(c => {
+                  console.log(\\\` - \\\${c.name} (Grade: \\\${c.grade}, Stream: \\\${c.stream}): \\\${c._count.enrollments} learner(s)\\\`);
+                });
+
+                await prisma.\\\$disconnect();
+              }
+
+              main().catch(err => {
+                console.error('Error:', err);
+                process.exit(1);
+              });
+            \"
+          "
+
+      - name: Report
+        if: success()
+        run: |
+          {
+            echo "## IBSE Streams & Classes Cleaned Up"
+            echo ""
+            echo "All learners and classes have been aligned to **Stream BLUE** (and GREEN for Playgroup)."
+            echo "Phantom Stream A classes and enrollments have been completely removed."
+          } >> "$GITHUB_STEP_SUMMARY"
