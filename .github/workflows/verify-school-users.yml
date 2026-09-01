@@ -1,0 +1,122 @@
+name: Verify School Users (One-Shot)
+
+# One-shot workflow to verify all users and bypass verification gates for a school.
+# Use when users cannot sign in due to unverified accounts or missing verification controls.
+
+on:
+  workflow_dispatch:
+    inputs:
+      school_slug:
+        description: 'School slug or compose project (e.g. ibse, zawadi-ibse, waso-cs)'
+        required: true
+        type: string
+        default: ibse
+      bypass_school_gate:
+        description: 'Also disable school-wide verification requirement'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Verify users and bypass verification for ${{ inputs.school_slug }}
+        env:
+          TARGET: ${{ inputs.school_slug }}
+          BYPASS_SCHOOL: ${{ inputs.bypass_school_gate }}
+        run: |
+          set -euo pipefail
+          ssh production "
+            set -euo pipefail
+
+            # Resolve container by exact or slug name
+            CONTAINER=\$(sudo docker ps \
+              --filter 'label=com.docker.compose.service=backend' \
+              --format '{{.Names}}|{{.Label \"com.docker.compose.project\"}}' \
+              | awk -F'|' -v t=\"${TARGET}\" '
+                \$2 == t || \$2 == \"zawadi-\" t || \$1 ~ t { print \$1; exit }
+              ')
+
+            if [[ -z \"\${CONTAINER}\" ]]; then
+              echo '❌ No running backend container found for ${TARGET}. Running backend containers:'
+              sudo docker ps --filter 'label=com.docker.compose.service=backend' --format '{{.Names}} (project: {{.Label \"com.docker.compose.project\"}})'
+              exit 1
+            fi
+
+            echo \"✅ Found target backend container: \${CONTAINER}\"
+
+            sudo docker exec \"\${CONTAINER}\" node -e \"
+              const { PrismaClient } = require('@prisma/client');
+              const prisma = new PrismaClient();
+
+              async function main() {
+                console.log('--- Verifying users in database ---');
+
+                const usersBefore = await prisma.user.findMany({
+                  select: { id: true, email: true, firstName: true, lastName: true, role: true, emailVerified: true, verificationRequired: true }
+                });
+
+                console.log(\\\`Found \\\${usersBefore.length} total user(s)\\\`);
+
+                const userUpdate = await prisma.user.updateMany({
+                  data: {
+                    emailVerified: true,
+                    verificationRequired: false
+                  }
+                });
+
+                console.log(\\\`✅ Updated \\\${userUpdate.count} user(s) -> emailVerified=true, verificationRequired=false\\\`);
+
+                if (${BYPASS_SCHOOL}) {
+                  const schoolUpdate = await prisma.school.updateMany({
+                    data: {
+                      requiresUserVerification: false
+                    }
+                  });
+                  console.log(\\\`✅ Updated \\\${schoolUpdate.count} school(s) -> requiresUserVerification=false\\\`);
+                }
+
+                // Verify updated state
+                const usersAfter = await prisma.user.findMany({
+                  select: { email: true, role: true, emailVerified: true, verificationRequired: true }
+                });
+                console.log('Active user verification status:');
+                usersAfter.forEach(u => console.log(\\\` - \\\${u.email} (\\\${u.role}): verified=\\\${u.emailVerified}, required=\\\${u.verificationRequired}\\\`));
+
+                await prisma.\\\$disconnect();
+              }
+
+              main().catch(err => {
+                console.error('Error executing verification update:', err);
+                process.exit(1);
+              });
+            \"
+          "
+
+      - name: Report
+        if: success()
+        run: |
+          {
+            echo "## User verification update succeeded"
+            echo ""
+            echo "All users in \`${{ inputs.school_slug }}\` have been marked as \`emailVerified=true\` and \`verificationRequired=false\`."
+            if [[ "${{ inputs.bypass_school_gate }}" == "true" ]]; then
+              echo "School-wide verification requirement was also disabled (\`requiresUserVerification=false\`)."
+            fi
+            echo ""
+            echo "Users can now sign in immediately without OTP or email verification gates."
+          } >> "$GITHUB_STEP_SUMMARY"
