@@ -150,7 +150,8 @@
       "zawadijrn",
       "zawadi-amalgamate-images",
       "zawadi-naet",
-      "zawadi-zayan-electricals"
+      "zawadi-zayan-electricals",
+      "ibse"
     ],
     "notes": "Merges unknown running school stacks into all_schools only. Manifest entries win over discovery."
   }
