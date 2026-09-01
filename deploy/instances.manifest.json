@@ -143,7 +143,7 @@
     }
   ],
   "discovery": {
-    "enabled": true,
+    "enabled": false,
     "default_tier": "production",
     "school_stack_only": true,
     "exclude_compose_projects": [
@@ -153,6 +153,6 @@
       "zawadi-zayan-electricals",
       "ibse"
     ],
-    "notes": "Merges unknown running school stacks into all_schools only. Manifest entries win over discovery."
+    "notes": "Discovery disabled — all production schools are explicitly listed above. ibse excluded until its database is baselined (Prisma P3005)."
   }
 }
