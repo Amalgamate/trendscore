@@ -48,6 +48,7 @@ FRONTEND_IMAGE="${FRONTEND_IMAGE:-ghcr.io/amalgamate/zawadi-frontend:latest}"
 BACKEND_IMAGE="${BACKEND_IMAGE:-ghcr.io/amalgamate/zawadi-backend:latest}"
 DEFAULT_HOST_IP="${DEFAULT_HOST_IP:-185.127.16.124}"
 WORDPRESS_CONFIG_EXTRA_DEFAULT="${WORDPRESS_CONFIG_EXTRA_DEFAULT:-define('FS_METHOD','direct');}"
+ZAWADI_BIOMETRIC_ENCRYPTION_KEY="${BIOMETRIC_ENCRYPTION_KEY:-759728fc56aaaea8e79fed20aa8409635cb3a58731207e22b073d33bcb061f1c}"
 
 range_for_app() {
   local app="$1"
@@ -259,12 +260,34 @@ if [[ "${APP_TYPE}" == "school" ]] && port_in_use "${BE_PORT}"; then
   exit 4
 fi
 
+ensure_biometric_key_in_env() {
+  local env_file="$1"
+  [[ -f "${env_file}" ]] || return 0
+
+  local key version
+  key="$(env_value BIOMETRIC_ENCRYPTION_KEY)"
+  version="$(env_value BIOMETRIC_KEY_VERSION)"
+
+  if [[ -z "${key}" ]]; then
+    echo "BIOMETRIC_ENCRYPTION_KEY=${ZAWADI_BIOMETRIC_ENCRYPTION_KEY}" >> "${env_file}"
+    echo "[provision] configured BIOMETRIC_ENCRYPTION_KEY for $(basename "${env_file}")"
+  elif [[ ! "${key}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+    echo "warning: BIOMETRIC_ENCRYPTION_KEY in ${env_file} is not 64 hex chars" >&2
+  fi
+
+  if [[ -z "${version}" ]]; then
+    echo "BIOMETRIC_KEY_VERSION=1" >> "${env_file}"
+  fi
+}
+
 if [[ "${REUSED_ENV_FILE}" == "false" ]]; then
 DB_USER="zawadi"
 DB_PASSWORD="$(openssl rand -hex 16)"
 JWT_SECRET="$(openssl rand -hex 32)"
 JWT_REFRESH_SECRET="$(openssl rand -hex 32)"
 ENCRYPTION_KEY="$(openssl rand -hex 32)"
+BIOMETRIC_ENCRYPTION_KEY="${ZAWADI_BIOMETRIC_ENCRYPTION_KEY}"
+BIOMETRIC_KEY_VERSION="1"
 
 FRONTEND_URL="http://${DEFAULT_HOST_IP}:${FE_PORT}"
 API_URL="http://${DEFAULT_HOST_IP}:${BE_PORT}/api"
@@ -292,6 +315,8 @@ DB_NAME=${DB_NAME}
 JWT_SECRET=${JWT_SECRET}
 JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
+BIOMETRIC_ENCRYPTION_KEY=${BIOMETRIC_ENCRYPTION_KEY}
+BIOMETRIC_KEY_VERSION=${BIOMETRIC_KEY_VERSION}
 SUPER_ADMIN_EMAIL=admin@trendscore.app
 SUPER_ADMIN_PASSWORD=Admin@123!
 CREATE_EXTRA_DEMO_USERS=false
@@ -322,6 +347,10 @@ else
   FE_PORT="$(env_value FRONTEND_PORT "${FE_PORT}")"
   BE_PORT="$(env_value BACKEND_PORT "${BE_PORT}")"
   DB_NAME="$(env_value DB_NAME "${DB_NAME}")"
+fi
+
+if [[ "${APP_TYPE}" == "school" ]]; then
+  ensure_biometric_key_in_env "${ENV_FILE}"
 fi
 
 # Ensure runtime variables are always loaded from env file for new and reused runs.

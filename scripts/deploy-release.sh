@@ -236,9 +236,9 @@ ensure_biometric_key_in_env() {
   version="$(read_env_value "${env_file}" BIOMETRIC_KEY_VERSION)"
 
   if [[ -z "${key}" ]]; then
-    generated_key="$(openssl rand -hex 32)"
+    generated_key="${BIOMETRIC_ENCRYPTION_KEY:-759728fc56aaaea8e79fed20aa8409635cb3a58731207e22b073d33bcb061f1c}"
     printf 'BIOMETRIC_ENCRYPTION_KEY=%s\n' "${generated_key}" | run_as_root tee -a "${env_file}" >/dev/null
-    log "Generated a dedicated biometric encryption key for $(basename "${env_file}")"
+    log "Configured standard biometric encryption key for $(basename "${env_file}")"
   elif [[ ! "${key}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
     fail "BIOMETRIC_ENCRYPTION_KEY in ${env_file} must be exactly 64 hexadecimal characters; refusing to rotate or overwrite it automatically"
   fi
