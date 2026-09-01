@@ -23,6 +23,8 @@ RUN printf '%s\n' \
     '    gzip_comp_level 5;' \
     '    gzip_min_length 1024;' \
     '    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss image/svg+xml;' \
+    '    # Branding settings can include several base64 image assets in one request.' \
+    '    client_max_body_size 12m;' \
     '    root /usr/share/nginx/html;' \
     '    index index.html index.htm;' \
     '    location /assets/ {' \
