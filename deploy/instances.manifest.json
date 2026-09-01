@@ -130,6 +130,16 @@
       "compose_project": "zawadi-barracks-comprehesive-school",
       "env_file": "/srv/zawadi/apps/env/.zawadi-barracks-comprehesive-school.env",
       "public_domain": "barracks-comprehesive-school.trendscore.co.ke"
+    },
+    {
+      "id": "ibse",
+      "label": "IBSE",
+      "tier": "production",
+      "active": false,
+      "deployment_allowed": false,
+      "kind": "stack",
+      "compose_project": "ibse",
+      "notes": "Discovered dynamically but not yet baselined — Prisma P3005 on every deploy. Set deployment_allowed=true after running prisma migrate deploy --baseline on the ibse database."
     }
   ],
   "discovery": {
