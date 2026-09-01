@@ -1,0 +1,83 @@
+name: Update School Containers (One-Shot)
+
+# One-shot workflow to pull latest images and recreate frontend/backend containers.
+# Database volume is untouched — NO data loss.
+
+on:
+  workflow_dispatch:
+    inputs:
+      school_slug:
+        description: 'School slug or compose project (e.g. ibse, zawadi-ibse, waso-cs)'
+        required: true
+        type: string
+        default: ibse
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Pull and recreate containers for ${{ inputs.school_slug }}
+        env:
+          TARGET: ${{ inputs.school_slug }}
+        run: |
+          set -euo pipefail
+          ssh production "
+            set -euo pipefail
+            cd /srv/zawadi/apps
+
+            SLUG=\"${TARGET#zawadi-}\"
+            PROJECT=\"zawadi-\${SLUG}\"
+            ENV_FILE=\"/srv/zawadi/apps/env/.\${PROJECT}.env\"
+
+            if [[ ! -f \"\${ENV_FILE}\" ]]; then
+              # Fallback checks
+              if [[ -f \"/srv/zawadi/apps/env/.zawadi-\${TARGET}.env\" ]]; then
+                ENV_FILE=\"/srv/zawadi/apps/env/.zawadi-\${TARGET}.env\"
+                PROJECT=\"zawadi-\${TARGET}\"
+              elif [[ -f \"/srv/zawadi/apps/.env.\${TARGET}\" ]]; then
+                ENV_FILE=\"/srv/zawadi/apps/.env.\${TARGET}\"
+                PROJECT=\"\${TARGET}\"
+              fi
+            fi
+
+            if [[ ! -f \"\${ENV_FILE}\" ]]; then
+              echo '❌ Could not locate env file for ${TARGET}. Checked /srv/zawadi/apps/env/'
+              ls -la /srv/zawadi/apps/env/
+              exit 1
+            fi
+
+            echo \"✅ Using project: \${PROJECT}\"
+            echo \"✅ Using env file: \${ENV_FILE}\"
+
+            echo '=== Pulling latest frontend and backend images ==='
+            sudo docker compose --env-file \"\${ENV_FILE}\" -p \"\${PROJECT}\" -f docker-compose.stack.yml pull frontend backend
+
+            echo '=== Recreating frontend and backend containers (Database volume preserved) ==='
+            sudo docker compose --env-file \"\${ENV_FILE}\" -p \"\${PROJECT}\" -f docker-compose.stack.yml up -d --force-recreate --no-deps frontend backend
+
+            echo '=== Container status ==='
+            sudo docker ps --filter \"label=com.docker.compose.project=\${PROJECT}\" --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
+          "
+
+      - name: Report
+        if: success()
+        run: |
+          {
+            echo "## Containers updated successfully"
+            echo ""
+            echo "Latest \`frontend\` and \`backend\` images pulled and recreated for \`${{ inputs.school_slug }}\`."
+            echo "Database data was completely preserved."
+          } >> "$GITHUB_STEP_SUMMARY"
