@@ -397,32 +397,32 @@ const LearnersList = ({
   };
 
   const KpiCard = ({ color, icon: Icon, label, value, sub }) => (
-    <div className="relative overflow-hidden p-5 text-white select-none" style={{ backgroundColor: color }}>
+    <div className="relative overflow-hidden rounded-2xl p-4 sm:p-5 text-white select-none shadow-[0_1px_3px_rgba(0,0,0,0.04)]" style={{ backgroundColor: color }}>
       <div className="pointer-events-none absolute -bottom-4 -right-4 text-white/10">
-        <Icon size={90} strokeWidth={1} />
+        <Icon size={80} strokeWidth={1} />
       </div>
-      <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/70 mb-3">{label}</p>
+      <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/80 mb-2 sm:mb-3">{label}</p>
       <div className="flex items-end justify-between gap-2">
-        <p className="text-4xl font-black tracking-tight leading-none text-white">{value ?? '—'}</p>
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center bg-white/20 border border-white/30">
+        <p className="text-3xl sm:text-4xl font-black tracking-tight leading-none text-white">{value ?? '—'}</p>
+        <span className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl bg-white/20 border border-white/30">
           <Icon size={18} strokeWidth={2.2} className="text-white/90" />
         </span>
       </div>
-      {sub && <p className="mt-1.5 text-sm font-semibold text-white/70">{sub}</p>}
+      {sub && <p className="mt-1.5 text-xs sm:text-sm font-semibold text-white/80">{sub}</p>}
     </div>
   );
 
   return (
     <div className="space-y-4">
       {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3.5 sm:gap-4">
         <KpiCard color={SOLID_COLORS.navy}    icon={Users}     label="Total Enrolled"  value={kpiTotal}   sub="All students" />
         <KpiCard color={SOLID_COLORS.teal}    icon={UserCheck} label="Active Students" value={kpiActive}  sub="Currently enrolled" />
         <KpiCard color={SOLID_COLORS.forest}  icon={Users2}    label="Boys"            value={kpiMale}    sub={kpiTotal > 0 ? `${Math.round((kpiMale / kpiTotal) * 100)}% of enrolment` : null} />
         <KpiCard color={SOLID_COLORS.crimson} icon={UserCheck} label="Girls"           value={kpiFemale}  sub={kpiTotal > 0 ? `${Math.round((kpiFemale / kpiTotal) * 100)}% of enrolment` : null} />
       </div>
       {/* Compact Quick Actions Toolbar */}
-      <div className="toolbar-card">
+      <div className="toolbar-card rounded-2xl border border-slate-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
         <div className="flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center">
 
           <div className="flex flex-row gap-2 w-full xl:w-auto items-center" style={{ maxWidth: isMobile ? '100%' : '400px' }}>
@@ -641,7 +641,7 @@ const LearnersList = ({
             <div
               key={learner.id}
               onClick={() => onViewLearner(learner)}
-              className={`bg-white p-4 rounded-xl shadow-sm border ${selectedLearners.includes(learner.id) ? 'border-brand-purple bg-brand-purple/5' : 'border-gray-100'} cursor-pointer active:scale-[0.99] transition-transform`}
+              className={`bg-white p-4 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.03)] border ${selectedLearners.includes(learner.id) ? 'border-slate-900 bg-slate-50/60' : 'border-slate-200/90'} cursor-pointer active:scale-[0.99] transition-all duration-150`}
             >
               <div className="flex items-start gap-3">
                 {/* Checkbox (if needed for bulk on mobile) & Avatar */}
@@ -650,10 +650,10 @@ const LearnersList = ({
                     type="checkbox"
                     checked={selectedLearners.includes(learner.id)}
                     onChange={(e) => { e.stopPropagation(); handleSelectLearner(learner.id); }}
-                    className="w-4 h-4 text-brand-teal border-gray-300 rounded focus:ring-brand-teal"
+                    className="w-4 h-4 text-slate-900 border-slate-300 rounded focus:ring-slate-900"
                   />
                 </div>
-                <div className="w-10 h-10 bg-brand-purple/10 text-brand-purple rounded-xl border border-brand-purple/20 flex-shrink-0 flex items-center justify-center font-medium text-base">
+                <div className="w-10 h-10 bg-slate-100 text-slate-700 rounded-xl border border-slate-200 flex-shrink-0 flex items-center justify-center font-bold text-sm">
                   {learner.avatar && (learner.avatar.startsWith('http') || learner.avatar.startsWith('/') || learner.avatar.startsWith('data:image')) ? (
                     <img src={learner.avatar} alt="avatar" className="w-full h-full object-cover rounded-xl" />
                   ) : (

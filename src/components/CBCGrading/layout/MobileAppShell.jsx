@@ -63,8 +63,7 @@ function MobileSearchSheet({ open, onClose, onNavigate }) {
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex flex-col"
-      style={{ background: 'var(--ts-mobile-navy, #06285a)' }}
+      className="fixed inset-0 z-[200] flex flex-col bg-slate-950 text-white"
       role="dialog"
       aria-modal="true"
       aria-label="Search learners"
@@ -236,17 +235,15 @@ const MobileAppShell = ({ children, user, onNavigate, onLogout, currentPage, bra
 
   return (
     <>
-      <div className="ts-mobile-app h-[100dvh] w-full flex flex-col overflow-hidden relative text-white">
+      <div className="ts-mobile-app h-[100dvh] w-full flex flex-col overflow-hidden relative text-slate-900">
         {/* ── Header ── */}
         <div
-          className="ts-mobile-header flex min-h-16 items-center justify-between border-b px-5 pb-3"
-          style={{ borderColor: 'var(--brand-secondary, #ff7900)33' }}
+          className="ts-mobile-header flex min-h-16 items-center justify-between border-b border-white/10 px-4 pb-3"
         >
           {/* School identity */}
           <div className="flex items-center gap-2.5">
             <div
-              className="w-9 h-9 rounded-[10px] bg-white flex items-center justify-center overflow-hidden border"
-              style={{ borderColor: 'var(--brand-secondary, #ff7900)' }}
+              className="w-9 h-9 rounded-xl bg-white flex items-center justify-center overflow-hidden border border-white/20 shadow-sm"
             >
               <img
                 src={schoolLogo}
@@ -256,10 +253,10 @@ const MobileAppShell = ({ children, user, onNavigate, onLogout, currentPage, bra
               />
             </div>
             <div>
-              <div className="max-w-[170px] truncate text-[13px] font-semibold text-white leading-tight">
+              <div className="max-w-[170px] truncate text-[13px] font-bold text-white leading-tight">
                 {schoolName}
               </div>
-              <div className="text-[10px] uppercase tracking-[0.06em] text-white/65">
+              <div className="text-[10px] uppercase tracking-[0.08em] text-blue-200 font-medium">
                 School Portal
               </div>
             </div>
@@ -267,12 +264,11 @@ const MobileAppShell = ({ children, user, onNavigate, onLogout, currentPage, bra
 
           {/* Action icons */}
           <div className="flex items-center gap-2">
-            {/* Search — now wired */}
+            {/* Search */}
             <button
               type="button"
               onClick={() => setSearchOpen(true)}
-              className="w-9 h-9 rounded-[10px] bg-transparent flex items-center justify-center text-white border"
-              style={{ borderColor: 'var(--brand-secondary, #ff7900)' }}
+              className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/15 flex items-center justify-center text-white border border-white/15 transition-colors"
               aria-label="Search learners"
             >
               <Search size={16} />
@@ -285,13 +281,11 @@ const MobileAppShell = ({ children, user, onNavigate, onLogout, currentPage, bra
               <button
                 type="button"
                 onClick={() => setAvatarMenuOpen((open) => !open)}
-                className="h-9 rounded-[10px] bg-white/10 px-1.5 flex items-center gap-1.5 text-white border"
-                style={{ borderColor: 'var(--brand-secondary, #ff7900)' }}
+                className="h-9 rounded-xl bg-white/10 hover:bg-white/15 px-2 flex items-center gap-1.5 text-white border border-white/15 transition-colors"
                 aria-label="Open account menu"
                 aria-expanded={avatarMenuOpen}
               >
-                <span className="w-7 h-7 rounded-full bg-white flex items-center justify-center overflow-hidden text-[11px] font-bold"
-                  style={{ color: 'var(--toolbar-bg, #06285a)' }}>
+                <span className="w-6 h-6 rounded-full bg-white flex items-center justify-center overflow-hidden text-[11px] font-bold text-blue-700">
                   {avatarUrl ? (
                     <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
                   ) : (
@@ -299,34 +293,34 @@ const MobileAppShell = ({ children, user, onNavigate, onLogout, currentPage, bra
                   )}
                 </span>
                 <ChevronDown
-                  size={14}
-                  className={`transition-transform ${avatarMenuOpen ? 'rotate-180' : ''}`}
+                  size={13}
+                  className={`text-white/70 transition-transform ${avatarMenuOpen ? 'rotate-180' : ''}`}
                 />
               </button>
 
               {avatarMenuOpen && (
-                <div className="absolute right-0 top-11 z-50 w-56 overflow-hidden rounded-xl border border-gray-200 bg-white text-gray-900 shadow-xl">
-                  <div className="px-4 py-3 border-b border-gray-100">
-                    <div className="text-sm font-semibold truncate">{fullName}</div>
-                    <div className="text-xs text-gray-500 truncate">
+                <div className="absolute right-0 top-11 z-50 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-900 shadow-xl">
+                  <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
+                    <div className="text-sm font-bold truncate text-slate-900">{fullName}</div>
+                    <div className="text-xs text-slate-500 truncate">
                       {user?.role || user?.email || 'Account'}
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleMenuNavigate('settings-profile')}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm font-medium hover:bg-gray-50"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm font-medium hover:bg-slate-50 text-slate-700"
                   >
-                    <Settings size={17} className="text-brand-purple" />
+                    <Settings size={16} className="text-slate-500" />
                     Settings
                   </button>
                   {onLogout && (
                     <button
                       type="button"
                       onClick={() => { setAvatarMenuOpen(false); onLogout(); }}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm font-medium text-red-600 hover:bg-red-50"
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm font-medium text-rose-600 hover:bg-rose-50 border-t border-slate-100"
                     >
-                      <LogOut size={17} />
+                      <LogOut size={16} />
                       Sign Out
                     </button>
                   )}
@@ -337,8 +331,10 @@ const MobileAppShell = ({ children, user, onNavigate, onLogout, currentPage, bra
         </div>
 
         {/* ── Scrollable content area ── */}
-        <div className="ts-mobile-scroll flex-1 overflow-y-auto pb-24">
-          {children}
+        <div className="ts-mobile-scroll flex-1 overflow-y-auto text-slate-900">
+          <div className="w-full max-w-2xl mx-auto">
+            {children}
+          </div>
         </div>
 
         {/* ── Fixed bottom nav ── */}

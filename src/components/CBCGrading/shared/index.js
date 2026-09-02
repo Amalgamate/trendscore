@@ -9,4 +9,5 @@ export { AssessmentStatsCard } from './AssessmentStatsCard';
 export { default as DataCard } from './DataCard';
 export { default as ModuleTabNav } from './ModuleTabNav';
 export { default as QuickActions } from './QuickActions';
+export { default as StatsCard, default as StatCard } from './StatsCard';
 

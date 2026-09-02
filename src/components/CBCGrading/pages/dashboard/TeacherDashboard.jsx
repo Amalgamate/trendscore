@@ -1,7 +1,7 @@
 /**
  * Teacher Dashboard – Desktop Redesign
- * Modern SaaS card-based workspace for teachers.
- * Brand palette: Navy #06285a · Orange #ff7900 · Purple #030b82
+ * Senior UX modern SaaS educational workspace for teachers.
+ * Clean, calm, high-trust palette: Slate neutrals · Deep Navy · Purposeful status tints
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -19,12 +19,10 @@ import {
   Users,
   TrendingUp,
   Zap,
-  Star,
   ArrowUpRight,
   BarChart2,
   Award,
   Play,
-  Dot,
 } from 'lucide-react';
 import { dashboardAPI } from '../../../../services/api';
 import { GreetingToast } from './DashboardSummary';
@@ -55,24 +53,23 @@ const iconMap = {
 
 /* ─── Skeleton ──────────────────────────────────────────────────────────────── */
 const Skeleton = ({ className = '' }) => (
-  <div className={`animate-pulse rounded-lg bg-slate-200/80 ${className}`} />
+  <div className={`animate-pulse rounded-2xl bg-slate-200/70 ${className}`} />
 );
 
-/* ─── Mini sparkline bars (purely decorative) ───────────────────────────────── */
-const SparkBars = ({ values = [60, 80, 50, 90, 70, 85, 75], color = '#ff7900', height = 28 }) => (
-  <svg width={56} height={height} viewBox={`0 0 56 ${height}`} fill="none" className="shrink-0">
+/* ─── Mini sparkline bars (decorative) ─────────────────────────────────────── */
+const SparkBars = ({ values = [60, 80, 50, 90, 70, 85, 75], color = '#475569', height = 24 }) => (
+  <svg width={50} height={height} viewBox={`0 0 50 ${height}`} fill="none" className="shrink-0 opacity-40">
     {values.map((v, i) => {
       const barH = (v / 100) * height;
       return (
         <rect
           key={i}
-          x={i * 8}
+          x={i * 7}
           y={height - barH}
-          width={5}
+          width={4}
           height={barH}
-          rx={2}
+          rx={1.5}
           fill={color}
-          opacity={0.6 + i * 0.04}
         />
       );
     })}
@@ -80,7 +77,7 @@ const SparkBars = ({ values = [60, 80, 50, 90, 70, 85, 75], color = '#ff7900', h
 );
 
 /* ─── Radial ring (attendance / progress) ───────────────────────────────────── */
-const RadialRing = ({ value = 0, size = 56, stroke = 5, color = '#ff7900', bg = '#e2e8f0' }) => {
+const RadialRing = ({ value = 0, size = 44, stroke = 4, color = '#0f172a', bg = '#e2e8f0' }) => {
   const r = (size - stroke * 2) / 2;
   const circ = 2 * Math.PI * r;
   const dash = (value / 100) * circ;
@@ -99,46 +96,40 @@ const RadialRing = ({ value = 0, size = 56, stroke = 5, color = '#ff7900', bg = 
 
 /* ─── Section header ─────────────────────────────────────────────────────────── */
 const SectionHeader = ({ title, action, icon: Icon }) => (
-  <div className="flex items-center justify-between gap-3 mb-3">
+  <div className="flex items-center justify-between gap-3 mb-3.5">
     <div className="flex items-center gap-2">
-      {Icon && <Icon size={14} className="text-[#ff7900]" />}
-      <p className="text-[11px] font-black uppercase tracking-[0.12em] text-[#06285a]">{title}</p>
+      {Icon && <Icon size={15} className="text-slate-500" />}
+      <p className="text-xs font-bold uppercase tracking-wider text-slate-600">{title}</p>
     </div>
     {action}
   </div>
 );
 
 /* ─── Stat Tile (top row) ────────────────────────────────────────────────────── */
-const StatTile = ({ label, value, sub, icon: Icon, accent, spark, onClick, loading }) => (
+const StatTile = ({ label, value, sub, icon: Icon, accent = '#0f172a', spark, onClick, loading }) => (
   <button
     type="button"
     onClick={onClick}
-    className="group relative flex flex-col justify-between overflow-hidden rounded-xl border border-slate-100 bg-white p-4 text-left transition-all duration-200 hover:border-[#ff7900]/40 hover:shadow-[0_4px_24px_rgba(255,121,0,0.10)] focus:outline-none"
-    style={{ minHeight: 120 }}
+    className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-4 text-left transition-all duration-150 hover:border-slate-300 hover:shadow-sm focus:outline-none"
+    style={{ minHeight: 114 }}
   >
-    {/* Accent stripe */}
-    <div
-      className="absolute left-0 top-0 h-full w-[3px] rounded-l-xl transition-all duration-300 group-hover:w-[5px]"
-      style={{ background: accent }}
-    />
-    <div className="flex items-start justify-between gap-2 pl-2">
+    <div className="flex items-start justify-between gap-2">
       <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</p>
-        <p className="mt-1 truncate text-2xl font-black text-[#06285a] leading-none">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</p>
+        <p className="mt-1.5 truncate text-2xl font-black text-slate-900 tracking-tight leading-none">
           {loading ? <span className="text-slate-300">···</span> : value}
         </p>
-        {sub && <p className="mt-1 truncate text-[11px] font-medium text-slate-500">{sub}</p>}
+        {sub && <p className="mt-1.5 truncate text-xs font-medium text-slate-500">{sub}</p>}
       </div>
       <div
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-transform duration-200 group-hover:scale-110"
-        style={{ background: `${accent}18` }}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 transition-colors group-hover:bg-slate-900 group-hover:text-white"
       >
-        <Icon size={18} style={{ color: accent }} />
+        <Icon size={17} />
       </div>
     </div>
-    <div className="mt-3 flex items-center justify-between pl-2">
+    <div className="mt-3 flex items-center justify-between">
       {spark && <SparkBars color={accent} />}
-      <ArrowUpRight size={13} className="ml-auto text-slate-300 transition-colors group-hover:text-[#ff7900]" />
+      <ArrowUpRight size={14} className="ml-auto text-slate-300 transition-colors group-hover:text-slate-900" />
     </div>
   </button>
 );
@@ -151,53 +142,49 @@ const ClassCard = ({ item, onNavigate }) => {
     <button
       type="button"
       onClick={() => onNavigate('teacher-learner-analysis')}
-      className="group flex w-full items-center gap-3 rounded-xl border border-slate-100 bg-white p-3 text-left transition-all duration-200 hover:border-[#ff7900]/30 hover:bg-[#fff8f2]"
+      className="group flex w-full items-center gap-3.5 rounded-2xl border border-slate-200/80 bg-white p-3.5 text-left transition-all duration-150 hover:border-slate-300 hover:shadow-sm focus:outline-none"
     >
       <div
-        className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl font-black text-sm text-white transition-transform duration-200 group-hover:scale-105"
-        style={{ background: 'linear-gradient(135deg,#06285a 60%,#030b82)' }}
+        className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl font-bold text-sm bg-slate-900 text-white transition-transform duration-150 group-hover:scale-105"
       >
         {initials}
         {Number(item.pending || 0) > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#ff7900] text-[8px] font-black text-white">
+          <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-bold text-white shadow-sm">
             {item.pending}
           </span>
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-bold text-[#06285a]">{item.name}</p>
-        <p className="text-[11px] text-slate-500">{fmt(item.learnerCount)} learners · {pct(rate)} attendance</p>
+        <p className="truncate text-sm font-bold text-slate-900">{item.name}</p>
+        <p className="text-xs text-slate-500 mt-0.5">{fmt(item.learnerCount)} learners · {pct(rate)} attendance</p>
         {item.subjects?.length > 0 && (
-          <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-400">{item.subjects.join(' · ')}</p>
+          <p className="mt-1 truncate text-[11px] font-medium text-slate-400">{item.subjects.join(' · ')}</p>
         )}
       </div>
       <div className="flex flex-col items-end gap-1">
-        <RadialRing value={rate} size={36} stroke={3} color="#ff7900" />
+        <RadialRing value={rate} size={34} stroke={3} color="#0f172a" />
       </div>
     </button>
   );
 };
 
 /* ─── Assessment Row ──────────────────────────────────────────────────────────── */
-const AssessmentRow = ({ assessment, index, onNavigate }) => (
+const AssessmentRow = ({ assessment, onNavigate }) => (
   <button
     type="button"
     onClick={() => onNavigate('assess-summative-assessment')}
-    className="group flex w-full items-center gap-3 rounded-xl border border-slate-100 bg-white p-3 text-left transition-all duration-200 hover:border-[#ff7900]/30"
+    className="group flex w-full items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 text-left transition-all duration-150 hover:border-slate-300 hover:bg-slate-50/50 focus:outline-none"
   >
-    <div
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white"
-      style={{ background: index % 2 ? '#ff7900' : '#06285a' }}
-    >
-      <ClipboardList size={14} />
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 group-hover:bg-slate-900 group-hover:text-white transition-colors">
+      <ClipboardList size={15} />
     </div>
     <div className="min-w-0 flex-1">
-      <p className="truncate text-sm font-semibold text-[#06285a]">{assessment.title}</p>
-      <p className="mt-0.5 truncate text-[11px] text-slate-500">
+      <p className="truncate text-sm font-bold text-slate-900">{assessment.title}</p>
+      <p className="mt-0.5 truncate text-xs text-slate-500">
         {[assessment.subject, assessment.learnerName, assessment.grade].filter(Boolean).join(' · ')}
       </p>
     </div>
-    <span className="shrink-0 rounded-full border border-[#ff7900]/30 bg-[#fff8f2] px-2 py-0.5 text-[10px] font-black text-[#ff7900]">
+    <span className="shrink-0 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-bold text-slate-600">
       {fmtDate(assessment.dueDate) || 'Pending'}
     </span>
   </button>
@@ -208,44 +195,40 @@ const AlertRow = ({ item, type, onNavigate }) => (
   <button
     type="button"
     onClick={() => onNavigate(item.actionPage || (type === 'event' ? 'annual-planner' : 'teacher-learner-analysis'))}
-    className={`group flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-all duration-200 ${
+    className={`group flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition-all duration-150 focus:outline-none ${
       type === 'event'
-        ? 'border-[#ff7900]/20 bg-[#fff8f2] hover:border-[#ff7900]/50'
-        : 'border-amber-100 bg-amber-50 hover:border-amber-300'
+        ? 'border-slate-200/90 bg-white hover:border-slate-300'
+        : 'border-amber-200/80 bg-white hover:border-amber-300'
     }`}
   >
     {type === 'event'
-      ? <Clock3 size={16} className="shrink-0 text-[#ff7900]" />
+      ? <Clock3 size={16} className="shrink-0 text-slate-600" />
       : <AlertTriangle size={16} className="shrink-0 text-amber-500" />}
     <div className="min-w-0 flex-1">
-      <p className="truncate text-sm font-semibold text-[#06285a]">{item.name || item.title}</p>
-      <p className="truncate text-[11px] text-slate-500">
+      <p className="truncate text-sm font-bold text-slate-900">{item.name || item.title}</p>
+      <p className="truncate text-xs text-slate-500 mt-0.5">
         {type === 'event' ? `${fmtDate(item.date)} · ${item.type || 'Calendar'}` : item.issue}
       </p>
     </div>
-    <ChevronRight size={14} className="shrink-0 text-slate-300 group-hover:text-[#ff7900]" />
+    <ChevronRight size={15} className="shrink-0 text-slate-300 group-hover:text-slate-900 transition-colors" />
   </button>
 );
 
 /* ─── Quick Action Button ─────────────────────────────────────────────────────── */
-const QuickAction = ({ action, index, onNavigate }) => {
+const QuickAction = ({ action, onNavigate }) => {
   const Icon = iconMap[action.icon] || Zap;
-  const isOrange = index % 2 === 1;
   return (
     <button
       type="button"
       onClick={() => onNavigate(action.navigateTo)}
-      className="group flex items-center gap-2.5 rounded-xl border p-3 text-left text-sm font-semibold transition-all duration-200"
-      style={{
-        borderColor: isOrange ? '#ff7900' : 'rgba(6,40,90,0.15)',
-        background: isOrange ? '#ff7900' : 'white',
-        color: isOrange ? '#06285a' : '#06285a',
-      }}
+      className="group flex items-center gap-2.5 rounded-2xl border border-slate-200/90 bg-white p-3 text-left transition-all duration-150 hover:border-slate-300 hover:bg-slate-50/60 focus:outline-none"
     >
-      <Icon size={15} className="shrink-0" />
-      <span className="truncate text-xs">{action.label}</span>
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-slate-900 group-hover:text-white transition-colors">
+        <Icon size={14} />
+      </div>
+      <span className="min-w-0 flex-1 truncate text-xs font-bold text-slate-800">{action.label}</span>
       {Number(action.count || 0) > 0 && (
-        <span className="ml-auto shrink-0 rounded-full bg-white/30 px-1.5 py-0.5 text-[9px] font-black">
+        <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
           {fmt(action.count)}
         </span>
       )}
@@ -256,39 +239,36 @@ const QuickAction = ({ action, index, onNavigate }) => {
 /* ─── Next Lesson Hero Card ───────────────────────────────────────────────────── */
 const NextLessonCard = ({ lesson, onNavigate }) => {
   if (!lesson) return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-center">
-      <CalendarDays size={28} className="mb-2 text-slate-300" />
-      <p className="text-sm font-semibold text-slate-400">No lessons scheduled today</p>
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white/60 p-6 text-center">
+      <CalendarDays size={26} className="mb-2 text-slate-300" />
+      <p className="text-xs font-semibold text-slate-400">No lessons scheduled today</p>
     </div>
   );
   return (
     <button
       type="button"
       onClick={() => onNavigate('planner-timetable')}
-      className="group relative flex w-full items-center gap-4 overflow-hidden rounded-xl p-4 text-left transition-all duration-200 hover:opacity-95"
-      style={{ background: 'linear-gradient(135deg,#ff7900 0%,#e86a00 100%)' }}
+      className="group relative flex w-full items-center gap-4 overflow-hidden rounded-2xl bg-slate-900 p-4 text-left text-white shadow-sm transition-all duration-150 hover:bg-slate-800 focus:outline-none"
     >
-      {/* Decorative blob */}
-      <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
-      <div className="pointer-events-none absolute -bottom-4 -right-2 h-16 w-16 rounded-full bg-white/10" />
-
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/20">
-        <Play size={20} className="text-white" />
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white">
+        <Play size={18} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <p className="truncate text-base font-black text-white">{lesson.subject || 'No lesson scheduled'}</p>
-          <span className="shrink-0 rounded-md bg-white/25 px-2 py-0.5 text-[9px] font-black uppercase text-white">
+          <p className="truncate text-base font-bold text-white tracking-tight">{lesson.subject || 'No lesson scheduled'}</p>
+          <span className="shrink-0 rounded-md bg-white/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-200">
             {sessionLabel(lesson.time)}
           </span>
         </div>
-        <p className="mt-0.5 truncate text-[12px] font-medium text-white/80">
+        <p className="mt-1 truncate text-xs text-slate-300">
           {fmtTime(lesson.time)}
           {lesson.endTime ? ` – ${fmtTime(lesson.endTime)}` : ''}
           {lesson.grade || lesson.className ? ` · ${lesson.grade || lesson.className}` : ''}
           {lesson.room ? ` · Room ${lesson.room}` : ''}
         </p>
-        <p className="mt-2 text-[10px] font-black uppercase tracking-wider text-white/70">View timetable →</p>
+        <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 group-hover:text-white transition-colors">
+          View full timetable →
+        </p>
       </div>
     </button>
   );
@@ -297,71 +277,62 @@ const NextLessonCard = ({ lesson, onNavigate }) => {
 /* ─── Next Action Card ────────────────────────────────────────────────────────── */
 const NextActionCard = ({ action, onNavigate }) => {
   if (!action) return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-5 text-center">
-      <CheckCircle2 size={24} className="mb-2 text-emerald-300" />
-      <p className="text-sm font-semibold text-slate-400">No urgent action — all clear!</p>
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white/60 p-5 text-center">
+      <CheckCircle2 size={24} className="mb-2 text-emerald-400" />
+      <p className="text-xs font-semibold text-slate-400">No urgent actions — all clear!</p>
     </div>
   );
   return (
     <button
       type="button"
       onClick={() => onNavigate(action.navigateTo)}
-      className="group flex w-full items-start gap-3 rounded-xl border border-slate-100 bg-white p-4 text-left transition-all duration-200 hover:border-[#06285a]/20 hover:bg-slate-50"
+      className="group flex w-full items-start gap-3 rounded-2xl border border-slate-200/90 bg-white p-4 text-left transition-all duration-150 hover:border-slate-300 hover:bg-slate-50/50 focus:outline-none"
     >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#06285a]/10">
-        <Bell size={18} className="text-[#06285a]" />
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 group-hover:bg-slate-900 group-hover:text-white transition-colors">
+        <Bell size={18} />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-bold text-[#06285a]">{action.title}</p>
-        <p className="mt-0.5 text-[12px] text-slate-500">{action.description}</p>
-        <p className="mt-2 text-[10px] font-black uppercase tracking-wider text-[#ff7900]">{action.actionLabel}</p>
+        <p className="truncate text-sm font-bold text-slate-900">{action.title}</p>
+        <p className="mt-0.5 text-xs text-slate-500 leading-relaxed">{action.description}</p>
+        <span className="mt-2.5 inline-flex items-center gap-1 rounded-md bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-800">
+          {action.actionLabel}
+          <ChevronRight size={12} />
+        </span>
       </div>
-      <ChevronRight size={16} className="mt-0.5 shrink-0 text-slate-300 group-hover:text-[#ff7900] transition-colors" />
     </button>
   );
 };
 
 /* ─── Highlight Learner ───────────────────────────────────────────────────────── */
 const HighlightLearner = ({ learner, rank }) => (
-  <div className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3">
+  <div className="flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white p-3">
     <div
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg font-black text-xs text-white"
-      style={{ background: rank === 0 ? '#ff7900' : rank === 1 ? '#06285a' : '#8b5cf6' }}
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl font-bold text-xs bg-slate-100 text-slate-700"
     >
       {rank === 0 ? '🥇' : rank === 1 ? '🥈' : '🥉'}
     </div>
     <div className="min-w-0 flex-1">
-      <p className="truncate text-sm font-bold text-[#06285a]">{learner.name}</p>
-      <p className="text-[11px] text-slate-500">{learner.grade} · {pct(learner.avgPercentage)}</p>
+      <p className="truncate text-sm font-bold text-slate-900">{learner.name}</p>
+      <p className="text-xs text-slate-500">{learner.grade} · {pct(learner.avgPercentage)}</p>
     </div>
-    <TrendingUp size={14} className="shrink-0 text-emerald-500" />
+    <TrendingUp size={14} className="shrink-0 text-emerald-600" />
   </div>
 );
 
 /* ─── Empty Panel ─────────────────────────────────────────────────────────────── */
 const EmptyPanel = ({ icon: Icon, title }) => (
-  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-center">
-    <Icon size={26} className="mb-2 text-slate-300" />
-    <p className="text-sm font-semibold text-slate-400">{title}</p>
-  </div>
-);
-
-/* ─── Dashboard Card wrapper ──────────────────────────────────────────────────── */
-const Card = ({ children, className = '', style }) => (
-  <div
-    className={`rounded-xl border border-slate-100 bg-white ${className}`}
-    style={style}
-  >
-    {children}
+  <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white/60 p-6 text-center">
+    <Icon size={24} className="mb-2 text-slate-300" />
+    <p className="text-xs font-semibold text-slate-400">{title}</p>
   </div>
 );
 
 /* ─── Panel (padded card) ─────────────────────────────────────────────────────── */
 const Panel = ({ children, className = '', title, icon, action }) => (
-  <Card className={`p-4 ${className}`}>
+  <div className={`rounded-2xl border border-slate-200/90 bg-white p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] ${className}`}>
     {title && <SectionHeader title={title} icon={icon} action={action} />}
     {children}
-  </Card>
+  </div>
 );
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -419,34 +390,34 @@ const TeacherDashboard = ({ user, onNavigate }) => {
       value: loading ? '—' : fmt(stats.myStudents),
       sub: 'Total enrolled',
       icon: Users,
-      accent: '#030b82',
+      accent: '#0f172a',
       spark: true,
       onClick: () => onNavigate('teacher-learner-analysis'),
     },
     {
       label: 'Attendance Rate',
       value: loading ? '—' : pct(attendanceRate),
-      sub: `${fmt(attendanceDue.length)} pending`,
+      sub: `${fmt(attendanceDue.length)} classes due`,
       icon: CheckCircle2,
-      accent: '#ff7900',
+      accent: '#059669',
       spark: true,
       onClick: () => onNavigate('attendance-daily'),
     },
     {
       label: 'Assessments',
       value: loading ? '—' : fmt(assessmentsToMark.length),
-      sub: 'Awaiting marks',
+      sub: 'Awaiting grading',
       icon: ClipboardList,
-      accent: '#8b5cf6',
+      accent: '#6366f1',
       spark: false,
       onClick: () => onNavigate('assess-summative-assessment'),
     },
     {
       label: 'Messages',
       value: loading ? '—' : fmt(stats.messages),
-      sub: 'Inbox',
+      sub: 'Inbox updates',
       icon: MessageSquare,
-      accent: '#06285a',
+      accent: '#0f172a',
       spark: false,
       onClick: () => onNavigate('communication'),
     },
@@ -462,17 +433,17 @@ const TeacherDashboard = ({ user, onNavigate }) => {
 
   /* ── Error state ─────────────────────────────────────────── */
   if (apiError && !metrics && !loading) return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-slate-900">
       <GreetingToast user={user} fallbackName="Teacher" description="Teacher Dashboard · Today's Classes" onNavigate={onNavigate} />
-      <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 p-12 text-center">
-        <AlertTriangle size={36} className="mb-3 text-[#ff7900]" />
-        <h2 className="text-lg font-black text-[#06285a]">Teacher dashboard unavailable</h2>
-        <p className="mt-2 text-sm text-slate-500">{apiError}</p>
+      <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white p-12 text-center shadow-sm">
+        <AlertTriangle size={32} className="mb-3 text-slate-400" />
+        <h2 className="text-base font-bold text-slate-900">Teacher dashboard unavailable</h2>
+        <p className="mt-1 text-xs text-slate-500">{apiError}</p>
         <button
           type="button" onClick={loadMetrics}
-          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#ff7900] px-5 py-2.5 text-sm font-black text-[#06285a] transition hover:opacity-90"
+          className="mt-4 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white transition hover:bg-slate-800"
         >
-          <RefreshCw size={14} /> Retry
+          <RefreshCw size={13} /> Retry
         </button>
       </div>
     </div>
@@ -483,7 +454,7 @@ const TeacherDashboard = ({ user, onNavigate }) => {
     <div className="space-y-4">
       <Skeleton className="h-16 w-full" />
       <div className="grid grid-cols-4 gap-3">
-        {[0,1,2,3].map(i => <Skeleton key={i} className="h-[120px]" />)}
+        {[0,1,2,3].map(i => <Skeleton key={i} className="h-[114px]" />)}
       </div>
       <div className="grid grid-cols-[1fr_1fr_22rem] gap-4">
         <Skeleton className="h-72" />
@@ -498,33 +469,32 @@ const TeacherDashboard = ({ user, onNavigate }) => {
 
   /* ─────────────────────────────────────────────────────────────────────────── */
   return (
-    <div className="space-y-4 pb-8">
-      {/* Greeting */}
+    <div className="space-y-4 pb-12 text-slate-900">
+      {/* Greeting Banner */}
       <GreetingToast user={user} fallbackName="Teacher" description="Teacher Dashboard · Today's Classes" onNavigate={onNavigate} />
 
       {/* Sync indicator */}
       {refreshing && (
-        <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 py-2">
-          <RefreshCw size={12} className="animate-spin text-blue-500" />
-          <p className="text-[11px] font-bold uppercase tracking-widest text-blue-600">Syncing…</p>
+        <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 shadow-sm">
+          <RefreshCw size={12} className="animate-spin text-slate-600" />
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Updating dashboard…</p>
         </div>
       )}
 
       {/* ── Row 1: Stat tiles ─────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
         {statTiles.map(tile => (
           <StatTile key={tile.label} {...tile} loading={loading} />
         ))}
       </div>
 
-      {/* ── Row 2: Main content ───────────────────────────────── */}
-      {/* Layout: [Left wide col: timetable + classes] [Right col: clock-in + actions + highlights] */}
+      {/* ── Row 2: Main workspace ───────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
 
-        {/* LEFT ─────────────────────────────────────────────── */}
+        {/* LEFT MAIN COLUMN ───────────────────────────────────────── */}
         <div className="space-y-4">
 
-          {/* Next Lesson + Next Action side-by-side */}
+          {/* Next Lesson + Next Action */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {/* Next Lesson */}
             <Panel
@@ -534,22 +504,22 @@ const TeacherDashboard = ({ user, onNavigate }) => {
                 <button
                   type="button"
                   onClick={() => onNavigate('planner-timetable')}
-                  className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-[#06285a] transition hover:border-[#ff7900]/40"
+                  className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-700 transition hover:border-slate-300"
                 >
                   Full schedule <ChevronRight size={10} />
                 </button>
               }
             >
               <NextLessonCard lesson={nextLesson} onNavigate={onNavigate} />
-              {/* Remaining lessons mini-list */}
+              {/* Remaining lessons list */}
               {schedule.length > 1 && (
                 <div className="mt-3 space-y-1.5">
                   {schedule.slice(1, 4).map((s, i) => (
-                    <div key={i} className="flex items-center gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                      <Dot size={16} className="shrink-0 text-[#ff7900]" />
-                      <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[#06285a]">{s.subject}</span>
-                      <span className="shrink-0 text-[10px] text-slate-500">{fmtTime(s.time)}</span>
-                      <span className="shrink-0 rounded-md bg-white border border-slate-200 px-1.5 py-0.5 text-[9px] font-black uppercase text-slate-500">
+                    <div key={i} className="flex items-center gap-2.5 rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2 text-xs">
+                      <div className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate font-semibold text-slate-800">{s.subject}</span>
+                      <span className="shrink-0 text-[11px] text-slate-500 font-medium">{fmtTime(s.time)}</span>
+                      <span className="shrink-0 rounded-md bg-white border border-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase text-slate-600">
                         {sessionLabel(s.time)}
                       </span>
                     </div>
@@ -559,21 +529,25 @@ const TeacherDashboard = ({ user, onNavigate }) => {
             </Panel>
 
             {/* Next Action */}
-            <Panel title="Next Up" icon={Bell} action={
-              <button
-                type="button"
-                onClick={loadMetrics}
-                className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-[#06285a] transition hover:border-[#ff7900]/40"
-              >
-                <RefreshCw size={10} /> Refresh
-              </button>
-            }>
+            <Panel
+              title="Next Priority"
+              icon={Bell}
+              action={
+                <button
+                  type="button"
+                  onClick={loadMetrics}
+                  className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-700 transition hover:border-slate-300"
+                >
+                  <RefreshCw size={10} /> Refresh
+                </button>
+              }
+            >
               <NextActionCard action={nextAction} onNavigate={onNavigate} />
 
-              {/* Alerts & Events stacked below */}
+              {/* Alerts & Events stacked */}
               {(learnerAlerts.length > 0 || upcomingEvents.length > 0) && (
                 <div className="mt-3 space-y-1.5">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Alerts &amp; Events</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Alerts &amp; Events</p>
                   {learnerAlerts.slice(0, 2).map((a) => (
                     <AlertRow key={a.id} item={a} type="alert" onNavigate={onNavigate} />
                   ))}
@@ -593,18 +567,18 @@ const TeacherDashboard = ({ user, onNavigate }) => {
               <button
                 type="button"
                 onClick={() => onNavigate('teacher-learner-analysis')}
-                className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-[#06285a] transition hover:border-[#ff7900]/40"
+                className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-700 transition hover:border-slate-300"
               >
                 All classes <ChevronRight size={10} />
               </button>
             }
           >
             {classes.length > 0 ? (
-              <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-2">
                 {classes.slice(0, 6).map(c => <ClassCard key={c.id} item={c} onNavigate={onNavigate} />)}
               </div>
             ) : (
-              <EmptyPanel icon={Users} title="No assigned classes" />
+              <EmptyPanel icon={Users} title="No assigned classes yet" />
             )}
           </Panel>
 
@@ -617,17 +591,17 @@ const TeacherDashboard = ({ user, onNavigate }) => {
                 <button
                   type="button"
                   onClick={() => onNavigate('assess-summative-assessment')}
-                  className="flex items-center gap-1 rounded-lg bg-[#ff7900] px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white transition hover:opacity-90"
+                  className="flex items-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-slate-800"
                 >
-                  Mark all <ArrowUpRight size={10} />
+                  Grade queue <ArrowUpRight size={10} />
                 </button>
               ) : null
             }
           >
             {assessmentsToMark.length > 0 ? (
               <div className="space-y-2">
-                {assessmentsToMark.slice(0, 6).map((a, i) => (
-                  <AssessmentRow key={a.id} assessment={a} index={i} onNavigate={onNavigate} />
+                {assessmentsToMark.slice(0, 6).map((a) => (
+                  <AssessmentRow key={a.id} assessment={a} onNavigate={onNavigate} />
                 ))}
               </div>
             ) : (
@@ -644,8 +618,8 @@ const TeacherDashboard = ({ user, onNavigate }) => {
           {/* Quick Actions */}
           <Panel title="Quick Actions" icon={Zap}>
             <div className="grid grid-cols-2 gap-2">
-              {resolvedActions.map((a, i) => (
-                <QuickAction key={a.id || a.label} action={a} index={i} onNavigate={onNavigate} />
+              {resolvedActions.map((a) => (
+                <QuickAction key={a.id || a.label} action={a} onNavigate={onNavigate} />
               ))}
             </div>
           </Panel>
@@ -666,11 +640,11 @@ const TeacherDashboard = ({ user, onNavigate }) => {
             <Panel title="Recent Activity" icon={BarChart2}>
               <div className="space-y-2">
                 {recentActivity.slice(0, 4).map((a) => (
-                  <div key={a.id} className="flex items-start gap-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
-                    <Star size={13} className="mt-0.5 shrink-0 text-[#ff7900]" />
+                  <div key={a.id} className="flex items-start gap-2.5 rounded-2xl border border-slate-100 bg-slate-50/70 p-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-slate-400 mt-1.5 shrink-0" />
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-[#06285a]">{a.text}</p>
-                      <p className="mt-0.5 truncate text-[11px] text-slate-500">{a.detail}</p>
+                      <p className="truncate text-xs font-bold text-slate-900">{a.text}</p>
+                      <p className="mt-0.5 truncate text-[11px] text-slate-500 font-medium">{a.detail}</p>
                     </div>
                   </div>
                 ))}
@@ -678,33 +652,36 @@ const TeacherDashboard = ({ user, onNavigate }) => {
             </Panel>
           )}
 
-          {/* Performance at a glance — decorative insight tile */}
-          <div
-            className="overflow-hidden rounded-xl p-4"
-            style={{ background: 'linear-gradient(135deg,#06285a 0%,#030b82 100%)' }}
-          >
+          {/* Class Health Card */}
+          <div className="rounded-2xl bg-slate-900 p-5 text-white shadow-sm border border-slate-800">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-white/60">Class Health</p>
-                <p className="mt-1 text-2xl font-black text-white">{pct(attendanceRate)}</p>
-                <p className="text-[11px] font-medium text-white/60">Avg Attendance</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Class Health</p>
+                <p className="mt-1 text-2xl font-black text-white tracking-tight">{pct(attendanceRate)}</p>
+                <p className="text-xs text-slate-400 font-medium">Avg Attendance</p>
               </div>
-              <RadialRing value={Math.round(attendanceRate)} size={56} stroke={5} color="#ff7900" bg="rgba(255,255,255,0.15)" />
+              <RadialRing
+                value={Math.round(attendanceRate)}
+                size={52}
+                stroke={4}
+                color="#ffffff"
+                bg="rgba(255,255,255,0.15)"
+              />
             </div>
             <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-3">
               <div className="text-center">
-                <p className="text-base font-black text-white">{fmt(assessmentsToMark.length)}</p>
-                <p className="text-[10px] text-white/50">To Mark</p>
+                <p className="text-base font-bold text-white">{fmt(assessmentsToMark.length)}</p>
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider font-medium">To Mark</p>
               </div>
-              <div className="h-8 w-px bg-white/10" />
+              <div className="h-7 w-px bg-white/10" />
               <div className="text-center">
-                <p className="text-base font-black text-white">{fmt(classes.length)}</p>
-                <p className="text-[10px] text-white/50">Classes</p>
+                <p className="text-base font-bold text-white">{fmt(classes.length)}</p>
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider font-medium">Classes</p>
               </div>
-              <div className="h-8 w-px bg-white/10" />
+              <div className="h-7 w-px bg-white/10" />
               <div className="text-center">
-                <p className="text-base font-black text-white">{fmt(stats.myStudents)}</p>
-                <p className="text-[10px] text-white/50">Learners</p>
+                <p className="text-base font-bold text-white">{fmt(stats.myStudents)}</p>
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider font-medium">Learners</p>
               </div>
             </div>
           </div>

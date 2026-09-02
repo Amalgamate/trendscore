@@ -1,127 +1,145 @@
 /**
  * AttendanceClassCard
  * Mobile "My Classes Today" screen — one card per class.
- * Shows class name, learner count, and attendance status.
+ * Shows class name, learner count, present/absent metrics, and attendance status.
  */
 
 import React from 'react';
-import { Users, CheckCircle, Clock, ChevronRight } from 'lucide-react';
+import { Users, CheckCircle2, Clock, ChevronRight } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
 
 const STATUS_CONFIG = {
   submitted: {
-    label:   'Submitted',
-    classes: 'bg-emerald-100 text-emerald-700',
-    icon:    CheckCircle,
+    label:   'Marked',
+    classes: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    icon:    CheckCircle2,
     ring:    'ring-emerald-200',
   },
   inProgress: {
-    label:   'In Progress',
-    classes: 'bg-amber-100 text-amber-700',
+    label:   'Ongoing',
+    classes: 'bg-amber-50 text-amber-800 border border-amber-300',
     icon:    Clock,
     ring:    'ring-amber-200',
   },
   pending: {
     label:   'Pending',
-    classes: 'bg-gray-100 text-gray-600',
+    classes: 'bg-rose-50 text-rose-700 border border-rose-200',
     icon:    Clock,
-    ring:    'ring-gray-200',
+    ring:    'ring-rose-200',
   },
 };
 
 export function AttendanceClassCard({
   classItem,
   onTake,
-  presentCount,
+  presentCount = 0,
   markedCount = 0,
-  totalCount,
+  totalCount = 0,
   completedAt,
   isTakingAttendance = false,
 }) {
-  const pct = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
   const isSubmitted = markedCount > 0 || Boolean(completedAt);
   const statusKey = isTakingAttendance ? 'inProgress' : isSubmitted ? 'submitted' : 'pending';
   const statusCfg = STATUS_CONFIG[statusKey];
   const StatusIcon = statusCfg.icon;
+
+  const effectiveTotal = totalCount || 0;
+  const effectivePresent = isSubmitted ? Math.min(presentCount, effectiveTotal) : 0;
+  const effectiveAbsent = isSubmitted ? Math.max(0, effectiveTotal - effectivePresent) : 0;
+  const pct = effectiveTotal > 0 ? Math.round((effectivePresent / effectiveTotal) * 100) : 0;
 
   return (
     <button
       type="button"
       onClick={() => onTake(classItem)}
       className={cn(
-        'w-full text-left bg-white border-2 rounded-2xl p-4 transition-all duration-150',
-        'hover:border-brand-purple/30 hover:shadow-md active:scale-[0.99]',
-        isSubmitted ? 'border-emerald-200' : 'border-gray-200',
+        'w-full text-left bg-white border rounded-2xl p-4 transition-all duration-150 shadow-sm',
+        'hover:border-blue-300 hover:shadow-md active:scale-[0.99]',
+        isSubmitted ? 'border-emerald-200/90' : 'border-slate-200/90',
       )}
     >
-      {/* Header row */}
-      <div className="flex items-start justify-between gap-3 mb-3">
+      {/* Header row: Class Avatar + Name + Status Pill */}
+      <div className="flex items-start justify-between gap-3 mb-2.5">
         {/* Class avatar + name */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <div className={cn(
             'w-11 h-11 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0 ring-2',
             isSubmitted
-              ? 'bg-emerald-500 text-white ring-emerald-200'
-              : 'bg-brand-purple/10 text-brand-purple ring-brand-purple/20'
+              ? 'bg-emerald-600 text-white ring-emerald-100'
+              : 'bg-blue-50 text-blue-700 ring-blue-100'
           )}>
             {classItem.name?.substring(0, 2).toUpperCase() || 'CL'}
           </div>
-          <div>
-            <p className="font-semibold text-gray-900 text-base leading-tight">{classItem.name}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{classItem.grade?.replace(/_/g, ' ')}</p>
+          <div className="min-w-0">
+            <p className="font-bold text-slate-900 text-base leading-tight truncate">{classItem.name}</p>
+            <p className="text-xs font-medium text-slate-500 mt-0.5">{classItem.grade?.replace(/_/g, ' ')}</p>
           </div>
         </div>
 
-        {/* Status badge */}
+        {/* Status badge: Pending (red), Ongoing (golden yellow), Marked (green) */}
         <div className={cn(
-          'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold flex-shrink-0',
+          'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold flex-shrink-0',
           statusCfg.classes
         )}>
-          <StatusIcon size={11} />
+          <StatusIcon size={12} strokeWidth={2.2} />
           {statusCfg.label}
         </div>
       </div>
 
-      {/* Progress row */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1.5 text-sm text-gray-600">
-          <Users size={14} className="text-gray-400" />
-          <span className="font-semibold text-gray-900">{totalCount}</span>
-          <span>learners</span>
-        </div>
+      {/* Learners total */}
+      <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+        <Users size={13} className="text-slate-400" />
+        <span className="font-bold text-slate-900">{effectiveTotal}</span>
+        <span>learners</span>
+      </div>
 
-        {presentCount > 0 && (
-          <>
-            <span className="text-gray-300">·</span>
-            <span className="text-sm text-emerald-600 font-semibold">
-              {presentCount} present
-            </span>
-          </>
-        )}
+      {/* Present & Absent Metrics in smaller numbers */}
+      <div className="flex items-center gap-2 mt-2.5 pt-2.5 border-t border-slate-100">
+        <span className={cn(
+          'inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold',
+          isSubmitted
+            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
+            : 'bg-slate-100 text-slate-500'
+        )}>
+          <span className={cn('w-1.5 h-1.5 rounded-full', isSubmitted ? 'bg-emerald-500' : 'bg-slate-400')} />
+          {effectivePresent} Present
+        </span>
 
-        {/* Progress bar */}
-        {presentCount > 0 && (
-          <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden ml-auto">
-            <div
-              className={cn(
-                'h-full rounded-full transition-all duration-500',
-                isSubmitted ? 'bg-emerald-500' : 'bg-brand-purple'
-              )}
-              style={{ width: `${pct}%` }}
-            />
+        <span className={cn(
+          'inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold',
+          isSubmitted && effectiveAbsent > 0
+            ? 'bg-rose-50 text-rose-700 border border-rose-200/80'
+            : 'bg-slate-100 text-slate-500'
+        )}>
+          <span className={cn('w-1.5 h-1.5 rounded-full', isSubmitted && effectiveAbsent > 0 ? 'bg-rose-500' : 'bg-slate-400')} />
+          {effectiveAbsent} Absent
+        </span>
+
+        {isSubmitted && effectiveTotal > 0 && (
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-[11px] font-bold text-slate-600">{pct}%</span>
+            <div className="w-12 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-emerald-500 rounded-full transition-all"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
           </div>
         )}
       </div>
 
-      {/* CTA arrow */}
-      <div className="flex items-center justify-end mt-2">
-        <span className="text-xs text-brand-purple font-semibold flex items-center gap-1">
+      {/* CTA action: 'View attendance' if done, 'Take attendance' if pending */}
+      <div className="flex items-center justify-end mt-2.5 pt-1">
+        <span className={cn(
+          'text-xs font-bold flex items-center gap-1 transition-colors',
+          isSubmitted ? 'text-emerald-700 hover:text-emerald-800' : 'text-blue-700 hover:text-blue-800'
+        )}>
           {isTakingAttendance
             ? 'Continue attendance'
             : isSubmitted
-              ? `Submitted${completedAt ? ` at ${completedAt}` : ''}`
+              ? 'View attendance'
               : 'Take attendance'}
-          <ChevronRight size={13} />
+          <ChevronRight size={13} strokeWidth={2.4} />
         </span>
       </div>
     </button>

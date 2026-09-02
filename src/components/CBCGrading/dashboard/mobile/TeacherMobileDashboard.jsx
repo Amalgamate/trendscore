@@ -1,6 +1,7 @@
 /**
  * Teacher Mobile Dashboard
- * Mobile-native daily workflow view backed by /dashboard/teacher.
+ * Clean, senior UX redesigned mobile-native daily workflow view.
+ * Backed by /dashboard/teacher.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -11,10 +12,10 @@ import {
   CheckCircle2,
   ChevronRight,
   ClipboardList,
-  Clock3,
-  BookOpen,
+  Calendar,
   MessageSquare,
   Users,
+  Sparkles,
 } from 'lucide-react';
 import { GreetingToast } from '../../pages/dashboard/DashboardSummary';
 import ClockInStatusWidget from '../widgets/teacher/ClockInStatusWidget';
@@ -33,63 +34,35 @@ const formatDate = (value) => {
   }).format(date);
 };
 
-const formatTime = (value) => {
-  if (!value) return '--:--';
-  const time = String(value);
-  return time.length >= 5 ? time.slice(0, 5) : time;
-};
-
-const getSessionLabel = (time) => {
-  const hour = Number(String(time || '').split(':')[0]);
-  if (!Number.isFinite(hour)) return 'Today';
-  if (hour < 12) return 'Morning';
-  if (hour < 16) return 'Afternoon';
-  return 'Evening';
-};
-
 const EmptyState = ({ icon: Icon, title }) => (
-  <div className="ts-mobile-card-soft rounded-xl border-dashed p-5 text-center">
-    <Icon size={26} className="mx-auto mb-2 opacity-30" />
-    <p className="text-xs font-medium">{title}</p>
+  <div className="rounded-2xl border border-dashed border-slate-200 bg-white/80 p-6 text-center shadow-sm">
+    <Icon size={24} className="mx-auto mb-2 text-slate-300" />
+    <p className="text-xs font-semibold text-slate-500">{title}</p>
   </div>
 );
 
-const MetricCard = ({ metric, index, loading }) => {
+const MetricCard = ({ metric, loading }) => {
   const Icon = metric.icon;
   return (
     <button
       type="button"
       onClick={metric.onClick}
-      className={`${index % 2 ? 'ts-mobile-card-orange' : 'ts-mobile-card'} flex w-full items-center gap-3 rounded-lg p-3 text-left`}
+      className="flex flex-col justify-between p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.03)] text-left transition-all duration-150 active:scale-[0.98] hover:border-slate-300 min-h-[96px] group focus:outline-none"
     >
-      <Icon size={20} />
-      <div className="min-w-0 flex-1">
-        <p className="text-xs font-medium opacity-75">{metric.label}</p>
-        <p className="truncate text-base font-bold">{loading ? '...' : metric.value}</p>
+      <div className="flex items-center justify-between w-full">
+        <span className="text-[11px] font-semibold text-slate-500 truncate tracking-tight">{metric.label}</span>
+        <div className="w-7 h-7 rounded-lg bg-slate-100/90 flex items-center justify-center text-slate-600 shrink-0 group-hover:bg-slate-200/80 transition-colors">
+          <Icon size={14} />
+        </div>
       </div>
-      {metric.onClick && <ChevronRight size={16} className="shrink-0 opacity-70" />}
-    </button>
-  );
-};
-
-const ActionButton = ({ action, index, onNavigate }) => {
-  const Icon = ChevronRight;
-
-  return (
-    <button
-      type="button"
-      onClick={() => onNavigate(action.navigateTo)}
-      className={`${index % 2 ? 'ts-mobile-action-solid' : 'ts-mobile-action'} flex min-h-[3rem] items-center justify-between gap-2 rounded-lg p-3 text-left text-xs font-semibold transition`}
-    >
-      <span className="flex min-w-0 items-center gap-2">
-        <Icon size={15} className="shrink-0" />
-        <span className="truncate">{action.label}</span>
-      </span>
-      {Number(action.count || 0) > 0 && (
-        <span className="shrink-0 rounded-full bg-white/25 px-2 py-0.5 text-[10px] font-black">
-          {formatNumber(action.count)}
-        </span>
-      )}
+      <div className="mt-2">
+        <p className="text-lg font-bold text-slate-900 tracking-tight leading-none">
+          {loading ? <span className="text-slate-300">···</span> : metric.value}
+        </p>
+        {metric.sub && (
+          <p className="text-[10px] font-medium text-slate-500 mt-1 truncate">{metric.sub}</p>
+        )}
+      </div>
     </button>
   );
 };
@@ -102,7 +75,7 @@ const TeacherMobileDashboard = ({ user, onNavigate }) => {
     let active = true;
     const loadData = async () => {
       try {
-        const response = await dashboardAPI.getTeacherMetrics?.() || { success: true, data: {} };
+        const response = (await dashboardAPI.getTeacherMetrics?.()) || { success: true, data: {} };
         if (active && response.success) setMetrics(response.data);
       } catch (error) {
         console.error('Failed to load teacher metrics:', error);
@@ -134,106 +107,147 @@ const TeacherMobileDashboard = ({ user, onNavigate }) => {
     {
       label: 'My Learners',
       value: formatNumber(stats.myStudents),
+      sub: 'Enrolled',
       icon: Users,
       onClick: () => onNavigate('teacher-learner-analysis'),
     },
     {
       label: 'Attendance',
-      value: `${formatPercent(attendanceRate)} · ${formatNumber(attendanceDue.length)} pending`,
+      value: formatPercent(attendanceRate),
+      sub: `${formatNumber(attendanceDue.length)} classes due`,
       icon: CheckCircle2,
       onClick: () => onNavigate('attendance-daily'),
     },
     {
       label: 'Assessments',
-      value: `${formatNumber(assessmentsToMark.length)} to mark`,
+      value: formatNumber(assessmentsToMark.length),
+      sub: 'To evaluate',
       icon: ClipboardList,
       onClick: () => onNavigate('assess-summative-assessment'),
     },
     {
       label: 'Messages',
       value: formatNumber(stats.messages),
+      sub: 'Unread updates',
       icon: MessageSquare,
       onClick: () => onNavigate('communication'),
     },
   ];
 
   return (
-    <div className="min-h-full pb-20 text-white">
-      <GreetingToast user={user} fallbackName="Teacher" description="Teacher Dashboard · Today's Classes" onNavigate={onNavigate} />
+    <div className="space-y-4 text-slate-900">
+      {/* Greeting Header */}
+      <GreetingToast
+        user={user}
+        fallbackName="Teacher"
+        description="Teacher Dashboard · Daily Overview"
+        onNavigate={onNavigate}
+      />
 
-      <div className="px-3 py-4">
+      {/* Clock In / Attendance Status */}
+      <div>
         <ClockInStatusWidget user={user} onNavigate={onNavigate} />
       </div>
 
-      <div className="space-y-3 px-3 pb-2">
-        {teacherMetrics.map((metric, index) => (
-          <MetricCard key={metric.label} metric={metric} index={index} loading={loading} />
-        ))}
+      {/* Quick Stats Grid */}
+      <div>
+        <div className="flex items-center justify-between px-0.5 mb-2">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Overview</p>
+          <span className="text-[10px] font-medium text-slate-500">Today</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2.5">
+          {teacherMetrics.map((metric) => (
+            <MetricCard key={metric.label} metric={metric} loading={loading} />
+          ))}
+        </div>
       </div>
 
-      <div className="space-y-2 px-3 py-3">
-        <p className="ts-mobile-section-title px-2 text-xs font-semibold uppercase">Next Up</p>
+      {/* Next Up Priority Action */}
+      <div>
+        <div className="flex items-center justify-between px-0.5 mb-2">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Next Action</p>
+          <span className="text-[10px] font-medium text-slate-500">Priority</span>
+        </div>
         {loading ? (
-          <div className="ts-mobile-card rounded-xl p-3 text-sm font-semibold">Loading...</div>
+          <div className="rounded-2xl border border-slate-200/90 bg-white p-4 text-xs font-semibold text-slate-400 animate-pulse">
+            Loading schedule…
+          </div>
         ) : nextAction ? (
           <button
             type="button"
             onClick={() => onNavigate(nextAction.navigateTo)}
-            className="ts-mobile-card w-full rounded-xl p-3 text-left transition-colors"
+            className="group w-full rounded-2xl border border-slate-200/90 bg-white p-4 text-left shadow-[0_1px_3px_rgba(0,0,0,0.03)] transition-all active:scale-[0.99] hover:border-slate-300 focus:outline-none"
           >
             <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-800 group-hover:bg-slate-900 group-hover:text-white transition-colors">
                 <Bell size={18} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-bold text-gray-900">{nextAction.title}</p>
-                <p className="mt-0.5 text-xs text-gray-500">{nextAction.description}</p>
-                <p className="mt-2 text-[10px] font-black uppercase tracking-wider text-brand-purple">{nextAction.actionLabel}</p>
+                <p className="truncate text-sm font-bold text-slate-900">{nextAction.title}</p>
+                <p className="mt-0.5 text-xs text-slate-500 line-clamp-2 leading-relaxed">
+                  {nextAction.description}
+                </p>
+                <div className="mt-3 flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                  <span>{nextAction.actionLabel}</span>
+                  <ChevronRight size={14} />
+                </div>
               </div>
-              <ChevronRight size={16} className="mt-1 shrink-0 text-gray-400" />
             </div>
           </button>
         ) : (
-          <EmptyState icon={CheckCircle2} title="No urgent teacher action right now" />
+          <EmptyState icon={CheckCircle2} title="No urgent tasks right now — all clear!" />
         )}
       </div>
 
+      {/* Alerts & Upcoming Schedule */}
       {!loading && (learnerAlerts.length > 0 || upcomingEvents.length > 0) && (
-        <div className="space-y-2 px-3 py-3">
-          <p className="ts-mobile-section-title px-2 text-xs font-semibold uppercase">Alerts & Events</p>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between px-0.5 mb-2">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Alerts & Events</p>
+            <span className="text-[10px] font-medium text-slate-500">Notice</span>
+          </div>
+
+          {/* Learner Risk Alerts */}
           {learnerAlerts.slice(0, 2).map((alert) => (
             <button
               key={alert.id}
               type="button"
               onClick={() => onNavigate(alert.actionPage || 'teacher-learner-analysis')}
-              className="ts-mobile-card flex w-full items-center gap-3 rounded-xl p-3 text-left"
+              className="flex w-full items-center gap-3 rounded-2xl border border-amber-200/80 bg-white p-3.5 text-left shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-all active:scale-[0.99] hover:border-amber-300 focus:outline-none"
             >
-              <AlertTriangle size={18} className="shrink-0 text-amber-600" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-gray-900">{alert.name}</p>
-                <p className="truncate text-xs text-gray-500">{alert.issue}</p>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
+                <AlertTriangle size={16} />
               </div>
-              <ChevronRight size={16} className="shrink-0 text-gray-400" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold text-slate-900">{alert.name}</p>
+                <p className="truncate text-xs text-slate-500 mt-0.5">{alert.issue}</p>
+              </div>
+              <ChevronRight size={15} className="shrink-0 text-slate-300" />
             </button>
           ))}
+
+          {/* Calendar Events */}
           {upcomingEvents.slice(0, 2).map((event) => (
             <button
               key={event.id}
               type="button"
               onClick={() => onNavigate('annual-planner')}
-              className="ts-mobile-card-orange flex w-full items-center gap-3 rounded-xl p-3 text-left"
+              className="flex w-full items-center gap-3 rounded-2xl border border-slate-200/90 bg-white p-3.5 text-left shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-all active:scale-[0.99] hover:border-slate-300 focus:outline-none"
             >
-              <Clock3 size={18} className="shrink-0 text-gray-800" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-gray-900">{event.title}</p>
-                <p className="truncate text-xs text-gray-600">{formatDate(event.date)} · {event.type || 'Calendar'}</p>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+                <Calendar size={16} />
               </div>
-              <ChevronRight size={16} className="shrink-0 text-gray-500" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold text-slate-900">{event.title}</p>
+                <p className="truncate text-xs text-slate-500 mt-0.5">
+                  {formatDate(event.date)} · {event.type || 'Academic Calendar'}
+                </p>
+              </div>
+              <ChevronRight size={15} className="shrink-0 text-slate-300" />
             </button>
           ))}
         </div>
       )}
-
     </div>
   );
 };

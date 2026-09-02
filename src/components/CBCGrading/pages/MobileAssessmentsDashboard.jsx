@@ -17,6 +17,7 @@ import {
 import { dashboardAPI } from '../../../services/api';
 import { getCurrentAcademicYear, getCurrentTerm } from '../utils/academicYear';
 import { getLearnerGrade, getLearnerStream, groupLearners, uniqueCount } from './academic-intelligence/SimpleTablePage';
+import StatCard, { StatsCard } from '../shared/StatsCard';
 
 const TERM_LABELS = {
   TERM_1: 'Term 1',
@@ -33,28 +34,7 @@ const ProgressBar = ({ value = 0, tone = 'bg-violet-600' }) => (
   </div>
 );
 
-const StatCard = ({ icon: Icon, label, value, helper, bgColor, progress, progressColor }) => (
-  <div className="relative overflow-hidden p-5 text-white select-none" style={{ backgroundColor: bgColor }}>
-    <div className="pointer-events-none absolute -bottom-4 -right-4 text-white/10">
-      <Icon size={90} strokeWidth={1} />
-    </div>
-    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/70 mb-3">{label}</p>
-    <div className="flex items-end justify-between gap-2">
-      <div>
-        <p className="text-4xl font-black tracking-tight leading-none text-white">{value ?? '—'}</p>
-        {helper && <p className="mt-1.5 text-sm font-semibold text-white/70">{helper}</p>}
-        {progress !== undefined && (
-          <div className="mt-3 h-2 w-full rounded-full bg-white/20 overflow-hidden">
-            <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, Math.max(0, progress))}%`, backgroundColor: progressColor || 'rgba(255,255,255,0.9)' }} />
-          </div>
-        )}
-      </div>
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center bg-white/20 border border-white/30 self-start">
-        <Icon size={18} strokeWidth={2.2} className="text-white/90" />
-      </span>
-    </div>
-  </div>
-);
+
 
 const ActionTile = ({ icon: Icon, label, helper, tone, onClick, gradient = 'from-slate-100 to-slate-200' }) => (
   <div className={`min-h-[96px] flex rounded-lg p-[1px] bg-gradient-to-br ${gradient} shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md`}>
@@ -263,38 +243,38 @@ const MobileAssessmentsDashboard = ({ learners = [], onNavigate }) => {
           </div>
         )}
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-3 grid-cols-2">
           <StatCard 
             icon={Users} 
             label="Learners in Scope" 
             value={summary.learners ?? fallback.learners} 
-            helper={`${fallback.grades} grades - ${fallback.streams} streams`} 
-            bgColor="#172554"
+            helper={`${fallback.grades} grades · ${fallback.streams} streams`} 
+            accent="bg-blue-700"
           />
           <StatCard 
             icon={BookOpen} 
             label="Tests Configured" 
             value={summary.tests ?? 0} 
             helper={`${summary.subjects ?? 0} learning areas`} 
-            bgColor="#0F766E"
+            accent="bg-teal-700"
           />
           <StatCard 
             icon={ClipboardList} 
             label="Mark Entry" 
             value={formatPercent(summary.markEntryCompletionRate)} 
-            helper={`${summary.accountedEntries ?? 0}/${summary.expectedEntries ?? 0} entries accounted`} 
-            bgColor="#1B5E20"
+            helper={`${summary.accountedEntries ?? 0}/${summary.expectedEntries ?? 0} entries`}
+            accent="bg-emerald-800"
             progress={summary.markEntryCompletionRate || 0}
-            progressColor="rgba(255,255,255,0.9)"
+            progressColor="rgba(255,255,255,0.85)"
           />
           <StatCard 
             icon={FileText} 
             label="Report Ready" 
             value={formatPercent(summary.reportReadyRate)} 
             helper={`${summary.reportReadyLearners ?? 0} learners ready`} 
-            bgColor="#78350F"
+            accent="bg-rose-600"
             progress={summary.reportReadyRate || 0}
-            progressColor="rgba(255,255,255,0.9)"
+            progressColor="rgba(255,255,255,0.85)"
           />
         </section>
 

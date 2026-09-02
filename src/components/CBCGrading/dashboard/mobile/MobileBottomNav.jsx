@@ -1,8 +1,7 @@
 /**
  * Mobile Bottom Navigation
  * Role-aware bottom navigation for mobile dashboards.
- * Brand colors are driven by CSS variables (--toolbar-bg, --brand-secondary)
- * so each school's branding applies automatically to the nav bar.
+ * Clean, professional, understated educational SaaS design.
  */
 
 import React from 'react';
@@ -13,8 +12,9 @@ import { hasPageAccess } from '../../utils/appAccess';
 const MOBILE_LABELS = {
   dashboard: 'Home',
   attendance: 'Attend',
-  timetable: 'Time',
+  timetable: 'Schedule',
   collections: 'Fees',
+  grades: 'Assess',
 };
 
 /**
@@ -31,19 +31,20 @@ const MobileBottomNav = ({ role, currentPath = 'dashboard', onNavigate }) => {
   if (!navConfig) return null;
 
   const accessUser = { role, enabledApps: activeSlugs };
-  const items = navConfig.items.filter((item) => hasPageAccess(accessUser, item.path));
+  const items = navConfig.items
+    .filter((item) => hasPageAccess(accessUser, item.path))
+    .filter((item) => item.id !== 'reports' && item.label?.toLowerCase() !== 'reports');
 
   return (
-    <div
-      className="fixed bottom-0 left-0 right-0 z-[80] border-t shadow-lg backdrop-blur-xl"
+    <nav
+      aria-label="Mobile navigation"
+      className="fixed bottom-0 left-0 right-0 z-[80] border-t border-slate-200/90 bg-white/95 backdrop-blur-md shadow-[0_-2px_12px_rgba(0,0,0,0.04)]"
       style={{
-        background: '#1d4ed8', // blue-700 - solid blue footer background
-        borderColor: 'rgba(255,255,255,0.15)',
-        paddingBottom: 'env(safe-area-inset-bottom)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}
     >
       <div
-        className="grid gap-0 w-full max-w-md mx-auto h-16 overflow-hidden"
+        className="grid w-full max-w-md mx-auto h-16 p-1.5 gap-1"
         style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
       >
         {items.map((item) => {
@@ -62,32 +63,25 @@ const MobileBottomNav = ({ role, currentPath = 'dashboard', onNavigate }) => {
               onClick={() => onNavigate(item.path)}
               aria-label={item.label}
               aria-current={isActive ? 'page' : undefined}
-              className="min-w-0 overflow-hidden flex flex-col items-center justify-center gap-1 px-1 transition-colors"
-              style={
+              className={`relative min-w-0 h-full flex flex-col items-center justify-center gap-1 rounded-xl transition-all duration-150 active:scale-95 focus:outline-none ${
                 isActive
-                  ? {
-                      background: 'var(--brand-secondary, #ff7900)',
-                      color: '#1d4ed8',
-                    }
-                  : { color: 'rgba(255,255,255,0.70)' }
-              }
+                  ? 'bg-blue-700 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100/70'
+              }`}
             >
-              <Icon
-                size={20}
-                style={
-                  isActive
-                    ? { color: '#1d4ed8' }
-                    : { color: 'rgba(255,255,255,0.70)' }
-                }
-              />
-              <span className="block w-full truncate text-center text-[9px] font-bold leading-none">
+              <Icon size={19} strokeWidth={isActive ? 2.2 : 1.8} />
+              <span
+                className={`block w-full truncate text-center text-[10px] tracking-tight leading-none ${
+                  isActive ? 'font-bold text-white' : 'font-medium'
+                }`}
+              >
                 {displayLabel}
               </span>
             </button>
           );
         })}
       </div>
-    </div>
+    </nav>
   );
 };
 

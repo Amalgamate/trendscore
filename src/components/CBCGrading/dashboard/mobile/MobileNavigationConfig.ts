@@ -65,13 +65,6 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         color: 'text-amber-600'
       },
       {
-        id: 'reports',
-        label: 'Reports',
-        icon: FileText,
-        path: 'assess-summary-report',
-        color: 'text-blue-600'
-      },
-      {
         id: 'timetable',
         label: 'Timetable',
         icon: CalendarDays,
@@ -115,13 +108,6 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         path: 'assess-mobile-dashboard',
         activePaths: ['assess-mobile-dashboard', 'assess-summative-assessment', 'assess-summative-tests', 'assess-summary-report', 'assess-learner-reports', 'assess-termly-report'],
         color: 'text-amber-600'
-      },
-      {
-        id: 'reports',
-        label: 'Reports',
-        icon: FileText,
-        path: 'assess-summary-report',
-        color: 'text-blue-600'
       },
       {
         id: 'timetable',
@@ -169,13 +155,6 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         color: 'text-amber-600'
       },
       {
-        id: 'reports',
-        label: 'Reports',
-        icon: FileText,
-        path: 'assess-summary-report',
-        color: 'text-blue-600'
-      },
-      {
         id: 'timetable',
         label: 'Timetable',
         icon: CalendarDays,
@@ -213,14 +192,6 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         path: 'accounting-dashboard',
         activePaths: ['accounting-dashboard'],
         color: 'text-blue-600'
-      },
-      {
-        id: 'reports',
-        label: 'Reports',
-        icon: FileText,
-        path: 'fees-reports',
-        activePaths: ['fees-reports', 'fees-statements'],
-        color: 'text-amber-600'
       },
       {
         id: 'timetable',

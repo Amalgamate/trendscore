@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { hasPageAccess } from '../../utils/appAccess';
 import { dashboardAPI } from '../../../../services/api/dashboard.api';
+import StatCard, { StatsCard } from '../../shared/StatsCard';
 
 const formatNumber = (value) => Number(value || 0).toLocaleString();
 
@@ -23,29 +24,6 @@ const uniqueCount = (items, key) => {
   return values.size;
 };
 
-// Solid color palette — same across all dashboards
-const SOLID_COLORS = {
-  navy:    '#172554',
-  violet:  '#4C1D95',
-  emerald: '#1B5E20',
-  amber:   '#78350F',
-};
-
-const StatCard = ({ label, value, detail, icon: Icon, color }) => (
-  <div className="relative overflow-hidden p-5 text-white select-none" style={{ backgroundColor: color }}>
-    <div className="pointer-events-none absolute -bottom-4 -right-4 text-white/10">
-      <Icon size={90} strokeWidth={1} />
-    </div>
-    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/70 mb-3">{label}</p>
-    <div className="flex items-end justify-between gap-2">
-      <p className="text-4xl font-black tracking-tight leading-none text-white">{value}</p>
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center bg-white/20 border border-white/30">
-        <Icon size={18} strokeWidth={2.2} className="text-white/90" />
-      </span>
-    </div>
-    {detail && <p className="mt-1.5 text-sm font-semibold text-white/70">{detail}</p>}
-  </div>
-);
 
 const StarterDashboard = ({
   learners = [],
@@ -81,28 +59,28 @@ const StarterDashboard = ({
         value: formatNumber(liveMetrics?.students ?? totalLearners),
         detail: 'Active student records',
         icon: Users,
-        color: SOLID_COLORS.navy,
+        accent: 'bg-blue-700',
       },
       {
         label: 'Staff',
         value: formatNumber(liveMetrics?.staff ?? teachers.length),
         detail: 'Teaching team records',
         icon: GraduationCap,
-        color: SOLID_COLORS.violet,
+        accent: 'bg-violet-900',
       },
       {
         label: 'Grades',
         value: formatNumber(liveMetrics?.grades ?? uniqueCount(learners, 'grade')),
         detail: 'Grades with students',
         icon: BookOpen,
-        color: SOLID_COLORS.emerald,
+        accent: 'bg-emerald-800',
       },
       {
         label: 'Streams',
         value: formatNumber(liveMetrics?.streams ?? uniqueCount(learners, 'stream')),
         detail: 'Class streams in use',
         icon: CheckSquare,
-        color: SOLID_COLORS.amber,
+        accent: 'bg-rose-600',
       },
     ];
   }, [learners, liveMetrics, pagination?.total, teachers.length]);
@@ -128,7 +106,7 @@ const StarterDashboard = ({
           <h1 className="text-xl font-black tracking-tight text-slate-950">{greeting}, {firstName}</h1>
         </section>
 
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-3 grid-cols-2">
           {stats.map((item) => (
             <StatCard key={item.label} {...item} />
           ))}

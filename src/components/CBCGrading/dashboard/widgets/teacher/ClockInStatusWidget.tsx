@@ -195,9 +195,9 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
         type="button"
         onClick={() => performAction('clock-out')}
         disabled={busy}
-        className={`w-full px-4 py-2 rounded-lg font-semibold text-sm transition flex items-center justify-center gap-2 ${
+        className={`w-full px-4 py-2.5 rounded-2xl font-bold text-xs transition flex items-center justify-center gap-2 shadow-sm ${
           busy
-            ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+            ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
             : 'bg-rose-600 text-white hover:bg-rose-700'
         }`}
       >
@@ -208,21 +208,24 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
   }
 
   return (
-    <div className="p-4 bg-white border border-gray-200 rounded-lg">
+    <div className="p-4 bg-white border border-slate-200/90 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Staff Attendance</p>
-          <p className="text-lg font-bold text-gray-900 truncate">{statusLabel}</p>
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${isClockedIn ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Staff Attendance</p>
+          </div>
+          <p className="text-base font-bold text-slate-900 truncate mt-0.5">{statusLabel}</p>
           {attendance?.clockInAt && (
-            <p className="text-xs text-gray-500 mt-1">
-              Clock-in: {new Date(attendance.clockInAt).toLocaleTimeString()}
-              {attendance.clockOutAt ? ` · Clock-out: ${new Date(attendance.clockOutAt).toLocaleTimeString()}` : ''}
+            <p className="text-xs text-slate-500 mt-0.5 font-medium">
+              In: {new Date(attendance.clockInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {attendance.clockOutAt ? ` · Out: ${new Date(attendance.clockOutAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
             </p>
           )}
         </div>
         <button
           onClick={refreshStatus}
-          className="text-xs font-semibold text-brand-purple hover:text-brand-purple/80"
+          className="text-xs font-bold text-slate-600 hover:text-slate-900 transition-colors"
           disabled={mode === 'loading_status'}
           type="button"
         >
@@ -231,63 +234,55 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
       </div>
 
       {/* ── IP / Wi-Fi status indicator ── */}
-      <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
-        <Wifi size={13} className="text-blue-500" />
-        <span>Requires school Wi-Fi connection</span>
+      <div className="mt-2.5 flex items-center gap-1.5 text-xs text-slate-500">
+        <Wifi size={13} className="text-slate-400" />
+        <span className="text-[11px] font-medium text-slate-400">Requires school Wi-Fi connection</span>
       </div>
 
-      {/*
-       * ── GPS / Geofence indicator (DISABLED — uncomment to re-enable) ──────────
-       * <div className="mt-2 flex items-center gap-2 text-xs text-gray-400">
-       *   <MapPin size={13} className="text-gray-300" />
-       *   <span className="line-through text-gray-300">GPS location check (disabled)</span>
-       * </div>
-       */}
-
       {message && (
-        <div className={`mt-3 p-3 rounded-lg border ${isIpDenied ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
+        <div className={`mt-3 p-3 rounded-xl border ${isIpDenied ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
           <div className="flex items-start gap-2">
             {isIpDenied
               ? <WifiOff size={14} className="text-amber-600 mt-0.5 shrink-0" />
-              : <XCircle size={14} className="text-gray-400 mt-0.5 shrink-0" />}
+              : <XCircle size={14} className="text-slate-400 mt-0.5 shrink-0" />}
             <div>
-              <p className={`text-sm ${isIpDenied ? 'text-amber-800' : 'text-gray-800'}`}>{message}</p>
-              {reasonCode && <p className="text-xs text-gray-500 mt-1">Code: {reasonCode}</p>}
+              <p className={`text-xs font-semibold ${isIpDenied ? 'text-amber-900' : 'text-slate-800'}`}>{message}</p>
+              {reasonCode && <p className="text-[10px] text-slate-500 mt-0.5 font-mono">Code: {reasonCode}</p>}
             </div>
           </div>
         </div>
       )}
 
       {(mode === 'clock_in_success' || mode === 'clock_out_success') && !message && (
-        <div className="mt-3 flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+        <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
           <CheckCircle size={14} className="shrink-0" />
           <span>{mode === 'clock_in_success' ? 'Clock-in recorded successfully.' : 'Clock-out recorded successfully.'}</span>
         </div>
       )}
 
-      <div className="mt-4 flex flex-col gap-2">
+      <div className="mt-3.5 flex flex-col gap-2">
         {isClockedIn ? (
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => setMinimized(true)}
               disabled={primaryButton.disabled}
-              className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-white font-semibold text-sm text-gray-700 transition flex items-center justify-center gap-2 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-bold text-xs text-slate-700 transition flex items-center justify-center gap-1.5 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <Minimize2 size={14} />
+              <Minimize2 size={13} />
               Minimize
             </button>
             <button
               type="button"
               onClick={primaryButton.onClick}
               disabled={primaryButton.disabled}
-              className={`w-full px-4 py-2 rounded-lg font-semibold text-sm transition flex items-center justify-center gap-2 ${
+              className={`w-full px-3 py-2.5 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm ${
                 primaryButton.disabled
-                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                   : 'bg-rose-600 text-white hover:bg-rose-700'
               }`}
             >
-              {primaryButton.disabled ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />}
+              {primaryButton.disabled ? <Loader2 size={13} className="animate-spin" /> : <Clock size={13} />}
               {primaryButton.label}
             </button>
           </div>
@@ -296,20 +291,20 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
             type="button"
             onClick={primaryButton.onClick}
             disabled={primaryButton.disabled}
-            className={`w-full px-4 py-2 rounded-lg font-semibold text-sm transition flex items-center justify-center gap-2 ${
+            className={`w-full px-4 py-2.5 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm ${
               primaryButton.disabled
-                ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                : 'bg-slate-900 text-white hover:bg-slate-800'
             }`}
           >
-            {primaryButton.disabled ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+            {primaryButton.disabled ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
             {primaryButton.label}
           </button>
         )}
 
         {!minimized && (
-          <p className="text-xs text-gray-500">
-            Your clock-in is verified by the server via network IP. {user?.role ? `Role: ${user.role}.` : ''}
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            Verified via network IP. {user?.role ? `Role: ${user.role}.` : ''}
           </p>
         )}
       </div>

@@ -13,7 +13,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   ArrowLeft, Search, CheckCheck, ChevronRight,
-  Users, Filter, X, Bell
+  Users, Filter, X, Bell, CheckCircle2, AlertTriangle, Briefcase, BookOpen
 } from 'lucide-react';
 import { cn } from '../../../../utils/cn';
 import { useAttendance } from '../../hooks/useAttendanceAPI';
@@ -22,6 +22,8 @@ import { useNotifications } from '../../hooks/useNotifications';
 import { useInstitutionLabels } from '../../../../hooks/useInstitutionLabels';
 import { toInputDate } from '../../utils/dateHelpers';
 import { approvalAPI } from '../../../../services/api/approval.api';
+import { presenceAPI } from '../../../../services/api/presence.api';
+import StatCard from '../../shared/StatsCard';
 
 import { AttendanceClassCard } from './AttendanceClassCard';
 import { AttendanceExceptionCard } from './AttendanceExceptionCard';
@@ -98,6 +100,7 @@ export function MobileAttendance() {
   const [isLoadingUnlockRequest, setIsLoadingUnlockRequest] = useState(false);
   const [isApprovingUnlock, setIsApprovingUnlock] = useState(false);
   const [classSummaries, setClassSummaries] = useState({});
+  const [snapshot, setSnapshot] = useState(null);
 
   const {
     classes,
@@ -270,6 +273,30 @@ export function MobileAttendance() {
     loadClassSummaries();
     return () => { cancelled = true; };
   }, [screen, classes, activeDate, getDailyClassReport]);
+
+  useEffect(() => {
+    let cancelled = false;
+    presenceAPI.getSchoolSnapshot?.()
+      .then((res) => {
+        if (!cancelled && res?.data) setSnapshot(res.data);
+        else if (!cancelled && res && !res.data) setSnapshot(res);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [activeDate]);
+
+  const totalAssignedLearners = useMemo(() => {
+    return Object.values(classSummaries).reduce((acc, s) => acc + (s.total || 0), 0) ||
+      classes.reduce((acc, c) => acc + getClassLearnerCount(c), 0);
+  }, [classSummaries, classes, getClassLearnerCount]);
+
+  const totalAssignedPresent = useMemo(() => {
+    return Object.values(classSummaries).reduce((acc, s) => acc + (s.present || 0), 0);
+  }, [classSummaries]);
+
+  const markedClassesCount = useMemo(() => {
+    return classes.filter(c => (classSummaries[getClassId(c)]?.marked || 0) > 0).length;
+  }, [classes, classSummaries]);
 
   const handleSelectClass = useCallback(async (classItem) => {
     setIsLoading(true);
@@ -455,43 +482,60 @@ export function MobileAttendance() {
     setIsSaving(false);
   }, [activeClass, activeDate, attendanceSettings.requireRemarksForLateExcused, pendingChanges, markBulkAttendance, showSuccess, showError, stats.present, stats.total]);
 
-  // ── today's greeting ──────────────────────────────────────────────────────
-  const greeting = useMemo(() => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 17) return 'Good Afternoon';
-    return 'Good Evening';
-  }, []);
-
-  const firstName = user?.firstName || user?.name?.split(' ')[0] || 'Teacher';
-
   // ── render ────────────────────────────────────────────────────────────────
 
   // SCREEN 1: My Classes Today
   if (screen === SCREEN.CLASSES) {
+    const presentCountValue = snapshot?.presentCount ?? totalAssignedPresent;
+    const attendanceRateValue = snapshot?.attendanceRate ?? (totalAssignedLearners > 0 ? Math.round((totalAssignedPresent / totalAssignedLearners) * 100) : 0);
+    const absentUnmarkedValue = snapshot ? (snapshot.absentCount + snapshot.unmarkedCount) : Math.max(0, totalAssignedLearners - totalAssignedPresent);
+
     return (
       <div className="flex flex-col min-h-0 pb-24">
-        {/* Header */}
-        <div className="px-4 pt-5 pb-4">
-          <p className="text-xs text-gray-500 font-medium">
-            {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
-          </p>
-          <h1 className="text-2xl font-bold text-gray-900 mt-0.5">
-            {greeting}, {firstName} 👋
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">Select a class to take attendance</p>
+        {/* ── Stat Cards ────────────────────────────────────── */}
+        <div className="px-4 pt-4 mb-4">
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard
+              icon={CheckCircle2}
+              label="Learners Present"
+              value={presentCountValue}
+              helper={`${attendanceRateValue}% attendance`}
+              accent="bg-blue-700"
+            />
+            <StatCard
+              icon={AlertTriangle}
+              label="Absent / Unmarked"
+              value={absentUnmarkedValue}
+              helper={snapshot ? `${snapshot.absentCount ?? 0} absent · ${snapshot.unmarkedCount ?? 0} unmarked` : 'Requires marking'}
+              accent="bg-rose-600"
+            />
+            <StatCard
+              icon={Briefcase}
+              label="Staff Attendance"
+              value={snapshot?.staffPresent ?? '—'}
+              helper={snapshot ? `${snapshot.staffPresent ?? 0} present · ${snapshot.staffAbsent ?? 0} absent` : 'Teaching & support staff'}
+              accent="bg-emerald-800"
+            />
+            <StatCard
+              icon={BookOpen}
+              label="Classes Marked"
+              value={`${markedClassesCount}/${classes.length}`}
+              helper={`${Math.max(0, classes.length - markedClassesCount)} classes pending`}
+              accent="bg-violet-900"
+            />
+          </div>
         </div>
 
         {/* Date selector */}
         <div className="px-4 mb-4">
-          <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 border border-gray-200">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</span>
+          <div className="flex items-center gap-2.5 bg-white rounded-2xl px-4 py-2.5 border border-slate-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Date</span>
             <input
               type="date"
               value={activeDate}
               onChange={e => setActiveDate(e.target.value)}
               max={new Date().toISOString().split('T')[0]}
-              className="flex-1 bg-transparent text-sm font-medium text-gray-900 outline-none"
+              className="flex-1 bg-transparent text-sm font-semibold text-slate-900 outline-none"
             />
           </div>
         </div>

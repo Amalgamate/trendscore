@@ -11,6 +11,7 @@ import {
   SlidersHorizontal,
   ChevronRight,
   Eye,
+  UserCheck,
 } from 'lucide-react';
 import api, { dashboardAPI } from '../../../../services/api';
 import { EmptyState } from '@/design-system/components';
@@ -416,32 +417,107 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
       {/* Main Container: Class list vs Student list */}
       {!selectedClass ? (
         <>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {/* ── 4 Enrollment Stat Cards ───────────────────────── */}
+          {(() => {
+            const fmt = (v) => Number(v || 0).toLocaleString();
+            const totalEnrolled = Number(stats.myStudents || analysis.totalStudents || classes.reduce((s, c) => s + Number(c.learnerCount || 0), 0) || 0);
+            const activeStudents = Number(stats.activeStudents || stats.myStudents || totalEnrolled || 0);
+            const boys = Number(stats.boys || analysis.boys || stats.maleCount || 0);
+            const girls = Number(stats.girls || analysis.girls || stats.femaleCount || 0);
+            const boysPct = totalEnrolled > 0 ? Math.round((boys / totalEnrolled) * 100) : 0;
+            const girlsPct = totalEnrolled > 0 ? Math.round((girls / totalEnrolled) * 100) : 0;
+
+            const tiles = [
+              {
+                id: 'total',
+                label: 'Total Enrolled',
+                value: fmt(totalEnrolled),
+                sub: 'All students',
+                icon: Users,
+                accent: 'bg-blue-700',
+                iconColor: 'text-white',
+              },
+              {
+                id: 'active',
+                label: 'Active Students',
+                value: fmt(activeStudents),
+                sub: 'Currently enrolled',
+                icon: UserCheck,
+                accent: 'bg-teal-700',
+                iconColor: 'text-white',
+              },
+              {
+                id: 'boys',
+                label: 'Boys',
+                value: fmt(boys),
+                sub: `${boysPct}% of enrolment`,
+                icon: User,
+                accent: 'bg-indigo-700',
+                iconColor: 'text-white',
+              },
+              {
+                id: 'girls',
+                label: 'Girls',
+                value: fmt(girls),
+                sub: `${girlsPct}% of enrolment`,
+                icon: User,
+                accent: 'bg-rose-600',
+                iconColor: 'text-white',
+              },
+            ];
+
+            return (
+              <div className="grid grid-cols-2 gap-3">
+                {tiles.map((tile) => (
+                  <div
+                    key={tile.id}
+                    className={`relative overflow-hidden rounded-2xl ${tile.accent} p-4 text-white shadow-sm`}
+                  >
+                    {/* Background watermark icon */}
+                    <div className="pointer-events-none absolute -bottom-3 -right-3 opacity-[0.12]">
+                      <tile.icon size={72} />
+                    </div>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/70">{tile.label}</p>
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15">
+                        <tile.icon size={14} className={tile.iconColor} />
+                      </div>
+                    </div>
+                    <p className="mt-2 text-3xl font-black tracking-tight leading-none">{tile.value}</p>
+                    <p className="mt-1.5 text-[11px] font-medium text-white/65">{tile.sub}</p>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* ── Class navigation cards ─────────────────────────── */}
+          <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
             <button
               type="button"
               onClick={() => myClass && handleOpenClassList(myClass, 'my-class')}
               disabled={!myClass}
-              className="group min-h-[154px] rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-indigo-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+              className="group min-h-[154px] rounded-2xl border border-slate-200/90 bg-white p-5 text-left shadow-[0_1px_3px_rgba(0,0,0,0.03)] transition-all duration-150 hover:border-slate-300 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none"
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700">
-                  <GraduationCap size={24} />
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-800 group-hover:bg-slate-900 group-hover:text-white transition-colors">
+                  <GraduationCap size={22} />
                 </div>
-                <ChevronRight size={18} className="text-slate-300 transition group-hover:text-indigo-600" />
+                <ChevronRight size={18} className="text-slate-300 transition group-hover:text-slate-900" />
               </div>
               <div className="mt-4">
-                <h2 className="text-lg font-black text-slate-950">My Class</h2>
-                <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-                  {myClass ? `${myClass.className} student table` : 'No class-teacher class assigned'}
+                <h2 className="text-base font-bold text-slate-900">My Class</h2>
+                <p className="mt-0.5 text-xs font-medium text-slate-500">
+                  {myClass ? `${myClass.className} student roster` : 'No class-teacher class assigned'}
                 </p>
               </div>
               <div className="mt-4 flex items-end justify-between border-t border-slate-100 pt-3">
                 <div>
-                  <p className="text-2xl font-black text-slate-950">{myClass?.learnerCount || 0}</p>
-                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Students</p>
+                  <p className="text-2xl font-black text-slate-900 leading-none">{myClass?.learnerCount || 0}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-1">Students</p>
                 </div>
-                <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-[10px] font-black text-slate-700">
-                  Open table
+                <span className="rounded-xl bg-slate-100 px-3 py-1.5 text-[10px] font-bold text-slate-700">
+                  Open roster
                 </span>
               </div>
             </button>
@@ -450,42 +526,42 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
               type="button"
               onClick={handleOpenSubjectsList}
               disabled={subjectClasses.length === 0}
-              className="group min-h-[154px] rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-emerald-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+              className="group min-h-[154px] rounded-2xl border border-slate-200/90 bg-white p-5 text-left shadow-[0_1px_3px_rgba(0,0,0,0.03)] transition-all duration-150 hover:border-slate-300 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none"
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
-                  <BookOpen size={24} />
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-800 group-hover:bg-slate-900 group-hover:text-white transition-colors">
+                  <BookOpen size={22} />
                 </div>
-                <ChevronRight size={18} className="text-slate-300 transition group-hover:text-emerald-600" />
+                <ChevronRight size={18} className="text-slate-300 transition group-hover:text-slate-900" />
               </div>
               <div className="mt-4">
-                <h2 className="text-lg font-black text-slate-950">My Subjects</h2>
-                <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                <h2 className="text-base font-bold text-slate-900">My Subjects</h2>
+                <p className="mt-0.5 text-xs font-medium text-slate-500">
                   Students from the classes and subjects assigned to you.
                 </p>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
                 <div>
-                  <p className="text-2xl font-black text-slate-950">{subjectClasses.length}</p>
-                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Classes</p>
+                  <p className="text-2xl font-black text-slate-900 leading-none">{subjectClasses.length}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-1">Classes</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-black text-slate-950">{analysis.totalSubjects || 0}</p>
-                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Subjects</p>
+                  <p className="text-2xl font-black text-slate-900 leading-none">{analysis.totalSubjects || 0}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-1">Subjects</p>
                 </div>
               </div>
             </button>
           </div>
 
-          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-4">
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4 shadow-sm">
             <div className="flex items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-slate-600">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
                 <Users size={18} />
               </div>
               <div>
-                <h2 className="text-sm font-black text-slate-950">Student tables</h2>
-                <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-                  Open either card to view students in a simple Excel-style roster with filters, selection, fee paid totals, and balances.
+                <h2 className="text-xs font-bold text-slate-900">Student Roster</h2>
+                <p className="mt-0.5 text-xs font-medium text-slate-500 leading-relaxed">
+                  Open either card above to view students in a clean roster with attendance metrics, fee records, and filters.
                 </p>
               </div>
             </div>
@@ -493,31 +569,31 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
         </>
       ) : (
         /* Class Student Directory view */
-        <div className="border border-slate-300 bg-white shadow-sm overflow-hidden">
+        <div className="rounded-2xl border border-slate-200/90 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.03)] overflow-hidden">
           {/* Directory Toolbar / Filters */}
-          <div className="p-4 border-b border-slate-100 bg-slate-50/50 space-y-4">
+          <div className="p-4 border-b border-slate-100 bg-slate-50/50 space-y-3.5">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
               {/* Search */}
               <div className="relative flex-1">
-                <Search size={16} className="absolute left-3 top-3 text-slate-400" />
+                <Search size={15} className="absolute left-3.5 top-3 text-slate-400" />
                 <input
                   type="text"
                   placeholder="Search students by name or admission no..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white"
+                  className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-slate-400 bg-white"
                 />
               </div>
 
               {/* Sorting and Filters */}
               <div className="flex flex-wrap items-center gap-2 text-xs">
-                <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1.5 font-semibold">
+                <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 py-1.5 font-semibold">
                   <SlidersHorizontal size={12} className="text-slate-400" />
-                  <span className="text-[10px] text-slate-500 uppercase font-black px-1">Sort</span>
+                  <span className="text-[10px] text-slate-400 uppercase font-bold px-1">Sort</span>
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
-                    className="outline-none bg-transparent cursor-pointer text-slate-700"
+                    className="outline-none bg-transparent cursor-pointer text-slate-700 text-xs font-bold"
                   >
                     <option value="NAME_ASC">Name A - Z</option>
                     <option value="NAME_DESC">Name Z - A</option>
@@ -525,13 +601,13 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
                   </select>
                 </div>
 
-                <div className="flex bg-white border border-slate-200 rounded-lg p-1 gap-1 overflow-x-auto">
+                <div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-1 overflow-x-auto">
                   {PAYMENT_FILTERS.map((filter) => (
                     <button
                       key={filter.id}
                       onClick={() => setPaymentFilter(filter.id)}
-                      className={`whitespace-nowrap px-3 py-1 rounded text-[10px] font-black uppercase transition-colors ${
-                        paymentFilter === filter.id ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                      className={`whitespace-nowrap px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                        paymentFilter === filter.id ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
                       }`}
                     >
                       {filter.label}
@@ -539,36 +615,36 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
                   ))}
                 </div>
 
-                <div className="flex bg-white border border-slate-200 rounded-lg p-1 gap-1">
+                <div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-1">
                   <button
                     onClick={() => setGenderFilter('ALL')}
-                    className={`px-3 py-1 rounded text-[10px] font-black uppercase transition-colors ${
-                      genderFilter === 'ALL' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                      genderFilter === 'ALL' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
                     All
                   </button>
                   <button
                     onClick={() => setGenderFilter('MALE')}
-                    className={`px-3 py-1 rounded text-[10px] font-black uppercase transition-colors ${
-                      genderFilter === 'MALE' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                      genderFilter === 'MALE' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
-                    Boys ♂
+                    Boys
                   </button>
                   <button
                     onClick={() => setGenderFilter('FEMALE')}
-                    className={`px-3 py-1 rounded text-[10px] font-black uppercase transition-colors ${
-                      genderFilter === 'FEMALE' ? 'bg-rose-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                      genderFilter === 'FEMALE' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
-                    Girls ♀
+                    Girls
                   </button>
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-slate-500">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-medium text-slate-500">
               <span>{filteredStudents.length} student{filteredStudents.length === 1 ? '' : 's'} shown</span>
               <span>{selectedCount} selected</span>
             </div>
@@ -577,16 +653,16 @@ const TeacherLearnerAnalysis = ({ user, onNavigate }) => {
           {/* Directory Content */}
           {loadingClass ? (
             <div className="py-16 text-center">
-              <Loader2 className="mx-auto mb-2 animate-spin text-indigo-600" size={28} />
+              <Loader2 className="mx-auto mb-2 animate-spin text-slate-500" size={26} />
               <p className="text-xs font-semibold text-slate-500">Loading class roster...</p>
             </div>
           ) : classError ? (
-            <div className="p-8 text-center text-red-600 flex flex-col items-center justify-center">
-              <AlertTriangle size={36} className="mb-2" />
+            <div className="p-8 text-center text-rose-600 flex flex-col items-center justify-center">
+              <AlertTriangle size={32} className="mb-2 text-rose-500" />
               <p className="text-xs font-semibold">{classError}</p>
               <button
                 onClick={() => (isSubjectTable ? handleOpenSubjectsList() : handleOpenClassList(selectedClass, activePage))}
-                className="mt-3 bg-indigo-600 text-white px-4 py-1.5 text-xs font-black rounded-lg hover:bg-indigo-700"
+                className="mt-3 bg-slate-900 text-white px-4 py-2 text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm"
               >
                 Retry
               </button>
