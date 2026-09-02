@@ -273,6 +273,7 @@ model StaffSequence {
 model Stream {
   id         String    @id @default(uuid())
   name       String    @unique
+  isDefault  Boolean   @default(false)
   active     Boolean   @default(true)
   archived   Boolean   @default(false)
   archivedAt DateTime?
@@ -1817,6 +1818,7 @@ model GradingRange {
 }
 
 model StreamConfig {
+  // Legacy compatibility table. New application code must use Stream.
   id         String    @id @default(uuid())
   name       String    @unique
   active     Boolean   @default(true)

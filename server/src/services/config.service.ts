@@ -436,6 +436,17 @@ export class ConfigService {
       active: typeof classData.active === 'boolean' ? classData.active : true
     };
 
+    if (!normalizedData.grade || !normalizedData.stream) {
+      throw new Error('Grade and stream are required when creating a class. Create the stream first.');
+    }
+    const configuredStream = await prisma.stream.findFirst({
+      where: { name: normalizedData.stream, active: true, archived: false },
+      select: { id: true },
+    });
+    if (!configuredStream) {
+      throw new Error(`Stream "${normalizedData.stream}" is not an active configured stream.`);
+    }
+
     if (id) {
       return await prisma.class.update({
         where: { id },
@@ -474,20 +485,42 @@ export class ConfigService {
   async getStreamConfigs(): Promise<any[]> {
     return await prisma.stream.findMany({
       where: { archived: false },
-      orderBy: { name: 'asc' }
+      orderBy: [{ isDefault: 'desc' }, { name: 'asc' }]
     });
   }
 
   async upsertStreamConfig(data: any): Promise<any> {
-    const { name } = data;
-    return await prisma.stream.upsert({
-      where: { name },
-      update: { active: true, archived: false },
-      create: { name, active: true }
+    const name = String(data.name || '').trim();
+    if (!name) throw new Error('Stream name is required.');
+    const active = data.active !== false;
+    return await prisma.$transaction(async (tx) => {
+      const existing = data.id ? await tx.stream.findUnique({ where: { id: data.id } }) : null;
+      let isDefault = typeof data.isDefault === 'boolean' ? data.isDefault : Boolean(existing?.isDefault);
+      // A new school with one stream is ready for an upload immediately; any
+      // later stream must be explicitly selected as the replacement default.
+      if (!existing && !isDefault) {
+        const activeStreamCount = await tx.stream.count({ where: { active: true, archived: false } });
+        if (activeStreamCount === 0) isDefault = true;
+      }
+      if (isDefault && !active) throw new Error('The default stream must be active.');
+      if (isDefault) await tx.stream.updateMany({ data: { isDefault: false } });
+      if (existing) {
+        return tx.stream.update({
+          where: { id: existing.id },
+          data: { name, active, archived: false, isDefault },
+        });
+      }
+      return tx.stream.upsert({
+        where: { name },
+        update: { active, archived: false, isDefault },
+        create: { name, active, isDefault }
+      });
     });
   }
 
   async deleteStreamConfig(id: string): Promise<void> {
+    const stream = await prisma.stream.findUnique({ where: { id }, select: { isDefault: true } });
+    if (stream?.isDefault) throw new Error('Choose another default stream before archiving this stream.');
     await prisma.stream.update({
       where: { id },
       data: { archived: true, archivedAt: new Date() }

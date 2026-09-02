@@ -242,7 +242,11 @@ export const seedClasses = async (req: AuthRequest, res: Response) => {
           'GRADE_9',
         ] as const);
 
-  const configuredStreams = await prisma.streamConfig.findMany({ select: { name: true } });
+  const configuredStreams = await prisma.stream.findMany({
+    where: { active: true, archived: false },
+    select: { name: true },
+    orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
+  });
   const streamList = configuredStreams.map((s) => s.name.trim()).filter(Boolean);
 
   if (!streamList.length) {

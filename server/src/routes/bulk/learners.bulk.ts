@@ -379,41 +379,16 @@ function resolveGrade(raw: string): string {
   const match = Object.keys(gradeMap).find(k => normalised.includes(k));
   if (match) return gradeMap[match];
 
-  return 'GRADE_1'; // absolute last resort
+  throw new ApiError(422, `Class "${raw}" is not recognised. Use a configured grade from the import template.`);
 }
 
-async function enrollLearnerInClass(learner: {
-  id: string;
-  grade: string;
-  stream?: string | null;
-}) {
+async function enrollLearnerInClass(learnerId: string, classId: string) {
   try {
-    const classCandidates = await prisma.class.findMany({
-      where: {
-        grade: learner.grade,
-        active: true,
-        archived: false,
-      },
-      select: { id: true, stream: true },
-      orderBy: [{ academicYear: 'desc' }, { updatedAt: 'desc' }],
+    await prisma.classEnrollment.upsert({
+      where: { classId_learnerId: { classId, learnerId } },
+      update: { active: true, archived: false },
+      create: { classId, learnerId, active: true },
     });
-
-    const targetClass = (learner.stream
-      ? classCandidates.find((item) => item.stream?.toUpperCase() === learner.stream?.toUpperCase())
-      : null) || classCandidates[0];
-
-    if (targetClass) {
-      await prisma.classEnrollment.upsert({
-        where: {
-          classId_learnerId: {
-            classId: targetClass.id,
-            learnerId: learner.id,
-          },
-        },
-        update: { active: true, archived: false },
-        create: { classId: targetClass.id, learnerId: learner.id, active: true },
-      });
-    }
   } catch (err: any) {
     console.warn('[bulk enroll] Notice on class enrollment:', err?.message || err);
   }
@@ -440,16 +415,48 @@ router.post(
     const importRows = parsedRows.filter((row) => !shouldSkipParsedRow(row.data));
     const skippedRows = parsedRows.length - importRows.length;
 
-    // Fetch school default stream if available
-    const schoolStreams = await prisma.streamConfig.findMany({ select: { name: true } });
-    const defaultStream = schoolStreams.length > 0 ? schoolStreams[0].name : undefined;
+    // Setup gate: imports use the authoritative Stream catalogue and never
+    // invent a stream or select an arbitrary first row.
+    const schoolStreams = await prisma.stream.findMany({
+      where: { active: true, archived: false },
+      select: { id: true, name: true, isDefault: true },
+    });
+    if (!schoolStreams.length) {
+      return res.status(409).json({ error: 'School setup is incomplete: create at least one active stream before importing learners.' });
+    }
+    const defaultStream = schoolStreams.find((stream) => stream.isDefault)?.name;
+    const streamByName = new Map(schoolStreams.map((stream) => [stream.name.trim().toUpperCase(), stream.name]));
+    const configuredClasses = await prisma.class.findMany({
+      where: { active: true, archived: false },
+      select: { id: true, grade: true, stream: true, academicYear: true },
+    });
+    const classByGradeStreamYear = new Map(
+      configuredClasses
+        .filter((classItem) => classItem.stream)
+        .map((classItem) => [`${classItem.grade}|${classItem.stream!.trim().toUpperCase()}|${classItem.academicYear}`, classItem.id]),
+    );
 
     for (const row of importRows) {
       try {
         const validated = learnerSchema.parse(row.data);
+        const grade = resolveGrade((validated['Class'] || '').toString());
+        const academicYear = Number.parseInt(String(validated['Year'] || ''), 10) || new Date().getFullYear();
+        const requestedStream = String(validated['Stream'] || '').trim();
+        if (!requestedStream && !defaultStream) {
+          throw new ApiError(422, 'This row has no Stream and the school has no default stream. Set one before importing.');
+        }
+        const streamCode = streamByName.get((requestedStream || defaultStream || '').toUpperCase());
+        if (!streamCode) {
+          throw new ApiError(422, `Stream "${requestedStream}" is not an active configured stream.`);
+        }
+        const targetClassId = classByGradeStreamYear.get(`${grade}|${streamCode.toUpperCase()}|${academicYear}`);
+        if (!targetClassId) {
+          throw new ApiError(422, `No active ${grade.replace('_', ' ')} ${streamCode} class exists for ${academicYear}. Create the class before importing learners.`);
+        }
         results.push({
           line: row.line,
-          data: validated,
+          data: { ...validated, Stream: streamCode },
+          targetClassId,
           valid: true
         });
       } catch (error) {
@@ -462,6 +469,16 @@ router.post(
       }
     }
 
+    // The file is all-or-nothing: configuration and row errors must be fixed
+    // before any learner, parent, account, or enrolment record is written.
+    if (errors.length) {
+      return res.status(422).json({
+        error: 'Import blocked. Complete school setup and correct the listed rows before retrying.',
+        summary: { total: importRows.length, processed: 0, skipped: skippedRows, failed: errors.length, validationErrors: errors.length },
+        details: { validationErrors: errors },
+      });
+    }
+
     const created: any[] = [];
     const updated: any[] = [];
     const failed: any[] = [];
@@ -472,7 +489,7 @@ router.post(
         const csvData = item.data;
         const grade = resolveGrade((csvData['Class'] || '').toString());
         const academicYear = Number.parseInt(String(csvData['Year'] || ''), 10) || new Date().getFullYear();
-        const streamCode = String(csvData['Stream'] || defaultStream || '').trim() || undefined;
+        const streamCode = String(csvData['Stream'] || '').trim();
         const providedAdmNo = String(csvData['Adm No'] || '').trim();
 
         const { rawName, firstName, middleName, lastName } = buildLearnerNameParts(csvData);
@@ -559,11 +576,7 @@ router.post(
             });
           }
 
-          await enrollLearnerInClass({
-            id: updatedLearner.id,
-            grade: updatedLearner.grade,
-            stream: updatedLearner.stream,
-          });
+          await enrollLearnerInClass(updatedLearner.id, item.targetClassId);
 
           const studentAccount = await ensureStudentAccountForLearner({
             learnerId: updatedLearner.id,
@@ -606,11 +619,7 @@ router.post(
             });
           }
 
-          await enrollLearnerInClass({
-            id: learner.id,
-            grade: learner.grade,
-            stream: learner.stream,
-          });
+          await enrollLearnerInClass(learner.id, item.targetClassId);
 
           const studentAccount = await ensureStudentAccountForLearner({
             learnerId: learner.id,
