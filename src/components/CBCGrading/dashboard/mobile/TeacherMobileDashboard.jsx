@@ -8,7 +8,6 @@ import { dashboardAPI } from '../../../../services/api';
 import {
   AlertTriangle,
   Bell,
-  CalendarDays,
   CheckCircle2,
   ChevronRight,
   ClipboardList,
@@ -48,15 +47,6 @@ const getSessionLabel = (time) => {
   return 'Evening';
 };
 
-const iconMap = {
-  attendance: CheckCircle2,
-  marks: ClipboardList,
-  'lesson-notes': BookOpen,
-  notes: BookOpen,
-  message: MessageSquare,
-  learners: Users,
-};
-
 const EmptyState = ({ icon: Icon, title }) => (
   <div className="ts-mobile-card-soft rounded-xl border-dashed p-5 text-center">
     <Icon size={26} className="mx-auto mb-2 opacity-30" />
@@ -83,7 +73,7 @@ const MetricCard = ({ metric, index, loading }) => {
 };
 
 const ActionButton = ({ action, index, onNavigate }) => {
-  const Icon = iconMap[action.icon] || ChevronRight;
+  const Icon = ChevronRight;
 
   return (
     <button
@@ -127,18 +117,10 @@ const TeacherMobileDashboard = ({ user, onNavigate }) => {
 
   const stats = metrics?.stats || {};
   const pendingWork = metrics?.pendingWork || {};
-  const schedule = useMemo(() => metrics?.schedule || [], [metrics?.schedule]);
   const attendanceDue = useMemo(() => metrics?.attendanceDue || [], [metrics?.attendanceDue]);
   const assessmentsToMark = useMemo(() => metrics?.assessmentsToMark || [], [metrics?.assessmentsToMark]);
-  const classes = useMemo(() => metrics?.myClasses || [], [metrics?.myClasses]);
   const learnerAlerts = useMemo(() => metrics?.learnersNeedingAttention || [], [metrics?.learnersNeedingAttention]);
   const upcomingEvents = useMemo(() => metrics?.upcomingEvents || [], [metrics?.upcomingEvents]);
-  const quickActions = useMemo(() => metrics?.quickActions || [], [metrics?.quickActions]);
-
-  const nextLesson = schedule.find((item) => item.status === 'in-progress') ||
-    schedule.find((item) => item.status === 'upcoming') ||
-    schedule[0] ||
-    null;
   const nextAction = metrics?.nextAction;
 
   const pendingAttendanceLearners = Number(pendingWork.pendingAttendanceLearners || 0);
@@ -216,74 +198,6 @@ const TeacherMobileDashboard = ({ user, onNavigate }) => {
         )}
       </div>
 
-      <div className="space-y-2 px-3 py-3">
-        <p className="ts-mobile-section-title px-2 text-xs font-semibold uppercase">Today's Timetable</p>
-        {!loading && nextLesson ? (
-          <button
-            type="button"
-            onClick={() => onNavigate('planner-timetable')}
-            className="ts-mobile-card-orange w-full rounded-xl p-3 text-left transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/20">
-                <CalendarDays size={18} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="truncate text-sm font-bold text-gray-900">{nextLesson.subject || 'No lesson scheduled'}</p>
-                  <span className="shrink-0 rounded-md bg-white/40 px-2 py-0.5 text-[9px] font-black uppercase text-gray-800">
-                    {getSessionLabel(nextLesson.time)}
-                  </span>
-                </div>
-                <p className="mt-1 truncate text-xs text-gray-600">
-                  {formatTime(nextLesson.time)}
-                  {nextLesson.endTime ? ` - ${formatTime(nextLesson.endTime)}` : ''}
-                  {nextLesson.grade || nextLesson.className ? ` · ${nextLesson.grade || nextLesson.className}` : ''}
-                  {nextLesson.room ? ` · ${nextLesson.room}` : ''}
-                </p>
-              </div>
-              <ChevronRight size={16} className="shrink-0 text-gray-500" />
-            </div>
-          </button>
-        ) : (
-          <EmptyState icon={CalendarDays} title={loading ? 'Loading timetable...' : 'No lessons scheduled today'} />
-        )}
-      </div>
-
-      {!loading && classes.length > 0 && (
-        <div className="space-y-2 px-3 py-3">
-          <p className="ts-mobile-section-title px-2 text-xs font-semibold uppercase">My Classes</p>
-          {classes.slice(0, 4).map((classItem) => (
-            <button
-              key={classItem.id}
-              type="button"
-              onClick={() => onNavigate('teacher-learner-analysis')}
-              className="ts-mobile-card flex w-full items-center gap-3 rounded-xl p-3 text-left transition-colors"
-            >
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-purple/10 text-base font-bold text-brand-purple">
-                {String(classItem.name || '?').trim()[0] || '?'}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-gray-900">{classItem.name}</p>
-                <p className="text-xs text-gray-500">
-                  {formatNumber(classItem.learnerCount)} learners · {formatPercent(classItem.attendanceRate)} attendance
-                </p>
-                {classItem.subjects?.length > 0 && (
-                  <p className="mt-0.5 truncate text-[10px] font-semibold text-gray-500">
-                    {classItem.subjects.join(' · ')}
-                  </p>
-                )}
-              </div>
-              {Number(classItem.pending || 0) > 0 && (
-                <span className="shrink-0 rounded-full bg-amber-100 px-2 py-1 text-[10px] font-black text-amber-700">
-                  {formatNumber(classItem.pending)} due
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-
       {!loading && (learnerAlerts.length > 0 || upcomingEvents.length > 0) && (
         <div className="space-y-2 px-3 py-3">
           <p className="ts-mobile-section-title px-2 text-xs font-semibold uppercase">Alerts & Events</p>
@@ -320,19 +234,6 @@ const TeacherMobileDashboard = ({ user, onNavigate }) => {
         </div>
       )}
 
-      <div className="space-y-2 px-3 py-3">
-        <p className="ts-mobile-section-title px-2 text-xs font-semibold uppercase">Quick Actions</p>
-        <div className="grid grid-cols-2 gap-2">
-          {(quickActions.length > 0 ? quickActions : [
-            { id: 'attendance', label: 'Take Attendance', icon: 'attendance', navigateTo: 'attendance-daily' },
-            { id: 'marks', label: 'Enter Marks', icon: 'marks', navigateTo: 'assess-summative-assessment' },
-            { id: 'lesson-notes', label: 'Lesson Notes', icon: 'lesson-notes', navigateTo: 'learning-hub-lesson-plans' },
-            { id: 'learners', label: 'Learners', icon: 'learners', navigateTo: 'teacher-learner-analysis' },
-          ]).slice(0, 4).map((action, index) => (
-            <ActionButton key={action.id || action.label} action={action} index={index} onNavigate={onNavigate} />
-          ))}
-        </div>
-      </div>
     </div>
   );
 };

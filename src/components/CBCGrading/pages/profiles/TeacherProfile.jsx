@@ -13,6 +13,7 @@ import { useNotifications } from '../../hooks/useNotifications';
 import ProfilePhotoModal from '../../shared/ProfilePhotoModal';
 import ResetPasswordModal from '../../shared/ResetPasswordModal';
 import AssignClassModal from '../../shared/AssignClassModal';
+import AssignSubjectModal from '../../shared/AssignSubjectModal';
 
 const TeacherProfile = ({ teacher, onBack, onEdit }) => {
     const [activeTab, setActiveTab] = useState('overview');
@@ -21,11 +22,14 @@ const TeacherProfile = ({ teacher, onBack, onEdit }) => {
     const [showResetModal, setShowResetModal] = useState(false);
     const [showIssueModal, setShowIssueModal] = useState(false);
     const [showAssignModal, setShowAssignModal] = useState(false);
+    const [showAssignSubjectModal, setShowAssignSubjectModal] = useState(false);
     const [loadingBooks, setLoadingBooks] = useState(false);
     const [assignedBooks, setAssignedBooks] = useState([]);
     const [availableBooks, setAvailableBooks] = useState([]);
     const [workload, setWorkload] = useState(null);
     const [schedules, setSchedules] = useState([]);
+    const [subjectAssignments, setSubjectAssignments] = useState([]);
+    const [loadingSubjectAssignments, setLoadingSubjectAssignments] = useState(false);
     const [loadingWorkload, setLoadingWorkload] = useState(false);
     const [documents, setDocuments] = useState([]);
     const [loadingDocs, setLoadingDocs] = useState(false);
@@ -36,8 +40,22 @@ const TeacherProfile = ({ teacher, onBack, onEdit }) => {
             fetchBooks();
             fetchWorkload();
             fetchDocuments();
+            fetchSubjectAssignments();
         }
     }, [teacher?.id]);
+
+    const fetchSubjectAssignments = async () => {
+        if (!teacher?.id) return;
+        setLoadingSubjectAssignments(true);
+        try {
+            const res = await api.subjectAssignments.getAll({ teacherId: teacher.id });
+            setSubjectAssignments(Array.isArray(res?.data) ? res.data : []);
+        } catch (err) {
+            console.error('Failed to fetch subject assignments:', err);
+        } finally {
+            setLoadingSubjectAssignments(false);
+        }
+    };
 
     const fetchWorkload = async () => {
         setLoadingWorkload(true);
@@ -357,7 +375,7 @@ const TeacherProfile = ({ teacher, onBack, onEdit }) => {
                             {[
                                 { label: 'Classes Assigned', value: workload?.classCount ?? workload?.classes?.length ?? teacher.assignedClasses?.length ?? 0, icon: GraduationCap, color: 'purple' },
                                 { label: 'Total Students', value: workload?.totalStudents ?? 0, icon: BookOpen, color: 'blue' },
-                                { label: 'Subject Schedules', value: schedules.length, icon: Briefcase, color: 'teal' }
+                                { label: 'Subject Assignments', value: subjectAssignments.length, icon: Briefcase, color: 'teal' }
                             ].map(stat => (
                                 <div key={stat.label} className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100 flex items-center gap-4">
                                     <div className={`w-12 h-12 rounded-xl flex items-center justify-center bg-${stat.color === 'teal' ? 'brand-teal' : stat.color}-50 text-${stat.color === 'teal' ? 'brand-teal' : stat.color}-600`}>
@@ -460,60 +478,127 @@ const TeacherProfile = ({ teacher, onBack, onEdit }) => {
                             )}
                         </div>
 
-                        {/* === SUBJECT SCHEDULES TABLE === */}
+                        {/* === SUBJECT ASSIGNMENTS === */}
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                            <div className="flex items-center gap-3 p-6 border-b border-gray-100">
-                                <div className="w-10 h-10 bg-brand-teal/10 rounded-xl flex items-center justify-center text-brand-teal">
-                                    <BookOpen size={20} />
+                            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-brand-teal/10 rounded-xl flex items-center justify-center text-brand-teal">
+                                        <BookOpen size={20} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-medium text-gray-900">Subject Assignments</h3>
+                                        <p className="text-xs text-gray-400">Learning areas this teacher is allocated to teach</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="text-lg font-medium text-gray-900">Subject Schedules</h3>
-                                    <p className="text-xs text-gray-400">Subjects this teacher teaches across classes (from timetable)</p>
-                                </div>
+                                <button
+                                    onClick={() => setShowAssignSubjectModal(true)}
+                                    className="flex items-center gap-2 px-4 py-2 bg-brand-teal text-white rounded-xl hover:bg-brand-teal/90 transition text-xs font-medium shadow-sm"
+                                >
+                                    <Plus size={14} />
+                                    Assign Subject
+                                </button>
                             </div>
 
-                            {loadingWorkload ? (
+                            {loadingSubjectAssignments ? (
                                 <div className="p-10 text-center">
                                     <RefreshCcw size={22} className="animate-spin text-brand-teal mx-auto mb-3" />
-                                    <p className="text-gray-400 text-sm">Loading subject schedules...</p>
+                                    <p className="text-gray-400 text-sm">Loading subject assignments…</p>
                                 </div>
-                            ) : schedules.length > 0 ? (
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm">
-                                        <thead className="border-b border-[color:var(--table-border)] text-[10px] uppercase tracking-wider">
-                                            <tr>
-                                                <th className="px-6 py-3 text-left font-semibold text-[color:var(--table-header-fg)]">Subject</th>
-                                                <th className="px-6 py-3 text-left font-semibold text-[color:var(--table-header-fg)]">Class</th>
-                                                <th className="px-6 py-3 text-left font-semibold text-[color:var(--table-header-fg)]">Grade</th>
-                                                <th className="px-6 py-3 text-left font-semibold text-[color:var(--table-header-fg)]">Day</th>
-                                                <th className="px-6 py-3 text-left font-semibold text-[color:var(--table-header-fg)]">Time</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-50">
-                                            {schedules.map((sched, i) => (
-                                                <tr key={sched.id || i} className="hover:bg-teal-50/20 transition-colors">
-                                                    <td className="px-6 py-3">
-                                                        <span className="px-2.5 py-1 bg-brand-teal/10 text-brand-teal rounded-lg text-xs font-semibold">{sched.subject}</span>
-                                                    </td>
-                                                    <td className="px-6 py-3 font-medium text-gray-900">{sched.class?.name || '—'}</td>
-                                                    <td className="px-6 py-3">
-                                                        <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-semibold uppercase">{sched.class?.grade?.replace('_', ' ') || '—'}</span>
-                                                    </td>
-                                                    <td className="px-6 py-3 text-gray-600 font-medium capitalize">{sched.day?.toLowerCase()}</td>
-                                                    <td className="px-6 py-3 text-gray-500 font-mono text-xs">{sched.startTime} – {sched.endTime}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            ) : (
+                            ) : subjectAssignments.length > 0 ? (() => {
+                                // Group by grade for display
+                                const byGrade = subjectAssignments.reduce((acc, a) => {
+                                    const g = a.grade || 'Unknown';
+                                    if (!acc[g]) acc[g] = [];
+                                    acc[g].push(a);
+                                    return acc;
+                                }, {});
+                                const fmtGrade = (g) => String(g).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                                return (
+                                    <div className="divide-y divide-gray-50">
+                                        {Object.keys(byGrade).sort().map((g) => (
+                                            <div key={g}>
+                                                {/* grade sub-header */}
+                                                <div className="flex items-center gap-2 bg-gray-50/80 px-6 py-2.5">
+                                                    <GraduationCap size={13} className="text-brand-teal shrink-0" />
+                                                    <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{fmtGrade(g)}</span>
+                                                    <span className="ml-auto text-[10px] text-gray-400">{byGrade[g].length} subject{byGrade[g].length !== 1 ? 's' : ''}</span>
+                                                </div>
+                                                {/* subject rows */}
+                                                {byGrade[g].map((a) => {
+                                                    const areaName = a.learningArea?.name || a.learningAreaName || '—';
+                                                    const shortName = a.learningArea?.shortName;
+                                                    return (
+                                                        <div key={a.id} className="flex items-center gap-4 px-6 py-3 hover:bg-brand-teal/[0.02] transition border-b border-gray-50 last:border-0">
+                                                            <span className="px-2.5 py-1 bg-brand-teal/10 text-brand-teal rounded-lg text-xs font-semibold">
+                                                                {areaName}
+                                                            </span>
+                                                            {shortName && shortName !== areaName && (
+                                                                <span className="text-xs text-gray-400">{shortName}</span>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ))}
+                                    </div>
+                                );
+                            })() : (
                                 <div className="p-10 text-center bg-gray-50/40">
                                     <BookOpen size={32} className="text-gray-200 mx-auto mb-3" />
-                                    <p className="text-gray-500 font-medium text-sm">No subject entries in the timetable yet.</p>
-                                    <p className="text-gray-400 text-xs mt-1">Add entries in the class schedule to see them here.</p>
+                                    <p className="text-gray-500 font-medium text-sm">No subjects assigned yet.</p>
+                                    <p className="text-gray-400 text-xs mt-1">Click "Assign Subject" to allocate learning areas to this teacher.</p>
+                                    <button
+                                        onClick={() => setShowAssignSubjectModal(true)}
+                                        className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-brand-teal text-white rounded-xl text-xs font-medium hover:bg-brand-teal/90 transition"
+                                    >
+                                        <Plus size={14} /> Assign Subject
+                                    </button>
                                 </div>
                             )}
                         </div>
+
+                        {/* === TIMETABLE SCHEDULES (read-only) === */}
+                        {schedules.length > 0 && (
+                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                            <div className="flex items-center gap-3 p-6 border-b border-gray-100">
+                                <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-500">
+                                    <Briefcase size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-medium text-gray-900">Timetable Schedules</h3>
+                                    <p className="text-xs text-gray-400">Lessons from the class timetable</p>
+                                </div>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead className="border-b border-[color:var(--table-border)] text-[10px] uppercase tracking-wider">
+                                        <tr>
+                                            <th className="px-6 py-3 text-left font-semibold text-[color:var(--table-header-fg)]">Subject</th>
+                                            <th className="px-6 py-3 text-left font-semibold text-[color:var(--table-header-fg)]">Class</th>
+                                            <th className="px-6 py-3 text-left font-semibold text-[color:var(--table-header-fg)]">Grade</th>
+                                            <th className="px-6 py-3 text-left font-semibold text-[color:var(--table-header-fg)]">Day</th>
+                                            <th className="px-6 py-3 text-left font-semibold text-[color:var(--table-header-fg)]">Time</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-50">
+                                        {schedules.map((sched, i) => (
+                                            <tr key={sched.id || i} className="hover:bg-indigo-50/20 transition-colors">
+                                                <td className="px-6 py-3">
+                                                    <span className="px-2.5 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-semibold">{sched.subject || sched.learningArea?.name || '—'}</span>
+                                                </td>
+                                                <td className="px-6 py-3 font-medium text-gray-900">{sched.class?.name || '—'}</td>
+                                                <td className="px-6 py-3">
+                                                    <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-semibold uppercase">{sched.class?.grade?.replace('_', ' ') || '—'}</span>
+                                                </td>
+                                                <td className="px-6 py-3 text-gray-600 font-medium capitalize">{sched.day?.toLowerCase()}</td>
+                                                <td className="px-6 py-3 text-gray-500 font-mono text-xs">{sched.startTime} – {sched.endTime}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        )}
 
                     </div>
                 )}
@@ -603,6 +688,13 @@ const TeacherProfile = ({ teacher, onBack, onEdit }) => {
                 onClose={() => setShowAssignModal(false)}
                 teacher={teacher}
                 onAssign={() => fetchWorkload()}
+            />
+
+            <AssignSubjectModal
+                isOpen={showAssignSubjectModal}
+                onClose={() => setShowAssignSubjectModal(false)}
+                teacher={teacher}
+                onSaved={fetchSubjectAssignments}
             />
         </ProfileLayout>
     );
