@@ -130,6 +130,18 @@
       "compose_project": "zawadi-barracks-comprehesive-school",
       "env_file": "/srv/zawadi/apps/env/.zawadi-barracks-comprehesive-school.env",
       "public_domain": "barracks-comprehesive-school.trendscore.co.ke"
+    },
+    {
+      "id": "ibse",
+      "label": "IBSE",
+      "tier": "production",
+      "active": true,
+      "deployment_allowed": true,
+      "kind": "stack",
+      "compose_project": "ibse",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-ibse.env",
+      "public_domain": "ibse.trendscore.co.ke",
+      "notes": "Baselined 2026-09-02 — all 129 migrations recorded in _prisma_migrations."
     }
   ],
   "discovery": {
