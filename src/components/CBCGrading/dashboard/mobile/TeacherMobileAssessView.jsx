@@ -231,10 +231,14 @@ const TeacherMobileAssessView = ({ user, onNavigate }) => {
         const res = await classAPI.getTeacherWorkload(user.id);
         if (cancelled) return;
 
-        // The workload endpoint returns an array of assignment objects.
-        // Each item has: classId, grade, stream, subject, learnerCount,
-        // room, isClassTeacher, attendanceRate, assessmentRate
-        const raw = Array.isArray(res) ? res : (res?.data ?? []);
+        // The API wraps workload classes in { data: { classes } }, while
+        // older deployments returned an array directly. Normalise both shapes
+        // before using array methods so response-envelope changes cannot break
+        // teachers at individual schools.
+        const workload = Array.isArray(res)
+          ? res
+          : (res?.data?.classes ?? res?.classes ?? res?.data ?? []);
+        const raw = Array.isArray(workload) ? workload : [];
 
         const homeroomEntry = raw.find((c) => c.isClassTeacher);
         const subjects = raw.filter((c) => !c.isClassTeacher);

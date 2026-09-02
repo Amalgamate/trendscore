@@ -305,14 +305,6 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         color: 'text-blue-600'
       },
       {
-        id: 'learners',
-        label: 'Students',
-        icon: Users,
-        path: 'learners-list',
-        activePaths: ['learners-list', 'learners-admissions', 'teacher-learner-analysis'],
-        color: 'text-violet-600'
-      },
-      {
         id: 'timetable',
         label: 'Timetable',
         icon: CalendarDays,
