@@ -72,6 +72,9 @@ describe('Assessment module end-to-end', () => {
   let summativeTestId: string | null = null;
 
   beforeAll(async () => {
+    await prisma.stream.upsert({ where: { name: 'A' }, update: { active: true, archived: false, isDefault: true }, create: { name: 'A', active: true, isDefault: true } });
+    const existingClass = await prisma.class.findFirst({ where: { grade: 'GRADE_1', stream: 'A', active: true, archived: false } });
+    if (!existingClass) await prisma.class.create({ data: { classCode: 'E2E-GRADE1-A', name: 'Grade 1 A', grade: 'GRADE_1', stream: 'A', institutionType: 'PRIMARY_CBC', academicYear: new Date().getFullYear(), term: 'TERM_1' } });
     await prisma.user.upsert({
       where: { id: 'test-assessment-admin-id' },
       update: {
