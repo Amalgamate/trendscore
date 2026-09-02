@@ -2,74 +2,64 @@
  * TeacherMobileAssessView
  * The Assess landing page for teachers on mobile.
  * Layout:
- *   1. Homeroom / class-teacher card (hero) — if assigned
- *   2. Subject classes taught across grades — list
+ *   1. Homeroom / class-teacher hero card — if assigned
+ *   2. Grade subject list — all learning areas per grade
+ *      - Class teacher: all subjects active (tappable)
+ *      - Subject teacher: only assigned subjects active; others greyed + locked
  *   3. Empty state — if nothing assigned
- *   4. Quick assessment actions at the bottom
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useMemo } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
   BookOpen,
-  CheckCircle2,
   ChevronRight,
-  ClipboardList,
-  FileText,
+  Lock,
   Loader2,
   PenLine,
   Star,
-  Target,
   Users,
 } from 'lucide-react';
-import { classAPI } from '../../../../services/api';
+import { useTeacherWorkload } from '../../hooks/useTeacherWorkload';
+import { cn } from '../../../../utils/cn';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 const pct = (n) => `${Math.max(0, Math.min(100, Math.round(Number(n || 0))))}%`;
 
-const GRADE_COLOR = [
-  { bg: 'bg-violet-50', text: 'text-violet-700', bar: 'bg-violet-500', dot: 'bg-violet-400' },
-  { bg: 'bg-blue-50',   text: 'text-blue-700',   bar: 'bg-blue-500',   dot: 'bg-blue-400'   },
-  { bg: 'bg-emerald-50',text: 'text-emerald-700', bar: 'bg-emerald-500',dot: 'bg-emerald-400'},
-  { bg: 'bg-amber-50',  text: 'text-amber-700',   bar: 'bg-amber-500',  dot: 'bg-amber-400'  },
-  { bg: 'bg-rose-50',   text: 'text-rose-700',    bar: 'bg-rose-500',   dot: 'bg-rose-400'   },
-  { bg: 'bg-teal-50',   text: 'text-teal-700',    bar: 'bg-teal-500',   dot: 'bg-teal-400'   },
-];
-const colorAt = (i) => GRADE_COLOR[i % GRADE_COLOR.length];
+const normalizeGrade = (grade) =>
+  String(grade || '')
+    .trim()
+    .replace(/\s+/g, '_')
+    .toUpperCase();
+
+/**
+ * Format a raw grade code for display.
+ * GRADE_4 → Grade 4, PP1 → PP1, etc.
+ */
+const formatGradeLabel = (grade) => {
+  const g = normalizeGrade(grade);
+  if (g.startsWith('GRADE_')) return `Grade ${g.replace('GRADE_', '')}`;
+  if (/^GRADE\d+$/.test(g)) return `Grade ${g.replace('GRADE', '')}`;
+  return String(grade || 'Class')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (l) => l.toUpperCase());
+};
 
 // ─── sub-components ───────────────────────────────────────────────────────────
 
 /**
- * ProgressBar — two-toned: attendance (green) + assessment (blue)
- */
-const DualBar = ({ attendance = 0, assessment = 0 }) => (
-  <div className="space-y-1.5 text-[11px] font-semibold">
-    <div className="flex items-center justify-between text-slate-500">
-      <span>Attendance</span>
-      <span className="font-black text-emerald-600">{pct(attendance)}</span>
-    </div>
-    <div className="h-1.5 w-full rounded-full bg-slate-100">
-      <div className="h-1.5 rounded-full bg-emerald-500 transition-all" style={{ width: pct(attendance) }} />
-    </div>
-    <div className="flex items-center justify-between text-slate-500 pt-0.5">
-      <span>Mark entry</span>
-      <span className="font-black text-blue-600">{pct(assessment)}</span>
-    </div>
-    <div className="h-1.5 w-full rounded-full bg-slate-100">
-      <div className="h-1.5 rounded-full bg-blue-500 transition-all" style={{ width: pct(assessment) }} />
-    </div>
-  </div>
-);
-
-/**
- * HomeroomCard — large hero card for the class the teacher is in charge of
+ * HomeroomCard — hero card shown for the class the teacher is in charge of.
  */
 const HomeroomCard = ({ cls, onNavigate }) => (
-  <div className="rounded-2xl bg-[#06285a] p-5 shadow-lg"
-    style={{ background: 'linear-gradient(135deg, var(--toolbar-bg, #06285a) 0%, color-mix(in srgb, var(--toolbar-bg, #06285a) 80%, black) 100%)' }}>
-
+  <div
+    className="rounded-2xl p-5 shadow-lg"
+    style={{
+      background:
+        'linear-gradient(135deg, var(--toolbar-bg, #06285a) 0%, color-mix(in srgb, var(--toolbar-bg, #06285a) 80%, black) 100%)',
+    }}
+  >
     {/* badge */}
     <div className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-white/10 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-white/80">
       <Star size={10} />
@@ -77,19 +67,19 @@ const HomeroomCard = ({ cls, onNavigate }) => (
     </div>
 
     {/* grade + stream */}
-    <div className="mb-1 text-2xl font-black text-white">{cls.grade}</div>
+    <div className="mb-1 text-2xl font-black text-white">{formatGradeLabel(cls.grade)}</div>
     {cls.stream && (
       <div className="mb-4 text-sm font-semibold text-white/70">{cls.stream}</div>
     )}
 
     {/* stats row */}
-    <div className="mb-5 grid grid-cols-3 divide-x divide-white/15 rounded-xl bg-white/10 border border-white/20">
+    <div className="mb-5 grid grid-cols-3 divide-x divide-white/15 rounded-xl border border-white/20 bg-white/10">
       {[
         { label: 'Learners', value: cls.learnerCount ?? cls.learners ?? '—' },
         { label: 'Attendance', value: pct(cls.attendanceRate) },
         { label: 'Marks', value: pct(cls.assessmentRate) },
       ].map(({ label, value }) => (
-        <div key={label} className="flex flex-col items-center py-3 px-2">
+        <div key={label} className="flex flex-col items-center px-2 py-3">
           <span className="text-base font-black text-white">{value}</span>
           <span className="mt-0.5 text-[10px] font-semibold text-white/60">{label}</span>
         </div>
@@ -101,7 +91,7 @@ const HomeroomCard = ({ cls, onNavigate }) => (
       <button
         type="button"
         onClick={() => onNavigate('attendance-daily')}
-        className="flex items-center justify-center gap-2 rounded-xl bg-white/15 border border-white/25 py-2.5 text-xs font-black text-white"
+        className="flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/15 py-2.5 text-xs font-black text-white"
       >
         <Users size={14} />
         Attendance
@@ -120,50 +110,120 @@ const HomeroomCard = ({ cls, onNavigate }) => (
 );
 
 /**
- * SubjectClassRow — compact row for a subject taught in a class
+ * SubjectRow — single learning area row inside a GradeSubjectCard.
+ * active = tappable, shows chevron.
+ * locked = greyed out, non-interactive, shows lock icon.
  */
-const SubjectClassRow = ({ cls, index, onNavigate }) => {
-  const c = colorAt(index);
+const SubjectRow = ({ subject, isLast, isActive, onTap }) => {
+  if (isActive) {
+    return (
+      <button
+        type="button"
+        onClick={onTap}
+        className={cn(
+          'flex w-full items-center gap-3 px-4 py-3.5 text-left transition active:bg-slate-50',
+          !isLast && 'border-b border-slate-100'
+        )}
+      >
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-purple/10">
+          <BookOpen size={15} className="text-brand-purple" />
+        </div>
+        <span className="flex-1 truncate text-sm font-bold text-slate-950">{subject}</span>
+        <ChevronRight size={16} className="shrink-0 text-slate-300" />
+      </button>
+    );
+  }
+
   return (
-    <button
-      type="button"
-      onClick={() => onNavigate('assess-summative-assessment')}
-      className="w-full flex items-center gap-3 rounded-xl bg-white border border-slate-100 p-3 text-left shadow-sm active:bg-slate-50"
+    <div
+      className={cn(
+        'flex w-full items-center gap-3 px-4 py-3.5',
+        !isLast && 'border-b border-slate-100'
+      )}
     >
-      {/* icon */}
-      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${c.bg} ${c.text}`}>
-        <BookOpen size={18} />
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100">
+        <BookOpen size={15} className="text-slate-300" />
       </div>
-
-      {/* info */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <span className="text-sm font-black text-slate-950 truncate">{cls.subject}</span>
-          <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${c.bg} ${c.text} shrink-0`}>
-            {cls.grade}
-          </span>
-        </div>
-        {/* mini bar */}
-        <div className="mt-2 flex items-center gap-2">
-          <div className="h-1 flex-1 rounded-full bg-slate-100">
-            <div className={`h-1 rounded-full ${c.bar}`} style={{ width: pct(cls.assessmentRate) }} />
-          </div>
-          <span className="text-[10px] font-black text-slate-500 shrink-0 w-8 text-right">
-            {pct(cls.assessmentRate)}
-          </span>
-        </div>
-        <div className="mt-0.5 text-[10px] font-semibold text-slate-400">
-          {cls.learnerCount ?? cls.learners ?? 0} learners · {cls.room || 'No room assigned'}
-        </div>
-      </div>
-
-      <ChevronRight size={16} className="text-slate-300 shrink-0" />
-    </button>
+      <span className="flex-1 truncate text-sm font-semibold text-slate-300">{subject}</span>
+      <Lock size={14} className="shrink-0 text-slate-300" />
+    </div>
   );
 };
 
 /**
- * EmptyAssigned — shown when teacher has no classes at all
+ * GradeSubjectCard — groups all learning areas for a single grade.
+ * Dark gradient header for class teacher grades, light header for subject teacher grades.
+ */
+const GradeSubjectCard = ({ grade, subjects, assignedSubjects, isClassTeacher, stream, onSubjectTap }) => {
+  const gradeLabel = formatGradeLabel(grade);
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+      {/* header */}
+      <div
+        className="px-4 py-3.5"
+        style={{
+          background: isClassTeacher
+            ? 'linear-gradient(135deg, var(--toolbar-bg, #06285a) 0%, color-mix(in srgb, var(--toolbar-bg, #06285a) 80%, black) 100%)'
+            : undefined,
+          backgroundColor: !isClassTeacher ? '#f8fafc' : undefined,
+        }}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p
+              className={cn(
+                'text-base font-black',
+                isClassTeacher ? 'text-white' : 'text-slate-950'
+              )}
+            >
+              {gradeLabel}
+              {stream ? ` · ${stream}` : ''}
+            </p>
+            {!isClassTeacher && (
+              <p className="mt-0.5 text-[11px] font-semibold text-slate-400">Subject Teacher</p>
+            )}
+          </div>
+          {isClassTeacher && (
+            <div className="inline-flex items-center gap-1 rounded-full border border-white/30 bg-white/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white/80">
+              <Star size={9} />
+              Class Teacher
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* subject list */}
+      <div>
+        {subjects.map((subject, idx) => {
+          const isActive =
+            assignedSubjects === null ||
+            (Array.isArray(assignedSubjects) &&
+              assignedSubjects.some(
+                (s) => s.trim().toLowerCase() === subject.trim().toLowerCase()
+              ));
+          return (
+            <SubjectRow
+              key={subject}
+              subject={subject}
+              isLast={idx === subjects.length - 1}
+              isActive={isActive}
+              onTap={() => onSubjectTap(grade, subject)}
+            />
+          );
+        })}
+        {subjects.length === 0 && (
+          <p className="px-4 py-4 text-xs font-semibold text-slate-400">
+            No learning areas configured for this grade.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/**
+ * EmptyAssigned — shown when teacher has no classes at all.
  */
 const EmptyAssigned = ({ onNavigate }) => (
   <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-6 py-14 text-center">
@@ -177,7 +237,7 @@ const EmptyAssigned = ({ onNavigate }) => (
     <button
       type="button"
       onClick={() => onNavigate('assess-summative-assessment')}
-      className="mt-6 flex items-center gap-2 rounded-xl bg-[#06285a] px-5 py-2.5 text-xs font-black text-white"
+      className="mt-6 flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-black text-white"
       style={{ background: 'var(--toolbar-bg, #06285a)' }}
     >
       Go to Mark Entry anyway
@@ -186,89 +246,112 @@ const EmptyAssigned = ({ onNavigate }) => (
   </div>
 );
 
-/**
- * QuickActionTile — small action tile at the bottom
- */
-const QuickActionTile = ({ icon: Icon, label, helper, color, bg, onClick }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className="flex items-center gap-3 rounded-xl bg-white border border-slate-100 p-3 text-left shadow-sm active:bg-slate-50"
-  >
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ color, background: bg }}>
-      <Icon size={18} />
-    </div>
-    <div className="min-w-0 flex-1">
-      <p className="text-xs font-black text-slate-950">{label}</p>
-      <p className="mt-0.5 text-[11px] font-semibold text-slate-500 truncate">{helper}</p>
-    </div>
-    <ChevronRight size={15} className="text-slate-300 shrink-0" />
-  </button>
-);
-
 // ─── main component ───────────────────────────────────────────────────────────
 
 /**
  * TeacherMobileAssessView
- * @param {Object} props
- * @param {Object} props.user        - Current user (must have .id)
- * @param {Function} props.onNavigate
+ * @param {Object}   props.user        - Current user (must have .id)
+ * @param {Function} props.onNavigate  - App navigation handler
  */
 const TeacherMobileAssessView = ({ user, onNavigate }) => {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [homeroom, setHomeroom] = useState(null);       // single class where teacher is class teacher
-  const [subjectClasses, setSubjectClasses] = useState([]); // subject assignments across grades
+  const {
+    loading,
+    error,
+    workload,
+    schedules,
+    teacherContext,
+    getAssignedSubjectsForGrade,
+    refresh,
+  } = useTeacherWorkload();
 
-  useEffect(() => {
-    if (!user?.id) return;
-    let cancelled = false;
+  // ── Derive homeroom (class teacher) ────────────────────────────────────────
+  const homeroom = useMemo(() => {
+    if (!workload) return null;
+    const classes = Array.isArray(workload) ? workload : (workload?.classes ?? []);
+    return classes.find((c) => c.isClassTeacher) ?? null;
+  }, [workload]);
 
-    const load = async () => {
-      setLoading(true);
-      setError('');
-      try {
-        const res = await classAPI.getTeacherWorkload(user.id);
-        if (cancelled) return;
+  // ── Derive all grades to show (de-duped, sorted) ──────────────────────────
+  const gradeEntries = useMemo(() => {
+    const gradeMap = new Map();
 
-        // The API wraps workload classes in { data: { classes } }, while
-        // older deployments returned an array directly. Normalise both shapes
-        // before using array methods so response-envelope changes cannot break
-        // teachers at individual schools.
-        const workload = Array.isArray(res)
-          ? res
-          : (res?.data?.classes ?? res?.classes ?? res?.data ?? []);
-        const raw = Array.isArray(workload) ? workload : [];
-
-        const homeroomEntry = raw.find((c) => c.isClassTeacher);
-        const subjects = raw.filter((c) => !c.isClassTeacher);
-
-        setHomeroom(homeroomEntry ?? null);
-        setSubjectClasses(subjects);
-      } catch (err) {
-        if (!cancelled) setError(err?.message || 'Could not load your classes.');
-      } finally {
-        if (!cancelled) setLoading(false);
+    // From workload classes
+    const classes = Array.isArray(workload) ? workload : (workload?.classes ?? []);
+    classes.forEach((cls) => {
+      if (!cls?.grade) return;
+      const g = normalizeGrade(cls.grade);
+      if (!gradeMap.has(g)) {
+        gradeMap.set(g, {
+          grade: cls.grade,
+          stream: cls.stream || null,
+          subjects: new Set(cls.subjects || []),
+        });
+      } else {
+        (cls.subjects || []).forEach((s) => gradeMap.get(g).subjects.add(s));
       }
-    };
+    });
 
-    load();
-    return () => { cancelled = true; };
-  }, [user?.id]);
+    // From schedules
+    (schedules || []).forEach((s) => {
+      const grade = s.class?.grade || s.grade;
+      if (!grade) return;
+      const g = normalizeGrade(grade);
+      const subjectName = s.subject || s.learningArea?.name || s.learningArea?.shortName;
+      if (!gradeMap.has(g)) {
+        gradeMap.set(g, { grade, stream: s.class?.stream || null, subjects: new Set() });
+      }
+      if (subjectName) gradeMap.get(g).subjects.add(subjectName);
+    });
 
-  const hasAnything = homeroom || subjectClasses.length > 0;
+    // From teacher context subject assignments (includes ALL learning areas per grade)
+    (teacherContext?.subjectAssignments || []).forEach((assignment) => {
+      if (!assignment?.grade) return;
+      const g = normalizeGrade(assignment.grade);
+      if (!gradeMap.has(g)) {
+        gradeMap.set(g, { grade: assignment.grade, stream: null, subjects: new Set() });
+      }
+      if (assignment.learningAreaName) gradeMap.get(g).subjects.add(assignment.learningAreaName);
+    });
+
+    // Sort grades and convert subjects to sorted arrays
+    return Array.from(gradeMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([gKey, entry]) => ({
+        gradeKey: gKey,
+        grade: entry.grade,
+        stream: entry.stream,
+        subjects: Array.from(entry.subjects).sort((a, b) => a.localeCompare(b)),
+        assignedSubjects: getAssignedSubjectsForGrade(entry.grade),
+        isClassTeacher:
+          teacherContext?.classTeacherOf
+            ? normalizeGrade(teacherContext.classTeacherOf.grade) === gKey
+            : homeroom
+            ? normalizeGrade(homeroom.grade) === gKey
+            : false,
+      }));
+  }, [workload, schedules, teacherContext, homeroom, getAssignedSubjectsForGrade]);
+
+  const hasAnything = gradeEntries.length > 0;
+
+  // ── Subject tap → direct mark entry ───────────────────────────────────────
+  const handleSubjectTap = (grade, subjectName) => {
+    onNavigate('assess-summative-assessment', {
+      prefillGrade: grade,
+      prefillSubject: subjectName,
+    });
+  };
 
   return (
     <div className="min-h-full bg-[var(--app-page-bg)] pb-28">
       {/* ── Page header ── */}
-      <div className="bg-white border-b border-slate-100 px-4 pt-4 pb-3">
+      <div className="border-b border-slate-100 bg-white px-4 pb-3 pt-4">
         <h1 className="text-base font-black text-slate-950">My Classes</h1>
         <p className="mt-0.5 text-xs font-semibold text-slate-500">
           Your teaching assignments this term
         </p>
       </div>
 
-      <div className="px-4 pt-4 space-y-6">
+      <div className="space-y-4 px-4 pt-4">
 
         {/* ── Loading ── */}
         {loading && (
@@ -284,10 +367,12 @@ const TeacherMobileAssessView = ({ user, onNavigate }) => {
             <AlertTriangle size={18} className="mt-0.5 shrink-0" />
             <div>
               <p className="font-black">Couldn't load your classes</p>
-              <p className="mt-1 font-semibold text-red-600">{error}</p>
+              <p className="mt-1 font-semibold text-red-600">
+                {error?.message || 'Please try again.'}
+              </p>
               <button
                 type="button"
-                onClick={() => window.location.reload()}
+                onClick={refresh}
                 className="mt-2 text-xs font-black text-red-700 underline underline-offset-2"
               >
                 Retry
@@ -303,106 +388,31 @@ const TeacherMobileAssessView = ({ user, onNavigate }) => {
 
         {/* ── Homeroom hero card ── */}
         {!loading && homeroom && (
-          <section>
-            <HomeroomCard cls={homeroom} onNavigate={onNavigate} />
-          </section>
+          <HomeroomCard cls={homeroom} onNavigate={onNavigate} />
         )}
 
-        {/* ── Subject classes ── */}
-        {!loading && subjectClasses.length > 0 && (
-          <section>
-            <div className="mb-3 flex items-center justify-between px-0.5">
-              <div>
-                <h2 className="text-sm font-black text-slate-950">Subject Assignments</h2>
-                <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
-                  {subjectClasses.length} class{subjectClasses.length !== 1 ? 'es' : ''} across grades
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => onNavigate('assess-summative-assessment')}
-                className="text-[11px] font-black text-blue-600 flex items-center gap-1"
-              >
-                Enter marks <ArrowRight size={12} />
-              </button>
+        {/* ── Grade + subject letter-list ── */}
+        {!loading && !error && gradeEntries.length > 0 && (
+          <section className="space-y-3">
+            <div className="flex items-center justify-between px-0.5">
+              <p className="text-[11px] font-black uppercase tracking-[0.1em] text-slate-400">
+                Learning Areas
+              </p>
+              <p className="text-[11px] font-semibold text-slate-400">
+                Tap a subject to enter marks
+              </p>
             </div>
-            <div className="space-y-2">
-              {subjectClasses.map((cls, i) => (
-                <SubjectClassRow
-                  key={`${cls.classId}-${cls.subject}`}
-                  cls={cls}
-                  index={i}
-                  onNavigate={onNavigate}
-                />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* ── Homeroom detail stats (only shown if homeroom exists) ── */}
-        {!loading && homeroom && (
-          <section className="rounded-2xl bg-white border border-slate-100 shadow-sm p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-black text-slate-950">Class Overview</h2>
-              <span className="text-[11px] font-bold text-slate-400">{homeroom.grade}</span>
-            </div>
-            <DualBar attendance={homeroom.attendanceRate} assessment={homeroom.assessmentRate} />
-            <div className="mt-4 flex items-center gap-2 text-[11px] font-semibold text-slate-500">
-              <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />
-              <span>
-                {homeroom.learnerCount ?? homeroom.learners ?? 0} learners enrolled
-                {homeroom.room ? ` · ${homeroom.room}` : ''}
-              </span>
-            </div>
-          </section>
-        )}
-
-        {/* ── Quick actions ── */}
-        {!loading && hasAnything && (
-          <section>
-            <h2 className="mb-3 text-sm font-black text-slate-950 px-0.5">Quick Actions</h2>
-            <div className="space-y-2">
-              <QuickActionTile
-                icon={Target}
-                label="Summative Tests"
-                helper="Create or deploy tests"
-                color="#7c3aed"
-                bg="#f1e9ff"
-                onClick={() => onNavigate('assess-summative-tests')}
+            {gradeEntries.map((entry) => (
+              <GradeSubjectCard
+                key={entry.gradeKey}
+                grade={entry.grade}
+                stream={entry.stream}
+                subjects={entry.subjects}
+                assignedSubjects={entry.assignedSubjects}
+                isClassTeacher={entry.isClassTeacher}
+                onSubjectTap={handleSubjectTap}
               />
-              <QuickActionTile
-                icon={PenLine}
-                label="Record Marks"
-                helper="Enter scores for your classes"
-                color="#2563eb"
-                bg="#e8f0ff"
-                onClick={() => onNavigate('assess-summative-assessment')}
-              />
-              <QuickActionTile
-                icon={ClipboardList}
-                label="Formative Assessment"
-                helper="Track classroom observations"
-                color="#16a34a"
-                bg="#e7f8ee"
-                onClick={() => onNavigate('assess-formative')}
-              />
-              <QuickActionTile
-                icon={FileText}
-                label="Reports"
-                helper="View learner and class reports"
-                color="#f97316"
-                bg="#fff1e7"
-                onClick={() => onNavigate('assess-summary-report')}
-              />
-              <QuickActionTile
-                icon={Star}
-                label="Core Competencies"
-                helper="CBC competency assessments"
-                color="#ca8a04"
-                bg="#fefce8"
-                onClick={() => onNavigate('assess-core-competencies')}
-              />
-            </div>
+            ))}
           </section>
         )}
 
