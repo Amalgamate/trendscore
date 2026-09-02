@@ -36,6 +36,7 @@ const createClassSchema = z.object({
     'Grade1', 'Grade2', 'Grade3', 'Grade4', 'Grade5', 'Grade6',
     'Grade 10', 'Grade 11', 'Grade 12'
   ]),
+  stream: z.string().trim().min(1),
   classTeacherId: z.string().min(1).optional(),
   capacity: z.coerce.number().int().min(1).optional()
 });

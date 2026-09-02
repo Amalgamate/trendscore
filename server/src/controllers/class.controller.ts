@@ -202,7 +202,7 @@ export class ClassController {
     const { name, grade, stream, teacherId, academicYear, term, capacity = 40, room } = req.body;
     const institutionType = getInstitutionType(req);
 
-    if (!grade) throw new ApiError(400, 'Grade is required');
+    if (!grade || !String(stream || '').trim()) throw new ApiError(400, 'Grade and stream are required. Configure the stream first.');
 
     let finalYear = academicYear;
     let finalTerm = term;
@@ -220,7 +220,12 @@ export class ClassController {
       if (!teacher || (teacher.role !== 'TEACHER' && teacher.role !== 'HEAD_TEACHER')) throw new ApiError(400, 'Invalid teacher');
     }
 
-    const finalStream = stream || 'A';
+    const finalStream = String(stream).trim();
+    const configuredStream = await prisma.stream.findFirst({
+      where: { name: finalStream, active: true, archived: false },
+      select: { id: true },
+    });
+    if (!configuredStream) throw new ApiError(400, `Stream "${finalStream}" is not an active configured stream.`);
     const finalName = name || `${grade} ${finalStream}`;
 
     const existingClass = await prisma.class.findFirst({

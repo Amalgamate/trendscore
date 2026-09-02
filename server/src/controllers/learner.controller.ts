@@ -60,8 +60,7 @@ const ensureLearnerClassEnrollment = async (learner: {
     select: { id: true, stream: true },
     orderBy: [{ academicYear: 'desc' }, { updatedAt: 'desc' }],
   });
-  const targetClass = classCandidates.find((item) => item.stream === learner.stream)
-    || classCandidates[0];
+  const targetClass = classCandidates.find((item) => item.stream === learner.stream);
   if (!targetClass) {
     logger.warn('[learner enrollment] No active class matches learner grade', {
       learnerId: learner.id,
@@ -252,10 +251,19 @@ export class LearnerController {
       generateInvoice, isScholarshipStudent, scholarshipType, scholarshipAmount,
     } = req.body;
 
+    const defaultStream = await prisma.stream.findFirst({
+      where: { active: true, archived: false, isDefault: true },
+      select: { name: true },
+    });
+    const resolvedStream = String(stream || defaultStream?.name || '').trim();
+    if (!resolvedStream) {
+      throw new ApiError(400, 'Stream is required. Configure streams and select a default before adding learners.');
+    }
+
     const admissionNumberWasProvided = Boolean(String(admissionNumber || '').trim());
     if (!admissionNumberWasProvided) {
       try {
-        admissionNumber = await generateAdmissionNumber(stream || 'A', new Date().getFullYear());
+        admissionNumber = await generateAdmissionNumber(resolvedStream, new Date().getFullYear());
       } catch (error: any) {
         if (String(error?.message || '').includes('MANUAL')) {
           throw new ApiError(400, 'Admission number is required when numbering mode is MANUAL.');
@@ -268,6 +276,16 @@ export class LearnerController {
     if (!firstName || !lastName || !dateOfBirth || !gender || !grade) {
       throw new ApiError(400, 'Missing required fields');
     }
+    const configuredStream = await prisma.stream.findFirst({
+      where: { name: resolvedStream, active: true, archived: false },
+      select: { id: true },
+    });
+    if (!configuredStream) throw new ApiError(400, `Stream "${resolvedStream}" is not an active configured stream.`);
+    const matchingClass = await prisma.class.findFirst({
+      where: { grade: String(grade), stream: resolvedStream, institutionType, active: true, archived: false },
+      select: { id: true },
+    });
+    if (!matchingClass) throw new ApiError(400, 'Create the matching active class before adding learners.');
     const existing = await prisma.learner.findUnique({ where: { admissionNumber } });
     if (existing) {
       throw new ApiError(
@@ -318,7 +336,7 @@ export class LearnerController {
         admissionNumber: admNo, firstName, lastName, middleName,
         dateOfBirth: new Date(dateOfBirth), gender: gender as Gender, grade: String(grade) as any,
         institutionType,
-        stream: stream || 'A', guardianName, guardianPhone, guardianEmail,
+        stream: resolvedStream, guardianName, guardianPhone, guardianEmail,
         medicalConditions, allergies, emergencyContact, emergencyPhone, bloodGroup,
         address, county, subCounty, previousSchool, religion, specialNeeds,
         isTransportStudent: isTransportStudent === true || isTransportStudent === 'true',
@@ -365,7 +383,7 @@ export class LearnerController {
             );
           }
           // Last-line protection for race conditions: regenerate and retry once.
-          const retryAdmissionNumber = await generateAdmissionNumber(stream || 'A', new Date().getFullYear());
+          const retryAdmissionNumber = await generateAdmissionNumber(resolvedStream, new Date().getFullYear());
           try {
             learner = await prisma.learner.create({
               data: buildLearnerCreateData(retryAdmissionNumber, true),

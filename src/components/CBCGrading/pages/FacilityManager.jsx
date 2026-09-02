@@ -64,7 +64,7 @@ const FacilityManager = () => {
     name: '',
     code: '',
     capacity: 40,
-    stream: 'A',
+    stream: '',
     grade: grades.length > 0 ? grades[0] : 'GRADE_1',
     teacherId: '',
     branchId: '',
@@ -105,7 +105,8 @@ const FacilityManager = () => {
 
   const [streamFormData, setStreamFormData] = useState({
     name: '',
-    active: true
+    active: true,
+    isDefault: false
   });
   const [editingStreamId, setEditingStreamId] = useState(null);
   const [deleteConfirmStream, setDeleteConfirmStream] = useState(null);
@@ -179,7 +180,8 @@ const FacilityManager = () => {
         name: streamFormData.name,
         schoolId: schoolId,
         id: editingStreamId || undefined,
-        active: editingStreamId ? streamFormData.active : true
+        active: editingStreamId ? streamFormData.active : true,
+        isDefault: streamFormData.isDefault
       };
 
       console.log('Saving stream config with payload:', payload);
@@ -221,7 +223,8 @@ const FacilityManager = () => {
   const handleEditStream = (stream) => {
     setStreamFormData({
       name: stream.name || '',
-      active: stream.active !== false
+      active: stream.active !== false,
+      isDefault: Boolean(stream.isDefault)
     });
     setEditingStreamId(stream.id);
     setActiveTab('create-stream');
@@ -250,7 +253,8 @@ const FacilityManager = () => {
   const resetStreamForm = () => {
     setStreamFormData({
       name: '',
-      active: true
+      active: true,
+      isDefault: false
     });
     setEditingStreamId(null);
   };
@@ -362,7 +366,7 @@ const FacilityManager = () => {
       name: '',
       code: '',
       capacity: 40,
-      stream: 'A',
+      stream: streams.find((stream) => stream.isDefault)?.name || streams[0]?.name || '',
       grade: grades.length > 0 ? grades[0] : 'GRADE_1',
       teacherId: '',
       branchId: '',
@@ -651,6 +655,7 @@ const FacilityManager = () => {
                     <tr>
                       <th className="px-6 py-3 text-left text-sm font-semibold text-[color:var(--table-header-fg)]">Stream Name</th>
                       <th className="px-6 py-3 text-left text-sm font-semibold text-[color:var(--table-header-fg)]">Status</th>
+                      <th className="px-6 py-3 text-left text-sm font-semibold text-[color:var(--table-header-fg)]">Import default</th>
                       <th className="px-6 py-3 text-right text-sm font-semibold text-[color:var(--table-header-fg)]">Actions</th>
                     </tr>
                   </thead>
@@ -673,6 +678,7 @@ const FacilityManager = () => {
                             </span>
                           )}
                         </td>
+                        <td className="px-6 py-4 text-sm text-gray-700">{stream.isDefault ? 'Default' : '—'}</td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex gap-2 justify-end">
                             <Button
@@ -915,6 +921,17 @@ const FacilityManager = () => {
                     className="w-4 h-4 text-brand-purple rounded focus:ring-2 focus:ring-brand-purple border-gray-300"
                   />
                   <Label htmlFor="stream-active" className="font-normal">Active Stream</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="stream-default"
+                    checked={streamFormData.isDefault}
+                    disabled={!streamFormData.active}
+                    onChange={(e) => setStreamFormData({ ...streamFormData, isDefault: e.target.checked })}
+                    className="w-4 h-4 text-brand-purple rounded focus:ring-2 focus:ring-brand-purple border-gray-300"
+                  />
+                  <Label htmlFor="stream-default" className="font-normal">Use as the default for uploads with no Stream value</Label>
                 </div>
 
                 {/* Actions */}
