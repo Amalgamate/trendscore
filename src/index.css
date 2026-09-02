@@ -904,6 +904,32 @@ code {
   background: #ffffff;
 }
 
+/* Strip the browser's default focus box (blue outline / double-ring) from every
+   interactive element inside mobile overlays. A subtle background/border change
+   applied via Tailwind classes on each element is sufficient feedback. */
+.ts-mobile-app input:focus,
+.ts-mobile-app input:focus-visible,
+.ts-mobile-app textarea:focus,
+.ts-mobile-app textarea:focus-visible,
+.ts-mobile-app select:focus,
+.ts-mobile-app select:focus-visible,
+.ts-mobile-app button:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Same suppression for the full-screen assessment overlay
+   (uses fixed inset-0 z-[100] but not .ts-mobile-app) */
+.fixed.inset-0 input:focus,
+.fixed.inset-0 input:focus-visible,
+.fixed.inset-0 textarea:focus,
+.fixed.inset-0 textarea:focus-visible,
+.fixed.inset-0 select:focus,
+.fixed.inset-0 select:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 .ts-mobile-header {
   padding-top: env(safe-area-inset-top);
   background: var(--ts-mobile-navy);

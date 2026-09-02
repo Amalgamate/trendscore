@@ -255,10 +255,10 @@ const MarkTableRow = ({ learner, mark, totalMarks, onChange, saved, locked, onRe
           }}
           className={cn(
             'h-10 w-16 rounded-xl border-0 bg-slate-100 text-center text-sm font-black text-slate-950 outline-none transition',
-            'focus:bg-white focus:ring-2 focus:ring-brand-purple/30',
+            'focus:bg-white focus:border-b-2 focus:border-brand-purple',
             '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
             locked && 'cursor-not-allowed bg-amber-100 text-amber-700',
-            markTooHigh && 'bg-red-100 text-red-700 focus:ring-red-300/40',
+            markTooHigh && 'bg-red-100 text-red-700',
             saved && !markTooHigh && !locked && 'bg-emerald-100 text-emerald-800'
           )}
         />
