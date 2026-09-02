@@ -108,6 +108,8 @@ const statusClass = (status) => {
   }
 };
 
+// ─── shared display components ────────────────────────────────────────────────
+
 const ProgressBar = ({ value }) => (
   <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
     <div className="h-full rounded-full bg-brand-teal transition-all" style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
@@ -120,6 +122,8 @@ const MetricPill = ({ label, value }) => (
     <p className="mt-0.5 text-sm font-black text-slate-950">{value}</p>
   </div>
 );
+
+// ─── dashboard screen cards ───────────────────────────────────────────────────
 
 const SummativeClassCard = ({ item, onOpen }) => (
   <button
@@ -176,46 +180,71 @@ const SummativeSubjectCard = ({ item, onOpen }) => (
   </button>
 );
 
-const LearnerMarkCard = ({ learner, mark, totalMarks, onChange, saved, locked, onRequestUnlock }) => {
+// ─── compact mark-entry table ─────────────────────────────────────────────────
+
+/**
+ * MarkTableRow — a single learner row in the compact 2-column mark entry table.
+ * Left: name + admission number. Right: mark input.
+ */
+const MarkTableRow = ({ learner, mark, totalMarks, onChange, saved, locked, onRequestUnlock, isLast }) => {
   const learnerId = learner.id || learner._id;
   const numericMark = Number(mark);
   const markIsValid = hasMark(mark) && Number.isFinite(numericMark);
-  const markTooHigh = markIsValid && Number.isFinite(Number(totalMarks)) && Number(totalMarks) > 0 && numericMark > Number(totalMarks);
-  const preview = markIsValid && !markTooHigh && totalMarks
-    ? `${Math.round((numericMark / Number(totalMarks)) * 100)}%`
-    : null;
+  const markTooHigh =
+    markIsValid &&
+    Number.isFinite(Number(totalMarks)) &&
+    Number(totalMarks) > 0 &&
+    numericMark > Number(totalMarks);
+
+  const rowBg = markTooHigh
+    ? 'bg-red-50/60'
+    : saved
+    ? 'bg-emerald-50/50'
+    : locked
+    ? 'bg-amber-50/40'
+    : !hasMark(mark)
+    ? 'bg-amber-50/30'
+    : 'bg-white';
 
   return (
-    <article
+    <div
       className={cn(
-        'rounded-[1.5rem] border bg-white p-4 shadow-sm',
-        !hasMark(mark) ? 'border-amber-100' : markTooHigh ? 'border-red-200 bg-red-50/40' : saved ? 'border-emerald-100 bg-emerald-50/30' : 'border-brand-purple/20'
+        'flex items-center gap-3 px-4 transition',
+        rowBg,
+        !isLast && 'border-b border-slate-100'
       )}
+      style={{ minHeight: '56px' }}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-base font-black text-slate-950">
-            {learner.firstName} {learner.lastName || ''}
-          </p>
-          <p className="mt-1 text-xs font-bold uppercase tracking-[0.08em] text-slate-400">
-            {learner.admissionNumber || 'No admission number'}
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">Preview</p>
-          <p className={cn('mt-1 text-sm font-black', preview ? 'text-brand-purple' : 'text-slate-300')}>
-            {preview || 'Missing'}
-          </p>
-        </div>
+      {/* left — learner info */}
+      <div className="min-w-0 flex-1 py-2.5">
+        <p className="truncate text-sm font-bold leading-tight text-slate-950">
+          {learner.firstName} {learner.lastName || ''}
+        </p>
+        <p className="mt-0.5 text-[11px] font-semibold text-slate-400">
+          {learner.admissionNumber || '—'}
+        </p>
       </div>
 
-      <div className="mt-4 flex items-center gap-3">
+      {/* right — mark input */}
+      <div className="flex shrink-0 items-center gap-1.5">
+        {markTooHigh && (
+          <AlertCircle size={13} className="shrink-0 text-red-500" aria-label="Mark exceeds total" />
+        )}
         <input
           type="number"
           inputMode="decimal"
           min="0"
           max={totalMarks || undefined}
           value={mark ?? ''}
+          readOnly={locked}
+          placeholder={locked ? '🔒' : '—'}
+          title={
+            locked
+              ? 'Assessment is locked — tap to request unlock'
+              : markTooHigh
+              ? `Mark exceeds ${totalMarks}`
+              : undefined
+          }
           onClick={locked ? onRequestUnlock : undefined}
           onChange={(event) => {
             if (locked) {
@@ -224,34 +253,30 @@ const LearnerMarkCard = ({ learner, mark, totalMarks, onChange, saved, locked, o
             }
             onChange(learnerId, event.target.value);
           }}
-          readOnly={locked}
-          placeholder={locked ? '🔒' : 'Mark'}
-          title={locked ? 'Assessment is locked — tap to request unlock' : undefined}
           className={cn(
-            'h-14 w-full rounded-2xl border-2 border-slate-100 bg-slate-50 px-4 text-center text-xl font-black text-slate-950 outline-none transition focus:border-brand-purple focus:bg-white',
-            locked && 'cursor-not-allowed border-amber-300 bg-amber-50 text-amber-700'
+            'h-10 w-16 rounded-xl border-0 bg-slate-100 text-center text-sm font-black text-slate-950 outline-none transition',
+            'focus:bg-white focus:ring-2 focus:ring-brand-purple/30',
+            '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
+            locked && 'cursor-not-allowed bg-amber-100 text-amber-700',
+            markTooHigh && 'bg-red-100 text-red-700 focus:ring-red-300/40',
+            saved && !markTooHigh && !locked && 'bg-emerald-100 text-emerald-800'
           )}
         />
-        <div className="flex h-14 min-w-[64px] items-center justify-center rounded-2xl bg-slate-50 px-3 text-sm font-black text-slate-500">
+        <span className="w-[3.25rem] text-right text-[11px] font-semibold text-slate-400">
           / {totalMarks || 100}
-        </div>
+        </span>
       </div>
-
-      {markTooHigh && (
-        <p className="mt-3 flex items-center gap-2 text-xs font-bold text-red-600">
-          <AlertCircle size={14} /> Mark exceeds total marks.
-        </p>
-      )}
-      {!hasMark(mark) && (
-        <p className="mt-3 text-xs font-bold text-amber-600">Missing mark</p>
-      )}
-    </article>
+    </div>
   );
 };
+
+// ─── main component ───────────────────────────────────────────────────────────
 
 const SummativeAssessmentMobile = ({
   initialTestId,
   defaultTestType = null,
+  prefillGrade,
+  prefillSubject,
   onBack,
   onNavigate,
 }) => {
@@ -270,7 +295,12 @@ const SummativeAssessmentMobile = ({
   const isSecondaryPortal = String(user?.institutionType || '').toUpperCase() === 'SECONDARY';
   const defaultType = normalizeTestType(defaultTestType);
 
-  const [screen, setScreen] = useState(initialTestId ? 'marks' : 'dashboard');
+  // prefill = direct navigation from TeacherMobileAssessView subject tap
+  const hasPrefill = Boolean(prefillGrade && prefillSubject);
+
+  const [screen, setScreen] = useState(
+    initialTestId ? 'marks' : hasPrefill ? 'prefill-loading' : 'dashboard'
+  );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [tests, setTests] = useState([]);
@@ -281,6 +311,8 @@ const SummativeAssessmentMobile = ({
   const [selectedClass, setSelectedClass] = useState(null);
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [selectedTestId, setSelectedTestId] = useState(initialTestId || '');
+  // When multiple tests match a prefill, show a picker
+  const [prefillCandidates, setPrefillCandidates] = useState([]);
   const [marks, setMarks] = useState({});
   const [savedMarks, setSavedMarks] = useState(new Set());
   const [searchQuery, setSearchQuery] = useState('');
@@ -296,8 +328,9 @@ const SummativeAssessmentMobile = ({
 
   const isTestLocked = Boolean(
     selectedTest &&
-    (String(selectedTest.workflowStatus || selectedTest.status || '').toUpperCase() === 'LOCKED' || selectedTest.locked === true) &&
-    !isTemporarilyUnlocked
+      (String(selectedTest.workflowStatus || selectedTest.status || '').toUpperCase() === 'LOCKED' ||
+        selectedTest.locked === true) &&
+      !isTemporarilyUnlocked
   );
 
   useEffect(() => {
@@ -305,23 +338,28 @@ const SummativeAssessmentMobile = ({
     setShowUnlockPrompt(false);
   }, [selectedTestId]);
 
-  const canSeeTest = useCallback((test) => {
-    const grade = toCanonicalGrade(test?.grade);
-    if (isSecondaryPortal ? !isSecondaryGrade(grade) : !isJuniorGrade(grade)) return false;
+  const canSeeTest = useCallback(
+    (test) => {
+      const grade = toCanonicalGrade(test?.grade);
+      if (isSecondaryPortal ? !isSecondaryGrade(grade) : !isJuniorGrade(grade)) return false;
 
-    if (isTeacher) {
-      if (!isAssignedToGrade(test?.grade)) return false;
-      const assignedSubjects = getAssignedSubjectsForGrade(test?.grade);
-      if (Array.isArray(assignedSubjects) && assignedSubjects.length > 0) {
-        return assignedSubjects.some((subject) =>
-          String(subject).trim().toLowerCase() === String(getTestArea(test)).trim().toLowerCase()
-        );
+      if (isTeacher) {
+        if (!isAssignedToGrade(test?.grade)) return false;
+        const assignedSubjects = getAssignedSubjectsForGrade(test?.grade);
+        if (Array.isArray(assignedSubjects) && assignedSubjects.length > 0) {
+          return assignedSubjects.some(
+            (subject) =>
+              String(subject).trim().toLowerCase() ===
+              String(getTestArea(test)).trim().toLowerCase()
+          );
+        }
+        if (Array.isArray(assignedSubjects) && assignedSubjects.length === 0) return false;
       }
-      if (Array.isArray(assignedSubjects) && assignedSubjects.length === 0) return false;
-    }
 
-    return true;
-  }, [getAssignedSubjectsForGrade, isAssignedToGrade, isSecondaryPortal, isTeacher]);
+      return true;
+    },
+    [getAssignedSubjectsForGrade, isAssignedToGrade, isSecondaryPortal, isTeacher]
+  );
 
   const fetchResultsForTests = useCallback(async (testList) => {
     const pairs = await Promise.all(
@@ -359,7 +397,11 @@ const SummativeAssessmentMobile = ({
     setLoading(true);
     try {
       const response = await assessmentAPI.getTests({});
-      const testRows = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : [];
+      const testRows = Array.isArray(response?.data)
+        ? response.data
+        : Array.isArray(response)
+        ? response
+        : [];
       const activeTests = testRows
         .filter((test) => {
           const status = String(test.status || '').toUpperCase();
@@ -377,41 +419,100 @@ const SummativeAssessmentMobile = ({
       setResultsByTest(resultMap);
       setLearnersByGrade(learnerMap);
 
+      // ── Handle initialTestId (legacy direct-link) ──────────────────────────
       if (initialTestId) {
         const directTest = activeTests.find((test) => String(test.id) === String(initialTestId));
         if (directTest) {
           const gradeKey = toCanonicalGrade(directTest.grade);
-          setSelectedClass({ grade: directTest.grade, gradeKey, name: formatGradeDisplay(directTest.grade) });
+          setSelectedClass({
+            grade: directTest.grade,
+            gradeKey,
+            name: formatGradeDisplay(directTest.grade),
+          });
           setSelectedSubject({ subjectName: getTestArea(directTest), test: directTest });
           setSelectedTestId(directTest.id);
           setSelectedTerm(directTest.term || getCurrentTerm());
           setSelectedType(normalizeTestType(directTest.testType) || defaultType || 'all');
           setScreen('marks');
         }
+        return;
+      }
+
+      // ── Handle prefillGrade + prefillSubject (from TeacherMobileAssessView) ─
+      if (hasPrefill) {
+        const normalizedPrefillGrade = toCanonicalGrade(prefillGrade);
+        const normalizedPrefillSubject = String(prefillSubject || '').trim().toLowerCase();
+
+        const candidates = activeTests.filter(
+          (test) =>
+            toCanonicalGrade(test.grade) === normalizedPrefillGrade &&
+            String(getTestArea(test)).trim().toLowerCase() === normalizedPrefillSubject
+        );
+
+        if (candidates.length === 1) {
+          const test = candidates[0];
+          const gradeKey = toCanonicalGrade(test.grade);
+          setSelectedClass({ grade: test.grade, gradeKey, name: formatGradeDisplay(test.grade) });
+          setSelectedSubject({ subjectName: getTestArea(test), test });
+          setSelectedTestId(test.id);
+          setSelectedTerm(test.term || getCurrentTerm());
+          setSelectedType(normalizeTestType(test.testType) || defaultType || 'all');
+          setScreen('marks');
+        } else if (candidates.length > 1) {
+          const gradeKey = toCanonicalGrade(candidates[0].grade);
+          setSelectedClass({
+            grade: candidates[0].grade,
+            gradeKey,
+            name: formatGradeDisplay(candidates[0].grade),
+          });
+          setSelectedSubject({ subjectName: prefillSubject, test: null });
+          setPrefillCandidates(candidates);
+          setScreen('test-picker');
+        } else {
+          setScreen('dashboard');
+        }
+        return;
       }
     } catch (error) {
       console.error('Error loading mobile assessment data:', error);
       showError('Failed to load assessment data');
+      setScreen('dashboard');
     } finally {
       setLoading(false);
     }
-  }, [canSeeTest, defaultType, fetchLearnersForGrades, fetchResultsForTests, initialTestId, showError]);
+  }, [
+    canSeeTest,
+    defaultType,
+    fetchLearnersForGrades,
+    fetchResultsForTests,
+    hasPrefill,
+    initialTestId,
+    prefillGrade,
+    prefillSubject,
+    showError,
+  ]);
 
   useEffect(() => {
     if (teacherWorkloadLoading) return;
     refreshData();
   }, [refreshData, teacherWorkloadLoading]);
 
+  // ── Derived data ────────────────────────────────────────────────────────────
+
   const availableTerms = useMemo(() => {
     const terms = [...new Set(tests.map((test) => test.term).filter(Boolean))].sort();
     return terms.length ? terms : ['TERM_1', 'TERM_2', 'TERM_3'];
   }, [tests]);
 
-  const visibleTests = useMemo(() => tests.filter((test) => {
-    if (selectedTerm && test.term !== selectedTerm) return false;
-    if (selectedType !== 'all' && normalizeTestType(test.testType) !== selectedType) return false;
-    return true;
-  }), [tests, selectedTerm, selectedType]);
+  const visibleTests = useMemo(
+    () =>
+      tests.filter((test) => {
+        if (selectedTerm && test.term !== selectedTerm) return false;
+        if (selectedType !== 'all' && normalizeTestType(test.testType) !== selectedType) return false;
+        return true;
+      }),
+    [tests, selectedTerm, selectedType]
+  );
 
   const classCards = useMemo(() => {
     const groups = new Map();
@@ -439,11 +540,14 @@ const SummativeAssessmentMobile = ({
       const rows = resultsByTest[test.id] || [];
       const entered = rows.filter(resultHasMark).length;
       const expected = classLearners.length;
-      const lastUpdated = rows
-        .map((row) => row.updatedAt || row.createdAt)
-        .filter(Boolean)
-        .sort()
-        .pop() || test.updatedAt || test.createdAt;
+      const lastUpdated =
+        rows
+          .map((row) => row.updatedAt || row.createdAt)
+          .filter(Boolean)
+          .sort()
+          .pop() ||
+        test.updatedAt ||
+        test.createdAt;
 
       group.subjectNames.add(getTestArea(test));
       group.tests.push(test);
@@ -522,14 +626,18 @@ const SummativeAssessmentMobile = ({
 
   const markStats = useMemo(() => {
     const total = selectedLearners.length;
-    const entered = selectedLearners.filter((learner) => hasMark(marks[learner.id || learner._id])).length;
+    const entered = selectedLearners.filter((learner) =>
+      hasMark(marks[learner.id || learner._id])
+    ).length;
     const numericMarks = selectedLearners
       .map((learner) => Number(marks[learner.id || learner._id]))
       .filter((mark) => Number.isFinite(mark));
     const average = numericMarks.length
       ? numericMarks.reduce((sum, mark) => sum + mark, 0) / numericMarks.length
       : 0;
-    const missingLearners = selectedLearners.filter((learner) => !hasMark(marks[learner.id || learner._id]));
+    const missingLearners = selectedLearners.filter(
+      (learner) => !hasMark(marks[learner.id || learner._id])
+    );
 
     return {
       total,
@@ -547,7 +655,6 @@ const SummativeAssessmentMobile = ({
       const learnerId = learner.id || learner._id;
       const entered = hasMark(marks[learnerId]);
       if (markFilter === 'missing' && entered) return false;
-      if (markFilter === 'entered' && !entered) return false;
       if (!query) return true;
       return (
         `${learner.firstName || ''} ${learner.lastName || ''}`.toLowerCase().includes(query) ||
@@ -555,6 +662,8 @@ const SummativeAssessmentMobile = ({
       );
     });
   }, [markFilter, marks, searchQuery, selectedLearners]);
+
+  // ── Event handlers ──────────────────────────────────────────────────────────
 
   const handleOpenClass = (classItem) => {
     setSelectedClass(classItem);
@@ -639,7 +748,7 @@ const SummativeAssessmentMobile = ({
         const firstSkipped = saveResponse.skipped[0];
         showError(
           `Saved ${savedCount} of ${resultsToSave.length}. ` +
-          `${saveResponse.skipped.length} skipped${firstSkipped?.reason ? `: ${firstSkipped.reason}` : '.'}`
+            `${saveResponse.skipped.length} skipped${firstSkipped?.reason ? `: ${firstSkipped.reason}` : '.'}`
         );
       } else {
         showSuccess(final ? 'Marks published for reports' : 'Draft marks saved');
@@ -654,28 +763,36 @@ const SummativeAssessmentMobile = ({
   };
 
   const handleBack = () => {
-    if (screen === 'review') {
-      setScreen('marks');
-      return;
-    }
+    if (screen === 'review') { setScreen('marks'); return; }
     if (screen === 'marks') {
+      if (hasPrefill) {
+        if (onBack) onBack();
+        else onNavigate?.('assess-mobile-dashboard');
+        return;
+      }
       setScreen('subjects');
       return;
     }
-    if (screen === 'subjects') {
-      setScreen('dashboard');
+    if (screen === 'test-picker') {
+      if (onBack) onBack();
+      else onNavigate?.('assess-mobile-dashboard');
       return;
     }
+    if (screen === 'subjects') { setScreen('dashboard'); return; }
     if (onBack) onBack();
     else onNavigate?.('assess-mobile-dashboard');
   };
+
+  // ── Loading / empty guards ──────────────────────────────────────────────────
 
   if (loading || teacherWorkloadLoading) {
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-4">
           <div className="h-12 w-12 animate-spin rounded-full border-4 border-brand-purple/20 border-t-brand-purple" />
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Loading assessment workspace</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+            Loading assessment workspace
+          </p>
         </div>
       </div>
     );
@@ -689,13 +806,42 @@ const SummativeAssessmentMobile = ({
           description="Your account is not assigned to any classes or subjects for mark entry."
           icon={BookOpen}
         />
-        <MobileBottomNav role={user?.role} currentPath="assess-mobile-dashboard" onNavigate={onNavigate} />
+        <MobileBottomNav
+          role={user?.role}
+          currentPath="assess-mobile-dashboard"
+          onNavigate={onNavigate}
+        />
       </div>
     );
   }
 
+  // ── Header helpers ──────────────────────────────────────────────────────────
+
+  const headerTitle = () => {
+    if (screen === 'dashboard') return 'Assessment Dashboard';
+    if (screen === 'subjects') return selectedClass?.name || 'Subjects';
+    if (screen === 'marks') return selectedSubject?.subjectName || 'Mark Entry';
+    if (screen === 'test-picker') return selectedSubject?.subjectName || 'Select Test';
+    if (screen === 'review') return 'Review & Publish';
+    return 'Assessment';
+  };
+
+  const headerSubtitle = () => {
+    if (screen === 'dashboard')
+      return `${formatTerm(selectedTerm)} · ${selectedType === 'all' ? 'All assessment types' : selectedType.replace(/_/g, ' ')}`;
+    if (screen === 'marks' || screen === 'test-picker' || screen === 'review')
+      return [selectedClass?.name, selectedSubject?.subjectName].filter(Boolean).join(' · ');
+    if (screen === 'subjects')
+      return `${formatTerm(selectedTerm)} · ${selectedType === 'all' ? 'All types' : selectedType.replace(/_/g, ' ')}`;
+    return '';
+  };
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+
   return (
     <div className="fixed inset-0 z-[100] flex flex-col bg-slate-50 font-sans text-slate-950">
+
+      {/* ── Shared header ── */}
       <header className="shrink-0 border-b border-slate-100 bg-white px-5 pb-4 pt-6">
         <div className="flex items-center gap-3">
           <button
@@ -707,26 +853,26 @@ const SummativeAssessmentMobile = ({
             <ArrowLeft size={22} />
           </button>
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-purple">Summative Assessment</p>
-            <h1 className="truncate text-xl font-black leading-tight">
-              {screen === 'dashboard' && 'Assessment Dashboard'}
-              {screen === 'subjects' && selectedClass?.name}
-              {screen === 'marks' && selectedSubject?.subjectName}
-              {screen === 'review' && 'Review & Publish'}
-            </h1>
-            <p className="truncate text-xs font-bold text-slate-500">
-              {formatTerm(selectedTerm)} · {selectedType === 'all' ? 'All assessment types' : selectedType.replace(/_/g, ' ')}
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-purple">
+              Summative Assessment
             </p>
+            <h1 className="truncate text-xl font-black leading-tight">{headerTitle()}</h1>
+            <p className="truncate text-xs font-bold text-slate-500">{headerSubtitle()}</p>
           </div>
         </div>
       </header>
 
+      {/* ══════════════════════════════════════════════════════════
+          SCREEN: dashboard
+      ══════════════════════════════════════════════════════════ */}
       {screen === 'dashboard' && (
         <main className="flex-1 overflow-y-auto px-5 py-5 pb-28">
           <section className="rounded-[1.75rem] border border-slate-100 bg-white p-4 shadow-sm">
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
-                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Active {labels.term}</span>
+                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Active {labels.term}
+                </span>
                 <select
                   value={selectedTerm}
                   onChange={(event) => setSelectedTerm(event.target.value)}
@@ -738,7 +884,9 @@ const SummativeAssessmentMobile = ({
                 </select>
               </label>
               <label className="block">
-                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Assessment Type</span>
+                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Assessment Type
+                </span>
                 <select
                   value={selectedType}
                   onChange={(event) => setSelectedType(event.target.value)}
@@ -761,19 +909,31 @@ const SummativeAssessmentMobile = ({
               />
             ) : (
               classCards.map((item) => (
-                <SummativeClassCard key={item.gradeKey} item={item} onOpen={() => handleOpenClass(item)} />
+                <SummativeClassCard
+                  key={item.gradeKey}
+                  item={item}
+                  onOpen={() => handleOpenClass(item)}
+                />
               ))
             )}
           </section>
         </main>
       )}
 
+      {/* ══════════════════════════════════════════════════════════
+          SCREEN: subjects
+      ══════════════════════════════════════════════════════════ */}
       {screen === 'subjects' && (
         <main className="flex-1 overflow-y-auto px-5 py-5 pb-28">
           <section className="mb-4 rounded-[1.5rem] bg-brand-purple p-5 text-white shadow-lg shadow-brand-purple/10">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/70">Class Workspace</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/70">
+              Class Workspace
+            </p>
             <h2 className="mt-1 text-2xl font-black">{selectedClass?.name}</h2>
-            <p className="mt-2 text-sm font-bold text-white/80">{formatTerm(selectedTerm)} · {selectedType === 'all' ? 'All types' : selectedType.replace(/_/g, ' ')}</p>
+            <p className="mt-2 text-sm font-bold text-white/80">
+              {formatTerm(selectedTerm)} ·{' '}
+              {selectedType === 'all' ? 'All types' : selectedType.replace(/_/g, ' ')}
+            </p>
           </section>
 
           <div className="space-y-3">
@@ -785,137 +945,206 @@ const SummativeAssessmentMobile = ({
               />
             ) : (
               subjectCards.map((item) => (
-                <SummativeSubjectCard key={`${selectedClass?.gradeKey}-${item.subjectName}`} item={item} onOpen={() => handleOpenSubject(item)} />
+                <SummativeSubjectCard
+                  key={`${selectedClass?.gradeKey}-${item.subjectName}`}
+                  item={item}
+                  onOpen={() => handleOpenSubject(item)}
+                />
               ))
             )}
           </div>
         </main>
       )}
 
+      {/* ══════════════════════════════════════════════════════════
+          SCREEN: test-picker
+      ══════════════════════════════════════════════════════════ */}
+      {screen === 'test-picker' && (
+        <main className="flex-1 overflow-y-auto px-5 py-5 pb-28">
+          <div className="mb-5 rounded-[1.5rem] border border-slate-100 bg-white p-4 shadow-sm">
+            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+              Multiple tests found
+            </p>
+            <p className="mt-1 text-sm font-bold text-slate-700">
+              Select which test to enter marks for:
+            </p>
+          </div>
+          <div className="space-y-2">
+            {prefillCandidates.map((test) => {
+              const rows = resultsByTest[test.id] || [];
+              const classLearners = learnersByGrade[toCanonicalGrade(test.grade)] || [];
+              const entered = rows.filter(resultHasMark).length;
+              const completion = percentage(entered, classLearners.length);
+              return (
+                <button
+                  key={test.id}
+                  type="button"
+                  onClick={() => {
+                    const gradeKey = toCanonicalGrade(test.grade);
+                    setSelectedClass({
+                      grade: test.grade,
+                      gradeKey,
+                      name: formatGradeDisplay(test.grade),
+                    });
+                    setSelectedSubject({ subjectName: getTestArea(test), test });
+                    setSelectedTestId(test.id);
+                    setSelectedTerm(test.term || getCurrentTerm());
+                    setScreen('marks');
+                  }}
+                  className="w-full rounded-[1.5rem] border border-slate-100 bg-white p-4 text-left shadow-sm transition active:scale-[0.99]"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black text-slate-950">{test.title}</p>
+                      <p className="mt-0.5 text-xs font-semibold text-slate-500">
+                        {formatTerm(test.term)} ·{' '}
+                        {normalizeTestType(test.testType)?.replace(/_/g, ' ') || 'Assessment'}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-black text-brand-purple">{completion}%</p>
+                      <p className="text-[10px] font-bold text-slate-400">entered</p>
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <ProgressBar value={completion} />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </main>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════
+          SCREEN: marks — compact 2-column table
+      ══════════════════════════════════════════════════════════ */}
       {screen === 'marks' && selectedTest && (
-        <main className="flex-1 overflow-y-auto px-5 py-5 pb-44">
-          <section className="mb-4 rounded-[1.5rem] border border-slate-100 bg-white p-4 shadow-sm">
+        <main className="flex-1 overflow-y-auto pb-44">
+
+          {/* test info + progress */}
+          <div className="border-b border-slate-100 bg-white px-4 py-3">
             <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Mark Entry</p>
-                <p className="mt-1 text-sm font-black text-slate-950">{selectedTest.title}</p>
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Mark Entry
+                </p>
+                <p className="mt-0.5 truncate text-sm font-black text-slate-950">
+                  {selectedTest.title}
+                </p>
               </div>
-              <div className="text-right">
+              <div className="shrink-0 text-right">
                 <p className="text-2xl font-black text-brand-purple">{markStats.completion}%</p>
-                <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">Complete</p>
+                <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
+                  {markStats.entered}/{markStats.total}
+                </p>
               </div>
             </div>
-            <div className="mt-4"><ProgressBar value={markStats.completion} /></div>
+            <div className="mt-3">
+              <ProgressBar value={markStats.completion} />
+            </div>
             {isTestLocked && (
               <button
                 type="button"
                 onClick={() => setShowUnlockPrompt(true)}
-                className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 text-xs font-black text-white"
+                className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 text-xs font-black text-white"
               >
-                <Lock size={15} /> Request score unlock
+                <Lock size={14} /> Request score unlock
               </button>
             )}
-          </section>
+          </div>
 
-          <section className="sticky top-0 z-10 mb-4 space-y-3 rounded-[1.5rem] border border-slate-100 bg-white/95 p-3 shadow-sm backdrop-blur">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search learner or admission number"
-                className="h-12 w-full rounded-2xl bg-slate-50 pl-11 pr-4 text-sm font-bold outline-none focus:ring-2 focus:ring-brand-purple/20"
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-2 rounded-2xl bg-slate-50 p-1">
-              {[
-                ['all', 'All'],
-                ['missing', 'Missing'],
-                ['entered', 'Entered'],
-              ].map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setMarkFilter(value)}
-                  className={cn(
-                    'h-10 rounded-xl text-xs font-black transition',
-                    markFilter === value ? 'bg-white text-brand-purple shadow-sm' : 'text-slate-500'
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </section>
+          {/* slim sticky search bar */}
+          <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-slate-100 bg-white px-4 py-2.5">
+            <Search size={15} className="shrink-0 text-slate-300" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search name or admission no."
+              className="flex-1 bg-transparent text-sm font-semibold text-slate-950 outline-none placeholder:text-slate-300"
+            />
+            <button
+              type="button"
+              onClick={() => setMarkFilter((f) => (f === 'missing' ? 'all' : 'missing'))}
+              className={cn(
+                'shrink-0 rounded-full px-3 py-1 text-[11px] font-black transition',
+                markFilter === 'missing'
+                  ? 'bg-amber-100 text-amber-700'
+                  : 'bg-slate-100 text-slate-500'
+              )}
+            >
+              Missing
+            </button>
+          </div>
 
-          <section className="space-y-3">
-            {filteredLearners.length === 0 ? (
+          {/* compact 2-column table */}
+          {filteredLearners.length === 0 ? (
+            <div className="px-5 py-8">
               <EmptyState
                 title="No learners match"
-                description="Try a different search or mark filter."
+                description="Try a different search or clear the Missing filter."
                 icon={Users}
               />
-            ) : (
-              filteredLearners.map((learner) => {
+            </div>
+          ) : (
+            <div className="mx-4 mt-3 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+              {/* column headers */}
+              <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50 px-4 py-2">
+                <p className="flex-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  Learner
+                </p>
+                <p className="w-[7.5rem] text-right text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  Mark / {selectedTest.totalMarks || 100}
+                </p>
+              </div>
+
+              {/* learner rows */}
+              {filteredLearners.map((learner, idx) => {
                 const learnerId = learner.id || learner._id;
                 return (
-                  <LearnerMarkCard
+                  <MarkTableRow
                     key={learnerId}
                     learner={learner}
                     mark={marks[learnerId]}
                     totalMarks={selectedTest.totalMarks || 100}
                     saved={savedMarks.has(learnerId)}
-                    onChange={handleMarkChange}
                     locked={isTestLocked}
+                    onChange={handleMarkChange}
                     onRequestUnlock={() => setShowUnlockPrompt(true)}
+                    isLast={idx === filteredLearners.length - 1}
                   />
                 );
-              })
-            )}
-          </section>
-
-          <div className="fixed bottom-16 left-0 right-0 z-[70] border-t border-slate-100 bg-white/95 p-4 pb-5 backdrop-blur-xl">
-            <div className="mx-auto flex max-w-md gap-3">
-              <button
-                type="button"
-                onClick={() => isTestLocked ? setShowUnlockPrompt(true) : saveMarks({ final: false })}
-                disabled={saving}
-                className={cn(
-                  'flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl text-sm font-black text-white shadow-lg disabled:opacity-60',
-                  isTestLocked ? 'bg-amber-500 shadow-amber-500/20' : 'bg-brand-teal shadow-brand-teal/20'
-                )}
-              >
-                {saving ? <Loader size={18} className="animate-spin" /> : isTestLocked ? <Lock size={18} /> : <Save size={18} />}
-                {isTestLocked ? 'Request unlock' : 'Save'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setScreen('review')}
-                className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-brand-purple text-sm font-black text-white shadow-lg shadow-brand-purple/20"
-              >
-                Review
-                <ChevronRight size={18} />
-              </button>
+              })}
             </div>
-          </div>
+          )}
         </main>
       )}
 
+      {/* ══════════════════════════════════════════════════════════
+          SCREEN: review
+      ══════════════════════════════════════════════════════════ */}
       {screen === 'review' && selectedTest && (
         <main className="flex-1 overflow-y-auto px-5 py-5 pb-32">
           <section className="grid grid-cols-2 gap-3">
             <MetricPill label="Total Learners" value={markStats.total} />
             <MetricPill label="Entered Marks" value={markStats.entered} />
             <MetricPill label="Missing Marks" value={markStats.missing} />
-            <MetricPill label="Class Average" value={`${markStats.average.toFixed(1)}/${selectedTest.totalMarks || 100}`} />
+            <MetricPill
+              label="Class Average"
+              value={`${markStats.average.toFixed(1)}/${selectedTest.totalMarks || 100}`}
+            />
           </section>
 
           <section className="mt-5 rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">Readiness</p>
-                <h2 className="mt-1 text-lg font-black text-slate-950">{markStats.completion}% complete</h2>
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Readiness
+                </p>
+                <h2 className="mt-1 text-lg font-black text-slate-950">
+                  {markStats.completion}% complete
+                </h2>
               </div>
               {markStats.missing === 0 ? (
                 <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
@@ -927,19 +1156,30 @@ const SummativeAssessmentMobile = ({
                 </span>
               )}
             </div>
-            <div className="mt-4"><ProgressBar value={markStats.completion} /></div>
+            <div className="mt-4">
+              <ProgressBar value={markStats.completion} />
+            </div>
           </section>
 
           <section className="mt-5 rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-sm">
             <h3 className="text-sm font-black text-slate-950">Missing Learners</h3>
             {markStats.missingLearners.length === 0 ? (
-              <p className="mt-3 text-sm font-bold text-emerald-600">No missing marks. This assessment is ready.</p>
+              <p className="mt-3 text-sm font-bold text-emerald-600">
+                No missing marks. This assessment is ready.
+              </p>
             ) : (
               <div className="mt-3 space-y-2">
                 {markStats.missingLearners.map((learner) => (
-                  <div key={learner.id || learner._id} className="rounded-2xl bg-amber-50 px-4 py-3">
-                    <p className="text-sm font-black text-slate-950">{learner.firstName} {learner.lastName || ''}</p>
-                    <p className="text-xs font-bold uppercase tracking-[0.08em] text-amber-700">{learner.admissionNumber || 'No admission number'}</p>
+                  <div
+                    key={learner.id || learner._id}
+                    className="rounded-2xl bg-amber-50 px-4 py-3"
+                  >
+                    <p className="text-sm font-black text-slate-950">
+                      {learner.firstName} {learner.lastName || ''}
+                    </p>
+                    <p className="text-xs font-bold uppercase tracking-[0.08em] text-amber-700">
+                      {learner.admissionNumber || 'No admission number'}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -988,17 +1228,69 @@ const SummativeAssessmentMobile = ({
         </main>
       )}
 
+      {/* fixed bottom action bar — marks screen only */}
+      {screen === 'marks' && selectedTest && (
+        <div className="fixed bottom-16 left-0 right-0 z-[70] border-t border-slate-100 bg-white/95 p-4 pb-5 backdrop-blur-xl">
+          <div className="mx-auto flex max-w-md items-center gap-3">
+            {/* entered count pill */}
+            <div className="flex h-14 shrink-0 items-center justify-center rounded-2xl bg-slate-50 px-3">
+              <p className="text-center">
+                <span className="block text-base font-black text-brand-purple">
+                  {markStats.entered}
+                </span>
+                <span className="block text-[9px] font-black uppercase tracking-wider text-slate-400">
+                  / {markStats.total}
+                </span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                isTestLocked ? setShowUnlockPrompt(true) : saveMarks({ final: false })
+              }
+              disabled={saving}
+              className={cn(
+                'flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl text-sm font-black text-white shadow-lg disabled:opacity-60',
+                isTestLocked
+                  ? 'bg-amber-500 shadow-amber-500/20'
+                  : 'bg-brand-teal shadow-brand-teal/20'
+              )}
+            >
+              {saving ? (
+                <Loader size={18} className="animate-spin" />
+              ) : isTestLocked ? (
+                <Lock size={18} />
+              ) : (
+                <Save size={18} />
+              )}
+              {isTestLocked ? 'Request unlock' : 'Save'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setScreen('review')}
+              className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-brand-purple text-sm font-black text-white shadow-lg shadow-brand-purple/20"
+            >
+              Review
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* score unlock prompt */}
       <ScoreUnlockPrompt
         open={showUnlockPrompt}
         onDismiss={() => setShowUnlockPrompt(false)}
         onUnlockGranted={() => {
           setShowUnlockPrompt(false);
           setIsTemporarilyUnlocked(true);
-          setTests((current) => current.map((test) =>
-            String(test.id) === String(selectedTestId)
-              ? { ...test, status: 'PUBLISHED', workflowStatus: 'PUBLISHED', locked: false }
-              : test
-          ));
+          setTests((current) =>
+            current.map((test) =>
+              String(test.id) === String(selectedTestId)
+                ? { ...test, status: 'PUBLISHED', workflowStatus: 'PUBLISHED', locked: false }
+                : test
+            )
+          );
         }}
         context={{
           assessmentId: selectedTestId,
@@ -1011,7 +1303,11 @@ const SummativeAssessmentMobile = ({
         }}
       />
 
-      <MobileBottomNav role={user?.role} currentPath="assess-mobile-dashboard" onNavigate={onNavigate} />
+      <MobileBottomNav
+        role={user?.role}
+        currentPath="assess-mobile-dashboard"
+        onNavigate={onNavigate}
+      />
     </div>
   );
 };
