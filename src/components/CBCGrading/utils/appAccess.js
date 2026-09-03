@@ -121,6 +121,7 @@ const PAGE_APP_REQUIREMENTS = {
   'library-inventory': 'library',
   'library-members': 'library',
 
+  'transport-manager': 'transport',
   'transport-routes': 'transport',
   'transport-tracking': 'transport',
   'transport-drivers': 'transport',

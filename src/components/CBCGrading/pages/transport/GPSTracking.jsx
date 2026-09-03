@@ -202,7 +202,7 @@ function GPSConfigModal({ onClose }) {
           <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-700">
             <p className="font-semibold mb-1">📍 What you can do now</p>
             <ul className="space-y-1 text-xs font-medium list-disc list-inside text-blue-600">
-              <li>Assign vehicles to routes in <strong>Bus Routes & Roster</strong></li>
+              <li>Assign vehicles to routes in <strong>Transport Manager</strong></li>
               <li>Manage drivers in <strong>Driver Management</strong></li>
               <li>Assign students to routes and manage pickups</li>
             </ul>
@@ -329,7 +329,7 @@ const GPSTracking = () => {
         <div className="bg-white rounded-2xl border-2 border-dashed border-gray-200 p-16 text-center">
           <Bus size={40} className="mx-auto text-gray-200 mb-3" />
           <p className="font-semibold text-gray-500 text-base">No routes configured</p>
-          <p className="text-gray-400 text-sm mt-1">Add routes in <strong>Bus Routes & Roster</strong> first.</p>
+          <p className="text-gray-400 text-sm mt-1">Add routes in <strong>Transport Manager</strong> first.</p>
         </div>
       ) : (
         <>

@@ -35,6 +35,11 @@ const PASTEL_PALETTE = {
   'Mid-term Exams':     'text-emerald-700 bg-emerald-50',
   'End-term Exams':     'text-amber-700   bg-amber-50',
   'Mock Exams':         'text-sky-700     bg-sky-50',
+  'Transport Manager':     'text-blue-700    bg-blue-50',
+  'Transport Fee Manager': 'text-amber-700   bg-amber-50',
+  'Driver Management':     'text-emerald-700 bg-emerald-50',
+  'GPS Tracking':          'text-purple-700  bg-purple-50',
+  'Transport Reports':     'text-teal-700    bg-teal-50',
 };
 
 const COLOR_CYCLE = [

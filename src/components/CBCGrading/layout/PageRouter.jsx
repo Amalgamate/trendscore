@@ -825,6 +825,7 @@ const PageRouter = ({
             return <LibraryManager currentPage={currentPage} />;
 
           // Transport Module
+          case 'transport-manager':
           case 'transport-routes':    return <TransportManager />;
           case 'transport-tracking':  return <GPSTracking />;
           case 'transport-drivers':   return <DriverManagement />;

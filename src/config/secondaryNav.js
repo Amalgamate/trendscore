@@ -319,9 +319,12 @@ export const secondaryNavSections = [
     icon: Truck,
     permission: 'TRANSPORT_MANAGEMENT',
     items: [
-      { id: 'transport-routes',  label: 'Bus Routes',         path: 'transport-routes',   permission: 'TRANSPORT_MANAGEMENT' },
-      { id: 'hostel-allocation', label: 'Hostel Allocation',  path: 'hostel-allocation',  permission: 'TRANSPORT_MANAGEMENT' },
+      { id: 'transport-routes',  label: 'Transport Manager',         path: 'transport-routes',   permission: 'TRANSPORT_MANAGEMENT' },
       { id: 'hostel-fees',       label: 'Transport Fee Manager',     path: 'hostel-fees',        permission: 'TRANSPORT_MANAGEMENT' },
+      { id: 'transport-drivers', label: 'Driver Management',         path: 'transport-drivers',  permission: 'TRANSPORT_MANAGEMENT' },
+      { id: 'transport-tracking',label: 'GPS Tracking',              path: 'transport-tracking', permission: 'TRANSPORT_MANAGEMENT' },
+      { id: 'hostel-allocation', label: 'Hostel Allocation',         path: 'hostel-allocation',  permission: 'TRANSPORT_MANAGEMENT' },
+      { id: 'transport-reports', label: 'Transport Reports',         path: 'transport-reports',  permission: 'TRANSPORT_MANAGEMENT' },
     ],
   },
 

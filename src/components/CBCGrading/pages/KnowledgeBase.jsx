@@ -231,7 +231,7 @@ const ARTICLES = [
     body: [
       { type: 'p', text: 'Configure vehicles and routes before assigning learners.' },
       { type: 'steps', items: [
-        'Go to Transport → Bus Routes & Roster.',
+        'Go to Transport → Transport Manager.',
         'Click Add Vehicle. Enter the registration number, capacity, driver name and phone.',
         'Click Add Route. Enter the route name, stops description, fee per term and assign the vehicle.',
         'Click the passenger count badge on any route to open the assignment panel.',

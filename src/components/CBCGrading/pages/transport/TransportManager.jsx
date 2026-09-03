@@ -696,10 +696,10 @@ const TransportManager = () => {
                 <div>
                     <h1 className="text-2xl md:text-3xl font-semibold text-gray-900 flex items-center gap-3 tracking-tight">
                         <Bus className="text-blue-600" size={30} />
-                        Transport & Fleet
+                        Transport Manager
                     </h1>
                     <p className="text-gray-500 mt-0.5 text-sm font-medium">
-                        Manage school buses, drivers and transport routes.
+                        Manage fleet vehicles, bus routes & roster, and transport students.
                     </p>
                 </div>
                 {activeTab === 'vehicles' && (

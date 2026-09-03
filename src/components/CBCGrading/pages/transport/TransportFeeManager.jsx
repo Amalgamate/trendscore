@@ -301,7 +301,7 @@ const TransportFeeManager = ({ onEditLearner, onViewLearner }) => {
             onClick={() => navigateTo('transport-routes')}
             className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition shadow-lg shadow-blue-600/20">
             <Bus size={15} />
-            Manage Routes
+            Transport Manager
           </button>
         </div>
       </div>
@@ -447,7 +447,7 @@ const TransportFeeManager = ({ onEditLearner, onViewLearner }) => {
             <p className="text-gray-400 text-sm mt-1">
               {query || filterStatus !== 'all' || filterRoute !== 'all'
                 ? 'Try adjusting your search or filters.'
-                : 'Assign students to transport routes first — invoices will appear here.'}
+                : 'Assign students to transport routes in Transport Manager first — invoices will appear here.'}
             </p>
           </div>
         ) : (
