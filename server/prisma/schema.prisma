@@ -337,6 +337,7 @@ model Class {
   learningLessons     LearningLesson[]
   learningAssignments LearningAssignment[]
   learningResources   LearningResource[]
+  subjectAssignments  SubjectAssignment[]
 
   @@unique([grade, stream, academicYear, term])
   @@index([institutionType, grade, stream])
@@ -2260,16 +2261,18 @@ model SubjectAssignment {
   teacherId      String
   learningAreaId String
   grade          String
+  classId        String?
   active         Boolean      @default(true)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   learningArea   LearningArea @relation(fields: [learningAreaId], references: [id])
   teacher        User         @relation(fields: [teacherId], references: [id])
+  class          Class?       @relation(fields: [classId], references: [id], onDelete: SetNull)
 
-  @@unique([teacherId, learningAreaId, grade])
   @@index([teacherId])
   @@index([learningAreaId])
   @@index([grade])
+  @@index([classId])
   @@map("subject_assignments")
 }
 
