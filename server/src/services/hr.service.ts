@@ -469,45 +469,61 @@ export class HRService {
     // ─── Staff Directory ──────────────────────────────────────────────────────
 
     async getStaffDirectory() {
-        return prisma.user.findMany({
-            where: {
-                role: { in: [...this.staffRoles] as any },
-                archived: false
-            },
-            select: {
-                id: true,
-                firstName: true,
-                middleName: true,
-                lastName: true,
-                email: true,
-                phone: true,
-                role: true,
-                status: true,
-                staffId: true,
-                kraPin: true,
-                nhifNumber: true,
-                nssfNumber: true,
-                bankName: true,
-                bankAccountNumber: true,
-                bankAccountName: true,
-                basicSalary: true,
-                employmentType: true,
-                joinedAt: true,
-                profilePicture: true,
-                subject: true,
-                gender: true,
-                housingLevyExempt: true,
-                staffAllowances: {
-                    where: { isActive: true },
-                    select: { id: true, type: true, label: true, amount: true }
+        const selectFields = {
+            id: true,
+            firstName: true,
+            middleName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            role: true,
+            status: true,
+            staffId: true,
+            kraPin: true,
+            nhifNumber: true,
+            nssfNumber: true,
+            bankName: true,
+            bankAccountNumber: true,
+            bankAccountName: true,
+            basicSalary: true,
+            employmentType: true,
+            joinedAt: true,
+            profilePicture: true,
+            subject: true,
+            gender: true,
+            housingLevyExempt: true,
+        };
+
+        const whereClause = {
+            role: { in: [...this.staffRoles] as any },
+            archived: false
+        };
+
+        try {
+            return await prisma.user.findMany({
+                where: whereClause,
+                select: {
+                    ...selectFields,
+                    staffAllowances: {
+                        where: { isActive: true },
+                        select: { id: true, type: true, label: true, amount: true }
+                    },
+                    staffDeductions: {
+                        where: { isActive: true },
+                        select: { id: true, type: true, label: true, amount: true, isRecurring: true, totalMonths: true, monthsApplied: true }
+                    }
                 },
-                staffDeductions: {
-                    where: { isActive: true },
-                    select: { id: true, type: true, label: true, amount: true, isRecurring: true, totalMonths: true, monthsApplied: true }
-                }
-            },
-            orderBy: { lastName: 'asc' }
-        });
+                orderBy: { lastName: 'asc' }
+            });
+        } catch (err: any) {
+            logger.warn({ err }, '[HR] Failed with allowances/deductions relation; falling back to base user fields');
+            const users = await prisma.user.findMany({
+                where: whereClause,
+                select: selectFields,
+                orderBy: { lastName: 'asc' }
+            });
+            return users.map((u: any) => ({ ...u, staffAllowances: [], staffDeductions: [] }));
+        }
     }
 
     async updateStaffHRDetails(userId: string, details: any) {
@@ -523,7 +539,7 @@ export class HRService {
             where: { id: userId },
             data: {
                 kraPin: details.kraPin ?? undefined,
-                nhifNumber: details.nhifNumber ?? undefined,
+                nhifNumber: details.nhifNumber ?? details.shifNumber ?? undefined,
                 nssfNumber: details.nssfNumber ?? undefined,
                 bankName: details.bankName ?? undefined,
                 bankAccountName: details.bankAccountName ?? undefined,
@@ -540,10 +556,15 @@ export class HRService {
     // ─── Allowances ───────────────────────────────────────────────────────────
 
     async getStaffAllowances(userId: string) {
-        return prisma.staffAllowance.findMany({
-            where: { userId },
-            orderBy: { createdAt: 'asc' }
-        });
+        try {
+            return await prisma.staffAllowance.findMany({
+                where: { userId },
+                orderBy: { createdAt: 'asc' }
+            });
+        } catch (err) {
+            logger.warn({ err }, '[HR] getStaffAllowances fallback to empty');
+            return [];
+        }
     }
 
     async upsertAllowance(userId: string, data: {
@@ -571,10 +592,15 @@ export class HRService {
     // ─── Custom Deductions ────────────────────────────────────────────────────
 
     async getStaffDeductions(userId: string) {
-        return prisma.staffDeduction.findMany({
-            where: { userId },
-            orderBy: { createdAt: 'asc' }
-        });
+        try {
+            return await prisma.staffDeduction.findMany({
+                where: { userId },
+                orderBy: { createdAt: 'asc' }
+            });
+        } catch (err) {
+            logger.warn({ err }, '[HR] getStaffDeductions fallback to empty');
+            return [];
+        }
     }
 
     async upsertDeduction(userId: string, data: {

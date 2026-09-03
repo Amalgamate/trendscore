@@ -111,8 +111,10 @@ export class LearnerController {
     if (currentUserRole === 'PARENT') {
       whereClause.id = { in: await parentAccessService.getAccessibleLearnerIds(currentUserId) };
     }
-    if (grade) whereClause.grade = String(grade);
-    if (stream) whereClause.stream = String(stream);
+    if (grade && String(grade).toLowerCase() !== 'all') whereClause.grade = String(grade);
+    if (stream && String(stream).toLowerCase() !== 'all') {
+      whereClause.stream = { equals: String(stream).trim(), mode: 'insensitive' };
+    }
     if (status) whereClause.status = String(status).toUpperCase() as LearnerStatus;
     if (search) {
       whereClause.OR = [

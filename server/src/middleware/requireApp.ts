@@ -15,8 +15,10 @@ export const requireApp = (slug: string) => {
           })
         : null;
       const schoolId = req.school?.id || fallbackSchool?.id;
-
       if (!schoolId) return next();
+
+      // SUPER_ADMINs always have access to manage and configure all apps
+      if (req.user?.role === 'SUPER_ADMIN') return next();
 
       const configCount = await prisma.schoolAppConfig.count({ where: { schoolId } });
       if (configCount === 0) return next();

@@ -38,7 +38,7 @@ import { dashboardAPI, transportAPI } from '../../../services/api';
 import { QuickActions } from '../shared';
 import { useModuleAccess } from '../../../contexts/ModuleAccessContext';
 import { hasPageAccess } from '../utils/appAccess';
-import StaffPopup from '../dashboard/widgets/StaffPopup';
+import StaffPopup from './widgets/StaffPopup';
 
 
 const moduleToneMap = {

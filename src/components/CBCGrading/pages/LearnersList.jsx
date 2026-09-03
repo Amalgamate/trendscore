@@ -43,6 +43,7 @@ const LearnersList = ({
   const [selectAllDatabase, setSelectAllDatabase] = useState(false);
   const [showQuickActions, setShowQuickActions] = useState(false);
   const [showGlobalFilters, setShowGlobalFilters] = useState(false);
+  const [showStreamDropdown, setShowStreamDropdown] = useState(false);
   const [totalStudentsCount, setTotalStudentsCount] = useState(null);
   const [learnerStats, setLearnerStats] = useState(null);
 
@@ -58,7 +59,7 @@ const LearnersList = ({
   const [contactType, setContactType] = useState('sms'); // 'sms' or 'whatsapp'
   const { can, isRole } = usePermissions();
   const { user } = useAuth();
-  const { grades } = useSchoolData();
+  const { grades, streams: contextStreams, classes } = useSchoolData();
   const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
   const { showSuccess, showError } = useNotifications();
 
@@ -126,6 +127,73 @@ const LearnersList = ({
         return rank(a) - rank(b);
     });
   }, [grades, fallbackGrades, isSecondaryPortal]);
+
+  const formatStreamLabel = (s) => {
+    if (!s || s === 'all') return 'All Streams';
+    const str = String(s).trim();
+    if (/^stream\s+/i.test(str)) return str;
+    return `Stream ${str}`;
+  };
+
+  const streamOptions = useMemo(() => {
+    if (filterGrade !== 'all') {
+      const gradeSpecificSet = new Set();
+      const fGrade = String(filterGrade || '').trim().toUpperCase();
+
+      if (Array.isArray(classes)) {
+        classes.forEach((c) => {
+          const cGrade = String(c?.grade || '').trim().toUpperCase();
+          if (cGrade === fGrade && c?.stream && String(c.stream).trim()) {
+            gradeSpecificSet.add(String(c.stream).trim());
+          }
+        });
+      }
+      if (Array.isArray(learners)) {
+        learners.forEach((l) => {
+          const lGrade = String(l?.grade || '').trim().toUpperCase();
+          if (lGrade === fGrade && l?.stream && String(l.stream).trim()) {
+            gradeSpecificSet.add(String(l.stream).trim());
+          }
+        });
+      }
+
+      if (gradeSpecificSet.size > 0) {
+        return Array.from(gradeSpecificSet).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+      }
+    }
+
+    const allStreamsSet = new Set();
+    if (Array.isArray(availableStreams)) {
+      availableStreams.forEach((s) => {
+        const name = typeof s === 'string' ? s : s?.name;
+        if (name && String(name).trim()) allStreamsSet.add(String(name).trim());
+      });
+    }
+    if (Array.isArray(contextStreams)) {
+      contextStreams.forEach((s) => {
+        const name = typeof s === 'string' ? s : s?.name;
+        if (name && String(name).trim()) allStreamsSet.add(String(name).trim());
+      });
+    }
+    if (Array.isArray(classes)) {
+      classes.forEach((c) => {
+        if (c?.stream && String(c.stream).trim()) allStreamsSet.add(String(c.stream).trim());
+      });
+    }
+    if (Array.isArray(learners)) {
+      learners.forEach((l) => {
+        if (l?.stream && String(l.stream).trim()) allStreamsSet.add(String(l.stream).trim());
+      });
+    }
+
+    return Array.from(allStreamsSet).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [availableStreams, contextStreams, classes, learners, filterGrade]);
+
+  useEffect(() => {
+    if (filterStream !== 'all' && streamOptions.length > 0 && !streamOptions.includes(filterStream)) {
+      setFilterStream('all');
+    }
+  }, [filterGrade, streamOptions, filterStream]);
 
   // Check permissions
   const canCreateLearner = can('CREATE_LEARNER') || isRole('TEACHER');
@@ -220,9 +288,16 @@ const LearnersList = ({
     const source = Array.isArray(learners) ? learners : [];
     return source.filter((learner) => {
       const learnerIsSecondary = isSecondaryGrade(learner?.grade);
-      return isSecondaryPortal ? learnerIsSecondary : !learnerIsSecondary;
+      const matchesLevel = isSecondaryPortal ? learnerIsSecondary : !learnerIsSecondary;
+      if (!matchesLevel) return false;
+      if (filterStream !== 'all') {
+        const streamVal = String(learner?.stream || '').trim().toUpperCase();
+        const filterVal = String(filterStream || '').trim().toUpperCase();
+        if (streamVal !== filterVal) return false;
+      }
+      return true;
     });
-  }, [learners, isSecondaryPortal]);
+  }, [learners, isSecondaryPortal, filterStream]);
   const visibleStudentsCount = displayLearners.length;
 
   const canTeacherModify = (learner) => {
@@ -244,6 +319,7 @@ const LearnersList = ({
     setSearchTerm('');
     setFilterGrade('all');
     setFilterStatus('all');
+    setFilterStream('all');
     setSelectedLearners([]);
     setSelectAllDatabase(false);
   };
@@ -436,9 +512,9 @@ const LearnersList = ({
       <div className="toolbar-card rounded-2xl border border-slate-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
         <div className="flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center">
 
-          <div className="flex flex-row gap-2 w-full xl:w-auto items-center" style={{ maxWidth: isMobile ? '100%' : '400px' }}>
+          <div className="flex flex-row flex-wrap sm:flex-nowrap gap-2 w-full xl:w-auto items-center" style={{ maxWidth: isMobile ? '100%' : '580px' }}>
             {/* Search */}
-            <div className="relative flex-grow">
+            <div className="relative flex-grow min-w-[160px]">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
               <input
                 type="text"
@@ -452,7 +528,10 @@ const LearnersList = ({
             {/* Grade Filter Dropdown */}
             <div className="relative flex-shrink-0">
               <button
-                onClick={() => setShowGlobalFilters(!showGlobalFilters)}
+                onClick={() => {
+                  setShowGlobalFilters(!showGlobalFilters);
+                  setShowStreamDropdown(false);
+                }}
                 className={`h-11 px-4 border rounded-xl font-medium flex items-center gap-2 transition-all ${filterGrade !== 'all' ? 'bg-brand-purple/5 border-brand-purple text-brand-purple' : 'bg-white border-gray-200 text-gray-700 hover:border-brand-purple hover:text-brand-purple'}`}
                 aria-label="Filter by grade"
               >
@@ -480,7 +559,7 @@ const LearnersList = ({
                     className="fixed inset-0 z-40"
                     onClick={() => setShowGlobalFilters(false)}
                   />
-                  <div className="absolute right-0 top-full mt-1.5 z-50 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 min-w-[160px] animate-fade-in origin-top-right">
+                  <div className="absolute right-0 top-full mt-1.5 z-50 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 min-w-[160px] max-h-64 overflow-y-auto animate-fade-in origin-top-right">
                     <button
                       onClick={() => { setFilterGrade('all'); setShowGlobalFilters(false); }}
                       className={`w-full text-left px-4 py-2 text-sm font-medium transition-colors ${filterGrade === 'all' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
@@ -497,6 +576,66 @@ const LearnersList = ({
                         {formatGradeLabel(g)}
                       </button>
                     ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Stream Filter Dropdown */}
+            <div className="relative flex-shrink-0">
+              <button
+                onClick={() => {
+                  setShowStreamDropdown(!showStreamDropdown);
+                  setShowGlobalFilters(false);
+                }}
+                className={`h-11 px-4 border rounded-xl font-medium flex items-center gap-2 transition-all ${filterStream !== 'all' ? 'bg-brand-purple/5 border-brand-purple text-brand-purple' : 'bg-white border-gray-200 text-gray-700 hover:border-brand-purple hover:text-brand-purple'}`}
+                aria-label="Filter by stream"
+              >
+                <Filter size={16} className={filterStream !== 'all' ? 'text-brand-purple' : 'text-gray-400'} />
+                <span className="text-sm">
+                  {filterStream !== 'all' ? formatStreamLabel(filterStream) : 'Stream'}
+                </span>
+                {filterStream !== 'all' && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Clear stream filter"
+                    onClick={(e) => { e.stopPropagation(); setFilterStream('all'); }}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.stopPropagation(), setFilterStream('all'))}
+                    className="ml-0.5 text-brand-purple/50 hover:text-brand-purple"
+                  >
+                    <X size={13} />
+                  </span>
+                )}
+              </button>
+
+              {showStreamDropdown && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowStreamDropdown(false)}
+                  />
+                  <div className="absolute right-0 top-full mt-1.5 z-50 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 min-w-[160px] max-h-64 overflow-y-auto animate-fade-in origin-top-right">
+                    <button
+                      onClick={() => { setFilterStream('all'); setShowStreamDropdown(false); }}
+                      className={`w-full text-left px-4 py-2 text-sm font-medium transition-colors ${filterStream === 'all' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      All Streams
+                    </button>
+                    <div className="my-1 border-t border-gray-100" />
+                    {streamOptions.length === 0 ? (
+                      <div className="px-4 py-2 text-xs text-gray-400 italic">No streams found</div>
+                    ) : (
+                      streamOptions.map(st => (
+                        <button
+                          key={st}
+                          onClick={() => { setFilterStream(st); setShowStreamDropdown(false); }}
+                          className={`w-full text-left px-4 py-2 text-sm font-medium transition-colors ${filterStream === st ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'}`}
+                        >
+                          {formatStreamLabel(st)}
+                        </button>
+                      ))
+                    )}
                   </div>
                 </>
               )}
@@ -639,10 +778,10 @@ const LearnersList = ({
         <EmptyState
           icon={Users}
           title="No Students Found"
-          message={searchTerm || filterGrade !== 'all' || filterStatus !== 'all'
+          message={searchTerm || filterGrade !== 'all' || filterStatus !== 'all' || filterStream !== 'all'
             ? "No students match your search criteria."
             : "No students have been added yet."}
-          actionText={!searchTerm && filterGrade === 'all' && filterStatus === 'all' && canCreateLearner ? "Add Your First Student" : null}
+          actionText={!searchTerm && filterGrade === 'all' && filterStatus === 'all' && filterStream === 'all' && canCreateLearner ? "Add Your First Student" : null}
           onAction={canCreateLearner ? onAddLearner : undefined}
         />
       ) : isMobile ? (

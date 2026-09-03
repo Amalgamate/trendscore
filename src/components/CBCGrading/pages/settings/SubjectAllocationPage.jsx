@@ -129,17 +129,16 @@ const SubjectAllocationPage = () => {
       ]);
 
       const teachersData  = Array.isArray(teachersResp?.data)  ? teachersResp.data  : [];
-      const allAreas      = Array.isArray(areasResp?.data)      ? areasResp.data
-                          : Array.isArray(areasResp)            ? areasResp
-                          : [];
+      const allAreas = Array.isArray(areasResp?.data)
+                          ? areasResp.data
+                          : Array.isArray(areasResp)
+                            ? areasResp
+                            : [];
 
-      // Filter to only the grades this school actually uses
-      const areasData = allAreas.filter((area) => {
-        const g = String(area?.gradeLevel || '').trim();
-        if (!g) return false;
-        if (activeGradeValues.includes(g)) return true;
-        return activeGradeLabelsUpper.has(g.toUpperCase());
-      });
+      // No grade-level filtering here — learning areas are matched to classes
+      // via the gradeLevel === class.grade join in allRows. Any area whose grade
+      // doesn't match an active class simply produces zero rows automatically.
+      const areasData = allAreas.filter((area) => Boolean(area?.gradeLevel));
 
       const assignmentsData = Array.isArray(assignmentsResp?.data) ? assignmentsResp.data : [];
       const classesData     = Array.isArray(classesResp?.data)     ? classesResp.data     : [];
