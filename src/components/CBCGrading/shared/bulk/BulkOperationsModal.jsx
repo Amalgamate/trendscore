@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, Upload, Download, FileDown, AlertCircle, CheckCircle, Loader } from 'lucide-react';
+import { X, Upload, Download, FileDown, FileSpreadsheet, AlertCircle, CheckCircle, Loader } from 'lucide-react';
 import axiosInstance, { API_BASE_URL } from '../../../../services/api/axiosConfig';
 import { getAuthItem } from '../../../../utils/authStorage';
 
@@ -344,7 +344,7 @@ const BulkOperationsModal = ({
               className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all ${dragActive
                 ? 'border-[#00A09D] bg-[#00A09D]/5 scale-[1.02]'
                 : 'border-gray-200 hover:border-[#00A09D]/30 hover:bg-gray-50/50'
-                } ${!canUpload() && file ? 'opacity-50' : ''}`}
+                } ${!canUpload() && files.length ? 'opacity-50' : ''}`}
             >
               {files.length ? (
                 <div className="space-y-5">
@@ -352,15 +352,24 @@ const BulkOperationsModal = ({
                     <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-500 mb-1">
                       <CheckCircle size={28} />
                     </div>
-                    <span className="text-sm font-medium text-gray-700 truncate max-w-[280px]">
-                      {files.length === 1 ? files[0].name : `${files.length} files selected`}
+                    <span className="text-sm font-semibold text-gray-700">
+                      {files.length} {files.length === 1 ? 'file' : 'files'} ready to import
                     </span>
-                    <p className="text-[10px] text-gray-400 font-medium">Ready for one combined import</p>
-                    {files.length > 1 && (
-                      <ul className="max-h-20 overflow-y-auto text-left text-[10px] text-gray-500 space-y-1 w-full px-4">
-                        {files.map((selectedFile) => <li key={`${selectedFile.name}-${selectedFile.size}`} className="truncate">{selectedFile.name}</li>)}
-                      </ul>
-                    )}
+                    <p className="text-[10px] text-gray-400 font-medium">Review every file below before processing</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full text-left">
+                    {files.map((selectedFile, index) => (
+                      <div
+                        key={`${selectedFile.name}-${selectedFile.size}-${index}`}
+                        title={selectedFile.name}
+                        className="flex min-w-0 items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50/50 px-2.5 py-2"
+                      >
+                        <FileSpreadsheet size={16} className="shrink-0 text-emerald-600" />
+                        <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-gray-700">{selectedFile.name}</span>
+                        <CheckCircle size={14} className="shrink-0 text-emerald-500" aria-label="Ready" />
+                      </div>
+                    ))}
                   </div>
 
                   <div className="flex flex-col items-center w-full pt-2">
