@@ -3,6 +3,8 @@ import { X, Upload, Download, FileDown, AlertCircle, CheckCircle, Loader } from 
 import axiosInstance, { API_BASE_URL } from '../../../../services/api/axiosConfig';
 import { getAuthItem } from '../../../../utils/authStorage';
 
+const MAX_LEARNER_IMPORT_FILES = 20;
+
 const BulkOperationsModal = ({
   isOpen,
   onClose,
@@ -11,7 +13,7 @@ const BulkOperationsModal = ({
   onUploadComplete,
   userRole // Pass user role if needed, though context is now header-based
 }) => {
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [exporting, setExporting] = useState(false);
@@ -21,7 +23,8 @@ const BulkOperationsModal = ({
 
   if (!isOpen) return null;
 
-  const canUpload = () => !!file;
+  const canUpload = () => files.length > 0;
+  const supportsMultipleFiles = entityType === 'learners';
   const isSupportedUploadFile = (selectedFile) => {
     if (!selectedFile) return false;
     const name = selectedFile.name.toLowerCase();
@@ -45,32 +48,32 @@ const BulkOperationsModal = ({
     }
   };
 
+  const addFiles = (selectedFiles) => {
+    const allFiles = Array.from(selectedFiles || []);
+    const acceptedFiles = allFiles.filter(isSupportedUploadFile);
+    const filesToImport = supportsMultipleFiles ? acceptedFiles.slice(0, MAX_LEARNER_IMPORT_FILES) : acceptedFiles.slice(0, 1);
+    if (filesToImport.length) {
+      setFiles(filesToImport);
+      setUploadResult(null);
+    }
+    if (acceptedFiles.length !== allFiles.length) {
+      alert('Only CSV and Excel files can be uploaded.');
+    }
+    if (supportsMultipleFiles && acceptedFiles.length > MAX_LEARNER_IMPORT_FILES) {
+      alert(`You can import up to ${MAX_LEARNER_IMPORT_FILES} learner files at a time. The first ${MAX_LEARNER_IMPORT_FILES} were selected.`);
+    }
+  };
+
   const handleDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
 
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const droppedFile = e.dataTransfer.files[0];
-      if (isSupportedUploadFile(droppedFile)) {
-        setFile(droppedFile);
-        setUploadResult(null);
-      } else {
-        alert('Please upload a CSV or Excel file');
-      }
-    }
+    addFiles(e.dataTransfer.files);
   };
 
   const handleFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0];
-      if (isSupportedUploadFile(selectedFile)) {
-        setFile(selectedFile);
-        setUploadResult(null);
-      } else {
-        alert('Please select a CSV or Excel file');
-      }
-    }
+    addFiles(e.target.files);
   };
 
   const handleUpload = async () => {
@@ -82,7 +85,8 @@ const BulkOperationsModal = ({
 
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      const fieldName = supportsMultipleFiles ? 'files' : 'file';
+      files.forEach((selectedFile) => formData.append(fieldName, selectedFile));
 
       const response = await axiosInstance.post(`/bulk/${entityType}/upload`, formData, {
         headers: {
@@ -211,8 +215,9 @@ const BulkOperationsModal = ({
 
     const { failed, validationErrors } = uploadResult.details;
     const allErrors = [
-      ...failed.map(f => ({ Line: f.line, Resource: getErrorResource(f), Error: f.reason })),
+      ...failed.map(f => ({ File: f.sourceFile || '', Line: f.line, Resource: getErrorResource(f), Error: f.reason })),
       ...validationErrors.map(v => ({
+        File: v.sourceFile || '',
         Line: v.line,
         Resource: getErrorResource(v.data),
         Error: Array.isArray(v.error) ? v.error.map((entry) => entry.message).join('; ') : 'Validation failed'
@@ -221,11 +226,11 @@ const BulkOperationsModal = ({
 
     if (allErrors.length === 0) return;
 
-    const headers = ['Line', 'Resource Identifier', 'Error Message'];
+    const headers = ['File', 'Line', 'Resource Identifier', 'Error Message'];
     const csvRows = [headers.join(',')];
 
     allErrors.forEach(err => {
-      csvRows.push(`${err.Line},"${err.Resource}","${err.Error}"`);
+      csvRows.push(`"${err.File}",${err.Line},"${err.Resource}","${err.Error}"`);
     });
 
     const csvContent = csvRows.join('\n');
@@ -240,7 +245,7 @@ const BulkOperationsModal = ({
   };
 
   const resetUpload = () => {
-    setFile(null);
+    setFiles([]);
     setUploadResult(null);
     setUploadProgress(0);
     if (fileInputRef.current) {
@@ -318,7 +323,7 @@ const BulkOperationsModal = ({
                 <span>🇰🇪</span> Direct KEMIS Import Supported
               </p>
               <p className="text-[11px] text-blue-800 leading-relaxed">
-                You can upload a raw KEMIS export directly. If you add <strong>Parent Phone</strong> to the sheet, parent accounts and sibling family links are automatically matched.
+                You can upload a raw KEMIS export directly. Learners without a Stream are assigned to an eligible class automatically; add <strong>Parent Phone</strong> only when you want parent accounts and sibling family links matched during import.
               </p>
             </div>
           )}
@@ -341,14 +346,21 @@ const BulkOperationsModal = ({
                 : 'border-gray-200 hover:border-[#00A09D]/30 hover:bg-gray-50/50'
                 } ${!canUpload() && file ? 'opacity-50' : ''}`}
             >
-              {file ? (
+              {files.length ? (
                 <div className="space-y-5">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-500 mb-1">
                       <CheckCircle size={28} />
                     </div>
-                    <span className="text-sm font-medium text-gray-700 truncate max-w-[280px]">{file.name}</span>
-                    <p className="text-[10px] text-gray-400 font-medium">Ready for processing</p>
+                    <span className="text-sm font-medium text-gray-700 truncate max-w-[280px]">
+                      {files.length === 1 ? files[0].name : `${files.length} files selected`}
+                    </span>
+                    <p className="text-[10px] text-gray-400 font-medium">Ready for one combined import</p>
+                    {files.length > 1 && (
+                      <ul className="max-h-20 overflow-y-auto text-left text-[10px] text-gray-500 space-y-1 w-full px-4">
+                        {files.map((selectedFile) => <li key={`${selectedFile.name}-${selectedFile.size}`} className="truncate">{selectedFile.name}</li>)}
+                      </ul>
+                    )}
                   </div>
 
                   <div className="flex flex-col items-center w-full pt-2">
@@ -407,13 +419,14 @@ const BulkOperationsModal = ({
                     <Upload size={32} />
                   </div>
                   <div className="space-y-1">
-                    <p className="text-sm font-medium text-gray-700">Drop your CSV or Excel file here</p>
+                    <p className="text-sm font-medium text-gray-700">Drop your CSV or Excel files here</p>
                     <p className="text-xs text-gray-400">
                       Or <label className="text-[var(--brand-purple)] cursor-pointer hover:underline font-medium">
                         browse files
                         <input
                           ref={fileInputRef}
                           type="file"
+                          multiple={supportsMultipleFiles}
                           accept=".csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                           onChange={handleFileChange}
                           className="hidden"

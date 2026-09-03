@@ -63,6 +63,7 @@ const learnerSchema = z.object({
 type ParsedUploadRow = {
   line: number;
   data: Record<string, any>;
+  sourceFile?: string;
 };
 
 const HEADER_ALIASES: Record<string, string> = {
@@ -298,6 +299,7 @@ async function parseUploadRows(file: Express.Multer.File): Promise<ParsedUploadR
         .map((row, index) => ({
           line: headerRowIndex + index + 2,
           data: rowToRecord(headers, row, fallbackClass),
+          sourceFile: file.originalname,
         }))
         .filter((row) => !isEmptyExcelRow(Object.values(row.data)) && !isSectionRow(Object.values(row.data)));
 
@@ -319,6 +321,7 @@ async function parseUploadRows(file: Express.Multer.File): Promise<ParsedUploadR
         rows.push({
           line: lineNumber,
           data: normalizeUploadRow(data),
+          sourceFile: file.originalname,
         });
       })
       .on('end', resolve)
@@ -399,24 +402,26 @@ async function enrollLearnerInClass(learnerId: string, classId: string) {
  */
 router.post(
   '/upload',
-  upload.single('file'),
+  upload.fields([{ name: 'files', maxCount: 20 }, { name: 'file', maxCount: 1 }]),
   authenticate,
   rateLimit({ windowMs: 60_000, maxRequests: 10 }),
   auditLog('BULK_UPLOAD_LEARNERS'),
   async (req: AuthRequest, res: Response) => {
   try {
-    if (!req.file) {
+    const uploadedFiles = Object.values((req.files || {}) as Record<string, Express.Multer.File[]>).flat();
+    if (!uploadedFiles.length) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
     const results: any[] = [];
     const errors: any[] = [];
-    const parsedRows = await parseUploadRows(req.file);
+    const parsedRows = (await Promise.all(uploadedFiles.map(parseUploadRows))).flat();
     const importRows = parsedRows.filter((row) => !shouldSkipParsedRow(row.data));
     const skippedRows = parsedRows.length - importRows.length;
 
-    // Setup gate: imports use the authoritative Stream catalogue and never
-    // invent a stream or select an arbitrary first row.
+    // Imports use the authoritative Stream catalogue. KEMIS exports commonly
+    // omit Stream, so those learners are placed in the school's configured
+    // default stream or the first eligible active class for their grade.
     const schoolStreams = await prisma.stream.findMany({
       where: { active: true, archived: false },
       select: { id: true, name: true, isDefault: true },
@@ -435,6 +440,16 @@ router.post(
         .filter((classItem) => classItem.stream)
         .map((classItem) => [`${classItem.grade}|${classItem.stream!.trim().toUpperCase()}|${classItem.academicYear}`, classItem.id]),
     );
+    const automaticClassByGradeYear = new Map<string, { id: string; stream: string }>();
+    configuredClasses
+      .filter((classItem) => classItem.stream && streamByName.has(classItem.stream.trim().toUpperCase()))
+      .sort((left, right) => left.stream!.localeCompare(right.stream!))
+      .forEach((classItem) => {
+        const key = `${classItem.grade}|${classItem.academicYear}`;
+        if (!automaticClassByGradeYear.has(key)) {
+          automaticClassByGradeYear.set(key, { id: classItem.id, stream: classItem.stream! });
+        }
+      });
 
     for (const row of importRows) {
       try {
@@ -442,26 +457,38 @@ router.post(
         const grade = resolveGrade((validated['Class'] || '').toString());
         const academicYear = Number.parseInt(String(validated['Year'] || ''), 10) || new Date().getFullYear();
         const requestedStream = String(validated['Stream'] || '').trim();
-        if (!requestedStream && !defaultStream) {
-          throw new ApiError(422, 'This row has no Stream and the school has no default stream. Set one before importing.');
+        let streamCode: string | undefined;
+        let targetClassId: string | undefined;
+
+        if (requestedStream) {
+          streamCode = streamByName.get(requestedStream.toUpperCase());
+          if (!streamCode) {
+            throw new ApiError(422, `Stream "${requestedStream}" is not an active configured stream.`);
+          }
+          targetClassId = classByGradeStreamYear.get(`${grade}|${streamCode.toUpperCase()}|${academicYear}`);
+        } else {
+          const defaultClassId = defaultStream
+            ? classByGradeStreamYear.get(`${grade}|${defaultStream.toUpperCase()}|${academicYear}`)
+            : undefined;
+          const automaticClass = automaticClassByGradeYear.get(`${grade}|${academicYear}`);
+          targetClassId = defaultClassId || automaticClass?.id;
+          streamCode = defaultClassId ? defaultStream : automaticClass?.stream;
         }
-        const streamCode = streamByName.get((requestedStream || defaultStream || '').toUpperCase());
-        if (!streamCode) {
-          throw new ApiError(422, `Stream "${requestedStream}" is not an active configured stream.`);
-        }
-        const targetClassId = classByGradeStreamYear.get(`${grade}|${streamCode.toUpperCase()}|${academicYear}`);
+
         if (!targetClassId) {
-          throw new ApiError(422, `No active ${grade.replace('_', ' ')} ${streamCode} class exists for ${academicYear}. Create the class before importing learners.`);
+          throw new ApiError(422, `No active ${grade.replace('_', ' ')} class exists for ${academicYear}. Create a class before importing learners.`);
         }
         results.push({
           line: row.line,
-          data: { ...validated, Stream: streamCode },
+          sourceFile: row.sourceFile,
+          data: { ...validated, Stream: streamCode! },
           targetClassId,
           valid: true
         });
       } catch (error) {
         errors.push({
           line: row.line,
+          sourceFile: row.sourceFile,
           data: row.data,
           error: error instanceof z.ZodError ? error.errors : 'Validation failed',
           valid: false
@@ -587,7 +614,7 @@ router.post(
             phone: null
           });
           if (studentAccount.created) studentAccountsCreated += 1;
-          updated.push({ line: item.line, id: existing.id, admNo: updatedLearner.admissionNumber, name: rawName });
+          updated.push({ line: item.line, sourceFile: item.sourceFile, id: existing.id, admNo: updatedLearner.admissionNumber, name: rawName });
         } else {
           const learner = await prisma.learner.create({
             data: {
@@ -630,11 +657,12 @@ router.post(
             phone: null
           });
           if (studentAccount.created) studentAccountsCreated += 1;
-          created.push({ line: item.line, id: learner.id, admNo: learner.admissionNumber, name: rawName });
+          created.push({ line: item.line, sourceFile: item.sourceFile, id: learner.id, admNo: learner.admissionNumber, name: rawName });
         }
       } catch (error) {
         failed.push({
           line: item.line,
+          sourceFile: item.sourceFile,
           admNo: item.data['Adm No'],
           name: item.data['Learner Name'] || item.data['Leaner Name'] || [item.data['First Name'], item.data['Other Names'], item.data['Surname']].filter(Boolean).join(' '),
           reason: error instanceof Error ? error.message : 'Unknown error'
