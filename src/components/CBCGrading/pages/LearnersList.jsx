@@ -202,6 +202,8 @@ const LearnersList = ({
   }, [searchTerm, filterGrade, filterStatus, filterStream, onFetchLearners, pagination?.limit]);
 
   const handlePageChange = (newPage) => {
+    setSelectedLearners([]);
+    setSelectAllDatabase(false);
     if (onFetchLearners) {
       onFetchLearners(buildLearnerQueryParams({
         page: newPage,
@@ -243,6 +245,7 @@ const LearnersList = ({
     setFilterGrade('all');
     setFilterStatus('all');
     setSelectedLearners([]);
+    setSelectAllDatabase(false);
   };
 
   const handleOpenQuickContact = (guardian) => {
@@ -296,12 +299,20 @@ const LearnersList = ({
   const handleSelectAll = (e) => {
     if (e.target.checked) {
       setSelectedLearners(displayLearners.map(l => l.id));
+      setSelectAllDatabase(false); // page-select never auto-activates cross-page mode
     } else {
       setSelectedLearners([]);
+      setSelectAllDatabase(false);
     }
   };
 
   const handleSelectLearner = (id) => {
+    if (selectAllDatabase) {
+      // Ticking a row while in cross-page mode reverts to page-only selection
+      setSelectAllDatabase(false);
+      setSelectedLearners(displayLearners.map(l => l.id));
+      return;
+    }
     if (selectedLearners.includes(id)) {
       setSelectedLearners(selectedLearners.filter(learnerId => learnerId !== id));
     } else {
@@ -775,6 +786,34 @@ const LearnersList = ({
       ) : (
         // ******************** DESKTOP TABLE VIEW ********************
         <div className={`bg-white rounded-xl shadow-md overflow-hidden ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+          {/* Select-all-pages banner — appears when every row on the current page is checked
+              and more rows exist on other pages. Matches the fee module pattern. */}
+          {selectedLearners.length > 0
+            && !selectAllDatabase
+            && selectedLearners.length === displayLearners.length
+            && pagination?.total > displayLearners.length && (
+            <div className="bg-blue-50 border-b border-blue-100 px-4 py-2.5 text-xs text-blue-800 flex items-center justify-between">
+              <span>All {displayLearners.length} students on this page are selected.</span>
+              <button
+                onClick={() => setSelectAllDatabase(true)}
+                className="font-semibold underline underline-offset-2 hover:text-blue-900 transition-colors"
+              >
+                Select all {pagination.total} students
+              </button>
+            </div>
+          )}
+          {/* De-select banner — shown when cross-page mode is active */}
+          {selectAllDatabase && (
+            <div className="bg-brand-purple/5 border-b border-brand-purple/10 px-4 py-2.5 text-xs text-brand-purple flex items-center justify-between">
+              <span className="font-semibold">All {pagination?.total || 0} students are selected.</span>
+              <button
+                onClick={() => { setSelectAllDatabase(false); setSelectedLearners([]); }}
+                className="font-semibold underline underline-offset-2 hover:text-brand-purple/70 transition-colors"
+              >
+                Clear selection
+              </button>
+            </div>
+          )}
           <VirtualizedTable
             data={displayLearners}
             rowHeight={58} // Height of a single row matching design
@@ -784,7 +823,10 @@ const LearnersList = ({
                 <th className="px-3 py-1.5 w-4">
                   <input
                     type="checkbox"
-                    checked={displayLearners.length > 0 && selectedLearners.length === displayLearners.length}
+                    checked={selectAllDatabase || (displayLearners.length > 0 && selectedLearners.length === displayLearners.length)}
+                    ref={(el) => {
+                      if (el) el.indeterminate = !selectAllDatabase && selectedLearners.length > 0 && selectedLearners.length < displayLearners.length;
+                    }}
                     onChange={handleSelectAll}
                     className="w-4 h-4 text-brand-teal border-gray-300 rounded focus:ring-brand-teal"
                   />

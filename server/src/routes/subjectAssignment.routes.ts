@@ -16,10 +16,10 @@ const router = Router();
 
 // Validation schemas
 const createAssignmentSchema = z.object({
-  teacherId: z.string().min(1),
-    learningAreaId: z.string().min(1),
-    grade: z.string().min(1),
-  classId: z.string().min(1).optional()
+  teacherId:      z.string().min(1),
+  learningAreaId: z.string().min(1),
+  grade:          z.string().min(1),
+  classId:        z.string().min(1).optional(),
 });
 
 /**
