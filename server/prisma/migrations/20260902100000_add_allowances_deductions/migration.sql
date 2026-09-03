@@ -11,8 +11,11 @@ CREATE TABLE IF NOT EXISTS "staff_allowances" (
     CONSTRAINT "staff_allowances_pkey" PRIMARY KEY ("id")
 );
 
-ALTER TABLE "staff_allowances" ADD CONSTRAINT "staff_allowances_userId_fkey"
-    FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "staff_allowances" ADD CONSTRAINT "staff_allowances_userId_fkey"
+      FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE INDEX IF NOT EXISTS "staff_allowances_userId_idx" ON "staff_allowances"("userId");
 
@@ -33,8 +36,11 @@ CREATE TABLE IF NOT EXISTS "staff_deductions" (
     CONSTRAINT "staff_deductions_pkey" PRIMARY KEY ("id")
 );
 
-ALTER TABLE "staff_deductions" ADD CONSTRAINT "staff_deductions_userId_fkey"
-    FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "staff_deductions" ADD CONSTRAINT "staff_deductions_userId_fkey"
+      FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE INDEX IF NOT EXISTS "staff_deductions_userId_idx" ON "staff_deductions"("userId");
 
