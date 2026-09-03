@@ -289,7 +289,7 @@ const AddEditTeacherPage = ({ onSave, onCancel, teacher = null }) => {
 
                         <div>
                             <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                Teaching Subject
+                                Teaching Subject (Specialization)
                             </label>
                             <input
                                 type="text"
@@ -299,6 +299,9 @@ const AddEditTeacherPage = ({ onSave, onCancel, teacher = null }) => {
                                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-purple transition"
                                 placeholder="e.g. Mathematics"
                             />
+                            <p className="text-[11px] text-gray-400 mt-1">
+                                Primary specialization. Detailed CBC grade & stream allocations are managed in Academic Settings → Subject Allocation.
+                            </p>
                         </div>
                     </div>
                 </div>

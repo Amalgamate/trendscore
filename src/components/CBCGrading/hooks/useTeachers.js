@@ -39,6 +39,7 @@ export const useTeachers = (options = {}) => {
           classAssigned: 'N/A',
           staffId: teacher.staffId || '---',
           assignedClasses: teacher.classesAsTeacher?.map(c => c.name) || [],
+          subjectAssignments: teacher.subjectAssignments || [],
           status: teacher.status,
           joinDate: new Date(teacher.createdAt).toLocaleDateString(),
           lastLogin: teacher.lastLogin

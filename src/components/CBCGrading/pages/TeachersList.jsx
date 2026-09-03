@@ -13,6 +13,7 @@ import { usePermissions } from '../../../hooks/usePermissions';
 import { useMobile } from '../../../hooks/useMobileDetection';
 import BulkOperationsModal from '../shared/bulk/BulkOperationsModal';
 import TeacherClassAssignmentModal from '../shared/TeacherClassAssignmentModal';
+import AssignSubjectModal from '../shared/AssignSubjectModal';
 import { communicationAPI, hrAPI } from '../../../services/api';
 import { formatPhoneNumber } from '../../../utils/phoneFormatter';
 import StaffPopup from '../dashboard/widgets/StaffPopup';
@@ -59,6 +60,7 @@ const TeachersList = ({
 
   const activeFilterCount = filterStatus !== 'all' ? 1 : 0;
   const [selectedTeacherForAssignment, setSelectedTeacherForAssignment] = useState(null);
+  const [selectedTeacherForSubject, setSelectedTeacherForSubject] = useState(null);
   useAuth();
 
   // Server-side filtering effect
@@ -104,11 +106,16 @@ const TeachersList = ({
 
   const getSubjectAllocations = (teacher) => {
     if (Array.isArray(teacher.subjectAssignments) && teacher.subjectAssignments.length > 0) {
-      return teacher.subjectAssignments.map((assignment) => ({
-        id: assignment.id,
-        name: assignment.learningArea?.shortName || assignment.learningArea?.name || 'Learning Area',
-        grade: assignment.grade || assignment.learningArea?.gradeLevel || ''
-      }));
+      return teacher.subjectAssignments.map((assignment) => {
+        const gradeText = assignment.class?.stream
+          ? `${assignment.grade || assignment.class.grade || ''} · ${assignment.class.stream}`
+          : (assignment.grade || assignment.learningArea?.gradeLevel || '');
+        return {
+          id: assignment.id,
+          name: assignment.learningArea?.shortName || assignment.learningArea?.name || 'Learning Area',
+          grade: gradeText
+        };
+      });
     }
 
     if (teacher.subject) {
@@ -135,7 +142,7 @@ const TeachersList = ({
         const staffId = String(teacher.staffId || '').toLowerCase();
         const subject = String(teacher.subject || '').toLowerCase();
         const assignments = Array.isArray(teacher.subjectAssignments)
-          ? teacher.subjectAssignments.map(a => `${a.learningArea?.name || ''} ${a.learningArea?.shortName || ''} ${a.grade || ''}`).join(' ').toLowerCase()
+          ? teacher.subjectAssignments.map(a => `${a.learningArea?.name || ''} ${a.learningArea?.shortName || ''} ${a.grade || ''} ${a.class?.name || ''} ${a.class?.stream || ''}`).join(' ').toLowerCase()
           : '';
         const matches = fullName.includes(term) ||
           email.includes(term) ||
@@ -492,13 +499,13 @@ const TeachersList = ({
                     </td>
                     <td className="px-3 py-1.5 text-gray-600 font-mono border-r border-gray-100">{teacher.staffId || '---'}</td>
                     <td className="px-3 py-1.5 font-semibold border-r border-gray-100">{teacher.role}</td>
-                    <td className="px-3 py-1.5 border-r border-gray-100">
-                      <div className="flex items-start gap-1.5">
-                        <BookOpen size={16} className="mt-0.5 shrink-0 text-brand-teal" />
+                    <td className="px-3 py-1.5 border-r border-gray-100" onClick={(e) => { e.stopPropagation(); setSelectedTeacherForSubject(teacher); }}>
+                      <div className="flex items-start gap-1.5 cursor-pointer group" title="Click to manage subject allocations">
+                        <BookOpen size={16} className="mt-0.5 shrink-0 text-brand-teal group-hover:scale-110 transition-transform" />
                         {subjectAllocations.length > 0 ? (
                           <div className="flex max-w-[260px] flex-wrap gap-1">
                             {subjectAllocations.slice(0, 4).map((allocation) => (
-                              <span key={allocation.id} className="inline-flex items-center gap-1 rounded-md border border-teal-100 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700">
+                              <span key={allocation.id} className="inline-flex items-center gap-1 rounded-md border border-teal-100 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700 hover:bg-teal-100 transition-colors">
                                 {allocation.name}
                                 {allocation.grade && <span className="text-teal-500">{allocation.grade}</span>}
                               </span>
@@ -510,7 +517,7 @@ const TeachersList = ({
                             )}
                           </div>
                         ) : (
-                          <span className="text-xs font-medium text-amber-600">No allocation</span>
+                          <span className="text-xs font-medium text-amber-600 group-hover:underline">No allocation</span>
                         )}
                       </div>
                     </td>
@@ -523,6 +530,13 @@ const TeachersList = ({
                     </td>
                     <td className="px-3 py-1.5 border-r border-gray-100">
                       <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setSelectedTeacherForSubject(teacher); }}
+                          className="p-1.5 text-brand-teal hover:bg-brand-teal/10 rounded-lg transition"
+                          title="Assign Subjects"
+                        >
+                          <BookOpen size={16} />
+                        </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); setSelectedTeacherForAssignment(teacher); }}
                           className="p-1.5 text-brand-purple hover:bg-brand-purple/10 rounded-lg transition"
@@ -727,6 +741,31 @@ const TeachersList = ({
         title={tutorsPopup.title}
         statusFilter={tutorsPopup.statusFilter}
       />
+
+      {/* Teacher Class Assignment Modal */}
+      {selectedTeacherForAssignment && (
+        <TeacherClassAssignmentModal
+          isOpen={Boolean(selectedTeacherForAssignment)}
+          onClose={() => setSelectedTeacherForAssignment(null)}
+          teacher={selectedTeacherForAssignment}
+          onAssignmentComplete={() => {
+            setSelectedTeacherForAssignment(null);
+            onRefresh?.();
+          }}
+        />
+      )}
+
+      {/* Assign Subject Modal */}
+      {selectedTeacherForSubject && (
+        <AssignSubjectModal
+          isOpen={Boolean(selectedTeacherForSubject)}
+          onClose={() => setSelectedTeacherForSubject(null)}
+          teacher={selectedTeacherForSubject}
+          onSaved={() => {
+            onRefresh?.();
+          }}
+        />
+      )}
     </div>
   );
 };

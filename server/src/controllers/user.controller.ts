@@ -116,7 +116,30 @@ export class UserController {
         staffId: true,
         subject: true,
         gender: true,
-        lockedUntil: true
+        lockedUntil: true,
+        classesAsTeacher: {
+          where: { active: true, archived: false },
+          select: { id: true, name: true, grade: true, stream: true, academicYear: true, term: true },
+          orderBy: [{ academicYear: 'desc' }, { term: 'desc' }]
+        },
+        subjectAssignments: {
+          where: { active: true },
+          select: {
+            id: true,
+            grade: true,
+            classId: true,
+            learningArea: {
+              select: { id: true, name: true, shortName: true, gradeLevel: true }
+            },
+            class: {
+              select: { id: true, name: true, grade: true, stream: true }
+            }
+          },
+          orderBy: [
+            { grade: 'asc' },
+            { createdAt: 'asc' }
+          ]
+        }
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -651,8 +674,12 @@ export class UserController {
             select: {
               id: true,
               grade: true,
+              classId: true,
               learningArea: {
                 select: { id: true, name: true, shortName: true, gradeLevel: true }
+              },
+              class: {
+                select: { id: true, name: true, grade: true, stream: true }
               }
             },
             orderBy: [
