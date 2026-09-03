@@ -94,6 +94,13 @@ router.patch('/:id/parent-update',
   asyncHandler(learnerController.parentUpdateLearner.bind(learnerController))
 );
 
+router.post('/bulk-delete',
+  requirePermission('DELETE_LEARNER'),
+  rateLimit({ windowMs: 60_000, maxRequests: 20 }),
+  auditLog('BULK_DELETE_LEARNERS'),
+  asyncHandler(learnerController.bulkDeleteLearners.bind(learnerController))
+);
+
 router.delete('/:id', 
   requirePermission('DELETE_LEARNER'), 
   ResourceAccessControl.canAccessLearner(),

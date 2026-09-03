@@ -185,9 +185,16 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
     }
   }, [storeRefreshLearners]);
 
-  const fetchTeachersFromApi = useCallback(async () => {
+  const fetchTeachersFromApi = useCallback(async (params = {}) => {
     try {
-      const res = await axiosInstance.get('/users?role=TEACHER&limit=200');
+      const queryParams = new URLSearchParams();
+      queryParams.set('role', 'TEACHER');
+      queryParams.set('limit', String(params?.limit || 200));
+      if (params?.search) queryParams.set('search', params.search);
+      if (params?.status && params.status !== 'all') queryParams.set('status', params.status);
+      if (params?.page) queryParams.set('page', String(params.page));
+
+      const res = await axiosInstance.get(`/users?${queryParams.toString()}`);
       const data = res.data?.data ?? [];
       setTeachers(data);
       if (res.data?.pagination) setTeacherPagination(res.data.pagination);
@@ -364,12 +371,19 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
   }, []);
 
   const bulkDeleteLearners = useCallback(async (ids) => {
-    const results = await Promise.all(ids.map(id => deleteLearner(id)));
-    await fetchLearnersFromApi();
-    const failed = results.filter(r => !r.success);
-    return failed.length === 0
-      ? { success: true }
-      : { success: false, error: `${failed.length} deletions failed` };
+    try {
+      const res = await axiosInstance.post('/learners/bulk-delete', { ids });
+      await fetchLearnersFromApi();
+      return { success: true, count: res.data?.count || ids.length };
+    } catch (err) {
+      // Fallback to individual deletes
+      const results = await Promise.all(ids.map(id => deleteLearner(id)));
+      await fetchLearnersFromApi();
+      const failed = results.filter(r => !r.success);
+      return failed.length === 0
+        ? { success: true }
+        : { success: false, error: `${failed.length} deletions failed` };
+    }
   }, [deleteLearner, fetchLearnersFromApi]);
 
   const promoteLearners = useCallback(async (learnerIds, newGrade) => {

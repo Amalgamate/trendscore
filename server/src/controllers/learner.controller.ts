@@ -745,6 +745,23 @@ export class LearnerController {
     res.json({ success: true, message: 'Learner archived' });
   }
 
+  async bulkDeleteLearners(req: AuthRequest, res: Response) {
+    const { ids, permanent = false } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      throw new ApiError(400, 'Array of learner IDs is required');
+    }
+    const isSuperAdmin = req.user!.role === 'SUPER_ADMIN';
+    if (permanent && isSuperAdmin) {
+      const result = await prisma.learner.deleteMany({ where: { id: { in: ids } } });
+      return res.json({ success: true, count: result.count, message: `${result.count} learners permanently deleted` });
+    }
+    const result = await prisma.learner.updateMany({
+      where: { id: { in: ids } },
+      data: { archived: true, archivedAt: new Date(), archivedBy: req.user!.userId, status: 'DROPPED_OUT', exitDate: new Date() }
+    });
+    res.json({ success: true, count: result.count, message: `${result.count} learners deleted` });
+  }
+
   async getLearnersByGrade(req: AuthRequest, res: Response) {
     const { grade } = req.params;
     const { stream, status = 'ACTIVE' } = req.query;

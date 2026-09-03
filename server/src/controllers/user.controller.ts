@@ -64,7 +64,7 @@ export class UserController {
   async getAllUsers(req: AuthRequest, res: Response) {
     const currentUserRole = req.user!.role;
     const includeArchived = req.query.includeArchived === 'true';
-    const { search, role } = req.query;
+    const { search, role, status } = req.query;
 
     let whereClause: any = {};
     if (!includeArchived) {
@@ -79,12 +79,20 @@ export class UserController {
       whereClause.role = role.toUpperCase();
     }
 
-    if (search) {
+    if (status && typeof status === 'string' && status.toLowerCase() !== 'all') {
+      whereClause.status = status.toUpperCase();
+    }
+
+    if (search && typeof search === 'string' && search.trim()) {
+      const term = search.trim();
       whereClause.OR = [
-        { firstName: { contains: search as string, mode: 'insensitive' } },
-        { lastName: { contains: search as string, mode: 'insensitive' } },
-        { email: { contains: search as string, mode: 'insensitive' } },
-        { staffId: { contains: search as string, mode: 'insensitive' } }
+        { firstName: { contains: term, mode: 'insensitive' } },
+        { lastName: { contains: term, mode: 'insensitive' } },
+        { middleName: { contains: term, mode: 'insensitive' } },
+        { email: { contains: term, mode: 'insensitive' } },
+        { staffId: { contains: term, mode: 'insensitive' } },
+        { phone: { contains: term, mode: 'insensitive' } },
+        { subject: { contains: term, mode: 'insensitive' } }
       ];
     }
 

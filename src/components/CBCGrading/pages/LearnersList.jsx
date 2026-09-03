@@ -3,7 +3,7 @@
  */
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Upload, Eye, Edit, Trash2, LogOut, ChevronLeft, ChevronRight, Search, RefreshCw, Users, MoreVertical, MessageCircle, MessageSquare, X, Loader2, Send, Filter, Plus, Bus, UserCheck, UserX, Users2 } from 'lucide-react';
+import { Upload, Download, Eye, Edit, Trash2, LogOut, ChevronLeft, ChevronRight, Search, RefreshCw, Users, MoreVertical, MessageCircle, MessageSquare, X, Loader2, Send, Filter, Plus, Bus, UserCheck, UserX, Users2 } from 'lucide-react';
 import StatusBadge from '../shared/StatusBadge';
 import EmptyState from '../shared/EmptyState';
 import { usePermissions } from '../../../hooks/usePermissions';
@@ -57,6 +57,10 @@ const LearnersList = ({
   const [quickMessage, setQuickMessage] = useState('');
   const [isSendingSMS, setIsSendingSMS] = useState(false);
   const [contactType, setContactType] = useState('sms'); // 'sms' or 'whatsapp'
+  const [showBulkContactModal, setShowBulkContactModal] = useState(false);
+  const [bulkContactMessage, setBulkContactMessage] = useState('');
+  const [bulkContactChannel, setBulkContactChannel] = useState('sms');
+  const [isSendingBulkMessage, setIsSendingBulkMessage] = useState(false);
   const { can, isRole } = usePermissions();
   const { user } = useAuth();
   const { grades, streams: contextStreams, classes } = useSchoolData();
@@ -299,6 +303,23 @@ const LearnersList = ({
     });
   }, [learners, isSecondaryPortal, filterStream]);
   const visibleStudentsCount = displayLearners.length;
+  const effectiveTotal = Math.max(
+    Number(pagination?.total) || 0,
+    Number(totalStudentsCount) || 0,
+    displayLearners.length
+  );
+
+  const selectedLearnersData = useMemo(() => {
+    const idSet = new Set(selectedLearners);
+    return displayLearners.filter(l => idSet.has(l.id));
+  }, [selectedLearners, displayLearners]);
+
+  const selectedLearnersWithPhone = useMemo(() => {
+    return selectedLearnersData.filter(l => {
+      const phone = l.primaryContactPhone || l.guardianPhone || l.parent?.phone;
+      return String(phone || '').trim().length > 0;
+    });
+  }, [selectedLearnersData]);
 
   const canTeacherModify = (learner) => {
     if (!isTeacher) return true; // Admins etc can always modify
@@ -427,8 +448,8 @@ const LearnersList = ({
   };
 
   const handleBulkDelete = async () => {
-    const countToDelete = selectAllDatabase ? pagination?.total : selectedLearners.length;
-    if (!window.confirm(`Are you sure you want to delete ${countToDelete} students? This action cannot be undone.`)) {
+    const countToDelete = selectAllDatabase ? effectiveTotal : selectedLearners.length;
+    if (!window.confirm(`Are you sure you want to delete ${countToDelete} student${countToDelete === 1 ? '' : 's'}? This action cannot be undone.`)) {
       return;
     }
 
@@ -440,14 +461,13 @@ const LearnersList = ({
         // If selectAllDatabase is true, fetch all learners matching current filters
         if (selectAllDatabase) {
           const params = {
-            limit: 1000, // Fetch up to 1000 learners per page
+            limit: 2000,
             search: searchTerm || undefined,
             grade: filterGrade !== 'all' ? filterGrade : undefined,
             status: filterStatus !== 'all' ? filterStatus : undefined,
             stream: filterStream !== 'all' ? filterStream : undefined
           };
 
-          // Remove undefined values
           Object.keys(params).forEach(key => params[key] === undefined && delete params[key]);
 
           const response = await learnerAPI.getAll(params);
@@ -462,11 +482,131 @@ const LearnersList = ({
       }
       setSelectedLearners([]);
       setSelectAllDatabase(false);
-      refreshData();
+      if (onRefresh) onRefresh();
     } catch (error) {
       console.error('Error deleting students:', error);
+      if (showError) showError(error.message || 'Error deleting students');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleExportSelectedCSV = async () => {
+    try {
+      let exportData = [];
+      if (selectAllDatabase) {
+        const params = {
+          limit: 2000,
+          search: searchTerm || undefined,
+          grade: filterGrade !== 'all' ? filterGrade : undefined,
+          status: filterStatus !== 'all' ? filterStatus : undefined,
+          stream: filterStream !== 'all' ? filterStream : undefined
+        };
+        Object.keys(params).forEach(k => params[k] === undefined && delete params[k]);
+        const res = await learnerAPI.getAll(params);
+        exportData = res?.data || displayLearners;
+      } else {
+        const idSet = new Set(selectedLearners);
+        exportData = displayLearners.filter(l => idSet.has(l.id));
+      }
+
+      if (!exportData || exportData.length === 0) {
+        alert('No students found to export.');
+        return;
+      }
+
+      const headers = ['Admission Number', 'First Name', 'Middle Name', 'Last Name', 'Grade', 'Stream', 'Gender', 'Status', 'Parent/Guardian', 'Contact Phone'];
+      const rows = exportData.map(l => [
+        `"${(l.admissionNumber || '').replace(/"/g, '""')}"`,
+        `"${(l.firstName || '').replace(/"/g, '""')}"`,
+        `"${(l.middleName || '').replace(/"/g, '""')}"`,
+        `"${(l.lastName || '').replace(/"/g, '""')}"`,
+        `"${(l.grade || '').replace(/"/g, '""')}"`,
+        `"${(l.stream || '').replace(/"/g, '""')}"`,
+        `"${(l.gender || '').replace(/"/g, '""')}"`,
+        `"${(l.status || '').replace(/"/g, '""')}"`,
+        `"${(l.parent ? `${l.parent.firstName || ''} ${l.parent.lastName || ''}`.trim() : l.guardianName || '').replace(/"/g, '""')}"`,
+        `"${(l.primaryContactPhone || l.guardianPhone || l.parent?.phone || '').replace(/"/g, '""')}"`,
+      ]);
+
+      const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `students_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      if (showSuccess) showSuccess(`Exported ${exportData.length} students to CSV`);
+    } catch (err) {
+      console.error('Export error:', err);
+      if (showError) showError('Failed to export students: ' + (err.message || 'Unknown error'));
+    }
+  };
+
+  const handleSendBulkGuardianMessage = async () => {
+    if (!bulkContactMessage.trim()) {
+      alert('Please type a message first.');
+      return;
+    }
+
+    setIsSendingBulkMessage(true);
+    try {
+      let targets = selectedLearnersData;
+      if (selectAllDatabase) {
+        const params = {
+          limit: 2000,
+          search: searchTerm || undefined,
+          grade: filterGrade !== 'all' ? filterGrade : undefined,
+          status: filterStatus !== 'all' ? filterStatus : undefined,
+          stream: filterStream !== 'all' ? filterStream : undefined
+        };
+        Object.keys(params).forEach(k => params[k] === undefined && delete params[k]);
+        const res = await learnerAPI.getAll(params);
+        targets = res?.data || displayLearners;
+      }
+
+      const validContacts = targets
+        .map(l => ({
+          phone: l.primaryContactPhone || l.guardianPhone || l.parent?.phone,
+          name: l.primaryContactName || l.guardianName || (l.parent ? `${l.parent.firstName} ${l.parent.lastName}` : 'Guardian')
+        }))
+        .filter(c => String(c.phone || '').trim().length > 0);
+
+      if (validContacts.length === 0) {
+        alert('No phone numbers found for the selected students.');
+        setIsSendingBulkMessage(false);
+        return;
+      }
+
+      if (bulkContactChannel === 'whatsapp') {
+        validContacts.slice(0, 10).forEach(c => {
+          const formatted = formatPhoneNumber(c.phone).replace(/\D/g, '');
+          const encoded = encodeURIComponent(bulkContactMessage);
+          window.open(`https://wa.me/${formatted}?text=${encoded}`, '_blank');
+        });
+        if (showSuccess) showSuccess(`Opened WhatsApp for ${Math.min(validContacts.length, 10)} guardians.`);
+      } else {
+        const results = await Promise.allSettled(
+          validContacts.map(c =>
+            communicationAPI.sendTestSMS({
+              phoneNumber: formatPhoneNumber(c.phone),
+              message: bulkContactMessage
+            })
+          )
+        );
+        const succeeded = results.filter(r => r.status === 'fulfilled').length;
+        const failed = results.length - succeeded;
+        if (showSuccess) showSuccess(`SMS sent: ${succeeded} succeeded${failed > 0 ? `, ${failed} failed` : ''}`);
+      }
+
+      setShowBulkContactModal(false);
+      setBulkContactMessage('');
+    } catch (err) {
+      console.error('Bulk message error:', err);
+      if (showError) showError('Failed to send bulk message: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsSendingBulkMessage(false);
     }
   };
 
@@ -705,19 +845,23 @@ const LearnersList = ({
 
       {/* Bulk Actions Toolbar */}
       {(selectedLearners.length > 0 || selectAllDatabase) && (
-        <div className="bg-brand-purple/5 border border-brand-purple/10 rounded-xl p-4 flex items-center justify-between animate-fade-in">
-          <div className="flex items-center gap-3">
+        <div className="bg-brand-purple/5 border border-brand-purple/15 rounded-2xl p-4 flex flex-col md:flex-row gap-3 items-start md:items-center justify-between animate-fade-in shadow-sm">
+          <div className="flex flex-wrap items-center gap-2.5">
             {selectAllDatabase ? (
               <>
-                <span className="bg-brand-purple text-white text-sm font-medium px-3 py-1 rounded-full">
+                <span className="bg-brand-purple text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
                   ALL
                 </span>
-                <span className="text-brand-purple font-medium">
-                  All {pagination?.total || 0} Students Selected
+                <span className="text-brand-purple font-semibold text-sm">
+                  All {effectiveTotal} Students Selected
                 </span>
                 <button
-                  onClick={() => setSelectAllDatabase(false)}
-                  className="text-xs font-medium text-brand-purple hover:bg-brand-purple/10 px-2 py-1 rounded transition"
+                  type="button"
+                  onClick={() => {
+                    setSelectAllDatabase(false);
+                    setSelectedLearners([]);
+                  }}
+                  className="text-xs font-semibold text-brand-purple underline hover:text-brand-purple/80 hover:bg-brand-purple/10 px-2.5 py-1 rounded-lg transition"
                   title="Deselect all students"
                 >
                   Deselect All
@@ -725,46 +869,96 @@ const LearnersList = ({
               </>
             ) : (
               <>
-                <span className="bg-brand-purple text-white text-sm font-medium px-3 py-1 rounded-full">
+                <span className="bg-brand-purple text-white text-xs font-bold px-3 py-1 rounded-full">
                   {selectedLearners.length}
                 </span>
-                <span className="text-brand-purple font-medium">Students Selected</span>
-                {selectedLearners.length < (pagination?.total || displayLearners.length) && (
+                <span className="text-brand-purple font-semibold text-sm">
+                  {selectedLearners.length} Students Selected
+                </span>
+                {effectiveTotal > selectedLearners.length && (
                   <button
+                    type="button"
                     onClick={() => setSelectAllDatabase(true)}
-                    className="text-xs font-medium text-brand-purple hover:bg-brand-purple/10 px-2 py-1 rounded transition"
-                    title={`Select all ${pagination?.total || 0} students in database`}
+                    className="text-xs font-semibold text-brand-purple bg-brand-purple/10 hover:bg-brand-purple/20 px-3 py-1 rounded-lg transition"
+                    title={`Select all ${effectiveTotal} students matching filters`}
                   >
-                    Select All {pagination?.total || 0}
+                    Select All {effectiveTotal} Students
                   </button>
                 )}
               </>
             )}
           </div>
-          <div className="flex gap-3">
+
+          {/* Action buttons in bulk mode */}
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-start md:justify-end">
+            {/* Export CSV button */}
             <button
+              type="button"
+              onClick={handleExportSelectedCSV}
+              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 text-gray-700 hover:text-brand-purple hover:border-brand-purple/40 rounded-xl text-xs font-semibold transition shadow-sm"
+              title="Export selected students to CSV"
+            >
+              <Download size={15} />
+              <span>Export CSV</span>
+            </button>
+
+            {/* Message Guardians button */}
+            <button
+              type="button"
+              onClick={() => {
+                setBulkContactMessage('');
+                setShowBulkContactModal(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 text-gray-700 hover:text-brand-purple hover:border-brand-purple/40 rounded-xl text-xs font-semibold transition shadow-sm"
+              title="Send message to guardians of selected students"
+            >
+              <MessageSquare size={15} />
+              <span>Message Guardians</span>
+            </button>
+
+            {/* Bulk Operations Modal */}
+            <button
+              type="button"
+              onClick={() => setShowBulkModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 text-gray-700 hover:text-brand-purple hover:border-brand-purple/40 rounded-xl text-xs font-semibold transition shadow-sm"
+              title="Open Bulk Operations modal"
+            >
+              <Upload size={15} />
+              <span className="hidden sm:inline">Bulk Operations</span>
+            </button>
+
+            {/* Delete button */}
+            {canCreateLearner && (
+              <button
+                type="button"
+                onClick={handleBulkDelete}
+                disabled={isDeleting}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition shadow-sm disabled:opacity-50 text-xs font-semibold"
+              >
+                {isDeleting ? (
+                  <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" />
+                ) : (
+                  <Trash2 size={15} />
+                )}
+                <span>
+                  {selectAllDatabase
+                    ? `Delete All (${effectiveTotal})`
+                    : `Delete Selected (${selectedLearners.length})`}
+                </span>
+              </button>
+            )}
+
+            {/* Cancel button */}
+            <button
+              type="button"
               onClick={() => {
                 setSelectedLearners([]);
                 setSelectAllDatabase(false);
               }}
-              className="px-4 py-2 text-brand-purple hover:bg-brand-purple/10 rounded-lg transition text-sm font-medium"
+              className="px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-xl transition text-xs font-medium"
             >
               Cancel
             </button>
-            {canCreateLearner && (
-              <button
-                onClick={handleBulkDelete}
-                disabled={isDeleting}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition shadow-sm disabled:opacity-50"
-              >
-                {isDeleting ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                ) : (
-                  <Trash2 size={18} />
-                )}
-                <span>Delete Selected</span>
-              </button>
-            )}
           </div>
         </div>
       )}
@@ -930,22 +1124,24 @@ const LearnersList = ({
           {selectedLearners.length > 0
             && !selectAllDatabase
             && selectedLearners.length === displayLearners.length
-            && pagination?.total > displayLearners.length && (
+            && effectiveTotal > displayLearners.length && (
             <div className="bg-blue-50 border-b border-blue-100 px-4 py-2.5 text-xs text-blue-800 flex items-center justify-between">
               <span>All {displayLearners.length} students on this page are selected.</span>
               <button
+                type="button"
                 onClick={() => setSelectAllDatabase(true)}
                 className="font-semibold underline underline-offset-2 hover:text-blue-900 transition-colors"
               >
-                Select all {pagination.total} students
+                Select all {effectiveTotal} students
               </button>
             </div>
           )}
           {/* De-select banner — shown when cross-page mode is active */}
           {selectAllDatabase && (
             <div className="bg-brand-purple/5 border-b border-brand-purple/10 px-4 py-2.5 text-xs text-brand-purple flex items-center justify-between">
-              <span className="font-semibold">All {pagination?.total || 0} students are selected.</span>
+              <span className="font-semibold">All {effectiveTotal} students are selected.</span>
               <button
+                type="button"
                 onClick={() => { setSelectAllDatabase(false); setSelectedLearners([]); }}
                 className="font-semibold underline underline-offset-2 hover:text-brand-purple/70 transition-colors"
               >
@@ -1234,6 +1430,115 @@ const LearnersList = ({
                   <>
                     <Send size={16} />
                     Send
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Guardian Contact Modal */}
+      {showBulkContactModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in duration-200">
+            {/* Header */}
+            <div className="bg-brand-purple/10 px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Message Guardians (Bulk)</h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  {selectAllDatabase
+                    ? `Sending to guardians of all ${effectiveTotal} students matching current filters`
+                    : `Sending to guardians of ${selectedLearners.length} selected student${selectedLearners.length === 1 ? '' : 's'}`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBulkContactModal(false)}
+                className="p-1.5 hover:bg-gray-100 rounded-lg transition"
+              >
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4">
+              {/* Channel Tabs */}
+              <div className="flex gap-2 border-b border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setBulkContactChannel('sms')}
+                  className={`flex items-center gap-2 px-4 py-2 pb-3 font-semibold border-b-2 text-sm transition ${
+                    bulkContactChannel === 'sms'
+                      ? 'border-brand-purple text-brand-purple'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <MessageCircle size={16} />
+                  SMS
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBulkContactChannel('whatsapp')}
+                  className={`flex items-center gap-2 px-4 py-2 pb-3 font-semibold border-b-2 text-sm transition ${
+                    bulkContactChannel === 'whatsapp'
+                      ? 'border-green-600 text-green-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <MessageSquare size={16} />
+                  WhatsApp
+                </button>
+              </div>
+
+              {/* Notice */}
+              <div className="bg-brand-purple/5 p-3 rounded-xl border border-brand-purple/10 text-xs text-brand-purple">
+                <p className="font-semibold mb-0.5">Recipient target:</p>
+                <p>
+                  {selectAllDatabase
+                    ? `All matching active students (approx ${effectiveTotal}) with valid phone numbers.`
+                    : `${selectedLearnersWithPhone.length} of ${selectedLearners.length} selected students have valid phone numbers.`}
+                </p>
+              </div>
+
+              {/* Message Input */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-2">Message</label>
+                <textarea
+                  value={bulkContactMessage}
+                  onChange={(e) => setBulkContactMessage(e.target.value)}
+                  placeholder="Type your message to guardians..."
+                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-purple focus:border-transparent text-sm resize-none"
+                  rows={4}
+                />
+                <p className="text-xs text-gray-500 mt-1">{bulkContactMessage.length} characters</p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowBulkContactModal(false)}
+                className="px-4 py-2 text-gray-700 font-medium border border-gray-200 rounded-xl hover:bg-gray-100 transition text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSendBulkGuardianMessage}
+                disabled={isSendingBulkMessage || !bulkContactMessage.trim()}
+                className="flex items-center gap-2 px-5 py-2 bg-brand-purple text-white font-medium rounded-xl hover:bg-brand-purple/90 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm shadow-sm"
+              >
+                {isSendingBulkMessage ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>Sending...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send size={16} />
+                    <span>Send to Guardians</span>
                   </>
                 )}
               </button>

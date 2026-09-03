@@ -3,7 +3,7 @@
  * Display and manage all teachers in table format
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Upload, Eye, Edit, Trash2, GraduationCap, BookOpen, Search, RefreshCw, MoreVertical, Filter, X, MessageCircle, MessageSquare, Loader2, Send, Users2 } from 'lucide-react';
 import StatusBadge from '../shared/StatusBadge';
 import EmptyState from '../shared/EmptyState';
@@ -118,11 +118,42 @@ const TeachersList = ({
     return [];
   };
 
-  const allVisibleSelected = teachers.length > 0 && teachers.every((t) => selectedTeacherIds.includes(t.id));
+  const filteredTeachers = useMemo(() => {
+    const list = Array.isArray(teachers) ? teachers : [];
+    const term = searchTerm.trim().toLowerCase();
+    return list.filter((teacher) => {
+      // Status filter
+      if (filterStatus !== 'all') {
+        const teacherStatus = String(teacher.status || '').toUpperCase();
+        if (teacherStatus !== filterStatus.toUpperCase()) return false;
+      }
+      // Search term filter
+      if (term) {
+        const fullName = `${teacher.firstName || ''} ${teacher.middleName || ''} ${teacher.lastName || ''}`.toLowerCase();
+        const email = String(teacher.email || '').toLowerCase();
+        const phone = String(teacher.phone || '').toLowerCase();
+        const staffId = String(teacher.staffId || '').toLowerCase();
+        const subject = String(teacher.subject || '').toLowerCase();
+        const assignments = Array.isArray(teacher.subjectAssignments)
+          ? teacher.subjectAssignments.map(a => `${a.learningArea?.name || ''} ${a.learningArea?.shortName || ''} ${a.grade || ''}`).join(' ').toLowerCase()
+          : '';
+        const matches = fullName.includes(term) ||
+          email.includes(term) ||
+          phone.includes(term) ||
+          staffId.includes(term) ||
+          subject.includes(term) ||
+          assignments.includes(term);
+        if (!matches) return false;
+      }
+      return true;
+    });
+  }, [teachers, searchTerm, filterStatus]);
+
+  const allVisibleSelected = filteredTeachers.length > 0 && filteredTeachers.every((t) => selectedTeacherIds.includes(t.id));
 
   const handleToggleSelectAll = (checked) => {
     if (checked) {
-      setSelectedTeacherIds(teachers.map((t) => t.id));
+      setSelectedTeacherIds(filteredTeachers.map((t) => t.id));
       return;
     }
     setSelectedTeacherIds([]);
@@ -293,8 +324,18 @@ const TeachersList = ({
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search name, employee number, or subject..."
-                className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm shadow-sm"
+                className="w-full pl-10 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm shadow-sm"
               />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1 transition-colors"
+                  aria-label="Clear search"
+                >
+                  <X size={15} />
+                </button>
+              )}
             </div>
 
             {/* Unified Filter */}
@@ -391,7 +432,7 @@ const TeachersList = ({
         <div className="flex justify-center items-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-teal"></div>
         </div>
-      ) : teachers.length === 0 ? (
+      ) : filteredTeachers.length === 0 ? (
         <EmptyState
           icon={GraduationCap}
           title="No Teachers Found"
@@ -425,7 +466,7 @@ const TeachersList = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {teachers.map((teacher) => {
+              {filteredTeachers.map((teacher) => {
                 const subjectAllocations = getSubjectAllocations(teacher);
                 return (
                   <tr key={teacher.id} onClick={() => onViewTeacher(teacher)} className="hover:bg-gray-50 cursor-pointer transition">
