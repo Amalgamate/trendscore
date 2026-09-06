@@ -4,6 +4,8 @@ import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
 
 import logger from '../utils/logger';
+import { accountingService } from '../services/accounting.service';
+
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 /** Resolve the active term + academic year from TermConfig (best-effort). */
@@ -12,6 +14,59 @@ async function getActiveTerm(): Promise<{ term: string; academicYear: number } |
         where: { isActive: true, archived: false }
     });
     return config ? { term: config.term, academicYear: config.academicYear } : null;
+}
+
+/** Get a unique, sequential invoice number for the academic year. */
+async function getSafeInvoiceNumber(academicYear: number): Promise<string> {
+    for (let i = 0; i < 10; i++) {
+        const count = await prisma.feeInvoice.count({
+            where: { academicYear }
+        });
+        const num = `INV-${academicYear}-${String(count + 1 + i).padStart(6, '0')}`;
+        const exists = await prisma.feeInvoice.findUnique({ where: { invoiceNumber: num } });
+        if (!exists) return num;
+    }
+    return `INV-${academicYear}-${Date.now().toString().slice(-6)}`;
+}
+
+/** Ensure a FeeStructure exists for creating standalone transport invoices. */
+async function getOrCreateFeeStructure(academicYear: number, term: string, grade?: string | null) {
+    let feeStructure = await prisma.feeStructure.findFirst({
+        where: {
+            academicYear,
+            archived: false,
+            ...(grade ? { grade: grade as any } : {})
+        },
+        orderBy: { createdAt: 'desc' }
+    });
+
+    if (!feeStructure) {
+        feeStructure = await prisma.feeStructure.findFirst({
+            where: { academicYear, archived: false },
+            orderBy: { createdAt: 'desc' }
+        });
+    }
+
+    if (!feeStructure) {
+        feeStructure = await prisma.feeStructure.findFirst({
+            where: { archived: false },
+            orderBy: { createdAt: 'desc' }
+        });
+    }
+
+    if (!feeStructure) {
+        feeStructure = await prisma.feeStructure.create({
+            data: {
+                name: `Transport Services Fee Structure ${academicYear}`,
+                academicYear,
+                term: term as any,
+                active: true,
+                mandatory: false
+            }
+        });
+    }
+
+    return feeStructure;
 }
 
 export class TransportController {
@@ -658,6 +713,450 @@ export class TransportController {
         } catch (error: any) {
             logger.error('[TransportController] getReports:', error);
             res.status(500).json({ success: false, message: error.message });
+        }
+    }
+
+    // ============================================
+    // TRANSPORT FEE ROSTER & INVOICING
+    // ============================================
+
+    /**
+     * GET /api/transport/fee-roster
+     * Returns all marked transport students along with their active term invoice/billing status
+     * and computed summary KPIs.
+     */
+    async getFeeRoster(req: AuthRequest, res: Response) {
+        try {
+            const active = await getActiveTerm();
+            const term = (req.query.term as string) || active?.term || 'TERM_1';
+            const academicYear = parseInt((req.query.academicYear as string) || String(active?.academicYear || 2026), 10);
+
+            // 1. Get active route assignments
+            const assignments = await prisma.transportAssignment.findMany({
+                where: { archived: false, passengerType: 'LEARNER' },
+                include: {
+                    route: {
+                        include: { vehicle: true }
+                    }
+                }
+            });
+            const assignmentByPassengerId = new Map(assignments.map(a => [a.passengerId, a]));
+            const assignedLearnerIds = assignments.map(a => a.passengerId);
+
+            // 2. Get all transport learners
+            const learners = await prisma.learner.findMany({
+                where: {
+                    archived: false,
+                    OR: [
+                        { isTransportStudent: true },
+                        { id: { in: assignedLearnerIds } }
+                    ]
+                },
+                select: {
+                    id: true,
+                    admissionNumber: true,
+                    firstName: true,
+                    lastName: true,
+                    grade: true,
+                    stream: true,
+                    isTransportStudent: true,
+                    primaryContactPhone: true,
+                    guardianPhone: true,
+                    primaryContactName: true
+                },
+                orderBy: [{ grade: 'asc' }, { lastName: 'asc' }, { firstName: 'asc' }]
+            });
+
+            // 3. Invoices for these learners for the term/academicYear
+            const invoices = await prisma.feeInvoice.findMany({
+                where: {
+                    learnerId: { in: learners.map(l => l.id) },
+                    term: term as any,
+                    academicYear,
+                    archived: false
+                },
+                select: {
+                    id: true,
+                    learnerId: true,
+                    invoiceNumber: true,
+                    dueDate: true,
+                    status: true,
+                    totalAmount: true,
+                    balance: true,
+                    paidAmount: true,
+                    transportBilled: true,
+                    transportPaid: true,
+                    transportBalance: true
+                }
+            });
+            const invoiceByLearnerId = new Map(invoices.map(i => [i.learnerId, i]));
+
+            // 4. Map each learner with billing status
+            const roster = learners.map(learner => {
+                const assignment = assignmentByPassengerId.get(learner.id);
+                const route = assignment?.route;
+                const invoice = invoiceByLearnerId.get(learner.id);
+
+                const routeAmount = Number(route?.amount || 0);
+                const billed = invoice ? Number(invoice.transportBilled || 0) : 0;
+                const paid = invoice ? Number(invoice.transportPaid || 0) : 0;
+                const balance = invoice ? Number(invoice.transportBalance || 0) : 0;
+                const isBilled = invoice !== undefined && billed > 0;
+
+                let transportStatus: 'PAID' | 'PARTIAL' | 'PENDING' | 'OVERDUE' | 'UNBILLED';
+                if (!isBilled) {
+                    transportStatus = 'UNBILLED';
+                } else if (balance <= 0) {
+                    transportStatus = 'PAID';
+                } else if (paid > 0) {
+                    transportStatus = 'PARTIAL';
+                } else if (invoice?.dueDate && new Date(invoice.dueDate) < new Date()) {
+                    transportStatus = 'OVERDUE';
+                } else {
+                    transportStatus = 'PENDING';
+                }
+
+                return {
+                    learner,
+                    route: route ? {
+                        id: route.id,
+                        name: route.name,
+                        amount: routeAmount,
+                        vehicle: route.vehicle ? {
+                            id: route.vehicle.id,
+                            registrationNumber: route.vehicle.registrationNumber,
+                            driverName: route.vehicle.driverName
+                        } : null
+                    } : null,
+                    pickupPoint: assignment?.pickupPoint || null,
+                    dropoffPoint: assignment?.dropoffPoint || null,
+                    invoice: invoice ? {
+                        id: invoice.id,
+                        invoiceNumber: invoice.invoiceNumber,
+                        dueDate: invoice.dueDate,
+                        totalAmount: Number(invoice.totalAmount),
+                        balance: Number(invoice.balance),
+                        transportBilled: billed,
+                        transportPaid: paid,
+                        transportBalance: balance
+                    } : null,
+                    billed,
+                    paid,
+                    balance,
+                    expectedFee: billed > 0 ? billed : routeAmount,
+                    status: transportStatus,
+                    isBilled
+                };
+            });
+
+            // 5. Summary metrics
+            const totalStudents = roster.length;
+            const billedStudents = roster.filter(r => r.isBilled).length;
+            const unbilledStudents = totalStudents - billedStudents;
+            const totalBilled = roster.reduce((s, r) => s + r.billed, 0);
+            const totalCollected = roster.reduce((s, r) => s + r.paid, 0);
+            const totalOutstanding = roster.reduce((s, r) => s + r.balance, 0);
+            const collectionRate = totalBilled > 0 ? Math.round((totalCollected / totalBilled) * 100) : 0;
+
+            res.json({
+                success: true,
+                data: {
+                    term,
+                    academicYear,
+                    summary: {
+                        totalStudents,
+                        billedStudents,
+                        unbilledStudents,
+                        totalBilled,
+                        totalCollected,
+                        totalOutstanding,
+                        collectionRate
+                    },
+                    roster
+                }
+            });
+        } catch (error: any) {
+            logger.error('[TransportController] getFeeRoster:', error);
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+
+    /**
+     * POST /api/transport/fee-roster/bill
+     * Bills transport fee for a single student, creating or updating their fee invoice
+     * and posting to the Transport Fees Income account (4100).
+     */
+    async billSingleLearner(req: AuthRequest, res: Response) {
+        try {
+            const { learnerId, term, academicYear, amount, dueDate, routeId, pickupPoint } = req.body;
+            if (!learnerId || !term || !academicYear || amount === undefined) {
+                throw new ApiError(400, 'learnerId, term, academicYear, and amount are required');
+            }
+
+            const billAmount = Number(amount);
+            if (isNaN(billAmount) || billAmount < 0) {
+                throw new ApiError(400, 'amount must be a non-negative number');
+            }
+
+            const learner = await prisma.learner.findUnique({
+                where: { id: learnerId }
+            });
+            if (!learner || learner.archived) {
+                throw new ApiError(404, 'Learner not found or is archived');
+            }
+
+            // Ensure learner has isTransportStudent flag set
+            if (!learner.isTransportStudent) {
+                await prisma.learner.update({
+                    where: { id: learnerId },
+                    data: { isTransportStudent: true }
+                });
+            }
+
+            // If routeId provided, manage route assignment
+            if (routeId) {
+                const existingAssignment = await prisma.transportAssignment.findFirst({
+                    where: { passengerId: learnerId, archived: false }
+                });
+                if (existingAssignment) {
+                    await prisma.transportAssignment.update({
+                        where: { id: existingAssignment.id },
+                        data: { routeId, ...(pickupPoint ? { pickupPoint } : {}) }
+                    });
+                } else {
+                    await prisma.transportAssignment.create({
+                        data: {
+                            passengerId: learnerId,
+                            passengerType: 'LEARNER',
+                            routeId,
+                            pickupPoint: pickupPoint || undefined
+                        }
+                    });
+                }
+            }
+
+            const normalizedYear = parseInt(String(academicYear), 10);
+            const invoiceDueDate = dueDate ? new Date(dueDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+            // Check if invoice exists for this term/year
+            const existingInvoice = await prisma.feeInvoice.findFirst({
+                where: {
+                    learnerId,
+                    term: term as any,
+                    academicYear: normalizedYear,
+                    archived: false
+                }
+            });
+
+            let invoice: any;
+            if (existingInvoice) {
+                const oldTransportBilled = Number(existingInvoice.transportBilled || 0);
+                const oldTransportPaid = Number(existingInvoice.transportPaid || 0);
+                const diff = billAmount - oldTransportBilled;
+                const newTotal = Math.max(0, Number(existingInvoice.totalAmount) + diff);
+                const newTransportBalance = Math.max(0, billAmount - oldTransportPaid);
+                const newBalance = Math.max(0, Number(existingInvoice.balance) + diff);
+                const newStatus = newBalance <= 0 ? 'PAID' : Number(existingInvoice.paidAmount) > 0 ? 'PARTIAL' : 'PENDING';
+
+                invoice = await prisma.feeInvoice.update({
+                    where: { id: existingInvoice.id },
+                    data: {
+                        transportBilled: billAmount,
+                        transportBalance: newTransportBalance,
+                        totalAmount: newTotal,
+                        balance: newBalance,
+                        status: newStatus as any,
+                        ...(dueDate ? { dueDate: invoiceDueDate } : {})
+                    },
+                    include: { learner: true }
+                });
+            } else {
+                const feeStructure = await getOrCreateFeeStructure(normalizedYear, term, learner.grade);
+                const invoiceNumber = await getSafeInvoiceNumber(normalizedYear);
+
+                invoice = await prisma.feeInvoice.create({
+                    data: {
+                        invoiceNumber,
+                        learnerId,
+                        feeStructureId: feeStructure.id,
+                        term: term as any,
+                        academicYear: normalizedYear,
+                        dueDate: invoiceDueDate,
+                        totalAmount: billAmount,
+                        paidAmount: 0,
+                        balance: billAmount,
+                        transportBilled: billAmount,
+                        transportPaid: 0,
+                        transportBalance: billAmount,
+                        studentAmount: billAmount,
+                        grossAmount: billAmount,
+                        status: billAmount === 0 ? 'PAID' : 'PENDING',
+                        issuedBy: req.user?.userId || 'SYSTEM'
+                    },
+                    include: { learner: true }
+                });
+            }
+
+            // Post to ledger crediting 4100
+            setImmediate(async () => {
+                try {
+                    await accountingService.postFeeInvoiceToLedger(invoice);
+                } catch (e) {
+                    logger.error('[TransportController] postFeeInvoiceToLedger error:', e);
+                }
+            });
+
+            res.json({
+                success: true,
+                message: `Transport fee of KES ${billAmount.toLocaleString()} billed successfully for ${learner.firstName} ${learner.lastName}`,
+                data: invoice
+            });
+        } catch (error: any) {
+            logger.error('[TransportController] billSingleLearner:', error);
+            res.status(error.statusCode || 500).json({ success: false, message: error.message });
+        }
+    }
+
+    /**
+     * POST /api/transport/fee-roster/bulk-bill
+     * Generates transport billing in bulk for all transport students.
+     */
+    async bulkBillLearners(req: AuthRequest, res: Response) {
+        try {
+            const { term, academicYear, dueDate, billingMode = 'ROUTE_FEE', flatAmount = 0, onlyUnbilled = true } = req.body;
+            if (!term || !academicYear) {
+                throw new ApiError(400, 'term and academicYear are required');
+            }
+
+            const normalizedYear = parseInt(String(academicYear), 10);
+            const invoiceDueDate = dueDate ? new Date(dueDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+            // Fetch assignments with route
+            const assignments = await prisma.transportAssignment.findMany({
+                where: { archived: false, passengerType: 'LEARNER' },
+                include: { route: true }
+            });
+            const assignmentByPassengerId = new Map(assignments.map(a => [a.passengerId, a]));
+            const assignedLearnerIds = assignments.map(a => a.passengerId);
+
+            // Fetch all transport learners
+            const learners = await prisma.learner.findMany({
+                where: {
+                    archived: false,
+                    OR: [
+                        { isTransportStudent: true },
+                        { id: { in: assignedLearnerIds } }
+                    ]
+                },
+                select: { id: true, firstName: true, lastName: true, grade: true }
+            });
+
+            // Fetch existing invoices for these learners
+            const existingInvoices = await prisma.feeInvoice.findMany({
+                where: {
+                    learnerId: { in: learners.map(l => l.id) },
+                    term: term as any,
+                    academicYear: normalizedYear,
+                    archived: false
+                }
+            });
+            const existingInvoiceByLearnerId = new Map(existingInvoices.map(i => [i.learnerId, i]));
+
+            let billedCount = 0;
+            let totalAmountBilled = 0;
+            const updatedInvoices: any[] = [];
+
+            for (const learner of learners) {
+                const existing = existingInvoiceByLearnerId.get(learner.id);
+                if (onlyUnbilled && existing && Number(existing.transportBilled || 0) > 0) {
+                    continue; // Skip already billed
+                }
+
+                // Determine fee
+                let billAmount = 0;
+                if (billingMode === 'FLAT_RATE') {
+                    billAmount = Number(flatAmount);
+                } else {
+                    const assignment = assignmentByPassengerId.get(learner.id);
+                    billAmount = Number(assignment?.route?.amount || flatAmount || 0);
+                }
+
+                if (billAmount <= 0) continue;
+
+                let inv: any;
+                if (existing) {
+                    const oldTransportBilled = Number(existing.transportBilled || 0);
+                    const oldTransportPaid = Number(existing.transportPaid || 0);
+                    const diff = billAmount - oldTransportBilled;
+                    const newTotal = Math.max(0, Number(existing.totalAmount) + diff);
+                    const newTransportBalance = Math.max(0, billAmount - oldTransportPaid);
+                    const newBalance = Math.max(0, Number(existing.balance) + diff);
+                    const newStatus = newBalance <= 0 ? 'PAID' : Number(existing.paidAmount) > 0 ? 'PARTIAL' : 'PENDING';
+
+                    inv = await prisma.feeInvoice.update({
+                        where: { id: existing.id },
+                        data: {
+                            transportBilled: billAmount,
+                            transportBalance: newTransportBalance,
+                            totalAmount: newTotal,
+                            balance: newBalance,
+                            status: newStatus as any,
+                            dueDate: invoiceDueDate
+                        }
+                    });
+                } else {
+                    const feeStructure = await getOrCreateFeeStructure(normalizedYear, term, learner.grade);
+                    const invoiceNumber = await getSafeInvoiceNumber(normalizedYear);
+
+                    inv = await prisma.feeInvoice.create({
+                        data: {
+                            invoiceNumber,
+                            learnerId: learner.id,
+                            feeStructureId: feeStructure.id,
+                            term: term as any,
+                            academicYear: normalizedYear,
+                            dueDate: invoiceDueDate,
+                            totalAmount: billAmount,
+                            paidAmount: 0,
+                            balance: billAmount,
+                            transportBilled: billAmount,
+                            transportPaid: 0,
+                            transportBalance: billAmount,
+                            studentAmount: billAmount,
+                            grossAmount: billAmount,
+                            status: billAmount === 0 ? 'PAID' : 'PENDING',
+                            issuedBy: req.user?.userId || 'SYSTEM'
+                        }
+                    });
+                }
+
+                billedCount++;
+                totalAmountBilled += billAmount;
+                updatedInvoices.push(inv);
+            }
+
+            // Post ledger entries asynchronously
+            setImmediate(async () => {
+                for (const inv of updatedInvoices) {
+                    try {
+                        await accountingService.postFeeInvoiceToLedger(inv);
+                    } catch (e) {
+                        logger.error('[TransportController] bulk postFeeInvoiceToLedger error:', e);
+                    }
+                }
+            });
+
+            res.json({
+                success: true,
+                message: `Bulk transport billing complete. ${billedCount} students billed, total KES ${totalAmountBilled.toLocaleString()}.`,
+                data: {
+                    billedCount,
+                    totalAmountBilled
+                }
+            });
+        } catch (error: any) {
+            logger.error('[TransportController] bulkBillLearners:', error);
+            res.status(error.statusCode || 500).json({ success: false, message: error.message });
         }
     }
 }

@@ -32,31 +32,67 @@ export const getCurrentTerm = () => {
 };
 
 /**
- * Get academic year options for dropdown
- * Returns current year and 2 years on either side
+ * Get dynamic list of academic years as numbers
  * 
- * @returns {Array} Array of year objects with value and label
+ * @param {Object} options
+ * @param {number} [options.minPast=5] Number of years in the past
+ * @param {number} [options.minFuture=8] Number of years in the future for planning
+ * @param {Array<number|string>} [options.extraYears=[]] Any additional years (e.g. from DB, custom entry)
+ * @param {'asc'|'desc'} [options.order='asc'] Sort direction
+ * @returns {number[]} Array of distinct year numbers
  */
-export const getAcademicYearOptions = () => {
-  const currentYear = getCurrentAcademicYear();
-  const years = [];
-  // Restrict to current year and 10 years in the past
-  for (let i = -10; i <= 0; i++) {
-    const year = currentYear + i;
-    years.push({
-      value: year,
-      label: year.toString()
-    });
+export const getDynamicAcademicYears = ({
+  minPast = 5,
+  minFuture = 8,
+  extraYears = [],
+  order = 'asc'
+} = {}) => {
+  const current = getCurrentAcademicYear();
+  const yearSet = new Set();
+
+  for (let i = -minPast; i <= minFuture; i++) {
+    yearSet.add(current + i);
   }
-  
-  // Return reversed so current year is at the top
-  return years.reverse();
+
+  (extraYears || []).forEach(y => {
+    const parsed = Number(y);
+    if (parsed && !Number.isNaN(parsed) && parsed >= 2000 && parsed <= 2150) {
+      yearSet.add(parsed);
+    }
+  });
+
+  const sorted = Array.from(yearSet).sort((a, b) => (order === 'desc' ? b - a : a - b));
+  return sorted;
+};
+
+/**
+ * Get academic year options for dropdowns
+ * Returns years with value and label, combining dynamic rolling horizon + extra years
+ * 
+ * @param {Object} options
+ * @param {number} [options.minPast=5]
+ * @param {number} [options.minFuture=8]
+ * @param {Array<number|string>} [options.extraYears=[]]
+ * @param {'asc'|'desc'} [options.order='desc'] Defaults to newest first for standard dropdowns
+ * @returns {Array<{value: number, label: string}>} Array of year objects with value and label
+ */
+export const getAcademicYearOptions = ({
+  minPast = 5,
+  minFuture = 8,
+  extraYears = [],
+  order = 'desc'
+} = {}) => {
+  const years = getDynamicAcademicYears({ minPast, minFuture, extraYears, order });
+  return years.map(year => ({
+    value: year,
+    label: year.toString()
+  }));
 };
 
 /**
  * Format academic year for display
  * 
- * @param {number} year - Academic year
+ * @param {number|string} year - Academic year
  * @returns {string} Formatted year string
  */
 export const formatAcademicYear = (year) => {
@@ -65,21 +101,23 @@ export const formatAcademicYear = (year) => {
 
 /**
  * Validate academic year
+ * Allows a generous ±15 year operational range around current year
  * 
- * @param {number} year - Year to validate
+ * @param {number|string} year - Year to validate
  * @returns {boolean} True if valid
  */
 export const isValidAcademicYear = (year) => {
-  if (!year || typeof year !== 'number') return false;
+  const num = Number(year);
+  if (!num || Number.isNaN(num)) return false;
   
   const currentYear = getCurrentAcademicYear();
-  // Valid range: up to current year, stretching 10 years back
-  return year >= (currentYear - 10) && year <= currentYear;
+  return num >= (currentYear - 15) && num <= (currentYear + 15);
 };
 
 const academicYearConfig = {
   getCurrentAcademicYear,
   getCurrentTerm,
+  getDynamicAcademicYears,
   getAcademicYearOptions,
   formatAcademicYear,
   isValidAcademicYear

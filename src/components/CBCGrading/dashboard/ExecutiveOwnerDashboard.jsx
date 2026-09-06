@@ -498,7 +498,7 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
     {
       id: 'transport',
       app: 'transport',
-      path: 'transport-routes',
+      path: 'hostel-fees',
       title: 'Transport',
       icon: Bus,
       summary: [
@@ -517,7 +517,7 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
         { text: `Attendance today is ${Math.round(attendanceRate)}% (${integer(stats.presentToday)} present, ${integer(stats.absentToday)} absent). Teacher rate: ${Math.round(Number(stats.teacherAttendanceRate || 0))}%.` },
       ],
     },
-  ].filter((module) => !module.app || hasPageAccess(accessUser, module.id === 'fees' ? 'fees-overview' : module.id === 'assessment' ? 'assess-mobile-dashboard' : module.id === 'attendance' ? 'attendance-daily' : module.id === 'expenses' ? 'accounting-expenses' : module.id === 'transport' ? 'transport-routes' : 'dashboard')), [
+  ].filter((module) => !module.app || hasPageAccess(accessUser, module.id === 'fees' ? 'fees-overview' : module.id === 'assessment' ? 'assess-mobile-dashboard' : module.id === 'attendance' ? 'attendance-daily' : module.id === 'expenses' ? 'accounting-expenses' : module.id === 'transport' ? 'hostel-fees' : 'dashboard')), [
     accessUser,
     feeCollected,
     stats.feePending,

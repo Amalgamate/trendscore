@@ -826,10 +826,11 @@ const PageRouter = ({
 
           // Transport Module
           case 'transport-manager':
-          case 'transport-routes':    return <TransportManager />;
+          case 'transport-vehicles':  return <TransportManager initialTab="vehicles" />;
+          case 'transport-routes':    return <TransportManager initialTab="routes" />;
           case 'transport-tracking':  return <GPSTracking />;
           case 'transport-drivers':   return <DriverManagement />;
-          case 'transport-students':  return <TransportManager />;
+          case 'transport-students':  return <TransportManager initialTab="students" />;
           case 'hostel-fees':         return <TransportFeeManager onEditLearner={handleEditLearner} onViewLearner={handleViewLearner} />;
           case 'transport-reports':   return <TransportReports />;
 

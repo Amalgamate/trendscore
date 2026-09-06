@@ -62,13 +62,12 @@ export const useCoreCompetencies = (initialData = null) => {
     { key: 'learningToLearn', label: 'Learning to Learn', commentKey: 'learningToLearnComment' },
   ];
 
-  const { grades } = useSchoolData();
+  const { grades, academicYears } = useSchoolData();
   const terms = [
     { value: 'TERM_1', label: 'Term 1' },
     { value: 'TERM_2', label: 'Term 2' },
     { value: 'TERM_3', label: 'Term 3' },
   ];
-  const academicYears = [2024, 2025, 2026, 2027];
 
   const handleInputChange = useCallback((field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));

@@ -26,6 +26,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Card, CardContent, CardHeader } from "../ui/card";
 import { cn } from "../../utils/cn";
+import RotatingCompassDial from '../common/RotatingCompassDial';
 
 // Helper: School fetching removed for single-tenant mode
 
@@ -789,72 +790,21 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
       >
         {/* Background image removed */}
 
-        {/* Custom compass dial SVG — bottom-right, clipped, slowly spinning */}
+        {/* Compass dial — slowly spinning bottom-right watermark */}
+        <RotatingCompassDial
+          size={500}
+          bottom="-190px"
+          right="-190px"
+          opacity={0.1}
+          color="#041635"
+          duration="28s"
+        />
         <style>{`
-          @keyframes compassSpin {
-            0%   { transform: rotate(0deg)   skewX(0deg)   skewY(0deg); }
-            25%  { transform: rotate(90deg)  skewX(1.5deg) skewY(0.8deg); }
-            50%  { transform: rotate(180deg) skewX(0deg)   skewY(0deg); }
-            75%  { transform: rotate(270deg) skewX(-1.5deg) skewY(-0.8deg); }
-            100% { transform: rotate(360deg) skewX(0deg)   skewY(0deg); }
-          }
           @keyframes mobileLogoFadeIn {
-            0% {
-              opacity: 0;
-              transform: translateY(8px) scale(0.98);
-            }
-            100% {
-              opacity: 1;
-              transform: translateY(0) scale(1);
-            }
+            0%   { opacity: 0; transform: translateY(8px) scale(0.98); }
+            100% { opacity: 1; transform: translateY(0) scale(1); }
           }
         `}</style>
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 300 300"
-          xmlns="http://www.w3.org/2000/svg"
-          style={{
-            position: 'absolute',
-            bottom: '-190px',
-            right: '-190px',
-            width: '500px',
-            height: '500px',
-            opacity: 0.1,
-            animation: 'compassSpin 28s linear infinite',
-            transformOrigin: 'center center',
-            pointerEvents: 'none',
-            zIndex: 1,
-          }}
-        >
-          <circle cx="150" cy="150" r="145" fill="none" stroke="#041635" strokeWidth="0.6" />
-          <circle cx="150" cy="150" r="138" fill="none" stroke="#041635" strokeWidth="0.3" />
-          <circle cx="150" cy="150" r="118" fill="none" stroke="#041635" strokeWidth="0.5" />
-          <circle cx="150" cy="150" r="112" fill="none" stroke="#041635" strokeWidth="0.25" />
-          {Array.from({ length: 72 }).map((_, i) => {
-            const angle = (i * 5 * Math.PI) / 180;
-            const isMajor = i % 9 === 0;
-            const isMid   = i % 3 === 0;
-            const outer = 145;
-            const inner = isMajor ? 128 : isMid ? 132 : 136;
-            const x1 = 150 + outer * Math.sin(angle);
-            const y1 = 150 - outer * Math.cos(angle);
-            const x2 = 150 + inner * Math.sin(angle);
-            const y2 = 150 - inner * Math.cos(angle);
-            return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#041635" strokeWidth={isMajor ? 0.9 : isMid ? 0.55 : 0.35} />;
-          })}
-          <text x="150" y="106" textAnchor="middle" dominantBaseline="middle" fontSize="10" fontWeight="600" fill="#041635" fontFamily="system-ui, sans-serif" letterSpacing="2">N</text>
-          <text x="150" y="198" textAnchor="middle" dominantBaseline="middle" fontSize="8" fontWeight="400" fill="#041635" fontFamily="system-ui, sans-serif">S</text>
-          <text x="196" y="150" textAnchor="middle" dominantBaseline="middle" fontSize="8" fontWeight="400" fill="#041635" fontFamily="system-ui, sans-serif">E</text>
-          <text x="104" y="150" textAnchor="middle" dominantBaseline="middle" fontSize="8" fontWeight="400" fill="#041635" fontFamily="system-ui, sans-serif">W</text>
-          <circle cx="150" cy="150" r="28" fill="none" stroke="#041635" strokeWidth="0.5" />
-          <circle cx="150" cy="150" r="4"  fill="none" stroke="#041635" strokeWidth="0.8" />
-          <polygon points="150,118 153,150 150,160 147,150" fill="none" stroke="#041635" strokeWidth="0.7" strokeLinejoin="round" />
-          <polygon points="150,182 153,150 150,140 147,150" fill="none" stroke="#041635" strokeWidth="0.5" strokeLinejoin="round" opacity="0.5" />
-          <line x1="150" y1="122" x2="150" y2="135" stroke="#041635" strokeWidth="0.35" />
-          <line x1="150" y1="165" x2="150" y2="178" stroke="#041635" strokeWidth="0.35" />
-          <line x1="122" y1="150" x2="135" y2="150" stroke="#041635" strokeWidth="0.35" />
-          <line x1="165" y1="150" x2="178" y2="150" stroke="#041635" strokeWidth="0.35" />
-        </svg>
 
         <div
           className="relative z-10 flex min-h-[100dvh] flex-col px-6"

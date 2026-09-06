@@ -2,12 +2,31 @@ import { fetchWithAuth } from './core';
 
 export const transportAPI = {
 
-    // ── Summary ──────────────────────────────────────────────────────────────
+    // ── Summary & Fee Roster ──────────────────────────────────────────────────
     getSummary: () =>
         fetchWithAuth('/transport/summary'),
 
     getReports: () =>
         fetchWithAuth('/transport/reports'),
+
+    getFeeRoster: (params = {}) => {
+        const q = new URLSearchParams();
+        if (params.term) q.append('term', params.term);
+        if (params.academicYear) q.append('academicYear', params.academicYear);
+        return fetchWithAuth(`/transport/fee-roster?${q.toString()}`);
+    },
+
+    billStudent: (data) =>
+        fetchWithAuth('/transport/fee-roster/bill', {
+            method: 'POST',
+            body: JSON.stringify(data)
+        }),
+
+    bulkBillStudents: (data) =>
+        fetchWithAuth('/transport/fee-roster/bulk-bill', {
+            method: 'POST',
+            body: JSON.stringify(data)
+        }),
 
     // ── Vehicles ─────────────────────────────────────────────────────────────
     getVehicles: () =>

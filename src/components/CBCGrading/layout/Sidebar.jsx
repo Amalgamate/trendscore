@@ -163,6 +163,7 @@ const PREFETCH_MAP = {
   'inventory-items':      () => import('../pages/inventory/InventoryItems'),
   'library-catalog':      () => import('../pages/library/LibraryManager'),
   'transport-manager':    () => import('../pages/transport/TransportManager'),
+  'transport-vehicles':   () => import('../pages/transport/TransportManager'),
   'transport-routes':     () => import('../pages/transport/TransportManager'),
   'settings-school':      () => import('../pages/settings/SchoolSettings'),
   'settings-users':       () => import('../pages/settings/UserManagement'),

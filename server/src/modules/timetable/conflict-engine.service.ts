@@ -21,7 +21,19 @@ const minutes = (value: string) => {
 const overlaps = (a: { startTime: string; endTime: string }, b: { startTime: string; endTime: string }) =>
   minutes(a.startTime) < minutes(b.endTime) && minutes(b.startTime) < minutes(a.endTime);
 
+const CLASH_META: Record<string, { message: string; suggestedActions: string[] }> = {
+  CLASS_CLASH: { message: 'A class has overlapping lessons.', suggestedActions: ['Move one lesson', 'Swap one lesson with a free period'] },
+  TEACHER_CLASH: { message: 'A teacher is assigned to overlapping lessons.', suggestedActions: ['Move one lesson', 'Assign another qualified teacher'] },
+  ROOM_CLASH: { message: 'A room is assigned to overlapping lessons.', suggestedActions: ['Move one lesson', 'Select another suitable room'] },
+};
+
 export class ConflictEngineService {
+  /**
+   * Detects hard scheduling conflicts. Entries are bucketed by day (different
+   * days can never conflict), then within each day grouped by class/teacher/
+   * room so overlap checks only compare entries that share a resource —
+   * O(sum of bucket_size^2) instead of O(n^2) over the whole version.
+   */
   detect(
     entries: EntryLike[],
     teacherAvailability: TeacherAvailability[] = [],
@@ -29,61 +41,85 @@ export class ConflictEngineService {
   ): TimetableConflict[] {
     const conflicts: TimetableConflict[] = [];
 
-    for (let leftIndex = 0; leftIndex < entries.length; leftIndex += 1) {
-      const left = entries[leftIndex];
-      if (minutes(left.startTime) >= minutes(left.endTime)) {
+    const byDay = new Map<string, EntryLike[]>();
+    for (const entry of entries) {
+      if (minutes(entry.startTime) >= minutes(entry.endTime)) {
         conflicts.push({
-          code: 'INVALID_TIME_RANGE', severity: 'ERROR', entryIds: [left.id],
+          code: 'INVALID_TIME_RANGE', severity: 'ERROR', entryIds: [entry.id],
           message: 'Lesson end time must be after its start time.',
           suggestedActions: ['Select a valid bell period', 'Correct the lesson start and end time'], canOverride: false
         });
       }
+      if (!byDay.has(entry.day)) byDay.set(entry.day, []);
+      byDay.get(entry.day)!.push(entry);
+    }
 
-      for (let rightIndex = leftIndex + 1; rightIndex < entries.length; rightIndex += 1) {
-        const right = entries[rightIndex];
-        if (left.day !== right.day || !overlaps(left, right)) continue;
+    // Index blackout rules by resource+day so per-entry lookups are O(1)
+    // instead of scanning the full rule list for every entry.
+    const teacherRulesByKey = new Map<string, TeacherAvailability[]>();
+    for (const rule of teacherAvailability) {
+      if (rule.available) continue;
+      const key = `${rule.teacherId}||${rule.day}`;
+      if (!teacherRulesByKey.has(key)) teacherRulesByKey.set(key, []);
+      teacherRulesByKey.get(key)!.push(rule);
+    }
+    const roomRulesByKey = new Map<string, RoomAvailability[]>();
+    for (const rule of roomAvailability) {
+      if (rule.available) continue;
+      const key = `${rule.roomId}||${rule.day}`;
+      if (!roomRulesByKey.has(key)) roomRulesByKey.set(key, []);
+      roomRulesByKey.get(key)!.push(rule);
+    }
 
-        if (left.classId === right.classId) {
-          conflicts.push({
-            code: 'CLASS_CLASH', severity: 'ERROR', entryIds: [left.id, right.id],
-            message: 'A class has overlapping lessons.',
-            suggestedActions: ['Move one lesson', 'Swap one lesson with a free period'], canOverride: false
-          });
-        }
-        if (left.teacherId && left.teacherId === right.teacherId) {
-          conflicts.push({
-            code: 'TEACHER_CLASH', severity: 'ERROR', entryIds: [left.id, right.id],
-            message: 'A teacher is assigned to overlapping lessons.',
-            suggestedActions: ['Move one lesson', 'Assign another qualified teacher'], canOverride: false
-          });
-        }
-        if (left.roomId && left.roomId === right.roomId) {
-          conflicts.push({
-            code: 'ROOM_CLASH', severity: 'ERROR', entryIds: [left.id, right.id],
-            message: 'A room is assigned to overlapping lessons.',
-            suggestedActions: ['Move one lesson', 'Select another suitable room'], canOverride: false
-          });
+    const pairwiseCheck = (bucket: EntryLike[], keyOf: (e: EntryLike) => string | null | undefined, code: keyof typeof CLASH_META) => {
+      const groups = new Map<string, EntryLike[]>();
+      for (const entry of bucket) {
+        const key = keyOf(entry);
+        if (!key) continue;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(entry);
+      }
+      for (const group of groups.values()) {
+        if (group.length < 2) continue;
+        for (let i = 0; i < group.length; i += 1) {
+          for (let j = i + 1; j < group.length; j += 1) {
+            if (overlaps(group[i], group[j])) {
+              conflicts.push({
+                code, severity: 'ERROR', entryIds: [group[i].id, group[j].id],
+                message: CLASH_META[code].message, suggestedActions: CLASH_META[code].suggestedActions, canOverride: false
+              });
+            }
+          }
         }
       }
+    };
 
-      if (left.teacherId && teacherAvailability.some(rule =>
-        rule.teacherId === left.teacherId && rule.day === left.day && !rule.available && overlaps(left, rule)
-      )) {
-        conflicts.push({
-          code: 'TEACHER_UNAVAILABLE', severity: 'ERROR', entryIds: [left.id],
-          message: 'The assigned teacher is unavailable during this period.',
-          suggestedActions: ['Move the lesson', 'Assign another qualified teacher'], canOverride: false
-        });
-      }
+    for (const [day, bucket] of byDay) {
+      pairwiseCheck(bucket, e => e.classId, 'CLASS_CLASH');
+      pairwiseCheck(bucket, e => e.teacherId, 'TEACHER_CLASH');
+      pairwiseCheck(bucket, e => e.roomId, 'ROOM_CLASH');
 
-      if (left.roomId && roomAvailability.some(rule =>
-        rule.roomId === left.roomId && rule.day === left.day && !rule.available && overlaps(left, rule)
-      )) {
-        conflicts.push({
-          code: 'ROOM_UNAVAILABLE', severity: 'ERROR', entryIds: [left.id],
-          message: 'The selected room is unavailable during this period.',
-          suggestedActions: ['Move the lesson', 'Select another suitable room'], canOverride: false
-        });
+      for (const entry of bucket) {
+        if (entry.teacherId) {
+          const rules = teacherRulesByKey.get(`${entry.teacherId}||${day}`);
+          if (rules?.some(rule => overlaps(entry, rule))) {
+            conflicts.push({
+              code: 'TEACHER_UNAVAILABLE', severity: 'ERROR', entryIds: [entry.id],
+              message: 'The assigned teacher is unavailable during this period.',
+              suggestedActions: ['Move the lesson', 'Assign another qualified teacher'], canOverride: false
+            });
+          }
+        }
+        if (entry.roomId) {
+          const rules = roomRulesByKey.get(`${entry.roomId}||${day}`);
+          if (rules?.some(rule => overlaps(entry, rule))) {
+            conflicts.push({
+              code: 'ROOM_UNAVAILABLE', severity: 'ERROR', entryIds: [entry.id],
+              message: 'The selected room is unavailable during this period.',
+              suggestedActions: ['Move the lesson', 'Select another suitable room'], canOverride: false
+            });
+          }
+        }
       }
     }
 

@@ -48,6 +48,16 @@ const planSchema = z.object({
   term: z.nativeEnum(Term), bellScheduleId: z.string().uuid(), description: z.string().max(500).optional()
 });
 
+const changeRequestSchema = z.object({
+  classId: z.string().uuid(),
+  day,
+  startTime: time,
+  endTime: time,
+  learningAreaId: z.string().uuid().nullable().optional(),
+  teacherId: z.string().uuid().nullable().optional(),
+  reason: z.string().min(5).max(500)
+});
+
 const entrySchema = z.object({
   id: z.string().uuid().optional(), classId: z.string().uuid(), learningAreaId: z.string().uuid(),
   teacherId: z.string().uuid().nullable().optional(), roomId: z.string().uuid().nullable().optional(),
@@ -63,8 +73,11 @@ router.patch('/bell-schedules/:bellScheduleId', requirePermission('EDIT_TIMETABL
   isDefault: z.boolean().optional(),
   active: z.boolean().optional(),
 }).refine(v => Object.keys(v).length > 0, 'At least one field is required')), timetableController.updateBellSchedule);
+router.delete('/bell-schedules/:bellScheduleId', requirePermission('EDIT_TIMETABLE'), timetableController.deleteBellSchedule);
 router.patch('/bell-schedules/periods/:periodId', requirePermission('EDIT_TIMETABLE'), validate(z.object({
   name: z.string().min(2).max(100).optional(),
+  startTime: time.optional(),
+  endTime: time.optional(),
   type: z.nativeEnum(TimetablePeriodType).optional(),
   instructional: z.boolean().optional(),
   active: z.boolean().optional(),
@@ -80,9 +93,24 @@ router.patch('/rooms/:roomId', requirePermission('EDIT_TIMETABLE'), validate(z.o
   active: z.boolean().optional(),
   notes: z.string().max(500).optional(),
 }).refine(v => Object.keys(v).length > 0, 'At least one field is required')), timetableController.updateRoom);
+router.delete('/rooms/:roomId', requirePermission('EDIT_TIMETABLE'), timetableController.deleteRoom);
 router.put('/instructional-allocations', requirePermission('EDIT_TIMETABLE'), validate(allocationSchema), timetableController.upsertAllocation);
+router.delete('/instructional-allocations/:allocationId', requirePermission('EDIT_TIMETABLE'), timetableController.deleteAllocation);
+router.delete('/instructional-allocations', requirePermission('EDIT_TIMETABLE'), timetableController.clearAllocations);
 router.put('/teacher-availability', requirePermission('EDIT_TIMETABLE'), validate(availabilitySchema), timetableController.upsertAvailability);
+router.delete('/teacher-availability/:availabilityId', requirePermission('EDIT_TIMETABLE'), timetableController.deleteTeacherAvailability);
 router.post('/plans', requirePermission('EDIT_TIMETABLE'), validate(planSchema), timetableController.createPlan);
+router.delete('/plans/:planId', requirePermission('EDIT_TIMETABLE'), timetableController.deletePlan);
+const masterResetSchema = z.object({
+  confirm: z.literal('RESET-TIMETABLE-DATA'),
+  wipeLiveSchedules: z.boolean().optional(),
+  wipePlans: z.boolean().optional(),
+  wipeAllocations: z.boolean().optional(),
+  wipeRooms: z.boolean().optional(),
+  wipeAvailability: z.boolean().optional(),
+  wipeBellSchedules: z.boolean().optional(),
+});
+router.post('/master-reset', requirePermission('EDIT_TIMETABLE'), validate(masterResetSchema), timetableController.masterReset);
 router.get('/plans/:planId/versions', requirePermission('ACCESS_TIMETABLE'), timetableController.listVersions);
 router.get('/versions/:versionId/entries', requirePermission('ACCESS_TIMETABLE'), timetableController.entries);
 router.put('/versions/:versionId/entries', requirePermission('EDIT_TIMETABLE'), validate(z.object({ entries: z.array(entrySchema) })), timetableController.replaceEntries);
@@ -102,7 +130,20 @@ router.post('/versions/:versionId/generate', requirePermission('EDIT_TIMETABLE')
   maxDailyLessons: z.number().int().min(1).max(20).optional(),
   randomSeed: z.number().int().optional()
 })), timetableController.generate);
+router.post('/versions/:versionId/reset', requirePermission('EDIT_TIMETABLE'), timetableController.resetVersion);
 router.post('/versions/:versionId/publish', requirePermission('EDIT_TIMETABLE'), timetableController.publish);
 router.get('/versions/:versionId/override-count', requirePermission('ACCESS_TIMETABLE'), timetableController.overrideCount);
+router.get('/versions/:versionId/gap-analysis', requirePermission('ACCESS_TIMETABLE'), timetableController.gapAnalysis);
+router.post('/reset-live', requirePermission('EDIT_TIMETABLE'), validate(z.object({
+  academicYear: z.number().int().min(2020).max(2100),
+  term: z.nativeEnum(Term)
+})), timetableController.resetLive);
+
+// Change requests: any timetable viewer (incl. teachers/tutors) may submit and
+// view their own; EDIT_TIMETABLE roles review and apply.
+router.post('/change-requests', requirePermission('ACCESS_TIMETABLE'), validate(changeRequestSchema), timetableController.createChangeRequest);
+router.get('/change-requests', requirePermission('ACCESS_TIMETABLE'), timetableController.listChangeRequests);
+router.post('/change-requests/:requestId/approve', requirePermission('EDIT_TIMETABLE'), timetableController.approveChangeRequest);
+router.post('/change-requests/:requestId/reject', requirePermission('EDIT_TIMETABLE'), timetableController.rejectChangeRequest);
 
 export default router;

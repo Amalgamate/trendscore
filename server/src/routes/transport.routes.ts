@@ -11,6 +11,11 @@ router.use(authenticate);
 router.get('/summary', transportController.getSummary.bind(transportController));
 router.get('/reports', transportController.getReports.bind(transportController));
 
+// ── Fee Roster & Invoicing ──────────────────────────────────────────────────
+router.get('/fee-roster',           transportController.getFeeRoster.bind(transportController));
+router.post('/fee-roster/bill',      transportController.billSingleLearner.bind(transportController));
+router.post('/fee-roster/bulk-bill', transportController.bulkBillLearners.bind(transportController));
+
 // ── Vehicles ─────────────────────────────────────────────────────────────────
 router.get('/vehicles',        transportController.getVehicles);
 router.post('/vehicles',       transportController.createVehicle);

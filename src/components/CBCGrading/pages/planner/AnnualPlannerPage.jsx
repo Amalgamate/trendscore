@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../../../../services/api';
 import CalendarView from './CalendarView';
 import ModuleTabNav from '../../shared/ModuleTabNav';
+import { getDynamicAcademicYears } from '../../utils/academicYear';
 import { 
   Plus, 
   Edit2, 
@@ -490,7 +491,7 @@ export default function AnnualPlannerPage() {
               onChange={(e) => setAcademicYear(parseInt(e.target.value, 10))}
               className="font-extrabold text-slate-800 bg-transparent border-0 focus:ring-0 focus:outline-none cursor-pointer pr-8 text-sm"
             >
-              {[2025, 2026, 2027, 2028].map(yr => (
+              {getDynamicAcademicYears({ minPast: 4, minFuture: 6, extraYears: [academicYear], order: 'desc' }).map(yr => (
                 <option key={yr} value={yr}>{yr}</option>
               ))}
             </select>

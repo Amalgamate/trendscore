@@ -134,6 +134,9 @@ const HEADER_ALIASES: Record<string, string> = {
   SPECIALNEEDS: 'Special Needs',
   SPECIALNEED: 'Special Needs',
   PARENTGUARDIAN: 'Parent/Guardian',
+  PARENTGUARDIANNAME: 'Parent/Guardian',
+  PARENTORGUARDIANNAME: 'Parent/Guardian',
+  PARENTORGUARDIAN: 'Parent/Guardian',
   GUARDIAN: 'Parent/Guardian',
   PARENT: 'Parent/Guardian',
   PARENTNAME: 'Parent/Guardian',
@@ -371,6 +374,10 @@ function resolveGrade(raw: string): string {
     'GRADE_1': 'GRADE_1', 'GRADE_2': 'GRADE_2', 'GRADE_3': 'GRADE_3',
     'GRADE_4': 'GRADE_4', 'GRADE_5': 'GRADE_5', 'GRADE_6': 'GRADE_6',
     'GRADE_7': 'GRADE_7', 'GRADE_8': 'GRADE_8', 'GRADE_9': 'GRADE_9',
+    'G1': 'GRADE_1', 'G2': 'GRADE_2', 'G3': 'GRADE_3',
+    'G4': 'GRADE_4', 'G5': 'GRADE_5', 'G6': 'GRADE_6',
+    'G7': 'GRADE_7', 'G8': 'GRADE_8', 'G9': 'GRADE_9',
+    'JSS1': 'GRADE_7', 'JSS2': 'GRADE_8', 'JSS3': 'GRADE_9',
     '1': 'GRADE_1', '2': 'GRADE_2', '3': 'GRADE_3', '4': 'GRADE_4',
     '5': 'GRADE_5', '6': 'GRADE_6', '7': 'GRADE_7', '8': 'GRADE_8',
     '9': 'GRADE_9',
@@ -544,7 +551,13 @@ router.post(
 
         let parentId: string | undefined;
         const parentName = csvData['Parent/Guardian'] || csvData['Parent Name'] || (lastName ? `${lastName} Family` : 'Parent');
-        const parentPhone = csvData['Phone 1'] || csvData['Parent Phone'] ? String(csvData['Phone 1'] || csvData['Parent Phone']).trim() : null;
+        let parentPhone = csvData['Phone 1'] || csvData['Parent Phone'] ? String(csvData['Phone 1'] || csvData['Parent Phone']).trim() : null;
+        if (parentPhone) {
+          const digitsOnly = parentPhone.replace(/\D/g, '');
+          if (digitsOnly.length === 9 && (digitsOnly.startsWith('7') || digitsOnly.startsWith('1'))) {
+            parentPhone = `0${digitsOnly}`;
+          }
+        }
 
         if (parentPhone) {
           const parent = await parentService.getOrCreateParent({

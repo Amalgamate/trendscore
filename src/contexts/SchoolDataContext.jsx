@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { GRADES } from '../constants/grades';
+import { getCurrentAcademicYear, getDynamicAcademicYears } from '../components/CBCGrading/utils/academicYear';
 import { useRefreshListener } from '../utils/refreshBus';
 import { useAuth } from '../hooks/useAuth';
 import { useBootstrapStore } from '../store/useBootstrapStore';
@@ -45,6 +46,7 @@ export const SchoolDataProvider = ({ children }) => {
   const [classes, setClasses] = useState(bootstrapClasses ?? []);
   const [streams, setStreams]  = useState(bootstrapStreams  ?? []);
   const [grades,  setGrades]  = useState([]);
+  const [termConfigs, setTermConfigs] = useState([]);
   const [loading, setLoading] = useState(!bootstrapReady);
   const [error,   setError]   = useState(null);
 
@@ -63,6 +65,23 @@ export const SchoolDataProvider = ({ children }) => {
     setGrades(sortGrades(combined));
   }, [classes, user?.institutionType]);
 
+  // Derive dynamic global academic years
+  const academicYears = useMemo(() => {
+    const yearsFromClasses = classes.map(c => c.academicYear).filter(Boolean);
+    const yearsFromTerms = (termConfigs || []).map(t => t.academicYear).filter(Boolean);
+    return getDynamicAcademicYears({
+      minPast: 5,
+      minFuture: 8,
+      extraYears: [...yearsFromClasses, ...yearsFromTerms],
+      order: 'asc'
+    });
+  }, [classes, termConfigs]);
+
+  const currentAcademicYear = useMemo(() => {
+    const activeTerm = (termConfigs || []).find(t => t.isActive);
+    return activeTerm?.academicYear || getCurrentAcademicYear();
+  }, [termConfigs]);
+
   // When the bootstrap store delivers data, sync it here
   useEffect(() => {
     if (bootstrapClasses !== null) {
@@ -78,27 +97,32 @@ export const SchoolDataProvider = ({ children }) => {
   }, [bootstrapStreams]);
 
   // Fallback: if bootstrap never ran (e.g. user landed here without splashscreen),
-  // fetch classes + streams directly. No artificial delay needed on local.
+  // fetch classes + streams + terms directly. No artificial delay needed on local.
   const fetchSchoolData = useCallback(async () => {
     if (!ROLES_WITH_CLASS_ACCESS.has(user?.role)) {
-      setClasses([]); setGrades([]); setStreams([]);
+      setClasses([]); setGrades([]); setStreams([]); setTermConfigs([]);
       setLoading(false); return;
     }
     if (!user) return;
 
     try {
       setLoading(true); setError(null);
-      const [classesRes, streamsRes] = await Promise.all([
+      const [classesRes, streamsRes, termsRes] = await Promise.all([
         axiosInstance.get('/classes'),
         axiosInstance.get('/facility/streams').catch(() => ({ data: { data: [] } })),
+        axiosInstance.get('/config/term').catch(() => ({ data: { data: [] } })),
       ]);
       const fetchedClasses = classesRes.data?.data ?? [];
       const rawStreams = Array.isArray(streamsRes.data)
         ? streamsRes.data
         : (streamsRes.data?.data ?? []);
+      const rawTerms = Array.isArray(termsRes.data?.data)
+        ? termsRes.data.data
+        : (Array.isArray(termsRes.data) ? termsRes.data : []);
 
       setClasses(fetchedClasses);
       setStreams(rawStreams.filter(s => !s.archived && s.active !== false));
+      setTermConfigs(rawTerms);
     } catch (err) {
       console.error('SchoolDataContext fetch error:', err);
       setError(err.message || 'Failed to fetch school data');
@@ -111,11 +135,11 @@ export const SchoolDataProvider = ({ children }) => {
   useEffect(() => {
     if (!user) return;
     if (!ROLES_WITH_CLASS_ACCESS.has(user.role)) {
-      setClasses([]); setGrades([]); setStreams([]);
+      setClasses([]); setGrades([]); setStreams([]); setTermConfigs([]);
       setLoading(false); return;
     }
 
-    // If bootstrap is ready but both datasets are empty, recover with a direct fetch.
+    // If bootstrap is ready but datasets are empty, recover with a direct fetch.
     const hasAnyBootstrapSchoolData =
       (Array.isArray(bootstrapClasses) && bootstrapClasses.length > 0) ||
       (Array.isArray(bootstrapStreams) && bootstrapStreams.length > 0);
@@ -127,11 +151,12 @@ export const SchoolDataProvider = ({ children }) => {
 
   useRefreshListener('classes', fetchSchoolData);
   useRefreshListener('streams', fetchSchoolData);
+  useRefreshListener('terms', fetchSchoolData);
 
   const value = useMemo(() => ({
-    classes, grades, streams, loading, error,
+    classes, grades, streams, academicYears, currentAcademicYear, termConfigs, loading, error,
     refreshSchoolData: fetchSchoolData,
-  }), [classes, grades, streams, loading, error, fetchSchoolData]);
+  }), [classes, grades, streams, academicYears, currentAcademicYear, termConfigs, loading, error, fetchSchoolData]);
 
   return (
     <SchoolDataContext.Provider value={value}>

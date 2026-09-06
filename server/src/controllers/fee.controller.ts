@@ -1139,14 +1139,24 @@ export class FeeController {
     for (let attempt = 1; attempt <= RECEIPT_NUMBER_RETRY_COUNT; attempt++) {
       try {
         result = await prisma.$transaction(async (tx) => {
-          const maxResult = await tx.feePayment.aggregate({ _max: { receiptNumber: true } });
-          const lastSeq = (() => {
-            const raw = maxResult._max.receiptNumber as string | null;
-            if (!raw) return 0;
-            const m = raw.match(/(\d+)$/);
-            return m ? parseInt(m[1], 10) : 0;
-          })();
-          const receiptNumber = `RCP-${new Date().getFullYear()}-${String(lastSeq + 1).padStart(6, '0')}`;
+          const currentYear = new Date().getFullYear();
+          const prefix = `RCP-${currentYear}-`;
+          const maxResult = await tx.feePayment.findFirst({
+            where: { receiptNumber: { startsWith: prefix } },
+            orderBy: { receiptNumber: 'desc' },
+            select: { receiptNumber: true }
+          });
+          let nextSeq = 1;
+          if (maxResult?.receiptNumber) {
+            const m = maxResult.receiptNumber.match(/(\d+)$/);
+            if (m) nextSeq = parseInt(m[1], 10) + 1;
+          }
+          let receiptNumber = `${prefix}${String(nextSeq + (attempt - 1)).padStart(6, '0')}`;
+          while (await tx.feePayment.findUnique({ where: { receiptNumber } })) {
+            nextSeq++;
+            receiptNumber = `${prefix}${String(nextSeq).padStart(6, '0')}`;
+          }
+
           const isSponsorPayment = payerType === 'SPONSOR';
           if (isSponsorPayment && Number(invoice.sponsorBalance || 0) <= 0) {
             throw new ApiError(400, 'This invoice has no outstanding sponsor balance');
@@ -1164,12 +1174,20 @@ export class FeeController {
           const currentTuitionBal = Math.max(0, Number(invoiceDetails?.balance || 0));
           const currentTransportBal = Math.max(0, Number(invoiceDetails?.transportBalance || 0));
 
+          // Support both allocatedTransport and transportAmount from frontend
+          const effectiveTransport = allocatedTransport !== undefined 
+            ? allocatedTransport 
+            : (req.body.transportAmount !== undefined ? req.body.transportAmount : undefined);
+          const effectiveTuition = allocatedTuition !== undefined 
+            ? allocatedTuition 
+            : (effectiveTransport !== undefined ? Math.max(0, amount - Number(effectiveTransport)) : undefined);
+
           if (isSponsorPayment) {
             tuitionChunk = 0;
             transportChunk = 0;
-          } else if (allocatedTuition !== undefined || allocatedTransport !== undefined) {
-             tuitionChunk = Number(allocatedTuition || 0);
-             transportChunk = Number(allocatedTransport || 0);
+          } else if (effectiveTuition !== undefined || effectiveTransport !== undefined) {
+             tuitionChunk = Number(effectiveTuition || 0);
+             transportChunk = Number(effectiveTransport || 0);
              if (tuitionChunk < 0 || transportChunk < 0) {
                  throw new ApiError(400, "Allocated amounts cannot be negative");
              }
@@ -1212,8 +1230,8 @@ export class FeeController {
               sponsorPaidAmount: { increment: amount },
               sponsorBalance: { decrement: amount },
             } : {
-              paidAmount: { increment: tuitionChunk },
-              balance: { decrement: tuitionChunk },
+              paidAmount: { increment: amount },
+              balance: { decrement: amount },
               transportPaid: { increment: transportChunk },
               transportBalance: { decrement: transportChunk },
             },

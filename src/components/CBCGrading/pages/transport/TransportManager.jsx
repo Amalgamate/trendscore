@@ -143,22 +143,28 @@ function RouteForm({ data, onChange, vehicles, errors = {} }) {
 
 // ─── summary bar ─────────────────────────────────────────────────────────────
 
-function SummaryBar({ summary }) {
+function SummaryBar({ summary, onSelectTab }) {
     if (!summary) return null;
     const COLORS = ['#1d4ed8', '#b45309', '#065f46', '#7c3aed']; // Blue, Amber, Green, Violet
     const cards = [
-        { label: 'Vehicles',           value: summary.vehicleCount, icon: Bus },
-        { label: 'Routes',             value: summary.routeCount, icon: MapPin },
-        { label: 'Assignments',        value: summary.assignmentCount, icon: UserPlus },
-        { label: 'Transport Students', value: summary.transportStudentCount, icon: Users },
+        { id: 'vehicles', label: 'Vehicles',           value: summary.vehicleCount, icon: Bus },
+        { id: 'routes',   label: 'Routes',             value: summary.routeCount, icon: MapPin },
+        { id: 'routes',   label: 'Assignments',        value: summary.assignmentCount, icon: UserPlus },
+        { id: 'students', label: 'Transport Students', value: summary.transportStudentCount, icon: Users },
     ];
     return (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
             {cards.map((c, idx) => {
                 const Icon = c.icon;
                 const bgColor = COLORS[idx % COLORS.length];
+                const isClickable = Boolean(onSelectTab);
                 return (
-                    <div key={c.label} className="relative overflow-hidden p-5 text-white select-none" style={{ backgroundColor: bgColor }}>
+                    <div 
+                        key={c.label + idx} 
+                        onClick={() => onSelectTab && onSelectTab(c.id)}
+                        className={`relative overflow-hidden p-5 text-white select-none ${isClickable ? 'cursor-pointer hover:opacity-95 transition-opacity' : ''}`} 
+                        style={{ backgroundColor: bgColor }}
+                    >
                         <div className="pointer-events-none absolute -bottom-4 -right-4 text-white/10">
                             <Icon size={90} strokeWidth={1} />
                         </div>
@@ -442,9 +448,15 @@ function validateRoute(data) {
 
 // ─── main component ───────────────────────────────────────────────────────────
 
-const TransportManager = () => {
-    const [activeTab, setActiveTab]     = useState('vehicles');
+const TransportManager = ({ initialTab = 'vehicles' }) => {
+    const [activeTab, setActiveTab]     = useState(initialTab);
     const navigateTo = usePageNavigation();
+
+    useEffect(() => {
+        if (initialTab) {
+            setActiveTab(initialTab);
+        }
+    }, [initialTab]);
     const [vehicles, setVehicles]       = useState([]);
     const [routes, setRoutes]           = useState([]);
     const [summary, setSummary]         = useState(null);
@@ -696,10 +708,14 @@ const TransportManager = () => {
                 <div>
                     <h1 className="text-2xl md:text-3xl font-semibold text-gray-900 flex items-center gap-3 tracking-tight">
                         <Bus className="text-blue-600" size={30} />
-                        Transport Manager
+                        {activeTab === 'vehicles' ? 'Fleet Vehicles' : activeTab === 'routes' ? 'Bus Routes & Roster' : 'Transport Students'}
                     </h1>
                     <p className="text-gray-500 mt-0.5 text-sm font-medium">
-                        Manage fleet vehicles, bus routes & roster, and transport students.
+                        {activeTab === 'vehicles'
+                            ? 'Manage buses, vans, drivers, and fleet capacity.'
+                            : activeTab === 'routes'
+                            ? 'Manage bus routes, pickup points, and passenger rosters.'
+                            : 'Transport students directory and route assignments.'}
                     </p>
                 </div>
                 {activeTab === 'vehicles' && (
@@ -717,26 +733,15 @@ const TransportManager = () => {
             </div>
 
             {/* Summary bar */}
-            <SummaryBar summary={summary} />
-
-            {/* Tabs */}
-            <div className="flex gap-2 border-b border-gray-200 mb-5">
-                {[
-                    ['vehicles', 'Fleet Vehicles'],
-                    ['routes',   'Bus Routes & Roster'],
-                    ['students', 'Transport Students'],
-                ].map(([id, label]) => (
-                    <button key={id} onClick={() => setActiveTab(id)}
-                        className={`pb-3 px-4 font-medium text-sm transition-all ${activeTab === id ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>
-                        {label}
-                        {id === 'students' && summary?.transportStudentCount > 0 && (
-                            <span className="ml-2 text-[10px] font-semibold px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded-full">
-                                {summary.transportStudentCount}
-                            </span>
-                        )}
-                    </button>
-                ))}
-            </div>
+            <SummaryBar 
+                summary={summary} 
+                onSelectTab={(tab) => {
+                    setActiveTab(tab);
+                    if (tab === 'vehicles') navigateTo('transport-vehicles');
+                    else if (tab === 'routes') navigateTo('transport-routes');
+                    else if (tab === 'students') navigateTo('transport-students');
+                }}
+            />
 
             {/* Transport Students — inline list */}
             {activeTab === 'students' && (

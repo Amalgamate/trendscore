@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Clock, Download, Filter, Loader2, Plus, Settings2, Share2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Download, Filter, Loader2, MessageSquarePlus, Plus, Settings2, Share2, X } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 import Toast from '../shared/Toast';
 import api from '../../../services/api';
@@ -11,6 +11,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { MOBILE_MEDIA_QUERY } from '../../../constants/breakpoints';
 import TimetableEngineSetup from './timetable/TimetableEngineSetup';
+import TimetableChangeRequests from './timetable/TimetableChangeRequests';
 
 const DEFAULT_TIME_SLOTS = [
   { startTime: '08:00', endTime: '08:45' },
@@ -122,6 +123,7 @@ const TimetablePage = () => {
   const [subjects, setSubjects] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [engineSetupOpen, setEngineSetupOpen] = useState(false);
+  const [changeRequestsOpen, setChangeRequestsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedClassId, setSelectedClassId] = useState(() => {
     return localStorage.getItem('cbc_timetable_selected_class') || 'all';
@@ -779,6 +781,14 @@ const TimetablePage = () => {
           <p className="text-sm text-gray-500">Manage daily schedules and room allocations interactively</p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setChangeRequestsOpen(true)}
+            className="h-10 px-3 rounded-lg border border-purple-200 bg-purple-50 text-purple-700 text-sm font-semibold flex items-center gap-2 hover:bg-purple-100 transition-colors"
+            title={canEditTimetable ? 'Review timetable change requests' : 'View your timetable change requests'}
+          >
+            <MessageSquarePlus size={16} /> Requests
+          </button>
           {canEditTimetable && (
             <button
               type="button"
@@ -821,7 +831,13 @@ const TimetablePage = () => {
         onClose={() => setEngineSetupOpen(false)}
         teachers={teachers}
         learningAreas={subjects}
+        classes={classes}
         canEdit={canEditTimetable}
+      />
+
+      <TimetableChangeRequests
+        open={changeRequestsOpen}
+        onClose={() => setChangeRequestsOpen(false)}
       />
 
       {isMobile && (

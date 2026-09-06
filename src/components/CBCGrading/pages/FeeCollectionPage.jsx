@@ -21,6 +21,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { getSelectedInstitutionType } from '../../../services/schoolContext';
 import api from '../../../services/api';
 import { toInputDate } from '../utils/dateHelpers';
+import { getDynamicAcademicYears } from '../utils/academicYear';
 import SmartLearnerSearch from '../shared/SmartLearnerSearch';
 import FeeImportModal from '../shared/FeeImportModal';
 import FeeWaiverModal from '../shared/FeeWaiverModal';
@@ -3041,7 +3042,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                         onChange={(e) => setResetScope(prev => ({ ...prev, academicYear: e.target.value }))}
                         className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl font-medium focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none transition-all"
                       >
-                        {[2024, 2025, 2026, 2027].map(y => (
+                        {getDynamicAcademicYears({ minPast: 5, minFuture: 6, extraYears: [resetScope.academicYear], order: 'desc' }).map(y => (
                           <option key={y} value={y}>{y}</option>
                         ))}
                       </select>

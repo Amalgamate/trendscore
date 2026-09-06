@@ -18,6 +18,7 @@ import { findRoleOnboarding, getRoleOnboarding } from '../help/roleOnboardingJou
 import { useSetupProgress } from '../help/useSetupProgress';
 import ImpersonationBanner from '../../components/ImpersonationBanner';
 import { useImpersonation } from '../../contexts/ImpersonationContext';
+import RotatingCompassDial from '../common/RotatingCompassDial';
 
 // Hooks
 import { useNotifications } from './hooks/useNotifications';
@@ -741,6 +742,17 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
 
   return (
     <div className="flex h-screen bg-[var(--app-page-bg)] overflow-hidden font-inter border-t-2 border-[var(--brand-teal)]">
+      {/* Rotating compass dial — fixed bottom-right watermark, mirrors mobile experience */}
+      <RotatingCompassDial
+        size={480}
+        bottom="-160px"
+        right="-160px"
+        opacity={0.055}
+        color="#041635"
+        duration="28s"
+        style={{ position: 'fixed', zIndex: 0 }}
+      />
+
       {/* Compact impersonation status bar fixed at the bottom of the viewport. */}
       {isImpersonating && impersonatedUser && (
         <ImpersonationBanner

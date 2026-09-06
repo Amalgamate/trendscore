@@ -122,6 +122,7 @@ const PAGE_APP_REQUIREMENTS = {
   'library-members': 'library',
 
   'transport-manager': 'transport',
+  'transport-vehicles': 'transport',
   'transport-routes': 'transport',
   'transport-tracking': 'transport',
   'transport-drivers': 'transport',

@@ -6,6 +6,7 @@ import {
   buildIcsEventContent,
   downloadIcsFile,
 } from '../planner/calendarExternalLinks';
+import { getDynamicAcademicYears } from '../../utils/academicYear';
 
 const formatDateTime = (value, allDay = false) => {
   const d = new Date(value);
@@ -178,7 +179,7 @@ export default function ParentEventsPage() {
               onChange={(e) => setAcademicYear(parseInt(e.target.value, 10))}
               className="bg-transparent border-0 font-bold text-gray-700 focus:ring-0 focus:outline-none pr-8 cursor-pointer"
             >
-              {[2024, 2025, 2026, 2027].map(yr => (
+              {getDynamicAcademicYears({ minPast: 4, minFuture: 5, extraYears: [academicYear], order: 'desc' }).map(yr => (
                 <option key={yr} value={yr}>{yr}</option>
               ))}
             </select>

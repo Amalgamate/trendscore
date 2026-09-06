@@ -4,9 +4,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, AlertCircle, Clock, BookOpen, User, MapPin } from 'lucide-react';
+import { Plus, Edit, Trash2, AlertCircle, Clock, BookOpen, User, MapPin, MessageSquarePlus } from 'lucide-react';
 import { Button, Card, CardContent, Dialog, DialogContent, DialogHeader, DialogTitle, Badge } from '../../../components/ui';
 import api from '../../../services/api';
+import { usePermissions } from '../../../hooks/usePermissions';
 import './ClassScheduleTab.css';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -16,9 +17,20 @@ const TIME_SLOTS = [
 ];
 
 const ClassScheduleTab = ({ classData, onRefresh }) => {
+  const { can } = usePermissions();
+  const canEditTimetable = can('EDIT_TIMETABLE');
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState(null);
   const [viewType, setViewType] = useState('table'); // 'table' or 'grid'
+  const [showRequestForm, setShowRequestForm] = useState(false);
+  const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [requestData, setRequestData] = useState({
+    day: 'Monday',
+    startTime: '08:00',
+    endTime: '08:45',
+    learningAreaId: '',
+    reason: ''
+  });
   const [formData, setFormData] = useState({
     subject: '',
     day: 'Monday',
@@ -148,6 +160,39 @@ const ClassScheduleTab = ({ classData, onRefresh }) => {
     }
   };
 
+  const handleRequestClick = (prefill = {}) => {
+    setRequestData({
+      day: prefill.day || 'Monday',
+      startTime: prefill.startTime || '08:00',
+      endTime: prefill.endTime || '08:45',
+      learningAreaId: prefill.learningAreaId || '',
+      reason: ''
+    });
+    setShowRequestForm(true);
+  };
+
+  const handleRequestSubmit = async (e) => {
+    e.preventDefault();
+    setSubmittingRequest(true);
+    try {
+      await api.timetable.createChangeRequest({
+        classId: classData.id,
+        day: requestData.day,
+        startTime: requestData.startTime,
+        endTime: requestData.endTime,
+        learningAreaId: requestData.learningAreaId || null,
+        reason: requestData.reason
+      });
+      setShowRequestForm(false);
+      alert('Change request submitted. An administrator will review it.');
+    } catch (error) {
+      console.error('Failed to submit change request:', error);
+      alert(error.message || 'Failed to submit change request');
+    } finally {
+      setSubmittingRequest(false);
+    }
+  };
+
   const schedules = classData.schedules || [];
 
   // Generate weekly grid view
@@ -186,7 +231,19 @@ const ClassScheduleTab = ({ classData, onRefresh }) => {
                   <div
                     key={`${day}-${time}`}
                     className="p-2 border border-gray-100 min-h-[60px] hover:bg-purple-50 transition-colors cursor-pointer group/cell relative"
-                    onClick={() => schedule ? handleEditClick(schedule) : handleEmptySlotClick(day, time)}
+                    onClick={() => {
+                      if (canEditTimetable) {
+                        if (schedule) handleEditClick(schedule);
+                        else handleEmptySlotClick(day, time);
+                      } else {
+                        handleRequestClick({
+                          day,
+                          startTime: time,
+                          endTime: TIME_SLOTS[TIME_SLOTS.indexOf(time) + 1] || time,
+                          learningAreaId: schedule?.learningAreaId || ''
+                        });
+                      }
+                    }}
                   >
                     {schedule ? (
                       <div className="bg-white border-l-4 border-purple-500 rounded shadow-sm p-1.5 text-[10px] h-full flex flex-col justify-between">
@@ -209,7 +266,7 @@ const ClassScheduleTab = ({ classData, onRefresh }) => {
                     ) : (
                       <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-[10px] font-medium text-gray-300 opacity-70 transition-opacity group-hover/cell:text-purple-600 group-hover/cell:opacity-100">
                         <Plus size={14} />
-                        <span>Add lesson</span>
+                        <span>{canEditTimetable ? 'Add lesson' : 'Request'}</span>
                       </div>
                     )}
                   </div>
@@ -287,20 +344,37 @@ const ClassScheduleTab = ({ classData, onRefresh }) => {
                 )}
               </td>
               <td className="p-4 text-right space-x-2">
-                <button
-                  onClick={() => handleEditClick(schedule)}
-                  className="p-2 hover:bg-blue-100 rounded text-blue-600 transition"
-                  title="Edit"
-                >
-                  <Edit size={16} />
-                </button>
-                <button
-                  onClick={() => handleDelete(schedule.id)}
-                  className="p-2 hover:bg-red-100 rounded text-red-600 transition"
-                  title="Delete"
-                >
-                  <Trash2 size={16} />
-                </button>
+                {canEditTimetable ? (
+                  <>
+                    <button
+                      onClick={() => handleEditClick(schedule)}
+                      className="p-2 hover:bg-blue-100 rounded text-blue-600 transition"
+                      title="Edit"
+                    >
+                      <Edit size={16} />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(schedule.id)}
+                      className="p-2 hover:bg-red-100 rounded text-red-600 transition"
+                      title="Delete"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => handleRequestClick({
+                      day: schedule.day,
+                      startTime: schedule.startTime,
+                      endTime: schedule.endTime,
+                      learningAreaId: schedule.learningAreaId || ''
+                    })}
+                    className="p-2 hover:bg-purple-100 rounded text-purple-600 transition"
+                    title="Request a change to this lesson"
+                  >
+                    <MessageSquarePlus size={16} />
+                  </button>
+                )}
               </td>
             </tr>
           ))}
@@ -338,14 +412,25 @@ const ClassScheduleTab = ({ classData, onRefresh }) => {
               Grid
             </button>
           </div>
-          <Button
-            onClick={handleAddClick}
-            className="bg-purple-600 hover:bg-purple-700"
-            size="sm"
-          >
-            <Plus size={16} />
-            Add Schedule
-          </Button>
+          {canEditTimetable ? (
+            <Button
+              onClick={handleAddClick}
+              className="bg-purple-600 hover:bg-purple-700"
+              size="sm"
+            >
+              <Plus size={16} />
+              Add Schedule
+            </Button>
+          ) : (
+            <Button
+              onClick={() => handleRequestClick()}
+              className="bg-purple-600 hover:bg-purple-700"
+              size="sm"
+            >
+              <MessageSquarePlus size={16} />
+              Request Change
+            </Button>
+          )}
         </div>
       </div>
 
@@ -503,6 +588,90 @@ const ClassScheduleTab = ({ classData, onRefresh }) => {
                   className="bg-purple-600 hover:bg-purple-700"
                 >
                   {editingSchedule ? 'Update Schedule' : 'Add Schedule'}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Change Request Dialog (teachers/tutors without edit rights) */}
+      {showRequestForm && (
+        <Dialog open={showRequestForm} onOpenChange={setShowRequestForm}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Request Schedule Change</DialogTitle>
+            </DialogHeader>
+            <p className="text-xs text-gray-500 -mt-2">
+              Submitted requests are reviewed by an administrator before any change is applied.
+            </p>
+            <form onSubmit={handleRequestSubmit} className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-gray-600 uppercase">Subject</label>
+                <select
+                  value={requestData.learningAreaId}
+                  onChange={(e) => setRequestData({ ...requestData, learningAreaId: e.target.value })}
+                  className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="">No subject preference</option>
+                  {availableSubjects.map(s => (
+                    <option key={s.id} value={s.id}>{s.name} ({s.shortName})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600 uppercase">Day *</label>
+                  <select
+                    value={requestData.day}
+                    onChange={(e) => setRequestData({ ...requestData, day: e.target.value })}
+                    className="w-full mt-1 px-2 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    required
+                  >
+                    {DAYS.map(day => <option key={day} value={day}>{day}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 uppercase">Start *</label>
+                  <select
+                    value={requestData.startTime}
+                    onChange={(e) => setRequestData({ ...requestData, startTime: e.target.value })}
+                    className="w-full mt-1 px-2 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    required
+                  >
+                    {TIME_SLOTS.map(time => <option key={time} value={time}>{time}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 uppercase">End *</label>
+                  <select
+                    value={requestData.endTime}
+                    onChange={(e) => setRequestData({ ...requestData, endTime: e.target.value })}
+                    className="w-full mt-1 px-2 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    required
+                  >
+                    {TIME_SLOTS.map(time => <option key={time} value={time}>{time}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 uppercase">Reason *</label>
+                <textarea
+                  value={requestData.reason}
+                  onChange={(e) => setRequestData({ ...requestData, reason: e.target.value })}
+                  className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  rows={3}
+                  placeholder="Explain why this change is needed"
+                  required
+                  minLength={5}
+                />
+              </div>
+              <div className="flex gap-2 pt-4 border-t">
+                <Button type="button" onClick={() => setShowRequestForm(false)} variant="ghost">
+                  Cancel
+                </Button>
+                <Button type="submit" className="bg-purple-600 hover:bg-purple-700" disabled={submittingRequest}>
+                  {submittingRequest ? 'Submitting…' : 'Submit Request'}
                 </Button>
               </div>
             </form>

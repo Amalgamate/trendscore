@@ -224,22 +224,27 @@ export class AccountingService {
     /**
      * Automatic Ledger Posting: Fee Invoice
      * Dr: Accounts Receivable (1100)
-     * Cr: Tuition Revenue (4000)
+     * Cr: Transport Revenue (4100) for transport portion
+     * Cr: Tuition Revenue (4000) for tuition portion
      */
     async postFeeInvoiceToLedger(invoice: any) {
         const totalAmount = Number(invoice.totalAmount || 0) + Number(invoice.sponsorAmount || 0);
         const invoiceNumber = invoice.invoiceNumber;
+        const transportAmount = Math.min(Number(invoice.transportBilled || 0), totalAmount);
+        const tuitionAmount = Math.max(0, totalAmount - transportAmount);
 
         let arAccount = await this.getAccountByCode('1100');
         let revenueAccount = await this.getAccountByCode('4000');
+        let transportAccount = await this.getAccountByCode('4100');
         let salesJournal = await this.getJournalByCode('INV');
 
-        if (!arAccount || !revenueAccount || !salesJournal) {
+        if (!arAccount || !revenueAccount || !transportAccount || !salesJournal) {
             console.warn(`[Accounting] Missing setup for fee invoice — initializing defaults.`);
             await this.ensureDefaultAccountingSetup();
             this.clearCache();
             arAccount = await this.getAccountByCode('1100');
             revenueAccount = await this.getAccountByCode('4000');
+            transportAccount = await this.getAccountByCode('4100');
             salesJournal = await this.getJournalByCode('INV');
         }
 
@@ -249,14 +254,40 @@ export class AccountingService {
         }
 
         const entryDate = invoice.invoiceDate ? new Date(invoice.invoiceDate) : new Date();
+        const items: any[] = [
+            { accountId: arAccount.id, debit: Number(totalAmount), label: `Fees Receivable: Invoice ${invoiceNumber}` }
+        ];
+
+        if (transportAmount > 0 && transportAccount) {
+            items.push({
+                accountId: transportAccount.id,
+                credit: Number(transportAmount),
+                label: `Transport Revenue: Invoice ${invoiceNumber}`
+            });
+        }
+
+        if (tuitionAmount > 0) {
+            items.push({
+                accountId: revenueAccount.id,
+                credit: Number(tuitionAmount),
+                label: `Tuition Revenue: Invoice ${invoiceNumber}`
+            });
+        }
+
+        // Fallback in case both were 0 or transportAccount missing
+        if (items.length === 1) {
+            items.push({
+                accountId: revenueAccount.id,
+                credit: Number(totalAmount),
+                label: `Fee Revenue: Invoice ${invoiceNumber}`
+            });
+        }
+
         const entry = await this.createJournalEntry({
             journalId: salesJournal.id,
             reference: invoiceNumber,
             date: entryDate,
-            items: [
-                { accountId: arAccount.id, debit: Number(totalAmount), label: `Fees Receivable: Invoice ${invoiceNumber}` },
-                { accountId: revenueAccount.id, credit: Number(totalAmount), label: `Tuition Revenue: Invoice ${invoiceNumber}` }
-            ]
+            items
         });
 
         return this.postJournalEntry(entry.id);

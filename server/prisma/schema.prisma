@@ -104,6 +104,9 @@ model User {
   subjectAssignments         SubjectAssignment[]
   timetableEntries           TimetableEntry[]
   timetableAvailabilities    TeacherAvailability[]
+  timetableChangeRequests    TimetableChangeRequest[]     @relation("TimetableChangeRequestor")
+  reviewedTimetableChanges   TimetableChangeRequest[]     @relation("TimetableChangeRequestReviewer")
+  taughtTimetableChanges     TimetableChangeRequest[]     @relation("TimetableChangeRequestTeacher")
   summativeResultHistories   SummativeResultHistory[]    @relation("ChangedBy")
   recordedResults            SummativeResult[]           @relation("RecordedResults")
   approvedTests              SummativeTest[]             @relation("ApprovedTests")
@@ -332,6 +335,7 @@ model Class {
   facilities          ClassFacility[]
   schedules           ClassSchedule[]
   timetableEntries    TimetableEntry[]
+  timetableChangeRequests TimetableChangeRequest[]
   teacher             User?                @relation("ClassTeacher", fields: [teacherId], references: [id])
   // ── LMS Digital Learning Hub ────────────────────────────────────────────────
   learningLessons     LearningLesson[]
@@ -572,6 +576,37 @@ model TimetableEntry {
   @@index([roomId, day, startTime])
   @@index([classId, day, startTime])
   @@map("timetable_entries")
+}
+
+/// A teacher/tutor's proposed change to a published class schedule.
+/// Teachers can submit and view their own requests; EDIT_TIMETABLE roles
+/// review, and an approval applies the change as a ClassSchedule override.
+model TimetableChangeRequest {
+  id             String                       @id @default(uuid())
+  classId        String
+  day            String
+  startTime      String
+  endTime        String
+  learningAreaId String?
+  teacherId      String?
+  requestedById  String
+  reason         String
+  status         TimetableChangeRequestStatus @default(PENDING)
+  reviewedById   String?
+  reviewNote     String?
+  reviewedAt     DateTime?
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
+  class          Class                        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  learningArea   LearningArea?                @relation(fields: [learningAreaId], references: [id])
+  teacher        User?                        @relation("TimetableChangeRequestTeacher", fields: [teacherId], references: [id])
+  requestedBy    User                         @relation("TimetableChangeRequestor", fields: [requestedById], references: [id])
+  reviewedBy     User?                        @relation("TimetableChangeRequestReviewer", fields: [reviewedById], references: [id])
+
+  @@index([status])
+  @@index([classId, status])
+  @@index([requestedById])
+  @@map("timetable_change_requests")
 }
 
 model ClassFacility {
@@ -2237,6 +2272,7 @@ model LearningArea {
   schedules            ClassSchedule[]
   timetableEntries     TimetableEntry[]
   timetableAllocations InstructionalAllocation[]
+  timetableChangeRequests TimetableChangeRequest[]
   formativeAssessments FormativeAssessment[]
   learnerSelections    LearnerSubjectSelection[]
   categoryRef          SubjectCategory?          @relation(fields: [categoryId], references: [id])
@@ -4021,6 +4057,12 @@ enum TimetableVersionStatus {
   PUBLISHED
   LOCKED
   ARCHIVED
+}
+
+enum TimetableChangeRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum Grade {
