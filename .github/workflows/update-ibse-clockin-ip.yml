@@ -71,7 +71,7 @@ jobs:
 
                 // Read current value first
                 const school = await prisma.school.findFirst({
-                  select: { id: true, name: true, slug: true, allowedClockInIps: true }
+                  select: { id: true, name: true, allowedClockInIps: true }
                 });
 
                 if (!school) {
@@ -79,7 +79,7 @@ jobs:
                   process.exit(1);
                 }
 
-                console.log('School:', school.name, '(' + school.slug + ')');
+                console.log('School:', school.name);
                 console.log('Current allowedClockInIps:', JSON.stringify(school.allowedClockInIps));
                 console.log('New allowedClockInIps:    ', JSON.stringify(valueToSet));
 
