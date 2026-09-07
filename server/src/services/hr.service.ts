@@ -210,7 +210,7 @@ export class HRService {
         }
         return {
             allowed: false,
-            message: `Clock-in blocked: your device's network (${normalised || 'unknown'}) is not on the approved workplace Wi-Fi list. Please connect to the school Wi-Fi network and try again.`,
+            message: `Clock-in blocked: your device's network (${normalised || 'unknown'}) is not on the approved list (${allowed.join(', ')}). Please connect to the school Wi-Fi network and try again.`,
             reasonCode: 'IP_DENIED'
         };
     }
