@@ -4,9 +4,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Save, User, Mail, BookOpen, CheckCircle, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Save, User, Mail, BookOpen, CheckCircle, AlertCircle, Sparkles, Hash } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 import { useAuth } from '../../../hooks/useAuth';
+import api from '../../../services/api';
 
 const normalizePhoneForApi = (raw) => {
     const cleaned = String(raw || '').replace(/[^\d+]/g, '');
@@ -35,6 +36,7 @@ const AddEditTeacherPage = ({ onSave, onCancel, teacher = null }) => {
         (user?.id === teacher?.id);
     const { showSuccess, showError } = useNotifications();
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [nextStaffIdPreview, setNextStaffIdPreview] = useState('');
     const [formData, setFormData] = useState({
         firstName: '',
         lastName: '',
@@ -43,6 +45,7 @@ const AddEditTeacherPage = ({ onSave, onCancel, teacher = null }) => {
         phone: '',
         gender: '',
         subject: '',
+        staffId: '',
         password: '',
         kraPin: '',
         nssfNumber: '',
@@ -54,6 +57,17 @@ const AddEditTeacherPage = ({ onSave, onCancel, teacher = null }) => {
 
     const [errors, setErrors] = useState({});
 
+    // Fetch next incremental employee number preview for new tutors
+    useEffect(() => {
+        api.teachers.getNextStaffId()
+            .then(res => {
+                if (res?.success && res.data?.nextStaffId) {
+                    setNextStaffIdPreview(res.data.nextStaffId);
+                }
+            })
+            .catch(() => { /* non-blocking */ });
+    }, []);
+
     useEffect(() => {
         if (teacher) {
             setFormData({
@@ -64,6 +78,7 @@ const AddEditTeacherPage = ({ onSave, onCancel, teacher = null }) => {
                 phone: teacher.phone || '',
                 gender: teacher.gender || '',
                 subject: teacher.subject || '',
+                staffId: teacher.staffId && teacher.staffId !== '---' ? teacher.staffId : '',
                 password: '', // Don't populate password for edits
                 kraPin: teacher.kraPin || '',
                 nssfNumber: teacher.nssfNumber || '',
@@ -130,6 +145,7 @@ const AddEditTeacherPage = ({ onSave, onCancel, teacher = null }) => {
                 phone: normalizePhoneForApi(formData.phone),
                 gender: formData.gender,
                 subject: formData.subject,
+                staffId: formData.staffId?.trim() || undefined,
                 kraPin: formData.kraPin,
                 nssfNumber: formData.nssfNumber,
                 shifNumber: formData.shifNumber,
@@ -144,8 +160,6 @@ const AddEditTeacherPage = ({ onSave, onCancel, teacher = null }) => {
             }
 
             await onSave(teacherData);
-            // Success notification should be handled by the parent or useTeachers hook,
-            // but we can show one here if ensuring logic flow
         } catch (error) {
             console.error('Error submitting form:', error);
             showError('Failed to save teacher details');
@@ -243,6 +257,47 @@ const AddEditTeacherPage = ({ onSave, onCancel, teacher = null }) => {
                                 <option value="FEMALE">Female</option>
                                 <option value="OTHER">Other</option>
                             </select>
+                        </div>
+
+                        {/* Automatic Incremental Employee Number */}
+                        <div className="md:col-span-2">
+                            <div className="flex items-center justify-between mb-2">
+                                <label className="block text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                                    <Hash size={15} className="text-brand-purple" />
+                                    Employee Number (Staff ID)
+                                </label>
+                                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200">
+                                    <Sparkles size={12} className="text-purple-600" /> Auto-issued incrementally
+                                </span>
+                            </div>
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    name="staffId"
+                                    value={formData.staffId}
+                                    onChange={handleChange}
+                                    placeholder={isEdit ? 'e.g. STF-0001' : (nextStaffIdPreview ? `Auto-generated on save (${nextStaffIdPreview})` : 'Auto-generated on save (STF-xxxx)')}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-purple transition font-mono uppercase placeholder:normal-case placeholder:font-sans"
+                                />
+                            </div>
+                            <div className="flex items-center justify-between mt-1 text-[11px] text-gray-500">
+                                <span>
+                                    {isEdit ? (
+                                        formData.staffId ? 'Assigned payroll and identity reference.' : 'No employee number assigned yet.'
+                                    ) : (
+                                        nextStaffIdPreview ? `Leave blank to automatically assign ${nextStaffIdPreview}.` : 'Leave blank to auto-generate the next sequential number.'
+                                    )}
+                                </span>
+                                {isEdit && !formData.staffId && nextStaffIdPreview && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData(prev => ({ ...prev, staffId: nextStaffIdPreview }))}
+                                        className="text-brand-purple hover:underline font-semibold inline-flex items-center gap-1"
+                                    >
+                                        <Sparkles size={12} /> Assign {nextStaffIdPreview}
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>

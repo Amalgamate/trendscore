@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Lock, Eye, EyeOff, MessageCircle, Send, Check } from 'lucide-react';
 import { userAPI } from '../../../services/api';
 
@@ -9,7 +9,21 @@ const ResetPasswordModal = ({ isOpen, onClose, user, onResetSuccess }) => {
     const [sendSms, setSendSms] = useState(false);
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
+    const [successMessage, setSuccessMessage] = useState('');
     const [error, setError] = useState(null);
+
+    // The modal remains mounted while closed. Reset its local state whenever it
+    // is opened so a previous successful reset cannot hide the password form.
+    useEffect(() => {
+        if (!isOpen) return;
+        setNewPassword('');
+        setShowPassword(false);
+        setSendWhatsApp(true);
+        setSendSms(false);
+        setSuccess(false);
+        setSuccessMessage('');
+        setError(null);
+    }, [isOpen, user?.id]);
 
     if (!isOpen || !user) return null;
 
@@ -31,12 +45,8 @@ const ResetPasswordModal = ({ isOpen, onClose, user, onResetSuccess }) => {
 
             if (result.success) {
                 setSuccess(true);
-                setTimeout(() => {
-                    onResetSuccess(result.message);
-                    onClose();
-                    setNewPassword('');
-                    setSuccess(false);
-                }, 1500);
+                setSuccessMessage(result.message || 'Password reset successfully');
+                onResetSuccess(result.message || 'Password reset successfully');
             } else {
                 setError(result.message || 'Failed to reset password');
             }
@@ -78,8 +88,14 @@ const ResetPasswordModal = ({ isOpen, onClose, user, onResetSuccess }) => {
                             </div>
                             <div className="text-center space-y-2">
                                 <h4 className="text-xl font-medium text-gray-900">Password Reset Successfully!</h4>
-                                <p className="text-sm text-gray-500">Credentials have been sent to {user.firstName}.</p>
+                                <p className="text-sm text-gray-500">{successMessage}</p>
                             </div>
+                            <button
+                                onClick={onClose}
+                                className="px-6 py-3 bg-brand-teal text-white rounded-xl hover:bg-brand-teal/90 font-medium transition shadow-md"
+                            >
+                                Done
+                            </button>
                         </div>
                     ) : (
                         <>

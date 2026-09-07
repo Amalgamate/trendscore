@@ -837,20 +837,87 @@ const CommunicationSettings = () => {
                 <p className="text-sm">Configure your own Resend account to use custom domains and track your school's email delivery.</p>
               </div>
 
+              {/* Provider Selection */}
+              <div>
+                <label className="block text-sm font-semibold mb-2">Email Service Provider</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setEmailSettings({ ...emailSettings, provider: 'gmail' })}
+                    className={`p-4 rounded-xl border text-left transition flex items-start gap-3 ${
+                      emailSettings.provider === 'gmail'
+                        ? 'border-red-500 bg-red-50/70 ring-2 ring-red-400/30'
+                        : 'border-gray-200 hover:border-gray-300 bg-white'
+                    }`}
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-red-100 text-red-600 flex items-center justify-center shrink-0 font-bold">
+                      G
+                    </div>
+                    <div>
+                      <div className="font-bold text-gray-900 text-sm flex items-center gap-1.5">
+                        <span>Gmail / Google Workspace</span>
+                        <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.2 rounded font-semibold">Recommended</span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">Connect your school's official Gmail or Google Workspace account via secure App Password.</p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEmailSettings({ ...emailSettings, provider: 'resend' })}
+                    className={`p-4 rounded-xl border text-left transition flex items-start gap-3 ${
+                      emailSettings.provider === 'resend'
+                        ? 'border-blue-500 bg-blue-50/70 ring-2 ring-blue-400/30'
+                        : 'border-gray-200 hover:border-gray-300 bg-white'
+                    }`}
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0 font-bold">
+                      R
+                    </div>
+                    <div>
+                      <div className="font-bold text-gray-900 text-sm">Resend API</div>
+                      <p className="text-xs text-gray-500 mt-1">High-volume transactional email API with custom verified DNS domains.</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {emailSettings.provider === 'gmail' && (
+                <div className="rounded-xl border border-red-200 bg-red-50/60 p-4 space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <Mail className="text-red-600 shrink-0 mt-0.5" size={18} />
+                    <div className="text-xs text-red-900">
+                      <p className="font-bold">Google Workspace & Gmail Quick Setup:</p>
+                      <ol className="list-decimal list-inside space-y-1 mt-1 text-red-800">
+                        <li>Ensure 2-Step Verification is active on your Google account.</li>
+                        <li>Visit <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="underline font-semibold hover:text-red-950">Google Account → App Passwords</a>.</li>
+                        <li>Generate a 16-character App Password for "Mail" (e.g. <span className="font-mono bg-red-100 px-1 rounded">xxxx xxxx xxxx xxxx</span>) and enter it below.</li>
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold mb-2">From Email Address</label>
+                  <label className="block text-sm font-semibold mb-2">
+                    {emailSettings.provider === 'gmail' ? 'School Gmail / Workspace Address' : 'From Email Address'}
+                  </label>
                   <input
                     type="email"
                     value={emailSettings.fromEmail}
                     onChange={(e) => setEmailSettings({ ...emailSettings, fromEmail: e.target.value })}
                     className="w-full px-4 py-2 border rounded-lg"
-                    placeholder="onboarding@resend.dev"
+                    placeholder={emailSettings.provider === 'gmail' ? 'schoolprincipal@gmail.com or admin@school.ac.ke' : 'onboarding@resend.dev'}
                   />
-                  <p className="text-xs text-gray-500 mt-1">Default: onboarding@resend.dev (Resend Sandbox)</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {emailSettings.provider === 'gmail'
+                      ? 'The Google account used as the sender identity'
+                      : 'Default: onboarding@resend.dev (Resend Sandbox)'}
+                  </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold mb-2">From Name</label>
+                  <label className="block text-sm font-semibold mb-2">From Name (Display Name)</label>
                   <input
                     type="text"
                     value={emailSettings.fromName}
@@ -862,14 +929,22 @@ const CommunicationSettings = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold mb-2">Resend API Key</label>
+                <label className="block text-sm font-semibold mb-2">
+                  {emailSettings.provider === 'gmail' ? 'Google App Password' : 'Resend API Key'}
+                </label>
                 <div className="relative">
                   <input
                     type="password"
                     value={emailSettings.apiKey}
                     onChange={(e) => setEmailSettings({ ...emailSettings, apiKey: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg pr-24 bg-white text-gray-900 focus:ring-2 focus:ring-brand-purple outline-none transition"
-                    placeholder={emailSettings.hasApiKey ? '••••••••••••••••' : 're_YourActualAPIKey...'}
+                    placeholder={
+                      emailSettings.hasApiKey
+                        ? '••••••••••••••••'
+                        : emailSettings.provider === 'gmail'
+                        ? '16-character Google App Password'
+                        : 're_YourActualAPIKey...'
+                    }
                   />
                   {emailSettings.hasApiKey && !emailSettings.apiKey && (
                     <span className="absolute right-3 top-2 text-xs text-green-600 font-medium bg-green-50 px-2 py-1 rounded">
@@ -877,7 +952,23 @@ const CommunicationSettings = () => {
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-gray-500 mt-1">Enter your API key from <a href="https://resend.com/api-keys" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">Resend Dashboard</a>.</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {emailSettings.provider === 'gmail' ? (
+                    <span>
+                      Generated from{' '}
+                      <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="text-red-600 hover:underline">
+                        Google App Passwords
+                      </a>.
+                    </span>
+                  ) : (
+                    <span>
+                      Enter your API key from{' '}
+                      <a href="https://resend.com/api-keys" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                        Resend Dashboard
+                      </a>.
+                    </span>
+                  )}
+                </p>
               </div>
 
               <div className="flex items-center gap-4 mt-6">

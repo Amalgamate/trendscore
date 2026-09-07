@@ -9,13 +9,15 @@ const ProfilePhotoModal = ({ isOpen, onClose, onSave, currentPhoto }) => {
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
     const fileInputRef = useRef(null);
+    const streamRef = useRef(null); // holds the live MediaStream so stopCamera never changes identity
 
     const stopCamera = useCallback(() => {
-        if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-            setStream(null);
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
         }
-    }, [stream]);
+        setStream(null);
+    }, []);
 
     useEffect(() => {
         if (isOpen) {
@@ -38,6 +40,7 @@ const ProfilePhotoModal = ({ isOpen, onClose, onSave, currentPhoto }) => {
             const mediaStream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: 'user' }
             });
+            streamRef.current = mediaStream;
             setStream(mediaStream);
             setMode('camera');
         } catch (err) {
@@ -160,6 +163,7 @@ const ProfilePhotoModal = ({ isOpen, onClose, onSave, currentPhoto }) => {
                                     ref={videoRef}
                                     autoPlay
                                     playsInline
+                                    muted
                                     className="w-full h-full object-cover transform scale-x-[-1]" // Mirror effect
                                 />
                             </div>

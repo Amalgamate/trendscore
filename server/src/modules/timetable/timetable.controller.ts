@@ -168,6 +168,76 @@ export class TimetableController {
       return ok(res, await timetableChangeRequestService.reject(req.params.requestId, req.user!.userId, reviewNote));
     } catch (error) { return next(error); }
   };
+
+  // ── Relief & Absence Handlers ──────────────────────────────────────────────
+  absenceImpact = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const { teacherId, day, academicYear, semester } = req.query;
+      if (!teacherId || !day) {
+        return res.status(400).json({ success: false, message: 'teacherId and day are required' });
+      }
+      return ok(res, await timetableService.getAbsenceImpact(
+        String(teacherId),
+        String(day),
+        academicYear ? Number(academicYear) : undefined,
+        semester ? String(semester) : undefined
+      ));
+    } catch (error) { return next(error); }
+  };
+
+  assignRelief = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      return ok(res, await timetableService.assignReliefCover({
+        ...req.body,
+        overriddenBy: req.user?.userId
+      }));
+    } catch (error) { return next(error); }
+  };
+
+  batchAssignRelief = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      return ok(res, await timetableService.batchAssignRelief({
+        ...req.body,
+        overriddenBy: req.user?.userId
+      }));
+    } catch (error) { return next(error); }
+  };
+
+  syllabusDeficit = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const { academicYear, semester } = req.query;
+      return ok(res, await timetableService.getSyllabusDeficitReport(
+        academicYear ? Number(academicYear) : undefined,
+        semester ? String(semester) : undefined
+      ));
+    } catch (error) { return next(error); }
+  };
+
+  // ── Calendar Milestones & Planner Integration ────────────────────────────
+  calendarMilestones = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const { academicYear, term } = req.query;
+      return ok(res, await timetableService.getCalendarMilestones(
+        academicYear ? Number(academicYear) : undefined,
+        term ? String(term) : undefined
+      ));
+    } catch (error) { return next(error); }
+  };
+
+  effectiveSchedule = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const { academicYear, term, classId, weekStartDate } = req.query;
+      if (!weekStartDate) {
+        return res.status(400).json({ success: false, message: 'weekStartDate (YYYY-MM-DD) is required' });
+      }
+      return ok(res, await timetableService.getEffectiveWeeklySchedule({
+        academicYear: academicYear ? Number(academicYear) : undefined,
+        term: term ? String(term) : undefined,
+        classId: classId ? String(classId) : undefined,
+        weekStartDate: String(weekStartDate)
+      }));
+    } catch (error) { return next(error); }
+  };
 }
 
 export const timetableController = new TimetableController();

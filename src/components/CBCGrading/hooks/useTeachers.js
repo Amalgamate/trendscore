@@ -160,6 +160,31 @@ export const useTeachers = (options = {}) => {
     }
   }, [fetchTeachers]);
 
+  /**
+   * Auto-assign missing employee numbers to all teachers
+   */
+  const autoAssignStaffIds = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await api.teachers.autoAssignStaffIds();
+
+      if (response.success) {
+        await fetchTeachers();
+        refreshBus.emit('teachers');
+        return { success: true, count: response.data?.count || 0, assigned: response.data?.assigned || [] };
+      }
+      return { success: false, error: response.error || 'Failed to auto-assign employee numbers' };
+    } catch (err) {
+      console.error('Error auto-assigning employee numbers:', err);
+      setError(err.message);
+      return { success: false, error: err.message };
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchTeachers]);
+
   useEffect(() => {
     if (!enabled) {
       setTeachers([]);
@@ -182,5 +207,6 @@ export const useTeachers = (options = {}) => {
     updateTeacher,
     deleteTeacher,
     archiveTeacher,
+    autoAssignStaffIds,
   };
 };

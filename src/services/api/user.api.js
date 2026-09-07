@@ -42,4 +42,6 @@ export const userAPI = {
     fetchWithAuth(`/users/${id}/credentials`, { method: 'POST' }),
   syncMissingStudentAccounts: async () =>
     fetchWithAuth('/bulk/learners/sync-student-users', { method: 'POST' }),
+  getNextStaffId: async () => fetchWithAuth('/users/next-staff-id'),
+  autoAssignStaffIds: async () => fetchWithAuth('/users/auto-assign-staff-ids', { method: 'POST' }),
 };

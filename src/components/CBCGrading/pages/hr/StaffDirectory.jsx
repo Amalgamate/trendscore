@@ -32,6 +32,7 @@ const StatusBadge = ({ status }) => {
 // ─── HR Profile Editor ────────────────────────────────────────────────────────
 const HRProfileEditor = ({ staff, onCancel, onSaved }) => {
     const [form, setForm] = useState({
+        staffId: staff.staffId || '',
         kraPin: staff.kraPin || '',
         nssfNumber: staff.nssfNumber || '',
         shifNumber: staff.shifNumber || '',
@@ -201,6 +202,7 @@ const HRProfileEditor = ({ staff, onCancel, onSaved }) => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-4">
                                 <p className="text-xs font-medium text-gray-400 uppercase tracking-widest flex items-center gap-2"><FileText size={12}/> Statutory Numbers</p>
+                                <LabeledInput label="Employee Number (Staff ID)" field="staffId" placeholder="e.g. STF-0001" hint="Unique institutional reference"/>
                                 <LabeledInput label="KRA PIN" field="kraPin" placeholder="A123456789Z"/>
                                 <LabeledInput label="NSSF Number" field="nssfNumber" placeholder="NSSF-XXXXXX"/>
                                 <LabeledInput label="SHIF / NHIF Number" field="shifNumber" placeholder="SHIF-XXXXXX"/>

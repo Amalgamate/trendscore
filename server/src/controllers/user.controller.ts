@@ -17,7 +17,7 @@ import { USER_ROLES } from '../config/roleDefinitions';
 import { whatsappService } from '../services/whatsapp.service';
 import { SmsService } from '../services/sms.service';
 import { SMS_MESSAGES } from '../config/communication.messages';
-import { generateStaffId } from '../services/staffId.service';
+import { generateStaffId, getNextStaffIdPreview, autoAssignMissingStaffIds } from '../services/staffId.service';
 import { redisCacheService } from '../services/redis-cache.service';
 import { buildParentLoginEmail } from '../services/parent.service';
 
@@ -245,7 +245,7 @@ export class UserController {
 
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    let staffId = req.body.staffId;
+    let staffId = req.body.staffId ? String(req.body.staffId).trim() : null;
     const staffRoles: Role[] = ['ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST'];
 
     if (!staffId && staffRoles.includes(role as Role)) {
@@ -457,7 +457,7 @@ export class UserController {
     const { id } = req.params;
     const currentUserId = req.user!.userId;
     const currentUserRole = req.user!.role;
-    const { firstName, lastName, middleName, phone, role, roles, status, password, subject, gender, email } = req.body;
+    const { firstName, lastName, middleName, phone, role, roles, status, password, subject, gender, email, staffId, autoGenerateStaffId } = req.body;
 
     const targetUser = await prisma.user.findUnique({ where: { id } });
     if (!targetUser) throw new ApiError(404, 'User not found');
@@ -503,6 +503,22 @@ export class UserController {
     if (phone !== undefined) updateData.phone = phone;
     if (subject !== undefined) updateData.subject = subject;
     if (gender !== undefined) updateData.gender = gender;
+
+    // Handle Employee Number (staffId)
+    if (autoGenerateStaffId || staffId === 'AUTO') {
+      updateData.staffId = await generateStaffId();
+    } else if (staffId !== undefined) {
+      const trimmedStaffId = staffId ? String(staffId).trim() : null;
+      if (trimmedStaffId && trimmedStaffId !== targetUser.staffId) {
+        const existing = await prisma.user.findFirst({
+          where: { staffId: trimmedStaffId, id: { not: id } }
+        });
+        if (existing) {
+          throw new ApiError(400, `Employee number '${trimmedStaffId}' is already in use by another staff member`);
+        }
+      }
+      updateData.staffId = trimmedStaffId;
+    }
 
     if (!isSelfUpdate && ['SUPER_ADMIN', 'ADMIN'].includes(currentUserRole)) {
       if (role) updateData.role = role as Role;
@@ -596,10 +612,42 @@ export class UserController {
 
   async deleteUser(req: AuthRequest, res: Response) {
     const { id } = req.params;
-    if (req.user!.role !== 'SUPER_ADMIN') throw new ApiError(403, 'SUPER_ADMIN only');
+    const currentUserId = req.user!.userId;
+    const currentUserRole = req.user!.role;
 
-    await prisma.user.delete({ where: { id } });
-    res.json({ success: true, message: 'Permanently deleted' });
+    if (currentUserId === id) throw new ApiError(403, 'Cannot delete your own account');
+
+    const targetUser = await prisma.user.findUnique({ where: { id } });
+    if (!targetUser) throw new ApiError(404, 'User not found');
+
+    // This route is already protected by DELETE_USER. Keep the same role
+    // hierarchy used by user updates so an administrator can remove a teacher,
+    // but cannot remove a peer or a more privileged account.
+    if (!canManageRole(currentUserRole, targetUser.role as Role)) {
+      throw new ApiError(403, 'Permission denied');
+    }
+
+    try {
+      await prisma.user.delete({ where: { id } });
+      await redisCacheService.delete(`auth:user:${targetUser.email}`);
+      res.json({ success: true, message: 'Permanently deleted' });
+    } catch (error: any) {
+      // Teachers with attendance, results, schedules, or other history are
+      // referenced by protected records. Remove them from active lists without
+      // destroying that history instead of exposing a raw foreign-key error.
+      if (error?.code !== 'P2003') throw error;
+
+      const archivedUser = await prisma.user.update({
+        where: { id },
+        data: { archived: true, archivedAt: new Date(), archivedBy: currentUserId, status: 'INACTIVE' },
+      });
+      await redisCacheService.delete(`auth:user:${targetUser.email}`);
+      res.json({
+        success: true,
+        message: 'User archived because they have existing school records',
+        data: archivedUser,
+      });
+    }
   }
 
   async getUsersByRole(req: AuthRequest, res: Response) {
@@ -748,8 +796,12 @@ export class UserController {
 
   async resetPassword(req: AuthRequest, res: Response) {
     const { id } = req.params;
-    const { newPassword } = req.body;
+    const { newPassword, sendWhatsApp = false, sendSms = false } = req.body;
     const currentUserRole = req.user!.role;
+
+    if (typeof newPassword !== 'string' || newPassword.length < 8) {
+      throw new ApiError(400, 'Password must be at least 8 characters');
+    }
 
     const targetUser = await prisma.user.findUnique({ where: { id } });
     if (!targetUser) throw new ApiError(404, 'User not found');
@@ -764,7 +816,40 @@ export class UserController {
       data: { password: hashedPassword, loginAttempts: 0, lockedUntil: null }
     });
 
-    res.json({ success: true, message: 'Password reset' });
+    const requestedChannels = [sendWhatsApp && 'WhatsApp', sendSms && 'SMS'].filter(Boolean) as string[];
+    if (requestedChannels.length === 0) {
+      return res.json({ success: true, message: 'Password reset. No credentials were sent.' });
+    }
+
+    if (!targetUser.phone) {
+      return res.json({
+        success: true,
+        message: 'Password reset. Credentials were not sent because this user has no phone number.',
+      });
+    }
+
+    const school = await prisma.school.findFirst({ select: { name: true } });
+    const schoolName = school?.name || PRODUCT_DISPLAY_NAME;
+    const frontendUrl = process.env.FRONTEND_URL || PRODUCT_APP_URL;
+    const loginId = targetUser.role === 'PARENT'
+      ? (targetUser.parentCode || targetUser.username || targetUser.email)
+      : (targetUser.username || targetUser.email);
+    const message = `Your ${schoolName} password has been reset.\n\nLogin URL: ${frontendUrl}\nUsername: ${loginId}\nNew Password: ${newPassword}\n\nPlease change your password after logging in.`;
+
+    const deliveries = await Promise.allSettled([
+      ...(sendWhatsApp ? [whatsappService.sendMessage({ to: targetUser.phone, message })] : []),
+      ...(sendSms ? [SmsService.sendSms(targetUser.phone, message)] : []),
+    ]);
+    const deliveredCount = deliveries.filter(
+      (delivery) => delivery.status === 'fulfilled' && delivery.value.success,
+    ).length;
+    const deliveryMessage = deliveredCount === requestedChannels.length
+      ? `Credentials sent via ${requestedChannels.join(' and ')}.`
+      : deliveredCount > 0
+        ? `Credentials were sent via ${deliveredCount} of ${requestedChannels.length} selected channels.`
+        : 'Credentials could not be sent. Please share the new password securely.';
+
+    res.json({ success: true, message: `Password reset. ${deliveryMessage}` });
   }
 
   /**
@@ -869,6 +954,34 @@ export class UserController {
     res.json({
       success: true,
       data: parents,
+    });
+  }
+
+  /**
+   * Previews the next incremental staff ID / employee number
+   */
+  async getNextStaffId(req: AuthRequest, res: Response) {
+    const nextStaffId = await getNextStaffIdPreview();
+    res.json({
+      success: true,
+      data: { nextStaffId }
+    });
+  }
+
+  /**
+   * Auto-assigns incremental employee numbers to all existing staff members without one
+   */
+  async autoAssignStaffIds(req: AuthRequest, res: Response) {
+    const currentUserRole = req.user!.role;
+    if (!['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'].includes(currentUserRole)) {
+      throw new ApiError(403, 'Only administrators can auto-assign employee numbers');
+    }
+
+    const result = await autoAssignMissingStaffIds();
+    res.json({
+      success: true,
+      message: `Successfully auto-assigned employee numbers to ${result.count} staff members`,
+      data: result
     });
   }
 }

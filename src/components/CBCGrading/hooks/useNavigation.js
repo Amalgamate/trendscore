@@ -202,7 +202,11 @@ export const allNavSections = [
         icon: GraduationCap,
         permission: 'MANAGE_TEACHERS',
         items: [
-            { id: 'teachers-list', label: 'Tutors List', path: 'teachers-list', permission: 'MANAGE_TEACHERS' }
+            { id: 'teachers-list', label: 'Tutors List', path: 'teachers-list', permission: 'MANAGE_TEACHERS', icon: GraduationCap },
+            { id: 'tutors-directory', label: 'Staff Directory', path: 'hr-staff-profiles', params: { from: 'tutors' }, permission: 'MANAGE_TEACHERS', icon: Users2 },
+            { id: 'tutors-duty-roster', label: 'Duty Roster', path: 'planner-duty-roster', params: { from: 'tutors' }, permission: 'MANAGE_TEACHERS', icon: ClipboardList },
+            { id: 'tutors-timetable', label: 'Timetable', path: 'planner-timetable', params: { from: 'tutors' }, permission: 'ACCESS_TIMETABLE', icon: Calendar },
+            { id: 'tutors-schemes', label: 'Schemes of Work', path: 'planner-schemes', params: { from: 'tutors' }, permission: 'MANAGE_TEACHERS', icon: BookOpen },
         ]
     },
     // Parents is no longer a standalone menu — Parents List is nested under Learners

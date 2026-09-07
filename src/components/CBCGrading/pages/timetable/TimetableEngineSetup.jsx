@@ -1,11 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BookOpenCheck, Building2, CalendarClock, CheckCircle2, ChevronDown, ChevronUp, Clock3, Coffee, Edit2, GitBranch, Layers, Loader2, Maximize2, Minimize2, Play, Plus, RefreshCw, RotateCcw, Search, ShieldCheck, Trash2, Upload, UserCheck, UserX, Users, X } from 'lucide-react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { AlertTriangle, Award, BookOpenCheck, Building2, Calendar, CalendarClock, Check, CheckCircle2, CheckSquare, ChevronDown, ChevronUp, Clock3, Coffee, Edit2, ExternalLink, GitBranch, Layers, Loader2, Maximize2, Minimize2, Play, Plus, RefreshCw, RotateCcw, Search, ShieldCheck, Sparkles, Square, Trash2, Upload, UserCheck, UserX, Users, X } from 'lucide-react';
 import api from '../../../../services/api';
 import { useNotifications } from '../../hooks/useNotifications';
 import TimetableDraftEditor from './TimetableDraftEditor';
 import TimetableWalkthrough from './TimetableWalkthrough';
 import { GRADES, getGradeLabel } from '../../../../constants/grades';
 import { getDynamicAcademicYears } from '../../utils/academicYear';
+import { SCHOOL_DAYS, SCHEDULE_PRESETS, ROOM_TYPES, PERIOD_TYPES } from '../../../../constants/timetable';
+import { buildPeriods } from '../../../../utils/timeFormat';
 
 const formatGradeName = (grade) => {
   if (!grade) return 'Unknown Grade';
@@ -15,18 +17,6 @@ const formatGradeName = (grade) => {
 const fieldClass = 'w-full h-11 px-3 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400';
 const labelClass = 'block text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5';
 const currentYear = new Date().getFullYear();
-const schoolDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-
-const buildPeriods = (startTime, duration, count) => {
-  const [startHour, startMinute] = startTime.split(':').map(Number);
-  const firstMinute = (startHour * 60) + startMinute;
-  return Array.from({ length: count }, (_, index) => {
-    const start = firstMinute + (index * duration);
-    const end = start + duration;
-    const format = value => `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
-    return { name: `Period ${index + 1}`, sequence: index + 1, startTime: format(start), endTime: format(end), type: 'LESSON', instructional: true };
-  });
-};
 
 const Metric = ({ icon: Icon, label, value, tone }) => (
   <div className="rounded-xl border border-gray-200 bg-white p-4 flex items-center gap-3">
@@ -77,12 +67,329 @@ const InlineEdit = ({ value, onSave, disabled }) => {
   );
 };
 
-// ── Schedule Presets by School Level ─────────────────────────────────────────
-const SCHEDULE_PRESETS = [
-  { label: 'Lower Primary', sub: 'PP1–Gr 3', duration: 30, count: 8, startTime: '08:00', name: 'Lower Primary Bell Schedule', desc: '30m · 8 periods' },
-  { label: 'Upper Primary', sub: 'Gr 4–6',   duration: 40, count: 9, startTime: '08:00', name: 'Upper Primary Bell Schedule', desc: '40m · 9 periods' },
-  { label: 'Secondary',     sub: 'Gr 7–12',  duration: 45, count: 8, startTime: '08:00', name: 'Secondary Bell Schedule',     desc: '45m · 8 periods' },
-];
+// ── Relief Cover Workbench Modal ─────────────────────────────────────────────
+const ReliefCoverModal = ({ impact, onClose, onAssign, onBatchAutoAssign, assigning }) => {
+  const [selectedReliefs, setSelectedReliefs] = useState({});
+
+  if (!impact) return null;
+
+  const { teacher, day, affectedLessons = [] } = impact;
+
+  const handleSelectRelief = (lessonId, teacherId) => {
+    setSelectedReliefs(prev => ({ ...prev, [lessonId]: teacherId }));
+  };
+
+  const handleConfirmAll = () => {
+    const assignments = affectedLessons
+      .filter(l => selectedReliefs[l.lesson.id])
+      .map(l => ({ scheduleId: l.lesson.id, reliefTeacherId: selectedReliefs[l.lesson.id], reason: 'Emergency leave cover' }));
+    if (assignments.length > 0) onBatchAutoAssign(assignments);
+  };
+
+  const autoAssignments = affectedLessons
+    .filter(l => l.bestRecommendation)
+    .map(l => ({ scheduleId: l.lesson.id, reliefTeacherId: l.bestRecommendation.teacher.id, reason: 'Auto-assigned cover' }));
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-orange-50 to-rose-50 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-orange-500 text-white flex items-center justify-center shadow-sm">
+              <AlertTriangle size={20} />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900">⚡ Relief Cover Workbench</h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {teacher?.firstName} {teacher?.lastName} · {day} · {affectedLessons.length} affected lesson{affectedLessons.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 transition">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Info Banner */}
+        <div className="px-6 py-3 bg-orange-50 border-b border-orange-100 shrink-0">
+          <p className="text-xs text-orange-800 leading-relaxed">
+            <span className="font-bold">Orphaned lessons detected.</span> The timetable is live — students expect these lessons today.
+            Assign a substitute teacher below. The sub will see the cover lesson appear on their dashboard immediately.
+            The master timetable is <span className="font-bold">not affected</span>.
+          </p>
+        </div>
+
+        {/* Lesson List */}
+        <div className="overflow-y-auto flex-1 divide-y divide-gray-100">
+          {affectedLessons.length === 0 ? (
+            <div className="p-8 text-center">
+              <CheckCircle2 size={36} className="text-emerald-500 mx-auto mb-3" />
+              <p className="font-semibold text-gray-700">No affected lessons found</p>
+              <p className="text-xs text-gray-500 mt-1">This teacher has no published lessons on {day}.</p>
+            </div>
+          ) : (
+            affectedLessons.map((item, idx) => {
+              const { lesson, candidates, freeCount, bestRecommendation } = item;
+              const freeCandidates = candidates.filter(c => c.isFree);
+              const specialists = freeCandidates.filter(c => c.matchesSubject);
+              const generals = freeCandidates.filter(c => !c.matchesSubject);
+              const chosen = selectedReliefs[lesson.id];
+
+              return (
+                <div key={lesson.id} className="p-5">
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-bold text-gray-900">{lesson.subject || lesson.learningArea?.name || 'Lesson'}</span>
+                        <span className="text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-full">{lesson.className}</span>
+                        <span className="text-[10px] text-gray-500">{lesson.startTime}–{lesson.endTime}</span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5">{freeCount} teacher{freeCount !== 1 ? 's' : ''} free · {specialists.length} subject specialist{specialists.length !== 1 ? 's' : ''}</p>
+                    </div>
+                    {bestRecommendation && !chosen && (
+                      <button
+                        onClick={() => onAssign(lesson.id, bestRecommendation.teacher.id)}
+                        disabled={assigning}
+                        className="h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1.5 transition shrink-0 disabled:opacity-50"
+                      >
+                        {assigning ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                        1-Click Assign {bestRecommendation.teacher.firstName}
+                      </button>
+                    )}
+                    {chosen && (
+                      <span className="text-[11px] font-semibold bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full flex items-center gap-1">
+                        <CheckCircle2 size={11} /> Cover Assigned
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Candidates */}
+                  {freeCount === 0 ? (
+                    <div className="rounded-lg bg-rose-50 border border-rose-100 p-3">
+                      <p className="text-xs text-rose-700 font-semibold">⚠ No free teachers at this time. All staff are busy or have blackout rules.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {specialists.length > 0 && (
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Subject Specialists</p>
+                      )}
+                      {specialists.map(c => (
+                        <div key={c.teacher.id} className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2 border transition ${
+                          chosen === c.teacher.id ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-gray-100 hover:border-emerald-200'
+                        }`}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 text-white flex items-center justify-center text-xs font-bold">
+                              {c.teacher.firstName?.[0]}{c.teacher.lastName?.[0]}
+                            </div>
+                            <div>
+                              <span className="text-sm font-semibold text-gray-900">{c.teacher.firstName} {c.teacher.lastName}</span>
+                              <span className="ml-2 text-[10px] font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">Specialist</span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleSelectRelief(lesson.id, c.teacher.id)}
+                            className={`h-7 px-3 rounded-lg text-xs font-semibold transition ${
+                              chosen === c.teacher.id
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-gray-100 text-gray-700 hover:bg-emerald-100 hover:text-emerald-800'
+                            }`}
+                          >
+                            {chosen === c.teacher.id ? '✓ Selected' : 'Select'}
+                          </button>
+                        </div>
+                      ))}
+
+                      {generals.length > 0 && (
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mt-2">Other Available Teachers</p>
+                      )}
+                      {generals.map(c => (
+                        <div key={c.teacher.id} className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2 border transition ${
+                          chosen === c.teacher.id ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-gray-100 hover:border-indigo-200'
+                        }`}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-gray-400 to-gray-500 text-white flex items-center justify-center text-xs font-bold">
+                              {c.teacher.firstName?.[0]}{c.teacher.lastName?.[0]}
+                            </div>
+                            <span className="text-sm font-semibold text-gray-900">{c.teacher.firstName} {c.teacher.lastName}</span>
+                          </div>
+                          <button
+                            onClick={() => handleSelectRelief(lesson.id, c.teacher.id)}
+                            className={`h-7 px-3 rounded-lg text-xs font-semibold transition ${
+                              chosen === c.teacher.id
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-gray-100 text-gray-700 hover:bg-indigo-100 hover:text-indigo-800'
+                            }`}
+                          >
+                            {chosen === c.teacher.id ? '✓ Selected' : 'Select'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-2">
+            {autoAssignments.length > 0 && (
+              <button
+                onClick={() => onBatchAutoAssign(autoAssignments)}
+                disabled={assigning}
+                className="h-9 px-4 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold flex items-center gap-2 transition disabled:opacity-50"
+              >
+                {assigning ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                Auto-Assign All Best Matches ({autoAssignments.length})
+              </button>
+            )}
+            {Object.keys(selectedReliefs).length > 0 && (
+              <button
+                onClick={handleConfirmAll}
+                disabled={assigning}
+                className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-2 transition disabled:opacity-50"
+              >
+                {assigning ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                Confirm {Object.keys(selectedReliefs).length} Selection{Object.keys(selectedReliefs).length !== 1 ? 's' : ''}
+              </button>
+            )}
+          </div>
+          <button onClick={onClose} className="h-9 px-4 rounded-xl border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-100 transition">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Curriculum Deficit Modal ───────────────────────────────────────────────────
+const CurriculumDeficitModal = ({ report, loading, onClose }) => {
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col max-h-[85vh]">
+        <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-purple-50 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-sm">
+              <BookOpenCheck size={20} />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900">📊 Curriculum Continuity Audit</h3>
+              <p className="text-xs text-gray-500 mt-0.5">{report?.academicYear} · Syllabus delivery health check</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 transition">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-6 space-y-6">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 size={28} className="animate-spin text-indigo-500" />
+              <span className="ml-3 text-sm text-gray-500">Analysing curriculum delivery…</span>
+            </div>
+          ) : !report ? (
+            <p className="text-sm text-gray-400 text-center py-8">No report data available.</p>
+          ) : (
+            <>
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-white border border-gray-200 rounded-xl p-4 text-center shadow-sm">
+                  <p className="text-2xl font-bold text-gray-900">{report.totalLessons}</p>
+                  <p className="text-[11px] text-gray-500 mt-1">Total Lessons</p>
+                </div>
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center shadow-sm">
+                  <p className="text-2xl font-bold text-emerald-700">{report.regularLessons}</p>
+                  <p className="text-[11px] text-emerald-700 mt-1">Canonical Delivery</p>
+                </div>
+                <div className={`rounded-xl p-4 text-center shadow-sm border ${
+                  report.reliefCoverLessons > 0 ? 'bg-orange-50 border-orange-200' : 'bg-white border-gray-200'
+                }`}>
+                  <p className={`text-2xl font-bold ${ report.reliefCoverLessons > 0 ? 'text-orange-700' : 'text-gray-400' }`}>{report.reliefCoverLessons}</p>
+                  <p className={`text-[11px] mt-1 ${ report.reliefCoverLessons > 0 ? 'text-orange-700' : 'text-gray-500' }`}>Relief Cover</p>
+                </div>
+                <div className={`rounded-xl p-4 text-center shadow-sm border ${
+                  report.continuityRate >= 95 ? 'bg-emerald-50 border-emerald-200' :
+                  report.continuityRate >= 80 ? 'bg-amber-50 border-amber-200' : 'bg-rose-50 border-rose-200'
+                }`}>
+                  <p className={`text-2xl font-bold ${
+                    report.continuityRate >= 95 ? 'text-emerald-700' :
+                    report.continuityRate >= 80 ? 'text-amber-700' : 'text-rose-700'
+                  }`}>{report.continuityRate}%</p>
+                  <p className={`text-[11px] mt-1 ${
+                    report.continuityRate >= 95 ? 'text-emerald-700' :
+                    report.continuityRate >= 80 ? 'text-amber-700' : 'text-rose-700'
+                  }`}>Continuity Rate</p>
+                </div>
+              </div>
+
+              {/* Health Banner */}
+              <div className={`rounded-xl p-4 border ${
+                report.continuityRate >= 95 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' :
+                report.continuityRate >= 80 ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-rose-50 border-rose-200 text-rose-800'
+              }`}>
+                <p className="text-sm font-semibold">
+                  {report.continuityRate >= 95 ? '✅ Excellent curriculum delivery — syllabus continuity is on track.' :
+                   report.continuityRate >= 80 ? '⚠️ Moderate disruption — some subjects may be falling behind schedule.' :
+                   '🚨 High disruption — significant portions of the curriculum are being covered by non-specialists. Review urgently.'}
+                </p>
+                <p className="text-xs mt-1 opacity-80">
+                  {report.reliefCoverLessons} lesson{report.reliefCoverLessons !== 1 ? 's' : ''} have been handed to substitute teachers this {report.semester || 'term'}.
+                  CBC guidelines recommend a maximum of 5% cover lessons per term for optimal learner outcomes.
+                </p>
+              </div>
+
+              {/* Staff Cover Workload Table */}
+              {report.teacherWorkloads?.length > 0 && (
+                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                  <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
+                    <h4 className="text-sm font-bold text-gray-700">Staff Cover Workload Distribution</h4>
+                    <p className="text-[11px] text-gray-500">Sorted by relief burden — prevents burnout</p>
+                  </div>
+                  <div className="divide-y divide-gray-100 max-h-64 overflow-y-auto">
+                    {report.teacherWorkloads.map(t => (
+                      <div key={t.id} className="px-4 py-2.5 flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                          t.coverLessons > 3 ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {t.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 truncate">{t.name}</p>
+                          <p className="text-[11px] text-gray-500">{t.regularLessons} regular · {t.coverLessons} cover lessons</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          {t.coverLessons > 0 && (
+                            <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                              t.coverLessons > 5 ? 'bg-rose-100 text-rose-700' :
+                              t.coverLessons > 2 ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'
+                            }`}>
+                              {t.coverLessons} cover{t.coverLessons !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end shrink-0">
+          <button onClick={onClose} className="h-9 px-5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-100 transition">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // ── Period Edit Modal with Cascade Shift ──────────────────────────────────────
 const PeriodEditModal = ({ period, onClose, onSave }) => {
@@ -270,6 +577,61 @@ const PeriodEditModal = ({ period, onClose, onSave }) => {
   );
 };
 
+// ── Room code auto-increment & class helpers ─────────────────────────────────
+const getNextRoomCode = (existingRooms = [], offset = 0) => {
+  const existingCodes = new Set(
+    (existingRooms || [])
+      .map(r => (r.code || '').trim().toUpperCase())
+      .filter(Boolean)
+  );
+
+  let maxNum = 0;
+  let detectedPrefix = 'RM-';
+
+  (existingRooms || []).forEach(r => {
+    const c = (r.code || '').trim();
+    if (!c) return;
+    const match = c.match(/^(.*?)(\d+)$/);
+    if (match) {
+      const prefix = match[1];
+      const num = parseInt(match[2], 10);
+      if (!isNaN(num) && num > maxNum) {
+        maxNum = num;
+        if (prefix) detectedPrefix = prefix;
+      }
+    }
+  });
+
+  let candidateNum = Math.max(maxNum, (existingRooms || []).length) + 1 + offset;
+
+  while (true) {
+    const formatted = `${detectedPrefix}${String(candidateNum).padStart(2, '0')}`;
+    if (!existingCodes.has(formatted.toUpperCase())) {
+      return formatted;
+    }
+    candidateNum++;
+  }
+};
+
+const normalizeRoomName = (name) => {
+  if (!name) return '';
+  return String(name)
+    .toLowerCase()
+    .replace(/\bgrade\b/g, 'g')
+    .replace(/\bplaygroup\b/g, 'pg')
+    .replace(/[^a-z0-9]/g, '');
+};
+
+const formatShortClassName = (name) => {
+  if (!name) return '';
+  return String(name)
+    .replace(/^Grade\s*/i, 'G')
+    .replace(/^Playgroup\s*/i, 'PG ')
+    .replace(/^Pre-Primary\s*(\d)/i, 'PP$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
 const TimetableEngineSetup = ({ open, onClose, teachers = [], learningAreas = [], classes = [], canEdit = false }) => {
   const { showSuccess, showError } = useNotifications();
   const [loading, setLoading] = useState(false);
@@ -280,6 +642,109 @@ const TimetableEngineSetup = ({ open, onClose, teachers = [], learningAreas = []
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [bell, setBell] = useState({ name: 'Standard', startTime: '08:00', duration: 40, count: 9, isDefault: true });
   const [room, setRoom] = useState({ name: '', code: '', type: 'CLASSROOM', capacity: 40 });
+  const [selectedClassId, setSelectedClassId] = useState('');
+  const [selectedClassIds, setSelectedClassIds] = useState([]);
+  const [classDropdownOpen, setClassDropdownOpen] = useState(false);
+  const [classSearch, setClassSearch] = useState('');
+  const classDropdownRef = useRef(null);
+
+  // Close interactive class dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (classDropdownRef.current && !classDropdownRef.current.contains(e.target)) {
+        setClassDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const [bulkCreatingRooms, setBulkCreatingRooms] = useState(false);
+  const [allTeachersAvailable, setAllTeachersAvailable] = useState(() => {
+    try {
+      return localStorage.getItem('timetable_all_teachers_available') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleAllTeachersAvailable = () => {
+    setAllTeachersAvailable(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('timetable_all_teachers_available', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  // ── Relief Cover & Deficit State ──────────────────────────────────────────
+  const [reliefModal, setReliefModal] = useState(null); // { impact }
+  const [deficitModal, setDeficitModal] = useState({ open: false, report: null, loading: false });
+  const [reliefAssigning, setReliefAssigning] = useState(false);
+
+  const checkAbsenceImpact = async (teacherId, day) => {
+    if (!teacherId || !day) return;
+    try {
+      const res = await api.timetable.getAbsenceImpact({ teacherId, day });
+      const impact = res?.data || res;
+      if (impact?.hasOrphanedLessons) {
+        setReliefModal({ impact });
+      } else {
+        showSuccess(`No orphaned lessons found for ${day}. The teacher has no published lessons that day.`);
+      }
+    } catch (err) {
+      showError(err.message || 'Could not check absence impact');
+    }
+  };
+
+  const handleAssignRelief = async (scheduleId, reliefTeacherId) => {
+    setReliefAssigning(true);
+    try {
+      await api.timetable.assignRelief({ scheduleId, reliefTeacherId, reason: 'Emergency leave cover' });
+      showSuccess('Relief cover assigned — substitute teacher dashboard updated.');
+      setReliefModal(prev => {
+        if (!prev) return null;
+        // Mark this lesson as covered in the local state
+        const updatedLessons = prev.impact.affectedLessons.map(l =>
+          l.lesson.id === scheduleId ? { ...l, lesson: { ...l.lesson, isOverride: true } } : l
+        );
+        return { ...prev, impact: { ...prev.impact, affectedLessons: updatedLessons } };
+      });
+    } catch (err) {
+      showError(err.message || 'Failed to assign relief cover');
+    } finally {
+      setReliefAssigning(false);
+    }
+  };
+
+  const handleBatchAutoAssign = async (assignments) => {
+    setReliefAssigning(true);
+    try {
+      const res = await api.timetable.batchAssignRelief({ assignments });
+      const result = res?.data || res;
+      showSuccess(`${result.count || assignments.length} cover assignment${(result.count || assignments.length) !== 1 ? 's' : ''} applied. All substitute teachers notified.`);
+      setReliefModal(null);
+    } catch (err) {
+      showError(err.message || 'Batch assignment failed');
+    } finally {
+      setReliefAssigning(false);
+    }
+  };
+
+  const openDeficitReport = async () => {
+    setDeficitModal({ open: true, report: null, loading: true });
+    try {
+      const res = await api.timetable.getSyllabusDeficit();
+      setDeficitModal({ open: true, report: res?.data || res, loading: false });
+    } catch (err) {
+      showError(err.message || 'Could not load curriculum audit');
+      setDeficitModal({ open: false, report: null, loading: false });
+    }
+  };
+
+  const [roomSearch, setRoomSearch] = useState('');
+  const [roomFilterType, setRoomFilterType] = useState('ALL');
   const [allocation, setAllocation] = useState({ academicYear: currentYear, grade: 'GRADE_7', learningAreaId: '', targetWeeklyPeriods: 5 });
   const [availability, setAvailability] = useState({ teacherId: '', day: 'Monday', startTime: '08:00', endTime: '16:00', available: false, reason: '' });
   const [plan, setPlan] = useState({ name: `Main Timetable ${currentYear}`, academicYear: currentYear, term: 'TERM_1', bellScheduleId: '' });
@@ -318,7 +783,7 @@ const TimetableEngineSetup = ({ open, onClose, teachers = [], learningAreas = []
     }
   }, [classes]);
 
-  // Load classes if not passed
+  // Load classes if not passed or empty
   useEffect(() => {
     if (open && (!classList || classList.length === 0)) {
       api.classes.getAll({ active: true })
@@ -328,7 +793,100 @@ const TimetableEngineSetup = ({ open, onClose, teachers = [], learningAreas = []
         })
         .catch(() => {});
     }
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, section]);
+
+  // Sort classes naturally (Grade 1 before Grade 2, etc.)
+  const sortedClasses = useMemo(() => {
+    return [...(classList || [])].sort((a, b) =>
+      (a.name || '').localeCompare(b.name || '', undefined, { numeric: true })
+    );
+  }, [classList]);
+
+  // Determine active classes already registered as rooms vs unassigned
+  const { assignedClasses, unassignedClasses } = useMemo(() => {
+    const assigned = [];
+    const unassigned = [];
+    const rooms = data.rooms || [];
+
+    sortedClasses.forEach(c => {
+      const cExact = (c.name || '').trim().toLowerCase();
+      const cNorm = normalizeRoomName(c.name);
+      const isAssigned = rooms.some(r => {
+        const rExact = (r.name || '').trim().toLowerCase();
+        const rNorm = normalizeRoomName(r.name);
+        return rExact === cExact || (cNorm && rNorm && (rNorm === cNorm || rNorm.includes(cNorm) || cNorm.includes(rNorm)));
+      });
+
+      if (isAssigned) {
+        assigned.push(c);
+      } else {
+        unassigned.push(c);
+      }
+    });
+
+    return { assignedClasses: assigned, unassignedClasses: unassigned };
+  }, [sortedClasses, data.rooms]);
+
+  // Filtered unassigned classes for interactive dropdown
+  const filteredUnassigned = useMemo(() => {
+    if (!classSearch.trim()) return unassignedClasses;
+    const q = classSearch.toLowerCase().trim();
+    return unassignedClasses.filter(c => (c.name || '').toLowerCase().includes(q));
+  }, [unassignedClasses, classSearch]);
+
+  // Filtered already-assigned classes for interactive dropdown
+  const filteredAssigned = useMemo(() => {
+    if (!classSearch.trim()) return assignedClasses;
+    const q = classSearch.toLowerCase().trim();
+    return assignedClasses.filter(c => (c.name || '').toLowerCase().includes(q));
+  }, [assignedClasses, classSearch]);
+
+  // Check if all unassigned active classes are selected
+  const areAllUnassignedSelected = useMemo(() => {
+    if (!unassignedClasses.length) return false;
+    return unassignedClasses.every(c => selectedClassIds.includes(c.id));
+  }, [unassignedClasses, selectedClassIds]);
+
+  // Preview label for selected classes
+  const selectedClassNamesPreview = useMemo(() => {
+    if (!selectedClassIds.length) return '';
+    const names = selectedClassIds
+      .map(id => (classList || []).find(c => c.id === id)?.name)
+      .filter(Boolean);
+    if (names.length <= 2) return names.join(', ');
+    return `${names.slice(0, 2).join(', ')} +${names.length - 2} more`;
+  }, [selectedClassIds, classList]);
+
+  // Filtered rooms for room directory list
+  const filteredRooms = useMemo(() => {
+    return (data.rooms || []).filter(r => {
+      if (roomFilterType === 'CLASSROOM' && r.type !== 'CLASSROOM') return false;
+      if (roomFilterType === 'SPECIALIZED' && r.type === 'CLASSROOM') return false;
+      if (roomSearch) {
+        const q = roomSearch.toLowerCase().trim();
+        const matchName = (r.name || '').toLowerCase().includes(q);
+        const matchCode = (r.code || '').toLowerCase().includes(q);
+        const matchType = (r.type || '').toLowerCase().includes(q);
+        if (!matchName && !matchCode && !matchType) return false;
+      }
+      return true;
+    });
+  }, [data.rooms, roomFilterType, roomSearch]);
+
+  const classroomCount = useMemo(() => (data.rooms || []).filter(r => r.type === 'CLASSROOM').length, [data.rooms]);
+  const specializedCount = useMemo(() => (data.rooms || []).filter(r => r.type !== 'CLASSROOM').length, [data.rooms]);
+
+  // Auto-fill next room code if empty when entering rooms section or when rooms load
+  useEffect(() => {
+    if (section === 'rooms') {
+      setRoom(prev => {
+        if (!prev.code) {
+          return { ...prev, code: getNextRoomCode(data.rooms) };
+        }
+        return prev;
+      });
+    }
+  }, [section, data.rooms]);
 
   // Compute dynamic grade options
   const availableGrades = useMemo(() => {
@@ -547,13 +1105,15 @@ const TimetableEngineSetup = ({ open, onClose, teachers = [], learningAreas = []
   // All-versions panel per plan
   const [versionsPanel, setVersionsPanel] = useState(null); // { planId, versions }
   const [versionsLoading, setVersionsLoading] = useState(false);
+  const [calendarMilestones, setCalendarMilestones] = useState(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [response, assignmentsResp] = await Promise.all([
+      const [response, assignmentsResp, milestonesResp] = await Promise.all([
         api.timetable.getFoundation(),
         api.subjectAssignments?.getAll?.({ active: true }).catch(() => null),
+        api.timetable.getCalendarMilestones({ academicYear: currentYear }).catch(() => null)
       ]);
       const next = response.data || response;
       setData(next);
@@ -561,15 +1121,15 @@ const TimetableEngineSetup = ({ open, onClose, teachers = [], learningAreas = []
 
       const assignList = assignmentsResp?.data || assignmentsResp || [];
       if (Array.isArray(assignList)) setSubjectAssignmentCount(assignList.length);
+
+      const milestonesData = milestonesResp?.data || milestonesResp || null;
+      setCalendarMilestones(milestonesData);
     } catch (error) {
       showError(error.message || 'Failed to load timetable engine setup');
     } finally { setLoading(false); }
   };
 
   useEffect(() => { if (open) load(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const roomTypes = ['CLASSROOM', 'SCIENCE_LAB', 'ICT_LAB', 'LIBRARY', 'MUSIC_ROOM', 'ART_ROOM', 'WORKSHOP', 'AGRICULTURE_FIELD', 'SWIMMING_POOL', 'MULTIPURPOSE_HALL', 'SPORTS_GROUND', 'OTHER'];
-  const periodTypes = ['LESSON', 'BREAK', 'LUNCH', 'REGISTRATION', 'ASSEMBLY'];
 
   const tabs = useMemo(() => [
     ['overview', 'Overview'], ['bells', 'Bell schedules'], ['rooms', 'Rooms'],
@@ -698,6 +1258,162 @@ const TimetableEngineSetup = ({ open, onClose, teachers = [], learningAreas = []
       await load();
     } catch (error) {
       showError(error.message || 'Could not delete room');
+    }
+  };
+
+  const handleSelectClass = (e) => {
+    const classId = e.target.value;
+    setSelectedClassId(classId);
+
+    if (classId === 'CUSTOM' || !classId) {
+      setSelectedClassIds([]);
+      setRoom(prev => ({
+        ...prev,
+        code: prev.code || getNextRoomCode(data.rooms)
+      }));
+      return;
+    }
+
+    const foundClass = (classList || []).find(c => c.id === classId);
+    if (foundClass) {
+      setSelectedClassIds([foundClass.id]);
+      setRoom(prev => ({
+        ...prev,
+        name: foundClass.name,
+        code: prev.code || getNextRoomCode(data.rooms),
+        capacity: foundClass.capacity || 40,
+        type: 'CLASSROOM'
+      }));
+    }
+  };
+
+  const applyClassToForm = (c) => {
+    setSelectedClassId(c.id);
+    setSelectedClassIds([c.id]);
+    setRoom(prev => ({
+      ...prev,
+      name: c.name,
+      code: prev.code || getNextRoomCode(data.rooms),
+      capacity: c.capacity || 40,
+      type: 'CLASSROOM'
+    }));
+  };
+
+  // Toggle individual class checkbox selection
+  const toggleClassSelection = (classId) => {
+    setSelectedClassIds(prev => {
+      const exists = prev.includes(classId);
+      const next = exists ? prev.filter(id => id !== classId) : [...prev, classId];
+      if (next.length === 1) {
+        const found = (classList || []).find(c => c.id === next[0]);
+        if (found) {
+          setSelectedClassId(found.id);
+          setRoom(r => ({
+            ...r,
+            name: found.name,
+            code: r.code || getNextRoomCode(data.rooms),
+            capacity: found.capacity || 40,
+            type: 'CLASSROOM'
+          }));
+        }
+      } else if (next.length === 0) {
+        setSelectedClassId('');
+      } else {
+        setSelectedClassId('MULTI');
+      }
+      return next;
+    });
+  };
+
+  // Master toggle: Select All Active Classes
+  const handleSelectAllActiveClasses = () => {
+    const targets = unassignedClasses.length > 0 ? unassignedClasses : sortedClasses;
+    const targetIds = targets.map(c => c.id);
+    const allSelected = targetIds.length > 0 && targetIds.every(id => selectedClassIds.includes(id));
+
+    if (allSelected) {
+      setSelectedClassIds([]);
+      setSelectedClassId('');
+    } else {
+      setSelectedClassIds(targetIds);
+      setSelectedClassId('MULTI');
+    }
+  };
+
+  // Bulk create rooms for selected checked classes
+  const handleBulkCreateSelectedClasses = async () => {
+    const targetClasses = (classList || []).filter(c => selectedClassIds.includes(c.id));
+    if (!targetClasses.length) return;
+    setBulkCreatingRooms(true);
+    let createdCount = 0;
+    const newlyCreated = [];
+
+    try {
+      for (const c of targetClasses) {
+        const nextCode = getNextRoomCode([...(data.rooms || []), ...newlyCreated]);
+        const payload = {
+          name: c.name.trim(),
+          code: nextCode,
+          type: 'CLASSROOM',
+          capacity: Number(c.capacity) || 40,
+        };
+        await api.timetable.createRoom(payload);
+        newlyCreated.push(payload);
+        createdCount++;
+      }
+      showSuccess(`Successfully created ${createdCount} classroom${createdCount !== 1 ? 's' : ''} from selected classes!`);
+      await load();
+      setSelectedClassIds([]);
+      setSelectedClassId('');
+      setClassDropdownOpen(false);
+      setRoom({
+        name: '',
+        code: getNextRoomCode([...(data.rooms || []), ...newlyCreated]),
+        type: 'CLASSROOM',
+        capacity: 40
+      });
+    } catch (err) {
+      showError(err.message || 'Failed to auto-create rooms from classes');
+      await load();
+    } finally {
+      setBulkCreatingRooms(false);
+    }
+  };
+
+  const handleBulkCreateFromClasses = async () => {
+    if (!unassignedClasses.length) return;
+    setBulkCreatingRooms(true);
+    let createdCount = 0;
+    const newlyCreated = [];
+
+    try {
+      for (const c of unassignedClasses) {
+        const nextCode = getNextRoomCode([...(data.rooms || []), ...newlyCreated]);
+        const payload = {
+          name: c.name.trim(),
+          code: nextCode,
+          type: 'CLASSROOM',
+          capacity: Number(c.capacity) || 40,
+        };
+        await api.timetable.createRoom(payload);
+        newlyCreated.push(payload);
+        createdCount++;
+      }
+      showSuccess(`Successfully created ${createdCount} classroom${createdCount !== 1 ? 's' : ''} from active classes!`);
+      await load();
+      setSelectedClassId('');
+      setSelectedClassIds([]);
+      setRoom({
+        name: '',
+        code: getNextRoomCode([...(data.rooms || []), ...newlyCreated]),
+        type: 'CLASSROOM',
+        capacity: 40
+      });
+    } catch (err) {
+      showError(err.message || 'Failed to auto-create rooms from classes');
+      await load();
+    } finally {
+      setBulkCreatingRooms(false);
     }
   };
 
@@ -954,7 +1670,68 @@ const TimetableEngineSetup = ({ open, onClose, teachers = [], learningAreas = []
                     onNavigateTab={(tab) => setSection(tab)}
                     data={data}
                     subjectAssignmentCount={subjectAssignmentCount}
+                    allTeachersAvailable={allTeachersAvailable}
+                    onToggleAllTeachersAvailable={handleToggleAllTeachersAvailable}
                   />
+
+                  {/* Academic Calendar Milestones & Planner Widget */}
+                  {calendarMilestones && (
+                    <div className="bg-gradient-to-br from-indigo-900 to-slate-900 text-white rounded-xl p-5 border border-indigo-700/50 shadow-md">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-indigo-800/80 pb-4 mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-indigo-700/80 flex items-center justify-center text-amber-300">
+                            <Calendar size={20} />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-bold text-base">Academic Calendar & Term Milestones</h3>
+                              <span className="text-[10px] font-bold bg-indigo-600 text-indigo-100 px-2 py-0.5 rounded-full uppercase">
+                                Synced with Annual Planner
+                              </span>
+                            </div>
+                            <p className="text-xs text-indigo-200 mt-0.5">
+                              Public holidays, midterm recesses, and exam dates defined in the Annual Planner automatically overlay on the timetable.
+                            </p>
+                          </div>
+                        </div>
+                        <a
+                          href="/planner"
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-200 hover:text-white bg-indigo-800/60 hover:bg-indigo-800 px-3 py-1.5 rounded-lg border border-indigo-700 transition self-start sm:self-auto"
+                        >
+                          <span>Open Annual Planner</span>
+                          <ExternalLink size={13} />
+                        </a>
+                      </div>
+
+                      <div className="grid sm:grid-cols-3 gap-3">
+                        <div className="bg-indigo-950/60 border border-indigo-800/40 rounded-lg p-3">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">Official Term Dates</span>
+                          <p className="text-sm font-semibold text-white mt-1">
+                            {calendarMilestones.summary?.termOpeningDate ? new Date(calendarMilestones.summary.termOpeningDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Jan 6'}
+                            {' — '}
+                            {calendarMilestones.summary?.termClosingDate ? new Date(calendarMilestones.summary.termClosingDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Apr 4'}
+                          </p>
+                          <p className="text-[10px] text-indigo-300 mt-0.5">Active Teaching Window</p>
+                        </div>
+
+                        <div className="bg-indigo-950/60 border border-indigo-800/40 rounded-lg p-3">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">Public Holidays</span>
+                          <p className="text-sm font-semibold text-white mt-1">
+                            {calendarMilestones.summary?.totalHolidays || 0} Registered Holidays
+                          </p>
+                          <p className="text-[10px] text-indigo-300 mt-0.5">Classes automatically suspended</p>
+                        </div>
+
+                        <div className="bg-indigo-950/60 border border-indigo-800/40 rounded-lg p-3">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">Assessment Blocks</span>
+                          <p className="text-sm font-semibold text-white mt-1">
+                            {calendarMilestones.summary?.examEventsCount || 0} Examination Week(s)
+                          </p>
+                          <p className="text-[10px] text-indigo-300 mt-0.5">Replaced by invigilation matrix</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                     <Metric icon={Clock3}       label="Bell schedules"   value={data.bellSchedules.length} tone="bg-indigo-50 text-indigo-600" />
@@ -1160,44 +1937,670 @@ const TimetableEngineSetup = ({ open, onClose, teachers = [], learningAreas = []
 
               {/* ── Rooms ── */}
               {section === 'rooms' && (
-                <div className="grid lg:grid-cols-[360px_1fr] gap-5">
-                  <form className="bg-white border border-gray-200 rounded-xl p-5 space-y-4"
-                    onSubmit={e => { e.preventDefault(); submit('room', () => api.timetable.createRoom({ ...room, capacity: Number(room.capacity) }), () => setRoom({ name: '', code: '', type: 'CLASSROOM', capacity: 40 })); }}>
-                    <h3 className="font-semibold text-gray-900">Register room or facility</h3>
-                    <div><label className={labelClass}>Name</label><input className={fieldClass} value={room.name} onChange={e => setRoom({ ...room, name: e.target.value })} required /></div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div><label className={labelClass}>Code</label><input className={fieldClass} value={room.code} onChange={e => setRoom({ ...room, code: e.target.value })} /></div>
-                      <div><label className={labelClass}>Capacity</label><input type="number" min="1" className={fieldClass} value={room.capacity} onChange={e => setRoom({ ...room, capacity: e.target.value })} /></div>
-                    </div>
-                    <div><label className={labelClass}>Room type</label><select className={fieldClass} value={room.type} onChange={e => setRoom({ ...room, type: e.target.value })}>{roomTypes.map(type => <option key={type}>{type}</option>)}</select></div>
-                    <button disabled={!canEdit || saving === 'room'} className="w-full h-11 rounded-lg bg-indigo-600 text-white text-sm font-semibold disabled:opacity-40">Add room</button>
-                  </form>
-                  <div className="grid sm:grid-cols-2 gap-3 content-start">
-                    {data.rooms.map(item => (
-                      <div key={item.id} className={`bg-white border border-gray-200 rounded-xl p-4 ${!item.active ? 'opacity-60' : ''}`}>
-                        <div className="flex justify-between items-start gap-2">
-                          <div>
-                            <h4 className="font-semibold text-gray-900">{item.name}</h4>
-                            <p className="text-xs text-gray-500 mt-0.5">{item.type.replaceAll('_', ' ')} · Cap {item.capacity || '—'}</p>
+                <div className="space-y-5">
+                  {/* Smart Classrooms Auto-Detection Banner */}
+                  {unassignedClasses.length > 0 ? (
+                    <div className="bg-gradient-to-r from-indigo-50 via-purple-50 to-blue-50 border border-indigo-200/80 rounded-2xl p-4 shadow-sm">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="flex items-start sm:items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                            <Sparkles size={20} />
                           </div>
-                          {canEdit && (
-                            <div className="flex items-center gap-2 shrink-0">
-                              <button onClick={() => toggleRoomActive(item.id, item.active)}
-                                className={`text-[10px] font-semibold rounded-full px-2 py-1 border ${item.active ? 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-rose-50 hover:text-rose-600' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
-                                {item.active ? 'Disable' : 'Enable'}
-                              </button>
-                              <button
-                                onClick={() => handleDeleteRoom(item.id, item.name)}
-                                className="w-7 h-7 rounded-lg border border-gray-200 text-gray-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors"
-                                title="Delete room"
-                              >
-                                <Trash2 size={13} />
-                              </button>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="text-sm font-bold text-gray-900">
+                                {unassignedClasses.length} Active {unassignedClasses.length === 1 ? 'Class' : 'Classes'} Detected Without Rooms
+                              </h4>
+                              <span className="text-[11px] font-semibold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+                                Auto-sync ready
+                              </span>
                             </div>
-                          )}
+                            <p className="text-xs text-gray-600 mt-0.5">
+                              Auto-create classrooms for all registered classes at once, or select any class below to register individually.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={handleBulkCreateFromClasses}
+                            disabled={bulkCreatingRooms || !canEdit}
+                            className="h-10 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-2 shadow-sm transition-all disabled:opacity-50"
+                          >
+                            {bulkCreatingRooms ? (
+                              <>
+                                <Loader2 size={14} className="animate-spin" />
+                                <span>Generating {unassignedClasses.length} Rooms…</span>
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles size={14} />
+                                <span>Auto-Create All {unassignedClasses.length} Rooms</span>
+                              </>
+                            )}
+                          </button>
                         </div>
                       </div>
-                    ))}
+
+                      {/* Quick chips */}
+                      <div className="mt-3 pt-3 border-t border-indigo-100/80 flex items-center gap-2 flex-wrap text-xs">
+                        <span className="text-[11px] font-medium text-gray-500">Quick Fill:</span>
+                        {unassignedClasses.map(c => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => applyClassToForm(c)}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all flex items-center gap-1 ${
+                              selectedClassId === c.id
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                                : 'bg-white text-gray-700 border-gray-200 hover:border-indigo-300 hover:text-indigo-600'
+                            }`}
+                          >
+                            <Plus size={11} />
+                            {c.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : sortedClasses.length > 0 ? (
+                    <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-3.5 flex items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2 text-emerald-800 font-medium">
+                        <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                        <span>All {sortedClasses.length} active classes have timetable rooms configured.</span>
+                      </div>
+                      <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full">
+                        {data.rooms.length} total facilities
+                      </span>
+                    </div>
+                  ) : null}
+
+                  <div className="grid lg:grid-cols-[380px_1fr] gap-5 items-start">
+                    {/* Registration Form */}
+                    <form
+                      className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4 shadow-sm"
+                      onSubmit={e => {
+                        e.preventDefault();
+                        if (selectedClassIds.length > 1) {
+                          handleBulkCreateSelectedClasses();
+                          return;
+                        }
+                        const nextCode = room.code ? room.code.trim() : getNextRoomCode(data.rooms);
+                        submit('room',
+                          () => api.timetable.createRoom({
+                            ...room,
+                            code: nextCode,
+                            capacity: Number(room.capacity) || 40
+                          }),
+                          () => {
+                            setSelectedClassId('');
+                            setSelectedClassIds([]);
+                            setRoom({
+                              name: '',
+                              code: getNextRoomCode([...(data.rooms || []), { code: nextCode }]),
+                              type: 'CLASSROOM',
+                              capacity: 40
+                            });
+                          }
+                        );
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="font-semibold text-gray-900 text-sm">Register Room / Facility</h3>
+                          <p className="text-[11px] text-gray-500 mt-0.5">Link active classes or add specialized facilities</p>
+                        </div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100">
+                          {data.rooms.length} Active
+                        </span>
+                      </div>
+
+                      {/* Source Class Picker: Interactive Multi-Select Dropdown */}
+                      <div className="relative" ref={classDropdownRef}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className={labelClass}>Auto-Fetch From Active Class</label>
+                          {(selectedClassId || selectedClassIds.length > 0) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedClassId('');
+                                setSelectedClassIds([]);
+                                setRoom(r => ({ ...r, name: '', type: 'CLASSROOM' }));
+                              }}
+                              className="text-[10px] text-gray-400 hover:text-gray-600 font-medium"
+                            >
+                              Clear Selection
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Dropdown Trigger */}
+                        <button
+                          type="button"
+                          onClick={() => setClassDropdownOpen(prev => !prev)}
+                          className={`w-full h-11 px-3 rounded-lg border text-sm flex items-center justify-between text-left transition-all ${
+                            classDropdownOpen
+                              ? 'border-indigo-500 ring-2 ring-indigo-100 bg-white'
+                              : selectedClassIds.length > 0
+                              ? 'border-indigo-300 bg-indigo-50/40'
+                              : 'border-gray-200 bg-white hover:border-indigo-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate flex-1 mr-2">
+                            {selectedClassIds.length > 1 ? (
+                              <>
+                                <span className="shrink-0 px-2 py-0.5 rounded-md bg-indigo-600 text-white text-[11px] font-bold">
+                                  {selectedClassIds.length} Selected
+                                </span>
+                                <span className="text-xs text-gray-700 truncate font-medium">
+                                  {selectedClassNamesPreview}
+                                </span>
+                              </>
+                            ) : selectedClassIds.length === 1 ? (
+                              (() => {
+                                const c = (classList || []).find(cls => cls.id === selectedClassIds[0]);
+                                return (
+                                  <span className="text-xs font-semibold text-gray-800 flex items-center gap-1.5 truncate">
+                                    <span className="text-amber-500">⭐</span>
+                                    <span>{c?.name || '1 Class Selected'}</span>
+                                    {c?.capacity && <span className="text-gray-400 font-normal">({c.capacity} cap)</span>}
+                                  </span>
+                                );
+                              })()
+                            ) : selectedClassId === 'CUSTOM' ? (
+                              <span className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                                <span>✏️</span> Custom Facility (Lab, Library, Hall...)
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-500 flex items-center gap-1.5">
+                                <span>-- Choose active class(es) to auto-fill details --</span>
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0 text-gray-400">
+                            {unassignedClasses.length > 0 && selectedClassIds.length === 0 && (
+                              <span className="text-[10px] font-semibold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full">
+                                {unassignedClasses.length} need rooms
+                              </span>
+                            )}
+                            {classDropdownOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          </div>
+                        </button>
+
+                        {/* Interactive Dropdown Popover */}
+                        {classDropdownOpen && (
+                          <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                            {/* Search & Master Select All Bar */}
+                            <div className="p-2.5 bg-gray-50/90 border-b border-gray-200 space-y-2">
+                              <div className="relative">
+                                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                                <input
+                                  type="text"
+                                  value={classSearch}
+                                  onChange={e => setClassSearch(e.target.value)}
+                                  placeholder="Search active classes..."
+                                  className="w-full h-8 pl-8 pr-7 rounded-lg border border-gray-200 bg-white text-xs placeholder:text-gray-400 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100"
+                                />
+                                {classSearch && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setClassSearch('')}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="flex items-center justify-between text-xs px-1">
+                                <button
+                                  type="button"
+                                  onClick={handleSelectAllActiveClasses}
+                                  className="flex items-center gap-1.5 font-semibold text-indigo-700 hover:text-indigo-900 transition-colors"
+                                >
+                                  {areAllUnassignedSelected ? (
+                                    <CheckSquare size={15} className="text-indigo-600" />
+                                  ) : (
+                                    <Square size={15} className="text-gray-400 hover:text-indigo-500" />
+                                  )}
+                                  <span>Select All Active Classes ({unassignedClasses.length})</span>
+                                </button>
+
+                                {selectedClassIds.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedClassIds([]);
+                                      setSelectedClassId('');
+                                    }}
+                                    className="text-[11px] font-medium text-gray-500 hover:text-rose-600 transition-colors"
+                                  >
+                                    Clear ({selectedClassIds.length})
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Class Items List */}
+                            <div className="max-h-60 overflow-y-auto divide-y divide-gray-100/90 text-xs">
+                              {/* Classes Needing Rooms */}
+                              {filteredUnassigned.length > 0 && (
+                                <div>
+                                  <div className="px-3 py-1.5 bg-amber-50/70 text-[10px] font-bold uppercase tracking-wider text-amber-900 flex items-center justify-between">
+                                    <span>Classes Needing Rooms ({filteredUnassigned.length})</span>
+                                    <span className="text-amber-700 font-medium">Pending</span>
+                                  </div>
+                                  {filteredUnassigned.map(c => {
+                                    const isChecked = selectedClassIds.includes(c.id);
+                                    return (
+                                      <div
+                                        key={c.id}
+                                        onClick={() => toggleClassSelection(c.id)}
+                                        className={`px-3 py-2 flex items-center justify-between gap-2 cursor-pointer transition-colors ${
+                                          isChecked ? 'bg-indigo-50/70' : 'hover:bg-gray-50'
+                                        }`}
+                                      >
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              toggleClassSelection(c.id);
+                                            }}
+                                            className="text-indigo-600 shrink-0"
+                                          >
+                                            {isChecked ? <CheckSquare size={15} /> : <Square size={15} className="text-gray-300" />}
+                                          </button>
+                                          <div className="truncate">
+                                            <span className="font-semibold text-gray-900">{c.name}</span>
+                                            {c.capacity && (
+                                              <span className="text-[11px] text-gray-500 ml-1.5 font-normal">({c.capacity} cap)</span>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-1 shrink-0">
+                                          <span className="text-[10px] font-semibold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                                            <span>⭐</span> Needs Room
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              applyClassToForm(c);
+                                              setClassDropdownOpen(false);
+                                            }}
+                                            title="Fill single room form with this class"
+                                            className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline px-1.5 py-0.5"
+                                          >
+                                            Use
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {/* Already Created Rooms */}
+                              {filteredAssigned.length > 0 && (
+                                <div>
+                                  <div className="px-3 py-1.5 bg-gray-100/80 text-[10px] font-bold uppercase tracking-wider text-gray-600 flex items-center justify-between">
+                                    <span>Already Created ({filteredAssigned.length})</span>
+                                    <span className="text-emerald-600 font-semibold">Configured</span>
+                                  </div>
+                                  {filteredAssigned.map(c => {
+                                    const isChecked = selectedClassIds.includes(c.id);
+                                    return (
+                                      <div
+                                        key={c.id}
+                                        onClick={() => toggleClassSelection(c.id)}
+                                        className={`px-3 py-2 flex items-center justify-between gap-2 cursor-pointer transition-colors ${
+                                          isChecked ? 'bg-indigo-50/70' : 'hover:bg-gray-50'
+                                        }`}
+                                      >
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              toggleClassSelection(c.id);
+                                            }}
+                                            className="text-indigo-600 shrink-0"
+                                          >
+                                            {isChecked ? <CheckSquare size={15} /> : <Square size={15} className="text-gray-300" />}
+                                          </button>
+                                          <div className="truncate">
+                                            <span className="font-medium text-gray-700">{c.name}</span>
+                                          </div>
+                                        </div>
+                                        <span className="text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-full shrink-0 flex items-center gap-0.5">
+                                          <Check size={10} /> Room exists
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {/* Custom Facility Option */}
+                              <div
+                                onClick={() => {
+                                  setSelectedClassId('CUSTOM');
+                                  setSelectedClassIds([]);
+                                  setRoom(r => ({ ...r, name: '', type: 'CLASSROOM', code: r.code || getNextRoomCode(data.rooms) }));
+                                  setClassDropdownOpen(false);
+                                }}
+                                className={`px-3 py-2.5 flex items-center gap-2 cursor-pointer transition-colors ${
+                                  selectedClassId === 'CUSTOM' ? 'bg-indigo-50 font-semibold text-indigo-900' : 'hover:bg-gray-50 text-gray-700'
+                                }`}
+                              >
+                                <span>✏️</span>
+                                <div className="flex-1">
+                                  <span className="font-medium">Custom Facility</span>
+                                  <span className="text-[11px] text-gray-400 block">Lab, Library, Hall, Field, Office...</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Dropdown Footer Action */}
+                            <div className="p-2.5 bg-gray-50 border-t border-gray-200 flex items-center justify-between gap-2">
+                              <div className="text-[11px] text-gray-600 truncate">
+                                {selectedClassIds.length > 0 ? (
+                                  <span className="font-semibold text-indigo-700">{selectedClassIds.length} active class{selectedClassIds.length !== 1 ? 'es' : ''} selected</span>
+                                ) : (
+                                  <span>Select classes or pick one</span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {selectedClassIds.length > 1 ? (
+                                  <button
+                                    type="button"
+                                    disabled={bulkCreatingRooms || !canEdit}
+                                    onClick={handleBulkCreateSelectedClasses}
+                                    className="h-8 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all disabled:opacity-50"
+                                  >
+                                    {bulkCreatingRooms ? (
+                                      <>
+                                        <Loader2 size={12} className="animate-spin" />
+                                        <span>Creating…</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Sparkles size={12} />
+                                        <span>Create {selectedClassIds.length} Rooms</span>
+                                      </>
+                                    )}
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setClassDropdownOpen(false)}
+                                    className="h-8 px-3 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 text-xs font-semibold transition-colors"
+                                  >
+                                    Done
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Multi-Selection Banner if > 1 selected */}
+                      {selectedClassIds.length > 1 && (
+                        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 flex items-start gap-2.5 text-xs text-indigo-900">
+                          <Sparkles size={16} className="text-indigo-600 shrink-0 mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold">Bulk Mode: {selectedClassIds.length} Active Classes Selected</div>
+                            <p className="text-[11px] text-indigo-700 mt-0.5">
+                              Classrooms will be registered with names from selected classes and sequential auto-incremented codes (e.g. {room.code || getNextRoomCode(data.rooms)}, …).
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Room Name */}
+                      <div>
+                        <label className={labelClass}>Room / Facility Name</label>
+                        {selectedClassIds.length > 1 ? (
+                          <div className="w-full h-11 px-3 rounded-lg border border-indigo-200 bg-indigo-50/50 text-xs flex items-center text-indigo-800 font-medium">
+                            Auto-filled from {selectedClassIds.length} selected classes ({selectedClassNamesPreview})
+                          </div>
+                        ) : (
+                          <input
+                            className={fieldClass}
+                            value={room.name}
+                            onChange={e => setRoom({ ...room, name: e.target.value })}
+                            placeholder="e.g. Grade 1 East or Physics Lab"
+                            required={selectedClassIds.length <= 1}
+                          />
+                        )}
+                      </div>
+
+                      {/* Code & Capacity */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label className={labelClass}>{selectedClassIds.length > 1 ? 'Starting Code' : 'Room Code'}</label>
+                            <button
+                              type="button"
+                              onClick={() => setRoom(r => ({ ...r, code: getNextRoomCode(data.rooms) }))}
+                              title="Generate next available room code"
+                              className="text-[10px] text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-0.5"
+                            >
+                              <RotateCcw size={9} />
+                              Auto
+                            </button>
+                          </div>
+                          <input
+                            className={fieldClass}
+                            value={room.code}
+                            onChange={e => setRoom({ ...room, code: e.target.value })}
+                            placeholder={getNextRoomCode(data.rooms)}
+                          />
+                        </div>
+                        <div>
+                          <label className={labelClass}>Default Capacity</label>
+                          <input
+                            type="number"
+                            min="1"
+                            className={fieldClass}
+                            value={room.capacity}
+                            onChange={e => setRoom({ ...room, capacity: e.target.value })}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Room Type */}
+                      <div>
+                        <label className={labelClass}>Facility Type</label>
+                        <select
+                          className={fieldClass}
+                          value={room.type}
+                          onChange={e => setRoom({ ...room, type: e.target.value })}
+                        >
+                          {ROOM_TYPES.map(type => (
+                            <option key={type} value={type}>
+                              {type.replace(/_/g, ' ')}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={!canEdit || saving === 'room' || bulkCreatingRooms}
+                        className="w-full h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-40"
+                      >
+                        {saving === 'room' || bulkCreatingRooms ? (
+                          <>
+                            <Loader2 size={15} className="animate-spin" />
+                            <span>{bulkCreatingRooms ? `Generating ${selectedClassIds.length || unassignedClasses.length} Rooms…` : 'Adding Room…'}</span>
+                          </>
+                        ) : selectedClassIds.length > 1 ? (
+                          <>
+                            <Sparkles size={15} />
+                            <span>Register {selectedClassIds.length} Selected Rooms (Auto-Codes)</span>
+                          </>
+                        ) : (
+                          <>
+                            <Plus size={15} />
+                            <span>Add Room</span>
+                          </>
+                        )}
+                      </button>
+                    </form>
+
+                    {/* Room Directory */}
+                    <div className="space-y-4">
+                      {/* Search & Filter Toolbar */}
+                      <div className="bg-white border border-gray-200 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                        <div className="relative flex-1 max-w-sm">
+                          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="Search rooms or code..."
+                            value={roomSearch}
+                            onChange={e => setRoomSearch(e.target.value)}
+                            className="w-full h-9 pl-9 pr-3 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-1 bg-gray-100/80 p-1 rounded-lg shrink-0 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => setRoomFilterType('ALL')}
+                            className={`px-3 py-1 rounded-md font-medium transition-all ${
+                              roomFilterType === 'ALL'
+                                ? 'bg-white text-gray-900 shadow-xs font-semibold'
+                                : 'text-gray-500 hover:text-gray-900'
+                            }`}
+                          >
+                            All ({data.rooms.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRoomFilterType('CLASSROOM')}
+                            className={`px-3 py-1 rounded-md font-medium transition-all ${
+                              roomFilterType === 'CLASSROOM'
+                                ? 'bg-white text-indigo-700 shadow-xs font-semibold'
+                                : 'text-gray-500 hover:text-gray-900'
+                            }`}
+                          >
+                            Classrooms ({classroomCount})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRoomFilterType('SPECIALIZED')}
+                            className={`px-3 py-1 rounded-md font-medium transition-all ${
+                              roomFilterType === 'SPECIALIZED'
+                                ? 'bg-white text-indigo-700 shadow-xs font-semibold'
+                                : 'text-gray-500 hover:text-gray-900'
+                            }`}
+                          >
+                            Specialized ({specializedCount})
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Room Cards Grid */}
+                      {filteredRooms.length === 0 ? (
+                        <div className="bg-white border border-dashed border-gray-300 rounded-2xl p-10 text-center space-y-3">
+                          <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
+                            <Building2 size={24} />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-semibold text-gray-900">
+                              {roomSearch ? 'No matching rooms found' : 'No rooms registered yet'}
+                            </h4>
+                            <p className="text-xs text-gray-500 max-w-sm mx-auto mt-1">
+                              {roomSearch
+                                ? `No facilities match "${roomSearch}". Try clearing your search.`
+                                : 'Use the auto-fetch options on the left to quickly register rooms from active classes.'}
+                            </p>
+                          </div>
+                          {roomSearch && (
+                            <button
+                              type="button"
+                              onClick={() => setRoomSearch('')}
+                              className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
+                            >
+                              Clear Search
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                          {filteredRooms.map(item => {
+                            const isClassroom = item.type === 'CLASSROOM';
+                            return (
+                              <div
+                                key={item.id}
+                                className={`bg-white border rounded-xl p-4 transition-all shadow-xs hover:shadow-sm ${
+                                  !item.active ? 'opacity-60 border-gray-200' : 'border-gray-200 hover:border-gray-300'
+                                }`}
+                              >
+                                <div className="flex justify-between items-start gap-2">
+                                  <div className="space-y-1 min-w-0">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono">
+                                        {item.code || '—'}
+                                      </span>
+                                      <span
+                                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                                          isClassroom
+                                            ? 'bg-blue-50 text-blue-700 border border-blue-100'
+                                            : 'bg-amber-50 text-amber-700 border border-amber-100'
+                                        }`}
+                                      >
+                                        {item.type.replace(/_/g, ' ')}
+                                      </span>
+                                    </div>
+                                    <h4 className="font-semibold text-gray-900 text-sm truncate" title={item.name}>
+                                      {item.name}
+                                    </h4>
+                                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                                      <span>Cap: {item.capacity || '—'}</span>
+                                      <span>·</span>
+                                      <span className={item.active ? 'text-emerald-600 font-medium' : 'text-gray-400'}>
+                                        {item.active ? 'Active' : 'Disabled'}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {canEdit && (
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleRoomActive(item.id, item.active)}
+                                        className={`text-[10px] font-semibold rounded-full px-2 py-1 border transition-colors ${
+                                          item.active
+                                            ? 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200'
+                                            : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                        }`}
+                                      >
+                                        {item.active ? 'Disable' : 'Enable'}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteRoom(item.id, item.name)}
+                                        className="w-7 h-7 rounded-lg border border-gray-200 text-gray-400 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 flex items-center justify-center transition-colors"
+                                        title="Delete room"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1626,6 +3029,66 @@ const TimetableEngineSetup = ({ open, onClose, teachers = [], learningAreas = []
 
                 return (
                 <div className="space-y-6">
+                  {/* All Available Status & Confirmation Banner */}
+                  <div className={`rounded-2xl border p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm transition-all ${
+                    allTeachersAvailable || (restrictedTeachers.length === 0 && teachers.length > 0)
+                      ? 'bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-emerald-200'
+                      : 'bg-gradient-to-r from-gray-50 to-indigo-50/40 border-gray-200'
+                  }`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
+                        allTeachersAvailable || (restrictedTeachers.length === 0 && teachers.length > 0)
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-indigo-600 text-white'
+                      }`}>
+                        <UserCheck size={20} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="text-sm font-bold text-gray-900">
+                            {restrictedTeachers.length === 0
+                              ? `All ${teachers.length} Teachers Fully Available`
+                              : `${availableTeachers.length} of ${teachers.length} Teachers Fully Available`}
+                          </h4>
+                          {(allTeachersAvailable || restrictedTeachers.length === 0) && (
+                            <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                              <CheckCircle2 size={11} /> Marked Green in Guide
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-600 mt-0.5">
+                          {restrictedTeachers.length === 0
+                            ? 'All staff members are available with no blocked windows. The engine will schedule lessons across all school periods.'
+                            : `${restrictedTeachers.length} teacher(s) have blocked slots. The generator will avoid scheduling their lessons during these windows.`}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap shrink-0">
+                      <button
+                        type="button"
+                        onClick={openDeficitReport}
+                        className="h-9 px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                        title="View curriculum continuity audit — see how many lessons have been covered by non-specialists"
+                      >
+                        <BookOpenCheck size={14} />
+                        <span className="hidden sm:inline">Continuity Audit</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleToggleAllTeachersAvailable}
+                        className={`h-9 px-4 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs ${
+                          allTeachersAvailable
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                            : 'bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-50'
+                        }`}
+                      >
+                        <CheckCircle2 size={14} />
+                        <span>{allTeachersAvailable ? '✓ All Marked Available' : 'Mark All as Available'}</span>
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Summary Metrics */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div className="bg-white border border-gray-200 rounded-xl p-3.5 shadow-sm">
@@ -1667,7 +3130,14 @@ const TimetableEngineSetup = ({ open, onClose, teachers = [], learningAreas = []
                   <div className="grid lg:grid-cols-[340px_1fr] gap-5 items-start">
                     {/* Left: Rule Form */}
                     <form className="bg-white border border-gray-200 rounded-xl p-5 space-y-4 shadow-sm sticky top-4"
-                      onSubmit={e => { e.preventDefault(); submit('availability', () => api.timetable.saveTeacherAvailability(availability)); }}>
+                      onSubmit={async e => {
+                        e.preventDefault();
+                        await submit('availability', () => api.timetable.saveTeacherAvailability(availability));
+                        // If marking as UNAVAILABLE on a specific day, auto-check for orphaned lessons
+                        if (!availability.available && availability.teacherId && availability.day) {
+                          await checkAbsenceImpact(availability.teacherId, availability.day);
+                        }
+                      }}>
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center">
                           <UserX size={16} className="text-rose-600" />
@@ -1729,34 +3199,45 @@ const TimetableEngineSetup = ({ open, onClose, teachers = [], learningAreas = []
                                     <p className="text-sm font-semibold text-gray-900">{teacher.firstName} {teacher.lastName}</p>
                                     <p className="text-[11px] text-gray-500">{teacher.subject || teacher.email || ''}</p>
                                   </div>
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {['Mon','Tue','Wed','Thu','Fri'].map((d, i) => {
-                                      const fullDay = ['Monday','Tuesday','Wednesday','Thursday','Friday'][i];
-                                      const rule = dayRules[fullDay];
-                                      return rule ? (
-                                        <div key={d} className="group relative">
+                                  <div className="flex flex-col items-end gap-2">
+                                    <div className="flex flex-wrap gap-1.5 justify-end">
+                                      {['Mon','Tue','Wed','Thu','Fri'].map((d, i) => {
+                                        const fullDay = ['Monday','Tuesday','Wednesday','Thursday','Friday'][i];
+                                        const rule = dayRules[fullDay];
+                                        return rule ? (
+                                          <div key={d} className="group relative">
+                                            <button
+                                              type="button"
+                                              onClick={() => canEdit && handleDeleteAvailability(rule.id, `${teacher.firstName} ${teacher.lastName}`)}
+                                              className="px-2.5 py-1 rounded-lg bg-rose-500 text-white text-[10px] font-bold border border-rose-600 hover:bg-rose-700 transition flex items-center gap-1"
+                                              title={`${fullDay}: ${rule.startTime}–${rule.endTime}${rule.reason ? ` (${rule.reason})` : ''} — click to remove`}
+                                            >
+                                              {d}
+                                              {canEdit && <X size={8} className="opacity-70" />}
+                                            </button>
+                                          </div>
+                                        ) : (
                                           <button
+                                            key={d}
                                             type="button"
-                                            onClick={() => canEdit && handleDeleteAvailability(rule.id, `${teacher.firstName} ${teacher.lastName}`)}
-                                            className="px-2.5 py-1 rounded-lg bg-rose-500 text-white text-[10px] font-bold border border-rose-600 hover:bg-rose-700 transition flex items-center gap-1"
-                                            title={`${fullDay}: ${rule.startTime}–${rule.endTime}${rule.reason ? ` (${rule.reason})` : ''} — click to remove`}
+                                            onClick={() => canEdit && setAvailability(a => ({ ...a, teacherId: teacher.id, day: fullDay, available: false }))}
+                                            className="px-2.5 py-1 rounded-lg bg-gray-100 text-gray-400 text-[10px] font-medium border border-gray-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition"
+                                            title={`Click to mark ${teacher.firstName} unavailable on ${fullDay}`}
                                           >
                                             {d}
-                                            {canEdit && <X size={8} className="opacity-70" />}
                                           </button>
-                                        </div>
-                                      ) : (
-                                        <button
-                                          key={d}
-                                          type="button"
-                                          onClick={() => canEdit && setAvailability(a => ({ ...a, teacherId: teacher.id, day: fullDay, available: false }))}
-                                          className="px-2.5 py-1 rounded-lg bg-gray-100 text-gray-400 text-[10px] font-medium border border-gray-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition"
-                                          title={`Click to mark ${teacher.firstName} unavailable on ${fullDay}`}
-                                        >
-                                          {d}
-                                        </button>
-                                      );
-                                    })}
+                                        );
+                                      })}
+                                    </div>
+                                    {/* Relief Cover quick-trigger for restricted teacher */}
+                                    <button
+                                      type="button"
+                                      onClick={() => checkAbsenceImpact(teacher.id, Object.keys(dayRules)[0] || 'Monday')}
+                                      className="shrink-0 h-7 px-2.5 rounded-lg bg-orange-50 text-orange-700 text-[10px] font-bold border border-orange-200 hover:bg-orange-100 transition flex items-center gap-1"
+                                      title="Open Relief Cover Workbench for this teacher"
+                                    >
+                                      <AlertTriangle size={10} /> Cover
+                                    </button>
                                   </div>
                                 </div>
                               );
@@ -2071,6 +3552,26 @@ const TimetableEngineSetup = ({ open, onClose, teachers = [], learningAreas = []
           period={editingPeriod}
           onClose={() => setEditingPeriod(null)}
           onSave={(changes, cascade) => handleSavePeriod(editingPeriod.id, changes, cascade)}
+        />
+      )}
+
+      {/* Relief Cover Workbench Modal */}
+      {reliefModal && (
+        <ReliefCoverModal
+          impact={reliefModal.impact}
+          assigning={reliefAssigning}
+          onClose={() => setReliefModal(null)}
+          onAssign={handleAssignRelief}
+          onBatchAutoAssign={handleBatchAutoAssign}
+        />
+      )}
+
+      {/* Curriculum Continuity Audit Modal */}
+      {deficitModal.open && (
+        <CurriculumDeficitModal
+          report={deficitModal.report}
+          loading={deficitModal.loading}
+          onClose={() => setDeficitModal({ open: false, report: null, loading: false })}
         />
       )}
     </div>

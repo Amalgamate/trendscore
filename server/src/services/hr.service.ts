@@ -538,6 +538,7 @@ export class HRService {
         return prisma.user.update({
             where: { id: userId },
             data: {
+                staffId: details.staffId !== undefined ? (details.staffId ? String(details.staffId).trim() : null) : undefined,
                 kraPin: details.kraPin ?? undefined,
                 nhifNumber: details.nhifNumber ?? details.shifNumber ?? undefined,
                 nssfNumber: details.nssfNumber ?? undefined,

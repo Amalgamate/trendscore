@@ -99,6 +99,23 @@ router.delete('/instructional-allocations/:allocationId', requirePermission('EDI
 router.delete('/instructional-allocations', requirePermission('EDIT_TIMETABLE'), timetableController.clearAllocations);
 router.put('/teacher-availability', requirePermission('EDIT_TIMETABLE'), validate(availabilitySchema), timetableController.upsertAvailability);
 router.delete('/teacher-availability/:availabilityId', requirePermission('EDIT_TIMETABLE'), timetableController.deleteTeacherAvailability);
+
+// ── Relief & Absence Routes ────────────────────────────────────────────────
+router.get('/relief/impact', requirePermission('ACCESS_TIMETABLE'), timetableController.absenceImpact);
+router.post('/relief/assign', requirePermission('EDIT_TIMETABLE'), validate(z.object({
+  scheduleId: z.string().uuid(),
+  reliefTeacherId: z.string().uuid(),
+  reason: z.string().max(300).optional()
+})), timetableController.assignRelief);
+router.post('/relief/batch-assign', requirePermission('EDIT_TIMETABLE'), validate(z.object({
+  assignments: z.array(z.object({
+    scheduleId: z.string().uuid(),
+    reliefTeacherId: z.string().uuid(),
+    reason: z.string().max(300).optional()
+  })).min(1)
+})), timetableController.batchAssignRelief);
+router.get('/relief/deficit', requirePermission('ACCESS_TIMETABLE'), timetableController.syllabusDeficit);
+
 router.post('/plans', requirePermission('EDIT_TIMETABLE'), validate(planSchema), timetableController.createPlan);
 router.delete('/plans/:planId', requirePermission('EDIT_TIMETABLE'), timetableController.deletePlan);
 const masterResetSchema = z.object({
@@ -145,5 +162,9 @@ router.post('/change-requests', requirePermission('ACCESS_TIMETABLE'), validate(
 router.get('/change-requests', requirePermission('ACCESS_TIMETABLE'), timetableController.listChangeRequests);
 router.post('/change-requests/:requestId/approve', requirePermission('EDIT_TIMETABLE'), timetableController.approveChangeRequest);
 router.post('/change-requests/:requestId/reject', requirePermission('EDIT_TIMETABLE'), timetableController.rejectChangeRequest);
+
+// Calendar Milestones & Planner Integration
+router.get('/calendar-milestones', requirePermission('ACCESS_TIMETABLE'), timetableController.calendarMilestones);
+router.get('/effective-schedule', requirePermission('ACCESS_TIMETABLE'), timetableController.effectiveSchedule);
 
 export default router;

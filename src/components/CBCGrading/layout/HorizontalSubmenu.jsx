@@ -27,6 +27,14 @@ const PASTEL_PALETTE = {
   'Admissions':         'text-emerald-700 bg-emerald-50',
   'Promotion':          'text-purple-700  bg-purple-50',
   'Tutors List':        'text-blue-700    bg-blue-50',
+  'Teachers List':      'text-blue-700    bg-blue-50',
+  'Lecturers List':     'text-blue-700    bg-blue-50',
+  'Staff Directory':    'text-teal-700    bg-teal-50',
+  'Duty Roster':        'text-purple-700  bg-purple-50',
+  'Timetable':          'text-indigo-700  bg-indigo-50',
+  'Lecture Timetable':  'text-indigo-700  bg-indigo-50',
+  'Schemes of Work':    'text-amber-700   bg-amber-50',
+  'Learner Analysis':   'text-amber-700   bg-amber-50',
   'School Settings':    'text-indigo-700  bg-indigo-50',
   'Academic Settings':  'text-purple-700  bg-purple-50',
   'Branding':           'text-emerald-700 bg-emerald-50',
@@ -78,6 +86,8 @@ const CHILD_PAGE_PARENT = {
   'learning-marking-interface': 'learning-assignments',
   'learning-lesson-builder':    'learning-lessons',
   'learning-marketplace-create': 'learning-marketplace',
+  'add-teacher':                'teachers-list',
+  'teacher-profile':            'teachers-list',
 };
 
 const GROUP_COLORS = [
@@ -228,16 +238,33 @@ const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
     // shared route such as docs-center can intentionally appear under both
     // the global Documents menu and the Students menu's Student Documents
     // entry, so path-only matching would highlight the wrong horizontal bar.
+    // 1. Prefer matching items that explicitly specify matching params (e.g. from: 'tutors')
+    const byParamMatch = (navSections || []).find((section) => {
+      const leaves = flattenLeafItems(section.items || []);
+      return leaves.some((leaf) => {
+        if (leaf.path !== resolvedPage) return false;
+        const expectedParams = leaf.params;
+        if (!expectedParams || Object.keys(expectedParams).length === 0) return false;
+        return Object.entries(expectedParams).every(([key, value]) => pageParams?.[key] === value);
+      });
+    });
+    if (byParamMatch) return byParamMatch;
+
+    // 2. Prefer exact destination matching when neither has params or params match
     const byExactDestination = (navSections || []).find((section) => {
       const leaves = flattenLeafItems(section.items || []);
       return leaves.some((leaf) => {
         if (leaf.path !== resolvedPage) return false;
         const expectedParams = leaf.params || {};
-        return Object.entries(expectedParams).every(([key, value]) => pageParams?.[key] === value);
+        const pKeys = Object.keys(pageParams || {});
+        const eKeys = Object.keys(expectedParams);
+        if (pKeys.length === 0 && eKeys.length === 0) return true;
+        return eKeys.length > 0 && eKeys.every((key) => pageParams?.[key] === expectedParams[key]);
       });
     });
     if (byExactDestination) return byExactDestination;
 
+    // 3. Fall back to standard path-based section lookup
     const byPage = (navSections || []).find((section) => {
       const leaves = flattenLeafItems(section.items || []);
       return leaves.some((leaf) => leaf.path === resolvedPage);
@@ -262,6 +289,12 @@ const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
   );
   const showLearnerAddAction = activeSection?.id === 'learners' && currentPage === 'learners-list' && canAddLearner;
 
+  const canAddTeacher = useMemo(
+    () => ['teachers', 'lecturers'].includes(activeSection?.id),
+    [activeSection]
+  );
+  const showTeacherAddAction = canAddTeacher && currentPage === 'teachers-list';
+
   const noticesTab = ['notices', 'birthdays', 'changelog'].includes(pageParams?.activeTab)
     ? pageParams.activeTab
     : 'notices';
@@ -273,9 +306,8 @@ const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
   if (activeSection.hideHorizontalSubmenu) return null;
   if (hasGroups && !(activeSection.items || []).length) return null;
   // A single destination normally does not need a second navigation row.
-  // Learners is the exception: admissions is intentionally an inline action
-  // here, so retain the bar when it is the only available learner control.
-  if (!hasGroups && flatItems.length < 2 && !showLearnerAddAction) return null;
+  // Learners and Tutors retain the bar when an inline add action is available.
+  if (!hasGroups && flatItems.length < 2 && !showLearnerAddAction && !showTeacherAddAction) return null;
 
   return (
     <div className="horizontal-menu-shell border-b border-gray-200 bg-gray-100/95 backdrop-blur-md">
@@ -340,6 +372,17 @@ const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
           >
             <Plus size={14} />
             Add Student
+          </button>
+        )}
+
+        {showTeacherAddAction && (
+          <button
+            type="button"
+            onClick={() => onNavigate('add-teacher')}
+            className="ml-auto inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-brand-teal px-2.5 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal/30"
+          >
+            <Plus size={14} />
+            {activeSection?.label === 'Lecturers' ? 'Add Lecturer' : activeSection?.label === 'Teachers' ? 'Add Teacher' : 'Add Tutor'}
           </button>
         )}
 

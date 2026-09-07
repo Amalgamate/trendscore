@@ -23,7 +23,7 @@ vi.mock('../../../hooks/useInstitutionLabels', () => ({
 
 vi.mock('../../../contexts/ModuleAccessContext', () => ({
   useModuleAccess: () => ({
-    activeSlugs: ['biometric', 'student-registry'],
+    activeSlugs: ['biometric', 'student-registry', 'staff-hr', 'planner', 'timetable'],
     isModuleEnabled: () => true,
   }),
 }));
@@ -56,14 +56,28 @@ describe('useNavigation biometric access', () => {
     const leafIds = studentsSection.items.flatMap((item) => item.type === 'group' ? item.items.map((child) => child.id) : [item.id]);
 
     expect(leafIds).toEqual(expect.arrayContaining([
-      'learners-overview',
       'learners-list',
-      'learners-admissions',
-      'learners-reports',
-      'learners-transfers-in',
-      'learners-transfer-out',
-      'learners-exited',
+      'parents-list',
+      'learners-promotion',
+      'learners-id-print',
       'learners-documents',
+      'learners-reports',
     ]));
+  });
+
+  it('exposes the complete tutors management and horizontal sub-menu items', () => {
+    const { result } = renderHook(() => useNavigation());
+    const tutorsSection = result.current.schoolSections.find((section) => section.id === 'teachers');
+    expect(tutorsSection).toBeDefined();
+    expect(tutorsSection.label).toBe('Tutors');
+
+    const itemIds = tutorsSection.items.map((item) => item.id);
+    expect(itemIds).toEqual([
+      'teachers-list',
+      'tutors-directory',
+      'tutors-duty-roster',
+      'tutors-timetable',
+      'tutors-analysis',
+    ]);
   });
 });

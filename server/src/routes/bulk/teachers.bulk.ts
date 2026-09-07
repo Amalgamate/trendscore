@@ -11,6 +11,7 @@ import { Parser } from 'json2csv';
 import { Readable } from 'stream';
 import { z } from 'zod';
 import bcrypt from 'bcrypt';
+import { generateStaffId } from '../../services/staffId.service';
 
 const router = Router();
 
@@ -107,7 +108,7 @@ router.post(
             firstName: csvData['First Name'],
             lastName: csvData['Last Name'],
             phone: csvData['Phone'],
-            staffId: csvData['Staff ID'],
+            staffId: (csvData['Staff ID'] && csvData['Staff ID'].trim()) ? csvData['Staff ID'].trim() : await generateStaffId(),
             role: (csvData['Role'] as UserRole) || 'TEACHER',
             status: (csvData['Status'] as UserStatus) || 'ACTIVE',
           }

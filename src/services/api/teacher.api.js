@@ -14,4 +14,6 @@ export const teacherAPI = {
    * Non-TEACHER privileged roles receive { restricted: false }.
    */
   getMyContext: async () => fetchWithAuth('/teacher/context'),
+  getNextStaffId: async () => userAPI.getNextStaffId(),
+  autoAssignStaffIds: async () => userAPI.autoAssignStaffIds(),
 };

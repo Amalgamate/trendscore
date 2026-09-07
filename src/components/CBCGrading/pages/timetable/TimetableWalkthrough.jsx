@@ -25,7 +25,7 @@ const COLOR_MAP = {
   green:   { bg: 'bg-green-50',   text: 'text-green-600',   ring: 'ring-green-300',   badge: 'bg-green-100 text-green-700',    activeBorder: 'border-green-300' },
 };
 
-function computeProgress({ data, subjectAssignmentCount, manualDone = {} }) {
+function computeProgress({ data, subjectAssignmentCount, manualDone = {}, allTeachersAvailable = false }) {
   const bells  = (data?.bellSchedules?.length || 0) > 0 || Boolean(manualDone.bell);
   const allocs = (data?.allocations?.length   || 0) > 0 || Boolean(manualDone.allocation);
   const plans  = (data?.plans?.length         || 0) > 0 || Boolean(manualDone.plan);
@@ -43,7 +43,7 @@ function computeProgress({ data, subjectAssignmentCount, manualDone = {} }) {
   if (bells)          done.add('bell');
   if (allocs)         done.add('allocation');
   if (hasAssignments) done.add('assignments');
-  if ((data?.availability?.length || 0) > 0 || manualDone.availability) done.add('availability');
+  if ((data?.availability?.length || 0) > 0 || manualDone.availability || allTeachersAvailable) done.add('availability');
   if ((data?.rooms?.length        || 0) > 0 || manualDone.rooms)        done.add('rooms');
   if (plans)     done.add('plan');
   if (generated) done.add('generate');
@@ -100,18 +100,52 @@ const STEPS = [
     detail: 'Publishing synchronizes live class schedules instantly across the school system.' },
 ];
 
-const TimetableWalkthrough = ({ onNavigateTab, data, subjectAssignmentCount = 0 }) => {
+const STORAGE_KEY = 'timetable_all_teachers_available';
+
+const TimetableWalkthrough = ({
+  onNavigateTab,
+  data,
+  subjectAssignmentCount = 0,
+  allTeachersAvailable: propAllTeachersAvailable,
+  onToggleAllTeachersAvailable
+}) => {
   const [open, setOpen]         = useState(true);
   const [expanded, setExpanded] = useState(null);
   const [manualDone, setManualDone] = useState({});
+  const [localAllTeachersAvailable, setLocalAllTeachersAvailable] = useState(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
 
-  const { done, unlocked } = computeProgress({ data, subjectAssignmentCount, manualDone });
+  const allTeachersAvailable = propAllTeachersAvailable !== undefined ? propAllTeachersAvailable : localAllTeachersAvailable;
+
+  const handleToggleAvailability = (e) => {
+    if (e) e.stopPropagation();
+    if (onToggleAllTeachersAvailable) {
+      onToggleAllTeachersAvailable();
+    } else {
+      setLocalAllTeachersAvailable(prev => {
+        const next = !prev;
+        try { localStorage.setItem(STORAGE_KEY, String(next)); } catch {}
+        return next;
+      });
+    }
+  };
+
+  const { done, unlocked } = computeProgress({ data, subjectAssignmentCount, manualDone, allTeachersAvailable });
   const doneCount = STEPS.filter(s => done.has(s.id)).length;
   const allDone   = doneCount === STEPS.length;
   const pct       = Math.round((doneCount / STEPS.length) * 100);
 
   const toggleManual = (e, id) => {
     e.stopPropagation();
+    if (id === 'availability' && (data?.availability?.length || 0) === 0) {
+      handleToggleAvailability(e);
+      return;
+    }
     setManualDone(prev => ({ ...prev, [id]: !done.has(id) }));
   };
 
@@ -130,9 +164,13 @@ const TimetableWalkthrough = ({ onNavigateTab, data, subjectAssignmentCount = 0 
           ? `${subjectAssignmentCount} assigned`
           : 'Settings';
       case 'availability':
-        return (data?.availability?.length || 0) > 0
-          ? `${data.availability.length} rule${data.availability.length !== 1 ? 's' : ''}`
-          : 'Optional';
+        if ((data?.availability?.length || 0) > 0) {
+          return `${data.availability.length} rule${data.availability.length !== 1 ? 's' : ''}`;
+        }
+        if (allTeachersAvailable || manualDone.availability) {
+          return '✓ All available';
+        }
+        return 'Optional';
       case 'rooms':
         return (data?.rooms?.length || 0) > 0
           ? `${data.rooms.length} room${data.rooms.length !== 1 ? 's' : ''}`
@@ -262,7 +300,7 @@ const TimetableWalkthrough = ({ onNavigateTab, data, subjectAssignmentCount = 0 
                     ].join(' ')}>
                       {step.title}
                     </p>
-                    {step.optional && (
+                    {step.optional && !isDone && (
                       <span className="text-[9px] font-medium bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">
                         optional
                       </span>
@@ -283,7 +321,11 @@ const TimetableWalkthrough = ({ onNavigateTab, data, subjectAssignmentCount = 0 
                 {/* Action button on right */}
                 <div className="flex items-center gap-2 shrink-0" onClick={e => e.stopPropagation()}>
                   {statusBadge && (
-                    <span className="hidden sm:inline-block text-[10px] font-medium text-gray-500 bg-gray-50 border border-gray-200 rounded-md px-2 py-0.5">
+                    <span className={`hidden sm:inline-block text-[10px] rounded-md px-2 py-0.5 border ${
+                      isDone
+                        ? 'bg-emerald-100 text-emerald-800 border-emerald-200 font-semibold'
+                        : 'text-gray-500 bg-gray-50 border-gray-200 font-medium'
+                    }`}>
                       {statusBadge}
                     </span>
                   )}
@@ -325,6 +367,56 @@ const TimetableWalkthrough = ({ onNavigateTab, data, subjectAssignmentCount = 0 
               {isOpen && (
                 <div className="px-4 pb-3.5 pt-0 border-t border-gray-100">
                   <p className="text-[11px] leading-relaxed text-gray-600 mt-2.5">{step.detail}</p>
+
+                  {/* Quick-action for Step 4 (Availability): Mark all as available */}
+                  {step.id === 'availability' && (
+                    <div className={`mt-3 p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
+                      isDone
+                        ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+                        : 'bg-gradient-to-r from-amber-50/80 to-emerald-50/40 border-amber-200 text-gray-800'
+                    }`}>
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 shadow-2xs ${
+                          isDone ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {isDone ? <CheckCircle2 size={16} /> : <Coffee size={16} />}
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-gray-900">
+                            {isDone
+                              ? (data?.availability?.length > 0 ? `${data.availability.length} Unavailability Windows Configured` : 'All Teachers Confirmed Available')
+                              : 'Are all teachers 100% available full-time?'}
+                          </p>
+                          <p className="text-[10px] text-gray-500">
+                            {isDone
+                              ? (data?.availability?.length > 0 ? 'Generator will avoid scheduling lessons during configured blocked windows.' : 'No blocked windows needed — generator will schedule all teachers full-time.')
+                              : 'If your staff teaches full-time with no off-campus or part-time blocked slots, click to mark this step green.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleAvailability(e);
+                        }}
+                        className={`h-7 px-3 rounded-lg text-xs font-semibold shrink-0 transition-all flex items-center gap-1.5 shadow-2xs ${
+                          isDone && (data?.availability?.length || 0) === 0
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                            : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        }`}
+                      >
+                        <CheckCircle2 size={13} />
+                        <span>
+                          {isDone && (data?.availability?.length || 0) === 0
+                            ? '✓ All Marked Available'
+                            : 'Mark All as Available'}
+                        </span>
+                      </button>
+                    </div>
+                  )}
+
                   {step.tab && (
                     <button
                       type="button"

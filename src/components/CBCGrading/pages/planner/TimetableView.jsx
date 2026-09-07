@@ -6,12 +6,8 @@ import {
 } from 'lucide-react';
 import api from '../../../../services/api';
 import { useAuth } from '../../../../hooks/useAuth';
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'];
-const DAY_LABELS = { MONDAY: 'Mon', TUESDAY: 'Tue', WEDNESDAY: 'Wed', THURSDAY: 'Thu', FRIDAY: 'Fri' };
-const DAY_FULL   = { MONDAY: 'Monday', TUESDAY: 'Tuesday', WEDNESDAY: 'Wednesday', THURSDAY: 'Thursday', FRIDAY: 'Friday' };
+import { fmt12, minutesFromMidnight, durationLabel, todayDayName } from '../../../../utils/timeFormat';
+import { SCHOOL_DAYS_UPPER, SCHOOL_DAYS_SHORT, SCHOOL_DAYS_FULL, SCHOOL_DAY_ORDER } from '../../../../constants/timetable';
 
 // Colour palette — one colour per learning area, cycling deterministically
 const PALETTE = [
@@ -32,33 +28,6 @@ const DEFAULT_PERIODS = [
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function fmt12(time24) {
-  if (!time24) return '';
-  const [hStr, mStr] = time24.split(':');
-  const h = parseInt(hStr, 10);
-  const m = mStr || '00';
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const h12 = h % 12 || 12;
-  return `${h12}:${m} ${ampm}`;
-}
-
-function minutesFromMidnight(time24) {
-  if (!time24) return 0;
-  const [h, m] = time24.split(':').map(Number);
-  return h * 60 + (m || 0);
-}
-
-function durationLabel(start, end) {
-  const diff = minutesFromMidnight(end) - minutesFromMidnight(start);
-  if (diff <= 0) return '';
-  return diff < 60 ? `${diff}min` : `${Math.floor(diff / 60)}h${diff % 60 ? ` ${diff % 60}m` : ''}`;
-}
-
-function todayDayName() {
-  const idx = new Date().getDay(); // 0=Sun … 6=Sat
-  return ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][idx];
-}
 
 function isCurrentPeriod(schedule) {
   const now = new Date();
@@ -185,7 +154,7 @@ const GridView = ({ schedulesByDay, colorMap, activeDayIndex, setActiveDayIndex 
           </tr>
         </thead>
         <tbody>
-          {DAYS.map((day, di) => {
+          {SCHOOL_DAYS_UPPER.map((day, di) => {
             const daySlots = schedulesByDay[day] || [];
             const isToday = day === today;
             return (
@@ -196,7 +165,7 @@ const GridView = ({ schedulesByDay, colorMap, activeDayIndex, setActiveDayIndex 
                 <td className="py-2 px-3 border-b border-gray-50 align-middle">
                   <div className="flex flex-col items-start">
                     <span className={`text-[10px] font-bold uppercase tracking-widest ${isToday ? 'text-brand-purple' : 'text-gray-500'}`}>
-                      {DAY_LABELS[day]}
+                      {SCHOOL_DAYS_SHORT[day]}
                     </span>
                     {isToday && (
                       <span className="mt-0.5 text-[8px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-px rounded-full">TODAY</span>
@@ -243,14 +212,14 @@ const GridView = ({ schedulesByDay, colorMap, activeDayIndex, setActiveDayIndex 
 
 const ListView = ({ schedulesByDay, colorMap, activeDayIndex, setActiveDayIndex }) => {
   const today = todayDayName();
-  const activeDay = DAYS[activeDayIndex];
+  const activeDay = SCHOOL_DAYS_UPPER[activeDayIndex];
   const daySlots = schedulesByDay[activeDay] || [];
 
   return (
     <div className="flex flex-col gap-4">
       {/* Day selector */}
       <div className="flex gap-2 flex-wrap">
-        {DAYS.map((day, di) => {
+        {SCHOOL_DAYS_UPPER.map((day, di) => {
           const isToday = day === today;
           const active = di === activeDayIndex;
           const count = (schedulesByDay[day] || []).length;
@@ -266,7 +235,7 @@ const ListView = ({ schedulesByDay, colorMap, activeDayIndex, setActiveDayIndex 
                   : 'bg-white text-gray-600 border-gray-200 hover:border-brand-purple/40'
               }`}
             >
-              <span className="uppercase tracking-widest text-[10px]">{DAY_LABELS[day]}</span>
+              <span className="uppercase tracking-widest text-[10px]">{SCHOOL_DAYS_SHORT[day]}</span>
               <span className={`text-[9px] mt-0.5 font-normal ${active ? 'text-white/70' : 'text-gray-400'}`}>
                 {count} {count === 1 ? 'lesson' : 'lessons'}
               </span>
@@ -278,7 +247,7 @@ const ListView = ({ schedulesByDay, colorMap, activeDayIndex, setActiveDayIndex 
       {/* Day heading */}
       <div className="flex items-center gap-2">
         <h3 className="text-sm font-semibold text-gray-800 uppercase tracking-widest">
-          {DAY_FULL[activeDay]}
+          {SCHOOL_DAYS_FULL[activeDay]}
         </h3>
         {activeDay === today && (
           <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-widest">
@@ -329,7 +298,7 @@ const TimetableView = () => {
   const [viewMode, setViewMode] = useState('list'); // 'grid' | 'list'
   const [activeDayIndex, setActiveDayIndex] = useState(() => {
     // Default to today's index (0=Mon … 4=Fri), fallback to 0
-    const todayIdx = DAYS.indexOf(todayDayName());
+    const todayIdx = SCHOOL_DAYS_UPPER.indexOf(todayDayName());
     return todayIdx >= 0 ? todayIdx : 0;
   });
 
@@ -344,9 +313,8 @@ const TimetableView = () => {
       const resp = await api.classes.getTeacherSchedules(teacherId);
       const data = resp?.data || resp || [];
       // Sort by day order then by start time
-      const dayOrder = { MONDAY: 0, TUESDAY: 1, WEDNESDAY: 2, THURSDAY: 3, FRIDAY: 4, SATURDAY: 5, SUNDAY: 6 };
       const sorted = [...data].sort((a, b) => {
-        const dd = (dayOrder[a.day] ?? 9) - (dayOrder[b.day] ?? 9);
+        const dd = (SCHOOL_DAY_ORDER[a.day] ?? 9) - (SCHOOL_DAY_ORDER[b.day] ?? 9);
         if (dd !== 0) return dd;
         return minutesFromMidnight(a.startTime) - minutesFromMidnight(b.startTime);
       });
@@ -366,7 +334,7 @@ const TimetableView = () => {
   // Group by day
   const schedulesByDay = useMemo(() => {
     const map = {};
-    DAYS.forEach((d) => (map[d] = []));
+    SCHOOL_DAYS_UPPER.forEach((d) => (map[d] = []));
     schedules.forEach((s) => {
       const day = s.day?.toUpperCase();
       if (map[day]) map[day].push(s);
@@ -457,7 +425,7 @@ const TimetableView = () => {
         <StatPill icon={Clock}       value={totalPeriods}    label="Periods/week"  color="#7C3AED" />
         <StatPill icon={BookOpen}    value={uniqueSubjects}  label="Subjects"      color="#059669" />
         <StatPill icon={Users}       value={uniqueClasses}   label="Classes"       color="#2563EB" />
-        <StatPill icon={Calendar}    value={DAYS.filter(d => (schedulesByDay[d] || []).length > 0).length} label="Active days" color="#D97706" />
+        <StatPill icon={Calendar}    value={SCHOOL_DAYS_UPPER.filter(d => (schedulesByDay[d] || []).length > 0).length} label="Active days" color="#D97706" />
       </div>
 
       {/* ── Now teaching banner ────────────────────────────────────────────── */}

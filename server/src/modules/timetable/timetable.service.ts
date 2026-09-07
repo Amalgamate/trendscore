@@ -549,6 +549,423 @@ export class TimetableService {
       classes: classReports.sort((a, b) => a.coveragePct - b.coveragePct) // worst first
     };
   }
+
+  // ── Relief Cover & Emergency Absence Engine ────────────────────────────────
+  async getAbsenceImpact(teacherId: string, day: string, academicYear?: number, semester?: string) {
+    const teacher = await prisma.user.findUnique({
+      where: { id: teacherId },
+      select: { id: true, firstName: true, lastName: true, email: true, phone: true }
+    });
+    if (!teacher) throw new ApiError(404, 'Teacher not found');
+
+    // 1. Find all affected published lessons for this teacher on this day
+    const scheduleWhere: Prisma.ClassScheduleWhereInput = {
+      teacherId,
+      day: day as any,
+    };
+    if (academicYear) scheduleWhere.academicYear = Number(academicYear);
+    if (semester) scheduleWhere.semester = semester as any;
+
+    const affectedLessons = await prisma.classSchedule.findMany({
+      where: scheduleWhere,
+      include: {
+        class: { select: { id: true, name: true, grade: true, stream: true } },
+        learningArea: { select: { id: true, name: true, shortName: true } }
+      },
+      orderBy: [{ startTime: 'asc' }]
+    });
+
+    // 2. Fetch all other active teachers to find candidate substitutes
+    const allTeachers = await prisma.user.findMany({
+      where: {
+        role: 'TEACHER',
+        status: 'ACTIVE',
+        archived: false,
+        id: { not: teacherId }
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true
+      },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }]
+    });
+
+    // 3. Fetch all schedules for this day to check teacher occupancy
+    const daySchedules = await prisma.classSchedule.findMany({
+      where: {
+        day: day as any,
+        teacherId: { in: allTeachers.map(t => t.id) },
+        ...(academicYear ? { academicYear: Number(academicYear) } : {}),
+        ...(semester ? { semester: semester as any } : {})
+      },
+      select: {
+        id: true,
+        teacherId: true,
+        startTime: true,
+        endTime: true,
+        subject: true,
+        class: { select: { name: true } }
+      }
+    });
+
+    // 4. Fetch teacher availability blackout rules for this day
+    const blackouts = await prisma.teacherAvailability.findMany({
+      where: {
+        day,
+        available: false,
+        teacherId: { in: allTeachers.map(t => t.id) }
+      }
+    });
+
+    // 5. Fetch teacher subject assignments / schedules to score subject compatibility
+    const teacherSubjectsMap = new Map<string, Set<string>>();
+    const allTeacherSchedules = await prisma.classSchedule.findMany({
+      where: { teacherId: { in: allTeachers.map(t => t.id) } },
+      select: { teacherId: true, subject: true, learningAreaId: true }
+    });
+    for (const row of allTeacherSchedules) {
+      if (!row.teacherId) continue;
+      if (!teacherSubjectsMap.has(row.teacherId)) teacherSubjectsMap.set(row.teacherId, new Set());
+      if (row.subject) teacherSubjectsMap.get(row.teacherId)!.add(row.subject.trim().toLowerCase());
+      if (row.learningAreaId) teacherSubjectsMap.get(row.teacherId)!.add(row.learningAreaId);
+    }
+
+    const toMinutes = (t: string) => {
+      if (!t) return 0;
+      const [h, m] = t.split(':').map(Number);
+      return (h || 0) * 60 + (m || 0);
+    };
+
+    const overlaps = (s1: string, e1: string, s2: string, e2: string) => {
+      return toMinutes(s1) < toMinutes(e2) && toMinutes(s2) < toMinutes(e1);
+    };
+
+    // For each affected lesson, determine candidate substitutes
+    const lessonsWithCandidates = affectedLessons.map(lesson => {
+      const lessonSubj = (lesson.subject || lesson.learningArea?.name || '').trim().toLowerCase();
+      const lessonAreaId = lesson.learningAreaId;
+
+      const candidates = allTeachers.map(candidate => {
+        // Is candidate busy at this time?
+        const busySchedule = daySchedules.find(ds =>
+          ds.teacherId === candidate.id && overlaps(ds.startTime, ds.endTime, lesson.startTime, lesson.endTime)
+        );
+
+        // Does candidate have a blackout rule?
+        const hasBlackout = blackouts.some(b =>
+          b.teacherId === candidate.id && overlaps(b.startTime, b.endTime, lesson.startTime, lesson.endTime)
+        );
+
+        const isFree = !busySchedule && !hasBlackout;
+
+        // Subject match score
+        const knownSubjects = teacherSubjectsMap.get(candidate.id) || new Set();
+        const matchesSubject = (lessonSubj && knownSubjects.has(lessonSubj)) || (lessonAreaId ? knownSubjects.has(lessonAreaId) : false);
+
+        let matchType: 'SPECIALIST' | 'GENERAL' | 'BUSY' = 'GENERAL';
+        if (!isFree) {
+          matchType = 'BUSY';
+        } else if (matchesSubject) {
+          matchType = 'SPECIALIST';
+        }
+
+        return {
+          teacher: candidate,
+          isFree,
+          busyReason: busySchedule ? `Teaching ${busySchedule.subject} in ${busySchedule.class?.name || 'class'}` : (hasBlackout ? 'Marked Unavailable' : null),
+          matchesSubject,
+          matchType,
+          recommendationScore: !isFree ? 0 : (matchesSubject ? 100 : 50)
+        };
+      }).sort((a, b) => b.recommendationScore - a.recommendationScore);
+
+      const freeCandidates = candidates.filter(c => c.isFree);
+      const specialistCandidates = freeCandidates.filter(c => c.matchesSubject);
+
+      return {
+        lesson: {
+          id: lesson.id,
+          classId: lesson.classId,
+          className: lesson.class?.name || 'Class',
+          grade: lesson.class?.grade,
+          subject: lesson.subject,
+          learningArea: lesson.learningArea,
+          day: lesson.day,
+          startTime: lesson.startTime,
+          endTime: lesson.endTime,
+          room: lesson.room,
+          isOverride: lesson.isOverride
+        },
+        candidates,
+        freeCount: freeCandidates.length,
+        specialistCount: specialistCandidates.length,
+        bestRecommendation: freeCandidates[0] || null
+      };
+    });
+
+    return {
+      teacher,
+      day,
+      totalAffectedLessons: affectedLessons.length,
+      affectedLessons: lessonsWithCandidates,
+      hasOrphanedLessons: affectedLessons.length > 0
+    };
+  }
+
+  async assignReliefCover(data: {
+    scheduleId: string;
+    reliefTeacherId: string;
+    reason?: string;
+    overriddenBy?: string;
+  }) {
+    const schedule = await prisma.classSchedule.findUniqueOrThrow({
+      where: { id: data.scheduleId },
+      include: {
+        class: { select: { name: true } },
+        teacher: { select: { firstName: true, lastName: true } }
+      }
+    });
+
+    const reliefTeacher = await prisma.user.findUniqueOrThrow({
+      where: { id: data.reliefTeacherId },
+      select: { id: true, firstName: true, lastName: true }
+    });
+
+    const updated = await prisma.classSchedule.update({
+      where: { id: data.scheduleId },
+      data: {
+        teacherId: data.reliefTeacherId,
+        isOverride: true,
+        overriddenBy: data.overriddenBy || 'system',
+      },
+      include: {
+        class: { select: { name: true } },
+        learningArea: { select: { name: true } },
+        teacher: { select: { firstName: true, lastName: true } }
+      }
+    });
+
+    return {
+      success: true,
+      message: `Assigned ${reliefTeacher.firstName} ${reliefTeacher.lastName} to cover ${schedule.subject} for ${schedule.class.name} (${schedule.day} ${schedule.startTime}–${schedule.endTime})`,
+      schedule: updated
+    };
+  }
+
+  async batchAssignRelief(data: {
+    assignments: Array<{ scheduleId: string; reliefTeacherId: string; reason?: string }>;
+    overriddenBy?: string;
+  }) {
+    const results = [];
+    for (const a of data.assignments) {
+      const res = await this.assignReliefCover({
+        scheduleId: a.scheduleId,
+        reliefTeacherId: a.reliefTeacherId,
+        reason: a.reason,
+        overriddenBy: data.overriddenBy
+      });
+      results.push(res);
+    }
+    return {
+      success: true,
+      count: results.length,
+      results
+    };
+  }
+
+  async getSyllabusDeficitReport(academicYear?: number, semester?: string) {
+    const year = academicYear || new Date().getFullYear();
+    const where: Prisma.ClassScheduleWhereInput = {
+      academicYear: Number(year),
+      ...(semester ? { semester: semester as any } : {})
+    };
+
+    const [schedules, allocations, teachers] = await Promise.all([
+      prisma.classSchedule.findMany({
+        where,
+        include: {
+          class: { select: { id: true, name: true, grade: true } },
+          teacher: { select: { id: true, firstName: true, lastName: true } },
+          learningArea: { select: { id: true, name: true } }
+        }
+      }),
+      prisma.instructionalAllocation.findMany({
+        where: { academicYear: Number(year), active: true },
+        include: { learningArea: { select: { id: true, name: true } } }
+      }),
+      prisma.user.findMany({
+        where: { role: 'TEACHER', status: 'ACTIVE', archived: false },
+        select: { id: true, firstName: true, lastName: true }
+      })
+    ]);
+
+    // Count relief overrides
+    const overrideLessons = schedules.filter(s => s.isOverride);
+    const regularLessons = schedules.filter(s => !s.isOverride);
+
+    // Relief workload by teacher
+    const coverStats = new Map<string, number>();
+    for (const s of overrideLessons) {
+      if (s.teacherId) {
+        coverStats.set(s.teacherId, (coverStats.get(s.teacherId) || 0) + 1);
+      }
+    }
+
+    const teacherWorkloads = teachers.map(t => ({
+      id: t.id,
+      name: `${t.firstName} ${t.lastName}`,
+      regularLessons: schedules.filter(s => s.teacherId === t.id && !s.isOverride).length,
+      coverLessons: coverStats.get(t.id) || 0,
+      totalWeeklyLessons: schedules.filter(s => s.teacherId === t.id).length
+    })).sort((a, b) => b.coverLessons - a.coverLessons);
+
+    return {
+      academicYear: year,
+      semester,
+      totalLessons: schedules.length,
+      regularLessons: regularLessons.length,
+      reliefCoverLessons: overrideLessons.length,
+      continuityRate: schedules.length > 0 ? Math.round(((schedules.length - overrideLessons.length) / schedules.length) * 100) : 100,
+      teacherWorkloads: teacherWorkloads.filter(t => t.totalWeeklyLessons > 0)
+    };
+  }
+
+  /**
+   * Fetches Annual Planner calendar milestones (Holidays, Midterms, Exams, Term Dates)
+   * that fall within the academic year and term, enabling the timetable engine
+   * and live schedule views to account for non-instructional days and exam weeks.
+   */
+  async getCalendarMilestones(academicYear?: number, term?: string) {
+    const year = academicYear || new Date().getFullYear();
+    const where: any = {
+      academicYear: Number(year),
+      type: { in: ['HOLIDAY', 'MIDTERM_BREAK', 'EXAM_WEEK', 'EXAM', 'TERM_OPENING', 'TERM_CLOSING'] }
+    };
+    if (term) where.term = term;
+
+    const events = await prisma.event.findMany({
+      where,
+      orderBy: { startDate: 'asc' },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        startDate: true,
+        endDate: true,
+        allDay: true,
+        type: true,
+        term: true,
+        academicYear: true,
+        location: true
+      }
+    });
+
+    const holidays = events.filter(e => e.type === 'HOLIDAY');
+    const midterms = events.filter(e => e.type === 'MIDTERM_BREAK');
+    const exams = events.filter(e => e.type === 'EXAM_WEEK' || e.type === 'EXAM');
+    const termOpening = events.find(e => e.type === 'TERM_OPENING');
+    const termClosing = events.find(e => e.type === 'TERM_CLOSING');
+
+    return {
+      academicYear: year,
+      term,
+      events,
+      summary: {
+        totalHolidays: holidays.length,
+        hasMidtermBreak: midterms.length > 0,
+        examEventsCount: exams.length,
+        termOpeningDate: termOpening ? termOpening.startDate : null,
+        termClosingDate: termClosing ? termClosing.startDate : null
+      }
+    };
+  }
+
+  /**
+   * Retrieves effective weekly schedule with calendar milestone overlays (Holidays, Exam Blocks)
+   * for a specific Monday-starting calendar week.
+   */
+  async getEffectiveWeeklySchedule(options: {
+    academicYear?: number;
+    term?: string;
+    classId?: string;
+    weekStartDate: string; // YYYY-MM-DD (Monday)
+  }) {
+    const year = options.academicYear || new Date().getFullYear();
+    const weekStart = new Date(options.weekStartDate);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 4); // Friday
+    weekEnd.setHours(23, 59, 59, 999);
+
+    // Fetch planner events that intersect this Monday-Friday range
+    const calendarEvents = await prisma.event.findMany({
+      where: {
+        startDate: { lte: weekEnd },
+        endDate: { gte: weekStart }
+      },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        startDate: true,
+        endDate: true,
+        type: true,
+        allDay: true
+      }
+    });
+
+    // Map each day (Monday-Friday) to any intersecting full-day or special event
+    const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    const dayMilestones: Record<string, any[]> = {};
+    daysOfWeek.forEach(day => { dayMilestones[day] = []; });
+
+    for (let i = 0; i < 5; i++) {
+      const currentDayDate = new Date(weekStart);
+      currentDayDate.setDate(weekStart.getDate() + i);
+      const dayName = daysOfWeek[i];
+
+      const matchedEvents = calendarEvents.filter(e => {
+        const start = new Date(e.startDate);
+        const end = new Date(e.endDate);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        return currentDayDate >= start && currentDayDate <= end;
+      });
+
+      dayMilestones[dayName] = matchedEvents;
+    }
+
+    // Fetch standard published schedules
+    const where: Prisma.ClassScheduleWhereInput = {
+      academicYear: Number(year),
+      ...(options.term ? { semester: options.term as any } : {}),
+      ...(options.classId && options.classId !== 'all' ? { classId: options.classId } : {})
+    };
+
+    const schedules = await prisma.classSchedule.findMany({
+      where,
+      include: {
+        class: { select: { id: true, name: true, grade: true } },
+        teacher: { select: { id: true, firstName: true, lastName: true } },
+        learningArea: { select: { id: true, name: true } }
+      },
+      orderBy: [{ day: 'asc' }, { startTime: 'asc' }]
+    });
+
+    const isExamWeek = calendarEvents.some(e => e.type === 'EXAM_WEEK' || e.type === 'EXAM');
+    const hasMidterm = calendarEvents.some(e => e.type === 'MIDTERM_BREAK');
+
+    return {
+      academicYear: year,
+      term: options.term,
+      weekStartDate: options.weekStartDate,
+      isExamWeek,
+      hasMidterm,
+      dayMilestones,
+      schedules
+    };
+  }
 }
 
 export const timetableService = new TimetableService();

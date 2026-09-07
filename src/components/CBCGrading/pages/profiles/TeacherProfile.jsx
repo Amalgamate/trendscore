@@ -34,6 +34,11 @@ const TeacherProfile = ({ teacher, onBack, onEdit }) => {
     const [documents, setDocuments] = useState([]);
     const [loadingDocs, setLoadingDocs] = useState(false);
     const fileInputRef = useRef(null);
+    // Locally overrides the avatar shown after a successful photo save.
+    // The `teacher` object comes from in-memory navigation state (pageParams),
+    // which is NOT restored on a hard page reload/refresh (the reload wipes it,
+    // rendering a blank profile). We update the photo in place instead.
+    const [localPhoto, setLocalPhoto] = useState(null);
 
     useEffect(() => {
         if (teacher?.id) {
@@ -175,8 +180,13 @@ const TeacherProfile = ({ teacher, onBack, onEdit }) => {
         try {
             const response = await api.teachers.uploadPhoto(teacher.id, photoData);
             if (response?.success) {
+                // Update the avatar in place. We deliberately avoid a full
+                // window.location.reload() here: the `teacher` object this page
+                // renders comes from in-memory navigation state (pageParams.teacher),
+                // not from the URL, so a hard reload wipes it and leaves this page
+                // blank/reset instead of showing the saved photo.
+                setLocalPhoto(response.data?.profilePicture || photoData);
                 showSuccess('Profile photo updated successfully');
-                window.location.reload();
                 return true;
             }
             showError(response?.error || 'Failed to update profile photo');
@@ -240,7 +250,7 @@ const TeacherProfile = ({ teacher, onBack, onEdit }) => {
         >
             <ProfileHeader
                 name={`${teacher.firstName} ${teacher.lastName}`}
-                avatar={teacher.profilePicture || teacher.avatar}
+                avatar={localPhoto || teacher.profilePicture || teacher.avatar}
                 avatarFallback={`${teacher.firstName?.[0]}${teacher.lastName?.[0]}`}
                 status={teacher.status}
                 bannerColor="brand-teal"
@@ -665,7 +675,7 @@ const TeacherProfile = ({ teacher, onBack, onEdit }) => {
                 isOpen={showPhotoModal}
                 onClose={() => setShowPhotoModal(false)}
                 onSave={handleSavePhoto}
-                currentPhoto={teacher.profilePicture || teacher.avatar}
+                currentPhoto={localPhoto || teacher.profilePicture || teacher.avatar}
             />
 
             <ResetPasswordModal

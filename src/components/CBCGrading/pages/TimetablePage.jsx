@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Clock, Download, Filter, Loader2, MessageSquarePlus, Plus, Settings2, Share2, X } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { ChevronLeft, ChevronRight, Clock, Download, Filter, Loader2, MessageSquarePlus, Plus, Settings2, Share2, X, Calendar, CalendarDays, AlertCircle, Award } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 import Toast from '../shared/Toast';
 import api from '../../../services/api';
@@ -12,6 +12,15 @@ import { useMediaQuery } from '../hooks/useMediaQuery';
 import { MOBILE_MEDIA_QUERY } from '../../../constants/breakpoints';
 import TimetableEngineSetup from './timetable/TimetableEngineSetup';
 import TimetableChangeRequests from './timetable/TimetableChangeRequests';
+import {
+  parseTimeToMinutes,
+  toDisplayTime,
+  normalizeSlotKeyPart,
+  buildSlotKey,
+  buildTimeLine,
+  sortTimeLabels,
+} from '../../../utils/timeFormat';
+import { SCHOOL_DAYS } from '../../../constants/timetable';
 
 const DEFAULT_TIME_SLOTS = [
   { startTime: '08:00', endTime: '08:45' },
@@ -25,64 +34,6 @@ const DEFAULT_TIME_SLOTS = [
   { startTime: '14:00', endTime: '14:45' },
   { startTime: '14:45', endTime: '15:30' }
 ];
-
-const parseTimeToMinutes = (value) => {
-  const raw = String(value || '').trim();
-  if (!raw) return Number.NaN;
-
-  const twelveHourMatch = raw.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-  if (twelveHourMatch) {
-    const hours = Number(twelveHourMatch[1]);
-    const minutes = Number(twelveHourMatch[2]);
-    const meridiem = twelveHourMatch[3].toUpperCase();
-    let normalizedHours = hours % 12;
-    if (meridiem === 'PM') normalizedHours += 12;
-    return (normalizedHours * 60) + minutes;
-  }
-
-  const twentyFourHourMatch = raw.match(/^(\d{1,2}):(\d{2})$/);
-  if (twentyFourHourMatch) {
-    const hours = Number(twentyFourHourMatch[1]);
-    const minutes = Number(twentyFourHourMatch[2]);
-    return (hours * 60) + minutes;
-  }
-
-  return Number.NaN;
-};
-
-const toDisplayTime = (value) => {
-  const minutes = parseTimeToMinutes(value);
-  if (Number.isNaN(minutes)) return String(value || '').trim();
-
-  const hours24 = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  const meridiem = hours24 >= 12 ? 'PM' : 'AM';
-  const hours12 = ((hours24 + 11) % 12) + 1;
-  return `${hours12}:${String(mins).padStart(2, '0')} ${meridiem}`;
-};
-
-const normalizeSlotKeyPart = (value) => {
-  const minutes = parseTimeToMinutes(value);
-  if (Number.isNaN(minutes)) return String(value || '').trim().toUpperCase();
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
-};
-
-const buildSlotKey = (startTime, endTime) => `${normalizeSlotKeyPart(startTime)}-${normalizeSlotKeyPart(endTime)}`;
-
-const buildTimeLine = (startTime, endTime) => `${toDisplayTime(startTime)} - ${toDisplayTime(endTime)}`;
-
-const sortTimeLabels = (timeLabels) => {
-  return [...timeLabels].sort((a, b) => {
-    const aStart = String(a || '').split('-')[0]?.trim() || a;
-    const bStart = String(b || '').split('-')[0]?.trim() || b;
-    const aMinutes = parseTimeToMinutes(aStart);
-    const bMinutes = parseTimeToMinutes(bStart);
-    if (Number.isNaN(aMinutes) || Number.isNaN(bMinutes)) return String(a).localeCompare(String(b));
-    return aMinutes - bMinutes;
-  });
-};
 
 const getStartOfWeek = (date) => {
   const copy = new Date(date);
@@ -133,6 +84,55 @@ const TimetablePage = () => {
     localStorage.setItem('cbc_timetable_selected_class', selectedClassId);
   }, [selectedClassId]);
 
+  // Calendar Milestones & Planner Overlay State
+  const [plannerMilestones, setPlannerMilestones] = useState({
+    isExamWeek: false,
+    hasMidterm: false,
+    dayMilestones: { Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [] },
+    examEvents: [],
+    holidays: []
+  });
+
+  const fetchWeekCalendarMilestones = async (mondayDate) => {
+    try {
+      const year = mondayDate.getFullYear();
+      const month = String(mondayDate.getMonth() + 1).padStart(2, '0');
+      const day = String(mondayDate.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+
+      const res = await api.timetable.getEffectiveSchedule({
+        academicYear: year,
+        weekStartDate: dateStr
+      });
+
+      const payload = res?.data || res;
+      if (payload) {
+        const dayMap = payload.dayMilestones || {};
+        const allEvents = Object.values(dayMap).flat();
+
+        setPlannerMilestones({
+          isExamWeek: !!payload.isExamWeek,
+          hasMidterm: !!payload.hasMidterm,
+          dayMilestones: {
+            Monday: dayMap.Monday || [],
+            Tuesday: dayMap.Tuesday || [],
+            Wednesday: dayMap.Wednesday || [],
+            Thursday: dayMap.Thursday || [],
+            Friday: dayMap.Friday || []
+          },
+          examEvents: allEvents.filter(e => e.type === 'EXAM_WEEK' || e.type === 'EXAM'),
+          holidays: allEvents.filter(e => e.type === 'HOLIDAY')
+        });
+      }
+    } catch (err) {
+      console.warn('Could not fetch calendar milestones for week:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchWeekCalendarMilestones(weekStart);
+  }, [weekStart]);
+
   const { showSuccess, showError, showInfo, showToast, toastMessage, toastType, hideNotification } = useNotifications();
 
   // Form state
@@ -157,8 +157,6 @@ const TimetablePage = () => {
   const canEditTimetable = can('EDIT_TIMETABLE');
   // Only ADMIN and HEAD_TEACHER can make quick override edits to a published timetable
   const canOverride = ['ADMIN', 'HEAD_TEACHER', 'SUPER_ADMIN'].includes(user?.role);
-
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
   useEffect(() => {
     fetchInitialData();
@@ -888,7 +886,7 @@ const TimetablePage = () => {
               type="button"
               onClick={() => {
                 const currentWeekday = getCurrentWeekday();
-                setSelectedDay(days.includes(currentWeekday) ? currentWeekday : 'Monday');
+                setSelectedDay(SCHOOL_DAYS.includes(currentWeekday) ? currentWeekday : 'Monday');
               }}
               className="h-12 rounded-lg border border-gray-200 bg-white px-3 text-sm font-semibold text-[#17213d] shadow-sm flex items-center justify-center gap-2"
             >
@@ -898,7 +896,7 @@ const TimetablePage = () => {
           </div>
 
           <div className="flex gap-2 overflow-x-auto pb-1">
-            {days.map((day) => (
+            {SCHOOL_DAYS.map((day) => (
               <button
                 key={day}
                 type="button"
@@ -973,10 +971,83 @@ const TimetablePage = () => {
       {/* Weekly Overview Grid */}
       {!isMobile && viewMode === 'weekly' && (
         <div className="bg-white rounded-xl shadow-md border border-gray-200">
+          {/* Exam / Midterm Week Banner */}
+          {plannerMilestones.isExamWeek && (
+            <div className="bg-gradient-to-r from-indigo-900 to-indigo-800 text-white px-5 py-3 rounded-t-xl flex items-center justify-between border-b border-indigo-700 shadow-inner">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-indigo-700/80 flex items-center justify-center text-amber-300 font-bold">
+                  <Award size={18} />
+                </div>
+                <div>
+                  <div className="text-sm font-bold flex items-center gap-2">
+                    <span>Examination Period Active</span>
+                    <span className="text-[10px] bg-amber-400 text-indigo-950 font-black px-2 py-0.5 rounded-full uppercase tracking-wider">Exam Week</span>
+                  </div>
+                  <p className="text-xs text-indigo-200 mt-0.5">
+                    Standard instructional pacing is suspended for this week. Teachers and learners adhere to the Institutional Exam Invigilation Schedule.
+                  </p>
+                </div>
+              </div>
+              <div className="text-xs text-indigo-200 bg-indigo-950/50 px-3 py-1.5 rounded-lg border border-indigo-700/50 font-medium">
+                Official CBE Assessment Block
+              </div>
+            </div>
+          )}
+
+          {plannerMilestones.hasMidterm && (
+            <div className="bg-gradient-to-r from-amber-600 to-orange-600 text-white px-5 py-3 rounded-t-xl flex items-center justify-between shadow-inner">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-amber-700 flex items-center justify-center text-white">
+                  <Calendar size={18} />
+                </div>
+                <div>
+                  <div className="text-sm font-bold">Midterm Break Week</div>
+                  <p className="text-xs text-amber-100 mt-0.5">
+                    School midterm recess is in effect. Check designated recess days below.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="p-4 border-b border-gray-200 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="font-semibold text-gray-900">Week at a Glance</h3>
-              <p className="text-sm text-gray-600">Your full week schedule overview</p>
+            <div className="flex items-center gap-4">
+              <div>
+                <h3 className="font-semibold text-gray-900">Week at a Glance</h3>
+                <p className="text-sm text-gray-600">Your full week schedule overview</p>
+              </div>
+
+              {/* Desktop Week Navigator */}
+              <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg border border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setWeekStart((current) => {
+                    const next = new Date(current);
+                    next.setDate(current.getDate() - 7);
+                    return next;
+                  })}
+                  className="w-7 h-7 rounded-md hover:bg-white text-gray-600 hover:text-gray-900 flex items-center justify-center transition"
+                  title="Previous week"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <div className="px-2.5 text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                  <Clock size={13} className="text-brand-purple" />
+                  <span>{formatWeekRange(weekStart)}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setWeekStart((current) => {
+                    const next = new Date(current);
+                    next.setDate(current.getDate() + 7);
+                    return next;
+                  })}
+                  className="w-7 h-7 rounded-md hover:bg-white text-gray-600 hover:text-gray-900 flex items-center justify-center transition"
+                  title="Next week"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -1011,16 +1082,30 @@ const TimetablePage = () => {
                     <th className="w-32">
                       TIME BLOCK
                     </th>
-                    {days.map((day) => (
-                      <th key={day}>
-                        {day.toUpperCase()}
-                      </th>
-                    ))}
+                    {SCHOOL_DAYS.map((day) => {
+                      const dayEvents = plannerMilestones.dayMilestones[day] || [];
+                      const holiday = dayEvents.find(e => e.type === 'HOLIDAY');
+                      const midterm = dayEvents.find(e => e.type === 'MIDTERM_BREAK');
+                      const milestone = holiday || midterm;
+
+                      return (
+                        <th key={day} className={milestone ? (holiday ? 'bg-red-50 text-red-800' : 'bg-amber-50 text-amber-800') : ''}>
+                          <div className="flex flex-col items-center justify-center gap-0.5">
+                            <span>{day.toUpperCase()}</span>
+                            {milestone && (
+                              <span className={`text-[9px] font-black tracking-normal px-1.5 py-0.2 rounded ${holiday ? 'bg-red-200 text-red-900' : 'bg-amber-200 text-amber-900'}`}>
+                                {holiday ? 'HOLIDAY' : 'RECESS'}
+                              </span>
+                            )}
+                          </div>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
                   {/* Keep the full timetable structure visible, including before lessons are added. */}
-                  {weeklyTimeSlots.map(timeSlot => (
+                  {weeklyTimeSlots.map((timeSlot, slotIdx) => (
                     <tr key={timeSlot}>
                       <td>
                         <div className="time-block-cell">
@@ -1028,7 +1113,32 @@ const TimetablePage = () => {
                           <span className="time-block-text">{timeSlot}</span>
                         </div>
                       </td>
-                      {days.map((day) => {
+                      {SCHOOL_DAYS.map((day) => {
+                        const dayEvents = plannerMilestones.dayMilestones[day] || [];
+                        const holiday = dayEvents.find(e => e.type === 'HOLIDAY');
+                        const midterm = dayEvents.find(e => e.type === 'MIDTERM_BREAK');
+                        const milestone = holiday || midterm;
+
+                        if (milestone) {
+                          return (
+                            <td key={day} className={holiday ? 'bg-red-50/40' : 'bg-amber-50/30'}>
+                              {slotIdx === 0 ? (
+                                <div className="py-2 px-1 text-center">
+                                  <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold ${holiday ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-amber-100 text-amber-800 border border-amber-200'}`}>
+                                    <Calendar size={12} />
+                                    <span>{milestone.title || (holiday ? 'Public Holiday' : 'Midterm Break')}</span>
+                                  </div>
+                                  <p className="text-[9px] text-gray-400 mt-1">No lessons scheduled</p>
+                                </div>
+                              ) : (
+                                <div className="text-center text-[10px] text-gray-300 font-medium select-none">
+                                  —
+                                </div>
+                              )}
+                            </td>
+                          );
+                        }
+
                         const lessons = scheduleData[day]?.filter(l => l.time === timeSlot) || [];
                         return (
                           <td key={day}>
@@ -1107,7 +1217,7 @@ const TimetablePage = () => {
                   }}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-purple bg-white"
                 >
-                  {days.map(d => <option key={d} value={d}>{d}</option>)}
+                  {SCHOOL_DAYS.map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
               </div>
               <div>

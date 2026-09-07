@@ -8,7 +8,7 @@ import {
   TrendingUp, Settings, BookOpen, Users2, Truck,
   CreditCard, PieChart, Package, HelpCircle, FileText, Receipt,
   ClipboardList, BarChart3, Building2,
-  Award, Fingerprint, BookMarked, Activity, Wrench
+  Award, Fingerprint, BookMarked, Activity, Wrench, Calendar
 } from 'lucide-react';
 
 export const tertiaryNavSections = [
@@ -64,7 +64,11 @@ export const tertiaryNavSections = [
     icon: GraduationCap,
     permission: 'MANAGE_TEACHERS',
     items: [
-      { id: 'lecturers-list', label: 'Lecturers List', path: 'teachers-list', permission: 'MANAGE_TEACHERS' },
+      { id: 'lecturers-list', label: 'Lecturers List', path: 'teachers-list', permission: 'MANAGE_TEACHERS', icon: GraduationCap },
+      { id: 'tert-lecturers-directory', label: 'Staff Directory', path: 'hr-staff-profiles', params: { from: 'lecturers' }, permission: 'MANAGE_TEACHERS', icon: Users2 },
+      { id: 'tert-lecturers-duty-roster', label: 'Duty Roster', path: 'planner-duty-roster', params: { from: 'lecturers' }, permission: 'MANAGE_TEACHERS', icon: ClipboardList },
+      { id: 'tert-lecturers-timetable', label: 'Lecture Timetable', path: 'planner-timetable', params: { from: 'lecturers' }, permission: 'ACCESS_TIMETABLE', icon: Calendar },
+      { id: 'tert-lecturers-schemes', label: 'Schemes of Work', path: 'planner-schemes', params: { from: 'lecturers' }, permission: 'MANAGE_TEACHERS', icon: BookOpen },
     ],
   },
 

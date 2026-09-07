@@ -3,8 +3,9 @@ import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, ClipboardCheck, D
 import api from '../../../../services/api';
 import { useNotifications } from '../../hooks/useNotifications';
 import { getSchoolBranding } from '../../../../utils/brandingUtils';
+import { SCHOOL_DAYS } from '../../../../constants/timetable';
 
-const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const days = SCHOOL_DAYS;
 
 // ── Publish confirmation dialog ───────────────────────────────────────────────
 const PublishConfirmDialog = ({ plan, version, entryCount, overrideCount, onConfirm, onCancel, publishing }) => (

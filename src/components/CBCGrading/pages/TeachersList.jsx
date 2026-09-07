@@ -4,17 +4,18 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Upload, Eye, Edit, Trash2, GraduationCap, BookOpen, Search, RefreshCw, MoreVertical, Filter, X, MessageCircle, MessageSquare, Loader2, Send, Users2 } from 'lucide-react';
+import { Plus, Upload, Eye, Edit, Trash2, GraduationCap, BookOpen, Search, RefreshCw, MoreVertical, Filter, X, MessageCircle, MessageSquare, Loader2, Send, Users2, Sparkles } from 'lucide-react';
 import StatusBadge from '../shared/StatusBadge';
 import EmptyState from '../shared/EmptyState';
 import { DataCard } from '../shared';
 import { useAuth } from '../../../hooks/useAuth';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { useMobile } from '../../../hooks/useMobileDetection';
+import { useNotifications } from '../hooks/useNotifications';
 import BulkOperationsModal from '../shared/bulk/BulkOperationsModal';
 import TeacherClassAssignmentModal from '../shared/TeacherClassAssignmentModal';
 import AssignSubjectModal from '../shared/AssignSubjectModal';
-import { communicationAPI, hrAPI } from '../../../services/api';
+import api, { communicationAPI, hrAPI } from '../../../services/api';
 import { formatPhoneNumber } from '../../../utils/phoneFormatter';
 import StaffPopup from '../dashboard/widgets/StaffPopup';
 
@@ -61,7 +62,37 @@ const TeachersList = ({
   const activeFilterCount = filterStatus !== 'all' ? 1 : 0;
   const [selectedTeacherForAssignment, setSelectedTeacherForAssignment] = useState(null);
   const [selectedTeacherForSubject, setSelectedTeacherForSubject] = useState(null);
+  const { showSuccess, showError } = useNotifications();
+  const [isAutoAssigning, setIsAutoAssigning] = useState(false);
   useAuth();
+
+  const unassignedCount = useMemo(() => {
+    return (teachers || []).filter(t => !t.staffId || t.staffId === '---').length;
+  }, [teachers]);
+
+  const handleAutoAssignStaffIds = async () => {
+    const countMsg = unassignedCount > 0 ? `all ${unassignedCount} tutors` : 'all tutors';
+    if (!window.confirm(`Auto-issue sequential employee numbers (STF-xxxx) incrementally to ${countMsg} currently without an ID?`)) {
+      return;
+    }
+
+    try {
+      setIsAutoAssigning(true);
+      setShowQuickActions(false);
+      const res = await api.teachers.autoAssignStaffIds();
+      if (res?.success) {
+        showSuccess(res.message || `Successfully auto-assigned ${res.data?.count || 0} employee numbers!`);
+        if (onRefresh) onRefresh();
+        else if (onFetchTeachers) onFetchTeachers({ page: 1, limit: pagination?.limit || 20 });
+      } else {
+        showError(res?.error || 'Failed to auto-assign employee numbers');
+      }
+    } catch (err) {
+      showError(err.message || 'Error auto-assigning employee numbers');
+    } finally {
+      setIsAutoAssigning(false);
+    }
+  };
 
   // Server-side filtering effect
   useEffect(() => {
@@ -406,17 +437,36 @@ const TeachersList = ({
                     className="fixed inset-0 z-10"
                     onClick={() => setShowQuickActions(false)}
                   />
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-100 z-20 py-1">
-                    <button
-                      onClick={() => {
-                        setShowQuickActions(false);
-                        setShowBulkModal(true);
-                      }}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                    >
-                      <Upload size={16} />
-                      Bulk Operations
-                    </button>
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-100 z-20 py-1.5 divide-y divide-gray-100">
+                    <div className="py-1">
+                      <button
+                        onClick={handleAutoAssignStaffIds}
+                        disabled={isAutoAssigning}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center justify-between gap-2"
+                      >
+                        <span className="flex items-center gap-2 font-medium">
+                          <Sparkles size={16} className="text-brand-purple" />
+                          Auto-assign Employee IDs
+                        </span>
+                        {unassignedCount > 0 && (
+                          <span className="text-[10px] bg-purple-100 text-purple-700 font-semibold px-2 py-0.5 rounded-full">
+                            {unassignedCount}
+                          </span>
+                        )}
+                      </button>
+                    </div>
+                    <div className="py-1">
+                      <button
+                        onClick={() => {
+                          setShowQuickActions(false);
+                          setShowBulkModal(true);
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <Upload size={16} />
+                        Bulk Operations
+                      </button>
+                    </div>
                   </div>
                 </>
               )}

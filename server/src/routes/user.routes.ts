@@ -78,6 +78,28 @@ router.get(
 );
 
 /**
+ * @route   GET /api/users/next-staff-id
+ * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM
+ */
+router.get(
+  '/next-staff-id',
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM']),
+  rateLimit({ windowMs: 60_000, maxRequests: 60 }),
+  asyncHandler(userController.getNextStaffId)
+);
+
+/**
+ * @route   POST /api/users/auto-assign-staff-ids
+ * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER
+ */
+router.post(
+  '/auto-assign-staff-ids',
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
+  auditLog('AUTO_ASSIGN_STAFF_IDS'),
+  asyncHandler(userController.autoAssignStaffIds)
+);
+
+/**
  * @route   GET /api/users/role/:role
  * @access  VIEW_ALL_USERS permission
  */
