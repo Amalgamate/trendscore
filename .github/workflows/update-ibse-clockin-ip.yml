@@ -41,10 +41,19 @@ jobs:
         run: bash scripts/ci/configure-deploy-ssh.sh
 
       - name: Update allowedClockInIps for IBSE
-        env:
-          NEW_IPS: ${{ inputs.allowed_ips }}
         run: |
           set -euo pipefail
+
+          # Resolve value: empty input => null (disables IP check), otherwise the trimmed string
+          RAW_IPS="${{ inputs.allowed_ips }}"
+          if [[ -z "${RAW_IPS// /}" ]]; then
+            JS_VALUE="null"
+          else
+            # Escape any single quotes in the IP string for safe JS embedding
+            ESCAPED="${RAW_IPS//\'/\\\'}"
+            JS_VALUE="'${ESCAPED}'"
+          fi
+
           ssh production "
             set -euo pipefail
 
@@ -66,16 +75,14 @@ jobs:
               const prisma = new PrismaClient();
 
               async function main() {
-                const NEW_IPS = process.env.NEW_IPS || null;
-                const valueToSet = NEW_IPS && NEW_IPS.trim() ? NEW_IPS.trim() : null;
+                const valueToSet = ${JS_VALUE};
 
-                // Read current value first
                 const school = await prisma.school.findFirst({
                   select: { id: true, name: true, allowedClockInIps: true }
                 });
 
                 if (!school) {
-                  console.error('❌ No school record found in this database');
+                  console.error('No school record found in this database');
                   process.exit(1);
                 }
 
@@ -88,11 +95,10 @@ jobs:
                   data: { allowedClockInIps: valueToSet }
                 });
 
-                // Verify
                 const updated = await prisma.school.findFirst({
                   select: { allowedClockInIps: true }
                 });
-                console.log('✅ Verified stored value:', JSON.stringify(updated.allowedClockInIps));
+                console.log('Verified stored value:', JSON.stringify(updated.allowedClockInIps));
 
                 await prisma.\\\$disconnect();
               }
@@ -101,7 +107,7 @@ jobs:
                 console.error('Update failed:', err);
                 process.exit(1);
               });
-            \" NEW_IPS=\"${NEW_IPS}\"
+            \"
           "
 
       - name: Summary
