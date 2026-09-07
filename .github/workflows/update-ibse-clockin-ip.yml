@@ -1,0 +1,119 @@
+name: Update IBSE Clock-In IP (One-Shot)
+
+# One-shot workflow to update the allowedClockInIps field for IBSE school.
+# Run this when the school's public IP changes and staff clock-in is blocked with IP_DENIED.
+
+on:
+  workflow_dispatch:
+    inputs:
+      allowed_ips:
+        description: 'Allowed clock-in IP(s) — comma or newline separated. Leave blank to CLEAR (disables IP check).'
+        required: false
+        type: string
+        default: '102.210.29.10'
+      confirm:
+        description: 'Type "update" to confirm'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  update-ip:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [[ "${{ inputs.confirm }}" != "update" ]]; then
+            echo "❌ Confirmation not provided. Type 'update' in the confirm field."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Update allowedClockInIps for IBSE
+        env:
+          NEW_IPS: ${{ inputs.allowed_ips }}
+        run: |
+          set -euo pipefail
+          ssh production "
+            set -euo pipefail
+
+            CONTAINER=\$(sudo docker ps \
+              --filter 'label=com.docker.compose.service=backend' \
+              --format '{{.Names}}|{{.Label \"com.docker.compose.project\"}}' \
+              | awk -F'|' '\$2 == \"zawadi-ibse\" { print \$1; exit }')
+
+            if [[ -z \"\${CONTAINER}\" ]]; then
+              echo '❌ Could not find backend container for zawadi-ibse'
+              sudo docker ps --format 'table {{.Names}}\t{{.Label \"com.docker.compose.project\"}}'
+              exit 1
+            fi
+
+            echo \"✅ Container: \${CONTAINER}\"
+
+            sudo docker exec \"\${CONTAINER}\" node -e \"
+              const { PrismaClient } = require('@prisma/client');
+              const prisma = new PrismaClient();
+
+              async function main() {
+                const NEW_IPS = process.env.NEW_IPS || null;
+                const valueToSet = NEW_IPS && NEW_IPS.trim() ? NEW_IPS.trim() : null;
+
+                // Read current value first
+                const school = await prisma.school.findFirst({
+                  select: { id: true, name: true, slug: true, allowedClockInIps: true }
+                });
+
+                if (!school) {
+                  console.error('❌ No school record found in this database');
+                  process.exit(1);
+                }
+
+                console.log('School:', school.name, '(' + school.slug + ')');
+                console.log('Current allowedClockInIps:', JSON.stringify(school.allowedClockInIps));
+                console.log('New allowedClockInIps:    ', JSON.stringify(valueToSet));
+
+                await prisma.school.update({
+                  where: { id: school.id },
+                  data: { allowedClockInIps: valueToSet }
+                });
+
+                // Verify
+                const updated = await prisma.school.findFirst({
+                  select: { allowedClockInIps: true }
+                });
+                console.log('✅ Verified stored value:', JSON.stringify(updated.allowedClockInIps));
+
+                await prisma.\\\$disconnect();
+              }
+
+              main().catch(err => {
+                console.error('Update failed:', err);
+                process.exit(1);
+              });
+            \" NEW_IPS=\"${NEW_IPS}\"
+          "
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "## ✅ IBSE Clock-In IP Updated"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| School | IBSE (\`ibse.trendscore.co.ke\`) |"
+            echo "| New \`allowedClockInIps\` | \`${{ inputs.allowed_ips || 'null (IP check disabled)' }}\` |"
+            echo ""
+            echo "Staff on the approved network should now be able to clock in."
+          } >> "$GITHUB_STEP_SUMMARY"
