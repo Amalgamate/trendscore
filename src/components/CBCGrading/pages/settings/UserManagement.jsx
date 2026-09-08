@@ -305,7 +305,7 @@ const formatDate = (dateString) => {
   return date.toLocaleDateString();
 };
 
-const UserManagement = () => {
+const UserManagement = ({ initialTab } = {}) => {
   const [activeTab, setActiveTab] = useState('all');
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -316,7 +316,10 @@ const UserManagement = () => {
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [notification, setNotification] = useState(null);
-  const [viewMode, setViewMode] = useState('list'); // 'list', 'config', 'logs'
+  const [viewMode, setViewMode] = useState(() => {
+    const valid = ['list', 'config', 'logs'];
+    return valid.includes(initialTab) ? initialTab : 'list';
+  }); // 'list', 'config', 'logs'
   const [activityLogs, setActivityLogs] = useState([]);
   const [activityFilterUser, setActivityFilterUser] = useState('all');
   const [showResetModal, setShowResetModal] = useState(false);
