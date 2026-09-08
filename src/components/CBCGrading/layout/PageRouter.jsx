@@ -926,7 +926,7 @@ const PageRouter = ({
             return isMobile ? (
               <MobileUserManagement onNavigate={handleNavigate} />
             ) : (
-              <UserManagement />
+              <UserManagement initialTab={pageParams?.tab} />
             );
           case 'settings':
             return isMobile ? (

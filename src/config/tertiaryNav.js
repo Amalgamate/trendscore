@@ -315,10 +315,12 @@ export const tertiaryNavSections = [
       { id: 'settings-operations-group', label: 'Operations', type: 'group', items: [
         { id: 'settings-communication', label: 'Communication Settings', path: 'settings-communication', permission: 'SCHOOL_SETTINGS' },
       ]},
-      { id: 'settings-people-group', label: 'People & Approvals', type: 'group', items: [
-        { id: 'settings-users', label: 'User Management', path: 'settings-users', permission: 'EDIT_USER' },
-        { id: 'settings-approvals', label: 'Approvals', path: 'settings-approvals', permission: 'SCHOOL_SETTINGS' },
+      { id: 'settings-users-group', label: 'Users', type: 'group', items: [
+        { id: 'settings-users-list',     label: 'Users',         path: 'settings-users', params: { tab: 'list' },   permission: 'EDIT_USER' },
+        { id: 'settings-users-roles',    label: 'Roles',         path: 'settings-users', params: { tab: 'config' }, permission: 'EDIT_USER' },
+        { id: 'settings-users-activity', label: 'Activity Log',  path: 'settings-users', params: { tab: 'logs' },   permission: 'EDIT_USER' },
       ]},
+      { id: 'settings-approvals', label: 'Approvals', path: 'settings-approvals', permission: 'SCHOOL_SETTINGS' },
       { id: 'settings-system-group', label: 'System', type: 'group', items: [
         { id: 'settings-system-logs', label: 'System Logs', path: 'settings-system-logs', permission: 'SYSTEM_SETTINGS', icon: Activity },
         { id: 'settings-system-control', label: 'System Control', path: 'settings-system-control', permission: 'SYSTEM_SETTINGS', icon: Wrench },
