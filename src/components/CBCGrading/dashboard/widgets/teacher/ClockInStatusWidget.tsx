@@ -294,7 +294,7 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
             className={`w-full px-4 py-2.5 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm ${
               primaryButton.disabled
                 ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                : 'bg-slate-900 text-white hover:bg-slate-800'
+                : 'bg-emerald-600 text-white hover:bg-emerald-700'
             }`}
           >
             {primaryButton.disabled ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
