@@ -320,6 +320,12 @@ const UserManagement = ({ initialTab } = {}) => {
     const valid = ['list', 'config', 'logs'];
     return valid.includes(initialTab) ? initialTab : 'list';
   }); // 'list', 'config', 'logs'
+
+  // Sync tab when the horizontal nav changes params on the same page
+  useEffect(() => {
+    const valid = ['list', 'config', 'logs'];
+    if (valid.includes(initialTab)) setViewMode(initialTab);
+  }, [initialTab]);
   const [activityLogs, setActivityLogs] = useState([]);
   const [activityFilterUser, setActivityFilterUser] = useState('all');
   const [showResetModal, setShowResetModal] = useState(false);
@@ -898,17 +904,7 @@ const UserManagement = ({ initialTab } = {}) => {
         </div>
       )}
 
-      <ModuleTabNav
-        sectionLabel="USER MANAGEMENT"
-        variant="dropdown"
-        tabs={[
-          { id: 'list', label: 'User List', icon: <Users size={13} /> },
-          { id: 'config', label: 'System Roles', icon: <Shield size={13} /> },
-          { id: 'logs', label: 'Activity Logs', icon: <Activity size={13} /> },
-        ]}
-        activeTab={viewMode}
-        onTabChange={setViewMode}
-      />
+
 
       <div className="p-4 space-y-4 lg:p-5">
         <div className="flex items-center justify-end gap-2 overflow-x-auto pb-1 no-scrollbar">
