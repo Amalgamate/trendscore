@@ -32,7 +32,15 @@ export class HRController {
                 ipAddress: getIpAddress(req),
                 userAgent: req.get('user-agent')
             });
-            res.status(201).json({ success: true, message: 'Clock-in recorded', data: result });
+            // Tell the truth about what happened instead of always saying
+            // "Clock-in recorded" — repeat clicks or a stale client state must
+            // not look identical to a brand-new clock-in.
+            const message = result.alreadyCompleted
+                ? 'You have already completed clock-in and clock-out for today.'
+                : result.alreadyClockedIn
+                    ? 'You are already clocked in for today.'
+                    : 'Clock-in recorded';
+            res.status(result.alreadyClockedIn ? 200 : 201).json({ success: true, message, data: result });
         } catch (error: any) {
             res.status(error.statusCode || 500).json({
                 success: false,
@@ -63,7 +71,10 @@ export class HRController {
                 ipAddress: getIpAddress(req),
                 userAgent: req.get('user-agent')
             });
-            res.status(200).json({ success: true, message: 'Clock-out recorded', data: result });
+            const message = result.alreadyClockedOut
+                ? 'You are already clocked out for today.'
+                : 'Clock-out recorded';
+            res.status(200).json({ success: true, message, data: result });
         } catch (error: any) {
             const message    = error?.message || 'Failed to clock out';
             const statusCode = error?.statusCode ||

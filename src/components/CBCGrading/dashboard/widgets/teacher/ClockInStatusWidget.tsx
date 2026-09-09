@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { hrAPI } from '../../../../../services/api/hr.api';
-import { Wifi, WifiOff, Clock, CheckCircle, XCircle, Loader2, Minimize2 } from 'lucide-react';
+import { Wifi, WifiOff, Clock, CheckCircle, XCircle, Info, Loader2, Minimize2 } from 'lucide-react';
 
 interface WidgetProps {
   user?: any;
@@ -16,7 +16,14 @@ type WidgetMode =
   | 'clock_in_success'
   | 'clock_in_denied'
   | 'clock_out_success'
-  | 'clock_out_denied';
+  | 'clock_out_denied'
+  // Idempotent outcomes — the request succeeded but nothing actually changed
+  // (repeat click, stale tab, second device). These are informational, not
+  // errors and not fresh successes, so they get their own neutral styling
+  // instead of borrowing the green "success" or red "denied" treatment.
+  | 'already_clocked_in'
+  | 'already_completed'
+  | 'already_clocked_out';
 
 // ── GPS / Geofence (DISABLED — replaced by IP/Wi-Fi check) ───────────────────
 // Location-based clock-in is paused because indoor GPS accuracy (5–50 m) causes
@@ -65,6 +72,15 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
     return !attendance.clockOutAt;
   }, [attendance]);
 
+  // The current model supports one clock-in/clock-out cycle per day. Once both
+  // are set, there is nothing left to action until tomorrow — the UI should
+  // say so plainly instead of re-offering a "Clock In" button that would just
+  // bounce off the server's idempotency guard.
+  const dayComplete = useMemo(
+    () => Boolean(attendance?.clockInAt && attendance?.clockOutAt),
+    [attendance]
+  );
+
   const refreshStatus = useCallback(async () => {
     try {
       setMode('loading_status');
@@ -82,6 +98,27 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
   useEffect(() => {
     refreshStatus();
   }, [refreshStatus]);
+
+  // Auto-clear transient feedback (success / info banners) so the permanent
+  // status derived from `attendance` takes back over the headline instead of
+  // a one-off action label sitting there indefinitely. Denials stay visible
+  // since they're actionable (e.g. "connect to school Wi-Fi and retry").
+  useEffect(() => {
+    const transientModes: WidgetMode[] = [
+      'clock_in_success',
+      'clock_out_success',
+      'already_clocked_in',
+      'already_completed',
+      'already_clocked_out'
+    ];
+    if (!transientModes.includes(mode)) return;
+    const timer = setTimeout(() => {
+      setMode('idle');
+      setMessage(null);
+      setReasonCode(null);
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [mode]);
 
   const performAction = useCallback(async (action: 'clock-in' | 'clock-out') => {
     setMessage(null);
@@ -149,29 +186,48 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
       const record = response?.data?.attendance as AttendanceRecord | undefined;
       if (record) setAttendance(record);
       setMinimized(false);
-      setMode(action === 'clock-in' ? 'clock_in_success' : 'clock_out_success');
+
+      if (action === 'clock-in') {
+        const alreadyCompleted = Boolean(response?.data?.alreadyCompleted);
+        const alreadyClockedIn = Boolean(response?.data?.alreadyClockedIn);
+        setMode(
+          alreadyCompleted ? 'already_completed'
+            : alreadyClockedIn ? 'already_clocked_in'
+            : 'clock_in_success'
+        );
+      } else {
+        const alreadyClockedOut = Boolean(response?.data?.alreadyClockedOut);
+        setMode(alreadyClockedOut ? 'already_clocked_out' : 'clock_out_success');
+      }
       return;
     }
 
     setMode(action === 'clock-in' ? 'clock_in_denied' : 'clock_out_denied');
   }, []);
 
+  // The headline always reflects the *durable* attendance state, not a
+  // one-off action outcome — so it can never say "Clock-in successful" while
+  // the record underneath shows the day already closed out. Busy and denied
+  // states are the only exceptions, since those describe what's happening
+  // right now rather than the saved record.
   const statusLabel = useMemo(() => {
     if (mode === 'loading_status') return 'Loading…';
-    if (mode === 'submitting_clock_in') return 'Submitting clock-in…';
-    if (mode === 'submitting_clock_out') return 'Submitting clock-out…';
-    if (mode === 'clock_in_success') return 'Clock-in successful';
-    if (mode === 'clock_out_success') return 'Clock-out successful';
+    if (mode === 'submitting_clock_in') return 'Clocking in…';
+    if (mode === 'submitting_clock_out') return 'Clocking out…';
     if (mode === 'clock_in_denied' || mode === 'clock_out_denied') {
       if (reasonCode === 'IP_DENIED') return 'Not on school Wi-Fi';
       return mode === 'clock_in_denied' ? 'Clock-in denied' : 'Clock-out denied';
     }
+    if (dayComplete) return 'Clocked out for today';
     if (isClockedIn) return 'Clocked in';
-    return 'Not clocked in';
-  }, [isClockedIn, mode, reasonCode]);
+    return 'Not clocked in yet';
+  }, [dayComplete, isClockedIn, mode, reasonCode]);
 
   const primaryButton = useMemo(() => {
     const busy = mode === 'submitting_clock_in' || mode === 'submitting_clock_out';
+    if (dayComplete) {
+      return { label: 'Day complete', onClick: undefined, disabled: true };
+    }
     if (isClockedIn) {
       return {
         label: busy ? 'Clocking out…' : 'Clock Out',
@@ -184,10 +240,22 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
       onClick: () => performAction('clock-in'),
       disabled: busy
     };
-  }, [isClockedIn, mode, performAction]);
+  }, [dayComplete, isClockedIn, mode, performAction]);
 
   const isIpDenied = reasonCode === 'IP_DENIED';
   const busy = mode === 'submitting_clock_in' || mode === 'submitting_clock_out';
+
+  // Feedback banner styling is driven entirely by *why* we're showing a
+  // message, not by the presence of a message string. A repeat clock-in
+  // ("already_clocked_in") is not an error and shouldn't look like one, and a
+  // genuine denial shouldn't look like a shrug.
+  type FeedbackTone = 'denied' | 'info' | 'success' | null;
+  const feedbackTone: FeedbackTone = useMemo(() => {
+    if (mode === 'clock_in_denied' || mode === 'clock_out_denied') return 'denied';
+    if (mode === 'already_clocked_in' || mode === 'already_completed' || mode === 'already_clocked_out') return 'info';
+    if (mode === 'clock_in_success' || mode === 'clock_out_success') return 'success';
+    return null;
+  }, [mode]);
 
   if (isClockedIn && minimized) {
     return (
@@ -240,28 +308,44 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
       </div>
 
       {message && (
-        <div className={`mt-3 p-3 rounded-xl border ${isIpDenied ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
-          <div className="flex items-start gap-2">
-            {isIpDenied
-              ? <WifiOff size={14} className="text-amber-600 mt-0.5 shrink-0" />
-              : <XCircle size={14} className="text-slate-400 mt-0.5 shrink-0" />}
-            <div>
-              <p className={`text-xs font-semibold ${isIpDenied ? 'text-amber-900' : 'text-slate-800'}`}>{message}</p>
-              {reasonCode && <p className="text-[10px] text-slate-500 mt-0.5 font-mono">Code: {reasonCode}</p>}
-            </div>
+        <div
+          className={`mt-3 p-3 rounded-xl border flex items-start gap-2 ${
+            feedbackTone === 'denied'
+              ? (isIpDenied ? 'bg-amber-50 border-amber-200' : 'bg-rose-50 border-rose-200')
+              : feedbackTone === 'success'
+                ? 'bg-emerald-50 border-emerald-200'
+                : 'bg-sky-50 border-sky-200'
+          }`}
+        >
+          {feedbackTone === 'denied'
+            ? (isIpDenied
+                ? <WifiOff size={14} className="text-amber-600 mt-0.5 shrink-0" />
+                : <XCircle size={14} className="text-rose-600 mt-0.5 shrink-0" />)
+            : feedbackTone === 'success'
+              ? <CheckCircle size={14} className="text-emerald-600 mt-0.5 shrink-0" />
+              : <Info size={14} className="text-sky-600 mt-0.5 shrink-0" />}
+          <div>
+            <p className={`text-xs font-semibold ${
+              feedbackTone === 'denied'
+                ? (isIpDenied ? 'text-amber-900' : 'text-rose-900')
+                : feedbackTone === 'success'
+                  ? 'text-emerald-900'
+                  : 'text-sky-900'
+            }`}>{message}</p>
+            {reasonCode && feedbackTone === 'denied' && (
+              <p className="text-[10px] text-slate-500 mt-0.5 font-mono">Code: {reasonCode}</p>
+            )}
           </div>
         </div>
       )}
 
-      {(mode === 'clock_in_success' || mode === 'clock_out_success') && !message && (
-        <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-          <CheckCircle size={14} className="shrink-0" />
-          <span>{mode === 'clock_in_success' ? 'Clock-in recorded successfully.' : 'Clock-out recorded successfully.'}</span>
-        </div>
-      )}
-
       <div className="mt-3.5 flex flex-col gap-2">
-        {isClockedIn ? (
+        {dayComplete ? (
+          <div className="w-full px-4 py-2.5 rounded-xl bg-slate-100 border border-slate-200 font-bold text-xs text-slate-500 flex items-center justify-center gap-1.5">
+            <CheckCircle size={13} className="text-emerald-500" />
+            Day complete — see you tomorrow
+          </div>
+        ) : isClockedIn ? (
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"

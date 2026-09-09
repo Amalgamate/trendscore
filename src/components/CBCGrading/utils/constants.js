@@ -227,6 +227,7 @@ export const PAGE_TITLES = {
   'sec-subjects':            'Subject Catalogue',
   'pathways-admin':          'Pathway Administration',
   'pathway-guide':           'Pathway Guide',
+  'student-timetable': 'My Timetable',
   'student-pathway-planner': 'My Pathway',
   'student-career-explorer': 'Career Explorer',
   'parent-portal-pathway':   'Pathway Planner',

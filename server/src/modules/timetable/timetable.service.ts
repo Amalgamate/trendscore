@@ -2,6 +2,7 @@ import { Prisma, TimetableVersionStatus } from '@prisma/client';
 import prisma from '../../config/database';
 import { ApiError } from '../../utils/error.util';
 import { conflictEngine } from './conflict-engine.service';
+import { NotificationService } from '../../services/notification.service';
 
 const entryInclude = {
   class: { select: { id: true, name: true, grade: true, stream: true } },
@@ -10,6 +11,14 @@ const entryInclude = {
   room: true,
   bellPeriod: true
 } satisfies Prisma.TimetableEntryInclude;
+
+const timeToMinutes = (value: string) => {
+  const [hours, mins] = String(value || '').split(':').map(Number);
+  return (hours * 60) + mins;
+};
+
+const overlaps = (a: { startTime: string; endTime: string }, b: { startTime: string; endTime: string }) =>
+  timeToMinutes(a.startTime) < timeToMinutes(b.endTime) && timeToMinutes(b.startTime) < timeToMinutes(a.endTime);
 
 export class TimetableService {
   async foundation() {
@@ -280,6 +289,42 @@ export class TimetableService {
     });
     const replacedClassNames = [...new Set(replacedRows.map(row => row.classId))]
       .map(classId => version.entries.find(entry => entry.classId === classId)?.class.name || classId);
+
+    // Best-effort notifications — publishing can rewrite every affected
+    // teacher's and every enrolled learner's family's weekly schedule, so
+    // let them know it changed. Mirrors the notification pattern already
+    // used in change-requests.service.ts. Never blocks or fails the publish.
+    try {
+      const termLabel = `${version.plan.term} ${version.plan.academicYear}`;
+      const teacherIds = [...new Set(version.entries.map(entry => entry.teacherId).filter(Boolean))] as string[];
+
+      await Promise.all(teacherIds.map(teacherId =>
+        NotificationService.createNotification({
+          userId: teacherId,
+          title: 'Timetable published',
+          message: `A new timetable for ${termLabel} has been published. Your weekly schedule may have changed — check your dashboard.`,
+          link: '/app/timetable'
+        }).catch((error: any) => console.warn('[Timetable] teacher publish notification failed:', teacherId, error?.message))
+      ));
+
+      const enrollments = await prisma.classEnrollment.findMany({
+        where: { classId: { in: classIds }, active: true },
+        select: { learner: { select: { parentId: true } } }
+      });
+      const parentIds = [...new Set(enrollments.map(e => e.learner?.parentId).filter(Boolean))] as string[];
+
+      await Promise.all(parentIds.map(parentId =>
+        NotificationService.createNotification({
+          userId: parentId,
+          title: 'Timetable published',
+          message: `Your child's class timetable for ${termLabel} has been updated. Check School Today for their schedule.`,
+          link: '/app/timetable'
+        }).catch((error: any) => console.warn('[Timetable] parent publish notification failed:', parentId, error?.message))
+      ));
+    } catch (error: any) {
+      console.warn('[Timetable] publish notifications failed:', error?.message);
+    }
+
     return { versionId, publishedEntries: version.entries.length, replacedOverrides: overrideCount, replacedClasses: replacedClassNames };
   }
 
@@ -733,6 +778,27 @@ export class TimetableService {
       select: { id: true, firstName: true, lastName: true }
     });
 
+    // Guard against double-booking the substitute. Previously this wrote
+    // straight to teacherId with no clash check at all — two relief
+    // assignments could silently double-book the same substitute. Fetch
+    // every candidate for the day/term and check overlap in JS, rather than
+    // findFirst (which only inspects one row and could miss the row that
+    // actually overlaps if the teacher has several lessons that day).
+    const clashCandidates = await prisma.classSchedule.findMany({
+      where: {
+        teacherId: data.reliefTeacherId,
+        day: schedule.day,
+        academicYear: schedule.academicYear,
+        semester: schedule.semester,
+        id: { not: data.scheduleId }
+      },
+      include: { class: { select: { name: true } } }
+    });
+    const clash = clashCandidates.find(candidate => overlaps(candidate, schedule));
+    if (clash) {
+      throw new ApiError(409, `Cannot assign: ${reliefTeacher.firstName} ${reliefTeacher.lastName} is already teaching ${clash.subject} for ${clash.class.name} at that time (${clash.day} ${clash.startTime}–${clash.endTime}).`);
+    }
+
     const updated = await prisma.classSchedule.update({
       where: { id: data.scheduleId },
       data: {
@@ -758,20 +824,30 @@ export class TimetableService {
     assignments: Array<{ scheduleId: string; reliefTeacherId: string; reason?: string }>;
     overriddenBy?: string;
   }) {
-    const results = [];
+    // Per-item error isolation: one bad assignment (a clash, a missing
+    // schedule/teacher) no longer aborts the whole batch after some items
+    // already committed with no way for the caller to know what succeeded.
+    const results: any[] = [];
+    const errors: Array<{ scheduleId: string; reliefTeacherId: string; error: string }> = [];
     for (const a of data.assignments) {
-      const res = await this.assignReliefCover({
-        scheduleId: a.scheduleId,
-        reliefTeacherId: a.reliefTeacherId,
-        reason: a.reason,
-        overriddenBy: data.overriddenBy
-      });
-      results.push(res);
+      try {
+        const res = await this.assignReliefCover({
+          scheduleId: a.scheduleId,
+          reliefTeacherId: a.reliefTeacherId,
+          reason: a.reason,
+          overriddenBy: data.overriddenBy
+        });
+        results.push(res);
+      } catch (error: any) {
+        errors.push({ scheduleId: a.scheduleId, reliefTeacherId: a.reliefTeacherId, error: error?.message || 'Assignment failed' });
+      }
     }
     return {
-      success: true,
+      success: errors.length === 0,
       count: results.length,
-      results
+      failedCount: errors.length,
+      results,
+      errors
     };
   }
 

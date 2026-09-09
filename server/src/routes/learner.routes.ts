@@ -133,4 +133,11 @@ router.post('/bulk-promote',
   asyncHandler(learnerController.promoteLearners.bind(learnerController))
 );
 
+router.post('/bulk-move-stream',
+  requirePermission('EDIT_LEARNER'),
+  rateLimit({ windowMs: 60_000, maxRequests: 20 }),
+  auditLog('BULK_MOVE_LEARNER_STREAM'),
+  asyncHandler(learnerController.bulkMoveStream.bind(learnerController))
+);
+
 export default router;

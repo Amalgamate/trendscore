@@ -1162,7 +1162,11 @@ export class HRService {
                 payroll: null,
                 payrollCreated: false,
                 geofenceDecision,
-                alreadyClockedIn: true
+                alreadyClockedIn: true,
+                // Distinguishes "still clocked in" from "already completed a full
+                // in/out cycle today" so the client can show an accurate message
+                // instead of a generic (and misleading) success banner.
+                alreadyCompleted: !!existingAttendance.clockOutAt
             };
         }
 
@@ -1282,6 +1286,27 @@ export class HRService {
             where: { userId_date: { userId, date: dateOnly } }
         });
         if (!attendance?.clockInAt) throw new Error('No clock-in record found for today');
+
+        // The first accepted departure is authoritative — mirrors the clock-in
+        // guard above. Without this, a repeat click, browser retry, or a second
+        // device would silently push the clock-out time later on every call and
+        // re-increment worked minutes/payroll each time.
+        if (attendance.clockOutAt) {
+            const existingMonth = timestamp.getMonth() + 1;
+            const existingYear = timestamp.getFullYear();
+            const existingPayroll = await prisma.payrollRecord.findUnique({
+                where: { userId_month_year: { userId, month: existingMonth, year: existingYear } }
+            });
+            return {
+                attendance,
+                payroll: existingPayroll,
+                workedMinutesDelta: 0,
+                workedDaysIncremented: false,
+                geofenceDecision: null,
+                alreadyClockedOut: true
+            };
+        }
+
         if (timestamp.getTime() < new Date(attendance.clockInAt).getTime()) {
             throw new Error('Clock-out time cannot be earlier than clock-in time');
         }
