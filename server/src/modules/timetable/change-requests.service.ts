@@ -181,6 +181,55 @@ export class TimetableChangeRequestService {
     });
 
     await this.notifyRequester(updated, 'was approved and applied to the published schedule', reviewNote);
+
+    // Best-effort: also mirror this approved change into the currently
+    // published timetable version, so it survives the next publish/
+    // regenerate cycle. Without this (gap #5), an approved change is written
+    // only to the live ClassSchedule as an isOverride row — publish() derives
+    // ClassSchedule entirely from the TimetableEntry rows of the version being
+    // published, so a later republish silently wipes the change with only a
+    // generic "N overrides replaced" warning to catch it. Never blocks or
+    // fails the approval itself.
+    try {
+      if (!request.learningAreaId) {
+        console.warn(`[ChangeRequests] approved change ${id} has no learningAreaId — TimetableEntry requires one, so this change can only live in ClassSchedule and may be lost on the next publish.`);
+      } else {
+        const publishedVersion = await prisma.timetableVersion.findFirst({
+          where: { status: 'PUBLISHED', plan: { academicYear: classItem.academicYear, term: classItem.term } }
+        });
+        if (!publishedVersion) {
+          console.warn(`[ChangeRequests] approved change ${id} has no published timetable version to mirror into — it will only live in ClassSchedule and may be lost on the next publish.`);
+        } else {
+          const overlapping = await prisma.timetableEntry.findMany({
+            where: { versionId: publishedVersion.id, classId: request.classId, day: request.day }
+          });
+          const clashingLocked = overlapping.find(entry => entry.locked && overlaps(entry, request));
+          if (clashingLocked) {
+            console.warn(`[ChangeRequests] approved change ${id} could not be mirrored into published version ${publishedVersion.id}: an overlapping entry there is locked.`);
+          } else {
+            const toRemove = overlapping.filter(entry => overlaps(entry, request));
+            await prisma.$transaction([
+              ...(toRemove.length ? [prisma.timetableEntry.deleteMany({ where: { id: { in: toRemove.map(entry => entry.id) } } })] : []),
+              prisma.timetableEntry.create({
+                data: {
+                  versionId: publishedVersion.id,
+                  classId: request.classId,
+                  learningAreaId: request.learningAreaId,
+                  teacherId: request.teacherId,
+                  day: request.day,
+                  startTime: request.startTime,
+                  endTime: request.endTime,
+                  notes: `Applied from change request ${request.id}`
+                }
+              })
+            ]);
+          }
+        }
+      }
+    } catch (error: any) {
+      console.warn('[ChangeRequests] failed to mirror approved change into published version:', error?.message);
+    }
+
     return updated;
   }
 

@@ -7,6 +7,7 @@ const PAGE_APP_REQUIREMENTS = {
   'planner-agenda': 'planner',
   'timetable': 'timetable',
   'planner-timetable': 'timetable',
+  'student-timetable': 'timetable',
   'planner-schemes': 'curriculum',
   'planner-duty-roster': 'planner',
 
@@ -179,6 +180,7 @@ const ROLE_PAGE_ALLOWLIST = {
     'student-course-view',
     'student-profile',
     'student-attendance',
+    'student-timetable',
     'student-pathway-planner',
     'student-career-explorer',
     'pathway-guide',

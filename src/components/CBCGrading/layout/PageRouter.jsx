@@ -205,6 +205,7 @@ const StudentLearningTab = lazy(() => import('../pages/student/StudentLearningTa
 const MyResults = lazy(() => import('../pages/student/MyResults'));
 const StudentPathwayDashboard = lazy(() => import('../pages/student/StudentPathwayDashboard'));
 const CareerExplorer = lazy(() => import('../pages/student/CareerExplorer'));
+const StudentTimetable = lazy(() => import('../pages/student/StudentTimetable'));
 
 // Notification Center — global, all roles
 const NotificationCenter = lazy(() => import('../pages/NotificationCenter'));
@@ -808,6 +809,7 @@ const PageRouter = ({
           case 'student-assignments': return <ErrorBoundary><MyAssignments onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'student-results': return <ErrorBoundary><MyResults user={user} onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'student-attendance': return <ErrorBoundary><StudentAttendance user={user} onNavigate={handleNavigate} /></ErrorBoundary>;
+          case 'student-timetable': return <ErrorBoundary><StudentTimetable user={user} onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'student-pathway-planner': return <ErrorBoundary><StudentPathwayDashboard user={user} onNavigate={handleNavigate} brandingSettings={brandingSettings} /></ErrorBoundary>;
           case 'student-career-explorer': return <ErrorBoundary><CareerExplorer user={user} onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'student-quizzes':

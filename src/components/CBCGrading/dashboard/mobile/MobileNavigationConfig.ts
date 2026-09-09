@@ -367,8 +367,8 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         id: 'timetable',
         label: 'Timetable',
         icon: CalendarDays,
-        path: 'planner-timetable',
-        activePaths: ['planner-timetable', 'timetable'],
+        path: 'student-timetable',
+        activePaths: ['student-timetable'],
         color: 'text-indigo-600'
       }
     ]

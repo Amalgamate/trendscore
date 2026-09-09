@@ -73,6 +73,7 @@ const TimetablePage = () => {
   const [teachers, setTeachers] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [assignments, setAssignments] = useState([]);
+  const [bellPeriods, setBellPeriods] = useState([]);
   const [engineSetupOpen, setEngineSetupOpen] = useState(false);
   const [changeRequestsOpen, setChangeRequestsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -165,11 +166,12 @@ const TimetablePage = () => {
   const fetchInitialData = async () => {
     try {
       setLoading(true);
-      const [classesResp, teachersResp, subjectsResp, assignmentsResp] = await Promise.all([
+      const [classesResp, teachersResp, subjectsResp, assignmentsResp, foundationResp] = await Promise.all([
         api.classes.getAll(),
         api.teachers.getAll(),
         api.config.getLearningAreas(),
-        api.subjectAssignments.getAll()
+        api.subjectAssignments.getAll(),
+        api.timetable.getFoundation().catch(() => null),
       ]);
 
       const classesData = classesResp.data || [];
@@ -177,6 +179,13 @@ const TimetablePage = () => {
       setTeachers(teachersResp.data || []);
       setSubjects(subjectsResp.data || []);
       setAssignments(assignmentsResp.data || []);
+
+      // Real bell-schedule periods (including breaks/lunch) — used to build
+      // the Week at a Glance row set instead of a hardcoded 45-min default,
+      // and to color-code non-lesson periods.
+      const bellSchedules = foundationResp?.data?.bellSchedules || [];
+      const activeBellSchedule = bellSchedules.find((b) => b.isDefault) || bellSchedules[0] || null;
+      setBellPeriods(activeBellSchedule?.periods || []);
 
       if (classesData.length > 0) {
         // Option to view all or specific class
@@ -572,10 +581,16 @@ const TimetablePage = () => {
     }
   };
 
-  const weeklyTimeSlots = sortTimeLabels(new Set([
-    ...DEFAULT_TIME_SLOTS.map((slot) => buildTimeLine(slot.startTime, slot.endTime)),
-    ...Object.values(scheduleData).flat().map((lesson) => lesson.time).filter(Boolean)
-  ]));
+  const sortedBellPeriods = bellPeriods.slice().sort((a, b) => a.sequence - b.sequence);
+  const scheduledTimeLabels = Object.values(scheduleData).flat().map((lesson) => lesson.time).filter(Boolean);
+  const weeklyTimeSlots = sortTimeLabels(new Set(
+    sortedBellPeriods.length > 0
+      ? [...sortedBellPeriods.map((p) => buildTimeLine(p.startTime, p.endTime)), ...scheduledTimeLabels]
+      : (scheduledTimeLabels.length > 0 ? scheduledTimeLabels : DEFAULT_TIME_SLOTS.map((slot) => buildTimeLine(slot.startTime, slot.endTime)))
+  ));
+  // Maps a rendered time-slot label to its bell-period type/name, so
+  // BREAK/LUNCH rows can be styled distinctly and skip the "add lesson" UI.
+  const periodInfoByLabel = new Map(sortedBellPeriods.map((p) => [buildTimeLine(p.startTime, p.endTime), { type: p.type, name: p.name }]));
   const mobileLessons = (scheduleData[selectedDay] || [])
     .slice()
     .sort((a, b) => {
@@ -1105,12 +1120,18 @@ const TimetablePage = () => {
                 </thead>
                 <tbody>
                   {/* Keep the full timetable structure visible, including before lessons are added. */}
-                  {weeklyTimeSlots.map((timeSlot, slotIdx) => (
+                  {weeklyTimeSlots.map((timeSlot, slotIdx) => {
+                    const periodInfo = periodInfoByLabel.get(timeSlot);
+                    const isBreak = periodInfo?.type === 'BREAK';
+                    const isLunch = periodInfo?.type === 'LUNCH';
+                    const nonLessonRow = isBreak || isLunch;
+                    const nonLessonRowClass = isBreak ? 'bg-sky-50' : isLunch ? 'bg-orange-50' : '';
+                    return (
                     <tr key={timeSlot}>
-                      <td>
+                      <td className={nonLessonRowClass}>
                         <div className="time-block-cell">
-                          <Clock className="time-block-icon" />
-                          <span className="time-block-text">{timeSlot}</span>
+                          <Clock className={`time-block-icon ${isBreak ? 'text-sky-600' : isLunch ? 'text-orange-600' : ''}`} />
+                          <span className={`time-block-text ${isBreak ? 'text-sky-800' : isLunch ? 'text-orange-800' : ''}`}>{timeSlot}</span>
                         </div>
                       </td>
                       {SCHOOL_DAYS.map((day) => {
@@ -1135,6 +1156,16 @@ const TimetablePage = () => {
                                   —
                                 </div>
                               )}
+                            </td>
+                          );
+                        }
+
+                        if (nonLessonRow) {
+                          return (
+                            <td key={day} className={isBreak ? 'bg-sky-50/50' : 'bg-orange-50/50'}>
+                              <div className={`text-center text-[10px] font-bold uppercase tracking-wide ${isBreak ? 'text-sky-700' : 'text-orange-700'}`}>
+                                {periodInfo?.name || (isBreak ? 'Break' : 'Lunch')}
+                              </div>
                             </td>
                           );
                         }
@@ -1182,7 +1213,8 @@ const TimetablePage = () => {
                         );
                       })}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </TimetablePDFWrapper>

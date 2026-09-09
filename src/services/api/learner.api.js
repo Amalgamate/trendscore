@@ -59,5 +59,9 @@ export const learnerAPI = {
     cacheDelPrefix('learners:');
     return fetchWithAuth('/learners/bulk-promote', { method: 'POST', body: JSON.stringify(promotionData) });
   },
+  bulkMoveStream: async (moveData) => {
+    cacheDelPrefix('learners:');
+    return fetchWithAuth('/learners/bulk-move-stream', { method: 'POST', body: JSON.stringify(moveData) });
+  },
   getBirthdays: async () => communicationAPI.getBirthdaysToday(),
 };

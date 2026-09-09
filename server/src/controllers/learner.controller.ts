@@ -813,6 +813,69 @@ export class LearnerController {
   }
 
   /**
+   * POST /api/learners/bulk-move-stream
+   * Moves the given learners to a different stream within their own grade
+   * (e.g. Grade 4 Stream A → Grade 4 Stream B). Requires an active Class to
+   * already exist for (learner.grade, targetStream) — learners whose grade
+   * has no such class are reported back rather than silently left with a
+   * stream field that doesn't match any real ClassEnrollment.
+   */
+  async bulkMoveStream(req: AuthRequest, res: Response) {
+    const { learnerIds, targetStream } = req.body;
+    if (!Array.isArray(learnerIds) || learnerIds.length === 0) {
+      throw new ApiError(400, 'Array of learner IDs is required');
+    }
+    const stream = String(targetStream || '').trim();
+    if (!stream) {
+      throw new ApiError(400, 'Target stream is required');
+    }
+
+    const configuredStream = await prisma.stream.findFirst({
+      where: { name: stream, active: true, archived: false },
+      select: { id: true },
+    });
+    if (!configuredStream) {
+      throw new ApiError(400, `Stream "${stream}" is not an active configured stream.`);
+    }
+
+    const learners = await prisma.learner.findMany({
+      where: { id: { in: learnerIds } },
+      select: { id: true, firstName: true, lastName: true, grade: true, stream: true, institutionType: true },
+    });
+
+    const moved: string[] = [];
+    const alreadyInStream: string[] = [];
+    const noMatchingClass: Array<{ id: string; name: string; grade: string }> = [];
+
+    for (const learner of learners) {
+      if (String(learner.stream || '').trim() === stream) {
+        alreadyInStream.push(learner.id);
+        continue;
+      }
+      const targetClass = await prisma.class.findFirst({
+        where: { grade: learner.grade, stream, institutionType: learner.institutionType, active: true, archived: false },
+        select: { id: true },
+      });
+      if (!targetClass) {
+        noMatchingClass.push({ id: learner.id, name: `${learner.firstName} ${learner.lastName}`, grade: learner.grade });
+        continue;
+      }
+      const updated = await prisma.learner.update({
+        where: { id: learner.id },
+        data: { stream, updatedBy: req.user!.userId },
+      });
+      await ensureLearnerClassEnrollment(updated);
+      moved.push(learner.id);
+    }
+
+    res.json({
+      success: true,
+      message: `Moved ${moved.length} of ${learners.length} learner(s) to Stream ${stream}.`,
+      data: { moved: moved.length, alreadyInStream: alreadyInStream.length, noMatchingClass },
+    });
+  }
+
+  /**
    * PATCH /api/learners/:id/parent-update
    * Allows a parent to update ONLY their own child's firstName, lastName, and photo.
    * Scoped to parent role — no EDIT_LEARNER permission required.

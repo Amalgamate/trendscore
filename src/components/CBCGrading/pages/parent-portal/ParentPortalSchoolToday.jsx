@@ -1,28 +1,60 @@
 /**
  * ParentPortalSchoolToday
- * Child-aware school day view — today's schedule per child.
- * No live timetable endpoint yet. Shows placeholder slots with honest state.
- * TODO: GET /api/school-pulse?studentId=X returning { current, next, later[], tomorrow[] }
+ * Child-aware school day view — today's real published schedule per child,
+ * pulled from the same ClassSchedule data the admin timetable and teacher
+ * dashboard widget read from (via GET /api/classes/learner/:id and
+ * GET /api/classes/:id/schedules).
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  BookOpen, Calendar, ChevronDown, Clock,
-  Dumbbell, FlaskConical, Loader2, Monitor, Music, Utensils,
+  BookOpen, Calculator, Calendar, ChevronDown, Clock,
+  Dumbbell, Globe2, Loader2, Monitor, Music, Palette,
 } from 'lucide-react';
-import { dashboardAPI } from '../../../../services/api';
+import { dashboardAPI, classAPI } from '../../../../services/api';
 import { Skeleton } from '../../../ui';
 
-// ─── Placeholder schedule ──────────────────────────────────────────────────────
-// Replaced when real API is wired up.
-const PLACEHOLDER_SCHEDULE = [
-  { time: '07:00–07:45', label: 'Mathematics',       icon: FlaskConical, color: 'bg-blue-500',   status: 'done'    },
-  { time: '07:50–08:35', label: 'Kiswahili',          icon: BookOpen,    color: 'bg-purple-500', status: 'done'    },
-  { time: '08:40–09:25', label: 'ICT',                icon: Monitor,     color: 'bg-indigo-500', status: 'current' },
-  { time: '09:25–10:00', label: 'Lunch & Rest',        icon: Utensils,    color: 'bg-orange-400', status: 'break',  isBreak: true },
-  { time: '10:05–10:50', label: 'Physical Education', icon: Dumbbell,    color: 'bg-rose-500',   status: 'next'    },
-  { time: '10:55–11:40', label: 'Music',               icon: Music,       color: 'bg-teal-500',   status: 'later'   },
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const getTodayName = () => DAY_NAMES[new Date().getDay()];
+
+// ─── Subject → icon/colour mapping ─────────────────────────────────────────
+// Keyword match against the subject/learning-area name so any school's real
+// curriculum gets a sensible icon without needing a lookup table per subject.
+const SUBJECT_VISUALS = [
+  { keywords: ['math'], icon: Calculator, color: 'bg-blue-500' },
+  { keywords: ['science', 'integrated'], icon: Globe2, color: 'bg-emerald-500' },
+  { keywords: ['ict', 'computer', 'digital'], icon: Monitor, color: 'bg-indigo-500' },
+  { keywords: ['music'], icon: Music, color: 'bg-teal-500' },
+  { keywords: ['physical', 'sport', 'pe '], icon: Dumbbell, color: 'bg-rose-500' },
+  { keywords: ['art', 'creative'], icon: Palette, color: 'bg-amber-500' },
 ];
+const DEFAULT_VISUAL = { icon: BookOpen, color: 'bg-purple-500' };
+
+const getSubjectVisual = (label) => {
+  const value = String(label || '').toLowerCase();
+  return SUBJECT_VISUALS.find((entry) => entry.keywords.some((word) => value.includes(word))) || DEFAULT_VISUAL;
+};
+
+// Derives done/current/next/later purely from the current clock time against
+// each lesson's start/end — same approach the teacher dashboard uses server-side.
+const toMinutes = (time) => {
+  const [h, m] = String(time || '').split(':').map(Number);
+  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+};
+
+const deriveStatuses = (lessons) => {
+  const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+  let nextAssigned = false;
+  return lessons.map((lesson) => {
+    const start = toMinutes(lesson.startTime);
+    const end = toMinutes(lesson.endTime);
+    let status = 'later';
+    if (nowMinutes >= end) status = 'done';
+    else if (nowMinutes >= start && nowMinutes < end) status = 'current';
+    else if (!nextAssigned) { status = 'next'; nextAssigned = true; }
+    return { ...lesson, status };
+  });
+};
 
 const STATUS_STYLES = {
   done:    'opacity-50',
@@ -65,18 +97,20 @@ function ChildTab({ child, active, onClick }) {
 
 // ─── ScheduleItem ─────────────────────────────────────────────────────────────
 function ScheduleItem({ slot }) {
-  const Icon = slot.icon;
+  const { icon: Icon, color } = getSubjectVisual(slot.subject);
   const statusStyle = STATUS_STYLES[slot.status] || '';
   const badge = STATUS_LABEL[slot.status];
 
   return (
     <div className={`flex items-center gap-3 bg-white rounded-xl border border-gray-200 p-3 transition-all ${statusStyle}`}>
-      <div className={`w-10 h-10 rounded-xl ${slot.color} flex items-center justify-center flex-shrink-0`}>
+      <div className={`w-10 h-10 rounded-xl ${color} flex items-center justify-center flex-shrink-0`}>
         <Icon size={17} className="text-white" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-gray-900">{slot.label}</p>
-        <p className="text-[10px] text-gray-400">{slot.time}</p>
+        <p className="text-sm font-bold text-gray-900">{slot.subject}</p>
+        <p className="text-[10px] text-gray-400">
+          {slot.startTime}–{slot.endTime}{slot.room ? ` · ${slot.room}` : ''}
+        </p>
       </div>
       {badge && (
         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${badge.cls}`}>
@@ -89,9 +123,12 @@ function ScheduleItem({ slot }) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function ParentPortalSchoolToday({ onNavigate }) {
-  const [children, setChildren]     = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [activeIdx, setActiveIdx]   = useState(0);
+  const [children, setChildren]               = useState([]);
+  const [loading, setLoading]                 = useState(true);
+  const [activeIdx, setActiveIdx]             = useState(0);
+  const [todaySchedule, setTodaySchedule]     = useState([]);
+  const [scheduleLoading, setScheduleLoading] = useState(true);
+  const [scheduleError, setScheduleError]     = useState(null);
 
   const loadChildren = useCallback(async () => {
     setLoading(true);
@@ -105,6 +142,46 @@ export default function ParentPortalSchoolToday({ onNavigate }) {
   useEffect(() => { loadChildren(); }, [loadChildren]);
 
   const child = children[activeIdx];
+
+  // Real schedule: same class-scoped endpoint the teacher dashboard widget
+  // uses (GET /classes/:id/schedules), resolved via the learner's active
+  // class enrollment (GET /classes/learner/:id).
+  const loadSchedule = useCallback(async (learnerId) => {
+    setScheduleLoading(true);
+    setScheduleError(null);
+    try {
+      const enrollment = await classAPI.getLearnerClass(learnerId);
+      const classId = enrollment?.data?.class?.id || enrollment?.data?.classId;
+      if (!classId) { setTodaySchedule([]); return; }
+
+      const res = await classAPI.getSchedules(classId);
+      const all = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+      const today = getTodayName();
+
+      setTodaySchedule(
+        all
+          .filter((s) => s.day === today)
+          .sort((a, b) => String(a.startTime).localeCompare(String(b.startTime)))
+          .map((s) => ({
+            id: s.id,
+            subject: s.learningArea?.shortName || s.learningArea?.name || s.subject,
+            startTime: s.startTime,
+            endTime: s.endTime,
+            room: s.room,
+          }))
+      );
+    } catch (_) {
+      setScheduleError("Couldn't load today's schedule");
+      setTodaySchedule([]);
+    } finally {
+      setScheduleLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (child?.id) loadSchedule(child.id);
+    else { setTodaySchedule([]); setScheduleLoading(false); }
+  }, [child?.id, loadSchedule]);
 
   return (
     <div className="min-h-screen bg-[var(--app-page-bg)] pb-24">
@@ -144,15 +221,28 @@ export default function ParentPortalSchoolToday({ onNavigate }) {
         <div>
           <div className="flex items-center justify-between mb-2">
             <p className="text-sm font-bold text-gray-700">Today's Schedule</p>
-            <span className="text-[9px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-              ⚠ Live timetable coming soon
-            </span>
           </div>
-          <div className="space-y-2">
-            {PLACEHOLDER_SCHEDULE.map((slot, i) => (
-              <ScheduleItem key={i} slot={slot} />
-            ))}
-          </div>
+          {scheduleLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-14 rounded-xl" />
+              <Skeleton className="h-14 rounded-xl" />
+              <Skeleton className="h-14 rounded-xl" />
+            </div>
+          ) : scheduleError ? (
+            <div className="bg-rose-50 border border-rose-200 rounded-xl p-3">
+              <p className="text-xs text-rose-700">{scheduleError}</p>
+            </div>
+          ) : todaySchedule.length === 0 ? (
+            <div className="bg-white border border-dashed border-gray-200 rounded-xl p-6 text-center">
+              <p className="text-xs text-gray-500">No lessons scheduled today</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {deriveStatuses(todaySchedule).map((slot) => (
+                <ScheduleItem key={slot.id} slot={slot} />
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Calendar CTA */}

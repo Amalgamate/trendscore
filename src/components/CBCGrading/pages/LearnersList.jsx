@@ -3,7 +3,7 @@
  */
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Upload, Download, Eye, Edit, Trash2, LogOut, ChevronLeft, ChevronRight, Search, RefreshCw, Users, MoreVertical, MessageCircle, MessageSquare, X, Loader2, Send, Filter, Plus, Bus, UserCheck, UserX, Users2 } from 'lucide-react';
+import { Upload, Download, Eye, Edit, Trash2, LogOut, ChevronLeft, ChevronRight, Search, RefreshCw, Users, MoreVertical, MessageCircle, MessageSquare, X, Loader2, Send, Filter, Plus, Bus, UserCheck, UserX, Users2, ArrowRightLeft } from 'lucide-react';
 import StatusBadge from '../shared/StatusBadge';
 import EmptyState from '../shared/EmptyState';
 import { usePermissions } from '../../../hooks/usePermissions';
@@ -61,6 +61,9 @@ const LearnersList = ({
   const [bulkContactMessage, setBulkContactMessage] = useState('');
   const [bulkContactChannel, setBulkContactChannel] = useState('sms');
   const [isSendingBulkMessage, setIsSendingBulkMessage] = useState(false);
+  const [showMoveStreamModal, setShowMoveStreamModal] = useState(false);
+  const [moveStreamTarget, setMoveStreamTarget] = useState('');
+  const [isMovingStream, setIsMovingStream] = useState(false);
   const { can, isRole } = usePermissions();
   const { user } = useAuth();
   const { grades, streams: contextStreams, classes } = useSchoolData();
@@ -610,6 +613,54 @@ const LearnersList = ({
     }
   };
 
+  const handleMoveStream = async () => {
+    if (!moveStreamTarget) {
+      if (showError) showError('Please select a target stream');
+      return;
+    }
+
+    setIsMovingStream(true);
+    try {
+      let idsToMove = selectedLearners;
+
+      if (selectAllDatabase) {
+        const params = {
+          limit: 2000,
+          search: searchTerm || undefined,
+          grade: filterGrade !== 'all' ? filterGrade : undefined,
+          status: filterStatus !== 'all' ? filterStatus : undefined,
+          stream: filterStream !== 'all' ? filterStream : undefined
+        };
+        Object.keys(params).forEach(k => params[k] === undefined && delete params[k]);
+        const res = await learnerAPI.getAll(params);
+        idsToMove = (res?.data || []).map(l => l.id);
+      }
+
+      const response = await learnerAPI.bulkMoveStream({ learnerIds: idsToMove, targetStream: moveStreamTarget });
+      const summary = response?.data || {};
+      const skippedCount = (summary.alreadyInStream || 0) + (summary.noMatchingClass?.length || 0);
+
+      if (showSuccess) {
+        showSuccess(
+          skippedCount > 0
+            ? `Moved ${summary.moved || 0} learner(s) to Stream ${moveStreamTarget}. ${skippedCount} skipped (already in that stream, or no matching class for their grade).`
+            : `Moved ${summary.moved || 0} learner(s) to Stream ${moveStreamTarget}.`
+        );
+      }
+
+      setShowMoveStreamModal(false);
+      setMoveStreamTarget('');
+      setSelectedLearners([]);
+      setSelectAllDatabase(false);
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error('Move stream error:', err);
+      if (showError) showError('Failed to move students: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsMovingStream(false);
+    }
+  };
+
   // ── KPI card data derived from learnerStats ─────────────────────────────
   const kpiActive   = learnerStats?.active   ?? totalStudentsCount ?? pagination?.total ?? visibleStudentsCount;
   const kpiMale     = learnerStats?.byGender?.MALE   ?? 0;
@@ -915,6 +966,22 @@ const LearnersList = ({
               <MessageSquare size={15} />
               <span>Message Guardians</span>
             </button>
+
+            {/* Move to Stream button */}
+            {canEditLearner && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMoveStreamTarget('');
+                  setShowMoveStreamModal(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 text-gray-700 hover:text-brand-purple hover:border-brand-purple/40 rounded-xl text-xs font-semibold transition shadow-sm"
+                title="Move selected students to a different stream"
+              >
+                <ArrowRightLeft size={15} />
+                <span>Move to Stream</span>
+              </button>
+            )}
 
             {/* Bulk Operations Modal */}
             <button
@@ -1539,6 +1606,86 @@ const LearnersList = ({
                   <>
                     <Send size={16} />
                     <span>Send to Guardians</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Move to Stream Modal */}
+      {showMoveStreamModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in duration-200">
+            {/* Header */}
+            <div className="bg-brand-purple/10 px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Move to Stream</h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  {selectAllDatabase
+                    ? `Moving all ${effectiveTotal} students matching current filters`
+                    : `Moving ${selectedLearners.length} selected student${selectedLearners.length === 1 ? '' : 's'}`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMoveStreamModal(false)}
+                className="p-1.5 hover:bg-gray-100 rounded-lg transition"
+              >
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4">
+              <div className="bg-amber-50 p-3 rounded-xl border border-amber-100 text-xs text-amber-800">
+                Each student stays in their own grade — only their stream changes (e.g. Grade 4 Stream A → Grade 4 Stream B).
+                Students whose grade has no class configured for the chosen stream will be skipped and reported after the move.
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-2">Target Stream</label>
+                <select
+                  value={moveStreamTarget}
+                  onChange={(e) => setMoveStreamTarget(e.target.value)}
+                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-purple focus:border-transparent text-sm bg-white"
+                >
+                  <option value="">Select a stream…</option>
+                  {streamOptions.map((st) => (
+                    <option key={st} value={st}>{formatStreamLabel(st)}</option>
+                  ))}
+                </select>
+                {streamOptions.length === 0 && (
+                  <p className="mt-1 text-xs text-gray-400">No streams configured yet.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowMoveStreamModal(false)}
+                className="px-4 py-2 text-gray-700 font-medium border border-gray-200 rounded-xl hover:bg-gray-100 transition text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleMoveStream}
+                disabled={isMovingStream || !moveStreamTarget}
+                className="flex items-center gap-2 px-5 py-2 bg-brand-purple text-white font-medium rounded-xl hover:bg-brand-purple/90 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm shadow-sm"
+              >
+                {isMovingStream ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>Moving...</span>
+                  </>
+                ) : (
+                  <>
+                    <ArrowRightLeft size={16} />
+                    <span>Move Students</span>
                   </>
                 )}
               </button>
