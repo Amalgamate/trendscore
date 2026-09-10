@@ -63,6 +63,20 @@ export class HRController {
         }
     }
 
+    async getLiveFeed(req: AuthRequest, res: Response) {
+        try {
+            const data = await hrService.getLiveFeed();
+            res.json({ success: true, data });
+        } catch (error: any) {
+            logger.error('[HR] getLiveFeed:', error);
+            res.status(error.statusCode || 500).json({ success: false, message: error.message });
+        }
+    }
+        } catch (error: any) {
+            res.status(error.statusCode || 500).json({ success: false, message: error.message });
+        }
+    }
+
     async clockOut(req: AuthRequest, res: Response) {
         try {
             const userId = req.user?.userId;

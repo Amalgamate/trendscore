@@ -142,14 +142,40 @@ self.addEventListener('push', (event) => {
   let data = {};
   try { data = event.data.json(); } catch { data = { title: 'Trends Core', body: event.data.text() }; }
 
+  // Clock-in events get a distinct sound tag so the OS groups them separately
+  // from general notifications and the badge count stays accurate.
+  const isClockEvent = data.tag && String(data.tag).includes('clock');
+  const silent = data.silent === true;
+
   event.waitUntil(
     self.registration.showNotification(data.title || 'Trends Core', {
       body: data.body || '',
       icon: '/branding/logo.png',
       badge: '/branding/favicon.png',
       tag: data.tag || 'trendscore-notification',
-      data: { url: data.url || '/' },
+      data: { url: data.url || '/', isClockEvent, soundType: data.soundType || 'default' },
       requireInteraction: false,
+      silent: silent,
+      // Vibration pattern: clock-in = double tap, clock-out = single tap
+      vibrate: isClockEvent
+        ? (data.soundType === 'CLOCK_OUT' ? [80] : [80, 60, 80])
+        : [60],
+    }).then(() => {
+      // Post a message to all open clients so the app can play a chime
+      // even when the tab is in the background (the SW has no AudioContext
+      // but the page does — the message bridges that gap).
+      if (!silent) {
+        return self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+          .then((clientList) => {
+            for (const client of clientList) {
+              client.postMessage({
+                type: 'PLAY_CHIME',
+                soundType: data.soundType || 'default',
+                isClockEvent,
+              });
+            }
+          });
+      }
     })
   );
 });

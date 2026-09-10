@@ -31,6 +31,7 @@ export const hrAPI = {
         }
     },
     getTodayClockIn: async () => fetchWithAuth('/hr/attendance/today'),
+    getLiveFeed: async () => fetchWithAuth('/hr/attendance/live'),
     getAttendanceReport: async (params = {}) => {
         const qs = new URLSearchParams(params).toString();
         return fetchWithAuth(`/hr/attendance/report${qs ? '?' + qs : ''}`);

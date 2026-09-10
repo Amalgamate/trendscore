@@ -127,6 +127,14 @@ router.get(
     hrController.getTodayClockIn
 );
 
+router.get(
+    '/attendance/live',
+    authenticate,
+    requireRole([...ROLE_HR_ADMIN]),
+    rateLimit({ windowMs: 60_000, maxRequests: 120 }),
+    hrController.getLiveFeed
+);
+
 router.use(requireApp('staff-hr'));
 
 // ── Staff Directory ──────────────────────────────────────────────────────────

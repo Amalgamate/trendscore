@@ -66,6 +66,15 @@ export const initializeSocket = (httpServer: any) => {
             socket.join(socket.user.id);
         }
 
+        // Join a school attendance room (for admin live feed)
+        socket.on('join_attendance', (room: string) => {
+            if (!room || typeof room !== 'string') return;
+            // Only allow joining rooms prefixed with 'attendance:' for security
+            if (room.startsWith('attendance:')) {
+                socket.join(room);
+            }
+        });
+
         // Join ticket room
         socket.on('join_ticket', (ticketId: string) => {
             console.log(`User ${socket.user?.id} joined ticket room: ${ticketId}`);

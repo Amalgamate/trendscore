@@ -7,10 +7,13 @@ import {
     RefreshCw,
     Search,
     UserCheck,
-    UserX
+    UserX,
+    Radio,
 } from 'lucide-react';
 import { hrAPI } from '../../../../services/api';
 import { useAuth } from '../../../../hooks/useAuth';
+import AdminClockInLiveFeed from './AdminClockInLiveFeed';
+import FloatingClockInToast from './FloatingClockInToast';
 
 const MARKING_ROLES = new Set(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']);
 const ATTENDANCE_STATUSES = ['PRESENT', 'ABSENT', 'LATE', 'ON_LEAVE', 'OFF_DUTY', 'HOLIDAY', 'PARTIAL'];
@@ -74,6 +77,8 @@ const AttendanceManager = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [markingId, setMarkingId] = useState('');
+    const [showFeed, setShowFeed] = useState(true);
+    const [latestEvent, setLatestEvent] = useState(null);
 
     const canMark = MARKING_ROLES.has(String(user?.role || '').toUpperCase());
     const isSingleDay = startDate && endDate && startDate === endDate;
@@ -204,6 +209,20 @@ const AttendanceManager = () => {
                     <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
                     Refresh
                 </button>
+                {canMark && (
+                    <button
+                        type="button"
+                        onClick={() => setShowFeed((v) => !v)}
+                        className={`inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-colors ${
+                            showFeed
+                                ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                                : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                        }`}
+                    >
+                        <Radio size={16} className={showFeed ? 'animate-pulse text-blue-600' : ''} />
+                        {showFeed ? 'Live Feed On' : 'Live Feed'}
+                    </button>
+                )}
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -244,6 +263,23 @@ const AttendanceManager = () => {
                     </div>
                 </div>
             </div>
+
+            {/* ── Live feed — shown when admin has the feed toggled on ── */}
+            {canMark && showFeed && (
+                <AdminClockInLiveFeed
+                    schoolId={null}
+                    onNewEvent={(event) => {
+                        setLatestEvent(event);
+                        // Also refresh the register so the new clock-in appears in the table
+                        if (startDate === todayISO() && endDate === todayISO()) {
+                            loadRegister();
+                        }
+                    }}
+                />
+            )}
+
+            {/* ── Floating toast — always mounted when admin is on this page ── */}
+            {canMark && <FloatingClockInToast latestEvent={latestEvent} />}
 
             <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr_1.4fr_0.8fr]">
