@@ -1,0 +1,117 @@
+name: Diagnose Backend Health
+
+# Read-only diagnostic: checks a school's backend container uptime, recent
+# restarts, resource usage, and recent logs. Never modifies anything.
+# Use this after seeing socket.io / API 502s in the browser console to find
+# out whether the backend container restarted, crashed, or is under memory
+# pressure around a given time.
+on:
+  workflow_dispatch:
+    inputs:
+      school_slug:
+        description: "School instance id from deploy/instances.manifest.json"
+        required: true
+        default: "demo"
+        type: string
+      since:
+        description: "How far back to pull logs (docker --since format, e.g. 30m, 2h)"
+        required: true
+        default: "30m"
+        type: string
+      log_lines:
+        description: "Max number of log lines to print (most recent)"
+        required: true
+        default: "200"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Check backend container health
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Run backend health diagnostics
+        env:
+          SCHOOL_ID: ${{ inputs.school_slug }}
+          SINCE: ${{ inputs.since }}
+          LOG_LINES: ${{ inputs.log_lines }}
+        run: |
+          set -euo pipefail
+          ssh production "SCHOOL_ID='${SCHOOL_ID}' SINCE='${SINCE}' LOG_LINES='${LOG_LINES}' bash -s" <<'REMOTE' | tee /tmp/diagnose-output.txt
+          set -euo pipefail
+
+          manifest=/srv/zawadi/apps/deploy/instances.manifest.json
+          [[ -f "$manifest" ]] || { echo "Manifest not found"; exit 1; }
+          instance="$(jq -c --arg id "$SCHOOL_ID" '.instances[] | select(.id == $id)' "$manifest")"
+          [[ -n "$instance" ]] || { echo "Unknown school id: $SCHOOL_ID"; exit 1; }
+
+          kind="$(jq -r '.kind' <<<"$instance")"
+          project="$(jq -r '.compose_project // empty' <<<"$instance")"
+          domain="$(jq -r '.public_domain // "unknown"' <<<"$instance")"
+
+          if [[ "$kind" == "main" ]]; then
+            backend=zawadi-backend
+          else
+            backend="$(sudo docker ps -a --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=backend' --format '{{.Names}}' | head -n1)"
+          fi
+          [[ -n "$backend" ]] || { echo "Could not find backend container for $SCHOOL_ID"; exit 1; }
+
+          echo "================================================================"
+          echo "  BACKEND HEALTH — school: $SCHOOL_ID  (domain: $domain)"
+          echo "  container: $backend"
+          echo "================================================================"
+
+          echo ""
+          echo "## 1. Container status / uptime"
+          sudo docker ps -a --filter "name=^${backend}$" --format 'table {{.Names}}\t{{.Status}}\t{{.RunningFor}}'
+
+          echo ""
+          echo "## 2. Restart count + exit/OOM history"
+          sudo docker inspect "$backend" --format '
+          RestartCount: {{.RestartCount}}
+          OOMKilled (last exit): {{.State.OOMKilled}}
+          Last ExitCode: {{.State.ExitCode}}
+          Last FinishedAt: {{.State.FinishedAt}}
+          Last StartedAt: {{.State.StartedAt}}'
+
+          echo ""
+          echo "## 3. Current resource usage (live snapshot)"
+          sudo docker stats --no-stream "$backend" --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}'
+
+          echo ""
+          echo "## 4. Configured memory limit"
+          sudo docker inspect "$backend" --format 'Memory limit: {{.HostConfig.Memory}} bytes (0 = unlimited)'
+
+          echo ""
+          echo "## 5. Recent logs (since ${SINCE}, last ${LOG_LINES} lines)"
+          sudo docker logs "$backend" --since "$SINCE" --timestamps 2>&1 | tail -n "$LOG_LINES"
+
+          echo ""
+          echo "================================================================"
+          echo "  END OF REPORT"
+          echo "================================================================"
+          REMOTE
+
+      - name: Publish to job summary
+        if: always()
+        run: |
+          {
+            echo "## Backend health report — \`${{ inputs.school_slug }}\`"
+            echo ""
+            echo '```'
+            cat /tmp/diagnose-output.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
