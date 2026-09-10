@@ -388,6 +388,24 @@ if [[ "${APP_TYPE}" == "school" ]]; then
   echo "[provision] applying prisma schema"
   "${COMPOSE_CMD[@]}" --env-file "${ENV_FILE}" -p "${PROJECT_NAME}" -f "${STACK_COMPOSE_FILE}" run -T --rm backend npx prisma db push --skip-generate < /dev/null
 
+  # Baseline migration history so that future deploys never hit Prisma P3005
+  # ("database schema is not empty"). prisma db push creates all tables but
+  # writes no rows to _prisma_migrations. We mark every migration as applied
+  # now so that `prisma migrate deploy` on the first real deploy is a no-op.
+  echo "[provision] baselining migration history"
+  "${COMPOSE_CMD[@]}" --env-file "${ENV_FILE}" -p "${PROJECT_NAME}" -f "${STACK_COMPOSE_FILE}" run -T --rm backend sh -c '
+    for dir in prisma/migrations/*/; do
+      migration="$(basename "${dir}")"
+      case "${migration}" in
+        *_allow_multiple_summative_series) continue ;;
+        *_link_learners_to_student_users)  continue ;;
+      esac
+      echo "  [baseline] marking ${migration} as applied"
+      npx prisma migrate resolve --applied "${migration}" --schema prisma/schema.prisma 2>&1 || true
+    done
+    echo "  [baseline] done"
+  ' < /dev/null
+
   echo "[provision] ensuring active school row exists"
   "${COMPOSE_CMD[@]}" --env-file "${ENV_FILE}" -p "${PROJECT_NAME}" -f "${STACK_COMPOSE_FILE}" exec -T db \
     psql -U "${DB_USER}" -d "${DB_NAME}" -c \
