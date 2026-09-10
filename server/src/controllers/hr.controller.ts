@@ -72,10 +72,6 @@ export class HRController {
             res.status(error.statusCode || 500).json({ success: false, message: error.message });
         }
     }
-        } catch (error: any) {
-            res.status(error.statusCode || 500).json({ success: false, message: error.message });
-        }
-    }
 
     async clockOut(req: AuthRequest, res: Response) {
         try {
