@@ -107,9 +107,10 @@ export const progressiveRateLimit = (config: RateLimitConfig) => {
       const entry = await getRateLimitEntry(key, config.windowMs);
       entry.count++;
 
-      // Calculate dynamic limits based on failed attempts
-      const failureMultiplier = Math.min(entry.failedAttempts || 0, 5);
-      const adjustedLimit = Math.max(1, Math.floor(config.maxRequests / (1 + failureMultiplier)));
+      // Calculate dynamic limits based on failed attempts — only start
+      // tightening after 3+ failures so a single typo doesn't lock you out.
+      const failureMultiplier = Math.max(0, Math.min((entry.failedAttempts || 0) - 2, 5));
+      const adjustedLimit = Math.max(3, Math.floor(config.maxRequests / (1 + failureMultiplier)));
 
       await saveRateLimitEntry(key, entry, config.windowMs);
 
