@@ -22,6 +22,8 @@ export const dashboardAPI = {
     if (options.fresh) query.set('fresh', '1');
     return fetchWithAuth(`/dashboard/admin?${query.toString()}`);
   },
+  getPulse: async (limit = 100) =>
+    fetchWithAuth(`/pulse/today?limit=${limit}`),
   getTeacherMetrics: async (filter = 'today') =>
     fetchWithAuth(`/dashboard/teacher?filter=${filter}`),
   getStudentMetrics: async () =>
