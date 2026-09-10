@@ -8,6 +8,7 @@ import {
   Copy, Power, Plus, CheckCircle
 } from 'lucide-react';
 import { userAPI, learnerAPI } from '../../../../services/api';
+import { getStoredUser } from '../../../../services/schoolContext';
 import { PERMISSIONS, ROLE_NAMES } from '../../../../config/permissions';
 import ModuleTabNav from '../../shared/ModuleTabNav';
 import ResetPasswordModal from '../../shared/ResetPasswordModal';
