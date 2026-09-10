@@ -135,8 +135,18 @@ export const UserNotificationProvider = ({ children }) => {
       registerPushSubscription();
     }
 
+    // ── Service Worker PLAY_CHIME bridge ──────────────────────────────────
+    // The SW cannot use AudioContext, so it posts a message to all open tabs.
+    // We intercept it here and play the appropriate chime.
+    const handleSwMessage = (event) => {
+      if (event.data?.type !== 'PLAY_CHIME') return;
+      playBeep();
+    };
+    navigator.serviceWorker?.addEventListener('message', handleSwMessage);
+
     return () => {
       socket.disconnect();
+      navigator.serviceWorker?.removeEventListener('message', handleSwMessage);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, user?.id]);

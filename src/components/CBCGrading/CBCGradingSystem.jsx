@@ -19,6 +19,7 @@ import { useSetupProgress } from '../help/useSetupProgress';
 import ImpersonationBanner from '../../components/ImpersonationBanner';
 import { useImpersonation } from '../../contexts/ImpersonationContext';
 import RotatingCompassDial from '../common/RotatingCompassDial';
+import AppLevelClockInToast from './pages/hr/AppLevelClockInToast';
 
 // Hooks
 import { useNotifications } from './hooks/useNotifications';
@@ -829,6 +830,10 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
           UserNotification where showAsPopup:true and isRead:false.
           markAsRead() persists the dismiss to DB so it never reappears. */}
       <GitPopupAlert />
+
+      {/* App-level clock-in toast — visible to admins/head teachers on any
+          page so they don't miss a clock-in while browsing other modules. */}
+      <AppLevelClockInToast user={user} />
 
       {/* Git Notification Compose Dialog — opened via Sidebar button
           (only rendered for SUPER_ADMIN / ADMIN). */}

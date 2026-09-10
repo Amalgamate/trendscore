@@ -7,6 +7,8 @@ import { whatsappService } from './whatsapp.service';
 import { ApiError } from '../utils/error.util';
 import logger from '../utils/logger';
 import { presenceService } from '../domains/presence/presence.service';
+import { getIO } from './socket.service';
+import { NotificationService, NotificationType } from './notification.service';
 
 type AttendanceLocationPayload = {
     latitude?: number;
@@ -1275,6 +1277,33 @@ export class HRService {
             },
         }).catch(() => {/* failure recorded internally by PresenceService */});
 
+        // Emit real-time clock-in event to admin live feed + push notification
+        const school2 = await this.resolveCurrentSchoolGeofenceContext();
+        const workStart = await prisma.school.findFirst({
+            where: { archived: false },
+            orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }],
+            select: { staffWorkStartTime: true, attendanceLockTime: true }
+        });
+        const workStartTime = workStart?.staffWorkStartTime || workStart?.attendanceLockTime || '07:30';
+        const [wsHour, wsMin] = workStartTime.split(':').map(Number);
+        const getNM = (v: Date | null | undefined) => {
+            if (!v) return null;
+            const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date(v));
+            return Number(p.find(x => x.type === 'hour')?.value || 0) * 60 + Number(p.find(x => x.type === 'minute')?.value || 0);
+        };
+        const arrivalMinutes = getNM(attendance.clockInAt);
+        const lateMinutes = arrivalMinutes === null ? 0 : Math.max(0, arrivalMinutes - (wsHour * 60 + wsMin));
+        this.emitClockEvent({
+            eventType:    'CLOCK_IN',
+            userId,
+            schoolId:     schoolId || null,
+            clockInAt:    attendance.clockInAt || null,
+            clockOutAt:   null,
+            isLate:       lateMinutes > 0,
+            lateMinutes,
+            workedMinutes: 0,
+        }).catch(() => {});
+
         return { attendance, payroll: payrollRecord, payrollCreated, geofenceDecision };
     }
 
@@ -1384,6 +1413,18 @@ export class HRService {
                 workedDaysIncremented: shouldIncrementWorkedDays,
             },
         }).catch(() => {/* failure recorded internally by PresenceService */});
+
+        // Emit real-time clock-out event to admin live feed + push notification
+        this.emitClockEvent({
+            eventType:    'CLOCK_OUT',
+            userId,
+            schoolId:     updatedAttendance.schoolId || schoolId || null,
+            clockInAt:    updatedAttendance.clockInAt || null,
+            clockOutAt:   timestamp,
+            isLate:       false,
+            lateMinutes:  0,
+            workedMinutes: this.toWorkedMinutes(updatedAttendance.clockInAt!, timestamp),
+        }).catch(() => {});
 
         return {
             attendance: updatedAttendance,
@@ -1677,6 +1718,154 @@ export class HRService {
             });
 
             return attendance;
+        });
+    }
+
+    // ─── Real-time clock-in/out event emission ────────────────────────────────
+
+    /**
+     * Emits a Socket.io event to the school's attendance room and sends push
+     * notifications to all admin/head-teacher users so they see the activity
+     * in real time — both on the live feed and as a floating toast on desktop.
+     */
+    private async emitClockEvent(params: {
+        eventType: 'CLOCK_IN' | 'CLOCK_OUT';
+        userId: string;
+        schoolId: string | null;
+        clockInAt: Date | null;
+        clockOutAt: Date | null;
+        isLate: boolean;
+        lateMinutes: number;
+        workedMinutes: number;
+    }) {
+        try {
+            // 1. Fetch the staff member's display info
+            const person = await prisma.user.findUnique({
+                where: { id: params.userId },
+                select: { id: true, firstName: true, lastName: true, role: true, profilePicture: true }
+            });
+            if (!person) return;
+
+            const fullName   = [person.firstName, person.lastName].filter(Boolean).join(' ') || 'Staff';
+            const role       = String(person.role || '').replace(/_/g, ' ');
+            const timeStr    = params.eventType === 'CLOCK_IN'
+                ? (params.clockInAt ? new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' }).format(new Date(params.clockInAt)) : '')
+                : (params.clockOutAt ? new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' }).format(new Date(params.clockOutAt)) : '');
+
+            const payload = {
+                eventType:    params.eventType,
+                userId:       params.userId,
+                fullName,
+                role,
+                profilePicture: person.profilePicture || null,
+                clockInAt:    params.clockInAt,
+                clockOutAt:   params.clockOutAt,
+                isLate:       params.isLate,
+                lateMinutes:  params.lateMinutes,
+                workedMinutes: params.workedMinutes,
+                timestamp:    new Date(),
+            };
+
+            // 2. Broadcast to the school attendance room so the live feed updates
+            try {
+                const io = getIO();
+                const room = `attendance:${params.schoolId || 'school'}`;
+                io.to(room).emit('hr:clock_event', payload);
+            } catch {
+                // Socket not ready — non-fatal
+            }
+
+            // 3. Push notification to admins / head teachers
+            const isClockin = params.eventType === 'CLOCK_IN';
+            const statusTag  = isClockin
+                ? (params.isLate ? `⚠️ Late — ${params.lateMinutes} min` : '✅ On time')
+                : `🏁 Out — ${Math.floor(params.workedMinutes / 60)}h ${params.workedMinutes % 60}m worked`;
+
+            const notifTitle   = isClockin ? '🏫 Staff clocked in' : '🏫 Staff clocked out';
+            const notifMessage = `${fullName} (${role}) clocked ${isClockin ? 'in' : 'out'} at ${timeStr}. ${statusTag}`;
+
+            NotificationService.notifyRoles(
+                ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
+                {
+                    title:       notifTitle,
+                    message:     notifMessage,
+                    type:        params.isLate ? NotificationType.WARNING : NotificationType.INFO,
+                    showAsPopup: true,
+                    link:        '/app#/app#hr-attendance',
+                    metadata:    { ...payload, source: 'clock_event' }
+                }
+            ).catch(() => { /* non-critical */ });
+
+        } catch (err: any) {
+            logger.warn({ err }, '[HR] emitClockEvent failed (non-fatal)');
+        }
+    }
+
+    // ─── Live attendance feed ─────────────────────────────────────────────────
+
+    /**
+     * Returns today's clock-in/out activity ordered by most-recent first,
+     * enriched with isLate and lateMinutes so the live feed can render status.
+     */
+    async getLiveFeed() {
+        const school = await prisma.school.findFirst({
+            where: { archived: false },
+            orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }],
+            select: { staffWorkStartTime: true, attendanceLockTime: true }
+        });
+
+        const workStartTime = school?.staffWorkStartTime || school?.attendanceLockTime || '07:30';
+        const [workStartHour, workStartMinute] = workStartTime.split(':').map(Number);
+
+        const today = this.toDateOnly(new Date());
+
+        const logs = await prisma.staffAttendanceLog.findMany({
+            where: {
+                date: today,
+                clockInAt: { not: null }
+            },
+            include: {
+                user: {
+                    select: {
+                        id: true, firstName: true, lastName: true,
+                        role: true, profilePicture: true, staffId: true
+                    }
+                }
+            },
+            orderBy: { clockInAt: 'desc' }
+        });
+
+        const getNairobiMinutes = (value: Date | null | undefined): number | null => {
+            if (!value) return null;
+            const parts = new Intl.DateTimeFormat('en-GB', {
+                timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit', hour12: false
+            }).formatToParts(new Date(value));
+            const hour   = Number(parts.find(p => p.type === 'hour')?.value   || 0);
+            const minute = Number(parts.find(p => p.type === 'minute')?.value || 0);
+            return hour * 60 + minute;
+        };
+
+        return logs.map(log => {
+            const arrivalMinutes = getNairobiMinutes(log.clockInAt);
+            const lateMinutes = arrivalMinutes === null
+                ? 0
+                : Math.max(0, arrivalMinutes - (workStartHour * 60 + workStartMinute));
+            const workedMinutes = log.clockInAt && log.clockOutAt
+                ? this.toWorkedMinutes(log.clockInAt, log.clockOutAt) : 0;
+            return {
+                id:           log.id,
+                userId:       log.userId,
+                fullName:     [log.user.firstName, log.user.lastName].filter(Boolean).join(' ') || 'Staff',
+                role:         String(log.user.role || '').replace(/_/g, ' '),
+                profilePicture: (log.user as any).profilePicture || null,
+                staffId:      (log.user as any).staffId || null,
+                clockInAt:    log.clockInAt,
+                clockOutAt:   log.clockOutAt,
+                status:       log.status,
+                isLate:       lateMinutes > 0,
+                lateMinutes,
+                workedMinutes,
+            };
         });
     }
 
