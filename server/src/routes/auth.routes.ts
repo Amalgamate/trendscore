@@ -34,7 +34,7 @@ router.post('/check-availability',
 router.post('/login',
   progressiveRateLimit({
     windowMs: 60_000, // 1 minute
-    maxRequests: 10, // 10 attempts initially, reduces after failures
+    maxRequests: 20, // 20 attempts initially — progressive reduction handles abuse
     message: 'Too many login attempts. Please try again later.'
   }),
   validate(loginSchema),
