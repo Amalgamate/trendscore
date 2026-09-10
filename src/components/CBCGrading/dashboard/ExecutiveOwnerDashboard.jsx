@@ -39,6 +39,7 @@ import { QuickActions } from '../shared';
 import { useModuleAccess } from '../../../contexts/ModuleAccessContext';
 import { hasPageAccess } from '../utils/appAccess';
 import StaffPopup from './widgets/StaffPopup';
+import SchoolPulseCard from './widgets/SchoolPulseCard';
 
 
 const moduleToneMap = {
@@ -1183,6 +1184,14 @@ const ExecutiveOwnerDashboard = ({ user, onNavigate, brandingSettings, mode = 'd
 
           {/* Grid: active card floats to top (col-span-full), rest fill below in 2-3 col layout */}
           <div className={isMobile ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-1 gap-5 xl:grid-cols-2 2xl:grid-cols-3'}>
+
+            {/* ── School Pulse — full-width above all module cards, desktop only ── */}
+            {!isMobile && (
+              <div className="col-span-1 xl:col-span-2 2xl:col-span-3">
+                <SchoolPulseCard onNavigate={onNavigate} />
+              </div>
+            )}
+
             {sortedModules.map((module) => {
               if (isMobile) {
                 return <ExecutiveMobileModuleCard key={module.id} module={module} onNavigate={onNavigate} />;

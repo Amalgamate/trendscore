@@ -206,6 +206,7 @@ const MyResults = lazy(() => import('../pages/student/MyResults'));
 const StudentPathwayDashboard = lazy(() => import('../pages/student/StudentPathwayDashboard'));
 const CareerExplorer = lazy(() => import('../pages/student/CareerExplorer'));
 const StudentTimetable = lazy(() => import('../pages/student/StudentTimetable'));
+const SchoolPulsePage  = lazy(() => import('../pages/dashboard/SchoolPulsePage'));
 
 // Notification Center — global, all roles
 const NotificationCenter = lazy(() => import('../pages/NotificationCenter'));
@@ -480,6 +481,8 @@ const PageRouter = ({
             return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} currentPage={currentPage} brandingSettings={brandingSettings} />;
           case 'finance-dashboard':
             return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} currentPage={currentPage} brandingSettings={brandingSettings} />;
+
+          case 'school-pulse': return <ErrorBoundary><SchoolPulsePage /></ErrorBoundary>;
 
           // Notification Center — available to all roles
           case 'notification-center':
