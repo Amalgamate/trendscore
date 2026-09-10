@@ -614,12 +614,57 @@ repair_interrupted_learner_student_user_migration() {
   " < /dev/null
 }
 
+auto_baseline_if_needed() {
+  local kind="$1"
+  local project="${2:-}"
+  local env_file="${3:-}"
+
+  # Count applied migrations. A school provisioned via `prisma db push` will
+  # have all tables but zero rows in _prisma_migrations, causing P3005 on the
+  # first `prisma migrate deploy`. Detect this and mark every migration file
+  # as applied so the subsequent deploy is a safe no-op.
+  log "━━ Baseline check ━━"
+
+  local migration_count
+  migration_count="$(compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
+    run -T --no-deps --rm backend sh -c \
+    'node -e "
+      const { Client } = require(\"pg\");
+      const c = new Client({ connectionString: process.env.DATABASE_URL });
+      c.connect()
+        .then(() => c.query(\"SELECT COUNT(*)::int AS n FROM \\\"_prisma_migrations\\\" WHERE finished_at IS NOT NULL\"))
+        .then(r => { console.log(r.rows[0].n); c.end(); })
+        .catch(() => { console.log(0); c.end(); });
+    "' < /dev/null 2>/dev/null | grep -E '^[0-9]+$' | tail -n1 || echo "0")"
+
+  if [[ "${migration_count}" -gt 0 ]]; then
+    log "Baseline check: ${migration_count} migration(s) already recorded — skipping baseline"
+    return 0
+  fi
+
+  log "Baseline check: no migration history found — auto-baselining all migrations"
+  compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
+    run -T --no-deps --rm backend sh -c '
+      for dir in prisma/migrations/*/; do
+        migration="$(basename "${dir}")"
+        case "${migration}" in
+          *_allow_multiple_summative_series) continue ;;
+          *_link_learners_to_student_users)  continue ;;
+        esac
+        echo "  [baseline] ${migration}"
+        npx prisma migrate resolve --applied "${migration}" --schema prisma/schema.prisma 2>&1 || true
+      done
+      echo "  [baseline] complete"
+    ' < /dev/null
+}
+
 run_migrations() {
   local kind="$1"
   local project="${2:-}"
   local env_file="${3:-}"
 
   log "━━ Migrations (prisma migrate deploy) ━━"
+  auto_baseline_if_needed "${kind}" "${project}" "${env_file}" || return 1
   repair_summative_series_migration "${kind}" "${project}" "${env_file}" || return 1
   repair_interrupted_learner_student_user_migration "${kind}" "${project}" "${env_file}" || return 1
 
