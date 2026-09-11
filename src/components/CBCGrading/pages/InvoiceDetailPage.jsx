@@ -13,7 +13,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, MessageSquare, Phone, User, ShieldCheck, Info, Plus, Loader2,
   FileText, Bookmark, Calendar, X, CheckCircle2, AlertTriangle, Clock,
-  ChevronDown, ChevronUp, Send, Gift, Download, Ban, RefreshCw
+  ChevronDown, ChevronUp, Send, Gift, Download, Ban, RefreshCw, RotateCcw
 } from 'lucide-react';
 import usePageNavigation from '../../../hooks/usePageNavigation';
 import { generateDocument } from '../../../utils/simplePdfGenerator';
@@ -252,7 +252,36 @@ const InvoiceDetailPage = ({ invoice }) => {
     }, 100);
   };
 
-  // ── Cancel invoice ─────────────────────────────────────────────────────────
+  // ── Reverse payment ────────────────────────────────────────────────────────
+  const [reversingPaymentId, setReversingPaymentId] = useState(null);
+
+  const handleReversePayment = async (payment) => {
+    if (!window.confirm(
+      `Reverse payment ${payment.receiptNumber} of KES ${Number(payment.amount).toLocaleString()}?\n\nThis cannot be undone. The invoice balance will be restored by this amount.`
+    )) return;
+    setReversingPaymentId(payment.id);
+    try {
+      const result = await api.fees.reversePayment(payment.id, { reason: 'Reversed from invoice detail' });
+      if (result?.success) {
+        // Refresh the activity so the payment disappears and totals update
+        await fetchActivity();
+        // Sync the local invoice amounts from the server response
+        if (result.data?.invoice) {
+          setInvoiceData(prev => ({
+            ...prev,
+            paidAmount: result.data.invoice.paidAmount,
+            balance: result.data.invoice.balance,
+            status: result.data.invoice.status,
+          }));
+        }
+        showSuccess(`Payment ${payment.receiptNumber} reversed`);
+      }
+    } catch (err) {
+      showError(err?.message || 'Failed to reverse payment');
+    } finally {
+      setReversingPaymentId(null);
+    }
+  };
   const handleCancelInvoice = async () => {
     if (!cancelReason.trim()) {
       showError('Please enter a reason for cancellation');
@@ -532,6 +561,7 @@ const InvoiceDetailPage = ({ invoice }) => {
                 {invoiceData.learner?.isTransportStudent && (
                   <th className="px-6 py-3 font-medium text-orange-400 uppercase tracking-widest text-[9px] text-right">Transport</th>
                 )}
+                <th className="px-6 py-3 font-medium text-gray-400 uppercase tracking-widest text-[9px] text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -544,7 +574,7 @@ const InvoiceDetailPage = ({ invoice }) => {
               ) : (
                 <>
                   {payments.map((p) => (
-                    <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
+                    <tr key={p.id} className={`hover:bg-gray-50/50 transition-colors ${p.archived ? 'opacity-40 line-through' : ''}`}>
                       <td className="px-6 py-3 text-gray-600 font-medium">
                         {new Date(p.paymentDate).toLocaleDateString('en-GB')}
                       </td>
@@ -565,15 +595,34 @@ const InvoiceDetailPage = ({ invoice }) => {
                           {Number(p.transportAmount || 0) > 0 ? Number(p.transportAmount).toLocaleString() : '-'}
                         </td>
                       )}
+                      <td className="px-6 py-3 text-center">
+                        {!p.archived && (
+                          <button
+                            onClick={() => handleReversePayment(p)}
+                            disabled={reversingPaymentId === p.id}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-[10px] font-semibold transition-all disabled:opacity-50"
+                            title={`Reverse ${p.receiptNumber}`}
+                          >
+                            {reversingPaymentId === p.id
+                              ? <Loader2 size={11} className="animate-spin" />
+                              : <RotateCcw size={11} />}
+                            Reverse
+                          </button>
+                        )}
+                        {p.archived && (
+                          <span className="text-[10px] text-gray-400 italic">Reversed</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                   <tr className="bg-emerald-50/30">
-                    <td colSpan="4" className="px-6 py-3 text-right text-[10px] font-semibold text-emerald-700 uppercase tracking-widest">
+                    <td colSpan={invoiceData.learner?.isTransportStudent ? 5 : 4} className="px-6 py-3 text-right text-[10px] font-semibold text-emerald-700 uppercase tracking-widest">
                       Total Payments Recorded
                     </td>
                     <td className="px-6 py-3 text-right font-semibold text-base text-emerald-700">
-                      KES {payments.reduce((sum, p) => sum + Number(p.amount), 0).toLocaleString()}
+                      KES {payments.filter(p => !p.archived).reduce((sum, p) => sum + Number(p.amount), 0).toLocaleString()}
                     </td>
+                    <td />
                   </tr>
                 </>
               )}
