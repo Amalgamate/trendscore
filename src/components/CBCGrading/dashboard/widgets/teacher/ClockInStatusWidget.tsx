@@ -72,13 +72,23 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
     return !attendance.clockOutAt;
   }, [attendance]);
 
-  // The current model supports one clock-in/clock-out cycle per day. Once both
-  // are set, there is nothing left to action until tomorrow — the UI should
-  // say so plainly instead of re-offering a "Clock In" button that would just
-  // bounce off the server's idempotency guard.
+  // The last clock-out's reason, if any. An 'errand' clock-out keeps today's
+  // record reopenable — the server lets a following clock-in resume the same
+  // day instead of treating it as a stale repeat.
+  const lastClockOutReason = attendance?.metadata?.lastClockOutReason as ('errand' | 'end_of_day' | undefined);
+
+  // The day only truly "locks" once both times are set AND the last clock-out
+  // wasn't an errand — an errand clock-out leaves room for a same-day return,
+  // so the UI shouldn't say "see you tomorrow" while the record is reopenable.
   const dayComplete = useMemo(
-    () => Boolean(attendance?.clockInAt && attendance?.clockOutAt),
-    [attendance]
+    () => Boolean(attendance?.clockInAt && attendance?.clockOutAt && lastClockOutReason !== 'errand'),
+    [attendance, lastClockOutReason]
+  );
+
+  // Clocked out for a short errand and hasn't clocked back in yet.
+  const canReturnFromErrand = useMemo(
+    () => Boolean(attendance?.clockInAt && attendance?.clockOutAt && lastClockOutReason === 'errand'),
+    [attendance, lastClockOutReason]
   );
 
   const refreshStatus = useCallback(async () => {
@@ -120,16 +130,21 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
     return () => clearTimeout(timer);
   }, [mode]);
 
-  const performAction = useCallback(async (action: 'clock-in' | 'clock-out') => {
+  const performAction = useCallback(async (action: 'clock-in' | 'clock-out', clockOutReason?: 'errand' | 'end_of_day') => {
     setMessage(null);
     setReasonCode(null);
 
     // ── IP-based clock-in (no location/GPS required) ──────────────────────────
     // The server will verify the request IP against the school's allowed Wi-Fi IPs.
-    const payload = {
+    const payload: Record<string, any> = {
       source: 'web',
       metadata: { widget: 'CLOCK_IN_STATUS' }
     };
+    // 'errand' keeps today's record reopenable for a later clock-in; omitted
+    // (or 'end_of_day') finalises the day, matching prior behaviour.
+    if (action === 'clock-out' && clockOutReason) {
+      payload.reason = clockOutReason;
+    }
 
     // ── GPS / Geofence payload (DISABLED — un-comment to restore) ─────────────
     // setMode('getting_location');
@@ -219,9 +234,10 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
       return mode === 'clock_in_denied' ? 'Clock-in denied' : 'Clock-out denied';
     }
     if (dayComplete) return 'Clocked out for today';
+    if (canReturnFromErrand) return 'Out on a short errand';
     if (isClockedIn) return 'Clocked in';
     return 'Not clocked in yet';
-  }, [dayComplete, isClockedIn, mode, reasonCode]);
+  }, [canReturnFromErrand, dayComplete, isClockedIn, mode, reasonCode]);
 
   const primaryButton = useMemo(() => {
     const busy = mode === 'submitting_clock_in' || mode === 'submitting_clock_out';
@@ -231,7 +247,14 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
     if (isClockedIn) {
       return {
         label: busy ? 'Clocking out…' : 'Clock Out',
-        onClick: () => performAction('clock-out'),
+        onClick: () => performAction('clock-out', 'end_of_day'),
+        disabled: busy
+      };
+    }
+    if (canReturnFromErrand) {
+      return {
+        label: busy ? 'Clocking in…' : "I'm back — Clock In",
+        onClick: () => performAction('clock-in'),
         disabled: busy
       };
     }
@@ -240,7 +263,7 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
       onClick: () => performAction('clock-in'),
       disabled: busy
     };
-  }, [dayComplete, isClockedIn, mode, performAction]);
+  }, [canReturnFromErrand, dayComplete, isClockedIn, mode, performAction]);
 
   const isIpDenied = reasonCode === 'IP_DENIED';
   const busy = mode === 'submitting_clock_in' || mode === 'submitting_clock_out';
@@ -261,7 +284,7 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
     return (
       <button
         type="button"
-        onClick={() => performAction('clock-out')}
+        onClick={() => performAction('clock-out', 'end_of_day')}
         disabled={busy}
         className={`w-full px-4 py-2.5 rounded-2xl font-bold text-xs transition flex items-center justify-center gap-2 shadow-sm ${
           busy
@@ -346,28 +369,38 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
             Day complete — see you tomorrow
           </div>
         ) : isClockedIn ? (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col gap-2">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setMinimized(true)}
+                disabled={primaryButton.disabled}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-bold text-xs text-slate-700 transition flex items-center justify-center gap-1.5 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Minimize2 size={13} />
+                Minimize
+              </button>
+              <button
+                type="button"
+                onClick={primaryButton.onClick}
+                disabled={primaryButton.disabled}
+                className={`w-full px-3 py-2.5 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm ${
+                  primaryButton.disabled
+                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    : 'bg-rose-600 text-white hover:bg-rose-700'
+                }`}
+              >
+                {primaryButton.disabled ? <Loader2 size={13} className="animate-spin" /> : <Clock size={13} />}
+                {primaryButton.label}
+              </button>
+            </div>
             <button
               type="button"
-              onClick={() => setMinimized(true)}
+              onClick={() => performAction('clock-out', 'errand')}
               disabled={primaryButton.disabled}
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-bold text-xs text-slate-700 transition flex items-center justify-center gap-1.5 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full px-3 py-2 rounded-xl border border-amber-200 bg-amber-50 font-bold text-[11px] text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <Minimize2 size={13} />
-              Minimize
-            </button>
-            <button
-              type="button"
-              onClick={primaryButton.onClick}
-              disabled={primaryButton.disabled}
-              className={`w-full px-3 py-2.5 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm ${
-                primaryButton.disabled
-                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                  : 'bg-rose-600 text-white hover:bg-rose-700'
-              }`}
-            >
-              {primaryButton.disabled ? <Loader2 size={13} className="animate-spin" /> : <Clock size={13} />}
-              {primaryButton.label}
+              Stepping out briefly (short errand) — come back later today
             </button>
           </div>
         ) : (
