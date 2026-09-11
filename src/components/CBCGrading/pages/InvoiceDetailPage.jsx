@@ -13,7 +13,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, MessageSquare, Phone, User, ShieldCheck, Info, Plus, Loader2,
   FileText, Bookmark, Calendar, X, CheckCircle2, AlertTriangle, Clock,
-  ChevronDown, ChevronUp, Send, Gift, Download
+  ChevronDown, ChevronUp, Send, Gift, Download, Ban, RefreshCw
 } from 'lucide-react';
 import usePageNavigation from '../../../hooks/usePageNavigation';
 import { generateDocument } from '../../../utils/simplePdfGenerator';
@@ -64,6 +64,10 @@ const InvoiceDetailPage = ({ invoice }) => {
   const [schoolInfo, setSchoolInfo] = useState(null);
   const [whatsappStatus, setWhatsappStatus] = useState({ status: 'fetching', qrCode: null });
 
+  // Local invoice state so cancel/re-invoice can update the UI without a full
+  // page navigation — the parent passed `invoice` as an initial prop.
+  const [invoiceData, setInvoiceData] = useState(invoice);
+
   // Activity section state
   const [comments, setComments] = useState([]);
   const [pledges, setPledges] = useState([]);
@@ -88,6 +92,18 @@ const InvoiceDetailPage = ({ invoice }) => {
   // Waiver modal
   const [showWaiverModal, setShowWaiverModal] = useState(false);
   const [showA5Preview, setShowA5Preview] = useState(false);
+
+  // Cancel invoice modal
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+
+  // Re-invoice modal (only shown on CANCELLED invoices)
+  const [showReinvoiceModal, setShowReinvoiceModal] = useState(false);
+  const [reinvoiceDueDate, setReinvoiceDueDate] = useState(
+    invoice?.dueDate ? new Date(invoice.dueDate).toISOString().split('T')[0] : ''
+  );
+  const [reinvoicing, setReinvoicing] = useState(false);
 
   // ── data fetching ──────────────────────────────────────────────────────────
   const fetchActivity = useCallback(async () => {
@@ -189,27 +205,27 @@ const InvoiceDetailPage = ({ invoice }) => {
   };
 
   const handleDownloadPdf = async () => {
-    const isPaid = ['PAID', 'OVERPAID', 'WAIVED'].includes(invoice.status);
+    const isPaid = ['PAID', 'OVERPAID', 'WAIVED'].includes(invoiceData.status);
     const docType = isPaid ? 'OFFICIAL RECEIPT' : 'FEE INVOICE';
-    const docRef = isPaid ? `RCT-${invoice.invoiceNumber}` : `INV-${invoice.invoiceNumber}`;
-    const filename = isPaid ? `Receipt_${invoice.invoiceNumber}.pdf` : `Invoice_${invoice.invoiceNumber}.pdf`;
-    const rowItems = invoice.feeStructure?.items?.length
-      ? invoice.feeStructure.items
-      : (invoice.items || [{ name: 'School Fees', amount: invoice.totalAmount, mandatory: true }]);
+    const docRef = isPaid ? `RCT-${invoiceData.invoiceNumber}` : `INV-${invoiceData.invoiceNumber}`;
+    const filename = isPaid ? `Receipt_${invoiceData.invoiceNumber}.pdf` : `Invoice_${invoiceData.invoiceNumber}.pdf`;
+    const rowItems = invoiceData.feeStructure?.items?.length
+      ? invoiceData.feeStructure.items
+      : (invoiceData.items || [{ name: 'School Fees', amount: invoiceData.totalAmount, mandatory: true }]);
 
     const html = `
       <div style="margin-bottom:30px;display:flex;justify-content:space-between;background:#f8fafc;padding:20px;border-radius:8px;">
         <div>
           <p style="font-size:10px;font-weight:800;color:#64748b;margin:0 0 5px 0;text-transform:uppercase;">Bill To:</p>
-          <p style="font-size:14px;font-weight:800;margin:0;color:#1e293b;">${invoice.learner?.firstName||''} ${invoice.learner?.lastName||''}</p>
-          <p style="font-size:12px;color:#64748b;margin:3px 0;">ADM: ${invoice.learner?.admissionNumber||'-'}</p>
-          <p style="font-size:12px;color:#64748b;margin:0;">Class: ${(invoice.learner?.grade||'').replace(/_/g,' ')}</p>
+          <p style="font-size:14px;font-weight:800;margin:0;color:#1e293b;">${invoiceData.learner?.firstName||''} ${invoiceData.learner?.lastName||''}</p>
+          <p style="font-size:12px;color:#64748b;margin:3px 0;">ADM: ${invoiceData.learner?.admissionNumber||'-'}</p>
+          <p style="font-size:12px;color:#64748b;margin:0;">Class: ${(invoiceData.learner?.grade||'').replace(/_/g,' ')}</p>
         </div>
         <div style="text-align:right;">
           <p style="font-size:10px;font-weight:800;color:#64748b;margin:0 0 5px 0;text-transform:uppercase;">Details:</p>
-          <p style="font-size:12px;color:#1e293b;margin:0;">Term: ${(invoice.term||'').replace(/_/g,' ')} ${invoice.academicYear||''}</p>
-          <p style="font-size:12px;color:#1e293b;margin:3px 0;">Issued: ${new Date(invoice.createdAt||Date.now()).toLocaleDateString('en-GB')}</p>
-          <p style="font-size:12px;font-weight:700;color:${isPaid?'#16a34a':'#dc2626'};margin:0;">Status: ${invoice.status}</p>
+          <p style="font-size:12px;color:#1e293b;margin:0;">Term: ${(invoiceData.term||'').replace(/_/g,' ')} ${invoiceData.academicYear||''}</p>
+          <p style="font-size:12px;color:#1e293b;margin:3px 0;">Issued: ${new Date(invoiceData.createdAt||Date.now()).toLocaleDateString('en-GB')}</p>
+          <p style="font-size:12px;font-weight:700;color:${isPaid?'#16a34a':'#dc2626'};margin:0;">Status: ${invoiceData.status}</p>
         </div>
       </div>
       <table>
@@ -218,10 +234,10 @@ const InvoiceDetailPage = ({ invoice }) => {
       </table>
       <div style="margin-top:30px;display:flex;justify-content:flex-end;">
         <div style="width:250px;">
-          <div style="display:flex;justify-content:space-between;padding:5px 0;color:#64748b;font-size:12px;"><span>Subtotal Charged:</span><span>KES ${Number(invoice.totalAmount||0).toLocaleString()}</span></div>
-          <div style="display:flex;justify-content:space-between;padding:5px 0;color:#16a34a;font-size:12px;font-weight:600;"><span>Total Paid:</span><span>KES ${Number(invoice.paidAmount||0).toLocaleString()}</span></div>
-          <div style="display:flex;justify-content:space-between;padding:5px 0;color:#00A09D;font-size:12px;font-weight:600;"><span>Total Waived:</span><span>KES ${(invoice.waivers || []).reduce((acc, w) => acc + Number(w.amountWaived), 0).toLocaleString()}</span></div>
-          <div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid #e2e8f0;margin-top:5px;color:${Number(invoice.balance||0)<=0?'#16a34a':'#dc2626'};font-size:16px;font-weight:800;"><span>BALANCE DUE:</span><span>KES ${Number(invoice.balance||0).toLocaleString()}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;color:#64748b;font-size:12px;"><span>Subtotal Charged:</span><span>KES ${Number(invoiceData.totalAmount||0).toLocaleString()}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;color:#16a34a;font-size:12px;font-weight:600;"><span>Total Paid:</span><span>KES ${Number(invoiceData.paidAmount||0).toLocaleString()}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;color:#00A09D;font-size:12px;font-weight:600;"><span>Total Waived:</span><span>KES ${(invoiceData.waivers || []).reduce((acc, w) => acc + Number(w.amountWaived), 0).toLocaleString()}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid #e2e8f0;margin-top:5px;color:${Number(invoiceData.balance||0)<=0?'#16a34a':'#dc2626'};font-size:16px;font-weight:800;"><span>BALANCE DUE:</span><span>KES ${Number(invoiceData.balance||0).toLocaleString()}</span></div>
         </div>
       </div>`;
 
@@ -229,15 +245,65 @@ const InvoiceDetailPage = ({ invoice }) => {
   };
 
   const handlePrintThermal = () => {
-    setPrintingInvoice(invoice);
+    setPrintingInvoice(invoiceData);
     setTimeout(() => {
       window.print();
       setPrintingInvoice(null);
     }, 100);
   };
 
+  // ── Cancel invoice ─────────────────────────────────────────────────────────
+  const handleCancelInvoice = async () => {
+    if (!cancelReason.trim()) {
+      showError('Please enter a reason for cancellation');
+      return;
+    }
+    setCancelling(true);
+    try {
+      const result = await api.fees.cancelInvoice(invoiceData.id, { reason: cancelReason.trim() });
+      if (result?.success) {
+        setInvoiceData(prev => ({ ...prev, status: 'CANCELLED' }));
+        setShowCancelModal(false);
+        setCancelReason('');
+        showSuccess(`Invoice ${invoiceData.invoiceNumber} cancelled`);
+      }
+    } catch (err) {
+      showError(err?.message || 'Failed to cancel invoice');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  // ── Re-invoice (replace a cancelled invoice with a fresh one) ──────────────
+  const handleReinvoice = async () => {
+    if (!reinvoiceDueDate) {
+      showError('Please select a due date');
+      return;
+    }
+    setReinvoicing(true);
+    try {
+      const result = await api.fees.createInvoice({
+        learnerId:      invoiceData.learnerId,
+        feeStructureId: invoiceData.feeStructureId,
+        term:           invoiceData.term,
+        academicYear:   invoiceData.academicYear,
+        dueDate:        reinvoiceDueDate,
+      });
+      if (result?.success && result?.data) {
+        setShowReinvoiceModal(false);
+        showSuccess(`New invoice ${result.data.invoiceNumber} created — navigating to it`);
+        // Navigate to the fresh invoice so the user can see the new record
+        setTimeout(() => navigateTo('fees-invoice-detail', { invoice: result.data }), 1200);
+      }
+    } catch (err) {
+      showError(err?.message || 'Failed to create replacement invoice');
+    } finally {
+      setReinvoicing(false);
+    }
+  };
+
   // ── guard ──────────────────────────────────────────────────────────────────
-  if (!invoice) {
+  if (!invoiceData) {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-gray-500 space-y-4">
         <p className="text-lg font-semibold">No invoice selected.</p>
@@ -249,6 +315,8 @@ const InvoiceDetailPage = ({ invoice }) => {
   }
 
   const activePledges = pledges.filter(p => ['PENDING', 'DUE'].includes(p.status));
+  const isCancelled = invoiceData.status === 'CANCELLED';
+  const canCancel = !isCancelled && !['PAID', 'OVERPAID'].includes(invoiceData.status);
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-12">
@@ -257,18 +325,40 @@ const InvoiceDetailPage = ({ invoice }) => {
         <ArrowLeft size={20} /><span>Back to Invoices</span>
       </button>
 
+      {/* Cancelled banner */}
+      {isCancelled && (
+        <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-5 py-3">
+          <Ban size={18} className="text-red-500 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-red-800">This invoice has been cancelled</p>
+            <p className="text-xs text-red-600 mt-0.5">All amounts are void. Use "Re-invoice" to issue a replacement for the same period.</p>
+          </div>
+          <button
+            onClick={() => setShowReinvoiceModal(true)}
+            className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl font-medium text-sm transition-all shadow-sm flex-shrink-0"
+          >
+            <RefreshCw size={14} /> Re-invoice
+          </button>
+        </div>
+      )}
+
       {/* Header card */}
       <div className="bg-[#002C60] rounded-2xl px-8 py-6 text-white flex justify-between items-start shadow-lg">
         <div className="space-y-1">
           <h1 className="text-2xl font-medium tracking-tight">Invoice Details</h1>
-          <p className="text-white text-sm font-semibold uppercase tracking-widest">{invoice.invoiceNumber}</p>
-          {activePledges.length > 0 && (
+          <p className="text-white text-sm font-semibold uppercase tracking-widest">{invoiceData.invoiceNumber}</p>
+          {isCancelled && (
+            <span className="inline-flex items-center gap-1 bg-red-500 text-white text-xs font-semibold px-2.5 py-0.5 rounded-full mt-1">
+              <Ban size={11} /> CANCELLED
+            </span>
+          )}
+          {!isCancelled && activePledges.length > 0 && (
             <span className="inline-flex items-center gap-1 bg-amber-400 text-amber-900 text-xs font-medium px-2 py-0.5 rounded-full mt-1">
               <Bookmark size={11} /> {activePledges.length} Active Pledge{activePledges.length > 1 ? 's' : ''}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap justify-end">
           <button 
             onClick={() => setShowA5Preview(true)}
             className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-xl font-medium text-xs transition-all shadow-sm"
@@ -289,40 +379,67 @@ const InvoiceDetailPage = ({ invoice }) => {
 
           <div className="h-8 w-px bg-white/20 mx-1" />
 
-          <button onClick={() => navigateTo('fees-record-payment', { invoice })} className="flex items-center gap-2 bg-white text-[#002C60] hover:bg-blue-50 px-4 py-2 rounded-xl font-medium text-sm transition-all border border-blue-100">
-            <Plus size={16} /> Collect Payment
-          </button>
+          {!isCancelled && (
+            <button
+              onClick={() => navigateTo('fees-record-payment', { invoice: invoiceData })}
+              className="flex items-center gap-2 bg-white text-[#002C60] hover:bg-blue-50 px-4 py-2 rounded-xl font-medium text-sm transition-all border border-blue-100"
+            >
+              <Plus size={16} /> Collect Payment
+            </button>
+          )}
           
-          <button 
-            onClick={() => setShowWaiverModal(true)} 
-            className="flex items-center gap-2 bg-[#00A09D] text-white hover:bg-[#008c89] px-4 py-2 rounded-xl font-medium text-sm transition-all"
-            title="Request Fee Waiver"
-          >
-            <Gift size={16} /> Waiver
-          </button>
+          {!isCancelled && (
+            <button 
+              onClick={() => setShowWaiverModal(true)} 
+              className="flex items-center gap-2 bg-[#00A09D] text-white hover:bg-[#008c89] px-4 py-2 rounded-xl font-medium text-sm transition-all"
+              title="Request Fee Waiver"
+            >
+              <Gift size={16} /> Waiver
+            </button>
+          )}
+
+          {canCancel && (
+            <button
+              onClick={() => setShowCancelModal(true)}
+              className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl font-medium text-sm transition-all"
+              title="Cancel this invoice"
+            >
+              <Ban size={16} /> Cancel Invoice
+            </button>
+          )}
+
+          {isCancelled && (
+            <button
+              onClick={() => setShowReinvoiceModal(true)}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-medium text-sm transition-all"
+              title="Issue replacement invoice"
+            >
+              <RefreshCw size={16} /> Re-invoice
+            </button>
+          )}
         </div>
       </div>
 
       {/* Quick stats */}
-      <div className={`grid gap-4 ${Number(invoice.sponsorAmount || 0) > 0 ? 'grid-cols-5' : 'grid-cols-4'}`}>
+      <div className={`grid gap-4 ${Number(invoiceData.sponsorAmount || 0) > 0 ? 'grid-cols-5' : 'grid-cols-4'}`}>
         {[
-          { label: 'Total Due', value: `KES ${Number(invoice.totalAmount).toLocaleString()}`, color: 'text-gray-900', bg: 'bg-white' },
-          ...(Number(invoice.sponsorAmount || 0) > 0 ? [{
+          { label: 'Total Due', value: `KES ${Number(invoiceData.totalAmount).toLocaleString()}`, color: 'text-gray-900', bg: 'bg-white' },
+          ...(Number(invoiceData.sponsorAmount || 0) > 0 ? [{
             label: 'Sponsor Portion',
-            value: `KES ${Number(invoice.sponsorAmount).toLocaleString()}`,
+            value: `KES ${Number(invoiceData.sponsorAmount).toLocaleString()}`,
             color: 'text-indigo-600',
             bg: 'bg-indigo-50/50 border-indigo-100'
           }] : []),
-          { label: 'Total Paid', value: `KES ${Number(invoice.paidAmount).toLocaleString()}`, color: 'text-green-600', bg: 'bg-white' },
-          { label: 'Waived', value: `KES ${(invoice.waivers || []).reduce((acc, w) => acc + Number(w.amountWaived), 0).toLocaleString()}`, color: 'text-teal-600', bg: 'bg-white' },
+          { label: 'Total Paid', value: `KES ${Number(invoiceData.paidAmount).toLocaleString()}`, color: 'text-green-600', bg: 'bg-white' },
+          { label: 'Waived', value: `KES ${(invoiceData.waivers || []).reduce((acc, w) => acc + Number(w.amountWaived), 0).toLocaleString()}`, color: 'text-teal-600', bg: 'bg-white' },
           { 
-            label: Number(invoice.balance) < 0 ? 'Overpaid (Credit)' : 'Balance Due', 
-            value: `KES ${Math.abs(Number(invoice.balance)).toLocaleString()}`, 
-            color: Number(invoice.balance) < 0 ? 'text-purple-600' : 'text-rose-600',
-            bg: Number(invoice.balance) < 0 ? 'bg-purple-50/50 border-purple-100' : 'bg-white'
+            label: Number(invoiceData.balance) < 0 ? 'Overpaid (Credit)' : (isCancelled ? 'Voided Balance' : 'Balance Due'), 
+            value: `KES ${Math.abs(Number(invoiceData.balance)).toLocaleString()}`, 
+            color: isCancelled ? 'text-gray-400' : Number(invoiceData.balance) < 0 ? 'text-purple-600' : 'text-rose-600',
+            bg: isCancelled ? 'bg-gray-50' : Number(invoiceData.balance) < 0 ? 'bg-purple-50/50 border-purple-100' : 'bg-white'
           },
         ].map(s => (
-          <div key={s.label} className={`${s.bg} p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center text-center transition-all`}>
+          <div key={s.label} className={`${s.bg} p-5 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center text-center transition-all ${isCancelled ? 'opacity-60' : ''}`}>
             <span className="text-[10px] font-medium text-gray-400 uppercase mb-1">{s.label}</span>
             <span className={`text-xl font-medium ${s.color}`}>{s.value}</span>
           </div>
@@ -330,7 +447,7 @@ const InvoiceDetailPage = ({ invoice }) => {
       </div>
 
       {/* Transport sub-ledger card */}
-      {invoice.learner?.isTransportStudent && Number(invoice.transportBilled || 0) > 0 && (
+      {invoiceData.learner?.isTransportStudent && Number(invoiceData.transportBilled || 0) > 0 && (
         <div className="bg-orange-50 border border-orange-200 rounded-xl px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-orange-600 text-lg">🚌</span>
@@ -342,16 +459,16 @@ const InvoiceDetailPage = ({ invoice }) => {
           <div className="flex gap-6 text-center">
             <div>
               <p className="text-[10px] font-medium text-orange-600 uppercase">Billed</p>
-              <p className="text-base font-semibold text-orange-900">KES {Number(invoice.transportBilled || 0).toLocaleString()}</p>
+              <p className="text-base font-semibold text-orange-900">KES {Number(invoiceData.transportBilled || 0).toLocaleString()}</p>
             </div>
             <div>
               <p className="text-[10px] font-medium text-orange-600 uppercase">Paid</p>
-              <p className="text-base font-semibold text-green-700">KES {Number(invoice.transportPaid || 0).toLocaleString()}</p>
+              <p className="text-base font-semibold text-green-700">KES {Number(invoiceData.transportPaid || 0).toLocaleString()}</p>
             </div>
             <div>
               <p className="text-[10px] font-medium text-orange-600 uppercase">Balance</p>
-              <p className={`text-base font-semibold ${Number(invoice.transportBalance || 0) <= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                KES {Number(invoice.transportBalance || 0).toLocaleString()}
+              <p className={`text-base font-semibold ${Number(invoiceData.transportBalance || 0) <= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                KES {Number(invoiceData.transportBalance || 0).toLocaleString()}
               </p>
             </div>
           </div>
@@ -363,16 +480,16 @@ const InvoiceDetailPage = ({ invoice }) => {
         <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm space-y-3">
           <div className="flex items-center gap-2 text-[#002C60] font-medium text-xs uppercase tracking-wider"><User size={14} /> Student Information</div>
           <div className="space-y-1 pt-1">
-            <p className="font-medium text-gray-900 text-lg">{invoice.learner?.firstName} {invoice.learner?.lastName}</p>
-            <p className="text-sm text-gray-500">ADM: {invoice.learner?.admissionNumber}</p>
-            <p className="text-sm text-gray-500">Grade: {invoice.learner?.grade} {invoice.learner?.stream}</p>
+            <p className="font-medium text-gray-900 text-lg">{invoiceData.learner?.firstName} {invoiceData.learner?.lastName}</p>
+            <p className="text-sm text-gray-500">ADM: {invoiceData.learner?.admissionNumber}</p>
+            <p className="text-sm text-gray-500">Grade: {invoiceData.learner?.grade} {invoiceData.learner?.stream}</p>
           </div>
         </div>
         <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm space-y-3">
           <div className="flex items-center gap-2 text-[#002C60] font-medium text-xs uppercase tracking-wider"><ShieldCheck size={14} /> Parent / Guardian</div>
           <div className="space-y-1 pt-1">
-            <p className="font-medium text-gray-900">{invoice.learner?.primaryContactName || 'N/A'}</p>
-            <p className="text-sm text-green-600 font-medium">Phone: {invoice.learner?.primaryContactPhone || invoice.learner?.guardianPhone || 'N/A'}</p>
+            <p className="font-medium text-gray-900">{invoiceData.learner?.primaryContactName || 'N/A'}</p>
+            <p className="text-sm text-green-600 font-medium">Phone: {invoiceData.learner?.primaryContactPhone || invoiceData.learner?.guardianPhone || 'N/A'}</p>
             <p className="text-xs text-gray-400 italic">Preferred contact for reminders</p>
           </div>
         </div>
@@ -383,12 +500,12 @@ const InvoiceDetailPage = ({ invoice }) => {
         <div className="flex items-center gap-2 text-[#002C60] font-medium text-xs uppercase tracking-wider"><Info size={14} /> Billing Details</div>
         <div className="grid grid-cols-2 gap-8 pt-1">
           <div className="space-y-3">
-            <div className="flex justify-between border-b border-gray-100 pb-2"><span className="text-xs text-gray-400 font-medium uppercase">Term</span><span className="text-sm font-semibold">{invoice.term} {invoice.academicYear}</span></div>
-            <div className="flex justify-between border-b border-gray-100 pb-2"><span className="text-xs text-gray-400 font-medium uppercase">Due Date</span><span className="text-sm font-semibold text-rose-500">{new Date(invoice.dueDate).toLocaleDateString()}</span></div>
+            <div className="flex justify-between border-b border-gray-100 pb-2"><span className="text-xs text-gray-400 font-medium uppercase">Term</span><span className="text-sm font-semibold">{invoiceData.term} {invoiceData.academicYear}</span></div>
+            <div className="flex justify-between border-b border-gray-100 pb-2"><span className="text-xs text-gray-400 font-medium uppercase">Due Date</span><span className="text-sm font-semibold text-rose-500">{new Date(invoiceData.dueDate).toLocaleDateString()}</span></div>
           </div>
           <div className="space-y-3">
-            <div className="flex justify-between border-b border-gray-100 pb-2"><span className="text-xs text-gray-400 font-medium uppercase">Structure</span><span className="text-sm font-semibold truncate max-w-[140px]">{invoice.feeStructure?.name}</span></div>
-            <div className="flex justify-between border-b border-gray-100 pb-2"><span className="text-xs text-gray-400 font-medium uppercase">Issued On</span><span className="text-sm font-semibold">{new Date(invoice.createdAt).toLocaleDateString()}</span></div>
+            <div className="flex justify-between border-b border-gray-100 pb-2"><span className="text-xs text-gray-400 font-medium uppercase">Structure</span><span className="text-sm font-semibold truncate max-w-[140px]">{invoiceData.feeStructure?.name}</span></div>
+            <div className="flex justify-between border-b border-gray-100 pb-2"><span className="text-xs text-gray-400 font-medium uppercase">Issued On</span><span className="text-sm font-semibold">{new Date(invoiceData.createdAt).toLocaleDateString()}</span></div>
           </div>
         </div>
       </div>
@@ -412,7 +529,7 @@ const InvoiceDetailPage = ({ invoice }) => {
                 <th className="px-6 py-3 font-medium text-gray-400 uppercase tracking-widest text-[9px]">Method</th>
                 <th className="px-6 py-3 font-medium text-gray-400 uppercase tracking-widest text-[9px]">Reference</th>
                 <th className="px-6 py-3 font-medium text-gray-400 uppercase tracking-widest text-[9px] text-right">Total</th>
-                {invoice.learner?.isTransportStudent && (
+                {invoiceData.learner?.isTransportStudent && (
                   <th className="px-6 py-3 font-medium text-orange-400 uppercase tracking-widest text-[9px] text-right">Transport</th>
                 )}
               </tr>
@@ -443,7 +560,7 @@ const InvoiceDetailPage = ({ invoice }) => {
                       <td className="px-6 py-3 text-right font-semibold text-emerald-600">
                         {Number(p.amount).toLocaleString()}
                       </td>
-                      {invoice.learner?.isTransportStudent && (
+                      {invoiceData.learner?.isTransportStudent && (
                         <td className="px-6 py-3 text-right font-medium text-orange-600">
                           {Number(p.transportAmount || 0) > 0 ? Number(p.transportAmount).toLocaleString() : '-'}
                         </td>
@@ -495,7 +612,7 @@ const InvoiceDetailPage = ({ invoice }) => {
             )}
           </div>
           <div className="flex items-center gap-2">
-            {invoice.status !== 'PAID' && invoice.status !== 'WAIVED' && (
+            {!isCancelled && invoice.status !== 'PAID' && invoice.status !== 'WAIVED' && (
               <button
                 onClick={(e) => { e.stopPropagation(); setShowPledgeModal(true); }}
                 className="flex items-center gap-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-medium px-3 py-1.5 rounded-lg transition"
@@ -681,7 +798,7 @@ const InvoiceDetailPage = ({ invoice }) => {
         <FeeWaiverModal
           isOpen={showWaiverModal}
           onClose={() => setShowWaiverModal(false)}
-          invoice={invoice}
+          invoice={invoiceData}
           onSuccess={() => {
             setShowWaiverModal(false);
             fetchActivity(); // Refresh activity to show the new waiver request
@@ -697,10 +814,113 @@ const InvoiceDetailPage = ({ invoice }) => {
       )}
       {showA5Preview && (
         <InvoiceA5
-          invoice={invoice}
+          invoice={invoiceData}
           schoolInfo={schoolInfo}
           onClose={() => setShowA5Preview(false)}
         />
+      )}
+
+      {/* ── Cancel Invoice Modal ─────────────────────────────────────────── */}
+      {showCancelModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="bg-red-600 px-6 py-4 flex items-center gap-3 text-white">
+              <Ban size={20} />
+              <div>
+                <h3 className="text-lg font-semibold">Cancel Invoice</h3>
+                <p className="text-red-200 text-xs">{invoiceData.invoiceNumber}</p>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+                <p className="font-semibold mb-1">⚠ This will void the invoice.</p>
+                <ul className="list-disc list-inside space-y-0.5 text-xs">
+                  <li>Status will be set to CANCELLED</li>
+                  <li>Any active payments must be reversed first</li>
+                  <li>Use "Re-invoice" afterwards to issue a replacement</li>
+                </ul>
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider">Reason for cancellation *</label>
+                <textarea
+                  value={cancelReason}
+                  onChange={e => setCancelReason(e.target.value)}
+                  rows={3}
+                  placeholder="e.g. Wrong fee structure applied, duplicate invoice..."
+                  className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none resize-none transition-all"
+                />
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => { setShowCancelModal(false); setCancelReason(''); }}
+                  className="flex-1 py-3 px-4 rounded-xl font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all"
+                >
+                  Go Back
+                </button>
+                <button
+                  onClick={handleCancelInvoice}
+                  disabled={cancelling || !cancelReason.trim()}
+                  className="flex-1 py-3 px-4 rounded-xl font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                >
+                  {cancelling ? <Loader2 size={16} className="animate-spin" /> : <Ban size={16} />}
+                  {cancelling ? 'Cancelling…' : 'Confirm Cancel'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Re-invoice Modal ─────────────────────────────────────────────── */}
+      {showReinvoiceModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="bg-emerald-600 px-6 py-4 flex items-center gap-3 text-white">
+              <RefreshCw size={20} />
+              <div>
+                <h3 className="text-lg font-semibold">Re-invoice</h3>
+                <p className="text-emerald-200 text-xs">Issue a replacement for {invoiceData.invoiceNumber}</p>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-800">
+                <p className="font-semibold mb-1">A new invoice will be created for:</p>
+                <ul className="space-y-0.5 text-xs">
+                  <li>Student: <strong>{invoiceData.learner?.firstName} {invoiceData.learner?.lastName}</strong></li>
+                  <li>Term: <strong>{invoiceData.term} {invoiceData.academicYear}</strong></li>
+                  <li>Fee structure: <strong>{invoiceData.feeStructure?.name || invoiceData.feeStructureId}</strong></li>
+                </ul>
+                <p className="text-xs text-emerald-700 mt-2">Amounts will be recalculated fresh including any active fee configuration.</p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider">New Due Date *</label>
+                <input
+                  type="date"
+                  value={reinvoiceDueDate}
+                  min={new Date().toISOString().split('T')[0]}
+                  onChange={e => setReinvoiceDueDate(e.target.value)}
+                  className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none transition-all"
+                />
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => setShowReinvoiceModal(false)}
+                  className="flex-1 py-3 px-4 rounded-xl font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleReinvoice}
+                  disabled={reinvoicing || !reinvoiceDueDate}
+                  className="flex-1 py-3 px-4 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                >
+                  {reinvoicing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                  {reinvoicing ? 'Creating…' : 'Create Invoice'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -642,8 +642,16 @@ export class FeeController {
       carryForwardAmount,
     });
 
+    // A CANCELLED invoice must not block re-invoicing — the accountant explicitly
+    // cancelled it so a fresh one should be allowed for the same period.
     const existing = await prisma.feeInvoice.findFirst({
-      where: { learnerId, feeStructureId, term: normalizedTerm, academicYear: normalizedYear }
+      where: {
+        learnerId,
+        feeStructureId,
+        term: normalizedTerm,
+        academicYear: normalizedYear,
+        status: { not: 'CANCELLED' as PaymentStatus }
+      }
     });
     if (existing) throw new ApiError(400, 'An invoice for this period already exists for the student');
 
@@ -1372,14 +1380,19 @@ export class FeeController {
 
     const invoice = await prisma.feeInvoice.findUnique({
       where: { id },
-      include: { payments: true, learner: true }
+      include: {
+        // Only count active (non-reversed) payments — archived payments have
+        // already been reversed so they should not block cancellation.
+        payments: { where: { archived: false } },
+        learner: true
+      }
     });
     if (!invoice) throw new ApiError(404, 'Invoice not found');
     if (invoice.status === 'CANCELLED') throw new ApiError(400, 'Invoice is already cancelled');
     if (invoice.payments.length > 0) {
       throw new ApiError(
         400,
-        'Cannot cancel an invoice that has recorded payments. Reverse the payments first.'
+        `Cannot cancel: ${invoice.payments.length} active payment(s) recorded. Reverse them first.`
       );
     }
 
