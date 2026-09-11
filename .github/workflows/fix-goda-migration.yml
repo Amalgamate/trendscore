@@ -1,0 +1,78 @@
+name: Fix Goda Migration (one-off)
+
+# Resolves a stuck Prisma migration on the goda school database.
+# The migration 20260811090000_link_learners_to_student_users failed with
+# error 42701 (column already exists) because the column was applied
+# previously but the migration was never recorded in _prisma_migrations.
+# This workflow marks it as applied without re-running the SQL, unblocking
+# subsequent deploys.
+#
+# Safe to run: prisma migrate resolve --applied only writes a row to
+# _prisma_migrations — it does not touch the schema.
+# Delete this workflow after the goda school is successfully redeployed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "resolve" to confirm'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: Resolve stuck migration on goda
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - name: Check confirmation
+        run: |
+          if [[ "${{ inputs.confirm }}" != "resolve" ]]; then
+            echo "::error::Type 'resolve' to confirm."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Resolve migration on goda
+        run: |
+          set -euo pipefail
+          ssh production 'bash -s' <<'REMOTE'
+          set -euo pipefail
+
+          # Find the goda backend container
+          backend="$(sudo docker ps -a \
+            --filter 'label=com.docker.compose.project=goda' \
+            --filter 'label=com.docker.compose.service=backend' \
+            --format '{{.Names}}' | head -n1)"
+
+          if [[ -z "$backend" ]]; then
+            # Fallback: look for any running container whose name contains 'goda' and 'backend'
+            backend="$(sudo docker ps --format '{{.Names}}' | grep -E 'goda.*backend' | grep -v '\-run\-' | head -n1)"
+          fi
+
+          [[ -n "$backend" ]] || { echo "ERROR: could not find goda backend container"; exit 1; }
+          echo "Found container: $backend"
+
+          echo "Running prisma migrate resolve --applied..."
+          sudo docker exec "$backend" \
+            npx prisma migrate resolve \
+              --applied 20260811090000_link_learners_to_student_users \
+              --schema prisma/schema.prisma
+
+          echo "Done. Verifying migration status..."
+          sudo docker exec "$backend" \
+            npx prisma migrate status \
+              --schema prisma/schema.prisma 2>&1 | tail -20
+          REMOTE

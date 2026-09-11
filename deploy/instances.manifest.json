@@ -132,6 +132,18 @@
       "public_domain": "barracks-comprehesive-school.trendscore.co.ke"
     },
     {
+      "id": "goda",
+      "label": "Goda",
+      "tier": "production",
+      "active": true,
+      "deployment_allowed": true,
+      "kind": "stack",
+      "compose_project": "goda",
+      "env_file": "/srv/zawadi/apps/env/.goda.env",
+      "public_domain": "goda.trendscore.co.ke",
+      "notes": "Discovered dynamically by deploy-release.sh. Added to manifest 2026-09-11 after migration P3018 incident."
+    },
+    {
       "id": "ibse",
       "label": "IBSE",
       "tier": "production",
