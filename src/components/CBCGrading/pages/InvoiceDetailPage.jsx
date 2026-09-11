@@ -316,7 +316,7 @@ const InvoiceDetailPage = ({ invoice }) => {
 
   const activePledges = pledges.filter(p => ['PENDING', 'DUE'].includes(p.status));
   const isCancelled = invoiceData.status === 'CANCELLED';
-  const canCancel = !isCancelled && !['PAID', 'OVERPAID'].includes(invoiceData.status);
+  const canCancel = !isCancelled;
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-12">
