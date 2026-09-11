@@ -18,6 +18,12 @@ type AttendanceLocationPayload = {
     timestamp?: string | Date;
     source?: string;
     metadata?: Record<string, unknown> | null;
+    /**
+     * Why the staff member is clocking out. 'errand' keeps today's record open
+     * for a later clock-in (e.g. an approved short trip); 'end_of_day' (the
+     * default when omitted, matching prior behaviour) finalises the day.
+     */
+    reason?: 'errand' | 'end_of_day';
 };
 
 type AttendanceGeofenceMode = 'STRICT' | 'SOFT' | 'OFF';
@@ -95,6 +101,26 @@ export class HRService {
     private toWorkedMinutes(clockInAt: Date, clockOutAt: Date) {
         const ms = new Date(clockOutAt).getTime() - new Date(clockInAt).getTime();
         return Math.max(0, Math.floor(ms / 60000));
+    }
+
+    /**
+     * Sum worked minutes across all logged sessions for a day (multiple
+     * clock-in/out cycles, e.g. an approved mid-day errand). Falls back to a
+     * simple clockInAt→clockOutAt diff for legacy single-session rows that
+     * have no `metadata.sessions` array, so existing records keep working.
+     */
+    private resolveWorkedMinutesForLog(log: { clockInAt: Date | null; clockOutAt: Date | null; metadata?: unknown }): number {
+        const sessions = (log.metadata as any)?.sessions;
+        if (Array.isArray(sessions) && sessions.length > 0) {
+            return sessions.reduce((sum: number, session: any) => {
+                if (!session?.clockInAt || !session?.clockOutAt) return sum;
+                return sum + this.toWorkedMinutes(new Date(session.clockInAt), new Date(session.clockOutAt));
+            }, 0);
+        }
+        if (log.clockInAt && log.clockOutAt) {
+            return this.toWorkedMinutes(log.clockInAt, log.clockOutAt);
+        }
+        return 0;
     }
 
     private resolveAttendanceTimestamp(payload: AttendanceLocationPayload = {}) {
@@ -821,13 +847,16 @@ export class HRService {
                 date: { gte: monthStart, lte: monthEnd },
                 status: { in: ['PRESENT', 'LATE', 'PARTIAL'] }
             },
-            select: { userId: true, date: true, clockInAt: true, clockOutAt: true }
+            select: { userId: true, date: true, clockInAt: true, clockOutAt: true, metadata: true }
         });
         const attendanceTotals = new Map<string, { workedDays: number; workedMinutes: number }>();
         for (const log of attendanceLogs) {
             const totals = attendanceTotals.get(log.userId) || { workedDays: 0, workedMinutes: 0 };
             totals.workedDays += 1;
-            if (log.clockInAt && log.clockOutAt) totals.workedMinutes += this.toWorkedMinutes(log.clockInAt, log.clockOutAt);
+            // Session-aware: sums each logged clock-in/out segment so a mid-day
+            // errand gap isn't counted as worked time (falls back to a plain
+            // clockInAt→clockOutAt diff for legacy single-session rows).
+            totals.workedMinutes += this.resolveWorkedMinutesForLog(log);
             attendanceTotals.set(log.userId, totals);
         }
 
@@ -1156,9 +1185,17 @@ export class HRService {
             where: { userId_date: { userId, date: dateOnly } }
         });
 
-        // The first accepted arrival is authoritative. Repeated clicks, browser retries,
-        // and a second device must never replace it or erase an existing clock-out.
-        if (existingAttendance?.clockInAt) {
+        // A completed cycle (clockInAt + clockOutAt both set) only reopens for a
+        // new session if the prior clock-out was explicitly logged as an
+        // approved errand. Anything else — including a normal end-of-day
+        // clock-out, or no reason at all (legacy clients) — stays locked, exactly
+        // as before: the first accepted arrival is authoritative, and repeated
+        // clicks, browser retries, or a second device must never replace it.
+        const previousMetadata = (existingAttendance?.metadata as Record<string, unknown> | undefined) || {};
+        const isErrandReturn = !!(existingAttendance?.clockInAt && existingAttendance?.clockOutAt)
+            && (previousMetadata as any).lastClockOutReason === 'errand';
+
+        if (existingAttendance?.clockInAt && !isErrandReturn) {
             return {
                 attendance: existingAttendance,
                 payroll: null,
@@ -1172,16 +1209,30 @@ export class HRService {
             };
         }
 
+        // On an errand-return reopen we keep the day's original clockInAt (the
+        // first arrival, used for lateness) and instead mark a new session start
+        // in metadata; the closing segment gets appended to `sessions` on the
+        // next clock-out. `lastClockOutReason` is dropped since the day is open again.
+        const { lastClockOutReason: _droppedReason, ...previousMetadataRest } = previousMetadata as any;
+        const reopenMetadata = isErrandReturn
+            ? {
+                ...previousMetadataRest,
+                ...(metadata as Record<string, unknown> | undefined),
+                sessions: (previousMetadataRest as any).sessions || [],
+                currentSessionStart: timestamp.toISOString(),
+            }
+            : metadata;
+
         const attendance = existingAttendance
             ? await prisma.staffAttendanceLog.update({
                 where: { id: existingAttendance.id },
                 data: {
                     schoolId: existingAttendance.schoolId || schoolId || undefined,
                     status: 'PRESENT',
-                    clockInAt: timestamp,
+                    clockInAt: isErrandReturn ? existingAttendance.clockInAt : timestamp,
                     clockOutAt: null,
                     source: payload?.source || 'web',
-                    metadata,
+                    metadata: reopenMetadata,
                     markedBy: null,
                     markingReason: null,
                     correctedAt: existingAttendance.status === 'ABSENT' ? new Date() : undefined
@@ -1261,13 +1312,17 @@ export class HRService {
         }
 
         // Emit CLOCK_IN presence event (fire-and-forget, non-blocking)
+        // NOTE: uses `timestamp` (the actual moment of this clock-in) rather than
+        // `attendance.clockInAt`, which stays frozen at the day's first arrival on
+        // an errand-return reopen — the live feed should sort/display by when this
+        // event actually happened, not by the original morning arrival.
         presenceService.emit({
             schoolId:       schoolId || '',
             personId:       userId,
             personType:     'STAFF',
             eventType:      'CLOCK_IN',
             context:        'SCHOOL',
-            timestamp:      attendance.clockInAt || timestamp,
+            timestamp:      timestamp,
             status:         'CONFIRMED',
             sourceModule:   'HR_STAFF',
             sourceRecordId: attendance.id,
@@ -1302,6 +1357,10 @@ export class HRService {
             isLate:       lateMinutes > 0,
             lateMinutes,
             workedMinutes: 0,
+            // The actual moment of this clock-in — used only for what's shown in
+            // the notification/live feed, so a reopen after an errand displays the
+            // real return time instead of the frozen first-arrival `clockInAt`.
+            eventTimestamp: timestamp,
         }).catch(() => {});
 
         return { attendance, payroll: payrollRecord, payrollCreated, geofenceDecision };
@@ -1362,14 +1421,41 @@ export class HRService {
         if (!geofenceDecision.allowed) {
             throw this.buildGeofenceError(geofenceDecision);
         }
-        const metadata = this.buildAttendanceMetadata(payload, geofenceDecision);
+        const baseMetadata = this.buildAttendanceMetadata(payload, geofenceDecision);
 
-        const previousWorkedMinutes = attendance.clockOutAt
-            ? this.toWorkedMinutes(attendance.clockInAt, attendance.clockOutAt)
-            : 0;
-        const nextWorkedMinutes = this.toWorkedMinutes(attendance.clockInAt, timestamp);
-        const workedMinutesDelta = nextWorkedMinutes - previousWorkedMinutes;
-        const shouldIncrementWorkedDays = !attendance.clockOutAt && nextWorkedMinutes > 0;
+        // Reason defaults to 'end_of_day' for legacy clients that don't send one,
+        // matching the original single-session behaviour (record locks for the day).
+        const reason: 'errand' | 'end_of_day' = payload.reason === 'errand' ? 'errand' : 'end_of_day';
+
+        // The session being closed starts either at a reopened session's start
+        // time (set on the errand-return clock-in) or at the day's original
+        // clockInAt for a first/only session.
+        const previousMetadata = (attendance.metadata as Record<string, unknown> | undefined) || {};
+        const sessionStartRaw = (previousMetadata as any).currentSessionStart;
+        const sessionStart = sessionStartRaw ? new Date(sessionStartRaw) : new Date(attendance.clockInAt);
+        const sessionWorkedMinutes = this.toWorkedMinutes(sessionStart, timestamp);
+
+        const existingSessions = Array.isArray((previousMetadata as any).sessions)
+            ? (previousMetadata as any).sessions
+            : [];
+        const sessions = [
+            ...existingSessions,
+            { clockInAt: sessionStart.toISOString(), clockOutAt: timestamp.toISOString(), reason }
+        ];
+
+        const { currentSessionStart: _droppedSessionStart, ...previousMetadataRest } = previousMetadata as any;
+        const metadata = {
+            ...previousMetadataRest,
+            ...(baseMetadata as Record<string, unknown> | undefined),
+            sessions,
+            lastClockOutReason: reason,
+        };
+
+        // Worked-day credit is only given once per calendar day, on the first
+        // session that's actually closed — a later errand-return clock-out must
+        // not double-count the day.
+        const workedMinutesDelta = sessionWorkedMinutes;
+        const shouldIncrementWorkedDays = existingSessions.length === 0 && sessionWorkedMinutes > 0;
 
         const updatedAttendance = await prisma.staffAttendanceLog.update({
             where: { id: attendance.id },
@@ -1377,7 +1463,7 @@ export class HRService {
                 schoolId: attendance.schoolId || schoolId || undefined,
                 clockOutAt: timestamp,
                 source: payload?.source || attendance.source || 'web',
-                metadata: metadata === undefined ? undefined : metadata
+                metadata
             }
         });
 
@@ -1423,7 +1509,7 @@ export class HRService {
             clockOutAt:   timestamp,
             isLate:       false,
             lateMinutes:  0,
-            workedMinutes: this.toWorkedMinutes(updatedAttendance.clockInAt!, timestamp),
+            workedMinutes: this.resolveWorkedMinutesForLog(updatedAttendance),
         }).catch(() => {});
 
         return {
@@ -1582,9 +1668,9 @@ export class HRService {
                 const log: any = logByUserDate.get(key);
                 const leave: any = leaveByUserDate.get(key);
                 const isWorkday = workingDays.includes(cursor.getDay());
-                const workedMinutes = log?.clockInAt && log?.clockOutAt
-                    ? this.toWorkedMinutes(log.clockInAt, log.clockOutAt)
-                    : 0;
+                // Session-aware total — correctly excludes a mid-day errand gap when
+                // the log has more than one clock-in/out segment.
+                const workedMinutes = log ? this.resolveWorkedMinutesForLog(log) : 0;
                 const arrivalMinutes = getNairobiMinutes(log?.clockInAt);
                 const lateMinutes = arrivalMinutes === null ? 0 : Math.max(0, arrivalMinutes - (workStartHour * 60 + workStartMinute));
                 const overtimeMinutes = Math.max(0, workedMinutes - requiredMinutes);
@@ -1672,19 +1758,29 @@ export class HRService {
         });
         const schoolId = previous?.schoolId || (await this.resolveCurrentSchoolGeofenceContext())?.id || undefined;
 
+        // Times (and therefore any errand `sessions` history) are only meaningless
+        // once the day has no clock-in/out at all — the same statuses that already
+        // null out clockInAt/clockOutAt below. For every other correction, the
+        // existing metadata (sessions, lastClockOutReason, etc.) is preserved and
+        // just has the correction info merged in, instead of being replaced.
+        const clearsTimes = ['ABSENT', 'ON_LEAVE', 'OFF_DUTY', 'HOLIDAY'].includes(params.status);
+        const previousMetadata = (previous?.metadata as Record<string, unknown> | null | undefined) || {};
+        const correctionMetadata = { markedBy: params.markedBy, markedVia: 'dashboard-register', reason };
+        const updateMetadata = clearsTimes ? correctionMetadata : { ...previousMetadata, ...correctionMetadata };
+
         return prisma.$transaction(async (tx) => {
             const attendance = await tx.staffAttendanceLog.upsert({
                 where: { userId_date: { userId: params.userId, date: dateOnly } },
                 update: {
                     status: params.status,
                     schoolId,
-                    clockInAt: ['ABSENT', 'ON_LEAVE', 'OFF_DUTY', 'HOLIDAY'].includes(params.status) ? null : previous?.clockInAt,
-                    clockOutAt: ['ABSENT', 'ON_LEAVE', 'OFF_DUTY', 'HOLIDAY'].includes(params.status) ? null : previous?.clockOutAt,
+                    clockInAt: clearsTimes ? null : previous?.clockInAt,
+                    clockOutAt: clearsTimes ? null : previous?.clockOutAt,
                     source: 'admin-register',
                     markedBy: params.markedBy,
                     markingReason: reason,
                     correctedAt: new Date(),
-                    metadata: { markedBy: params.markedBy, markedVia: 'dashboard-register', reason } as any
+                    metadata: updateMetadata as any
                 },
                 create: {
                     userId: params.userId,
@@ -1737,6 +1833,11 @@ export class HRService {
         isLate: boolean;
         lateMinutes: number;
         workedMinutes: number;
+        // Display-only override for CLOCK_IN: the actual moment this event
+        // happened. Falls back to clockInAt when omitted. Lateness (isLate /
+        // lateMinutes) is computed by the caller from the frozen clockInAt and is
+        // untouched by this — only the displayed time/sort position move.
+        eventTimestamp?: Date;
     }) {
         try {
             // 1. Fetch the staff member's display info
@@ -1748,8 +1849,9 @@ export class HRService {
 
             const fullName   = [person.firstName, person.lastName].filter(Boolean).join(' ') || 'Staff';
             const role       = String(person.role || '').replace(/_/g, ' ');
+            const displayClockInAt = params.eventTimestamp || params.clockInAt;
             const timeStr    = params.eventType === 'CLOCK_IN'
-                ? (params.clockInAt ? new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' }).format(new Date(params.clockInAt)) : '')
+                ? (displayClockInAt ? new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' }).format(new Date(displayClockInAt)) : '')
                 : (params.clockOutAt ? new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' }).format(new Date(params.clockOutAt)) : '');
 
             const payload = {
@@ -1758,7 +1860,7 @@ export class HRService {
                 fullName,
                 role,
                 profilePicture: person.profilePicture || null,
-                clockInAt:    params.clockInAt,
+                clockInAt:    params.eventType === 'CLOCK_IN' ? displayClockInAt : params.clockInAt,
                 clockOutAt:   params.clockOutAt,
                 isLate:       params.isLate,
                 lateMinutes:  params.lateMinutes,
@@ -1850,8 +1952,7 @@ export class HRService {
             const lateMinutes = arrivalMinutes === null
                 ? 0
                 : Math.max(0, arrivalMinutes - (workStartHour * 60 + workStartMinute));
-            const workedMinutes = log.clockInAt && log.clockOutAt
-                ? this.toWorkedMinutes(log.clockInAt, log.clockOutAt) : 0;
+            const workedMinutes = this.resolveWorkedMinutesForLog(log);
             return {
                 id:           log.id,
                 userId:       log.userId,
