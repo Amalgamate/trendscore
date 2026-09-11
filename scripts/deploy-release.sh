@@ -645,25 +645,18 @@ auto_baseline_if_needed() {
   log "Baseline check: no migration history found — auto-baselining all migrations"
   compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
     run -T --no-deps --rm backend sh -c '
-      node -e "
-        const { Client } = require(\"pg\");
-        const fs = require(\"fs\"), path = require(\"path\"), crypto = require(\"crypto\");
-        const SKIP = new Set([\"20260707121500_allow_multiple_summative_series\",\"20260811090000_link_learners_to_student_users\"]);
-        const migrationsDir = path.join(process.cwd(),\"prisma\",\"migrations\");
-        const dirs = fs.readdirSync(migrationsDir).filter(d=>fs.statSync(path.join(migrationsDir,d)).isDirectory()&&!SKIP.has(d)).sort();
-        const c = new Client({connectionString:process.env.DATABASE_URL});
-        c.connect().then(async()=>{
-          await c.query(\"CREATE TABLE IF NOT EXISTS \\\"_prisma_migrations\\\" (id VARCHAR(36) PRIMARY KEY,checksum VARCHAR(64) NOT NULL,finished_at TIMESTAMPTZ,migration_name VARCHAR(255) NOT NULL,logs TEXT,rolled_back_at TIMESTAMPTZ,started_at TIMESTAMPTZ NOT NULL DEFAULT now(),applied_steps_count INTEGER NOT NULL DEFAULT 0)\");
-          const now=new Date().toISOString(); let inserted=0;
-          for(const name of dirs){
-            await c.query(\"INSERT INTO \\\"_prisma_migrations\\\" (id,checksum,finished_at,migration_name,logs,started_at,applied_steps_count) VALUES(\\\$1,\\\$2,\\\$3,\\\$4,\\\$5,\\\$6,\\\$7) ON CONFLICT DO NOTHING\",
-              [crypto.randomUUID(),\"0000000000000000000000000000000000000000000000000000000000000000\",now,name,null,now,1]);
-            inserted++;
-          }
-          console.log(\"  [baseline] marked \"+inserted+\" migrations applied\");
-          await c.end();
-        }).catch(err=>{console.error(\"  [baseline] FAILED:\",err.message);process.exit(1);});
-      "
+      set -e
+      SKIP1="20260707121500_allow_multiple_summative_series"
+      SKIP2="20260811090000_link_learners_to_student_users"
+      count=0
+      for dir in prisma/migrations/*/; do
+        name="$(basename "${dir}")"
+        [ "${name}" = "${SKIP1}" ] && continue
+        [ "${name}" = "${SKIP2}" ] && continue
+        npx prisma migrate resolve --applied "${name}" --schema prisma/schema.prisma 2>&1 | tail -1
+        count=$((count+1))
+      done
+      echo "  [baseline] marked ${count} migrations as applied"
     ' < /dev/null
 }
 
