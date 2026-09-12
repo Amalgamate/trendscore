@@ -101,7 +101,9 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
   };
   const [formData, setFormData] = useState({ password: '', rememberMe: false });
   const [phoneOtp, setPhoneOtp] = useState({
-    phone: '',
+    phone: (() => {
+      try { return localStorage.getItem('trendscore_saved_username') || ''; } catch { return ''; }
+    })(),
     challengeId: '',
     code: '',
     expiresAt: null,
@@ -414,6 +416,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
         setPhoneOtpCooldown(0);
         setPhoneOtpStep('verify');
         setPhonePasswordFallback(true);
+        try { localStorage.setItem('trendscore_saved_username', phoneOtp.phone.trim()); } catch {}
         toast.success(result.message || 'Enter your password to sign in.');
         return;
       }
@@ -430,6 +433,8 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
       setPhoneOtpCooldown(result.resendAfterSeconds || 60);
       setPhoneOtpStep('verify');
       setPhonePasswordFallback(false);
+      // Persist the username so the field is pre-filled next time
+      try { localStorage.setItem('trendscore_saved_username', phoneOtp.phone.trim()); } catch {}
       // Detect role from API response and switch background
       if (result.role || result.userRole) {
         const raw = String(result.role || result.userRole || '').toUpperCase();
@@ -1030,8 +1035,24 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
                           placeholder="712 345 678"
                           autoComplete="tel"
                           inputMode="numeric"
+                          autoFocus={!displayDigits}
                           className="flex-1 min-w-0 bg-transparent text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-300"
                         />
+                        {displayDigits && (
+                          <button
+                            type="button"
+                            aria-label="Clear phone number"
+                            onClick={() => {
+                              setPhoneOtp(prev => ({ ...prev, phone: '' }));
+                              try { localStorage.removeItem('trendscore_saved_username'); } catch {}
+                              setErrors(prev => ({ ...prev, phone: '' }));
+                              setTimeout(() => document.getElementById('login-phone')?.focus(), 50);
+                            }}
+                            className="ml-1 flex-shrink-0 text-slate-400 hover:text-slate-600 transition-colors"
+                          >
+                            <X size={15} />
+                          </button>
+                        )}
                       </div>
                       {errors.phone && <p className="mt-2 text-xs font-bold uppercase text-red-600">{errors.phone}</p>}
                     </>
