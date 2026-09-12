@@ -121,6 +121,34 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
       `${url.pathname}${url.search}${url.hash}`,
     );
   }, [getAllowedPage, parentPortal, setCurrentPage]);
+
+  // ── Hash-based page restore on refresh ───────────────────────────────────
+  // The URL written by handleNavigate is:  ...#/app#pageName
+  // On F5 the browser reloads the same URL. We read the second hash fragment
+  // here and use it to override whatever page Zustand had in localStorage,
+  // making refresh land on the exact same module the user was viewing.
+  // This runs once on mount; the PWA shortcut effect above takes priority when
+  // a ?shortcut= param is present (PWA launch wins over hash restore).
+  useEffect(() => {
+    // The full hash looks like:  #/app#fees-invoice-detail
+    // Split on the second # to get the page name.
+    const fullHash = window.location.hash; // e.g. "#/app#fees-invoice-detail"
+    const parts = fullHash.split('#');     // ["", "/app", "fees-invoice-detail"]
+    const hashPage = parts.length >= 3 ? parts[2] : null;
+    if (!hashPage) return;
+
+    const allowedPage = getAllowedPage(hashPage);
+    if (allowedPage !== hashPage) return; // access denied — let the role guard redirect
+
+    const stored = useUIStore.getState();
+    if (stored.currentPage === hashPage) return; // already correct — nothing to do
+
+    // Restore from hash — page params (except for simple list pages) will be
+    // refetched by the page itself. For detail pages that need an id, the id
+    // is preserved in Zustand's persisted pageParams.
+    setCurrentPage(allowedPage, stored.pageParams || {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally empty — runs once on mount only
   const hasOnboardingGuide = Boolean(findRoleOnboarding(accessUser?.role, currentPage) && !setupProgress.complete);
 
   const isTabletOrLower = useMediaQuery('(max-width: 1023px)');

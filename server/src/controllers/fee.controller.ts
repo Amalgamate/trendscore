@@ -554,6 +554,36 @@ export class FeeController {
     res.json({ success: true, data: rows });
   }
 
+  async getInvoiceById(req: AuthRequest, res: Response) {
+    const { id } = req.params;
+    const invoice = await prisma.feeInvoice.findUnique({
+      where: { id },
+      include: {
+        learner: {
+          select: {
+            id: true, firstName: true, lastName: true, admissionNumber: true,
+            grade: true, stream: true, isTransportStudent: true,
+            primaryContactName: true, primaryContactPhone: true, guardianPhone: true,
+            parent: { select: { id: true, firstName: true, lastName: true, phone: true } }
+          }
+        },
+        feeStructure: { include: { feeItems: { include: { feeType: true } } } as any },
+        payments: {
+          where: { archived: false },
+          orderBy: { paymentDate: 'desc' },
+          select: {
+            id: true, paymentDate: true, amount: true, transportAmount: true,
+            paymentMethod: true, referenceNumber: true, receiptNumber: true, archived: true
+          }
+        },
+        waivers: { where: { archived: false }, select: { id: true, status: true, amountWaived: true } },
+        pledges: { where: { archived: false }, select: { id: true, pledgedAmount: true, pledgeDate: true, status: true } }
+      }
+    });
+    if (!invoice) throw new ApiError(404, 'Invoice not found');
+    res.json({ success: true, data: invoice });
+  }
+
   async getLearnerInvoices(req: AuthRequest, res: Response) {
     const { learnerId } = req.params;
     const learner = await prisma.learner.findUnique({ where: { id: learnerId } });
