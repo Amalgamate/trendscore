@@ -22,6 +22,7 @@ export const feeAPI = {
     return fetchWithAuth(`/fees/invoices/aggregates${query ? `?${query}` : ''}`);
   },
   getLearnerInvoices: async (learnerId) => fetchWithAuth(`/fees/invoices/learner/${learnerId}`),
+  getInvoiceById: async (id) => fetchWithAuth(`/fees/invoices/${id}`),
   getLearnerFeeConfigurations: async (learnerId) =>
     fetchWithAuth(`/fees/configurations/learner/${learnerId}`),
   createLearnerFeeConfiguration: async (data) =>

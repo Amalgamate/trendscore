@@ -306,6 +306,13 @@ router.get(
 );
 
 router.get(
+  '/invoices/:id',
+  requirePermission('FEE_MANAGEMENT'),
+  rateLimit({ windowMs: 60_000, maxRequests: 100 }),
+  asyncHandler(feeController.getInvoiceById.bind(feeController))
+);
+
+router.get(
   '/invoices/learner/:learnerId',
   requireAnyPermission(['FEE_MANAGEMENT', 'VIEW_OWN_BALANCE']),
   ResourceAccessControl.canAccessLearner(),

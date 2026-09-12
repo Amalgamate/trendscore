@@ -66,7 +66,31 @@ const InvoiceDetailPage = ({ invoice }) => {
 
   // Local invoice state so cancel/re-invoice can update the UI without a full
   // page navigation — the parent passed `invoice` as an initial prop.
-  const [invoiceData, setInvoiceData] = useState(invoice);
+  // On refresh, pageParams.invoice may only have an `id` (the full object was
+  // evicted from localStorage or is stale). In that case we self-fetch.
+  const [invoiceData, setInvoiceData] = useState(
+    // Accept a full invoice object OR a stub with just {id} from persisted pageParams
+    invoice?.learnerId ? invoice : null
+  );
+  const [invoiceFetchError, setInvoiceFetchError] = useState(null);
+
+  // Self-fetch when we only have an id (e.g. page refresh)
+  useEffect(() => {
+    const invoiceId = invoice?.id;
+    if (!invoiceId) return;          // nothing to fetch
+    if (invoiceData?.learnerId) return; // already have full data
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.fees.getInvoiceById(invoiceId);
+        if (!cancelled && res?.data) setInvoiceData(res.data);
+      } catch (err) {
+        if (!cancelled) setInvoiceFetchError(err?.message || 'Failed to load invoice');
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoice?.id]);
 
   // Activity section state
   const [comments, setComments] = useState([]);
@@ -332,13 +356,32 @@ const InvoiceDetailPage = ({ invoice }) => {
   };
 
   // ── guard ──────────────────────────────────────────────────────────────────
-  if (!invoiceData) {
+  if (!invoiceData && !invoice?.id) {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-gray-500 space-y-4">
         <p className="text-lg font-semibold">No invoice selected.</p>
         <button onClick={() => navigateTo('fees-collection')} className="flex items-center gap-2 px-4 py-2 bg-[#002C60] text-white rounded-lg font-semibold">
           <ArrowLeft size={16} /> Back to Invoices
         </button>
+      </div>
+    );
+  }
+
+  if (!invoiceData) {
+    if (invoiceFetchError) {
+      return (
+        <div className="flex flex-col items-center justify-center h-64 text-gray-500 space-y-4">
+          <p className="text-sm text-red-600">{invoiceFetchError}</p>
+          <button onClick={() => navigateTo('fees-collection')} className="flex items-center gap-2 px-4 py-2 bg-[#002C60] text-white rounded-lg font-semibold">
+            <ArrowLeft size={16} /> Back to Invoices
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-gray-400 gap-3">
+        <Loader2 size={28} className="animate-spin" />
+        <p className="text-sm font-medium">Loading invoice…</p>
       </div>
     );
   }
