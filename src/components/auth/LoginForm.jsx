@@ -15,6 +15,7 @@ import {
   Clock3,
   RotateCw,
   Lock,
+  X,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { authAPI, schoolAPI } from '../../services/api';
