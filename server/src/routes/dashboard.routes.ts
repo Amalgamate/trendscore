@@ -131,11 +131,12 @@ router.get(
 /**
  * @route   GET /api/dashboard/assessment-operations
  * @desc    Get live assessment readiness and mark-entry metrics
- * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM
+ * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER, HEAD_OF_CURRICULUM, TEACHER
+ *          Teachers see only their own classes (scoped in controller via restrictedTeacher flag).
  */
 router.get(
   '/assessment-operations',
-  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM']),
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER']),
   rateLimit({ windowMs: 60_000, maxRequests: 60 }),
   asyncHandler(dashboardController.getAssessmentOperations.bind(dashboardController))
 );
