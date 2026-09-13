@@ -76,13 +76,24 @@ describe('checkAttendanceLock', () => {
   });
 
   describe('past grace window (after 10:00)', () => {
-    it('blocks TEACHER after grace window', () => {
+    it('still allows TEACHER after grace window when allowLateAfterLock is true — latecomers can arrive any time', () => {
+      // BASE_CONFIG has allowLateAfterLock=true. A student arriving at 10:01
+      // or even 14:00 should still be markable as LATE — the grace window only
+      // limits the window for forceStatusLate behaviour, not for late marking itself.
       const result = checkAttendanceLock('TEACHER', BASE_CONFIG, hhmm('10:01'));
-      expect(result.allowed).toBe(false);
+      expect(result.allowed).toBe(true);
+      expect(result.forceStatusLate).toBe(true);
     });
 
-    it('blocks TEACHER late afternoon', () => {
+    it('still allows TEACHER late afternoon when allowLateAfterLock is true', () => {
       const result = checkAttendanceLock('TEACHER', BASE_CONFIG, hhmm('14:00'));
+      expect(result.allowed).toBe(true);
+      expect(result.forceStatusLate).toBe(true);
+    });
+
+    it('blocks TEACHER after grace window when allowLateAfterLock is false', () => {
+      const config = { ...BASE_CONFIG, attendanceAllowLateAfterLock: false };
+      const result = checkAttendanceLock('TEACHER', config, hhmm('10:01'));
       expect(result.allowed).toBe(false);
     });
   });
@@ -119,8 +130,17 @@ describe('checkAttendanceLock', () => {
   });
 
   describe('zero grace window', () => {
-    it('blocks immediately after lock when grace=0 and allowLate=true', () => {
+    it('allows with forceStatusLate immediately after lock when grace=0 and allowLate=true', () => {
+      // grace=0 means no grace window, but allowLateAfterLock=true means LATE
+      // marking stays open all day regardless.
       const config = { ...BASE_CONFIG, attendanceUnlockWindowMinutes: 0 };
+      const result = checkAttendanceLock('TEACHER', config, hhmm('09:01'));
+      expect(result.allowed).toBe(true);
+      expect(result.forceStatusLate).toBe(true);
+    });
+
+    it('blocks immediately after lock when grace=0 and allowLate=false', () => {
+      const config = { ...BASE_CONFIG, attendanceUnlockWindowMinutes: 0, attendanceAllowLateAfterLock: false };
       const result = checkAttendanceLock('TEACHER', config, hhmm('09:01'));
       expect(result.allowed).toBe(false);
     });
