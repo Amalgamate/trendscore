@@ -59,6 +59,9 @@ model User {
   // shifNumber removed to prevent P2022 conflicts. Use nhifNumber for insurance tracking.
 
   housingLevyExempt          Boolean                     @default(false)
+  // When the staff member accepted the location-monitoring consent notice
+  // (off-site presence pings / geofence-exit alerts). Null = not yet accepted.
+  presenceConsentAcceptedAt  DateTime?
   createdAggregationConfigs  AggregationConfig[]
   assignedAssets             AssetAssignment[]           @relation("AssetUser")
   attendancesMarked          Attendance[]                @relation("AttendanceMarker")
@@ -96,6 +99,7 @@ model User {
   schemesOfWork              SchemeOfWork[]              @relation("TeacherSchemes")
   staffAttendanceLogs        StaffAttendanceLog[]
   staffAttendanceAttemptLogs StaffAttendanceAttemptLog[]
+  staffPresencePings         StaffPresencePing[]
   staffDocuments             StaffDocument[]
   staffAllowances            StaffAllowance[]
   staffDeductions            StaffDeduction[]
@@ -200,6 +204,11 @@ model School {
   geofenceRadiusMeters                   Int                        @default(30)
   geofenceEnforcementMode                GeofenceEnforcementMode    @default(OFF)
   allowedClockInIps                      String?
+  // Off-site presence monitoring: foreground heartbeat pings while clocked in.
+  // Off by default per school — opt-in only, pending the staff consent notice.
+  presenceMonitoringEnabled              Boolean                    @default(false)
+  presenceHeartbeatMinutes               Int                        @default(5)
+  presenceStaleThresholdMinutes          Int                        @default(25)
   attendanceLockEnabled                  Boolean                    @default(true)
   attendanceLockTime                     String                     @default("07:30")
   attendanceUnlockWindowMinutes          Int                        @default(60)
@@ -234,6 +243,7 @@ model School {
   aiGeneratedContents        AIGeneratedContent[]
   staffAttendanceLogs        StaffAttendanceLog[]
   staffAttendanceAttemptLogs StaffAttendanceAttemptLog[]
+  staffPresencePings         StaffPresencePing[]
 
   // ── LMS Digital Learning Hub ────────────────────────────────────────────────
   learningLessons     LearningLesson[]
@@ -318,6 +328,9 @@ model Class {
   grade               String
   stream              String?
   teacherId           String?
+  // When true, the assigned class teacher is exempt from the attendance lock
+  // window for this class. Toggled at assignment time by admins/head teachers.
+  attendanceLockExempt Boolean             @default(false)
   academicYear        Int                  @default(2025)
   term                Term                 @default(TERM_1)
   capacity            Int                  @default(40)
@@ -2298,6 +2311,9 @@ model SubjectAssignment {
   learningAreaId String
   grade          String
   classId        String?
+  // When true, the teacher is exempt from the attendance lock for this subject
+  // assignment. Toggled at assignment time by admins/head teachers.
+  attendanceLockExempt Boolean @default(false)
   active         Boolean      @default(true)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -2695,6 +2711,30 @@ model StaffAttendanceAttemptLog {
   @@index([userId, createdAt])
   @@index([schoolId, createdAt])
   @@map("staff_attendance_attempt_logs")
+}
+
+// ── Off-site presence monitoring ────────────────────────────────────────────────────
+// Foreground heartbeat pings captured while a staff member is clocked in.
+// Used to detect a staff member leaving the school geofence (immediate alert)
+// or going silent for longer than presenceStaleThresholdMinutes (stale alert).
+model StaffPresencePing {
+  id             String    @id @default(uuid())
+  userId         String
+  schoolId       String?
+  timestamp      DateTime
+  latitude       Float?
+  longitude      Float?
+  accuracyMeters Float?
+  distanceMeters Float?
+  withinGeofence Boolean
+  reasonCode     String?
+  createdAt      DateTime  @default(now())
+  school         School?   @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, timestamp])
+  @@index([schoolId, timestamp])
+  @@map("staff_presence_pings")
 }
 
 model StaffDocument {

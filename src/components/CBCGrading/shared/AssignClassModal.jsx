@@ -13,6 +13,7 @@ const AssignClassModal = ({ isOpen, onClose, teacher, onAssign }) => {
   const [success, setSuccess] = useState(false);
   const [successInfo, setSuccessInfo] = useState(null);
   const [workload, setWorkload] = useState(null);
+  const [attendanceLockExempt, setAttendanceLockExempt] = useState(false);
 
   // We intentionally only re-run when modal opens or teacher changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -25,6 +26,7 @@ const AssignClassModal = ({ isOpen, onClose, teacher, onAssign }) => {
       setWarning(null);
       setSuccess(false);
       setSuccessInfo(null);
+      setAttendanceLockExempt(false);
     }
   }, [isOpen, teacher]);
 
@@ -110,7 +112,7 @@ const AssignClassModal = ({ isOpen, onClose, teacher, onAssign }) => {
       setError(null);
 
       // Use the dedicated assign teacher endpoint
-      const response = await api.classes.assignTeacher(selectedClassId, teacher.id);
+      const response = await api.classes.assignTeacher(selectedClassId, teacher.id, attendanceLockExempt);
 
       if (response.success) {
         setSuccess(true);
@@ -290,6 +292,24 @@ const AssignClassModal = ({ isOpen, onClose, teacher, onAssign }) => {
                 <p className="mt-2 text-xs text-gray-500">
                   <span className="text-amber-600 font-semibold">⚠️ Note:</span> This teacher will become the class teacher for the selected class.
                 </p>
+              )}
+
+              {/* Attendance lock exemption toggle */}
+              {selectedClassId && (
+                <label className="flex items-start gap-3 mt-4 p-3 rounded-lg border border-gray-200 bg-gray-50 cursor-pointer hover:bg-blue-50 hover:border-blue-200 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={attendanceLockExempt}
+                    onChange={e => setAttendanceLockExempt(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  />
+                  <span className="text-sm text-gray-700">
+                    <span className="font-semibold text-gray-900">Exempt from attendance lock</span>
+                    <span className="block text-xs text-gray-500 mt-0.5">
+                      Allow this teacher to save attendance for this class after the lock time, without needing an unlock request.
+                    </span>
+                  </span>
+                </label>
               )}
             </div>
 

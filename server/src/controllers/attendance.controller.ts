@@ -51,6 +51,26 @@ async function getSchoolLockConfig(): Promise<SchoolAttendanceLockConfig> {
 // Controller
 // ---------------------------------------------------------------------------
 
+/**
+ * Check whether a teacher has been individually exempted from the attendance
+ * lock on a specific class assignment (attendanceLockExempt = true on Class).
+ * Returns false for non-TEACHER roles (they are handled by LOCK_BYPASS_ROLES).
+ */
+async function isTeacherExemptForClass(
+  userId: string,
+  role: string,
+  classId: string | undefined,
+): Promise<boolean> {
+  if (role === 'TEACHER' && classId) {
+    const cls = await prisma.class.findFirst({
+      where: { id: classId, teacherId: userId },
+      select: { attendanceLockExempt: true },
+    });
+    return cls?.attendanceLockExempt === true;
+  }
+  return false;
+}
+
 export class AttendanceController {
   private async getTeacherAssignedClassIds(userId: string): Promise<string[]> {
     const assignedClasses = await prisma.class.findMany({
@@ -89,7 +109,19 @@ export class AttendanceController {
 
     // ── Attendance lock enforcement ──────────────────────────────────────────
     const lockConfig = await getSchoolLockConfig();
-    const lockResult = checkAttendanceLock(currentUserRole, lockConfig);
+    // Resolve classId early so we can check per-teacher exemption
+    const exemptClassId = (classId as string | undefined) ||
+      (currentUserRole === 'TEACHER'
+        ? (await prisma.class.findFirst({
+            where: { teacherId: currentUserId, active: true, archived: false },
+            select: { id: true },
+            orderBy: { createdAt: 'asc' },
+          }))?.id
+        : undefined);
+    const teacherExempt = await isTeacherExemptForClass(currentUserId, currentUserRole, exemptClassId);
+    // Pass the single submitted status so exception saves (LATE, EXCUSED, ABSENT)
+    // are always allowed through even when allowLateAfterLock is false.
+    const lockResult = checkAttendanceLock(currentUserRole, lockConfig, [status], teacherExempt);
 
     if (!lockResult.allowed) {
       throw buildLockClosedError(lockResult);
@@ -233,7 +265,11 @@ export class AttendanceController {
 
     // ── Attendance lock enforcement ──────────────────────────────────────────
     const lockConfig = await getSchoolLockConfig();
-    const lockResult = checkAttendanceLock(currentUserRole, lockConfig);
+    // Pass all submitted statuses so the lock can allow exception-only saves
+    // (LATE, EXCUSED, ABSENT) through even when allowLateAfterLock is false.
+    const submittedStatuses = records.map((r: any) => r?.status).filter(Boolean) as string[];
+    const teacherExempt = await isTeacherExemptForClass(currentUserId, currentUserRole, classId);
+    const lockResult = checkAttendanceLock(currentUserRole, lockConfig, submittedStatuses, teacherExempt);
 
     if (!lockResult.allowed) {
       throw buildLockClosedError(lockResult);

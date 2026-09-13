@@ -8,8 +8,12 @@
  *   attendanceLockEnabled              — master on/off switch
  *   attendanceLockTime                 — "HH:MM" string, EAT (UTC+3)
  *   attendanceUnlockWindowMinutes      — grace window after lock (default 60 min)
- *   attendanceAllowLateAfterLock       — if true, force status to LATE instead of blocking
+ *   attendanceAllowLateAfterLock       — if true, force PRESENT→LATE past the lock window
+ *                                        (does NOT block explicit LATE/EXCUSED saves)
  *   attendanceRequireRemarksForLateExcused — if true, remarks required for LATE or EXCUSED
+ *
+ * Exception statuses (LATE, EXCUSED, ABSENT) are ALWAYS saveable after the lock,
+ * regardless of allowLateAfterLock. The lock only gates PRESENT bulk marking.
  *
  * Roles that bypass the lock entirely:
  *   SUPER_ADMIN, ADMIN, HEAD_TEACHER
@@ -18,7 +22,7 @@
 import { ApiError } from '../../utils/error.util';
 
 // Roles that are never blocked by the lock window
-const LOCK_BYPASS_ROLES = new Set(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']);
+const LOCK_BYPASS_ROLES = new Set(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM']);
 
 // EAT = UTC+3
 const EAT_OFFSET_MINUTES = 3 * 60;
@@ -30,6 +34,9 @@ export interface SchoolAttendanceLockConfig {
   attendanceAllowLateAfterLock: boolean;
   attendanceRequireRemarksForLateExcused: boolean;
 }
+
+/** Statuses that are treated as exceptions and always saveable after the lock. */
+export const EXCEPTION_STATUSES = new Set(['LATE', 'EXCUSED', 'ABSENT']);
 
 export interface LockCheckResult {
   /** Whether marking is permitted to proceed */
@@ -77,14 +84,23 @@ function minutesToHHMM(totalMinutes: number): string {
 /**
  * Check whether attendance marking is currently allowed.
  *
- * @param role       - The current user's role string
- * @param config     - The school's attendance lock configuration
- * @param nowMinutes - Optional override for current time in minutes (for testing)
- * @returns          LockCheckResult
+ * @param role             - The current user's role string
+ * @param config           - The school's attendance lock configuration
+ * @param submittedStatuses - Optional set of statuses being saved. When ALL
+ *                            submitted statuses are exceptions (LATE, EXCUSED,
+ *                            ABSENT) the lock is bypassed — exceptions are
+ *                            always saveable regardless of lock config.
+ * @param teacherExempt    - When true, the teacher has been individually
+ *                            exempted from the lock on their class/subject
+ *                            assignment. Bypasses the lock entirely.
+ * @param nowMinutes       - Optional override for current time in minutes (for testing)
+ * @returns                LockCheckResult
  */
 export function checkAttendanceLock(
   role: string,
   config: SchoolAttendanceLockConfig,
+  submittedStatuses?: string[],
+  teacherExempt?: boolean,
   nowMinutes?: number,
 ): LockCheckResult {
   const currentMinutes = nowMinutes ?? nowEATMinutes();
@@ -107,8 +123,24 @@ export function checkAttendanceLock(
     return result;
   }
 
+  // Teacher has been individually exempted on this class/subject assignment
+  if (teacherExempt) {
+    return result;
+  }
+
   // Still within the allowed window before lock time
   if (currentMinutes <= lockMinutes) {
+    return result;
+  }
+
+  // Past lock time — exception-only saves (LATE, EXCUSED, ABSENT) are always
+  // allowed regardless of allowLateAfterLock. These are deliberate per-learner
+  // markings, not bulk-present changes that the lock is designed to gate.
+  const allExceptions =
+    Array.isArray(submittedStatuses) &&
+    submittedStatuses.length > 0 &&
+    submittedStatuses.every((s) => EXCEPTION_STATUSES.has(s));
+  if (allExceptions) {
     return result;
   }
 

@@ -29,6 +29,7 @@ const TeacherClassAssignmentModal = ({
     const [warning, setWarning] = useState(null);
     const [success, setSuccess] = useState(false);
     const [workload, setWorkload] = useState(null);
+    const [attendanceLockExempt, setAttendanceLockExempt] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
@@ -49,6 +50,7 @@ const TeacherClassAssignmentModal = ({
         setWarning(null);
         setSuccess(false);
         setWorkload(null);
+        setAttendanceLockExempt(false);
     };
 
     const fetchClasses = async () => {
@@ -128,7 +130,7 @@ const TeacherClassAssignmentModal = ({
             setSubmitting(true);
             setError(null);
 
-            const response = await api.classes.assignTeacher(classId, teacherId);
+            const response = await api.classes.assignTeacher(classId, teacherId, attendanceLockExempt);
 
             if (response.success || response.id) {
                 setSuccess(true);
@@ -307,22 +309,41 @@ const TeacherClassAssignmentModal = ({
                 </div>
 
                 {/* Footer */}
-                <div className="p-6 pt-0 border-t border-gray-100 flex justify-end gap-3 bg-white mt-auto">
-                    <Button variant="ghost" onClick={onClose} disabled={submitting} className="font-medium text-gray-500">
-                        Cancel
-                    </Button>
-                    <Button
-                        onClick={handleSubmit}
-                        disabled={!selectedId || submitting || success}
-                        className="bg-brand-purple hover:bg-brand-purple/90 text-white font-semibold min-w-[140px]"
-                    >
-                        {submitting ? (
-                            <Loader className="animate-spin mr-2" size={18} />
-                        ) : (
-                            <Save className="mr-2" size={18} />
-                        )}
-                        {success ? 'Assigned!' : 'Save Assignment'}
-                    </Button>
+                <div className="p-6 pt-0 border-t border-gray-100 bg-white mt-auto">
+                    {/* Attendance lock exemption toggle — shown once a selection is made */}
+                    {selectedId && (
+                        <label className="flex items-start gap-3 mb-4 p-3 rounded-lg border border-gray-200 bg-gray-50 cursor-pointer hover:bg-brand-purple/5 hover:border-brand-purple/30 transition-colors">
+                            <input
+                                type="checkbox"
+                                checked={attendanceLockExempt}
+                                onChange={e => setAttendanceLockExempt(e.target.checked)}
+                                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-purple focus:ring-brand-purple cursor-pointer"
+                            />
+                            <span className="text-sm text-gray-700">
+                                <span className="font-semibold text-gray-900">Exempt from attendance lock</span>
+                                <span className="block text-xs text-gray-500 mt-0.5">
+                                    Allow this teacher to save attendance after the lock time without needing an unlock request.
+                                </span>
+                            </span>
+                        </label>
+                    )}
+                    <div className="flex justify-end gap-3">
+                        <Button variant="ghost" onClick={onClose} disabled={submitting} className="font-medium text-gray-500">
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleSubmit}
+                            disabled={!selectedId || submitting || success}
+                            className="bg-brand-purple hover:bg-brand-purple/90 text-white font-semibold min-w-[140px]"
+                        >
+                            {submitting ? (
+                                <Loader className="animate-spin mr-2" size={18} />
+                            ) : (
+                                <Save className="mr-2" size={18} />
+                            )}
+                            {success ? 'Assigned!' : 'Save Assignment'}
+                        </Button>
+                    </div>
                 </div>
             </Card>
         </div>

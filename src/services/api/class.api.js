@@ -27,8 +27,8 @@ export const classAPI = {
     return result;
   },
   getLearnerClass: async (learnerId) => fetchWithAuth(`/classes/learner/${learnerId}`),
-  assignTeacher: async (classId, teacherId) => {
-    const result = await fetchWithAuth('/classes/assign-teacher', { method: 'POST', body: JSON.stringify({ classId, teacherId }) });
+  assignTeacher: async (classId, teacherId, attendanceLockExempt = false) => {
+    const result = await fetchWithAuth('/classes/assign-teacher', { method: 'POST', body: JSON.stringify({ classId, teacherId, attendanceLockExempt }) });
     cacheDelPrefix('teacher-workload:');
     return result;
   },
