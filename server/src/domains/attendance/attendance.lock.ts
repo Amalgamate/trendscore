@@ -116,18 +116,24 @@ export function checkAttendanceLock(
   const minutesOverLock = currentMinutes - lockMinutes;
   const withinGraceWindow = minutesOverLock <= config.attendanceUnlockWindowMinutes;
 
-  if (!withinGraceWindow) {
-    // Fully locked — no marking allowed
+  if (withinGraceWindow) {
+    // Within grace window — allow but force LATE if allowLateAfterLock is on
+    if (config.attendanceAllowLateAfterLock) {
+      return { ...result, allowed: true, forceStatusLate: true };
+    }
+    // Grace window but allowLateAfterLock is off — blocked
     return { ...result, allowed: false };
   }
 
-  // Within grace window
+  // Past grace window — if allowLateAfterLock is true, still allow LATE marking
+  // all day. A late student can arrive at any time, not just within 60 min of the
+  // lock. This keeps marking open for latecomers while still blocking "bulk present"
+  // on the frontend.
   if (config.attendanceAllowLateAfterLock) {
-    // Allow but force LATE status
     return { ...result, allowed: true, forceStatusLate: true };
   }
 
-  // Grace window but allowLateAfterLock is off — blocked
+  // Fully locked — no marking allowed
   return { ...result, allowed: false };
 }
 
