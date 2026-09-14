@@ -147,14 +147,14 @@
       "id": "goda",
       "label": "Goda CS",
       "tier": "production",
-      "active": false,
-      "archived": true,
-      "deployment_allowed": false,
+      "active": true,
+      "archived": false,
+      "deployment_allowed": true,
       "kind": "stack",
       "compose_project": "zawadi-goda",
       "env_file": "/srv/zawadi/apps/env/.zawadi-goda.env",
       "public_domain": "goda.trendscore.co.ke",
-      "notes": "Decommissioned 2026-09-14 — stack torn down and volumes removed. School will be re-created fresh."
+      "notes": "Reactivated 2026-09-15 after live-stack audit confirmed the stack, database, and volumes remain intact."
     },
     {
       "id": "mwangaza-cs",
