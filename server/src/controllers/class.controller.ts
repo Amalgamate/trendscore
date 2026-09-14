@@ -355,7 +355,7 @@ export class ClassController {
 
   async assignTeacher(req: AuthRequest, res: Response) {
     const { id } = req.params;
-    const { classId, teacherId } = req.body;
+    const { classId, teacherId, attendanceLockExempt } = req.body;
 
     const finalClassId = id || classId;
 
@@ -364,7 +364,11 @@ export class ClassController {
 
     const updatedClass = await prisma.class.update({
       where: { id: finalClassId },
-      data: { teacherId },
+      data: {
+        teacherId,
+        // Explicitly set the exemption flag when provided; defaults to false on new assignments
+        attendanceLockExempt: typeof attendanceLockExempt === 'boolean' ? attendanceLockExempt : false,
+      },
       include: { teacher: { select: { id: true, firstName: true, lastName: true } } }
     });
     res.json({ success: true, data: updatedClass });

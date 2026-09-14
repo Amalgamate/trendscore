@@ -2,10 +2,13 @@ import { DEFAULT_ATTENDANCE_SETTINGS, formatAttendanceLockTime } from './attenda
 
 export const ATTENDANCE_LOCK_LABEL = formatAttendanceLockTime(DEFAULT_ATTENDANCE_SETTINGS.lockTime);
 export const LOCKED_ATTENDANCE_STATUSES = new Set(['PRESENT']);
-const ALL_ATTENDANCE_STATUSES = new Set(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED']);
 
-export function getLockedAttendanceStatuses(settings = DEFAULT_ATTENDANCE_SETTINGS) {
-  return settings?.allowLateAfterLock === false ? ALL_ATTENDANCE_STATUSES : LOCKED_ATTENDANCE_STATUSES;
+// The lock only ever gates PRESENT (bulk marking). LATE, EXCUSED, and ABSENT
+// are exception statuses that remain saveable at any time — the allowLateAfterLock
+// flag only controls whether we *force* submitted PRESENT records to LATE on the
+// backend, not whether teachers can explicitly save exceptions.
+export function getLockedAttendanceStatuses(_settings = DEFAULT_ATTENDANCE_SETTINGS) {
+  return LOCKED_ATTENDANCE_STATUSES;
 }
 
 function parseLockTime(value) {

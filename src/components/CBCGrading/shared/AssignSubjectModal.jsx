@@ -66,6 +66,7 @@ const AssignSubjectModal = ({ isOpen, onClose, teacher, onSaved }) => {
   const [removingId, setRemovingId] = useState(null);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [attendanceLockExempt, setAttendanceLockExempt] = useState(false);
 
   const grade = selectedGrade === '__custom__' ? customGrade.trim() : selectedGrade;
 
@@ -103,6 +104,7 @@ const AssignSubjectModal = ({ isOpen, onClose, teacher, onSaved }) => {
     setSelectedGrade('');
     setCustomGrade('');
     setSelectedAreaId('');
+    setAttendanceLockExempt(false);
     loadAssignments();
     loadLearningAreas();
   }, [isOpen, teacher, loadAssignments, loadLearningAreas]);
@@ -134,6 +136,7 @@ const AssignSubjectModal = ({ isOpen, onClose, teacher, onSaved }) => {
         teacherId: teacher.id,
         learningAreaId: selectedAreaId,
         grade,
+        attendanceLockExempt,
       });
       setSuccessMsg('Subject assigned successfully.');
       setSelectedAreaId('');
@@ -295,7 +298,22 @@ const AssignSubjectModal = ({ isOpen, onClose, teacher, onSaved }) => {
             )}
 
             {/* add button */}
-            <div className="mt-4">
+            <div className="mt-4 space-y-3">
+              {/* Attendance lock exemption toggle */}
+              <label className="flex items-start gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50 cursor-pointer hover:bg-brand-teal/5 hover:border-brand-teal/30 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={attendanceLockExempt}
+                  onChange={e => setAttendanceLockExempt(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-teal focus:ring-brand-teal cursor-pointer"
+                />
+                <span className="text-sm text-gray-700">
+                  <span className="font-semibold text-gray-900">Exempt from attendance lock</span>
+                  <span className="block text-xs text-gray-500 mt-0.5">
+                    Allow this teacher to save attendance for this subject after the lock time without needing an unlock request.
+                  </span>
+                </span>
+              </label>
               <button
                 type="button"
                 onClick={handleAdd}

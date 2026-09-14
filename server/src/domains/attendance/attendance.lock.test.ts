@@ -33,7 +33,7 @@ describe('checkAttendanceLock', () => {
   describe('lock disabled', () => {
     it('allows any time when lock is disabled', () => {
       const config = { ...BASE_CONFIG, attendanceLockEnabled: false };
-      const result = checkAttendanceLock('TEACHER', config, hhmm('14:00'));
+      const result = checkAttendanceLock('TEACHER', config, undefined, undefined, hhmm('14:00'));
       expect(result.allowed).toBe(true);
       expect(result.forceStatusLate).toBe(false);
     });
@@ -41,13 +41,13 @@ describe('checkAttendanceLock', () => {
 
   describe('before lock time', () => {
     it('allows TEACHER before lock time', () => {
-      const result = checkAttendanceLock('TEACHER', BASE_CONFIG, hhmm('08:00'));
+      const result = checkAttendanceLock('TEACHER', BASE_CONFIG, undefined, undefined, hhmm('08:00'));
       expect(result.allowed).toBe(true);
       expect(result.forceStatusLate).toBe(false);
     });
 
     it('allows TEACHER exactly at lock time', () => {
-      const result = checkAttendanceLock('TEACHER', BASE_CONFIG, hhmm('09:00'));
+      const result = checkAttendanceLock('TEACHER', BASE_CONFIG, undefined, undefined, hhmm('09:00'));
       expect(result.allowed).toBe(true);
       expect(result.forceStatusLate).toBe(false);
     });
@@ -55,21 +55,21 @@ describe('checkAttendanceLock', () => {
 
   describe('within grace window (09:01 – 10:00)', () => {
     it('allows with forceStatusLate=true when allowLateAfterLock is on', () => {
-      const result = checkAttendanceLock('TEACHER', BASE_CONFIG, hhmm('09:30'));
+      const result = checkAttendanceLock('TEACHER', BASE_CONFIG, undefined, undefined, hhmm('09:30'));
       expect(result.allowed).toBe(true);
       expect(result.forceStatusLate).toBe(true);
     });
 
     it('blocks when allowLateAfterLock is false, even within grace window', () => {
       const config = { ...BASE_CONFIG, attendanceAllowLateAfterLock: false };
-      const result = checkAttendanceLock('TEACHER', config, hhmm('09:30'));
+      const result = checkAttendanceLock('TEACHER', config, undefined, undefined, hhmm('09:30'));
       expect(result.allowed).toBe(false);
       expect(result.forceStatusLate).toBe(false);
     });
 
     it('allows at exactly lock + unlockWindow boundary', () => {
       // 09:00 + 60min = 10:00
-      const result = checkAttendanceLock('TEACHER', BASE_CONFIG, hhmm('10:00'));
+      const result = checkAttendanceLock('TEACHER', BASE_CONFIG, undefined, undefined, hhmm('10:00'));
       expect(result.allowed).toBe(true);
       expect(result.forceStatusLate).toBe(true);
     });
@@ -80,51 +80,126 @@ describe('checkAttendanceLock', () => {
       // BASE_CONFIG has allowLateAfterLock=true. A student arriving at 10:01
       // or even 14:00 should still be markable as LATE — the grace window only
       // limits the window for forceStatusLate behaviour, not for late marking itself.
-      const result = checkAttendanceLock('TEACHER', BASE_CONFIG, hhmm('10:01'));
+      const result = checkAttendanceLock('TEACHER', BASE_CONFIG, undefined, undefined, hhmm('10:01'));
       expect(result.allowed).toBe(true);
       expect(result.forceStatusLate).toBe(true);
     });
 
     it('still allows TEACHER late afternoon when allowLateAfterLock is true', () => {
-      const result = checkAttendanceLock('TEACHER', BASE_CONFIG, hhmm('14:00'));
+      const result = checkAttendanceLock('TEACHER', BASE_CONFIG, undefined, undefined, hhmm('14:00'));
       expect(result.allowed).toBe(true);
       expect(result.forceStatusLate).toBe(true);
     });
 
     it('blocks TEACHER after grace window when allowLateAfterLock is false', () => {
       const config = { ...BASE_CONFIG, attendanceAllowLateAfterLock: false };
-      const result = checkAttendanceLock('TEACHER', config, hhmm('10:01'));
+      const result = checkAttendanceLock('TEACHER', config, undefined, undefined, hhmm('10:01'));
       expect(result.allowed).toBe(false);
+    });
+  });
+
+  describe('exception-status bypass', () => {
+    it('allows LATE save after grace window even when allowLateAfterLock is false', () => {
+      const config = { ...BASE_CONFIG, attendanceAllowLateAfterLock: false };
+      const result = checkAttendanceLock('TEACHER', config, ['LATE'], undefined, hhmm('10:01'));
+      expect(result.allowed).toBe(true);
+      expect(result.forceStatusLate).toBe(false);
+    });
+
+    it('allows EXCUSED save after grace window even when allowLateAfterLock is false', () => {
+      const config = { ...BASE_CONFIG, attendanceAllowLateAfterLock: false };
+      const result = checkAttendanceLock('TEACHER', config, ['EXCUSED'], undefined, hhmm('11:00'));
+      expect(result.allowed).toBe(true);
+    });
+
+    it('allows ABSENT save after grace window even when allowLateAfterLock is false', () => {
+      const config = { ...BASE_CONFIG, attendanceAllowLateAfterLock: false };
+      const result = checkAttendanceLock('TEACHER', config, ['ABSENT'], undefined, hhmm('14:00'));
+      expect(result.allowed).toBe(true);
+    });
+
+    it('allows mixed LATE+EXCUSED bulk save after grace window', () => {
+      const config = { ...BASE_CONFIG, attendanceAllowLateAfterLock: false };
+      const result = checkAttendanceLock('TEACHER', config, ['LATE', 'EXCUSED'], undefined, hhmm('10:30'));
+      expect(result.allowed).toBe(true);
+    });
+
+    it('does NOT bypass if bulk includes a PRESENT status', () => {
+      const config = { ...BASE_CONFIG, attendanceAllowLateAfterLock: false };
+      const result = checkAttendanceLock('TEACHER', config, ['LATE', 'PRESENT'], undefined, hhmm('10:01'));
+      expect(result.allowed).toBe(false);
+    });
+
+    it('does not bypass before lock time — normal flow still applies', () => {
+      const config = { ...BASE_CONFIG, attendanceAllowLateAfterLock: false };
+      const result = checkAttendanceLock('TEACHER', config, ['LATE'], undefined, hhmm('08:00'));
+      expect(result.allowed).toBe(true);
+      expect(result.forceStatusLate).toBe(false);
     });
   });
 
   describe('bypass roles', () => {
     it('always allows SUPER_ADMIN regardless of time', () => {
-      const result = checkAttendanceLock('SUPER_ADMIN', BASE_CONFIG, hhmm('14:00'));
+      const result = checkAttendanceLock('SUPER_ADMIN', BASE_CONFIG, undefined, undefined, hhmm('14:00'));
       expect(result.allowed).toBe(true);
       expect(result.forceStatusLate).toBe(false);
     });
 
     it('always allows ADMIN regardless of time', () => {
-      const result = checkAttendanceLock('ADMIN', BASE_CONFIG, hhmm('15:30'));
+      const result = checkAttendanceLock('ADMIN', BASE_CONFIG, undefined, undefined, hhmm('15:30'));
       expect(result.allowed).toBe(true);
     });
 
     it('always allows HEAD_TEACHER regardless of time', () => {
-      const result = checkAttendanceLock('HEAD_TEACHER', BASE_CONFIG, hhmm('11:00'));
+      const result = checkAttendanceLock('HEAD_TEACHER', BASE_CONFIG, undefined, undefined, hhmm('11:00'));
       expect(result.allowed).toBe(true);
+    });
+
+    it('always allows HEAD_OF_CURRICULUM regardless of time', () => {
+      const result = checkAttendanceLock('HEAD_OF_CURRICULUM', BASE_CONFIG, undefined, undefined, hhmm('14:00'));
+      expect(result.allowed).toBe(true);
+      expect(result.forceStatusLate).toBe(false);
+    });
+  });
+
+  describe('per-teacher exemption (teacherExempt flag)', () => {
+    it('allows TEACHER past grace window when teacherExempt=true, even with allowLateAfterLock=false', () => {
+      const config = { ...BASE_CONFIG, attendanceAllowLateAfterLock: false };
+      const result = checkAttendanceLock('TEACHER', config, undefined, true, hhmm('10:01'));
+      expect(result.allowed).toBe(true);
+      expect(result.forceStatusLate).toBe(false);
+    });
+
+    it('allows TEACHER within grace window when teacherExempt=true (no forceStatusLate)', () => {
+      const config = { ...BASE_CONFIG, attendanceAllowLateAfterLock: false };
+      const result = checkAttendanceLock('TEACHER', config, undefined, true, hhmm('09:30'));
+      expect(result.allowed).toBe(true);
+      expect(result.forceStatusLate).toBe(false);
+    });
+
+    it('teacherExempt=false behaves like normal TEACHER', () => {
+      const config = { ...BASE_CONFIG, attendanceAllowLateAfterLock: false };
+      const result = checkAttendanceLock('TEACHER', config, undefined, false, hhmm('10:01'));
+      expect(result.allowed).toBe(false);
+    });
+
+    it('teacherExempt has no effect on bypass roles (they are always allowed anyway)', () => {
+      const config = { ...BASE_CONFIG, attendanceAllowLateAfterLock: false };
+      const result = checkAttendanceLock('ADMIN', config, undefined, true, hhmm('14:00'));
+      expect(result.allowed).toBe(true);
+      expect(result.forceStatusLate).toBe(false);
     });
   });
 
   describe('result fields', () => {
     it('returns lockTime and currentTimeEAT in result', () => {
-      const result = checkAttendanceLock('TEACHER', BASE_CONFIG, hhmm('08:45'));
+      const result = checkAttendanceLock('TEACHER', BASE_CONFIG, undefined, undefined, hhmm('08:45'));
       expect(result.lockTime).toBe('09:00');
       expect(result.currentTimeEAT).toBe('08:45');
     });
 
     it('returns correctly formatted time for single-digit hours', () => {
-      const result = checkAttendanceLock('TEACHER', BASE_CONFIG, hhmm('08:05'));
+      const result = checkAttendanceLock('TEACHER', BASE_CONFIG, undefined, undefined, hhmm('08:05'));
       expect(result.currentTimeEAT).toBe('08:05');
     });
   });
@@ -134,14 +209,14 @@ describe('checkAttendanceLock', () => {
       // grace=0 means no grace window, but allowLateAfterLock=true means LATE
       // marking stays open all day regardless.
       const config = { ...BASE_CONFIG, attendanceUnlockWindowMinutes: 0 };
-      const result = checkAttendanceLock('TEACHER', config, hhmm('09:01'));
+      const result = checkAttendanceLock('TEACHER', config, undefined, undefined, hhmm('09:01'));
       expect(result.allowed).toBe(true);
       expect(result.forceStatusLate).toBe(true);
     });
 
     it('blocks immediately after lock when grace=0 and allowLate=false', () => {
       const config = { ...BASE_CONFIG, attendanceUnlockWindowMinutes: 0, attendanceAllowLateAfterLock: false };
-      const result = checkAttendanceLock('TEACHER', config, hhmm('09:01'));
+      const result = checkAttendanceLock('TEACHER', config, undefined, undefined, hhmm('09:01'));
       expect(result.allowed).toBe(false);
     });
   });
@@ -199,3 +274,5 @@ describe('buildLockClosedError', () => {
     expect(err.message).toContain('11:00');
   });
 });
+
+

@@ -66,7 +66,7 @@ export class SubjectAssignmentController {
      * Body: { teacherId, learningAreaId, grade, classId? }
      */
     async createAssignment(req: AuthRequest, res: Response) {
-        const { teacherId, learningAreaId, grade, classId } = req.body;
+        const { teacherId, learningAreaId, grade, classId, attendanceLockExempt } = req.body;
 
         if (!teacherId || !learningAreaId || !grade) {
             throw new ApiError(400, 'teacherId, learningAreaId and grade are required');
@@ -109,11 +109,11 @@ export class SubjectAssignmentController {
             if (existing) {
                 assignment = await prisma.subjectAssignment.update({
                     where: { id: existing.id },
-                    data: { active: true },
+                    data: { active: true, ...(typeof attendanceLockExempt === 'boolean' ? { attendanceLockExempt } : {}) },
                 });
             } else {
                 assignment = await prisma.subjectAssignment.create({
-                    data: { teacherId, learningAreaId, grade, classId, active: true },
+                    data: { teacherId, learningAreaId, grade, classId, active: true, attendanceLockExempt: attendanceLockExempt === true },
                 });
             }
         } else {
@@ -125,11 +125,11 @@ export class SubjectAssignmentController {
             if (existing) {
                 assignment = await prisma.subjectAssignment.update({
                     where: { id: existing.id },
-                    data: { active: true },
+                    data: { active: true, ...(typeof attendanceLockExempt === 'boolean' ? { attendanceLockExempt } : {}) },
                 });
             } else {
                 assignment = await prisma.subjectAssignment.create({
-                    data: { teacherId, learningAreaId, grade, classId: null, active: true },
+                    data: { teacherId, learningAreaId, grade, classId: null, active: true, attendanceLockExempt: attendanceLockExempt === true },
                 });
             }
         }
