@@ -25,6 +25,9 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: bash scripts/ci/configure-deploy-ssh.sh
 
+      - name: Sync the deployment registry
+        run: bash scripts/ci/sync-deploy-assets.sh
+
       - name: Bind active school stack and issue certificate
         env:
           SCHOOL_ID: ${{ inputs.school_slug }}
