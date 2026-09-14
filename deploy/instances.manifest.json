@@ -142,6 +142,41 @@
       "env_file": "/srv/zawadi/apps/env/.zawadi-ibse.env",
       "public_domain": "ibse.trendscore.co.ke",
       "notes": "Baselined 2026-09-02 — all 129 migrations recorded in _prisma_migrations."
+    },
+    {
+      "id": "goda",
+      "label": "Goda CS",
+      "tier": "production",
+      "active": false,
+      "archived": true,
+      "deployment_allowed": false,
+      "kind": "stack",
+      "compose_project": "zawadi-goda",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-goda.env",
+      "public_domain": "goda.trendscore.co.ke",
+      "notes": "Decommissioned 2026-09-14 — stack torn down and volumes removed. School will be re-created fresh."
+    },
+    {
+      "id": "mwangaza-cs",
+      "label": "Mwangaza CS",
+      "tier": "production",
+      "active": true,
+      "deployment_allowed": true,
+      "kind": "stack",
+      "compose_project": "zawadi-mwangaza-cs",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-mwangaza-cs.env",
+      "public_domain": "mwangaza-cs.trendscore.co.ke"
+    },
+    {
+      "id": "malkagalla",
+      "label": "Malkagalla School",
+      "tier": "production",
+      "active": true,
+      "deployment_allowed": true,
+      "kind": "stack",
+      "compose_project": "zawadi-malkagalla",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-malkagalla.env",
+      "public_domain": "malkagalla.trendscore.co.ke"
     }
   ],
   "discovery": {

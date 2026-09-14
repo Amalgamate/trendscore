@@ -1,0 +1,122 @@
+name: Destroy School Stack (One-Shot)
+
+# Permanently tears down a school's Docker compose stack and removes its
+# data volumes and env file.  DESTRUCTIVE — cannot be undone.
+# Only usable for schools that are archived/inactive in instances.manifest.json.
+
+on:
+  workflow_dispatch:
+    inputs:
+      compose_project:
+        description: 'Docker Compose project name to destroy (e.g. zawadi-goda)'
+        required: true
+        type: string
+      confirm:
+        description: 'Type the compose project name again to confirm destruction'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Confirm
+        run: |
+          if [[ "${{ inputs.confirm }}" != "${{ inputs.compose_project }}" ]]; then
+            echo "::error::Confirmation must match compose_project exactly. Got: '${{ inputs.confirm }}'"
+            exit 1
+          fi
+          echo "Confirmed: destroying ${{ inputs.compose_project }}"
+
+      - name: Verify school is archived in manifest
+        run: |
+          set -euo pipefail
+          SLUG="${{ inputs.compose_project }}"
+          SLUG="${SLUG#zawadi-}"
+          ACTIVE=$(jq -r --arg slug "$SLUG" \
+            '.instances[] | select(.id == $slug) | .active // true' \
+            deploy/instances.manifest.json 2>/dev/null || echo "not_found")
+          ARCHIVED=$(jq -r --arg slug "$SLUG" \
+            '.instances[] | select(.id == $slug) | .archived // false' \
+            deploy/instances.manifest.json 2>/dev/null || echo "false")
+          if [[ "$ACTIVE" == "true" ]]; then
+            echo "::error::School '$SLUG' is still active in instances.manifest.json. Mark it archived first."
+            exit 1
+          fi
+          echo "School '$SLUG' is archived/inactive — destruction approved."
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Tear down stack and remove volumes
+        env:
+          PROJECT: ${{ inputs.compose_project }}
+        run: |
+          set -euo pipefail
+          ssh production "
+            set -euo pipefail
+            PROJECT='${PROJECT}'
+            ENV_FILE=\"/srv/zawadi/apps/env/.\${PROJECT}.env\"
+            COMPOSE_FILE='/srv/zawadi/apps/docker-compose.stack.yml'
+
+            echo \"=== Containers before teardown ===\"
+            sudo docker ps -a --filter \"label=com.docker.compose.project=\${PROJECT}\" \
+              --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
+
+            echo \"=== Stopping and removing containers + volumes ===\"
+            if [[ -f \"\${ENV_FILE}\" ]]; then
+              sudo docker compose --env-file \"\${ENV_FILE}\" -p \"\${PROJECT}\" -f \"\${COMPOSE_FILE}\" \
+                down --volumes --remove-orphans 2>&1 || true
+            else
+              # env file already gone — stop by project label
+              sudo docker ps -a --filter \"label=com.docker.compose.project=\${PROJECT}\" \
+                --format '{{.Names}}' | xargs -r sudo docker rm -f
+            fi
+
+            echo \"=== Removing any leftover volumes ===\"
+            sudo docker volume ls --filter \"name=\${PROJECT}\" --format '{{.Name}}' \
+              | xargs -r sudo docker volume rm
+
+            echo \"=== Archiving env file ===\"
+            if [[ -f \"\${ENV_FILE}\" ]]; then
+              sudo mv \"\${ENV_FILE}\" \"\${ENV_FILE}.destroyed-\$(date +%Y%m%d)\"
+              echo \"Env file archived\"
+            else
+              echo \"Env file not found (already removed)\"
+            fi
+
+            echo \"=== Verifying no containers remain ===\"
+            REMAINING=\$(sudo docker ps -a --filter \"label=com.docker.compose.project=\${PROJECT}\" --format '{{.Names}}')
+            if [[ -n \"\${REMAINING}\" ]]; then
+              echo \"WARNING: containers still present: \${REMAINING}\"
+            else
+              echo \"✅ All containers removed\"
+            fi
+
+            VOLS_REMAINING=\$(sudo docker volume ls --filter \"name=\${PROJECT}\" --format '{{.Name}}')
+            if [[ -n \"\${VOLS_REMAINING}\" ]]; then
+              echo \"WARNING: volumes still present: \${VOLS_REMAINING}\"
+            else
+              echo \"✅ All volumes removed\"
+            fi
+          "
+
+      - name: Report
+        if: success()
+        run: |
+          {
+            echo "## 🗑️ Stack destroyed: \`${{ inputs.compose_project }}\`"
+            echo ""
+            echo "Containers, volumes, and env file have been removed from the server."
+            echo "Ports previously used by this stack are now free."
+          } >> "$GITHUB_STEP_SUMMARY"

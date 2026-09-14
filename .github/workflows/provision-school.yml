@@ -1,0 +1,207 @@
+name: Provision New School (One-Shot)
+
+# Creates the env file and brings up a brand-new school stack on the server.
+# Safe to re-run — uses IF NOT EXISTS logic for the env file.
+# After this runs, follow with Promote Release to get the pinned image + migrations.
+
+on:
+  workflow_dispatch:
+    inputs:
+      school_slug:
+        description: 'School slug matching instances.manifest.json id (e.g. mwangaza-cs)'
+        required: true
+        type: string
+      school_name:
+        description: 'Human-readable school name stored in DB (e.g. Mwangaza CS)'
+        required: true
+        type: string
+      frontend_port:
+        description: 'Host port for frontend (must be unique on the server, e.g. 3012)'
+        required: true
+        type: string
+      backend_port:
+        description: 'Host port for backend (must be unique on the server, e.g. 5012)'
+        required: true
+        type: string
+      db_name:
+        description: 'PostgreSQL database name (e.g. zawadi_mwangaza_cs)'
+        required: true
+        type: string
+      db_password:
+        description: 'PostgreSQL password for this school DB'
+        required: true
+        type: string
+      admin_email:
+        description: 'Super-admin email for this school'
+        required: false
+        type: string
+        default: 'admin@trendscore.app'
+
+permissions:
+  contents: read
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Create env file and spin up stack
+        env:
+          SCHOOL_SLUG:     ${{ inputs.school_slug }}
+          SCHOOL_NAME:     ${{ inputs.school_name }}
+          FRONTEND_PORT:   ${{ inputs.frontend_port }}
+          BACKEND_PORT:    ${{ inputs.backend_port }}
+          DB_NAME:         ${{ inputs.db_name }}
+          DB_PASSWORD:     ${{ inputs.db_password }}
+          ADMIN_EMAIL:     ${{ inputs.admin_email }}
+          JWT_SECRET:      ${{ secrets.JWT_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+          ENCRYPTION_KEY:  ${{ secrets.ENCRYPTION_KEY }}
+          VAPID_PUBLIC_KEY:  ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          AWS_REGION:                       ${{ vars.AWS_REGION }}
+          AWS_ACCESS_KEY_ID:                ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY:            ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REKOGNITION_LIVENESS_ROLE_ARN: ${{ vars.AWS_REKOGNITION_LIVENESS_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+
+          PROJECT="zawadi-${SCHOOL_SLUG}"
+          ENV_FILE="/srv/zawadi/apps/env/.${PROJECT}.env"
+          COMPOSE_FILE="/srv/zawadi/apps/docker-compose.stack.yml"
+          SERVER_IP="185.127.16.124"
+
+          # Generate secrets if not supplied via repo secrets
+          JWT_S="${JWT_SECRET:-$(openssl rand -hex 32)}"
+          JWT_R="${JWT_REFRESH_SECRET:-$(openssl rand -hex 32)}"
+          ENC_K="${ENCRYPTION_KEY:-$(openssl rand -hex 32)}"
+
+          ssh production "
+            set -euo pipefail
+            PROJECT='${PROJECT}'
+            ENV_FILE='${ENV_FILE}'
+            COMPOSE_FILE='${COMPOSE_FILE}'
+
+            if [[ -f \"\${ENV_FILE}\" ]]; then
+              echo \"⚠️  Env file already exists: \${ENV_FILE} — skipping creation (stack will still be started)\"
+            else
+              echo \"✅ Creating env file: \${ENV_FILE}\"
+              sudo tee \"\${ENV_FILE}\" > /dev/null <<'ENVEOF'
+SCHOOL_CODE=${SCHOOL_SLUG}
+FRONTEND_IMAGE=ghcr.io/amalgamate/zawadi-frontend:latest
+BACKEND_IMAGE=ghcr.io/amalgamate/zawadi-backend:latest
+FRONTEND_PORT=${FRONTEND_PORT}
+BACKEND_PORT=${BACKEND_PORT}
+DB_USER=zawadi
+DB_PASSWORD=${DB_PASSWORD}
+DB_NAME=${DB_NAME}
+JWT_SECRET=${JWT_S}
+JWT_REFRESH_SECRET=${JWT_R}
+ENCRYPTION_KEY=${ENC_K}
+SUPER_ADMIN_EMAIL=${ADMIN_EMAIL}
+SUPER_ADMIN_PASSWORD=Admin@123!
+CREATE_EXTRA_DEMO_USERS=false
+DEMO_USER_PASSWORD=Demo@123!
+AWS_REGION=${AWS_REGION:-ap-south-1}
+AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+AWS_SESSION_TOKEN=
+AWS_REKOGNITION_LIVENESS_ROLE_ARN=${AWS_REKOGNITION_LIVENESS_ROLE_ARN:-}
+AWS_REKOGNITION_COLLECTION_PREFIX=trendscore
+AWS_REKOGNITION_LIVENESS_THRESHOLD=90
+AWS_REKOGNITION_MATCH_THRESHOLD=97
+FRONTEND_URL=https://${SCHOOL_SLUG}.trendscore.co.ke
+API_URL=https://${SCHOOL_SLUG}.trendscore.co.ke/api
+CORS_ORIGIN=https://${SCHOOL_SLUG}.trendscore.co.ke
+HTTPS_ONLY=false
+VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+VAPID_SUBJECT=mailto:admin@trendscore.app
+ENVEOF
+              sudo chmod 600 \"\${ENV_FILE}\"
+              echo \"✅ Env file written\"
+            fi
+
+            echo \"=== Pulling latest images ===\"
+            sudo docker compose --env-file \"\${ENV_FILE}\" -p \"\${PROJECT}\" -f \"\${COMPOSE_FILE}\" pull
+
+            echo \"=== Starting stack ===\"
+            sudo docker compose --env-file \"\${ENV_FILE}\" -p \"\${PROJECT}\" -f \"\${COMPOSE_FILE}\" up -d
+
+            echo \"=== Waiting 15s for DB to become healthy ===\"
+            sleep 15
+
+            echo \"=== Container status ===\"
+            sudo docker ps --filter \"label=com.docker.compose.project=\${PROJECT}\" \
+              --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+
+            echo \"=== Running Prisma migrate deploy ===\"
+            CONTAINER=\$(sudo docker ps \
+              --filter \"label=com.docker.compose.project=\${PROJECT}\" \
+              --filter \"label=com.docker.compose.service=backend\" \
+              --format '{{.Names}}' | head -n1)
+            echo \"Backend container: \${CONTAINER}\"
+            sudo docker exec \"\${CONTAINER}\" sh -c '
+              set -e
+              # Auto-baseline then deploy
+              count=\$(node -e \"
+                const { Client } = require(\\\"pg\\\");
+                const c = new Client({ connectionString: process.env.DATABASE_URL });
+                c.connect()
+                  .then(() => c.query(\\\"SELECT COUNT(*)::int AS n FROM _prisma_migrations WHERE finished_at IS NOT NULL\\\"))
+                  .then(r => { console.log(r.rows[0].n); c.end(); })
+                  .catch(() => { console.log(0); c.end(); });
+              \" 2>/dev/null || echo 0)
+              if [ \"\$count\" -eq 0 ]; then
+                echo \"[baseline] No migration history — baselining\"
+                SKIP1=20260707121500_allow_multiple_summative_series
+                SKIP2=20260811090000_link_learners_to_student_users
+                marked=0
+                for dir in prisma/migrations/*/; do
+                  name=\"\$(basename \"\${dir}\")\"
+                  [ \"\${name}\" = \"\${SKIP1}\" ] && continue
+                  [ \"\${name}\" = \"\${SKIP2}\" ] && continue
+                  npx prisma migrate resolve --applied \"\${name}\" --schema prisma/schema.prisma 2>&1 | tail -1
+                  marked=\$((marked+1))
+                done
+                echo \"[baseline] marked \${marked} migrations as applied\"
+              else
+                echo \"[baseline] \${count} migrations already recorded — skipping\"
+              fi
+              npx prisma migrate deploy
+              echo \"[migrate] done\"
+            '
+
+            echo \"=== Seeding super-admin ===\"
+            sudo docker exec \"\${CONTAINER}\" node dist/scripts/setup-system.js
+            echo \"✅ Provision complete for ${SCHOOL_SLUG}\"
+          "
+
+      - name: Report
+        if: success()
+        run: |
+          {
+            echo "## ✅ School provisioned: \`${{ inputs.school_slug }}\`"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| School name | ${{ inputs.school_name }} |"
+            echo "| Compose project | \`zawadi-${{ inputs.school_slug }}\` |"
+            echo "| Domain | \`${{ inputs.school_slug }}.trendscore.co.ke\` |"
+            echo "| Frontend port | ${{ inputs.frontend_port }} |"
+            echo "| Backend port | ${{ inputs.backend_port }} |"
+            echo "| DB name | \`${{ inputs.db_name }}\` |"
+            echo "| Admin email | ${{ inputs.admin_email }} |"
+            echo "| Admin password | \`Admin@123!\` |"
+            echo ""
+            echo "Next step: run **Promote Release** with \`school_slug=${{ inputs.school_slug }}\` to pin the latest image tag."
+          } >> "$GITHUB_STEP_SUMMARY"
