@@ -728,6 +728,10 @@ ALTER TABLE "schools"
   ADD COLUMN IF NOT EXISTS "presenceMonitoringEnabled" BOOLEAN NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS "presenceHeartbeatMinutes" INTEGER NOT NULL DEFAULT 5,
   ADD COLUMN IF NOT EXISTS "presenceStaleThresholdMinutes" INTEGER NOT NULL DEFAULT 25;
+ALTER TABLE "classes"
+  ADD COLUMN IF NOT EXISTS "attendanceLockExempt" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "subject_assignments"
+  ADD COLUMN IF NOT EXISTS "attendanceLockExempt" BOOLEAN NOT NULL DEFAULT false;
 SQL
       npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-presence-monitoring.sql
 
