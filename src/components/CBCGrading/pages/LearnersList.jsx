@@ -143,30 +143,30 @@ const LearnersList = ({
   };
 
   const streamOptions = useMemo(() => {
+    // Once a grade is selected, show the streams that are actually attached to
+    // that grade. This remains independent of the current teacher's class.
     if (filterGrade !== 'all') {
-      const gradeSpecificSet = new Set();
-      const fGrade = String(filterGrade || '').trim().toUpperCase();
+      const gradeStreams = new Set();
+      const selectedGrade = String(filterGrade).trim().toUpperCase();
 
-      if (Array.isArray(classes)) {
-        classes.forEach((c) => {
-          const cGrade = String(c?.grade || '').trim().toUpperCase();
-          if (cGrade === fGrade && c?.stream && String(c.stream).trim()) {
-            gradeSpecificSet.add(String(c.stream).trim());
-          }
-        });
-      }
-      if (Array.isArray(learners)) {
-        learners.forEach((l) => {
-          const lGrade = String(l?.grade || '').trim().toUpperCase();
-          if (lGrade === fGrade && l?.stream && String(l.stream).trim()) {
-            gradeSpecificSet.add(String(l.stream).trim());
-          }
-        });
-      }
+      (Array.isArray(classes) ? classes : []).forEach((classRecord) => {
+        if (
+          String(classRecord?.grade || '').trim().toUpperCase() === selectedGrade &&
+          classRecord?.stream && String(classRecord.stream).trim()
+        ) {
+          gradeStreams.add(String(classRecord.stream).trim());
+        }
+      });
+      (Array.isArray(learners) ? learners : []).forEach((learner) => {
+        if (
+          String(learner?.grade || '').trim().toUpperCase() === selectedGrade &&
+          learner?.stream && String(learner.stream).trim()
+        ) {
+          gradeStreams.add(String(learner.stream).trim());
+        }
+      });
 
-      if (gradeSpecificSet.size > 0) {
-        return Array.from(gradeSpecificSet).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-      }
+      return Array.from(gradeStreams).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
     }
 
     const allStreamsSet = new Set();
@@ -212,7 +212,10 @@ const LearnersList = ({
   useEffect(() => {
     const fetchStreams = async () => {
       try {
-        const resp = await configAPI.getStreamConfigs();
+        // Do not rely on the shared ten-minute config cache here. A teacher
+        // must see every currently configured school stream immediately,
+        // including after an administrator adds one in another session.
+        const resp = await configAPI.getStreamConfigs({ fresh: true });
         const arr = resp?.data || [];
         setAvailableStreams(arr.filter(s => s.active !== false));
       } catch (error) {
@@ -1710,4 +1713,3 @@ const LearnersList = ({
 };
 
 export default LearnersList;
-

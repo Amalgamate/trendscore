@@ -211,6 +211,36 @@ export class ResourceAccessControl {
         }
 
         if (hasAnyRole(req.user, ['TEACHER'])) {
+          // Teachers may browse the school learner directory, but changes to
+          // a learner are permitted only for a learner actively enrolled in a
+          // class for which that teacher is the class teacher. This is checked
+          // on the server so a crafted request cannot bypass the hidden UI
+          // actions.
+          if (req.method === 'GET') return next();
+
+          const learnerId = req.params.learnerId || req.params.id || req.body?.learnerId || req.query.learnerId;
+          if (!learnerId) {
+            return next(
+              new ApiError(400, 'A learner is required for this action').withCode('LEARNER_REQUIRED')
+            );
+          }
+
+          const assignedLearner = await prisma.classEnrollment.findFirst({
+            where: {
+              learnerId: String(learnerId),
+              active: true,
+              archived: false,
+              class: { teacherId: userId, active: true, archived: false },
+            },
+            select: { id: true },
+          });
+
+          if (!assignedLearner) {
+            return next(
+              new ApiError(403, 'You can only change learners in your assigned class')
+                .withCode('CLASS_ASSIGNMENT_REQUIRED')
+            );
+          }
           return next();
         }
 

@@ -92,14 +92,23 @@ export const checkSubjectOwnership = (opts: { required?: boolean } = { required:
         return next();
       }
 
-      // Resolve learner's grade
+      // Resolve the learner's grade and current classes. Ownership must be
+      // tied to the actual class, not merely another class in the same grade.
       let grade: string | null = null;
+      let learnerClassIds: string[] = [];
       if (learnerId) {
         const learner = await prisma.learner.findUnique({
           where: { id: learnerId },
-          select: { grade: true },
+          select: {
+            grade: true,
+            enrollments: {
+              where: { active: true, archived: false },
+              select: { classId: true },
+            },
+          },
         });
         grade = learner?.grade ?? null;
+        learnerClassIds = learner?.enrollments.map((enrollment) => enrollment.classId) ?? [];
       }
 
       // 1. Check if teacher is explicitly assigned as subject teacher for this learning area + grade
@@ -110,6 +119,7 @@ export const checkSubjectOwnership = (opts: { required?: boolean } = { required:
             teacherId: userId,
             grade,
             active: true,
+            classId: { in: learnerClassIds },
             learningArea: {
               OR: [
                 { name: { equals: learningAreaRaw, mode: 'insensitive' } },
@@ -126,7 +136,7 @@ export const checkSubjectOwnership = (opts: { required?: boolean } = { required:
               teacherId: userId,
               active: true,
               subject: { equals: learningAreaRaw, mode: 'insensitive' },
-              class: { grade: grade ?? undefined, archived: false },
+              classId: { in: learnerClassIds },
             },
           });
           isSubjectTeacher = !!schedule;
@@ -148,11 +158,11 @@ export const checkSubjectOwnership = (opts: { required?: boolean } = { required:
 
       // 2. Check if teacher is the class teacher for this learner's class
       let isClassTeacher = false;
-      if (grade) {
+      if (learnerClassIds.length) {
         const classRecord = await prisma.class.findFirst({
           where: {
             teacherId: userId,
-            grade,
+            id: { in: learnerClassIds },
             archived: false,
             active: true,
           },

@@ -36,8 +36,16 @@ export const configAPI = {
   deleteAggregationConfig: async (id) =>
     fetchWithAuth(`/config/aggregation/${id}`, { method: 'DELETE' }),
 
-  getStreamConfigs: async () =>
-    cachedFetch('config:streams', () => fetchWithAuth('/config/streams'), TTL.LONG),
+  // The streams list is used as an access-neutral filter throughout the
+  // school portal.  Callers that render a live roster can request a fresh
+  // copy so an old browser cache cannot hide a newly added stream.
+  getStreamConfigs: async ({ fresh = false } = {}) => {
+    if (fresh) {
+      cacheDel('config:streams');
+      return fetchWithAuth('/config/streams');
+    }
+    return cachedFetch('config:streams', () => fetchWithAuth('/config/streams'), TTL.LONG);
+  },
   upsertStreamConfig: async (data) => {
     cacheDel('config:streams');
     return fetchWithAuth('/config/streams', { method: 'POST', body: JSON.stringify(data) });
