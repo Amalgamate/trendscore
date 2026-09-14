@@ -1,0 +1,86 @@
+name: Bind School Domain and SSL
+
+on:
+  workflow_dispatch:
+    inputs:
+      school_slug:
+        description: 'Active school id from deploy/instances.manifest.json (for example mwangaza-cs)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  bind-and-certify:
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Bind active school stack and issue certificate
+        env:
+          SCHOOL_ID: ${{ inputs.school_slug }}
+        run: |
+          set -euo pipefail
+          ssh production "SCHOOL_ID='${SCHOOL_ID}' sudo bash -se" <<'REMOTE'
+          set -euo pipefail
+
+          manifest=/srv/zawadi/apps/deploy/instances.manifest.json
+          instance="$(jq -c --arg id "$SCHOOL_ID" '.instances[] | select(.id == $id)' "$manifest")"
+          [[ -n "$instance" ]] || { echo "Unknown school id: $SCHOOL_ID"; exit 1; }
+          [[ "$(jq -r '.active // true' <<<"$instance")" == "true" ]] || { echo "School is inactive: $SCHOOL_ID"; exit 1; }
+          [[ "$(jq -r '.archived // false' <<<"$instance")" != "true" ]] || { echo "School is archived: $SCHOOL_ID"; exit 1; }
+
+          domain="$(jq -r '.public_domain' <<<"$instance")"
+          project="$(jq -r '.compose_project' <<<"$instance")"
+          [[ "$domain" =~ ^[a-z0-9.-]+$ ]] || { echo "Unsafe domain in manifest"; exit 1; }
+          [[ "$project" =~ ^[a-z0-9_-]+$ ]] || { echo "Unsafe compose project in manifest"; exit 1; }
+
+          frontend="$(docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=frontend' --format '{{.Names}}' | head -n1)"
+          [[ -n "$frontend" ]] || { echo "No running frontend container for $project"; exit 1; }
+          host_port="$(docker inspect "$frontend" --format '{{(index (index .NetworkSettings.Ports "80/tcp") 0).HostPort}}')"
+          [[ "$host_port" =~ ^[0-9]+$ ]] || { echo "Could not resolve frontend host port"; exit 1; }
+
+          site="/etc/nginx/sites-available/$domain"
+          cat >"$site" <<EOF
+          server {
+              listen 80;
+              listen [::]:80;
+              server_name $domain;
+
+              client_max_body_size 100m;
+              proxy_read_timeout 720s;
+              proxy_connect_timeout 720s;
+              proxy_send_timeout 720s;
+
+              location / {
+                  proxy_pass http://127.0.0.1:$host_port;
+                  proxy_http_version 1.1;
+                  proxy_set_header Host \$host;
+                  proxy_set_header X-Real-IP \$remote_addr;
+                  proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto \$scheme;
+              }
+          }
+          EOF
+          ln -sfn "$site" "/etc/nginx/sites-enabled/$domain"
+          nginx -t
+          systemctl reload nginx
+
+          command -v certbot >/dev/null 2>&1 || { apt-get update; apt-get install -y certbot python3-certbot-nginx; }
+          certbot --nginx --non-interactive --agree-tos --email admin@trendscore.app --redirect -d "$domain"
+          curl -fsSI --resolve "$domain:443:127.0.0.1" "https://$domain/"
+          REMOTE
+
+      - name: Verify public HTTPS
+        run: |
+          curl --fail --show-error --silent --location --max-time 30 --output /dev/null \
+            --write-out 'HTTPS %{http_code}\n' https://${{ inputs.school_slug }}.trendscore.co.ke/
