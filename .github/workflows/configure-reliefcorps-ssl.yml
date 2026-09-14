@@ -1,0 +1,73 @@
+name: Configure Relief Corps HTTPS
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  configure-https:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Bind Relief Corps to HTTPS
+        run: |
+          ssh production 'sudo bash -se' <<'REMOTE'
+          set -euo pipefail
+
+          domain=reliefcorps.org
+          upstream=127.0.0.1:3504
+          site=/etc/nginx/sites-available/$domain
+
+          if ! command -v certbot >/dev/null 2>&1; then
+            apt-get update
+            apt-get install -y certbot python3-certbot-nginx
+          fi
+
+          cat > "$site" <<EOF
+          server {
+              listen 80;
+              listen [::]:80;
+              server_name $domain;
+
+              client_max_body_size 100m;
+              proxy_read_timeout 720s;
+              proxy_connect_timeout 720s;
+              proxy_send_timeout 720s;
+
+              location / {
+                  proxy_pass http://$upstream;
+                  proxy_set_header Host \$host;
+                  proxy_set_header X-Real-IP \$remote_addr;
+                  proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto \$scheme;
+              }
+          }
+          EOF
+
+          ln -sfn "$site" /etc/nginx/sites-enabled/$domain
+          nginx -t
+          systemctl reload nginx
+
+          # Odoo must trust the TLS-terminating reverse proxy to generate HTTPS URLs.
+          compose=/srv/zawadi/apps/docker-compose.odoo.yml
+          if ! grep -q 'command: odoo --proxy-mode' "$compose"; then
+            sed -i '/image: ${ODOO_IMAGE:-odoo:18.0}/a\    command: odoo --proxy-mode' "$compose"
+          fi
+          docker compose --env-file /srv/zawadi/apps/env/.zawadi-relifcorpsorganization.env \
+            -p zawadi-relifcorpsorganization -f "$compose" up -d --force-recreate odoo
+
+          certbot --nginx --non-interactive --agree-tos \
+            --email info@reliefcorps.org \
+            --redirect -d "$domain"
+
+          curl -fsSI --resolve "$domain:443:127.0.0.1" "https://$domain/web/login"
+          REMOTE
