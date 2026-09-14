@@ -81,3 +81,9 @@ jobs:
 
           curl -fsSI --resolve "$domain:443:127.0.0.1" "https://$domain/web/login"
           REMOTE
+
+      - name: Verify public HTTPS from GitHub-hosted runner
+        run: |
+          curl --fail --show-error --silent --location --max-time 30 \
+            --output /dev/null --write-out 'HTTPS %{http_code}\n' \
+            https://reliefcorps.org/web/login
