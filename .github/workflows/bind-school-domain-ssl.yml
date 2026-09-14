@@ -30,7 +30,9 @@ jobs:
           SCHOOL_ID: ${{ inputs.school_slug }}
         run: |
           set -euo pipefail
-          ssh production "SCHOOL_ID='${SCHOOL_ID}' sudo bash -se" <<'REMOTE'
+          # sudo clears the caller environment, so pass the selected school
+          # explicitly to the privileged shell that creates the nginx site.
+          ssh production "sudo env SCHOOL_ID='${SCHOOL_ID}' bash -se" <<'REMOTE'
           set -euo pipefail
 
           manifest=/srv/zawadi/apps/deploy/instances.manifest.json
