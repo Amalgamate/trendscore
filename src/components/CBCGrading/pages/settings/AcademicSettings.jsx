@@ -83,14 +83,17 @@ const AcademicSettings = () => {
   const loadConfigs = React.useCallback(async () => {
     try {
       setLoading(true);
-      setLoading(true);
-      // School ID removed for single-tenant mode
-      const [terms, streams, classes, teachersList] = await Promise.all([
+      // The four settings resources are independent. Keep successful class
+      // and stream responses visible if another optional lookup fails.
+      const results = await Promise.allSettled([
         configAPI.getTermConfigs(),
         configAPI.getStreamConfigs(),
         configAPI.getClasses(),
         userAPI.getAll()
       ]);
+      const [terms, streams, classes, teachersList] = results.map((result) => (
+        result.status === 'fulfilled' ? result.value : null
+      ));
       const termsArr = Array.isArray(terms) ? terms : (terms && terms.data) ? terms.data : [];
       const streamsArr = Array.isArray(streams) ? streams : (streams && streams.data) ? streams.data : [];
       const classesArr = Array.isArray(classes) ? classes : (classes && classes.data) ? classes.data : [];
@@ -99,6 +102,12 @@ const AcademicSettings = () => {
       setStreamConfigs(streamsArr || []);
       setClassConfigs(classesArr || []);
       setTeachers(teachersArr.filter(t => t.role === 'TEACHER' || t.role === 'HEAD_TEACHER') || []);
+
+      const failedLookups = ['term settings', 'streams', 'classes', 'teachers']
+        .filter((_name, index) => results[index].status === 'rejected');
+      if (failedLookups.length) {
+        showError(`Could not load ${failedLookups.join(', ')}. Please refresh or sign in again.`);
+      }
     } catch (error) {
       console.error('Failed to load configs:', error);
       showError('Failed to load settings. Check network and authentication.');
