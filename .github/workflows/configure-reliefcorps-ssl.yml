@@ -30,6 +30,13 @@ jobs:
           upstream=127.0.0.1:3504
           site=/etc/nginx/sites-available/$domain
 
+          # Allow public HTTP(S) through the host firewall without changing
+          # any other firewall policy. Certbot has already validated this host.
+          if command -v ufw >/dev/null 2>&1; then
+            ufw allow 80/tcp
+            ufw allow 443/tcp
+          fi
+
           if ! command -v certbot >/dev/null 2>&1; then
             apt-get update
             apt-get install -y certbot python3-certbot-nginx
