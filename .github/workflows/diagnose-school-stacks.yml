@@ -1,0 +1,59 @@
+name: Diagnose School Stacks (One-Shot)
+
+# Lists all running compose stacks, their ports, env files, and any
+# stack named "goda". Safe — read-only.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: List all stacks, ports and env files
+        run: |
+          ssh production '
+            set -euo pipefail
+            echo "=== All running containers (project | service | image | ports) ==="
+            sudo docker ps --format "table {{.Label \"com.docker.compose.project\"}}\t{{.Label \"com.docker.compose.service\"}}\t{{.Image}}\t{{.Ports}}" | sort
+
+            echo ""
+            echo "=== All env files in /srv/zawadi/apps/env/ ==="
+            ls -la /srv/zawadi/apps/env/ 2>/dev/null || echo "(dir missing)"
+
+            echo ""
+            echo "=== Root-level env files in /srv/zawadi/apps/ ==="
+            ls -la /srv/zawadi/apps/.env.* 2>/dev/null || echo "(none)"
+
+            echo ""
+            echo "=== Goda-related containers (any) ==="
+            sudo docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -i "goda" || echo "(none found)"
+
+            echo ""
+            echo "=== Goda-related volumes ==="
+            sudo docker volume ls | grep -i "goda" || echo "(none found)"
+
+            echo ""
+            echo "=== All used host ports ==="
+            sudo docker ps --format "{{.Ports}}" | grep -oE "[0-9]+->5000|[0-9]+->3000" | sort -t: -k1 -n || echo "(none)"
+
+            echo ""
+            echo "=== Compose projects with stack compose file ==="
+            sudo docker ps \
+              --filter "label=com.docker.compose.service=frontend" \
+              --format "{{.Label \"com.docker.compose.project\"}}|{{.Label \"com.docker.compose.project.environment_file\"}}" \
+              | sort
+          '
