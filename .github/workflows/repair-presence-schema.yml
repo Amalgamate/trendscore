@@ -64,26 +64,25 @@ jobs:
           sudo docker cp /tmp/repair-presence-schema.sql "$backend:/tmp/repair-presence-schema.sql"
           sudo docker exec "$backend" sh -lc 'npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-presence-schema.sql'
           sudo docker exec -i "$backend" node - <<'NODE'
-          const { Client } = require('pg');
+          const { PrismaClient } = require('@prisma/client');
           const required = [
             ['users', 'presenceConsentAcceptedAt'],
             ['schools', 'presenceMonitoringEnabled'],
             ['schools', 'presenceHeartbeatMinutes'],
             ['schools', 'presenceStaleThresholdMinutes'],
           ];
-          const client = new Client({ connectionString: process.env.DATABASE_URL });
-          client.connect().then(async () => {
-            const result = await client.query(
-              `SELECT table_name, column_name
-                 FROM information_schema.columns
-                WHERE table_schema = 'public'
-                  AND (table_name, column_name) IN (('users', 'presenceConsentAcceptedAt'), ('schools', 'presenceMonitoringEnabled'), ('schools', 'presenceHeartbeatMinutes'), ('schools', 'presenceStaleThresholdMinutes'))`
-            );
-            const found = new Set(result.rows.map(row => `${row.table_name}.${row.column_name}`));
+          const prisma = new PrismaClient();
+          prisma.$queryRawUnsafe(
+            `SELECT table_name, column_name
+               FROM information_schema.columns
+              WHERE table_schema = 'public'
+                AND (table_name, column_name) IN (('users', 'presenceConsentAcceptedAt'), ('schools', 'presenceMonitoringEnabled'), ('schools', 'presenceHeartbeatMinutes'), ('schools', 'presenceStaleThresholdMinutes'))`
+          ).then(result => {
+            const found = new Set(result.map(row => `${row.table_name}.${row.column_name}`));
             const missing = required.map(([table, column]) => `${table}.${column}`).filter(key => !found.has(key));
             if (missing.length) throw new Error(`Missing after repair: ${missing.join(', ')}`);
             console.log('Verified presence columns:', [...found].sort().join(', '));
-          }).then(() => client.end()).catch(error => { console.error(error); client.end(); process.exitCode = 1; });
+          }).catch(error => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());
           NODE
           REMOTE
 
