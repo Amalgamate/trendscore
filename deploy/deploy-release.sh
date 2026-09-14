@@ -718,7 +718,20 @@ SQL
       # 3. Recover interrupted learner/student user migration
       npx prisma migrate resolve --rolled-back "${SKIP2}" >/tmp/learner-resolve.log 2>&1 || true
 
-      # 4. Apply any pending migrations
+      # 4. Repair presence-monitoring columns in installations whose migration
+      # history was baselined before this schema addition. Prisma may consider
+      # the migration applied even while the physical columns are absent.
+      cat >/tmp/repair-presence-monitoring.sql <<'SQL'
+ALTER TABLE "users"
+  ADD COLUMN IF NOT EXISTS "presenceConsentAcceptedAt" TIMESTAMP(3);
+ALTER TABLE "schools"
+  ADD COLUMN IF NOT EXISTS "presenceMonitoringEnabled" BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS "presenceHeartbeatMinutes" INTEGER NOT NULL DEFAULT 5,
+  ADD COLUMN IF NOT EXISTS "presenceStaleThresholdMinutes" INTEGER NOT NULL DEFAULT 25;
+SQL
+      npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-presence-monitoring.sql
+
+      # 5. Apply any pending migrations
       npx prisma migrate deploy
     ' < /dev/null
 }
