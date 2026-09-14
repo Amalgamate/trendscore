@@ -1,0 +1,92 @@
+name: Repair Presence Schema (One-Shot)
+
+# Repairs the presence-monitoring columns required by the current backend.
+# It runs inside the live backend container so DATABASE_URL is guaranteed to
+# target the selected school's database. The ALTER statements are idempotent.
+
+on:
+  workflow_dispatch:
+    inputs:
+      school_slug:
+        description: 'School instance id (for example: ibse or waso-cs)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    name: Repair selected school database
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Add missing presence-monitoring columns
+        env:
+          SCHOOL_ID: ${{ inputs.school_slug }}
+        run: |
+          set -euo pipefail
+          ssh production "SCHOOL_ID='${SCHOOL_ID}' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          manifest=/srv/zawadi/apps/deploy/instances.manifest.json
+          instance="$(jq -c --arg id "$SCHOOL_ID" '.instances[] | select(.id == $id)' "$manifest")"
+          [[ -n "$instance" ]] || { echo "Unknown school id: $SCHOOL_ID"; exit 1; }
+
+          kind="$(jq -r '.kind' <<<"$instance")"
+          project="$(jq -r '.compose_project // empty' <<<"$instance")"
+          if [[ "$kind" == "main" ]]; then
+            backend=zawadi-backend
+          else
+            backend="$(sudo docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=backend' --format '{{.Names}}' | head -n1)"
+          fi
+          [[ -n "$backend" ]] || { echo "Backend container not found for $SCHOOL_ID"; exit 1; }
+
+          cat >/tmp/repair-presence-schema.sql <<'SQL'
+          ALTER TABLE "users"
+            ADD COLUMN IF NOT EXISTS "presenceConsentAcceptedAt" TIMESTAMP(3);
+          ALTER TABLE "schools"
+            ADD COLUMN IF NOT EXISTS "presenceMonitoringEnabled" BOOLEAN NOT NULL DEFAULT false,
+            ADD COLUMN IF NOT EXISTS "presenceHeartbeatMinutes" INTEGER NOT NULL DEFAULT 5,
+            ADD COLUMN IF NOT EXISTS "presenceStaleThresholdMinutes" INTEGER NOT NULL DEFAULT 25;
+          SQL
+
+          sudo docker cp /tmp/repair-presence-schema.sql "$backend:/tmp/repair-presence-schema.sql"
+          sudo docker exec "$backend" sh -lc 'npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-presence-schema.sql'
+          sudo docker exec -i "$backend" node - <<'NODE'
+          const { Client } = require('pg');
+          const required = [
+            ['users', 'presenceConsentAcceptedAt'],
+            ['schools', 'presenceMonitoringEnabled'],
+            ['schools', 'presenceHeartbeatMinutes'],
+            ['schools', 'presenceStaleThresholdMinutes'],
+          ];
+          const client = new Client({ connectionString: process.env.DATABASE_URL });
+          client.connect().then(async () => {
+            const result = await client.query(
+              `SELECT table_name, column_name
+                 FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND (table_name, column_name) IN (('users', 'presenceConsentAcceptedAt'), ('schools', 'presenceMonitoringEnabled'), ('schools', 'presenceHeartbeatMinutes'), ('schools', 'presenceStaleThresholdMinutes'))`
+            );
+            const found = new Set(result.rows.map(row => `${row.table_name}.${row.column_name}`));
+            const missing = required.map(([table, column]) => `${table}.${column}`).filter(key => !found.has(key));
+            if (missing.length) throw new Error(`Missing after repair: ${missing.join(', ')}`);
+            console.log('Verified presence columns:', [...found].sort().join(', '));
+          }).then(() => client.end()).catch(error => { console.error(error); client.end(); process.exitCode = 1; });
+          NODE
+          REMOTE
+
+      - name: Report success
+        if: success()
+        run: echo "Presence schema verified for ${{ inputs.school_slug }}." >> "$GITHUB_STEP_SUMMARY"
