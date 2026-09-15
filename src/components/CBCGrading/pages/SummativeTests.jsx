@@ -318,8 +318,9 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
       // testType collapses custom series into "OTHER" or "ASSESSMENT".
       const canonicalTestType = normalizeTestType(test.testType) || 'ASSESSMENT';
       const displayType = getSeriesDisplayName(test, canonicalTestType);
-      const weekNumber = Number(test.weekNumber) || 1;
-      const seriesKey = `${displayType}__${test.term || ''}__${test.academicYear || ''}__${weekNumber}`;
+      const isWeeklyCycle = normalizeTestType(test.testType) === 'WEEKLY';
+      const weekNumber = isWeeklyCycle ? (Number(test.weekNumber) || 1) : null;
+      const seriesKey = `${displayType}__${test.term || ''}__${test.academicYear || ''}__${weekNumber || ''}`;
 
       if (!grouped[gradeKey][seriesKey]) {
         // Human-readable term: TERM_1 → Term 1
@@ -677,7 +678,7 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
                                 <div className="flex flex-col">
                                   <span className="text-sm font-medium text-slate-800 leading-tight">{data.displayType}</span>
                                   <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-widest mt-1">
-                                    Week {data.weekNumber || 1} • {data.displayTestType || 'ASSESSMENT'}{data.displayDate ? ` • ${data.displayDate}` : ''} • {data.displayTerm} {data.academicYear}
+                                    {data.weekNumber ? `Week ${data.weekNumber} • ` : ''}{data.displayTestType || 'ASSESSMENT'}{data.displayDate ? ` • ${data.displayDate}` : ''} • {data.displayTerm} {data.academicYear}
                                   </span>
                                 </div>
                               </td>

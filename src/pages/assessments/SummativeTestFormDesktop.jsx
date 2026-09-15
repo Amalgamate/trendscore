@@ -159,7 +159,7 @@ const SummativeTestFormDesktop = ({ onBack, onSuccess, initialTestType = null, i
                 ))}
               </select>
             </div>
-            <div className="space-y-2">
+            {formData.type === 'WEEKLY' && <div className="space-y-2">
               <label className="block text-xs font-medium text-slate-500 uppercase tracking-widest">Assessment Week</label>
               <select
                 value={formData.weekNumber}
@@ -170,7 +170,7 @@ const SummativeTestFormDesktop = ({ onBack, onSuccess, initialTestType = null, i
                   <option key={week} value={week}>Week {week}</option>
                 ))}
               </select>
-            </div>
+            </div>}
           </div>
 
           <hr className="border-slate-100" />

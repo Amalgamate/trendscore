@@ -182,7 +182,7 @@ const SummativeTestFormMobile = ({ onBack, onSuccess, initialTestType = null, in
           </div>
 
           {/* Academic Term */}
-          <div>
+          {formData.type === 'WEEKLY' && <div>
             <label className={labelClass}>
               {labels.term}<span className="text-rose-500">*</span>
             </label>
@@ -200,9 +200,9 @@ const SummativeTestFormMobile = ({ onBack, onSuccess, initialTestType = null, in
             {errors.term && (
               <p className="text-rose-600 text-[10px] font-medium mt-1.5 ml-1 uppercase tracking-wider">{errors.term}</p>
             )}
-          </div>
+          </div>}
 
-          <div>
+          {formData.type === 'WEEKLY' && <div>
             <label className={labelClass}>Assessment Week</label>
             <select
               value={formData.weekNumber}
@@ -213,7 +213,7 @@ const SummativeTestFormMobile = ({ onBack, onSuccess, initialTestType = null, in
                 <option key={week} value={week}>Week {week}</option>
               ))}
             </select>
-          </div>
+          </div>}
 
           {/* Scale */}
           <div>

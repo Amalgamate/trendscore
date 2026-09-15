@@ -328,7 +328,7 @@ export const useSummativeTestForm = ({ initialTestType = null, initialData = nul
         learningArea: formData.learningArea,
         academicYear: formData.academicYear,
         testDate: formData.testDate,
-        weekNumber: Number(formData.weekNumber) || 1,
+        ...(normalizeTestType(formData.type) === 'WEEKLY' ? { weekNumber: Number(formData.weekNumber) || 1 } : {}),
         totalMarks: parseInt(formData.totalMarks),
         passMarks: parseInt(formData.passMarks),
         duration: parseInt(formData.duration) || null,

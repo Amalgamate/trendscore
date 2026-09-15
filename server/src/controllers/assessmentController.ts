@@ -817,7 +817,8 @@ export const createSummativeTest = async (req: AuthRequest, res: Response) => {
 
     const resolvedTestType = normalizeSummativeTestType(testType);
     const requestedTestDate = testDate ? new Date(testDate) : new Date();
-    const weekNumber = Math.min(14, Math.max(1, Number(rawWeekNumber) || 1));
+    const isWeeklyCycle = resolvedTestType === 'WEEKLY';
+    const weekNumber = isWeeklyCycle ? Math.min(14, Math.max(1, Number(rawWeekNumber) || 1)) : 1;
 
     // A grade may extend an existing assessment week with another subject, but
     // cannot create a second cycle for the same week. This allows Week 1,
@@ -828,12 +829,12 @@ export const createSummativeTest = async (req: AuthRequest, res: Response) => {
         term: normalizedTerm,
         academicYear: parseInt(academicYear),
         testType: resolvedTestType,
-        weekNumber,
+        ...(isWeeklyCycle ? { weekNumber } : {}),
         archived: false
       },
       select: { id: true, testDate: true }
     });
-    const existingSubject = await prisma.summativeTest.findFirst({
+    const existingSubject = isWeeklyCycle ? await prisma.summativeTest.findFirst({
       where: {
         grade: String(grade),
         term: normalizedTerm,
@@ -844,7 +845,7 @@ export const createSummativeTest = async (req: AuthRequest, res: Response) => {
         archived: false,
       },
       select: { id: true },
-    });
+    }) : null;
     if (existingSubject) {
       return res.status(409).json({
         success: false,
@@ -852,10 +853,18 @@ export const createSummativeTest = async (req: AuthRequest, res: Response) => {
         error: 'Assessment subject already exists'
       });
     }
+    if (!isWeeklyCycle && existingCycle?.testDate &&
+      existingCycle.testDate.toISOString().slice(0, 10) !== requestedTestDate.toISOString().slice(0, 10)) {
+      return res.status(409).json({
+        success: false,
+        message: `A ${resolvedTestType.replace(/_/g, ' ').toLowerCase()} cycle already exists for this grade, term, and year. Add subjects to the existing cycle instead.`,
+        error: 'Assessment cycle already exists'
+      });
+    }
 
     // Build title: if the provided title already contains the subject name,
     // use it as-is to avoid doubling up ("Maths End Term" → "Maths End Term - Maths - …")
-    const normalizedSeriesName = seriesName || name || `Week ${weekNumber} ${resolvedTestType} - ${normalizedTerm} ${academicYear}`;
+    const normalizedSeriesName = seriesName || name || `${isWeeklyCycle ? `Week ${weekNumber} ` : ''}${resolvedTestType} - ${normalizedTerm} ${academicYear}`;
     const resolvedTitle = (resolvedLearningArea && normalizedSeriesName.includes(resolvedLearningArea))
       ? normalizedSeriesName
       : `${normalizedSeriesName} - ${resolvedLearningArea} - ${resolvedTestType} - ${normalizedTerm} ${academicYear}`;
@@ -876,11 +885,11 @@ export const createSummativeTest = async (req: AuthRequest, res: Response) => {
           learningArea: resolvedLearningArea,
           learningAreaId: resolvedLearningAreaId || null,
           testType: resolvedTestType,
-          weekNumber,
+          ...(isWeeklyCycle ? { weekNumber } : {}),
           term: normalizedTerm,
           academicYear: parseInt(academicYear),
-          // A subject added to an existing week inherits its established date.
-          testDate: existingCycle?.testDate || requestedTestDate,
+          // A subject added to a weekly cycle inherits its established date.
+          testDate: isWeeklyCycle ? (existingCycle?.testDate || requestedTestDate) : requestedTestDate,
           totalMarks: normalizedMarks.totalMarks,
           passMarks: normalizedMarks.passMarks,
           description,
@@ -983,7 +992,8 @@ export const generateTestsBulk = async (req: AuthRequest, res: Response) => {
 
     const resolvedTestType = normalizeSummativeTestType(testType);
     const requestedTestDate = testDate ? new Date(testDate) : new Date();
-    const weekNumber = Math.min(14, Math.max(1, Number(rawWeekNumber) || 1));
+    const isWeeklyCycle = resolvedTestType === 'WEEKLY';
+    const weekNumber = isWeeklyCycle ? Math.min(14, Math.max(1, Number(rawWeekNumber) || 1)) : 1;
 
     // Keep one assessment cycle per grade, term, year, test type and week.
     // Multiple subjects can belong to that one week, while later weeks remain
@@ -994,15 +1004,23 @@ export const generateTestsBulk = async (req: AuthRequest, res: Response) => {
         term: normalizedTerm,
         academicYear: parseInt(academicYear),
         testType: resolvedTestType,
-        weekNumber,
+        ...(isWeeklyCycle ? { weekNumber } : {}),
         archived: false
       },
-      select: { id: true }
+      select: { id: true, testDate: true }
     });
-    if (existingCycle) {
+    if (isWeeklyCycle && existingCycle) {
       return res.status(409).json({
         success: false,
         message: `Week ${weekNumber} ${resolvedTestType.replace(/_/g, ' ').toLowerCase()} tests already exist for this grade, term, and year. Add subjects to the existing week instead.`,
+        error: 'Assessment cycle already exists'
+      });
+    }
+    if (!isWeeklyCycle && existingCycle?.testDate &&
+      existingCycle.testDate.toISOString().slice(0, 10) !== requestedTestDate.toISOString().slice(0, 10)) {
+      return res.status(409).json({
+        success: false,
+        message: `A ${resolvedTestType.replace(/_/g, ' ').toLowerCase()} cycle already exists for this grade, term, and year. Add subjects to the existing cycle instead.`,
         error: 'Assessment cycle already exists'
       });
     }
@@ -1056,11 +1074,11 @@ export const generateTestsBulk = async (req: AuthRequest, res: Response) => {
       try {
         const test = await prisma.summativeTest.create({
           data: {
-            title: `${seriesName || ('Week ' + weekNumber + ' ' + resolvedTestType + ' - ' + normalizedTerm + ' ' + academicYear)} - ${area} - Week ${weekNumber} - ${resolvedTestType} - ${normalizedTerm} ${academicYear}`,
+            title: `${seriesName || ((isWeeklyCycle ? 'Week ' + weekNumber + ' ' : '') + resolvedTestType + ' - ' + normalizedTerm + ' ' + academicYear)} - ${area}${isWeeklyCycle ? ' - Week ' + weekNumber : ''} - ${resolvedTestType} - ${normalizedTerm} ${academicYear}`,
             learningArea: resolvedArea.name || String(area),
             learningAreaId: resolvedArea.id || null,
             testType: resolvedTestType,
-            weekNumber,
+            ...(isWeeklyCycle ? { weekNumber } : {}),
             term: normalizedTerm,
             academicYear: parseInt(academicYear),
             testDate: requestedTestDate,
