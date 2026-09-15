@@ -116,6 +116,14 @@ router.get(
   asyncHandler(dashboardController.getInsights.bind(dashboardController))
 );
 
+/** Current-day staff and student-register operations report. */
+router.get(
+  '/operations-insights',
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
+  rateLimit({ windowMs: 60_000, maxRequests: 60 }),
+  asyncHandler(dashboardController.getOperationsInsights.bind(dashboardController))
+);
+
 /**
  * @route   GET /api/dashboard/intelligence-summary
  * @desc    Get consolidated intelligence data for dashboard analyzers

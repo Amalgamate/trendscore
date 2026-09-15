@@ -34,6 +34,8 @@ export const dashboardAPI = {
     fetchWithAuth(`/dashboard/admin?filter=${filter}`),
   getInsights: async (fresh = false) =>
     fetchWithAuth(`/dashboard/insights${fresh ? '?fresh=1' : ''}`),
+  getOperationsInsights: async () =>
+    fetchWithAuth('/dashboard/operations-insights'),
   getIntelligenceSummary: async () =>
     fetchWithAuth('/dashboard/intelligence-summary'),
   getAssessmentOperations: async (filters = {}) =>

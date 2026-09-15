@@ -42,6 +42,7 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
     { id: 'super-admin-quick-actions', label: 'Quick Actions', description: 'Priority control shortcuts' },
     { id: 'system-control', label: 'System Control', description: 'Settings, logs, backup, and maintenance' },
     { id: 'system-reporting', label: 'System Reporting', description: 'Logs, audit trails, and operational visibility' },
+    { id: 'operations-insights', label: 'Operations Insights', description: 'Today\'s staff and learner-register overview' },
   ]);
 
   const loadMetrics = async (filter = 'term') => {
@@ -83,6 +84,7 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
       { label: 'Branding',       description: 'Control school branding and public identity',      icon: Building2,     path: 'settings-branding'        },
     ],
     reporting: [
+      { label: 'Operations Insights', description: 'View today\'s staff clock-ins and learner-register completion', icon: ClipboardCheck, path: 'operations-insights' },
       { label: 'System Logs', description: 'Review errors, access patterns, and server events', icon: Activity, path: 'settings-system-logs' },
       { label: 'Audit Trail', description: 'Inspect administrative and finance-sensitive actions', icon: FileText, path: 'settings-system-logs' },
       { label: 'Financial Reports', description: 'Open accounting reports and statements', icon: BarChart3, path: 'accounting-reports' },
@@ -225,6 +227,12 @@ const SuperAdminDashboard = ({ learners = [], teachers = [], user, onNavigate })
         <DashboardSection id="system-reporting" controls={sectionControls}>
           <AppCard title="System Reporting" subtitle="Operational reporting, logs, audits, and oversight">
             {renderToolGrid(toolGroups.reporting)}
+          </AppCard>
+        </DashboardSection>
+
+        <DashboardSection id="operations-insights" controls={sectionControls}>
+          <AppCard title="Operations Insights" subtitle="A glanceable daily picture of staff and student attendance">
+            {renderToolGrid([{ label: 'Attendance Insights', description: 'Staff groups and learner-register completion for today', icon: ClipboardCheck, path: 'operations-insights' }])}
           </AppCard>
         </DashboardSection>
 

@@ -241,6 +241,7 @@ export const PAGE_TITLES = {
   'settings-backup': 'System Maintenance',
   'settings-system-logs': 'System Logs',
   'settings-system-control': 'System Control',
+  'operations-insights': 'Operations Insights',
   'settings-communication': 'Message Settings',
   'settings-payment': 'Payment Settings',
   'settings-profile': 'My Profile'

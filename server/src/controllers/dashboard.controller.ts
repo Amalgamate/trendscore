@@ -2699,6 +2699,172 @@ export class DashboardController {
         }
     }
 
+    /**
+     * GET /api/dashboard/operations-insights
+     * A compact, current-day operations view for school administrators.
+     * It deliberately reports register completion separately from learner
+     * presence: a class with a partially completed register must not look
+     * the same as one whose register has not been opened at all.
+     */
+    async getOperationsInsights(req: AuthRequest, res: Response) {
+        const schoolId = req.school?.id;
+        if (!schoolId) throw new ApiError(400, 'School context is required');
+
+        const institutionType = this.getInstitutionType(req) as any;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        const staff = await prisma.user.findMany({
+            where: {
+                archived: false,
+                status: 'ACTIVE',
+                role: { notIn: ['STUDENT', 'PARENT'] as any },
+            },
+            select: { id: true, role: true, firstName: true, lastName: true, staffId: true },
+        });
+
+        const staffIds = staff.map((person) => person.id);
+        const [staffLogs, classes] = await Promise.all([
+            staffIds.length
+                ? prisma.staffAttendanceLog.findMany({
+                    where: {
+                        userId: { in: staffIds },
+                        date: { gte: today, lt: tomorrow },
+                        // Some older clock-in records predate schoolId. They
+                        // remain safe in a single-school instance and are
+                        // included so the historical register is not hidden.
+                        OR: [{ schoolId }, { schoolId: null }],
+                    },
+                    select: { userId: true, status: true, clockInAt: true, clockOutAt: true },
+                })
+                : Promise.resolve([]),
+            prisma.class.findMany({
+                where: { active: true, archived: false, institutionType },
+                select: {
+                    id: true,
+                    name: true,
+                    grade: true,
+                    stream: true,
+                    room: true,
+                    teacher: { select: { firstName: true, lastName: true } },
+                    _count: { select: { enrollments: { where: { active: true, archived: false } } } },
+                },
+            }),
+        ]);
+
+        const presentStatuses = new Set(['PRESENT', 'LATE', 'PARTIAL']);
+        const clockedIn = new Set(staffLogs.filter((log) => presentStatuses.has(log.status)).map((log) => log.userId));
+        const logByUser = new Map(staffLogs.map((log) => [log.userId, log]));
+        const staffGroup = (role: string) => {
+            if (['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].includes(role)) return 'administrators';
+            if (role === 'TEACHER') return 'tutors';
+            return 'supportStaff';
+        };
+        type StaffMember = {
+            id: string;
+            name: string;
+            staffId: string | null;
+            role: string;
+            roleLabel: string;
+            status: string;
+            clockInAt: Date | null;
+            clockOutAt: Date | null;
+        };
+        const staffSummary: Record<string, { total: number; clockedIn: number; pending: number; members: StaffMember[] }> = {
+            administrators: { total: 0, clockedIn: 0, pending: 0, members: [] },
+            tutors: { total: 0, clockedIn: 0, pending: 0, members: [] },
+            supportStaff: { total: 0, clockedIn: 0, pending: 0, members: [] },
+        };
+        staff.forEach((person) => {
+            const group = staffGroup(person.role);
+            const bucket = staffSummary[group];
+            const isClockedIn = clockedIn.has(person.id);
+            const log = logByUser.get(person.id);
+            bucket.total += 1;
+            if (isClockedIn) bucket.clockedIn += 1;
+            bucket.members.push({
+                id: person.id,
+                name: [person.firstName, person.lastName].filter(Boolean).join(' ') || 'Unnamed staff',
+                staffId: person.staffId || null,
+                role: person.role,
+                roleLabel: person.role.replace(/_/g, ' '),
+                status: isClockedIn ? (log?.status || 'PRESENT') : 'NOT_CLOCKED_IN',
+                clockInAt: log?.clockInAt || null,
+                clockOutAt: log?.clockOutAt || null,
+            });
+        });
+        Object.values(staffSummary).forEach((bucket) => {
+            bucket.pending = bucket.total - bucket.clockedIn;
+            bucket.members.sort((a, b) => {
+                const aIn = a.status !== 'NOT_CLOCKED_IN';
+                const bIn = b.status !== 'NOT_CLOCKED_IN';
+                if (aIn !== bIn) return aIn ? -1 : 1;
+                return a.name.localeCompare(b.name);
+            });
+        });
+
+        const classIds = classes.map((item) => item.id);
+        const attendanceByClass = classIds.length
+            ? await prisma.attendance.groupBy({
+                by: ['classId', 'status'],
+                where: { classId: { in: classIds }, date: { gte: today, lt: tomorrow }, archived: false },
+                _count: true,
+            })
+            : [];
+        const registers = new Map<string, { marked: number; present: number; absent: number; late: number }>();
+        attendanceByClass.forEach((row) => {
+            if (!row.classId) return;
+            const current = registers.get(row.classId) || { marked: 0, present: 0, absent: 0, late: 0 };
+            current.marked += row._count;
+            if (row.status === 'PRESENT') current.present += row._count;
+            if (row.status === 'ABSENT') current.absent += row._count;
+            if (row.status === 'LATE') current.late += row._count;
+            registers.set(row.classId, current);
+        });
+
+        const classRegisters = classes.map((item) => {
+            const register = registers.get(item.id) || { marked: 0, present: 0, absent: 0, late: 0 };
+            const expected = item._count.enrollments;
+            return {
+                classId: item.id,
+                className: item.name || [item.grade, item.stream].filter(Boolean).join(' '),
+                grade: item.grade,
+                stream: item.stream,
+                room: item.room || null,
+                teacherName: item.teacher ? [item.teacher.firstName, item.teacher.lastName].filter(Boolean).join(' ') : null,
+                expected,
+                ...register,
+                status: register.marked === 0 ? 'NOT_STARTED' : register.marked >= expected ? 'COMPLETE' : 'IN_PROGRESS',
+            };
+        });
+        const totalExpected = classRegisters.reduce((sum, item) => sum + item.expected, 0);
+        const totalMarked = classRegisters.reduce((sum, item) => sum + item.marked, 0);
+
+        res.json({
+            success: true,
+            data: {
+                generatedAt: new Date().toISOString(),
+                date: today.toISOString(),
+                staffAttendance: {
+                    ...staffSummary,
+                    total: staff.length,
+                    clockedIn: clockedIn.size,
+                },
+                studentRegisters: {
+                    classesExpected: classRegisters.length,
+                    complete: classRegisters.filter((item) => item.status === 'COMPLETE').length,
+                    inProgress: classRegisters.filter((item) => item.status === 'IN_PROGRESS').length,
+                    notStarted: classRegisters.filter((item) => item.status === 'NOT_STARTED').length,
+                    learnersExpected: totalExpected,
+                    learnersMarked: totalMarked,
+                    classes: classRegisters.sort((a, b) => a.className.localeCompare(b.className)),
+                },
+            },
+        });
+    }
+
     async getAssessmentOperations(req: AuthRequest, res: Response) {
         try {
             const restrictedTeacher = hasAnyRole(req.user, ['TEACHER'])
