@@ -614,6 +614,29 @@ repair_interrupted_learner_student_user_migration() {
   " < /dev/null
 }
 
+repair_summative_week_column() {
+  local kind="$1"
+  local project="${2:-}"
+  local env_file="${3:-}"
+
+  # Some existing schools were baselined before this migration's SQL had run.
+  # Prisma therefore reports it applied even though the physical column is
+  # absent. This idempotent repair restores the schema before queries run.
+  log "━━ Repair summative assessment week column if needed ━━"
+  compose_with_pinned_images "${kind}" "${project}" "${env_file}" run -T --no-deps --rm backend sh -lc '
+    cat >/tmp/repair-summative-week.sql <<'"'"'SQL'"'"'
+ALTER TABLE "summative_tests"
+  ADD COLUMN IF NOT EXISTS "weekNumber" INTEGER NOT NULL DEFAULT 1;
+
+DROP INDEX IF EXISTS "summative_tests_series_unique_key";
+
+CREATE UNIQUE INDEX IF NOT EXISTS "summative_tests_series_unique_key"
+  ON "summative_tests"("grade", "learningArea", "term", "academicYear", "testType", "weekNumber", "title");
+SQL
+    npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-summative-week.sql
+  ' < /dev/null
+}
+
 auto_baseline_if_needed() {
   local kind="$1"
   local project="${2:-}"
@@ -669,6 +692,7 @@ run_migrations() {
   auto_baseline_if_needed "${kind}" "${project}" "${env_file}" || return 1
   repair_summative_series_migration "${kind}" "${project}" "${env_file}" || return 1
   repair_interrupted_learner_student_user_migration "${kind}" "${project}" "${env_file}" || return 1
+  repair_summative_week_column "${kind}" "${project}" "${env_file}" || return 1
 
   if [[ "${kind}" == "main" ]]; then
     compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
