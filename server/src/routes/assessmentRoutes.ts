@@ -86,6 +86,7 @@ const createSummativeTestSchema = z.object({
 
   academicYear: z.coerce.number().int().min(2020).max(2100).optional(),
   testDate: z.string().optional(),
+  weekNumber: z.coerce.number().int().min(1).max(14).optional(),
 
   // Marks — coerced from string inputs
   totalMarks: z.coerce.number().int().min(1).max(1000).optional(),

@@ -129,8 +129,8 @@ const SummativeTestFormDesktop = ({ onBack, onSuccess, initialTestType = null, i
             {errors.title && <p className="text-[10px] text-red-500 font-medium uppercase mt-1">{errors.title}</p>}
           </div>
 
-          {/* Assessment Type & Term */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Assessment Type, Term & Assessment Week */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="space-y-2">
               <label className="block text-xs font-medium text-slate-500 uppercase tracking-widest">Assessment Type</label>
               <select
@@ -156,6 +156,18 @@ const SummativeTestFormDesktop = ({ onBack, onSuccess, initialTestType = null, i
                 <option value="">Select Term</option>
                 {terms.map(term => (
                   <option key={term.value} value={term.value}>{term.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="block text-xs font-medium text-slate-500 uppercase tracking-widest">Assessment Week</label>
+              <select
+                value={formData.weekNumber}
+                onChange={(e) => handleInputChange('weekNumber', e.target.value)}
+                className="w-full h-11 px-3 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-purple outline-none text-sm font-medium text-slate-700"
+              >
+                {Array.from({ length: 14 }, (_, index) => index + 1).map((week) => (
+                  <option key={week} value={week}>Week {week}</option>
                 ))}
               </select>
             </div>

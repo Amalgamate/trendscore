@@ -97,6 +97,7 @@ const buildSeriesSubjectSeed = (tests = [], displayType = '') => {
     term: source.term || 'TERM_1',
     academicYear: source.academicYear || new Date().getFullYear(),
     testDate: source.testDate || source.createdAt || new Date().toISOString(),
+    weekNumber: source.weekNumber || 1,
     totalMarks: source.totalMarks || 100,
     passMarks: source.passMarks ?? 40,
     duration: source.duration || 60,
@@ -312,12 +313,13 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
         grouped[gradeKey] = {};
       }
 
-      // Group key: title-derived series name + term + academicYear.
+      // Group key: title-derived series name + term + academicYear + week.
       // The DB enum has no MOCK/MONTHLY/WEEKLY values, so relying only on
       // testType collapses custom series into "OTHER" or "ASSESSMENT".
       const canonicalTestType = normalizeTestType(test.testType) || 'ASSESSMENT';
       const displayType = getSeriesDisplayName(test, canonicalTestType);
-      const seriesKey = `${displayType}__${test.term || ''}__${test.academicYear || ''}`;
+      const weekNumber = Number(test.weekNumber) || 1;
+      const seriesKey = `${displayType}__${test.term || ''}__${test.academicYear || ''}__${weekNumber}`;
 
       if (!grouped[gradeKey][seriesKey]) {
         // Human-readable term: TERM_1 → Term 1
@@ -331,6 +333,7 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
           displayType,   // e.g. "Opener"
           displayTerm,   // e.g. "Term 1"
           academicYear: test.academicYear,
+          weekNumber,
           displayDate: null,
           displayTestType: null,
           tests: []
@@ -674,7 +677,7 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
                                 <div className="flex flex-col">
                                   <span className="text-sm font-medium text-slate-800 leading-tight">{data.displayType}</span>
                                   <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-widest mt-1">
-                                    {data.displayTestType || 'ASSESSMENT'}{data.displayDate ? ` • ${data.displayDate}` : ''} • {data.displayTerm} {data.academicYear}
+                                    Week {data.weekNumber || 1} • {data.displayTestType || 'ASSESSMENT'}{data.displayDate ? ` • ${data.displayDate}` : ''} • {data.displayTerm} {data.academicYear}
                                   </span>
                                 </div>
                               </td>

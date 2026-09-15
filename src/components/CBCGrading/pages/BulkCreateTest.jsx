@@ -64,6 +64,7 @@ const BulkCreateTest = ({ onBack, onSuccess }) => {
         term: 'TERM_1',
         academicYear: new Date().getFullYear().toString(),
         testDate: new Date().toISOString().split('T')[0],
+        weekNumber: '1',
         totalMarks: '100',
         passMarks: '50',
         duration: '60',
@@ -163,6 +164,7 @@ const BulkCreateTest = ({ onBack, onSuccess }) => {
                     term: formData.term,
                     academicYear: formData.academicYear,
                     testDate: formData.testDate,
+                    weekNumber: Number(formData.weekNumber),
                     totalMarks: formData.totalMarks,
                     passMarks: formData.passMarks,
                     duration: formData.duration,
@@ -281,8 +283,8 @@ const BulkCreateTest = ({ onBack, onSuccess }) => {
                         </div>
                     </div>
 
-                    {/* Academic Year + Test Date */}
-                    <div className="grid grid-cols-2 gap-4">
+                    {/* Academic Year + Assessment Week + Test Date */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div className="space-y-1.5">
                             <label className="block text-xs font-medium text-slate-500 uppercase tracking-widest">Academic Year</label>
                             <input
@@ -291,6 +293,18 @@ const BulkCreateTest = ({ onBack, onSuccess }) => {
                                 onChange={(e) => setFormData({ ...formData, academicYear: e.target.value })}
                                 className="w-full h-11 px-3 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-purple outline-none text-sm font-medium text-slate-700"
                             />
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="block text-xs font-medium text-slate-500 uppercase tracking-widest">Assessment Week</label>
+                            <select
+                                value={formData.weekNumber}
+                                onChange={(e) => setFormData({ ...formData, weekNumber: e.target.value })}
+                                className="w-full h-11 px-3 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-purple outline-none appearance-none text-sm font-medium text-slate-700"
+                            >
+                                {Array.from({ length: 14 }, (_, index) => index + 1).map((week) => (
+                                    <option key={week} value={week}>Week {week}</option>
+                                ))}
+                            </select>
                         </div>
                         <div className="space-y-1.5">
                             <label className="block text-xs font-medium text-slate-500 uppercase tracking-widest">Test Date</label>

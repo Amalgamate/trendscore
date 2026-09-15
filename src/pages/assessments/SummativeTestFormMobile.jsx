@@ -202,6 +202,19 @@ const SummativeTestFormMobile = ({ onBack, onSuccess, initialTestType = null, in
             )}
           </div>
 
+          <div>
+            <label className={labelClass}>Assessment Week</label>
+            <select
+              value={formData.weekNumber}
+              onChange={(e) => handleInputChange('weekNumber', e.target.value)}
+              className={inputClass()}
+            >
+              {Array.from({ length: 14 }, (_, index) => index + 1).map((week) => (
+                <option key={week} value={week}>Week {week}</option>
+              ))}
+            </select>
+          </div>
+
           {/* Scale */}
           <div>
             <label className={labelClass}>Performance Standard</label>
