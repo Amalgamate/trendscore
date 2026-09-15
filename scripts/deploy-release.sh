@@ -637,6 +637,35 @@ SQL
   ' < /dev/null
 }
 
+repair_presence_monitoring_columns() {
+  local kind="$1"
+  local project="${2:-}"
+  local env_file="${3:-}"
+
+  # Baselined databases can have the migration recorded while the later
+  # presence-monitoring columns are absent. These are additive, defaulted
+  # columns, so running this on every release is safe.
+  log "━━ Repair presence-monitoring columns if needed ━━"
+  compose_with_pinned_images "${kind}" "${project}" "${env_file}" run -T --no-deps --rm backend sh -lc '
+    cat >/tmp/repair-presence-monitoring.sql <<'"'"'SQL'"'"'
+ALTER TABLE "users"
+  ADD COLUMN IF NOT EXISTS "presenceConsentAcceptedAt" TIMESTAMP(3);
+
+ALTER TABLE "schools"
+  ADD COLUMN IF NOT EXISTS "presenceMonitoringEnabled" BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS "presenceHeartbeatMinutes" INTEGER NOT NULL DEFAULT 5,
+  ADD COLUMN IF NOT EXISTS "presenceStaleThresholdMinutes" INTEGER NOT NULL DEFAULT 25;
+
+ALTER TABLE "classes"
+  ADD COLUMN IF NOT EXISTS "attendanceLockExempt" BOOLEAN NOT NULL DEFAULT false;
+
+ALTER TABLE "subject_assignments"
+  ADD COLUMN IF NOT EXISTS "attendanceLockExempt" BOOLEAN NOT NULL DEFAULT false;
+SQL
+    npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-presence-monitoring.sql
+  ' < /dev/null
+}
+
 auto_baseline_if_needed() {
   local kind="$1"
   local project="${2:-}"
@@ -692,6 +721,7 @@ run_migrations() {
   auto_baseline_if_needed "${kind}" "${project}" "${env_file}" || return 1
   repair_summative_series_migration "${kind}" "${project}" "${env_file}" || return 1
   repair_interrupted_learner_student_user_migration "${kind}" "${project}" "${env_file}" || return 1
+  repair_presence_monitoring_columns "${kind}" "${project}" "${env_file}" || return 1
   repair_summative_week_column "${kind}" "${project}" "${env_file}" || return 1
 
   if [[ "${kind}" == "main" ]]; then
