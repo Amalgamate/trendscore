@@ -732,10 +732,22 @@ ALTER TABLE "classes"
   ADD COLUMN IF NOT EXISTS "attendanceLockExempt" BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE "subject_assignments"
   ADD COLUMN IF NOT EXISTS "attendanceLockExempt" BOOLEAN NOT NULL DEFAULT false;
+
+-- 5. Repair the recurring summative-assessment week column for databases
+-- whose Prisma history was baselined before the physical column existed.
+-- This is deliberately idempotent: it also protects older schools where the
+-- migration was recorded but its SQL never ran.
+ALTER TABLE "summative_tests"
+  ADD COLUMN IF NOT EXISTS "weekNumber" INTEGER NOT NULL DEFAULT 1;
+
+DROP INDEX IF EXISTS "summative_tests_series_unique_key";
+
+CREATE UNIQUE INDEX IF NOT EXISTS "summative_tests_series_unique_key"
+  ON "summative_tests"("grade", "learningArea", "term", "academicYear", "testType", "weekNumber", "title");
 SQL
       npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-presence-monitoring.sql
 
-      # 5. Apply any pending migrations
+      # 6. Apply any pending migrations
       npx prisma migrate deploy
     ' < /dev/null
 }
