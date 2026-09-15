@@ -57,6 +57,7 @@ const BulkCreateTest = ({ onBack, onSuccess }) => {
     const [saving, setSaving] = useState(false);
     const [loadingScales, setLoadingScales] = useState(false);
     const [scales, setScales] = useState([]);
+    const [activeTermContext, setActiveTermContext] = useState(null);
 
     const [formData, setFormData] = useState({
         title: '',
@@ -77,6 +78,43 @@ const BulkCreateTest = ({ onBack, onSuccess }) => {
     const [areaCountsByGrade, setAreaCountsByGrade] = useState({});
 
     useEffect(() => { loadData(); }, []);
+
+    // The active term is the safe default. Historical series remain possible,
+    // but are explicitly identified as backdated before they are created.
+    useEffect(() => {
+        let cancelled = false;
+        const loadActiveTerm = async () => {
+            try {
+                const response = await configAPI.getActiveTermConfig();
+                const active = response?.data || response;
+                if (!active?.term || !active?.academicYear || cancelled) return;
+
+                setActiveTermContext({
+                    term: String(active.term),
+                    academicYear: Number(active.academicYear),
+                });
+                setFormData((current) => ({
+                    ...current,
+                    term: String(active.term),
+                    academicYear: String(active.academicYear),
+                }));
+            } catch (error) {
+                console.warn('Could not load the active term for bulk test creation:', error);
+            }
+        };
+        loadActiveTerm();
+        return () => { cancelled = true; };
+    }, []);
+
+    const termOrder = { TERM_1: 1, TERM_2: 2, TERM_3: 3 };
+    const selectedYear = Number(formData.academicYear);
+    const isBackdated = Boolean(
+        activeTermContext && (
+            selectedYear < activeTermContext.academicYear ||
+            (selectedYear === activeTermContext.academicYear &&
+                (termOrder[formData.term] || 0) < (termOrder[activeTermContext.term] || 0))
+        )
+    );
 
     useEffect(() => {
         let cancelled = false;
@@ -254,7 +292,11 @@ const BulkCreateTest = ({ onBack, onSuccess }) => {
                             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                             className="w-full h-11 px-3 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-purple outline-none text-sm font-medium text-slate-700"
                         />
-                        <p className="text-[10px] text-slate-400">Used as a prefix for all generated tests.</p>
+                        <p className="text-[10px] text-slate-400">
+                            {['OPENER', 'MID_TERM', 'END_TERM'].includes(normalizeTestType(formData.testType))
+                                ? 'Only one series is allowed for this assessment type in each grade, term, and year.'
+                                : 'Use a distinct name (for example, “Random 1” or “Random 2”) for another series of the same assessment type.'}
+                        </p>
                     </div>
 
                     <hr className="border-slate-100" />
@@ -282,6 +324,18 @@ const BulkCreateTest = ({ onBack, onSuccess }) => {
                             </select>
                         </div>
                     </div>
+
+                    {activeTermContext && (
+                        <p className="text-[10px] font-medium text-slate-400 -mt-3">
+                            Active context: {TERMS.find((item) => item.value === activeTermContext.term)?.label || activeTermContext.term.replace(/_/g, ' ')} {activeTermContext.academicYear}
+                        </p>
+                    )}
+
+                    {isBackdated && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
+                            <span className="font-semibold">Backdated assessment:</span> this series is being created for a term before the active school term. Confirm the term, year, and test date before continuing.
+                        </div>
+                    )}
 
                     {/* Academic Year + Assessment Week + Test Date */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
