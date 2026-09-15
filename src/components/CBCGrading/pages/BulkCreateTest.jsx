@@ -261,7 +261,7 @@ const BulkCreateTest = ({ onBack, onSuccess }) => {
 
                     {/* Assessment Type + Term */}
                     <div className="grid grid-cols-2 gap-4">
-                        {normalizeTestType(formData.testType) === 'WEEKLY' && <div className="space-y-1.5">
+                        <div className="space-y-1.5">
                             <label className="block text-xs font-medium text-slate-500 uppercase tracking-widest">Assessment Type</label>
                             <select
                                 value={formData.testType}
@@ -270,8 +270,8 @@ const BulkCreateTest = ({ onBack, onSuccess }) => {
                             >
                                 {CANONICAL_TEST_TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                             </select>
-                        </div>}
-                        {normalizeTestType(formData.testType) === 'WEEKLY' && <div className="space-y-1.5">
+                        </div>
+                        <div className="space-y-1.5">
                             <label className="block text-xs font-medium text-slate-500 uppercase tracking-widest">Term</label>
                             <select
                                 value={formData.term}
@@ -280,7 +280,7 @@ const BulkCreateTest = ({ onBack, onSuccess }) => {
                             >
                                 {TERMS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                             </select>
-                        </div>}
+                        </div>
                     </div>
 
                     {/* Academic Year + Assessment Week + Test Date */}
