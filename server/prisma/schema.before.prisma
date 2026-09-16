@@ -1,0 +1,245 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id                      String          @id @default(uuid())
+  email                   String          @unique
+  username                String?         @unique
+  parentCode              String?         @unique
+  password                String
+  firstName               String
+  lastName                String
+  middleName              String?
+  phone                   String?
+  role                    UserRole        @default(TEACHER)
+  roles                   UserRole[]      @default([])
+  status                  UserStatus      @default(ACTIVE)
+  institutionType         InstitutionType @default(PRIMARY_CBC)
+  archived                Boolean         @default(false)
+  archivedAt              DateTime?
+  archivedBy              String?
+  emailVerificationToken  String?
+  emailVerificationSentAt DateTime?
+  phoneVerificationCode   String?
+  phoneVerificationSentAt DateTime?
+  verificationRequired    Boolean         @default(true)
+  staffId                 String?         @unique
+  idCardPhoto             String?
+  idCardIssued            DateTime?
+  idCardExpiry            DateTime?
+  lastLogin               DateTime?
+  emailVerified           Boolean         @default(false)
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+  loginAttempts           Int             @default(0)
+  lockedUntil             DateTime?
+  passwordResetToken      String?
+  passwordResetExpiry     DateTime?
+  profilePicture          String?
+  bankAccountName         String?
+  bankAccountNumber       String?
+  bankName                String?
+  basicSalary             Decimal?        @db.Decimal(10, 2)
+  employmentType          String?         @default("PERMANENT")
+  joinedAt                DateTime?       @default(now())
+  kraPin                  String?
+  nhifNumber              String?
+  nssfNumber              String?
+  subject                 String?
+  gender                  String?
+
+  housingLevyExempt          Boolean                     @default(false)
+  presenceConsentAcceptedAt  DateTime?
+  createdAggregationConfigs  AggregationConfig[]
+  assignedAssets             AssetAssignment[]           @relation("AssetUser")
+  attendancesMarked          Attendance[]                @relation("AttendanceMarker")
+  biometricCredentials       BiometricCredential[]
+  changeHistory              ChangeHistory[]
+  schedules                  ClassSchedule[]             @relation("TeacherSchedules")
+  classesAsTeacher           Class[]                     @relation("ClassTeacher")
+  recordedCoCurricular       CoCurricularActivity[]      @relation("RecorderCoCurricular")
+  createdContactGroups       ContactGroup[]              @relation("CreatedContactGroups")
+  assessedCoreCompetencies   CoreCompetency[]            @relation("AssessorCoreCompetencies")
+  uploadedDocuments          Document[]
+  createdEvents              Event[]                     @relation("EventCreator")
+  recordedPayments           FeePayment[]                @relation("RecordedPayments")
+  feeComments                FeeComment[]                @relation("FeeCommentAuthor")
+  feePledges                 FeePledge[]                 @relation("FeePledgeCreator")
+  feeWaivers                 FeeWaiver[]                 @relation("FeeWaiverCreator")
+  approvedFeeWaivers         FeeWaiver[]                 @relation("FeeWaiverApprover")
+  createdFeeStructures       FeeStructure[]              @relation("CreatedFeeStructures")
+  waivedFines                Fine[]                      @relation("FineWaivers")
+  formativeAssessments       FormativeAssessment[]       @relation("TeacherFormativeAssessments")
+  familyMembership           FamilyMember?
+  invitedFamilyMembers       FamilyMember[]              @relation("FamilyMemberInviter")
+  learners                   Learner[]                   @relation("ParentLearners")
+  studentLearner             Learner?                    @relation("StudentLearner")
+  approvedLeaves             LeaveRequest[]              @relation("ApprovedLeaves")
+  leaveRequests              LeaveRequest[]              @relation("UserLeaves")
+  libraryMember              LibraryMember?
+  uploadedLMSContent         LMSContent[]                @relation("LMSUploadedContent")
+  lmsCourses                 LMSCourse[]                 @relation("LMSCreatedCourses")
+  lmsEnrollments             LMSEnrollment[]             @relation("LMSEnrolledBy")
+  createdNotices             Notice[]                    @relation("NoticeAuthor")
+  payrollRecords             PayrollRecord[]
+  conductedReviews           PerformanceReview[]         @relation("ConductedReviews")
+  performanceReviews         PerformanceReview[]         @relation("StaffReviews")
+  schemesOfWork              SchemeOfWork[]              @relation("TeacherSchemes")
+  staffAttendanceLogs        StaffAttendanceLog[]
+  staffAttendanceAttemptLogs StaffAttendanceAttemptLog[]
+  staffPresencePings         StaffPresencePing[]
+  staffDocuments             StaffDocument[]
+  staffAllowances            StaffAllowance[]
+  staffDeductions            StaffDeduction[]
+  approvedRequisitions       StockRequisition[]          @relation("ApprovedBy")
+  inventoryRequisitions      StockRequisition[]          @relation("RequestedBy")
+  subjectAssignments         SubjectAssignment[]
+  timetableEntries           TimetableEntry[]
+  timetableAvailabilities    TeacherAvailability[]
+  timetableChangeRequests    TimetableChangeRequest[]     @relation("TimetableChangeRequestor")
+  reviewedTimetableChanges   TimetableChangeRequest[]     @relation("TimetableChangeRequestReviewer")
+  taughtTimetableChanges     TimetableChangeRequest[]     @relation("TimetableChangeRequestTeacher")
+  summativeResultHistories   SummativeResultHistory[]    @relation("ChangedBy")
+  recordedResults            SummativeResult[]           @relation("RecordedResults")
+  approvedTests               SummativeTest[]             @relation("ApprovedTests")
+  createdTests                SummativeTest[]             @relation("CreatedTests")
+  submittedTests               SummativeTest[]             @relation("SubmittedTests")
+  sentMessages                SupportMessage[]            @relation("SentMessages")
+  notifications                UserNotification[]          @relation("UserNotifications")
+  authOtpChallenges            AuthOtpChallenge[]
+  assignedTickets              SupportTicket[]             @relation("AssignedTickets")
+  tickets                      SupportTicket[]             @relation("UserTickets")
+  createdTermConfigs           TermConfig[]
+  assessedValues                ValuesAssessment[]          @relation("AssessorValues")
+  pushSubscriptions             PushSubscription[]          @relation("UserPushSubscriptions")
+  conversationParticipants      ConversationParticipant[]
+  sentChatMessages              ChatMessage[]               @relation("ChatMessageSender")
+  chatMessageReactions          ChatMessageReaction[]       @relation("ChatReactionUser")
+  createdConversations          Conversation[]
+  appConfigsUpdated             SchoolAppConfig[]           @relation("AppConfigUpdater")
+  appAuditLogs                  AppAuditLog[]               @relation("AppAuditor")
+  dutyRosterAssignments         DutyRosterAssignment[]      @relation("DutyTeacher")
+  dutyRostersCreated             DutyRoster[]
+  approvalRequests                ApprovalRequest[]           @relation("ApprovalRequestor")
+  approvalActions                 ApprovalAction[]            @relation("ApprovalActioner")
+  createdLessons                  LearningLesson[]            @relation("LessonCreator")
+  createdAssignments               LearningAssignment[]        @relation("AssignmentCreator")
+  markedSubmissions                 LearningSubmission[]        @relation("SubmissionMarker")
+  uploadedResources                 LearningResource[]          @relation("ResourceUploader")
+  marketplaceListings                MarketplaceListing[]        @relation("MarketplaceSeller")
+  marketplacePurchases                MarketplacePurchase[]       @relation("MarketplaceBuyer")
+  counsellorNotesAuthored              CounsellorNote[]            @relation("CounsellorNoteAuthor")
+  selectionUnlocksGranted               PathwaySelectionUnlock[]    @relation("SelectionUnlocker")
+  parentCommentsAuthored                 ParentComment[]             @relation("ParentCommentAuthor")
+  counsellingSessionsHeld                 CounsellingSession[]        @relation("CounsellingSessionCounsellor")
+  pathwayInterventions                     PathwayIntervention[]       @relation("PathwayInterventionCounsellor")
+
+  @@index([role, archived, status])
+  @@index([archived])
+  @@index([status, archived])
+  @@map("users")
+}
+
+model School {
+  id                                     String                     @id @default(uuid())
+  name                                   String                     @unique
+  registrationNo                         String?                    @unique
+  address                                String?
+  county                                 String?
+  subCounty                              String?
+  ward                                   String?
+  phone                                  String?
+  email                                  String?
+  website                                String?
+  principalName                          String?
+  principalPhone                         String?
+  logoUrl                                String?
+  faviconUrl                             String?
+  pwaLogoUrl                             String?
+  schoolType                             String?
+  motto                                  String?
+  vision                                 String?
+  mission                                String?
+  admissionFormatType                    AdmissionFormatType        @default(BRANCH_PREFIX_START)
+  branchSeparator                        String                     @default("-")
+  admissionNumberMode                    AdmissionNumberingMode     @default(AUTO)
+  admissionPattern                       String                     @default("ADM-{YEAR}-{SEQ}")
+  admissionSequenceWidth                 Int                        @default(4)
+  admissionStartNumber                   Int                        @default(1000)
+  admissionResetRule                     AdmissionSequenceResetRule @default(YEARLY)
+  admissionNumberingLocked               Boolean                    @default(true)
+  active                                 Boolean                    @default(true)
+  status                                 String                     @default("ACTIVE")
+  institutionType                        InstitutionType            @default(PRIMARY_CBC)
+  institutionTypeLocked                  Boolean                    @default(false)
+  requiresUserVerification               Boolean                    @default(true)
+  curriculumType                         CurriculumType             @default(CBC_AND_EXAM)
+  assessmentMode                         AssessmentMode             @default(MIXED)
+  customGradingScale                     Json?
+  archived                               Boolean                    @default(false)
+  archivedAt                             DateTime?
+  archivedBy                             String?
+  createdAt                              DateTime                   @default(now())
+  updatedAt                              DateTime                   @updatedAt
+  stampUrl                               String?
+  latitude                               Float?
+  longitude                              Float?
+  geofenceRadiusMeters                   Int                        @default(30)
+  geofenceEnforcementMode                GeofenceEnforcementMode    @default(OFF)
+  allowedClockInIps                      String?
+  presenceMonitoringEnabled              Boolean                    @default(false)
+  presenceHeartbeatMinutes               Int                        @default(5)
+  presenceStaleThresholdMinutes          Int                        @default(25)
+  attendanceLockEnabled                  Boolean                    @default(true)
+  attendanceLockTime                     String                     @default("07:30")
+  attendanceUnlockWindowMinutes          Int                        @default(60)
+  attendanceAllowLateAfterLock           Boolean                    @default(true)
+  attendanceRequireRemarksForLateExcused Boolean                    @default(true)
+  attendanceNotifyAbsentDefault          Boolean                    @default(true)
+  staffWorkStartTime                     String                     @default("07:30")
+  staffWorkEndTime                       String                     @default("16:30")
+  staffRequiredMinutes                   Int                        @default(480)
+  staffPartialDayMinutes                 Int                        @default(240)
+  staffWorkingDays                       Json                       @default("[1,2,3,4,5]")
+  brandColor                             String?
+  welcomeMessage                         String?
+  welcomeTitle                           String?
+  onboardingMessage                      String?
+  onboardingTitle                        String?
+  primaryColor                           String?
+  secondaryColor                         String?
+  accentColor1                           String?
+  accentColor2                           String?
+  kraPin                                 String?
+  vatNumber                              String?
+  etimsConfig                            Json?
+  nemisConfig                            Json?
+
+  biometricDevices           BiometricDevice[]
+  biometricCredentials       BiometricCredential[]
+  biometricLogs              BiometricLog[]
+  tertiaryDepartments        TertiaryDepartment[]
+  tertiaryPrograms           TertiaryProgram[]
+  tertiaryUnits              TertiaryUnit[]
+  aiGeneratedContents        AIGeneratedContent[]
+  staffAttendanceLogs        StaffAttendanceLog[]
+  staffAttendanceAttemptLogs StaffAttendanceAttemptLog[]
+  staffPresencePings         StaffPresencePing[]
+
+  learningLessons     LearningLesson[]
+  learningAssignments LearningAssignment[]
+  learningResources   LearningResource[]
+  marketplaceListings MarketplaceListing[]
+  lmsSettings         LMSSettings?
+
+  @@index([kraPin])
+  @@index([county])
+  @@map("schools")
+}

@@ -2726,7 +2726,7 @@ export class DashboardController {
         });
 
         const staffIds = staff.map((person) => person.id);
-        const [staffLogs, classes] = await Promise.all([
+        const [staffLogs, classes, activeLeaveRequests] = await Promise.all([
             staffIds.length
                 ? prisma.staffAttendanceLog.findMany({
                     where: {
@@ -2752,7 +2752,22 @@ export class DashboardController {
                     _count: { select: { enrollments: { where: { active: true, archived: false } } } },
                 },
             }),
+            // Staff currently on approved leave today — surfaced as ON_LEAVE in
+            // the presence badge below, taking priority over NOT_CLOCKED_IN.
+            staffIds.length
+                ? prisma.leaveRequest.findMany({
+                    where: {
+                        userId: { in: staffIds },
+                        status: 'APPROVED',
+                        startDate: { lte: today },
+                        endDate: { gte: today },
+                    },
+                    select: { userId: true },
+                })
+                : Promise.resolve([]),
         ]);
+
+        const onLeaveStaffIds = new Set(activeLeaveRequests.map((leave) => leave.userId));
 
         const presentStatuses = new Set(['PRESENT', 'LATE', 'PARTIAL']);
         const clockedIn = new Set(staffLogs.filter((log) => presentStatuses.has(log.status)).map((log) => log.userId));
@@ -2782,6 +2797,10 @@ export class DashboardController {
             const bucket = staffSummary[group];
             const isClockedIn = clockedIn.has(person.id);
             const log = logByUser.get(person.id);
+            // A staff member who is clocked in shows their actual clock-in status
+            // even if they also have an approved leave record for today (e.g. a
+            // half-day). ON_LEAVE only applies when they have not clocked in.
+            const isOnLeave = !isClockedIn && onLeaveStaffIds.has(person.id);
             bucket.total += 1;
             if (isClockedIn) bucket.clockedIn += 1;
             bucket.members.push({
@@ -2790,7 +2809,7 @@ export class DashboardController {
                 staffId: person.staffId || null,
                 role: person.role,
                 roleLabel: person.role.replace(/_/g, ' '),
-                status: isClockedIn ? (log?.status || 'PRESENT') : 'NOT_CLOCKED_IN',
+                status: isClockedIn ? (log?.status || 'PRESENT') : (isOnLeave ? 'ON_LEAVE' : 'NOT_CLOCKED_IN'),
                 clockInAt: log?.clockInAt || null,
                 clockOutAt: log?.clockOutAt || null,
             });

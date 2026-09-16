@@ -26,6 +26,7 @@ const TimetableChangeRequests = ({ open, onClose }) => {
   const [busyId, setBusyId] = useState(null);
   const [notes, setNotes] = useState({});
   const [error, setError] = useState('');
+  const [mirrorWarning, setMirrorWarning] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -66,9 +67,13 @@ const TimetableChangeRequests = ({ open, onClose }) => {
   const review = async (requestId, action) => {
     setBusyId(requestId);
     setError('');
+    if (action === 'approve') setMirrorWarning('');
     try {
       const caller = action === 'approve' ? api.timetable.approveChangeRequest : api.timetable.rejectChangeRequest;
-      await caller(requestId, notes[requestId] || undefined);
+      const response = await caller(requestId, notes[requestId] || undefined);
+      if (action === 'approve' && response?.data?.mirrorWarning) {
+        setMirrorWarning(response.data.mirrorWarning);
+      }
       await load();
     } catch (err) {
       console.error(`Failed to ${action} change request:`, err);
@@ -107,6 +112,12 @@ const TimetableChangeRequests = ({ open, onClose }) => {
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-4">
           {error && <div className="rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm px-4 py-3">{error}</div>}
+          {mirrorWarning && (
+            <div className="rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 flex items-start justify-between gap-3">
+              <span><span className="font-semibold">Approved, but: </span>{mirrorWarning}</span>
+              <button onClick={() => setMirrorWarning('')} className="text-amber-600 hover:text-amber-900 shrink-0" aria-label="Dismiss warning"><X size={14} /></button>
+            </div>
+          )}
           {loading ? (
             <div className="h-48 flex items-center justify-center"><Loader2 className="animate-spin text-indigo-600" /></div>
           ) : requests.length === 0 ? (

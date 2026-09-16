@@ -169,6 +169,30 @@ export class HRService {
         return 2 * earthRadiusMeters * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
     }
 
+    /**
+     * Off-site presence monitoring only — deliberately independent of the
+     * school's clock-in geofenceEnforcementMode (a school may leave clock-in
+     * enforcement OFF/SOFT but still want to know when a clocked-in staff
+     * member's phone reports outside the radius). Returns null distance/
+     * `withinGeofence: true` when there's no school pin or no usable
+     * coordinates — i.e. "can't tell, so don't alarm anyone".
+     */
+    private computePresenceDistance(
+        school: SchoolGeofenceContext,
+        payload: AttendanceLocationPayload = {}
+    ): { distanceMeters: number | null; withinGeofence: boolean; reasonCode: AttendanceGeofenceReasonCode | null } {
+        const hasSchoolPin = this.isFiniteCoordinate(school?.latitude, -90, 90) && this.isFiniteCoordinate(school?.longitude, -180, 180);
+        if (!hasSchoolPin) {
+            return { distanceMeters: null, withinGeofence: true, reasonCode: 'NO_SCHOOL_PIN' };
+        }
+        if (!this.isFiniteCoordinate(payload.latitude, -90, 90) || !this.isFiniteCoordinate(payload.longitude, -180, 180)) {
+            return { distanceMeters: null, withinGeofence: true, reasonCode: 'MISSING_LOCATION' };
+        }
+        const radiusMeters = school?.geofenceRadiusMeters ?? this.defaultGeofenceRadiusMeters;
+        const distanceMeters = this.haversineDistanceMeters(payload.latitude!, payload.longitude!, school!.latitude!, school!.longitude!);
+        return { distanceMeters, withinGeofence: distanceMeters <= radiusMeters, reasonCode: null };
+    }
+
     private buildGeofenceDecision(params: {
         allowed: boolean;
         enforcementMode: AttendanceGeofenceMode;
@@ -1521,6 +1545,69 @@ export class HRService {
         };
     }
 
+    // ─── Off-site presence monitoring ──────────────────────────────────────────
+
+    /**
+     * Records one foreground location heartbeat from a staff member's device
+     * while they're clocked in. A no-op (recorded: false) when the person
+     * isn't currently clocked in, or the school hasn't opted in to
+     * presenceMonitoringEnabled — pings are never stored or alerted on
+     * outside those conditions.
+     */
+    async recordPresencePing(userId: string, payload: AttendanceLocationPayload = {}, _context: AttendanceRequestContext = {}) {
+        const timestamp = this.resolveAttendanceTimestamp(payload);
+        const dateOnly = this.toDateOnly(timestamp);
+
+        const attendance = await prisma.staffAttendanceLog.findUnique({
+            where: { userId_date: { userId, date: dateOnly } }
+        });
+        if (!attendance?.clockInAt || attendance.clockOutAt) {
+            return { recorded: false as const, reason: 'NOT_CLOCKED_IN' as const };
+        }
+
+        const schoolSettings = await prisma.school.findFirst({
+            where: { archived: false },
+            orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }],
+            select: {
+                id: true, latitude: true, longitude: true,
+                geofenceRadiusMeters: true, geofenceEnforcementMode: true, allowedClockInIps: true,
+                presenceMonitoringEnabled: true
+            }
+        });
+        if (!schoolSettings?.presenceMonitoringEnabled) {
+            return { recorded: false as const, reason: 'MONITORING_DISABLED' as const };
+        }
+
+        const schoolId = attendance.schoolId || schoolSettings.id || null;
+        const { distanceMeters, withinGeofence, reasonCode } = this.computePresenceDistance(schoolSettings, payload);
+        const accuracyMeters = typeof payload.accuracyMeters === 'number' && Number.isFinite(payload.accuracyMeters) ? payload.accuracyMeters : undefined;
+        const latitude = typeof payload.latitude === 'number' && Number.isFinite(payload.latitude) ? payload.latitude : undefined;
+        const longitude = typeof payload.longitude === 'number' && Number.isFinite(payload.longitude) ? payload.longitude : undefined;
+
+        const ping = await prisma.staffPresencePing.create({
+            data: {
+                userId,
+                schoolId: schoolId || undefined,
+                timestamp,
+                latitude,
+                longitude,
+                accuracyMeters,
+                distanceMeters: distanceMeters ?? undefined,
+                withinGeofence,
+                reasonCode: reasonCode || undefined
+            }
+        });
+
+        // Immediate admin alert the moment a ping lands outside the geofence.
+        // A null distance means we couldn't evaluate it (no school pin / no
+        // coordinates) — never alert on an unknown, only on a confirmed exit.
+        if (!withinGeofence && distanceMeters !== null) {
+            this.emitPresenceExitEvent({ userId, schoolId, distanceMeters, timestamp }).catch(() => {});
+        }
+
+        return { recorded: true as const, withinGeofence, distanceMeters, pingId: ping.id };
+    }
+
     // ─── Leave Type CRUD ──────────────────────────────────────────────────────
 
     async createLeaveType(data: { name: string; maxDays: number; description?: string }) {
@@ -1900,6 +1987,66 @@ export class HRService {
 
         } catch (err: any) {
             logger.warn({ err }, '[HR] emitClockEvent failed (non-fatal)');
+        }
+    }
+
+    /**
+     * Emits an immediate admin alert when a presence ping lands outside the
+     * school geofence for a staff member who is currently clocked in.
+     * Mirrors emitClockEvent's delivery shape (socket room + push
+     * notification) but is a distinct event type since it isn't a clock
+     * action at all.
+     */
+    private async emitPresenceExitEvent(params: {
+        userId: string;
+        schoolId: string | null;
+        distanceMeters: number;
+        timestamp: Date;
+    }) {
+        try {
+            const person = await prisma.user.findUnique({
+                where: { id: params.userId },
+                select: { id: true, firstName: true, lastName: true, role: true, profilePicture: true }
+            });
+            if (!person) return;
+
+            const fullName = [person.firstName, person.lastName].filter(Boolean).join(' ') || 'Staff';
+            const role     = String(person.role || '').replace(/_/g, ' ');
+            const roundedDistance = Math.round(params.distanceMeters);
+            const timeStr  = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' }).format(new Date(params.timestamp));
+
+            const payload = {
+                eventType:      'PRESENCE_EXIT',
+                userId:         params.userId,
+                fullName,
+                role,
+                profilePicture: person.profilePicture || null,
+                distanceMeters: roundedDistance,
+                timestamp:      params.timestamp,
+            };
+
+            try {
+                const io = getIO();
+                const room = `attendance:${params.schoolId || 'school'}`;
+                io.to(room).emit('hr:presence_exit', payload);
+            } catch {
+                // Socket not ready — non-fatal
+            }
+
+            NotificationService.notifyRoles(
+                ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
+                {
+                    title:       '📍 Staff left school area',
+                    message:     `${fullName} (${role}) is clocked in but is now ${roundedDistance}m from the school (last seen ${timeStr}).`,
+                    type:        NotificationType.WARNING,
+                    showAsPopup: true,
+                    link:        '/app#/app#hr-attendance',
+                    metadata:    { ...payload, source: 'presence_exit' }
+                }
+            ).catch(() => { /* non-critical */ });
+
+        } catch (err: any) {
+            logger.warn({ err }, '[HR] emitPresenceExitEvent failed (non-fatal)');
         }
     }
 

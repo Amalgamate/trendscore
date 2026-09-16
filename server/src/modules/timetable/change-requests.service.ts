@@ -189,23 +189,26 @@ export class TimetableChangeRequestService {
     // ClassSchedule entirely from the TimetableEntry rows of the version being
     // published, so a later republish silently wipes the change with only a
     // generic "N overrides replaced" warning to catch it. Never blocks or
-    // fails the approval itself.
+    // fails the approval itself — but if it can't be mirrored, the reviewer
+    // is told so via mirrorWarning + a notification, instead of the failure
+    // living only in server logs.
+    let mirrorWarning: string | null = null;
     try {
       if (!request.learningAreaId) {
-        console.warn(`[ChangeRequests] approved change ${id} has no learningAreaId — TimetableEntry requires one, so this change can only live in ClassSchedule and may be lost on the next publish.`);
+        mirrorWarning = 'This change has no learning area, so it could only be applied to the live schedule. It may be lost the next time the timetable is regenerated and published.';
       } else {
         const publishedVersion = await prisma.timetableVersion.findFirst({
           where: { status: 'PUBLISHED', plan: { academicYear: classItem.academicYear, term: classItem.term } }
         });
         if (!publishedVersion) {
-          console.warn(`[ChangeRequests] approved change ${id} has no published timetable version to mirror into — it will only live in ClassSchedule and may be lost on the next publish.`);
+          mirrorWarning = 'There is no published timetable version to mirror this change into. It may be lost the next time the timetable is regenerated and published.';
         } else {
           const overlapping = await prisma.timetableEntry.findMany({
             where: { versionId: publishedVersion.id, classId: request.classId, day: request.day }
           });
           const clashingLocked = overlapping.find(entry => entry.locked && overlaps(entry, request));
           if (clashingLocked) {
-            console.warn(`[ChangeRequests] approved change ${id} could not be mirrored into published version ${publishedVersion.id}: an overlapping entry there is locked.`);
+            mirrorWarning = `This change could not be mirrored into the published timetable version because an overlapping locked entry exists on ${request.day}. It may be lost the next time the timetable is regenerated and published.`;
           } else {
             const toRemove = overlapping.filter(entry => overlaps(entry, request));
             await prisma.$transaction([
@@ -227,10 +230,24 @@ export class TimetableChangeRequestService {
         }
       }
     } catch (error: any) {
-      console.warn('[ChangeRequests] failed to mirror approved change into published version:', error?.message);
+      mirrorWarning = `This change could not be mirrored into the published timetable version (${error?.message || 'unknown error'}). It may be lost the next time the timetable is regenerated and published.`;
     }
 
-    return updated;
+    if (mirrorWarning) {
+      console.warn(`[ChangeRequests] approved change ${id}: ${mirrorWarning}`);
+      try {
+        await NotificationService.createNotification({
+          userId: reviewerId,
+          title: 'Approved change may not survive the next publish',
+          message: `Change request for ${updated.class.name} (${request.day} ${request.startTime}-${request.endTime}): ${mirrorWarning}`,
+          link: '/app/timetable'
+        });
+      } catch (error: any) {
+        console.warn('[ChangeRequests] reviewer mirror-warning notification failed:', error?.message);
+      }
+    }
+
+    return { ...updated, mirrorWarning };
   }
 
   private async notifyRequester(

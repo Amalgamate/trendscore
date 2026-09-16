@@ -12,7 +12,8 @@ import DownloadReportButton from '../shared/DownloadReportButton';
 import SmartLearnerSearch from '../shared/SmartLearnerSearch';
 import { useAssessmentSetup } from '../hooks/useAssessmentSetup';
 import { useLearnerSelection } from '../hooks/useLearnerSelection';
-import TermlyReportTemplate from '../templates/TermlyReportTemplate';
+import { resolveReportTemplateComponent } from '../templates/reportTemplates/registry';
+import { buildReportTemplateProps } from '../templates/reportTemplates/buildReportTemplateProps';
 import TermlyReportCommentsForm from '../../../pages/assessments/TermlyReportCommentsForm';
 import { getAcademicYearOptions } from '../utils/academicYear';
 
@@ -157,6 +158,13 @@ const TermlyReport = ({ learners, brandingSettings, user, pageParams = {} }) => 
     window.print();
   };
 
+  // Resolve which template component renders this report (Phase 6 —
+  // registry.js). LEGACY reports (templateKey null/undefined) fall back to
+  // the default 'classic' key inside resolveReportTemplateComponent, which
+  // is the same TermlyReportTemplate component this page always rendered —
+  // so existing schools see no change.
+  const TermlyReportTemplateComponent = resolveReportTemplateComponent(reportData?.templateKey);
+
 
   return (
     <div className="space-y-6">
@@ -295,16 +303,7 @@ const TermlyReport = ({ learners, brandingSettings, user, pageParams = {} }) => 
               <p className="opacity-80 text-sm">Excellence in Competency Based Curriculum</p>
             </div>
 
-            <TermlyReportTemplate reportData={{
-              ...reportData,
-              schoolName: user?.school?.name || brandingSettings?.schoolName,
-              schoolAddress: user?.school?.location || brandingSettings?.address,
-              schoolPhone: user?.school?.phone || brandingSettings?.phone,
-              schoolEmail: user?.school?.email || brandingSettings?.email,
-              logoUrl: brandingSettings?.logoUrl || user?.school?.logo,
-              schoolStamp: brandingSettings?.stampUrl || user?.school?.stampUrl,
-              brandColor: brandingSettings?.brandColor || reportData.brandColor
-            }} />
+            <TermlyReportTemplateComponent reportData={buildReportTemplateProps(reportData, { user, brandingSettings })} />
           </div>
         </>
       )}

@@ -228,6 +228,7 @@ export const allNavSections = [
         items: [
             // Assessment Overview at the root — spans all assessment types
             { id: 'assess-mobile-dashboard', label: 'Assessment Overview', path: 'assess-mobile-dashboard', permission: 'ACCESS_ASSESSMENT_MODULE', icon: Activity },
+            { id: 'assess-summative-assessment', label: 'Record Scores', path: 'assess-summative-assessment', permission: 'ACCESS_ASSESSMENT_MODULE' },
             {
                 id: 'group-formative',
                 label: 'Formative',
@@ -237,16 +238,6 @@ export const allNavSections = [
                 items: [
                     { id: 'assess-formative',        label: 'Record Assessment',  path: 'assess-formative',        permission: 'ACCESS_ASSESSMENT_MODULE', icon: Sparkles },
                     { id: 'assess-formative-report', label: 'Formative Progress', path: 'assess-formative-report', permission: 'ACCESS_ASSESSMENT_MODULE', icon: TrendingUp },
-                ]
-            },
-            {
-                id: 'group-summative',
-                label: 'Summative',
-                type: 'group',
-                icon: Zap,
-                items: [
-                    { id: 'assess-summary-report',       label: 'Assessment Matrix',     path: 'assess-summary-report',       permission: 'ACCESS_ASSESSMENT_MODULE' },
-                    { id: 'assess-summative-assessment', label: 'Summative Assessments', path: 'assess-summative-assessment', permission: 'ACCESS_ASSESSMENT_MODULE' },
                 ]
             },
             {

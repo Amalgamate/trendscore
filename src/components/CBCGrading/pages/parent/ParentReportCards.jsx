@@ -14,7 +14,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, FileText, Loader2, Printer, TrendingDown, TrendingUp, X } from 'lucide-react';
 import { reportAPI } from '../../../../services/api';
 import { captureSingleReport, printWindow } from '../../../../utils/simplePdfGenerator';
-import TermlyReportTemplate from '../../templates/TermlyReportTemplate';
+import { resolveReportTemplateComponent } from '../../templates/reportTemplates/registry';
+import { buildReportTemplateProps } from '../../templates/reportTemplates/buildReportTemplateProps';
 import {
   TERM_ORDER,
   cbcBandMeta,
@@ -24,6 +25,22 @@ import {
 } from '../results/useLearnerResults';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
+
+/**
+ * Reads the same `user` shape (with `user.school.*`) that
+ * `brandingUtils.js`'s `getSchoolBranding()` already reads from localStorage
+ * for every other branded document in the app (ER-007's established
+ * pattern). ParentReportCards isn't handed `user`/`brandingSettings` as
+ * props the way TermlyReport.jsx is, so this keeps it on the same official
+ * branding source instead of rendering with no letterhead at all.
+ */
+function getCurrentUser() {
+  try {
+    return JSON.parse(localStorage.getItem('user') || 'null');
+  } catch {
+    return null;
+  }
+}
 
 const academicYears = () => {
   const current = new Date().getFullYear();
@@ -535,11 +552,23 @@ export default function ParentReportCards({ learner }) {
             </button>
           </div>
 
-          {/* Rendered report */}
-          <TermlyReportTemplate
-            reportData={termReport.data}
-            id={`parent-termly-report-${year}-${termReport.term}`}
-          />
+          {/* Rendered report — resolves to whichever template the school has
+              selected (Phase 6, registry.js); LEGACY/no-selection falls back
+              to the same TermlyReportTemplate this modal always rendered.
+              Branding is merged the same way TermlyReport.jsx does (Phase 5's
+              buildReportTemplateProps) so a parent-downloaded report carries
+              the same official letterhead as a staff-downloaded one, instead
+              of rendering with no branding at all. */}
+          {(() => {
+            const TermlyReportTemplateComponent = resolveReportTemplateComponent(termReport.data?.templateKey);
+            const props = buildReportTemplateProps(termReport.data, { user: getCurrentUser() });
+            return (
+              <TermlyReportTemplateComponent
+                reportData={props}
+                id={`parent-termly-report-${year}-${termReport.term}`}
+              />
+            );
+          })()}
         </ReportModal>
       )}
     </div>

@@ -2,6 +2,8 @@ import prisma from '../config/database';
 import bcrypt from 'bcrypt';
 import { EmailService } from './email-resend.service';
 import { applyModulePackageToSchool, normalizePackageId } from './moduleCatalog.service';
+import { DEFAULT_REPORT_TEMPLATE_KEY } from './reportTemplate.service';
+import { resolveCurrentSchool } from './school-resolver.service';
 
 export interface SchoolProvisioningData {
   schoolName: string;
@@ -39,11 +41,20 @@ export async function provisionNewSchool(data: SchoolProvisioningData): Promise<
   const packageId = normalizePackageId(data.packageId || 'starter');
 
   const result = await prisma.$transaction(async (tx) => {
-    const existingSchool = await tx.school.findFirst({
-      where: { archived: false },
-      orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }, { createdAt: 'desc' }],
-    });
+    const existingSchool = await resolveCurrentSchool(tx);
     if (existingSchool) throw new Error('School already provisioned');
+
+    // eReport Engine (TRENDSCORE_EREPORT_ENGINE_CHECKLIST.md Phase 8):
+    // resolve the default 'classic' template so a newly provisioned school
+    // doesn't land in the "NEW engine, no template selected" state that the
+    // Report Templates settings tab flags with an amber warning.
+    // In an environment where seed-report-templates.ts hasn't been run this
+    // simply returns null and we leave reportTemplateId unset — today's
+    // behaviour, which reportEngine.service.ts already handles gracefully.
+    const defaultTemplate = await tx.template.findUnique({
+      where: { key: DEFAULT_REPORT_TEMPLATE_KEY },
+      select: { id: true },
+    });
 
     const school = await tx.school.create({
       data: {
@@ -66,6 +77,13 @@ export async function provisionNewSchool(data: SchoolProvisioningData): Promise<
         status: 'ACTIVE',
         curriculumType: 'CBC_AND_EXAM',
         assessmentMode: 'MIXED',
+        // eReport Engine (TRENDSCORE_EREPORT_ENGINE_CHECKLIST.md §3.2/§20):
+        // every newly provisioned school starts on the NEW engine, with the
+        // default 'classic' template pre-selected when it has been seeded in
+        // this environment (Phase 8). Falls back to null — which
+        // reportEngine.service.ts handles gracefully — when it hasn't.
+        reportEngine: 'NEW',
+        ...(defaultTemplate ? { reportTemplateId: defaultTemplate.id } : {}),
       },
     });
 

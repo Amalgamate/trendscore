@@ -23,7 +23,7 @@ Monorepo with two first-class apps plus deployment plumbing.
 | `platform-console/` | Separate platform-level console (secondary). |
 | `assets/`, `data/`, `backups/`, `tmp/` | Local-only / generated artifacts (see `.gitignore`). |
 
-Top-level docs of note: `README.md`, `CODEBASE_INDEX.md`, `deploy/DEPLOYMENT.md`, `deploy/WORKFLOW.md`, and focused reports under `docs/`.
+Top-level docs of note: `README.md`, `docs/CODEBASE_INDEX.md`, `docs/DEPLOYMENT.md`, `docs/WORKFLOW.md`, and focused reports under `docs/`.
 
 ---
 
@@ -312,7 +312,7 @@ Separate path: `DEPLOY_CONSOLE_ONLY=true bash deploy-release.sh` → pulls `zawa
 
 ### 9.9 Deployment docs & secrets
 
-- **Docs:** `deploy/DEPLOYMENT.md`, `deploy/WORKFLOW.md`.
+- **Docs:** `docs/DEPLOYMENT.md`, `docs/WORKFLOW.md`.
 - **Required GitHub secrets:** `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (plus the three approval-gated Environments above).
 - **Required GitHub Environments** (with required reviewers): `deploy-demo`, `deploy-pilot`, `deploy-production-school`.
 - **Server-side manual run** (bypassing Actions): `DEPLOY_TARGET=school IMAGE_TAG=sha-<commit> SCHOOL_ID=<id> MANIFEST_PATH=... bash deploy-release.sh`.

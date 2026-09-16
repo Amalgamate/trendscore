@@ -99,6 +99,28 @@ export class HRController {
         }
     }
 
+    /**
+     * POST /api/hr/presence-ping
+     * Foreground location heartbeat while clocked in. Silently a no-op if the
+     * caller isn't clocked in right now or the school hasn't enabled
+     * presence monitoring — never throws for those cases, since the client
+     * should just keep pinging on its normal schedule regardless.
+     */
+    async presencePing(req: AuthRequest, res: Response) {
+        try {
+            const userId = req.user?.userId;
+            if (!userId) throw new ApiError(401, 'Unauthorized');
+            const result = await hrService.recordPresencePing(userId, req.body || {}, {
+                ipAddress: getIpAddress(req),
+                userAgent: req.get('user-agent')
+            });
+            res.status(200).json({ success: true, data: result });
+        } catch (error: any) {
+            logger.error('[HR] presencePing:', error);
+            res.status(error.statusCode || 500).json({ success: false, message: error.message });
+        }
+    }
+
     // ─── Staff Directory ──────────────────────────────────────────────────────
 
     async getStaffDirectory(req: AuthRequest, res: Response) {

@@ -3,12 +3,15 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { School, Save, Upload, X, AlertTriangle, MapPin, Loader2, Image as ImageIcon, Info, Phone, Mail, MessageSquare, ShieldCheck, Wifi, Clock } from 'lucide-react';
+import { School, Save, Upload, X, AlertTriangle, MapPin, Loader2, Image as ImageIcon, Info, Phone, Mail, MessageSquare, ShieldCheck, Wifi, Clock, FileText, Eye, CheckCircle2, Layers } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useNotifications } from '../../hooks/useNotifications';
 import axiosInstance from '../../../../services/api/axiosConfig';
 import { PRODUCT_DISPLAY_NAME } from '../../../../config/productIdentity';
 import SettingsPageShell from '../../shared/SettingsPageShell';
+// TRENDSCORE_EREPORT_ENGINE_CHECKLIST.md — Phase 7 (School-Level Engine Selection)
+import { resolveReportTemplateComponent } from '../../templates/reportTemplates/registry';
+import { buildSampleReportData } from '../../templates/reportTemplates/sampleReportData';
 
 const cleanSchoolName = (value) => String(value || '').trim();
 
@@ -122,7 +125,10 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
     welcomeTitle: brandingSettings?.welcomeTitle || '',
     welcomeMessage: brandingSettings?.welcomeMessage || '',
     onboardingTitle: brandingSettings?.onboardingTitle || '',
-    onboardingMessage: brandingSettings?.onboardingMessage || ''
+    onboardingMessage: brandingSettings?.onboardingMessage || '',
+    // TRENDSCORE_EREPORT_ENGINE_CHECKLIST.md — Phase 7 (School-Level Engine Selection)
+    reportEngine: 'LEGACY',
+    reportTemplateId: null
   });
 
   const [previews, setPreviews] = useState({
@@ -134,6 +140,12 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // TRENDSCORE_EREPORT_ENGINE_CHECKLIST.md — Phase 7 (School-Level Engine Selection)
+  const [reportTemplates, setReportTemplates] = useState([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesError, setTemplatesError] = useState(null);
+  const [previewTemplateKey, setPreviewTemplateKey] = useState(null);
 
   // Track initial state for dirty checking
   const [savedState, setSavedState] = useState({
@@ -166,7 +178,9 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
       welcomeTitle: brandingSettings?.welcomeTitle || '',
       welcomeMessage: brandingSettings?.welcomeMessage || '',
       onboardingTitle: brandingSettings?.onboardingTitle || '',
-      onboardingMessage: brandingSettings?.onboardingMessage || ''
+      onboardingMessage: brandingSettings?.onboardingMessage || '',
+      reportEngine: 'LEGACY',
+      reportTemplateId: null
     },
     previews: {
       logo: brandingSettings?.logoUrl || '/branding/logo.png',
@@ -231,7 +245,10 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
             welcomeTitle: school.welcomeTitle || '',
             welcomeMessage: school.welcomeMessage || '',
             onboardingTitle: school.onboardingTitle || '',
-            onboardingMessage: school.onboardingMessage || ''
+            onboardingMessage: school.onboardingMessage || '',
+            // TRENDSCORE_EREPORT_ENGINE_CHECKLIST.md — Phase 7
+            reportEngine: school.reportEngine || 'LEGACY',
+            reportTemplateId: school.reportTemplateId || null
           };
 
           const fetchedPreviews = {
@@ -277,7 +294,29 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
     fetchSchoolData();
   }, []);
 
+  // TRENDSCORE_EREPORT_ENGINE_CHECKLIST.md — Phase 7 (School-Level Engine Selection)
+  // Load the selectable template catalogue once. Read-only endpoint
+  // (GET /api/report-templates, Phase 5) — failures here shouldn't block
+  // the rest of the settings page, so they're surfaced inline in the tab
+  // rather than as a page-level error.
+  useEffect(() => {
+    const fetchReportTemplates = async () => {
+      setTemplatesLoading(true);
+      setTemplatesError(null);
+      try {
+        const response = await axiosInstance.get('/report-templates');
+        const templates = response.data?.data || [];
+        setReportTemplates(Array.isArray(templates) ? templates : []);
+      } catch (error) {
+        console.error('Error fetching report templates:', error);
+        setTemplatesError('Could not load the report template catalogue.');
+      } finally {
+        setTemplatesLoading(false);
+      }
+    };
 
+    fetchReportTemplates();
+  }, []);
 
   const handleChange = (field, value) => {
     setSettings(prev => ({ ...prev, [field]: value }));
@@ -408,7 +447,10 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
         welcomeTitle: settings.welcomeTitle,
         welcomeMessage: settings.welcomeMessage,
         onboardingTitle: settings.onboardingTitle,
-        onboardingMessage: settings.onboardingMessage
+        onboardingMessage: settings.onboardingMessage,
+        // TRENDSCORE_EREPORT_ENGINE_CHECKLIST.md — Phase 7 (School-Level Engine Selection)
+        reportEngine: settings.reportEngine,
+        reportTemplateId: settings.reportTemplateId || null
       };
 
       // Avoid sending generated API asset URLs back to DB.
@@ -503,6 +545,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
   }
 
   return (
+    <>
     <SettingsPageShell width="wide">
       {/* Header with Save Button */}
       <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm mb-6">
@@ -525,6 +568,13 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
                 }`}
             >
               Branding Settings
+            </button>
+            <button
+              onClick={() => setActiveTab('templates')}
+              className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeTab === 'templates' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:bg-gray-200'
+                }`}
+            >
+              Report Templates
             </button>
           </div>
           <button
@@ -870,7 +920,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
               </div>
             </div>
           </div>
-        ) : (
+        ) : activeTab === 'branding' ? (
           /* Branding Tab Content */
           <div className="lg:col-span-12 space-y-6">
             <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
@@ -998,6 +1048,128 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
               </div>
             </div>
           </div>
+        ) : (
+          /* Report Templates Tab Content — TRENDSCORE_EREPORT_ENGINE_CHECKLIST.md, Phase 7 */
+          <div className="lg:col-span-12 space-y-6">
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+              <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+                <Layers className="text-blue-600" size={20} />
+                <h3 className="font-medium text-gray-700">Report Engine</h3>
+              </div>
+              <div className="p-6 space-y-5">
+                <p className="text-sm text-gray-500">
+                  Choose how termly report cards are generated for this school. <strong>Legacy</strong> keeps
+                  today's single, fixed report design. <strong>New</strong> lets you pick from the template
+                  catalogue below and preview each design before switching.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleChange('reportEngine', 'LEGACY')}
+                    className={`flex-1 min-w-[220px] text-left p-4 rounded-lg border-2 transition ${settings.reportEngine !== 'NEW'
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-gray-800">Legacy</span>
+                      {settings.reportEngine !== 'NEW' && <CheckCircle2 className="text-blue-600" size={18} />}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Today's report design. No changes.</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleChange('reportEngine', 'NEW')}
+                    className={`flex-1 min-w-[220px] text-left p-4 rounded-lg border-2 transition ${settings.reportEngine === 'NEW'
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-gray-800">New</span>
+                      {settings.reportEngine === 'NEW' && <CheckCircle2 className="text-blue-600" size={18} />}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Select a template design below.</p>
+                  </button>
+                </div>
+
+                {settings.reportEngine === 'NEW' && !settings.reportTemplateId && (
+                  <div className="flex items-start gap-3 p-3 rounded-lg text-sm bg-amber-50 border border-amber-200 text-amber-800">
+                    <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                    <span>No template selected yet — reports will keep rendering the legacy design until you choose one below.</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+              <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+                <FileText className="text-blue-600" size={20} />
+                <h3 className="font-medium text-gray-700">Template Catalogue</h3>
+              </div>
+              <div className="p-6">
+                {templatesLoading ? (
+                  <div className="flex items-center justify-center py-10">
+                    <Loader2 className="animate-spin text-blue-600" size={28} />
+                  </div>
+                ) : templatesError ? (
+                  <div className="flex items-center gap-3 p-3 rounded-lg text-sm bg-red-50 border border-red-200 text-red-700">
+                    <AlertTriangle size={16} className="shrink-0" />
+                    <span>{templatesError}</span>
+                  </div>
+                ) : reportTemplates.length === 0 ? (
+                  <p className="text-sm text-gray-500 italic">No report templates have been seeded yet.</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {reportTemplates.map((template) => {
+                      const isSelected = settings.reportTemplateId === template.id;
+                      return (
+                        <div
+                          key={template.id}
+                          className={`border-2 rounded-lg p-4 transition ${isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                            }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-semibold text-gray-800">{template.name}</p>
+                              <p className="text-[10px] font-mono uppercase text-gray-400 mt-0.5">key: {template.key} · v{template.version}</p>
+                            </div>
+                            {isSelected && <CheckCircle2 className="text-blue-600 shrink-0" size={18} />}
+                          </div>
+                          <div className="flex items-center gap-2 mt-4">
+                            <button
+                              type="button"
+                              onClick={() => setPreviewTemplateKey(template.key)}
+                              className="flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700"
+                            >
+                              <Eye size={15} />
+                              Preview
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleChange('reportTemplateId', template.id)}
+                              disabled={isSelected}
+                              className={`ml-auto text-sm font-medium px-3 py-1.5 rounded-md transition ${isSelected
+                                ? 'bg-blue-100 text-blue-500 cursor-default'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }`}
+                            >
+                              {isSelected ? 'Selected' : 'Select'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <p className="text-[10px] text-gray-400 mt-4">
+                  Preview renders the actual template component against sample data — your school's own logo, colours
+                  and contact details (from the Branding and General tabs) are used, but learner and academic data
+                  shown is illustrative only.
+                </p>
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
@@ -1031,6 +1203,62 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
         </div>
       </div>
     </SettingsPageShell>
+
+    {/* Live template preview modal — TRENDSCORE_EREPORT_ENGINE_CHECKLIST.md, Phase 7 */}
+    {previewTemplateKey && (() => {
+      const PreviewComponent = resolveReportTemplateComponent(previewTemplateKey);
+      const previewData = {
+        ...buildSampleReportData(),
+        schoolName: settings.schoolName,
+        schoolAddress: settings.address,
+        schoolPhone: settings.phone,
+        schoolEmail: settings.email,
+        logoUrl: previews.logo,
+        schoolStamp: previews.stamp,
+        brandColor: settings.primaryColor,
+      };
+      const activeTemplate = reportTemplates.find((t) => t.key === previewTemplateKey);
+      return (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setPreviewTemplateKey(null)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gray-50">
+              <p className="font-semibold text-gray-800">
+                Preview — {activeTemplate?.name || previewTemplateKey}
+                <span className="ml-2 text-[10px] font-normal text-gray-400">(sample data, your branding)</span>
+              </p>
+              <button onClick={() => setPreviewTemplateKey(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+            {/* Template tab strip — TRENDSCORE_EREPORT_ENGINE_CHECKLIST.md, Phase 13 (multi-template preview) */}
+            {reportTemplates.length > 1 && (
+              <div className="flex items-center gap-1 px-5 py-2 border-b border-gray-100 bg-white overflow-x-auto">
+                {reportTemplates.map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onClick={() => setPreviewTemplateKey(template.key)}
+                    className={`px-3 py-1.5 rounded-md text-sm font-semibold whitespace-nowrap transition ${
+                      template.key === previewTemplateKey
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {template.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="overflow-auto p-6 bg-gray-200 flex-1">
+              <div className="mx-auto" style={{ width: '794px', transform: 'scale(0.85)', transformOrigin: 'top center' }}>
+                <PreviewComponent reportData={previewData} id="report-template-preview" />
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    })()}
+    </>
   );
 };
 

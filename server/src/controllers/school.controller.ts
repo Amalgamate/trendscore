@@ -9,6 +9,7 @@ import { deleteSchoolSafely } from '../services/school-deletion.service';
 import { clearSchoolCache } from '../middleware/schoolContext.middleware';
 import { applyModulePackageToSchool, normalizePackageId } from '../services/moduleCatalog.service';
 import { buildInstalledAppName } from '../utils/pwa.util';
+import { resolveCurrentSchool } from '../services/school-resolver.service';
 
 import logger from '../utils/logger';
 const VALID_INSTITUTION_TYPES = new Set(['PRIMARY_CBC', 'SECONDARY', 'TERTIARY']);
@@ -20,11 +21,13 @@ const validInstitutionTypeOrThrow = (raw: string) => {
   return normalized as 'PRIMARY_CBC' | 'SECONDARY' | 'TERTIARY';
 };
 
-const resolveCurrentSchool = () =>
-  prisma.school.findFirst({
-    where: { archived: false },
-    orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }, { createdAt: 'desc' }],
-  });
+// TRENDSCORE_EREPORT_ENGINE_CHECKLIST.md — Phase 7 (School-Level Engine Selection)
+const VALID_REPORT_ENGINES = new Set(['LEGACY', 'NEW']);
+
+// resolveCurrentSchool() now comes from school-resolver.service.ts (shared
+// with reportEngine.service.ts and school-provisioning.service.ts) instead
+// of a copy defined here — see that file's header comment for why the three
+// copies existing independently was a real, if latent, bug.
 
 const isDataUri = (value: unknown): value is string =>
   typeof value === 'string' && value.startsWith('data:');
@@ -193,6 +196,28 @@ export const updateSchool = async (req: AuthRequest, res: Response) => {
   const school = await resolveCurrentSchool();
   const updatePayload = normalizeSchoolUpdatePayload(req.body);
 
+  // TRENDSCORE_EREPORT_ENGINE_CHECKLIST.md — Phase 7 (School-Level Engine Selection)
+  // Validate reportEngine/reportTemplateId the same way institutionType is
+  // validated above — this is still the existing pass-through PUT /schools
+  // endpoint (ER-009), just with these two fields no longer accepted blind.
+  if (Object.prototype.hasOwnProperty.call(updatePayload, 'reportEngine')) {
+    const normalizedEngine = String(updatePayload.reportEngine || '').toUpperCase();
+    if (!VALID_REPORT_ENGINES.has(normalizedEngine)) {
+      throw new ApiError(400, 'Invalid reportEngine. Use LEGACY or NEW.');
+    }
+    updatePayload.reportEngine = normalizedEngine;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updatePayload, 'reportTemplateId') && updatePayload.reportTemplateId) {
+    const template = await prisma.template.findUnique({
+      where: { id: updatePayload.reportTemplateId },
+      select: { id: true },
+    });
+    if (!template) {
+      throw new ApiError(400, 'Unknown reportTemplateId — select a template from the report template catalogue.');
+    }
+  }
+
   if (!school) {
     // If no school exists, create it (handles first-time setup/branding)
     const created = await prisma.school.create({
@@ -210,11 +235,65 @@ export const updateSchool = async (req: AuthRequest, res: Response) => {
     return res.status(201).json({ success: true, message: 'School settings initialized', data: created });
   }
 
+  // TRENDSCORE_EREPORT_ENGINE_CHECKLIST.md — Phase 7, §2.5 (Audit trail for
+  // engine/template changes). Diffed against the pre-update row so the trail
+  // only ever records a *change*, never a no-op resave of the same value —
+  // same philosophy as AppAuditLog only recording actual activation flips.
+  const reportEngineChanged =
+    Object.prototype.hasOwnProperty.call(updatePayload, 'reportEngine') &&
+    updatePayload.reportEngine !== school.reportEngine;
+  const reportTemplateChanged =
+    Object.prototype.hasOwnProperty.call(updatePayload, 'reportTemplateId') &&
+    (updatePayload.reportTemplateId || null) !== (school.reportTemplateId || null);
+
   const updated = await prisma.school.update({
     where: { id: school.id },
     data: updatePayload,
   });
   clearSchoolCache();
+
+  if ((reportEngineChanged || reportTemplateChanged) && req.user?.userId) {
+    const auditEntries: Array<{ action: 'ENGINE_SWITCHED_TO_NEW' | 'ENGINE_ROLLED_BACK_TO_LEGACY' | 'TEMPLATE_CHANGED'; fromValue: string | null; toValue: string | null }> = [];
+
+    if (reportEngineChanged) {
+      auditEntries.push({
+        action: updatePayload.reportEngine === 'NEW' ? 'ENGINE_SWITCHED_TO_NEW' : 'ENGINE_ROLLED_BACK_TO_LEGACY',
+        fromValue: school.reportEngine,
+        toValue: updatePayload.reportEngine,
+      });
+    }
+    if (reportTemplateChanged) {
+      auditEntries.push({
+        action: 'TEMPLATE_CHANGED',
+        fromValue: school.reportTemplateId || null,
+        toValue: updatePayload.reportTemplateId || null,
+      });
+    }
+
+    // Best-effort: a failed audit write must never block the settings save
+    // that already succeeded above (the school row is already updated).
+    try {
+      await Promise.all(
+        auditEntries.map((entry) =>
+          prisma.reportEngineAuditLog.create({
+            data: {
+              schoolId: school.id,
+              action: entry.action as any,
+              fromValue: entry.fromValue,
+              toValue: entry.toValue,
+              performedBy: req.user!.userId,
+              roleAtTime: req.user!.role,
+              ipAddress: req.ip || null,
+              userAgent: req.headers['user-agent'] || null,
+            },
+          })
+        )
+      );
+    } catch (auditError) {
+      logger.error('Failed to write ReportEngineAuditLog:', auditError);
+    }
+  }
+
   res.status(200).json({ success: true, message: 'School updated', data: updated });
 };
 

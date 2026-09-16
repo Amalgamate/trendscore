@@ -441,8 +441,8 @@ Before a promotion proceeds, the workflow validates the selected school, environ
 
 Read the operating guides before deploying:
 
-- [Deployment workflow](deploy/WORKFLOW.md)
-- [Deployment model](deploy/DEPLOYMENT.md)
+- [Deployment workflow](docs/WORKFLOW.md)
+- [Deployment model](docs/DEPLOYMENT.md)
 - [Promotion workflow](.github/workflows/promote-release.yml)
 
 ## Security notes

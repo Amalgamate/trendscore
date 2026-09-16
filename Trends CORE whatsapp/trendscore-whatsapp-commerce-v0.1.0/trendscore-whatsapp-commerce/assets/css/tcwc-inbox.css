@@ -1,0 +1,205 @@
+/* WhatsApp Inbox — two-pane conversation list + thread view.
+   Self-contained (doesn't rely on tcwc-admin.css being loaded on this page)
+   so this page's colors can't silently break if that file changes later. */
+
+#tcwc-inbox-wrap {
+  --tcwc-inbox-green: #25D366;
+  --tcwc-inbox-green-dark: #128C7E;
+  --tcwc-inbox-red: #E14A4A;
+  --tcwc-inbox-border: #E2E8F0;
+  --tcwc-inbox-bg: #F7F9FB;
+  max-width: 1200px;
+}
+
+.tcwc-inbox-shell {
+  display: flex;
+  height: 70vh;
+  min-height: 480px;
+  border: 1px solid var(--tcwc-inbox-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+  margin-top: 16px;
+}
+
+/* ---- List pane ---- */
+
+.tcwc-inbox-list {
+  width: 320px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--tcwc-inbox-border);
+  background: var(--tcwc-inbox-bg);
+}
+
+.tcwc-inbox-list-item {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--tcwc-inbox-border);
+  cursor: pointer;
+}
+
+.tcwc-inbox-list-item:hover {
+  background: #EDF2F7;
+}
+
+.tcwc-inbox-list-item.active {
+  background: #E6F9F0;
+  border-left: 3px solid var(--tcwc-inbox-green);
+}
+
+.tcwc-inbox-list-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.tcwc-inbox-list-preview {
+  font-size: 12.5px;
+  color: #4A5568;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tcwc-inbox-dir-out {
+  color: #718096;
+}
+
+.tcwc-inbox-list-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.tcwc-inbox-time {
+  font-size: 11px;
+  color: #A0AEC0;
+}
+
+.tcwc-inbox-unread {
+  background: var(--tcwc-inbox-green);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 1px 7px;
+  min-width: 18px;
+  text-align: center;
+  display: inline-block;
+}
+
+.tcwc-inbox-claim-tag {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #EDF2F7;
+  color: #4A5568;
+}
+
+.tcwc-inbox-claim-tag.tcwc-inbox-claim-mine {
+  background: var(--tcwc-inbox-green-dark);
+  color: #fff;
+}
+
+.tcwc-inbox-claim-tag.tcwc-inbox-unclaimed {
+  background: #FFF3CD;
+  color: #8A6D1D;
+}
+
+/* ---- Thread pane ---- */
+
+.tcwc-inbox-thread {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tcwc-inbox-thread-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--tcwc-inbox-border);
+  background: #fff;
+}
+
+.tcwc-inbox-phone {
+  color: #718096;
+  font-size: 12.5px;
+}
+
+.tcwc-inbox-claim-area {
+  font-size: 12.5px;
+  color: #4A5568;
+}
+
+.tcwc-inbox-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  background: #F0F4F2;
+  display: flex;
+  flex-direction: column;
+}
+
+.tcwc-bubble {
+  max-width: 65%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tcwc-bubble-in {
+  align-self: flex-start;
+  background: #fff;
+  border: 1px solid var(--tcwc-inbox-border);
+}
+
+.tcwc-bubble-out {
+  align-self: flex-end;
+  background: #DCF8C6;
+}
+
+.tcwc-bubble-meta {
+  font-size: 10.5px;
+  color: #718096;
+  margin-bottom: 3px;
+}
+
+.tcwc-inbox-composer {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--tcwc-inbox-border);
+  background: #fff;
+  align-items: flex-end;
+}
+
+.tcwc-inbox-composer textarea {
+  flex: 1;
+  resize: none;
+  border-radius: 6px;
+}
+
+.tcwc-inbox-window-closed {
+  margin: 0;
+  padding: 10px 12px;
+  background: #FFF3CD;
+  color: #8A6D1D;
+  border-radius: 6px;
+  font-size: 12.5px;
+  width: 100%;
+}
+
+.tcwc-inbox-empty {
+  padding: 24px 16px;
+  color: #718096;
+  font-size: 13px;
+}

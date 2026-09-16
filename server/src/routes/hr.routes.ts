@@ -135,6 +135,22 @@ router.get(
     hrController.getLiveFeed
 );
 
+/**
+ * @route   POST /api/hr/attendance/presence-ping
+ * @desc    Foreground location heartbeat from a clocked-in staff member's
+ *          device. Used for off-site presence monitoring (geofence-exit
+ *          alerts) — a no-op if the school hasn't opted in or the caller
+ *          isn't currently clocked in.
+ * @access  Any authenticated staff member (their own presence only)
+ */
+router.post(
+    '/attendance/presence-ping',
+    authenticate,
+    rateLimit({ windowMs: 60_000, maxRequests: 30 }),
+    validate(attendanceLocationPayloadSchema),
+    hrController.presencePing
+);
+
 router.use(requireApp('staff-hr'));
 
 // ── Staff Directory ──────────────────────────────────────────────────────────

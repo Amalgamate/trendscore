@@ -132,6 +132,7 @@ model User {
   // ── Apps Module ─────────────────────────────────────────────────────────────
   appConfigsUpdated          SchoolAppConfig[]           @relation("AppConfigUpdater")
   appAuditLogs               AppAuditLog[]               @relation("AppAuditor")
+  reportEngineAuditLogs      ReportEngineAuditLog[]      @relation("ReportEngineAuditor")
   dutyRosterAssignments      DutyRosterAssignment[]      @relation("DutyTeacher")
   dutyRostersCreated         DutyRoster[]
   approvalRequests           ApprovalRequest[]           @relation("ApprovalRequestor")
@@ -233,6 +234,10 @@ model School {
   vatNumber                              String?
   etimsConfig                            Json?
   nemisConfig                            Json?
+
+  // ── eReport Engine (Phase 2/3) ──────────────────────────────────────────────
+  reportEngine                           ReportEngine               @default(LEGACY)
+  reportTemplateId                       String?
 
   biometricDevices           BiometricDevice[]
   biometricCredentials       BiometricCredential[]
@@ -5044,6 +5049,83 @@ model AppAuditLog {
   @@index([performedBy])
   @@index([createdAt])
   @@map("app_audit_logs")
+}
+
+// ============================================================================
+// eReport ENGINE  (TRENDSCORE_EREPORT_ENGINE_CHECKLIST.md, Phase 2/3)
+// Modeled on the App / SchoolAppConfig / AppAuditLog pattern above:
+//   Template               ~= App            (catalog of selectable things)
+//   School.reportTemplateId ~= SchoolAppConfig (per-school selection — single-
+//                              tenant here, so a direct FK-less field is enough)
+//   ReportEngineAuditLog   ~= AppAuditLog     (append-only; no UPDATE/DELETE)
+// ============================================================================
+
+enum ReportEngine {
+  LEGACY
+  NEW
+}
+
+model Template {
+  id        String   @id @default(uuid())
+  key       String   @unique // maps 1:1 to a React template component, e.g. "classic", "modern-cbc"
+  name      String // display name shown in the School Settings template picker
+  version   Int      @default(1)
+  isActive  Boolean  @default(true) // retired templates stay for historical re-render, hidden from the picker
+  createdAt DateTime @default(now())
+
+  @@index([isActive])
+  @@map("report_templates")
+}
+
+model ReportSnapshot {
+  id              String   @id @default(uuid())
+  learnerId       String
+  term            Term
+  academicYear    Int
+  templateId      String
+  templateVersion Int
+  reportData      Json // the resolved ReportData (report.service.ts output) at generation time
+  generatedAt     DateTime @default(now())
+  generatedBy     String // userId who most recently caused this snapshot to be written
+  // (create OR refresh — see reportEngine.service.ts's upsert; this is not
+  // necessarily whoever first "issued" the report, since there is no
+  // separate issue/publish action today — every view of a NEW-engine report
+  // refreshes this same row rather than creating a new one, per the unique
+  // constraint below)
+
+  // One live snapshot per (learner, term, year) — refreshed on every render
+  // rather than appended, so viewing a report repeatedly does not grow this
+  // table unboundedly. See reportEngine.service.ts's upsert. The unique
+  // constraint below also serves as the lookup index — no separate @@index
+  // needed for the same column set.
+  @@unique([learnerId, term, academicYear])
+  @@map("report_snapshots")
+}
+
+enum ReportEngineAction {
+  ENGINE_SWITCHED_TO_NEW
+  ENGINE_ROLLED_BACK_TO_LEGACY
+  TEMPLATE_CHANGED
+}
+
+model ReportEngineAuditLog {
+  id          String             @id @default(uuid())
+  schoolId    String
+  action      ReportEngineAction
+  fromValue   String? // e.g. previous reportEngine or reportTemplateId, for a rollback trail
+  toValue     String?
+  performedBy String
+  roleAtTime  String
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime           @default(now())
+
+  performer User @relation("ReportEngineAuditor", fields: [performedBy], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+  @@index([performedBy])
+  @@index([createdAt])
+  @@map("report_engine_audit_logs")
 }
 
 enum ComplianceStatus {

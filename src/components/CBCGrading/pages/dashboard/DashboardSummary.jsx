@@ -372,11 +372,11 @@ export const DashboardSummaryCard = ({
   value,
   subvalue,
   chips,
-  trend,
-  trendValue,
+  trend = undefined,
+  trendValue = undefined,
   icon,
   tone = 'indigo',
-  onClick,
+  onClick = undefined,
   askAI = true,
 }) => {
   const bgColor = SOLID_COLORS[tone] ?? SOLID_COLORS.indigo;

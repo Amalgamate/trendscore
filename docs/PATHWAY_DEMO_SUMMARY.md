@@ -27,9 +27,9 @@
 - Use provisioned demo credentials from the deployment secret store; do not place passwords in this document.
 
 ### ✅ Documentation Created
-- `PATHWAY_TRAINING.md` - Complete training guide
-- `PATHWAY_DEMO_GUIDE.md` - Step-by-step seed & timeline
-- `PATHWAY_EXPLORATION_STEPS.md` - API call reference
+- `docs/PATHWAY_TRAINING.md` - Complete training guide
+- `docs/PATHWAY_DEMO_GUIDE.md` - Step-by-step seed & timeline
+- `docs/PATHWAY_EXPLORATION_STEPS.md` - API call reference
 
 ---
 
@@ -263,7 +263,7 @@ Admin: Approve applications
 
 ### Option A: Continue API Testing
 1. Open another terminal
-2. Use the training guide: `server/PATHWAY_TRAINING.md`
+2. Use the training guide: `docs/PATHWAY_TRAINING.md`
 3. Follow each step with curl commands
 4. Test the complete flow
 
@@ -275,7 +275,7 @@ Admin: Approve applications
 
 ### Option C: Commit & Close
 ```bash
-git add server/PATHWAY_*.md
+git add docs/PATHWAY_*.md
 git commit -m "docs: add complete pathway module training and demo guides
 
 - PATHWAY_TRAINING.md: Step-by-step API tutorial
@@ -290,18 +290,18 @@ Module is production-ready."
 
 ## **TRAINING MATERIALS PROVIDED**
 
-📖 **server/PATHWAY_TRAINING.md** (THIS FILE)
+📖 **docs/PATHWAY_TRAINING.md** (THIS FILE)
 - Complete role breakdown
 - 8-part step-by-step tutorial
 - Permission control tests
 - Quick reference cheat sheet
 
-📖 **server/PATHWAY_DEMO_GUIDE.md**
+📖 **docs/PATHWAY_DEMO_GUIDE.md**
 - Seed commands to prepare data
 - Timeline for deploying
 - Complete user stories
 
-📖 **server/PATHWAY_EXPLORATION_STEPS.md**
+📖 **docs/PATHWAY_EXPLORATION_STEPS.md**
 - Detailed step-by-step exploration
 - Example API requests
 - Expected responses

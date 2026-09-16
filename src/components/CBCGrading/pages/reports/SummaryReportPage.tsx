@@ -19,7 +19,9 @@ import {
   FileSpreadsheet,
   CheckCircle,
   Layout,
-  Users
+  Users,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import api, { configAPI, assessmentAPI, learnerAPI } from '../../../../services/api';
 import { useSchoolData } from '../../../../contexts/SchoolDataContext';
@@ -113,7 +115,15 @@ const getCBCGrade = (percentage) => {
 // COMPONENT
 // ============================================================================
 
-const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
+const SummaryReportPage = ({
+  pageParams = {},
+  cardsHidden = false,
+  onToggleCards,
+}: {
+  pageParams?: any;
+  cardsHidden?: boolean;
+  onToggleCards?: () => void;
+}) => {
   const { grades: fetchedGrades, loading: schoolDataLoading } = useSchoolData();
 
   // Filter States
@@ -728,6 +738,20 @@ const SummaryReportPage = ({ pageParams = {} }: { pageParams?: any }) => {
 
               {/* Actions */}
               <div className="flex items-center gap-3">
+                {onToggleCards && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={onToggleCards}
+                      className="flex items-center gap-1.5 text-sm font-medium text-red-600 transition-colors hover:text-red-700"
+                      aria-expanded={!cardsHidden}
+                    >
+                      {cardsHidden ? <Eye size={16} /> : <EyeOff size={16} />}
+                      <span>{cardsHidden ? 'Show cards' : 'Hide cards'}</span>
+                    </button>
+                    <div className="h-3 w-px bg-gray-200" />
+                  </>
+                )}
                 {matrixData && (
                   <button
                     onClick={exportToExcel}
