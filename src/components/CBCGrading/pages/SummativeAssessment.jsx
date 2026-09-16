@@ -94,9 +94,12 @@ const TestPicker = ({ tests, value, onChange, disabled }) => {
   };
   const getTypeAndTime = (t) => {
     const typeLabel = String(formatTestTypeLabel(resolveTestType(t)) || 'Assessment').toUpperCase();
+    const weekLabel = resolveTestType(t) === 'WEEKLY' && t?.weekNumber
+      ? `WEEK ${t.weekNumber} • `
+      : '';
     const dt = t?.testDate || t?.updatedAt || t?.createdAt;
     const stamp = dt ? new Date(dt).toLocaleDateString('en-GB') : null;
-    return stamp ? `${typeLabel} • ${stamp}` : typeLabel;
+    return stamp ? `${weekLabel}${typeLabel} • ${stamp}` : `${weekLabel}${typeLabel}`;
   };
 
   if (disabled) {

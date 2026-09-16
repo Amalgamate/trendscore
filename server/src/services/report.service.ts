@@ -399,9 +399,12 @@ async function fetchSummativeResults(learnerId: string, term: Term, academicYear
     include: {
       test: {
         select: {
+          id: true,
           title: true,
           learningArea: true,
           learningAreaId: true,
+          testType: true,
+          weekNumber: true,
           totalMarks: true,
           passMarks: true,
           testDate: true,

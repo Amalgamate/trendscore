@@ -1963,7 +1963,7 @@ export const getBulkSummativeResults = async (req: AuthRequest, res: Response) =
           test: {
             // Avoid selecting enum fields here so legacy enum drift in production data
             // does not crash matrix generation while migrations roll forward.
-            select: { id: true, title: true, learningArea: true, learningAreaId: true, totalMarks: true, testType: true }
+            select: { id: true, title: true, learningArea: true, learningAreaId: true, totalMarks: true, testType: true, weekNumber: true, testDate: true }
           }
         },
         orderBy: [
@@ -2070,7 +2070,9 @@ export const getBulkSummativeResults = async (req: AuthRequest, res: Response) =
               learningArea: row.test_learning_area,
               learningAreaId: row.test_learning_area_id,
               totalMarks: row.test_total_marks,
-              testType: row.test_test_type
+              testType: row.test_test_type,
+              weekNumber: row.test_week_number,
+              testDate: row.test_date
             }
           })).map(normalizeSummativeResultForResponse);
         }
@@ -2142,7 +2144,9 @@ export const getBulkSummativeResults = async (req: AuthRequest, res: Response) =
           st."learningArea" AS test_learning_area,
           st."learningAreaId" AS test_learning_area_id,
           st."totalMarks" AS test_total_marks,
-          st."testType"::text AS test_test_type
+          st."testType"::text AS test_test_type,
+          st."weekNumber" AS test_week_number,
+          st."testDate" AS test_date
         FROM summative_results sr
         INNER JOIN learners l ON l.id = sr."learnerId"
         INNER JOIN summative_tests st ON st.id = sr."testId"
@@ -2177,7 +2181,9 @@ export const getBulkSummativeResults = async (req: AuthRequest, res: Response) =
           learningArea: row.test_learning_area,
           learningAreaId: row.test_learning_area_id,
           totalMarks: row.test_total_marks,
-          testType: row.test_test_type
+            testType: row.test_test_type,
+            weekNumber: row.test_week_number,
+            testDate: row.test_date
         }
       })).map(normalizeSummativeResultForResponse);
     }

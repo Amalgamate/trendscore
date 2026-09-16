@@ -314,6 +314,12 @@ const formatTestName = (str) => (formatTestTypeLabel(str) || '').toUpperCase();
 const resolveTestGroup = (item) => resolveTestType(item);
 const compareTestGroups = (a, b) => compareTestTypes(a, b);
 const CORE_GROUPS_WITHOUT_STAMP = new Set(['OPENER', 'MID_TERM', 'END_TERM']);
+const getAssessmentColumnLabel = (test, occurrence, totalOfType) => {
+  const type = resolveTestGroup(test);
+  if (type === 'WEEKLY' && test?.weekNumber) return `WEEK ${test.weekNumber}`;
+  const baseLabel = formatTestName(type);
+  return totalOfType > 1 ? `${baseLabel} ${occurrence}` : baseLabel;
+};
 
 const CATEGORY_KEYWORDS = {
   STEM: PATHWAY_MAP.STEM,
@@ -352,35 +358,40 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
     resultsByArea[area].push(result);
   });
 
-  // Identify unique Test Types for Columns
-  const testTypesFound = new Set();
-  const colDates = {};
-
-  results?.forEach(r => {
+  // Keep each test as its own column. Grouping by test type would collapse
+  // Week 1, Week 2, and later weekly tests into a single column.
+  const testColumnsByKey = new Map();
+  results?.forEach((result) => {
     const type = resolveTestGroup({
-      testType: r.test?.testType || r.testType,
-      title: r.test?.title || r.title
+      testType: result.test?.testType || result.testType,
+      title: result.test?.title || result.title
     });
-    testTypesFound.add(type);
+    const testId = result.test?.id || result.testId;
+    const weekNumber = result.test?.weekNumber || result.weekNumber;
+    const dateValue = result.testDate || result.test?.testDate || result.createdAt;
+    const date = new Date(dateValue || 0);
+    const fallbackKey = `${type}:${weekNumber || ''}:${dateValue || ''}`;
+    const key = String(testId || fallbackKey);
+    if (testColumnsByKey.has(key)) return;
 
-    // Track the earliest date for each test group to assist in sorting
-    const date = new Date(r.testDate || r.test?.testDate || 0);
-    if (!colDates[type] || (date > new Date(0) && date < colDates[type])) {
-      colDates[type] = date;
-    }
+    const label = type === 'WEEKLY' && weekNumber
+      ? `WEEK ${weekNumber}`
+      : formatTestTypeLabel(type);
+    testColumnsByKey.set(key, { key, label, type, weekNumber, date });
   });
 
-  // Sort columns: Opener -> Midterm -> End Term -> Others by Date
-  const testColumns = Array.from(testTypesFound).sort((a, b) => {
-    const byGroupPriority = compareTestGroups(a, b);
+  // Sort columns: Opener -> Midterm -> End Term -> weekly tests by week/date.
+  const testColumns = Array.from(testColumnsByKey.values()).sort((a, b) => {
+    const byGroupPriority = compareTestGroups(a.type, b.type);
     if (byGroupPriority !== 0) return byGroupPriority;
-
-    // Fallback to date sorting if priorities are equal
-    const dateA = colDates[a] || 0;
-    const dateB = colDates[b] || 0;
-    if (dateA && dateB) return dateA - dateB;
-
-    return String(a || '').localeCompare(String(b || ''));
+    if (a.type === 'WEEKLY' && b.type === 'WEEKLY') {
+      const weekDifference = Number(a.weekNumber || 0) - Number(b.weekNumber || 0);
+      if (weekDifference !== 0) return weekDifference;
+    }
+    const dateA = a.date.getTime();
+    const dateB = b.date.getTime();
+    if (dateA !== dateB) return dateA - dateB;
+    return a.label.localeCompare(b.label);
   });
 
   // Prepare row data
@@ -390,13 +401,10 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
     // Map scores by test column
     const scoresByCol = {};
     const maxByCol = {};
-    testColumns.forEach(col => {
-      const match = areaResults.find(r => resolveTestGroup({
-        testType: r.test?.testType || r.testType,
-        title: r.test?.title || r.title
-      }) === col);
-      scoresByCol[col] = match ? (match.score || 0) : null;
-      maxByCol[col] = match ? (match.totalMarks || 0) : null;
+    testColumns.forEach((column) => {
+      const match = areaResults.find((result) => String(result.test?.id || result.testId || '') === column.key);
+      scoresByCol[column.key] = match ? (match.score || 0) : null;
+      maxByCol[column.key] = match ? (match.totalMarks || 0) : null;
     });
 
     const testCount = areaResults.length;
@@ -436,20 +444,20 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
       points
     };
   }).filter(row => row.testCount > 0);
-  const totalsByTestColumn = testColumns.reduce((acc, col) => {
-    acc[col] = { score: 0, max: 0 };
+  const totalsByTestColumn = testColumns.reduce((acc, column) => {
+    acc[column.key] = { score: 0, max: 0 };
     return acc;
   }, {});
 
   tableRows.forEach(row => {
-    testColumns.forEach(col => {
-      const score = row.scoresByCol[col];
-      const max = row.maxByCol[col];
+    testColumns.forEach((column) => {
+      const score = row.scoresByCol[column.key];
+      const max = row.maxByCol[column.key];
       if (typeof score === 'number' && Number.isFinite(score)) {
-        totalsByTestColumn[col].score += score;
+        totalsByTestColumn[column.key].score += score;
       }
       if (typeof max === 'number' && Number.isFinite(max)) {
-        totalsByTestColumn[col].max += max;
+        totalsByTestColumn[column.key].max += max;
       }
     });
   });
@@ -618,7 +626,7 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
             letterSpacing: '0.5px'
           }}>
             <span>
-              {Array.from(testTypesFound).map(formatTestName).join(', ')}
+              {testColumns.map((column) => column.label).join(', ')}
             </span>
             <span>{term ? (typeof term === 'string' ? term.replace(/_/g, ' ') : (term.label || '')) : 'TERM'} | {academicYear || new Date().getFullYear()}</span>
           </div>
@@ -680,9 +688,9 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
           <thead>
             <tr style={{ color: '#000000' }}>
               <th style={{ padding: '5px 10px', textAlign: 'left', fontWeight: pdfTypeWeight.title, border: '1.5px solid #dbe4ee', letterSpacing: '0.3px', backgroundColor: '#ffffff' }}>SUBJECT</th>
-              {testColumns.map(col => (
-                <th key={col} style={{ padding: '5px 6px', textAlign: 'center', fontWeight: pdfTypeWeight.title, border: '1.5px solid #dbe4ee', minWidth: '76px', whiteSpace: 'nowrap', letterSpacing: '0.3px', backgroundColor: '#ffffff' }}>
-                  {formatTestName(col)}
+              {testColumns.map((column) => (
+                <th key={column.key} style={{ padding: '5px 6px', textAlign: 'center', fontWeight: pdfTypeWeight.title, border: '1.5px solid #dbe4ee', minWidth: '76px', whiteSpace: 'nowrap', letterSpacing: '0.3px', backgroundColor: '#ffffff' }}>
+                  {column.label}
                 </th>
               ))}
               {testColumns.length > 1 && (
@@ -697,14 +705,14 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
             {tableRows.map((row, idx) => (
               <tr key={row.area} style={{ backgroundColor: 'white', borderBottom: '1.5px solid #e2e8f0' }}>
                 <td style={{ padding: '6px 10px', fontWeight: pdfTypeWeight.bold, fontSize: '12px', color: '#0f172a', letterSpacing: '-0.1px', border: '1.5px solid #e2e8f0' }}>{row.area}</td>
-                {testColumns.map(col => {
-                  const score = row.scoresByCol[col];
-                  const maxForCol = row.maxByCol[col];
+                {testColumns.map((column) => {
+                  const score = row.scoresByCol[column.key];
+                  const maxForCol = row.maxByCol[column.key];
                   const colGrade = score !== null && typeof maxForCol === 'number' && maxForCol > 0
                     ? getGrade((score / maxForCol) * 100).grade
                     : null;
                   return (
-                    <td key={col} style={{ padding: '6px 6px', textAlign: 'center', border: '1.5px solid #e2e8f0' }}>
+                    <td key={column.key} style={{ padding: '6px 6px', textAlign: 'center', border: '1.5px solid #e2e8f0' }}>
                       <div style={{ fontSize: '13.5px', fontWeight: pdfTypeWeight.bold, lineHeight: '1.1', color: '#0f172a' }}>
                         {score !== null ? score : '—'}
                       </div>
@@ -732,11 +740,11 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
                   <td style={{ padding: '6px 10px', fontWeight: pdfTypeWeight.bold, fontSize: '13px', color: '#0f172a', border: '1.5px solid #e2e8f0' }}>
                     TOTAL
                   </td>
-                  {testColumns.map(col => (
-                    <td key={`total-${col}`} style={{ padding: '6px 6px', textAlign: 'center', fontWeight: pdfTypeWeight.bold, fontSize: '13px', color: '#0f172a', border: '1.5px solid #e2e8f0' }}>
-                      {totalsByTestColumn[col].max > 0
-                        ? `${totalsByTestColumn[col].score}/${totalsByTestColumn[col].max}`
-                        : totalsByTestColumn[col].score}
+                  {testColumns.map((column) => (
+                    <td key={`total-${column.key}`} style={{ padding: '6px 6px', textAlign: 'center', fontWeight: pdfTypeWeight.bold, fontSize: '13px', color: '#0f172a', border: '1.5px solid #e2e8f0' }}>
+                      {totalsByTestColumn[column.key].max > 0
+                        ? `${totalsByTestColumn[column.key].score}/${totalsByTestColumn[column.key].max}`
+                        : totalsByTestColumn[column.key].score}
                     </td>
                   ))}
                   {testColumns.length > 1 && (
@@ -1026,6 +1034,7 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
 const SUMMATIVE_REPORT_TYPES = [
   { value: 'GRADE_REPORT', label: 'Grade Sheet' },
   { value: 'STREAM_REPORT', label: 'Stream Sheet' },
+  { value: 'ASSESSMENT_BREAKDOWN', label: 'Assessment Matrix' },
   { value: 'LEARNER_REPORT', label: 'Summative Learner Sheet' },
 ];
 
@@ -1671,7 +1680,8 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       const isBroadsheetReport =
         reportType === 'GRADE_REPORT' ||
         reportType === 'STREAM_REPORT' ||
-        reportType === 'STREAM_RANKING_REPORT';
+        reportType === 'STREAM_RANKING_REPORT' ||
+        reportType === 'ASSESSMENT_BREAKDOWN';
       const isSingleLearnerReport =
         reportType === 'LEARNER_REPORT' ||
         reportType === 'LEARNER_TERMLY_REPORT' ||
@@ -1710,7 +1720,8 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
       const isBroadsheetReport =
         reportType === 'GRADE_REPORT' ||
         reportType === 'STREAM_REPORT' ||
-        reportType === 'STREAM_RANKING_REPORT';
+        reportType === 'STREAM_RANKING_REPORT' ||
+        reportType === 'ASSESSMENT_BREAKDOWN';
       const isSingleLearnerReport =
         reportType === 'LEARNER_REPORT' ||
         reportType === 'LEARNER_TERMLY_REPORT' ||
@@ -2962,7 +2973,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
 
         showSuccess(`Generated ${allReportRows.length} report(s) successfully`);
       }
-      else if (selectedType === 'GRADE_REPORT' || selectedType === 'STREAM_REPORT' || selectedType === 'STREAM_RANKING_REPORT') {
+      else if (selectedType === 'GRADE_REPORT' || selectedType === 'STREAM_REPORT' || selectedType === 'STREAM_RANKING_REPORT' || selectedType === 'ASSESSMENT_BREAKDOWN') {
         // --- BROADSHEET GENERATION LOGIC ---
 
         // 1. Identify Target Learners
@@ -3028,6 +3039,99 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           } catch (err) {
             console.error(`Failed to fetch results for test ${test.id}`, err);
           }
+        }
+
+        if (selectedType === 'ASSESSMENT_BREAKDOWN') {
+          const typeCounts = targetTests.reduce((counts, test) => {
+            const type = resolveTestGroup(test);
+            counts[type] = (counts[type] || 0) + 1;
+            return counts;
+          }, {});
+          const typeOccurrences = {};
+          const assessmentColumns = [...targetTests]
+            .sort((a, b) => {
+              const typeOrder = compareTestGroups(resolveTestGroup(a), resolveTestGroup(b));
+              if (typeOrder !== 0) return typeOrder;
+              if (resolveTestGroup(a) === 'WEEKLY' && resolveTestGroup(b) === 'WEEKLY') {
+                const weekOrder = Number(a.weekNumber || 0) - Number(b.weekNumber || 0);
+                if (weekOrder !== 0) return weekOrder;
+              }
+              return new Date(a.testDate || a.createdAt || 0).getTime() - new Date(b.testDate || b.createdAt || 0).getTime();
+            })
+            .map((test) => {
+              const type = resolveTestGroup(test);
+              typeOccurrences[type] = (typeOccurrences[type] || 0) + 1;
+              return {
+                id: test.id,
+                label: getAssessmentColumnLabel(test, typeOccurrences[type], typeCounts[type]),
+                test,
+              };
+            });
+
+          const breakdownRows = targetLearners.map((learner) => {
+            const learnerAllowedSubjects = allowedSubjectsByLearner.get(learner.id);
+            const learnerResults = (allResultsMap[learner.id] || []).filter((result) => {
+              if (!learnerAllowedSubjects || learnerAllowedSubjects.size === 0) return true;
+              const areaName = getCanonicalLearningAreaKey(result.learningArea || result.test?.learningArea);
+              return areaName ? learnerAllowedSubjects.has(areaName) : true;
+            });
+            const resultsByTestId = new Map(learnerResults.map((result) => [String(result.testId || result.test?.id), result]));
+            const assessmentScores = {};
+            const assessmentDisplayCodes = {};
+            let scoreTotal = 0;
+            let assessedCount = 0;
+
+            assessmentColumns.forEach((column) => {
+              const result = resultsByTestId.get(String(column.id));
+              if (result?.assessmentStatusCode) {
+                assessmentDisplayCodes[column.id] = String(result.assessmentStatusCode).toUpperCase();
+                return;
+              }
+              if (!result) return;
+              const totalMarks = Number(column.test.totalMarks) || 100;
+              const percentage = totalMarks > 0 ? ((Number(result.score) || 0) / totalMarks) * 100 : 0;
+              assessmentScores[column.id] = parseFloat(percentage.toFixed(1));
+              scoreTotal += percentage;
+              assessedCount += 1;
+            });
+
+            const averagePct = assessedCount > 0 ? scoreTotal / assessedCount : 0;
+            const gradeResult = assessedCount > 0 ? getConfiguredCBCGrade(averagePct) : { grade: '—', remark: 'No assessed tests' };
+            return {
+              learner,
+              results: learnerResults,
+              assessmentScores,
+              assessmentDisplayCodes,
+              missingAssessmentScores: assessmentColumns.some((column) => !resultsByTestId.has(String(column.id))),
+              totalScore: scoreTotal,
+              totalMax: assessedCount * 100,
+              averagePct: parseFloat(averagePct.toFixed(1)),
+              grade: gradeResult.grade,
+              remark: gradeResult.remark,
+              assessedSubjectCount: assessedCount,
+              missingSubjectCount: assessmentColumns.length - assessedCount,
+              hasMissingAggregate: false,
+              meritPoints: assessedCount > 0 ? assessmentColumns.reduce((points, column) => {
+                const score = assessmentScores[column.id];
+                return points + (score === undefined ? 0 : Number(getConfiguredCBCGrade(score).points) || 0);
+              }, 0) : null,
+            };
+          }).sort((a, b) => b.averagePct - a.averagePct || b.totalScore - a.totalScore);
+
+          let nextPosition = 1;
+          const rankedBreakdownRows = breakdownRows.map((row) => ({ ...row, position: row.assessedSubjectCount > 0 ? nextPosition++ : null }));
+          setReportData({
+            type: selectedType,
+            title: `Assessment Matrix - ${selectedGrade}${selectedStream && selectedStream !== 'all' ? ` ${selectedStream}` : ''}`,
+            rows: rankedBreakdownRows,
+            assessmentColumns,
+            generatedAt: new Date(),
+            meta: { grade: selectedGrade, stream: selectedStream, term: selectedTerm, totalLearners: targetLearners.length },
+          });
+          setStatusMessage(`✅ Success: Generated assessment matrix for ${targetLearners.length} learners`);
+          showSuccess(`Generated assessment matrix for ${targetLearners.length} students`);
+          setLoading(false);
+          return;
         }
 
         const subjectsRaw = Array.from(new Set(targetTests.map(t => getCanonicalLearningAreaName(t.learningArea)).filter(Boolean))).sort();
@@ -3955,7 +4059,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
 
       {/* GRADE / STREAM REPORT DISPLAY - BROADSHEET */}
       {
-        (reportData?.type === 'GRADE_REPORT' || reportData?.type === 'STREAM_REPORT' || reportData?.type === 'STREAM_RANKING_REPORT') && reportData?.rows && (
+        (reportData?.type === 'GRADE_REPORT' || reportData?.type === 'STREAM_REPORT' || reportData?.type === 'STREAM_RANKING_REPORT' || reportData?.type === 'ASSESSMENT_BREAKDOWN') && reportData?.rows && (
           <div className="px-6 py-8">
             <div className="bg-gray-100 py-12 px-4 rounded-xl shadow-inner mb-8 no-print">
               <div
@@ -4027,9 +4131,9 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                       <tr style={{ backgroundColor: '#1e3a8a', color: 'white' }}>
                         <th style={{ ...cellBorder, padding: '6px', textAlign: 'center', width: '30px' }}>#</th>
                         <th style={{ ...cellBorder, padding: '6px', textAlign: 'left', minWidth: '150px' }}>LEARNER NAME</th>
-                        {reportData.subjects.map(subj => (
+                        {(reportData.assessmentColumns || reportData.subjects.map((subject) => ({ id: subject, label: getAbbreviatedName(subject) }))).map((column) => (
                           <th
-                            key={subj}
+                            key={column.id}
                             style={{
                               ...cellBorder,
                               padding: '6px',
@@ -4040,7 +4144,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                               boxShadow: 'inset 0 1px 0 #111827',
                             }}
                           >
-                            {getAbbreviatedName(subj)}
+                            {column.label}
                           </th>
                         ))}
                         <th style={{ ...cellBorder, padding: '6px', textAlign: 'center' }}>TOTAL</th>
@@ -4056,9 +4160,11 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                           <td style={{ ...cellBorder, padding: '4px', fontWeight: 'bold' }}>
                             {row.learner.firstName} {row.learner.lastName}
                           </td>
-                          {reportData.subjects.map(subj => (
-                            <td key={`${row.learner.id}-${subj}`} style={{ ...cellBorder, padding: '4px', textAlign: 'center' }}>
-                              {row.subjectDisplayCodes?.[subj] || (row.missingSubjectScores?.[subj] ? 'X' : row.subjectScores?.[subj] === undefined ? '-' : formatBroadsheetNumber(row.subjectScores[subj], 1))}
+                          {(reportData.assessmentColumns || reportData.subjects.map((subject) => ({ id: subject }))).map((column) => (
+                            <td key={`${row.learner.id}-${column.id}`} style={{ ...cellBorder, padding: '4px', textAlign: 'center' }}>
+                              {reportData.assessmentColumns
+                                ? row.assessmentDisplayCodes?.[column.id] || (row.missingAssessmentScores && row.assessmentScores?.[column.id] === undefined ? 'X' : row.assessmentScores?.[column.id] === undefined ? '-' : formatBroadsheetNumber(row.assessmentScores[column.id], 1))
+                                : row.subjectDisplayCodes?.[column.id] || (row.missingSubjectScores?.[column.id] ? 'X' : row.subjectScores?.[column.id] === undefined ? '-' : formatBroadsheetNumber(row.subjectScores[column.id], 1))}
                             </td>
                           ))}
                           <td style={{ ...cellBorder, padding: '4px', textAlign: 'center', fontWeight: 'bold' }}>{row.hasMissingAggregate ? 'INC' : Math.round(row.totalScore)}</td>
@@ -4149,13 +4255,15 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                     {isExporting ? 'Opening...' : 'Print / Save Broadsheet'}
                   </button>
 
-                  <button
-                    onClick={handleExportBroadsheetExcel}
-                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition shadow-sm font-semibold text-sm"
-                  >
-                    <FileText size={16} />
-                    Export Excel
-                  </button>
+                  {!reportData.assessmentColumns && (
+                    <button
+                      onClick={handleExportBroadsheetExcel}
+                      className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition shadow-sm font-semibold text-sm"
+                    >
+                      <FileText size={16} />
+                      Export Excel
+                    </button>
+                  )}
 
                   {(bulkProgress.active || isSendingWhatsApp) && (
                     <div className="w-full text-center mt-2 text-sm font-medium text-gray-700">

@@ -12,6 +12,7 @@ import { gradingService } from '../services/grading.service';
 import { parentAccessService } from '../services/parent-access.service';
 import { getInstitutionType } from '../utils/institutionNormalizer';
 import * as reportService from '../services/report.service';
+import * as reportEngineService from '../services/reportEngine.service';
 
 import logger from '../utils/logger';
 const CATEGORY_BUCKETS = ['STEM', 'SOCIAL', 'ARTS'] as const;
@@ -240,9 +241,12 @@ export const reportController = {
         include: {
           test: {
             select: {
+              id: true,
               title: true,
               learningArea: true,
               learningAreaId: true,
+              testType: true,
+              weekNumber: true,
               learningAreaRef: { select: { id: true, name: true, pathway: true, category: true, isCore: true } },
               testDate: true,
               totalMarks: true,
@@ -298,15 +302,22 @@ export const reportController = {
 
       await assertLearnerAccess(req, learnerId);
 
-      const report = await reportService.generateTermlyReport(
+      const result = await reportEngineService.generateReport(
         learnerId,
         term as Term,
-        parseInt(academicYear as string)
+        parseInt(academicYear as string),
+        req.user?.userId || 'system'
       );
 
       res.json({
         success: true,
-        data: report
+        data: {
+          ...result.data,
+          reportEngine: result.engine,
+          templateId: result.templateId,
+          templateKey: result.templateKey,
+          templateVersion: result.templateVersion,
+        }
       });
 
     } catch (error: any) {
