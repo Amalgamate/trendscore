@@ -311,13 +311,43 @@ const calculatePathwayInsights = (results) => {
 };
 
 const formatTestName = (str) => (formatTestTypeLabel(str) || '').toUpperCase();
-const resolveTestGroup = (item) => resolveTestType(item);
-const compareTestGroups = (a, b) => compareTestTypes(a, b);
+
+// Weekly assessments are repeatable cycles.  A type-only key made Week 1 and
+// Week 3 appear as one "WEEKLY" choice, which also meant a report filter could
+// not select either weekly test independently.
+const WEEKLY_GROUP_PREFIX = 'WEEKLY_WEEK_';
+const resolveTestGroup = (item) => {
+  const type = resolveTestType(item);
+  const weekNumber = Number(item?.weekNumber);
+  return type === 'WEEKLY' && Number.isInteger(weekNumber) && weekNumber > 0
+    ? `${WEEKLY_GROUP_PREFIX}${weekNumber}`
+    : type;
+};
+const getTestGroupType = (group) => String(group || '').startsWith(WEEKLY_GROUP_PREFIX)
+  ? 'WEEKLY'
+  : String(group || '');
+const getTestGroupWeekNumber = (group) => {
+  const match = String(group || '').match(/^WEEKLY_WEEK_(\d+)$/);
+  return match ? Number(match[1]) : null;
+};
+const formatTestGroup = (group) => {
+  const weekNumber = getTestGroupWeekNumber(group);
+  return weekNumber ? `WEEK ${weekNumber}` : formatTestName(group);
+};
+const compareTestGroups = (a, b) => {
+  const typeOrder = compareTestTypes(getTestGroupType(a), getTestGroupType(b));
+  if (typeOrder !== 0) return typeOrder;
+  if (getTestGroupType(a) === 'WEEKLY' && getTestGroupType(b) === 'WEEKLY') {
+    return Number(getTestGroupWeekNumber(a) || 0) - Number(getTestGroupWeekNumber(b) || 0);
+  }
+  return String(a || '').localeCompare(String(b || ''));
+};
 const CORE_GROUPS_WITHOUT_STAMP = new Set(['OPENER', 'MID_TERM', 'END_TERM']);
 const getAssessmentColumnLabel = (test, occurrence, totalOfType) => {
-  const type = resolveTestGroup(test);
+  const group = resolveTestGroup(test);
+  const type = getTestGroupType(group);
   if (type === 'WEEKLY' && test?.weekNumber) return `WEEK ${test.weekNumber}`;
-  const baseLabel = formatTestName(type);
+  const baseLabel = formatTestGroup(group);
   return totalOfType > 1 ? `${baseLabel} ${occurrence}` : baseLabel;
 };
 
@@ -374,7 +404,7 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
     const key = String(testId || fallbackKey);
     if (testColumnsByKey.has(key)) return;
 
-    const label = type === 'WEEKLY' && weekNumber
+    const label = getTestGroupType(type) === 'WEEKLY' && weekNumber
       ? `WEEK ${weekNumber}`
       : formatTestTypeLabel(type);
     testColumnsByKey.set(key, { key, label, type, weekNumber, date });
@@ -384,7 +414,7 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
   const testColumns = Array.from(testColumnsByKey.values()).sort((a, b) => {
     const byGroupPriority = compareTestGroups(a.type, b.type);
     if (byGroupPriority !== 0) return byGroupPriority;
-    if (a.type === 'WEEKLY' && b.type === 'WEEKLY') {
+    if (getTestGroupType(a.type) === 'WEEKLY' && getTestGroupType(b.type) === 'WEEKLY') {
       const weekDifference = Number(a.weekNumber || 0) - Number(b.weekNumber || 0);
       if (weekDifference !== 0) return weekDifference;
     }
@@ -2013,7 +2043,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
 
     const uniqueTypes = [...new Set(testTypes.filter(Boolean))];
     if (uniqueTypes.length === 1) {
-      return `${formatTestTypeLabel(uniqueTypes[0])} ${termLabel}`;
+      return `${formatTestGroup(uniqueTypes[0])} ${termLabel}`;
     }
 
     if (uniqueTypes.length > 1) {
@@ -3052,7 +3082,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
             .sort((a, b) => {
               const typeOrder = compareTestGroups(resolveTestGroup(a), resolveTestGroup(b));
               if (typeOrder !== 0) return typeOrder;
-              if (resolveTestGroup(a) === 'WEEKLY' && resolveTestGroup(b) === 'WEEKLY') {
+              if (getTestGroupType(resolveTestGroup(a)) === 'WEEKLY' && getTestGroupType(resolveTestGroup(b)) === 'WEEKLY') {
                 const weekOrder = Number(a.weekNumber || 0) - Number(b.weekNumber || 0);
                 if (weekOrder !== 0) return weekOrder;
               }
@@ -3658,7 +3688,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
               className="h-9 px-3 py-1.5 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-brand-teal focus:border-brand-teal outline-none flex items-center justify-between min-w-full md:min-w-[140px] md:max-w-[200px] bg-white text-gray-700"
             >
               <span className="truncate">
-                {stagedTestGroups.length === 0 ? 'All Test Groups' : stagedType === 'SUBJECT_ANALYSIS' ? formatTestName(stagedTestGroups[0]) : `${stagedTestGroups.length} Groups Selected`}
+                {stagedTestGroups.length === 0 ? 'All Test Groups' : stagedType === 'SUBJECT_ANALYSIS' ? formatTestGroup(stagedTestGroups[0]) : `${stagedTestGroups.length} Groups Selected`}
               </span>
               <span className="text-gray-400 ml-2 text-[10px]">▼</span>
             </button>
@@ -3699,7 +3729,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                             className={`w-full text-left p-2 px-3 hover:bg-slate-50 cursor-pointer text-xs ${stagedTestGroups[0] === group ? 'bg-brand-teal/10 text-brand-teal font-medium' : 'text-slate-700'}`}
                           >
                             <span className="min-w-0 flex flex-col leading-tight">
-                              <span className="truncate">{formatTestName(group)}</span>
+                              <span className="truncate">{formatTestGroup(group)}</span>
                               {showDateStamp && dateStamp && (
                                 <span className="text-[10px] text-slate-400">{dateStamp}</span>
                               )}
@@ -3723,7 +3753,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                           className="rounded border-slate-300 text-brand-teal focus:ring-brand-teal"
                         />
                         <span className="min-w-0 flex flex-col leading-tight">
-                          <span className="truncate">{formatTestName(group)}</span>
+                          <span className="truncate">{formatTestGroup(group)}</span>
                           {showDateStamp && dateStamp && (
                             <span className="text-[10px] text-slate-400">{dateStamp}</span>
                           )}
