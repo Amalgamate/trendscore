@@ -772,6 +772,9 @@ ALTER TABLE "subject_assignments"
 -- whose Prisma history was baselined before the physical column existed.
 -- This is deliberately idempotent: it also protects older schools where the
 -- migration was recorded but its SQL never ran.
+      ALTER TABLE "learners"
+        ADD COLUMN IF NOT EXISTS "nationality" TEXT;
+
 ALTER TABLE "summative_tests"
   ADD COLUMN IF NOT EXISTS "weekNumber" INTEGER NOT NULL DEFAULT 1;
 
