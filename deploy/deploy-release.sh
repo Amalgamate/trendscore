@@ -753,6 +753,10 @@ END $$;
 SQL
       npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-learner-student-user.sql
 
+      # Mark SKIP2 as applied so prisma migrate deploy does not attempt to rerun
+      # the raw migration.sql which lacks IF NOT EXISTS and fails when the column already exists.
+      npx prisma migrate resolve --applied "${SKIP2}" >/tmp/learner-resolve-applied.log 2>&1 || true
+
       # 5. Repair presence-monitoring columns in installations whose migration
       # history was baselined before this schema addition. Prisma may consider
       # the migration applied even while the physical columns are absent.

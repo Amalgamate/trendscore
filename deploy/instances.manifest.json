@@ -171,12 +171,13 @@
       "id": "malkagalla",
       "label": "Malkagalla School",
       "tier": "production",
-      "active": true,
-      "deployment_allowed": true,
+      "active": false,
+      "deployment_allowed": false,
       "kind": "stack",
       "compose_project": "zawadi-malkagalla",
       "env_file": "/srv/zawadi/apps/env/.zawadi-malkagalla.env",
-      "public_domain": "malkagalla.trendscore.co.ke"
+      "public_domain": "malkagalla.trendscore.co.ke",
+      "notes": "Pending stack provisioning via provision-school workflow"
     }
   ],
   "discovery": {

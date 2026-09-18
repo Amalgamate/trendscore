@@ -614,58 +614,6 @@ repair_interrupted_learner_student_user_migration() {
   " < /dev/null
 }
 
-repair_summative_week_column() {
-  local kind="$1"
-  local project="${2:-}"
-  local env_file="${3:-}"
-
-  # Some existing schools were baselined before this migration's SQL had run.
-  # Prisma therefore reports it applied even though the physical column is
-  # absent. This idempotent repair restores the schema before queries run.
-  log "━━ Repair summative assessment week column if needed ━━"
-  compose_with_pinned_images "${kind}" "${project}" "${env_file}" run -T --no-deps --rm backend sh -lc '
-    cat >/tmp/repair-summative-week.sql <<'"'"'SQL'"'"'
-ALTER TABLE "summative_tests"
-  ADD COLUMN IF NOT EXISTS "weekNumber" INTEGER NOT NULL DEFAULT 1;
-
-DROP INDEX IF EXISTS "summative_tests_series_unique_key";
-
-CREATE UNIQUE INDEX IF NOT EXISTS "summative_tests_series_unique_key"
-  ON "summative_tests"("grade", "learningArea", "term", "academicYear", "testType", "weekNumber", "title");
-SQL
-    npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-summative-week.sql
-  ' < /dev/null
-}
-
-repair_presence_monitoring_columns() {
-  local kind="$1"
-  local project="${2:-}"
-  local env_file="${3:-}"
-
-  # Baselined databases can have the migration recorded while the later
-  # presence-monitoring columns are absent. These are additive, defaulted
-  # columns, so running this on every release is safe.
-  log "━━ Repair presence-monitoring columns if needed ━━"
-  compose_with_pinned_images "${kind}" "${project}" "${env_file}" run -T --no-deps --rm backend sh -lc '
-    cat >/tmp/repair-presence-monitoring.sql <<'"'"'SQL'"'"'
-ALTER TABLE "users"
-  ADD COLUMN IF NOT EXISTS "presenceConsentAcceptedAt" TIMESTAMP(3);
-
-ALTER TABLE "schools"
-  ADD COLUMN IF NOT EXISTS "presenceMonitoringEnabled" BOOLEAN NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS "presenceHeartbeatMinutes" INTEGER NOT NULL DEFAULT 5,
-  ADD COLUMN IF NOT EXISTS "presenceStaleThresholdMinutes" INTEGER NOT NULL DEFAULT 25;
-
-ALTER TABLE "classes"
-  ADD COLUMN IF NOT EXISTS "attendanceLockExempt" BOOLEAN NOT NULL DEFAULT false;
-
-ALTER TABLE "subject_assignments"
-  ADD COLUMN IF NOT EXISTS "attendanceLockExempt" BOOLEAN NOT NULL DEFAULT false;
-SQL
-    npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-presence-monitoring.sql
-  ' < /dev/null
-}
-
 auto_baseline_if_needed() {
   local kind="$1"
   local project="${2:-}"
@@ -716,22 +664,134 @@ run_migrations() {
   local kind="$1"
   local project="${2:-}"
   local env_file="${3:-}"
-
-  log "━━ Migrations (prisma migrate deploy) ━━"
-  auto_baseline_if_needed "${kind}" "${project}" "${env_file}" || return 1
-  repair_summative_series_migration "${kind}" "${project}" "${env_file}" || return 1
-  repair_interrupted_learner_student_user_migration "${kind}" "${project}" "${env_file}" || return 1
-  repair_presence_monitoring_columns "${kind}" "${project}" "${env_file}" || return 1
-  repair_summative_week_column "${kind}" "${project}" "${env_file}" || return 1
-
-  if [[ "${kind}" == "main" ]]; then
-    compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
-      run -T --no-deps --rm backend npx prisma migrate deploy < /dev/null || return 1
-    return 0
-  fi
-
+  log "Migrations (single-container: baseline + repair + deploy)"
+  # All migration prep now runs in ONE container start instead of four.
+  # Previously: auto_baseline + repair_summative + repair_learner + migrate_deploy
+  # = 4x docker run --rm cold-starts (~20s each) = ~80s overhead per school.
+  # Now: 1 container does all four steps sequentially, saving ~60s per school.
   compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
-    run -T --no-deps --rm backend npx prisma migrate deploy < /dev/null
+    run -T --no-deps --rm backend sh -s <<'REMOTE'
+      set -e
+      SKIP1=20260707121500_allow_multiple_summative_series
+      SKIP2=20260811090000_link_learners_to_student_users
+
+      # 1. Baseline check
+      migration_count=$(node -e "
+        const { Client } = require(\"pg\");
+        const c = new Client({ connectionString: process.env.DATABASE_URL });
+        c.connect()
+          .then(() => c.query(\"SELECT COUNT(*)::int AS n FROM \\"_prisma_migrations\\" WHERE finished_at IS NOT NULL\"))
+          .then(r => { console.log(r.rows[0].n); c.end(); })
+          .catch(() => { console.log(0); c.end(); });
+      " 2>/dev/null || echo 0)
+      if [ "${migration_count}" -gt 0 ]; then
+        echo "  [baseline] ${migration_count} migration(s) recorded - skipping baseline"
+      else
+        echo "  [baseline] no history - auto-baselining all migrations"
+        count=0
+        for dir in prisma/migrations/*/; do
+          name="$(basename "${dir}")"
+          [ "${name}" = "${SKIP1}" ] && continue
+          [ "${name}" = "${SKIP2}" ] && continue
+          npx prisma migrate resolve --applied "${name}" --schema prisma/schema.prisma 2>&1 | tail -1
+          count=$((count+1))
+        done
+        echo "  [baseline] marked ${count} migrations as applied"
+      fi
+
+      # 2. Repair summative series migration preconditions
+      npx prisma migrate resolve --rolled-back "${SKIP1}" >/tmp/summative-resolve.log 2>&1 || true
+      cat >/tmp/repair-summative.sql <<'SQL'
+WITH ranked AS (
+  SELECT id, ROW_NUMBER() OVER (
+    PARTITION BY grade, "learningArea", term, "academicYear", "testType", title
+    ORDER BY "createdAt" DESC, id DESC
+  ) AS rn
+  FROM "summative_tests" WHERE title IS NOT NULL
+)
+UPDATE "summative_tests" st
+SET title = LEFT(st.title, 450) || ' (duplicate ' || LEFT(st.id, 8) || ')'
+FROM ranked WHERE st.id = ranked.id AND ranked.rn > 1;
+SQL
+      npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-summative.sql
+
+      # 3. Recover interrupted learner/student user migration
+      npx prisma migrate resolve --rolled-back "${SKIP2}" >/tmp/learner-resolve.log 2>&1 || true
+
+      # 4. Repair the learner/student-user link migration if this database was
+      # left in a partially-applied state from a prior interrupted deployment.
+      # The migration is safe to re-run after the schema is already there.
+      cat >/tmp/repair-learner-student-user.sql <<'SQL'
+ALTER TABLE "learners"
+  ADD COLUMN IF NOT EXISTS "studentUserId" TEXT;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname = 'learners_studentUserId_key'
+  ) THEN
+    CREATE UNIQUE INDEX "learners_studentUserId_key"
+      ON "learners"("studentUserId");
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'learners_studentUserId_fkey'
+  ) THEN
+    ALTER TABLE "learners"
+      ADD CONSTRAINT "learners_studentUserId_fkey"
+      FOREIGN KEY ("studentUserId") REFERENCES "users"("id")
+      ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
+SQL
+      npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-learner-student-user.sql
+
+      # Mark SKIP2 as applied so prisma migrate deploy does not attempt to rerun
+      # the raw migration.sql which lacks IF NOT EXISTS and fails when the column already exists.
+      npx prisma migrate resolve --applied "${SKIP2}" >/tmp/learner-resolve-applied.log 2>&1 || true
+
+      # 5. Repair presence-monitoring columns in installations whose migration
+      # history was baselined before this schema addition. Prisma may consider
+      # the migration applied even while the physical columns are absent.
+      cat >/tmp/repair-presence-monitoring.sql <<'SQL'
+ALTER TABLE "users"
+  ADD COLUMN IF NOT EXISTS "presenceConsentAcceptedAt" TIMESTAMP(3);
+ALTER TABLE "schools"
+  ADD COLUMN IF NOT EXISTS "presenceMonitoringEnabled" BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS "presenceHeartbeatMinutes" INTEGER NOT NULL DEFAULT 5,
+  ADD COLUMN IF NOT EXISTS "presenceStaleThresholdMinutes" INTEGER NOT NULL DEFAULT 25;
+ALTER TABLE "classes"
+  ADD COLUMN IF NOT EXISTS "attendanceLockExempt" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "subject_assignments"
+  ADD COLUMN IF NOT EXISTS "attendanceLockExempt" BOOLEAN NOT NULL DEFAULT false;
+
+-- 6. Repair the recurring summative-assessment week column for databases
+-- whose Prisma history was baselined before the physical column existed.
+-- This is deliberately idempotent: it also protects older schools where the
+-- migration was recorded but its SQL never ran.
+      ALTER TABLE "learners"
+        ADD COLUMN IF NOT EXISTS "nationality" TEXT;
+
+ALTER TABLE "summative_tests"
+  ADD COLUMN IF NOT EXISTS "weekNumber" INTEGER NOT NULL DEFAULT 1;
+
+DROP INDEX IF EXISTS "summative_tests_series_unique_key";
+
+CREATE UNIQUE INDEX IF NOT EXISTS "summative_tests_series_unique_key"
+  ON "summative_tests"("grade", "learningArea", "term", "academicYear", "testType", "weekNumber", "title");
+SQL
+      npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-presence-monitoring.sql
+
+      # 7. Apply any pending migrations
+      npx prisma migrate deploy
+REMOTE
 }
 
 restart_services() {

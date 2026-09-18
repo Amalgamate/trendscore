@@ -16,7 +16,7 @@ REMOTE_STAGE="/tmp/trendscore-deploy-assets-${RUN_KEY}"
 trap 'rm -rf "${LOCAL_STAGE}"' EXIT
 
 cp deploy/instances.manifest.json "${LOCAL_STAGE}/instances.manifest.json"
-cp scripts/deploy-release.sh "${LOCAL_STAGE}/deploy-release.sh"
+cp deploy/deploy-release.sh "${LOCAL_STAGE}/deploy-release.sh"
 cp scripts/provision-instance.sh "${LOCAL_STAGE}/provision-instance.sh"
 cp scripts/configure-school-aws-env.sh "${LOCAL_STAGE}/configure-school-aws-env.sh"
 cp scripts/verify-school-biometric-aws.sh "${LOCAL_STAGE}/verify-school-biometric-aws.sh"
