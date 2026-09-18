@@ -134,6 +134,13 @@ describe('Fee collection end-to-end', () => {
       create: { code: 'TUITION', name: 'Tuition', category: 'ACADEMIC', description: 'Tuition fees', isActive: true }
     });
 
+    // Keep this fixture deterministic when the shared test database contains
+    // active term records from other integration tests or local development.
+    await prisma.termConfig.updateMany({
+      where: { isActive: true },
+      data: { isActive: false }
+    });
+
     await prisma.termConfig.upsert({
       where: { academicYear_term: { academicYear: currentYear, term: 'TERM_1' } },
       update: {

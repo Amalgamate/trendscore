@@ -44,26 +44,53 @@ export interface TemplateSummary {
  * (Decision D3) may still reference them and need to resolve the component
  * that rendered them, even after the template is retired from new selection.
  */
+const isMissingTemplateTableError = (error: any) => {
+  const code = error?.code;
+  const message = String(error?.message || '');
+  return code === 'P2021' || code === 'P2022' || message.includes('report_templates') || message.includes('template');
+};
+
 export async function listActiveTemplates(): Promise<TemplateSummary[]> {
-  return prisma.template.findMany({
-    where: { isActive: true },
-    orderBy: { createdAt: 'asc' },
-    select: { id: true, key: true, name: true, version: true, isActive: true, createdAt: true },
-  });
+  try {
+    return await prisma.template.findMany({
+      where: { isActive: true },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, key: true, name: true, version: true, isActive: true, createdAt: true },
+    });
+  } catch (error) {
+    if (isMissingTemplateTableError(error)) {
+      return [];
+    }
+    throw error;
+  }
 }
 
 export async function getTemplateById(id: string): Promise<TemplateSummary | null> {
-  return prisma.template.findUnique({
-    where: { id },
-    select: { id: true, key: true, name: true, version: true, isActive: true, createdAt: true },
-  });
+  try {
+    return await prisma.template.findUnique({
+      where: { id },
+      select: { id: true, key: true, name: true, version: true, isActive: true, createdAt: true },
+    });
+  } catch (error) {
+    if (isMissingTemplateTableError(error)) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function getTemplateByKey(key: string): Promise<TemplateSummary | null> {
-  return prisma.template.findUnique({
-    where: { key },
-    select: { id: true, key: true, name: true, version: true, isActive: true, createdAt: true },
-  });
+  try {
+    return await prisma.template.findUnique({
+      where: { key },
+      select: { id: true, key: true, name: true, version: true, isActive: true, createdAt: true },
+    });
+  } catch (error) {
+    if (isMissingTemplateTableError(error)) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 /**

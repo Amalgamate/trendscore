@@ -33,6 +33,33 @@ export async function generateAdmissionNumber(
   }
 }
 
+/**
+ * Issues the next available admission number starting at (or after) a
+ * specific value, bypassing the AUTO/MANUAL numbering-mode toggle — used
+ * when an admin explicitly requests a starting point for a bulk import
+ * batch (e.g. "start this batch at 1500").
+ *
+ * Persists the running sequence counter exactly like generateAdmissionNumber,
+ * so subsequent rows in the same batch (and any later AUTO-generated number,
+ * whether from another import or the single-add form) continue on from
+ * wherever this call leaves off rather than colliding with it.
+ */
+export async function generateAdmissionNumberFrom(
+  startValue: number,
+  branchCode: string = 'MC',
+  academicYear: number = new Date().getFullYear()
+): Promise<string> {
+  return prisma.$transaction(async (tx) => {
+    const settings = await getAdmissionSettings(tx);
+    return findNextAvailableAdmissionNumber(tx, settings, {
+      branchCode,
+      academicYear,
+      persistSequence: true,
+      minValue: Math.max(1, Math.floor(startValue))
+    });
+  });
+}
+
 export async function getCurrentSequenceValue(academicYear: number): Promise<number | null> {
   const settings = await getAdmissionSettings(prisma);
   const sequenceYear = settings.resetRule === 'YEARLY' ? academicYear : 0;
@@ -138,7 +165,7 @@ function formatAdmissionNumber(
 async function findNextAvailableAdmissionNumber(
   db: any,
   settings: AdmissionSettings,
-  options: { branchCode: string; academicYear: number; persistSequence: boolean }
+  options: { branchCode: string; academicYear: number; persistSequence: boolean; minValue?: number }
 ): Promise<string> {
   const sequenceYear = settings.resetRule === 'YEARLY' ? options.academicYear : 0;
   const sequence = await db.admissionSequence.upsert({
@@ -148,6 +175,12 @@ async function findNextAvailableAdmissionNumber(
   });
 
   let nextValue = sequence.currentValue > 0 ? sequence.currentValue + 1 : settings.startNumber;
+  // A caller-supplied floor (e.g. "start this import batch at 1500") always wins,
+  // but never lets the sequence go backwards once it has moved past that point —
+  // so passing the same minValue on every row of a batch is safe and idempotent.
+  if (options.minValue && options.minValue > nextValue) {
+    nextValue = options.minValue;
+  }
 
   while (true) {
     const candidate = formatAdmissionNumber(settings, nextValue, options.academicYear, options.branchCode);

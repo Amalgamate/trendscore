@@ -1,3 +1,11 @@
+jest.mock('../config/database', () => ({
+  default: {
+    classEnrollment: {
+      findFirst: jest.fn().mockResolvedValue({ id: 'class-enrollment-1' }),
+    },
+  },
+}));
+
 /**
  * chunk4.guardConsistency.spec.ts
  *
@@ -18,6 +26,7 @@
 import { hasAnyRole, getCanonicalRoles } from '../utils/roleNormalizer';
 import { normalizeInstitutionType } from '../utils/institutionNormalizer';
 import { ApiError } from '../utils/error.util';
+import prisma from '../config/database';
 
 // ── hasAnyRole — SUPER_ADMIN is explicit, not a bypass ───────────────────────
 
@@ -183,6 +192,9 @@ describe('requirePermission middleware – next(ApiError) contract', () => {
 
 describe('ResourceAccessControl.canAccessLearner – teacher edit contract', () => {
   test('allows teachers through for learner updates after EDIT_LEARNER permission passes', async () => {
+    (prisma as any).classEnrollment = {
+      findFirst: jest.fn().mockResolvedValue({ id: 'class-enrollment-1' }),
+    };
     const req = {
       method: 'PUT',
       params: { id: 'learner-1' },
@@ -326,7 +338,6 @@ jest.mock('express', () => {
   return express;
 });
 
-jest.mock('../config/database', () => ({ default: {} }));
 jest.mock('../utils/logger', () => ({
   default: { info: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));

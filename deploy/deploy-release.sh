@@ -670,7 +670,7 @@ run_migrations() {
   # = 4x docker run --rm cold-starts (~20s each) = ~80s overhead per school.
   # Now: 1 container does all four steps sequentially, saving ~60s per school.
   compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
-    run -T --no-deps --rm backend sh -lc '
+    run -T --no-deps --rm backend sh -s <<'REMOTE'
       set -e
       SKIP1=20260707121500_allow_multiple_summative_series
       SKIP2=20260811090000_link_learners_to_student_users
@@ -718,7 +718,42 @@ SQL
       # 3. Recover interrupted learner/student user migration
       npx prisma migrate resolve --rolled-back "${SKIP2}" >/tmp/learner-resolve.log 2>&1 || true
 
-      # 4. Repair presence-monitoring columns in installations whose migration
+      # 4. Repair the learner/student-user link migration if this database was
+      # left in a partially-applied state from a prior interrupted deployment.
+      # The migration is safe to re-run after the schema is already there.
+      cat >/tmp/repair-learner-student-user.sql <<'SQL'
+ALTER TABLE "learners"
+  ADD COLUMN IF NOT EXISTS "studentUserId" TEXT;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE schemaname = 'public' AND indexname = 'learners_studentUserId_key'
+  ) THEN
+    CREATE UNIQUE INDEX "learners_studentUserId_key"
+      ON "learners"("studentUserId");
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'learners_studentUserId_fkey'
+  ) THEN
+    ALTER TABLE "learners"
+      ADD CONSTRAINT "learners_studentUserId_fkey"
+      FOREIGN KEY ("studentUserId") REFERENCES "users"("id")
+      ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
+SQL
+      npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-learner-student-user.sql
+
+      # 5. Repair presence-monitoring columns in installations whose migration
       # history was baselined before this schema addition. Prisma may consider
       # the migration applied even while the physical columns are absent.
       cat >/tmp/repair-presence-monitoring.sql <<'SQL'
@@ -733,7 +768,7 @@ ALTER TABLE "classes"
 ALTER TABLE "subject_assignments"
   ADD COLUMN IF NOT EXISTS "attendanceLockExempt" BOOLEAN NOT NULL DEFAULT false;
 
--- 5. Repair the recurring summative-assessment week column for databases
+-- 6. Repair the recurring summative-assessment week column for databases
 -- whose Prisma history was baselined before the physical column existed.
 -- This is deliberately idempotent: it also protects older schools where the
 -- migration was recorded but its SQL never ran.
@@ -747,9 +782,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS "summative_tests_series_unique_key"
 SQL
       npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-presence-monitoring.sql
 
-      # 6. Apply any pending migrations
+      # 7. Apply any pending migrations
       npx prisma migrate deploy
-    ' < /dev/null
+REMOTE
 }
 
 restart_services() {

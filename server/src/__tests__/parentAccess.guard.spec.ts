@@ -1,6 +1,10 @@
 jest.mock('../config/database', () => ({
   __esModule: true,
-  default: {},
+  default: {
+    classEnrollment: {
+      findFirst: jest.fn().mockResolvedValue({ id: 'class-enrollment-1' }),
+    },
+  },
 }));
 
 jest.mock('../services/parent-access.service', () => ({

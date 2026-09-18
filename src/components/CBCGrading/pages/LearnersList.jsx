@@ -2,7 +2,7 @@
  * Learners List Page
  */
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Upload, Download, Eye, Edit, Trash2, LogOut, ChevronLeft, ChevronRight, Search, RefreshCw, Users, MoreVertical, MessageCircle, MessageSquare, X, Loader2, Send, Filter, Plus, Bus, UserCheck, UserX, Users2, ArrowRightLeft } from 'lucide-react';
 import StatusBadge from '../shared/StatusBadge';
 import EmptyState from '../shared/EmptyState';
@@ -46,6 +46,7 @@ const LearnersList = ({
   const [showStreamDropdown, setShowStreamDropdown] = useState(false);
   const [totalStudentsCount, setTotalStudentsCount] = useState(null);
   const [learnerStats, setLearnerStats] = useState(null);
+  const statsRequestIdRef = useRef(0);
 
   const activeFilterCount = (filterGrade !== 'all' ? 1 : 0) + (filterStatus !== 'all' ? 1 : 0) + (filterStream !== 'all' ? 1 : 0);
   const clearAllFiltersLearners = () => { setFilterGrade('all'); setFilterStatus('all'); setFilterStream('all'); };
@@ -96,6 +97,11 @@ const LearnersList = ({
     if (s.startsWith('GRADE') && /^\d+$/.test(s.replace('GRADE', ''))) return `Grade ${s.replace('GRADE', '')}`;
     return s.replace(/_/g, ' ');
   };
+
+  const formatStatusLabel = (status) => String(status || '')
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
   const selectedInstitutionType = String(getSelectedInstitutionType() || user?.institutionType || '').toUpperCase();
   const isSecondaryPortal = selectedInstitutionType === 'SECONDARY' || selectedInstitutionType === 'HIGH_SCHOOL';
@@ -239,44 +245,47 @@ const LearnersList = ({
     loadFallbackGrades();
   }, [grades, user?.institutionType]);
 
+  // Server-side filtering effect — also refreshes the KPI stats so the
+  // Total Enrolled / Active / Boys / Girls cards reflect the same filters
+  // (grade, stream, status, search) currently applied to the list below,
+  // instead of always showing unfiltered institution-wide totals.
   useEffect(() => {
-    let isMounted = true;
-    const loadTotalStudents = async () => {
-      try {
-        const stats = await learnerAPI.getStats();
-        const data = stats?.data;
-        const total = data?.active ?? data?.totalActive ?? data?.total;
-        if (isMounted && Number.isFinite(total)) {
-          setTotalStudentsCount(total);
-        }
-        if (isMounted && data) {
-          setLearnerStats(data);
-        }
-      } catch (error) {
-        // Keep fallback to pagination total when stats endpoint is unavailable.
-      }
-    };
-    loadTotalStudents();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // Server-side filtering effect
-  useEffect(() => {
+    const requestId = ++statsRequestIdRef.current;
+    setLearnerStats(null);
+    setTotalStudentsCount(null);
     const timer = setTimeout(() => {
+      const queryParams = buildLearnerQueryParams({
+        page: 1,
+        searchTerm,
+        paginationLimit: pagination?.limit || 50,
+        filterGrade,
+        filterStatus,
+        filterStream,
+      });
       if (onFetchLearners) {
-        onFetchLearners(buildLearnerQueryParams({
-          page: 1,
-          searchTerm,
-          paginationLimit: pagination?.limit || 50,
-          filterGrade,
-          filterStatus,
-          filterStream,
-        }));
+        onFetchLearners(queryParams);
       }
+      learnerAPI.getStats(queryParams)
+        .then((stats) => {
+          if (requestId !== statsRequestIdRef.current) return;
+          const data = stats?.data;
+          const total = data?.active ?? data?.totalActive ?? data?.total;
+          if (Number.isFinite(total)) {
+            setTotalStudentsCount(total);
+          }
+          if (data) {
+            setLearnerStats(data);
+          }
+        })
+        .catch((error) => {
+          if (requestId !== statsRequestIdRef.current) return;
+          console.error('Failed to refresh filtered learner statistics:', error);
+          // Keep the list usable, but make the failure visible in development logs.
+        });
     }, 500);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+    };
   }, [searchTerm, filterGrade, filterStatus, filterStream, onFetchLearners, pagination?.limit]);
 
   const handlePageChange = (newPage) => {
@@ -669,6 +678,10 @@ const LearnersList = ({
   const kpiMale     = learnerStats?.byGender?.MALE   ?? 0;
   const kpiFemale   = learnerStats?.byGender?.FEMALE ?? 0;
   const kpiTotal    = learnerStats?.total ?? kpiActive;
+  const hasKpiFilters = searchTerm.trim() || filterGrade !== 'all' || filterStatus !== 'all' || filterStream !== 'all';
+  const kpiScope = hasKpiFilters ? 'Matching current filters' : 'All students';
+  const kpiEnrollmentLabel = hasKpiFilters ? 'Filtered enrolment' : 'Total Enrolled';
+  const kpiActiveLabel = filterStatus !== 'all' ? `${formatStatusLabel(filterStatus)} students` : 'Active Students';
 
   const SOLID_COLORS = {
     navy:    '#172554',
@@ -697,10 +710,10 @@ const LearnersList = ({
     <div className="space-y-4">
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3.5 sm:gap-4">
-        <KpiCard color={SOLID_COLORS.navy}    icon={Users}     label="Total Enrolled"  value={kpiTotal}   sub="All students" />
-        <KpiCard color={SOLID_COLORS.teal}    icon={UserCheck} label="Active Students" value={kpiActive}  sub="Currently enrolled" />
-        <KpiCard color={SOLID_COLORS.forest}  icon={Users2}    label="Boys"            value={kpiMale}    sub={kpiTotal > 0 ? `${Math.round((kpiMale / kpiTotal) * 100)}% of enrolment` : null} />
-        <KpiCard color={SOLID_COLORS.crimson} icon={UserCheck} label="Girls"           value={kpiFemale}  sub={kpiTotal > 0 ? `${Math.round((kpiFemale / kpiTotal) * 100)}% of enrolment` : null} />
+        <KpiCard color={SOLID_COLORS.navy}    icon={Users}     label={kpiEnrollmentLabel} value={kpiTotal}   sub={kpiScope} />
+        <KpiCard color={SOLID_COLORS.teal}    icon={UserCheck} label={kpiActiveLabel}     value={kpiActive}  sub={hasKpiFilters ? kpiScope : 'Currently enrolled'} />
+        <KpiCard color={SOLID_COLORS.forest}  icon={Users2}    label="Boys"                 value={kpiMale}    sub={kpiTotal > 0 ? `${Math.round((kpiMale / kpiTotal) * 100)}% of enrolment` : kpiScope} />
+        <KpiCard color={SOLID_COLORS.crimson} icon={UserCheck} label="Girls"                value={kpiFemale}  sub={kpiTotal > 0 ? `${Math.round((kpiFemale / kpiTotal) * 100)}% of enrolment` : kpiScope} />
       </div>
       {/* Compact Quick Actions Toolbar */}
       <div className="toolbar-card rounded-2xl border border-slate-200/90 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
@@ -1078,7 +1091,7 @@ const LearnersList = ({
                 {/* Primary Student Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start gap-2">
-                    <h3 className="font-medium text-gray-900 truncate">{learner.firstName} {learner.lastName}</h3>
+                    <h3 className="font-medium text-gray-900 truncate">{[learner.firstName, learner.middleName, learner.lastName].filter(Boolean).join(' ')}</h3>
                     <StatusBadge status={learner.status} size="sm" />
                   </div>
                   <div className="flex items-center gap-2 mt-1 text-xs font-semibold text-gray-500">
@@ -1264,7 +1277,7 @@ const LearnersList = ({
                       )}
                     </div>
                     <div>
-                      <p className="font-semibold text-sm">{learner.firstName} {learner.lastName}</p>
+                      <p className="font-semibold text-sm">{[learner.firstName, learner.middleName, learner.lastName].filter(Boolean).join(' ')}</p>
                       <p className="text-xs text-gray-500">{learner.gender}</p>
                     </div>
                   </div>

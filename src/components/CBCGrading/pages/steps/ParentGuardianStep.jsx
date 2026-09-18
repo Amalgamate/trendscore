@@ -57,8 +57,9 @@ const parentMatchesQuery = (parent, query) => {
   );
 };
 
-const ParentGuardianStep = ({ formData = {}, onChange }) => {
+const ParentGuardianStep = ({ formData = {}, onChange, phoneErrors = {} }) => {
   const [lookups, setLookups] = useState(buildLookupDefaults);
+  const [activeContactKey, setActiveContactKey] = useState(formData.primaryContactType || 'FATHER');
   const update = (patch) => onChange({ ...formData, ...patch });
 
   const selectedParentId = formData.parentId || '';
@@ -311,6 +312,8 @@ const ParentGuardianStep = ({ formData = {}, onChange }) => {
     setPrimaryContact(contact);
   };
 
+  const activeContact = CONTACTS.find((contact) => contact.key === activeContactKey) || CONTACTS[0];
+
   return (
     <div className="space-y-4">
       <div>
@@ -318,8 +321,41 @@ const ParentGuardianStep = ({ formData = {}, onChange }) => {
         <p className="text-xs text-gray-600 mt-0.5">Capture father, mother, and guardian details in one form.</p>
       </div>
 
-      <div className="space-y-5">
-        {CONTACTS.map((contact) => {
+      <div className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm shadow-blue-900/5">
+        <div className="border-b border-blue-100 bg-blue-50/70 px-3 pt-3 sm:px-4 sm:pt-4">
+          <div className="grid grid-cols-3 gap-1.5" role="tablist" aria-label="Parent and guardian contacts">
+            {CONTACTS.map((contact) => {
+              const isActive = activeContactKey === contact.key;
+              const isPrimary = formData.primaryContactType === contact.key;
+              const hasDetails = Boolean(formData[contact.nameField] || formData[contact.phoneField]);
+              const hasError = Boolean(phoneErrors[contact.phoneField]);
+              return (
+                <button
+                  key={contact.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => setActiveContactKey(contact.key)}
+                  className={`relative min-h-12 rounded-t-xl px-2 py-2.5 text-left text-xs font-bold transition-all sm:px-4 sm:text-sm ${isActive
+                    ? 'bg-brand-purple text-white shadow-lg shadow-brand-purple/20'
+                    : 'text-blue-800/65 hover:bg-white/80 hover:text-brand-purple'
+                    }`}
+                >
+                  <span className="flex items-center justify-between gap-2">
+                    {contact.label}
+                    <span className="flex items-center gap-1.5">
+                      {isPrimary && <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${isActive ? 'bg-white/15 text-white' : 'bg-brand-purple/10 text-brand-purple'}`}>Primary</span>}
+                      {hasError ? <span className={`h-2 w-2 rounded-full ${isActive ? 'bg-red-300' : 'bg-red-500'}`} /> : hasDetails && <span className={`h-2 w-2 rounded-full ${isActive ? 'bg-emerald-300' : 'bg-emerald-500'}`} />}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {(() => {
+          const contact = activeContact;
           const isPrimary = formData.primaryContactType === contact.key;
           const nameParts = splitNameParts(formData[contact.nameField]);
           const updateNamePart = (part, value) => {
@@ -332,17 +368,20 @@ const ParentGuardianStep = ({ formData = {}, onChange }) => {
             handleFieldChange(contact.nameField, composeName(next.first, next.middle, next.last));
           };
           return (
-            <div key={contact.key} className="border border-gray-200 rounded-lg p-4 bg-white space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-semibold text-gray-900">{contact.label}</h4>
-                <label className="inline-flex items-center gap-2 text-xs font-medium text-gray-700">
+            <div className="space-y-4 p-4" role="tabpanel" aria-label={`${contact.label} details`}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-base font-semibold text-gray-900">{contact.label} details</h4>
+                  <p className="mt-0.5 text-xs text-gray-500">Search an existing contact or enter details manually.</p>
+                </div>
+                <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
                   <input
                     type="checkbox"
                     checked={isPrimary}
                     onChange={(e) => handlePrimaryToggle(contact, e.target.checked)}
-                    className="w-4 h-4 text-brand-purple border-gray-300 rounded focus:ring-brand-purple"
+                    className="h-4 w-4 rounded border-gray-300 text-brand-purple focus:ring-brand-purple"
                   />
-                  Primary Contact
+                  Primary contact
                 </label>
               </div>
 
@@ -441,11 +480,16 @@ const ParentGuardianStep = ({ formData = {}, onChange }) => {
                 <label className="block text-xs font-medium text-gray-600 uppercase tracking-tight mb-1">Phone</label>
                 <input
                   type="tel"
+                  name={contact.phoneField}
                   value={formData[contact.phoneField] || ''}
                   onChange={(e) => handleFieldChange(contact.phoneField, e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-1 focus:ring-brand-purple focus:border-brand-purple"
+                  aria-invalid={!!phoneErrors[contact.phoneField]}
+                  className={`w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-brand-purple focus:border-brand-purple ${phoneErrors[contact.phoneField] ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
                   placeholder="0712345678 or +254712345678"
                 />
+                {phoneErrors[contact.phoneField] && (
+                  <p className="mt-1 text-xs text-red-600" role="alert">{phoneErrors[contact.phoneField]}</p>
+                )}
               </div>
 
               <div>
@@ -485,7 +529,7 @@ const ParentGuardianStep = ({ formData = {}, onChange }) => {
               )}
             </div>
           );
-        })}
+        })()}
       </div>
 
       {linkedParentSummary && (

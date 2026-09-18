@@ -1,7 +1,6 @@
 import React from 'react';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import AddEditParentModal from '../shared/AddEditParentModal';
-import Toast from '../shared/Toast';
 
 /**
  * Manager for global modals and notifications
@@ -14,11 +13,7 @@ const GlobalModals = ({
   showParentModal,
   setShowParentModal,
   editingParent,
-  handleSaveParent,
-  showToast,
-  toastMessage,
-  toastType,
-  hideNotification
+  handleSaveParent
 }) => {
   return (
     <>
@@ -39,14 +34,6 @@ const GlobalModals = ({
         onClose={() => setShowParentModal(false)}
         onSave={handleSaveParent}
         parent={editingParent}
-      />
-
-      {/* Global Notifications */}
-      <Toast
-        show={showToast}
-        message={toastMessage}
-        type={toastType}
-        onClose={hideNotification}
       />
     </>
   );

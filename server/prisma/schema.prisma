@@ -701,6 +701,7 @@ model Learner {
   exitDate               DateTime?
   exitReason             String?
   previousSchool         String?
+  nationality             String?
   religion               String?
   specialNeeds           String?
   isTransportStudent     Boolean                        @default(false)

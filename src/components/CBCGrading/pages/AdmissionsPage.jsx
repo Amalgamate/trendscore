@@ -14,6 +14,7 @@ import { useMediaQuery } from '../hooks/useMediaQuery';
 import { MOBILE_MEDIA_QUERY } from '../../../constants/breakpoints';
 import { sanitizeLearnerPayload } from '../contracts/learnerPayload.contract';
 import { DatePicker } from '../../../components/ui/date-picker';
+import { validatePhone } from '../utils/validators';
 
 // Helper: Compute primary contact based on parent hierarchy.
 const computePrimaryContact = (data) => {
@@ -97,6 +98,15 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
   const [showFeesPrompt, setShowFeesPrompt] = useState(false);
   const [editBaseline, setEditBaseline] = useState(null);
   const [hasShownEditNotice, setHasShownEditNotice] = useState(false);
+  // Confirmation pause before the final save actually runs (see handleSubmit/confirmAndSave)
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [pendingPayload, setPendingPayload] = useState(null);
+  const [pendingTargetLearnerId, setPendingTargetLearnerId] = useState(null);
+  // Suppresses the "unsaved changes" reminder for the render immediately
+  // following a successful save, when a transient payload-shape mismatch
+  // (e.g. fields present in the submitted payload but not in the freshly
+  // recomputed baseline) can otherwise make hasUnsavedEdits look true again.
+  const justSavedRef = React.useRef(false);
   const formId = 'learner-admissions-form';
 
   // Fetch streams — single-tenant, no schoolId needed
@@ -302,6 +312,14 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
 
   useEffect(() => {
     if (!isEdit || !hasUnsavedEdits || hasShownEditNotice) return;
+    if (justSavedRef.current) {
+      // A save just completed — this is the false-positive transient, not a
+      // genuine new edit. Consume the flag and mark the notice as already
+      // shown so we don't nag the user right after they saved.
+      justSavedRef.current = false;
+      setHasShownEditNotice(true);
+      return;
+    }
     showSuccess('You have unsaved changes. Click Save Changes to update this student.');
     setHasShownEditNotice(true);
   }, [hasShownEditNotice, hasUnsavedEdits, isEdit, showSuccess]);
@@ -475,12 +493,17 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
       }
       // Stream is now optional
     } else if (step === 2) {
-      // Step 2: Parent/Guardian validation - at least one parent with phone
-      const hasFatherPhone = formData.fatherPhone?.trim();
-      const hasMotherPhone = formData.motherPhone?.trim();
-      const hasGuardianPhone = formData.guardianPhone?.trim();
+      const phoneFields = ['fatherPhone', 'motherPhone', 'guardianPhone'];
+      const populatedPhones = phoneFields.filter((field) => formData[field]?.trim());
+      const validPhones = populatedPhones.filter((field) => validatePhone(formData[field]));
 
-      if (!hasFatherPhone && !hasMotherPhone && !hasGuardianPhone) {
+      populatedPhones.forEach((field) => {
+        if (!validatePhone(formData[field])) {
+          errors[field] = 'Enter a valid Kenyan phone number, e.g. 0712345678';
+        }
+      });
+
+      if (validPhones.length === 0) {
         errors.parentPhone = 'Please provide at least one parent/guardian with a phone number';
       }
     }
@@ -513,9 +536,10 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
         setStepErrors({}); // Clear errors when moving to next step
         setCurrentStep(currentStep + 1);
       }
-    } else {
-      showError('Please fill in all required fields');
     }
+    // No toast/popup here — validation failures are surfaced inline
+    // (per-field red borders/messages and the parentPhone warning box).
+    // Popups are reserved for the final save confirmation only.
   };
   const handlePrevious = () => {
     if (currentStep > 1) {
@@ -526,6 +550,9 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (currentStep < 3) {
+      return;
+    }
     console.log('📝 Form submission started...');
 
     if (isEdit && !activeLearner?.id) {
@@ -557,13 +584,26 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
       return;
     }
 
-    console.log('📤 Submitting form data:', finalFormData);
+    console.log('📤 Validated — pausing for confirmation before saving:', finalFormData);
+
+    // Pause here for explicit confirmation instead of saving immediately.
+    // The actual save runs from confirmAndSave() once the user confirms.
+    setPendingPayload(sanitizedPayload);
+    setPendingTargetLearnerId(activeLearner?.id || learnerId || formData?.id || null);
+    setShowConfirmModal(true);
+  };
+
+  const confirmAndSave = async () => {
+    if (!pendingPayload || !onSave) return;
+    const sanitizedPayload = pendingPayload;
+    const targetLearnerId = pendingTargetLearnerId;
+
+    console.log('📤 Confirmed — submitting form data:', sanitizedPayload);
 
     // Success logic managed by onSave handler
-    if (onSave) {
+    {
       setIsSaving(true);
       try {
-        const targetLearnerId = activeLearner?.id || learnerId || formData?.id || null;
         const result = await onSave(sanitizedPayload, { targetLearnerId, isEdit });
         console.log('📥 Save result:', result);
 
@@ -624,6 +664,7 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
             setShowFeesPrompt(true);
           }
           if (isEdit) {
+            justSavedRef.current = true;
             setEditBaseline(sanitizedPayload);
             setHasShownEditNotice(false);
           } else if (!onNavigateToFees) {
@@ -641,8 +682,17 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
         showError(`Failed to ${actionLabel} student: ` + (error?.message || 'Unknown error'));
       } finally {
         setIsSaving(false);
+        setShowConfirmModal(false);
+        setPendingPayload(null);
+        setPendingTargetLearnerId(null);
       }
     }
+  };
+
+  const cancelConfirmSave = () => {
+    setShowConfirmModal(false);
+    setPendingPayload(null);
+    setPendingTargetLearnerId(null);
   };
 
   const steps = [
@@ -772,7 +822,16 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
             )}
           </div>
 
-          <form id={formId} onSubmit={handleSubmit}>
+          <form
+            id={formId}
+            onSubmit={(e) => {
+              if (currentStep < 3) {
+                e.preventDefault();
+                return;
+              }
+              handleSubmit(e);
+            }}
+          >
             {/* Step 1: Students Information */}
             {currentStep === 1 && (
               <div className="space-y-6">
@@ -980,6 +1039,7 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
                 <ParentGuardianStep
                   formData={formData}
                   onChange={setFormData}
+                  phoneErrors={stepErrors}
                 />
                 {stepErrors.parentPhone && (
                   <div className="mt-6 p-4 bg-red-50 border border-red-300 rounded-lg">
@@ -1106,10 +1166,7 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
                   <X size={16} /> <span className="hidden sm:inline">Clear</span>
                 </button>
                 {currentStep < 3 ? (
-                  <button type="button" onClick={handleNext} disabled={Object.keys(stepErrors).length > 0} className={`flex items-center gap-2 px-4 md:px-5 py-2.5 rounded-md transition-all shadow-sm text-sm font-medium ${Object.keys(stepErrors).length > 0
-                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                    : 'bg-brand-teal text-white hover:bg-brand-teal/90'
-                    }`}>
+                  <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleNext(); }} className="flex items-center gap-2 px-4 md:px-5 py-2.5 rounded-md transition-all shadow-sm text-sm font-medium bg-brand-teal text-white hover:bg-brand-teal/90">
                     <span className="hidden sm:inline">Next Step</span><span className="inline sm:hidden">Next</span> <ArrowRight size={16} />
                   </button>
                 ) : (
@@ -1136,6 +1193,52 @@ const AdmissionsPage = ({ onSave, onCancel, onDelete, onNavigateToFees, learner 
           </form>
         </div>
       </div>
+
+      {/* ── Confirm Save Pause ── */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-6 pt-6 pb-4">
+              <div className="flex items-center justify-center w-12 h-12 rounded-full bg-brand-purple/10 mx-auto mb-4">
+                <CheckCircle size={22} className="text-brand-purple" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 text-center">
+                {isEdit ? 'Confirm Changes' : 'Confirm Admission'}
+              </h3>
+              <p className="text-sm text-gray-500 text-center mt-1.5 leading-relaxed">
+                {isEdit
+                  ? `Save these changes to ${formData.firstName || 'this'} ${formData.lastName || 'student'}'s record?`
+                  : `Complete admission for ${formData.firstName || 'this'} ${formData.lastName || 'student'}?`}
+                {isEdit && hasSensitiveFieldChanges && ' This includes a change to a sensitive field.'}
+              </p>
+            </div>
+            <div className="px-6 pb-6 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={confirmAndSave}
+                disabled={isSaving}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-brand-purple text-white rounded-xl font-medium text-sm hover:bg-brand-purple/90 transition-colors shadow-sm disabled:opacity-70 disabled:cursor-wait"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader size={16} className="animate-spin" /> Saving...
+                  </>
+                ) : (
+                  <>{isEdit ? 'Yes, Save Changes' : 'Yes, Complete Admission'}</>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={cancelConfirmSave}
+                disabled={isSaving}
+                className="w-full py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm hover:bg-gray-200 transition-colors disabled:opacity-70"
+              >
+                Go Back and Review
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Configure Fees Prompt ── */}
       {showFeesPrompt && (

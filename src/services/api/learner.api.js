@@ -24,7 +24,10 @@ export const learnerAPI = {
       TTL.SHORT
     );
   },
-  getStats: async () => fetchWithAuth('/learners/stats'),
+  getStats: async (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return fetchWithAuth(`/learners/stats${queryString ? `?${queryString}` : ''}`);
+  },
   getNextAdmissionNumber: async () => fetchWithAuth('/learners/next-admission-number'),
   getById: async (id) => fetchWithAuth(`/learners/${id}`),
   getByAdmissionNumber: async (admissionNumber) =>

@@ -55,11 +55,21 @@ vi.mock('../../../services/api', () => ({
   learnerAPI: {
     getNextAdmissionNumber,
   },
+  transportAPI: {
+    getRoutes: vi.fn(async () => ({ data: [] })),
+    createAssignment: vi.fn(async () => ({ success: true })),
+    deleteAssignment: vi.fn(async () => ({ success: true })),
+  },
 }));
 
 describe('AdmissionsPage Step 3 flow', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+    });
     vi.spyOn(Storage.prototype, 'getItem').mockReturnValue(null);
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {});
     vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {});
@@ -77,6 +87,7 @@ describe('AdmissionsPage Step 3 flow', () => {
     vi.clearAllTimers();
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('allows Step 3 photo upload and saves only on final submit', async () => {
@@ -99,6 +110,7 @@ describe('AdmissionsPage Step 3 flow', () => {
     fireEvent.change(container.querySelector('[name="guardianPhone"]'), { target: { value: '0712345678' } });
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
     await waitFor(() => expect(container.querySelector('input[type="file"]')).toBeTruthy());
+    expect(screen.queryByRole('heading', { name: /confirm admission/i })).not.toBeInTheDocument();
 
     const localStorageSetSpy = vi.spyOn(Storage.prototype, 'setItem');
     localStorageSetSpy.mockClear();
@@ -110,6 +122,8 @@ describe('AdmissionsPage Step 3 flow', () => {
     fireEvent.change(fileInput, { target: { files: [file] } });
 
     fireEvent.click(screen.getByRole('button', { name: /complete admission/i }));
+    expect(screen.getByRole('heading', { name: /confirm admission/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /yes, complete admission/i }));
 
     await vi.runAllTimersAsync();
     expect(onSave).toHaveBeenCalledTimes(1);

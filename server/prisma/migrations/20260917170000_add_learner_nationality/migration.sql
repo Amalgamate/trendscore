@@ -1,0 +1,1 @@
+ALTER TABLE "learners" ADD COLUMN "nationality" TEXT;

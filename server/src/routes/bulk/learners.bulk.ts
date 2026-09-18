@@ -14,7 +14,7 @@ import { Readable } from 'stream';
 import { z } from 'zod';
 import * as XLSX from 'xlsx';
 import { ensureStudentAccountForLearner } from '../../services/studentAccount.service';
-import { generateAdmissionNumber } from '../../services/admissionNumber.service';
+import { generateAdmissionNumber, generateAdmissionNumberFrom, getNextAdmissionNumberPreview } from '../../services/admissionNumber.service';
 import { parentService } from '../../services/parent.service';
 import { buildLearnerNameParts } from '../../utils/learnerName.util';
 
@@ -25,143 +25,60 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }
 });
 
+const STANDARD_LEARNER_FIELDS = [
+  'S/No', 'Admission Number', 'First Name', 'Middle Name', 'Last Name',
+  'Grade', 'Stream', 'Academic Year', 'Gender', 'Date of Birth', 'Age', 'ULI',
+  'Nationality', 'Religion', 'Parent/Guardian Name', 'Parent Phone',
+  'Relationship', 'Father Name', 'Father Phone', 'Mother Name', 'Mother Phone',
+  'Guardian Name', 'Guardian Phone', 'Guardian Relationship',
+  'Transport Student', 'Reg Date',
+];
+
+const STANDARD_HEADER_MAP: Record<string, string> = {
+  'S/No': 'S/No', 'Admission Number': 'Adm No', 'First Name': 'First Name',
+  'Middle Name': 'Other Names', 'Last Name': 'Surname', 'Grade': 'Class',
+  'Stream': 'Stream', 'Academic Year': 'Year', 'Gender': 'Gender', 'Date of Birth': 'Date of Birth',
+  'Age': 'Age', 'ULI': 'Birth Entry Number', 'Nationality': 'Nationality', 'Religion': 'Religion',
+  'Parent/Guardian Name': 'Parent/Guardian', 'Parent Phone': 'Phone 1', 'Relationship': 'Relationship',
+  'Father Name': 'Father Name', 'Father Phone': 'Father Phone', 'Mother Name': 'Mother Name',
+  'Mother Phone': 'Mother Phone', 'Guardian Name': 'Guardian Name', 'Guardian Phone': 'Guardian Phone',
+  'Guardian Relationship': 'Guardian Relationship', 'Transport Student': 'Transport Student',
+  'Reg Date': 'Reg Date',
+};
+
 const learnerSchema = z.object({
   'S/No': z.string().optional(),
-  'Surname': z.string().optional(),
-  'First Name': z.string().optional(),
+  'Surname': z.string().min(1, 'Last Name is required'),
+  'First Name': z.string().min(1, 'First Name is required'),
   'Other Names': z.string().optional(),
-  'Learner Name': z.string().optional(),
-  'Leaner Name': z.string().optional(),
-  'Name': z.string().optional(),
   'Adm No': z.string().optional(),
-  'Class': z.string().min(1, 'Class or Grade is required'),
+  'Class': z.string().min(1, 'Grade is required'),
   'Stream': z.string().optional(),
-  'Term': z.string().optional(),
-  'Year': z.string().optional(),
+  'Year': z.string().min(4, 'Academic Year is required'),
   'Gender': z.string().optional(),
-  'DOB': z.string().optional(),
   'Date of Birth': z.string().optional(),
   'Age': z.string().optional(),
   'Birth Entry Number': z.string().optional(),
-  'ULI': z.string().optional(),
-  'Special Needs': z.string().optional(),
-  'SNE Status': z.string().optional(),
-  'Index Number': z.string().optional(),
+  'Nationality': z.string().optional(),
+  'Religion': z.string().optional(),
   'Parent/Guardian': z.string().optional(),
-  'Parent Name': z.string().optional(),
   'Phone 1': z.string().optional(),
-  'Phone 2': z.string().optional(),
-  'Parent Phone': z.string().optional(),
   'Relationship': z.string().optional(),
+  'Father Name': z.string().optional(),
+  'Father Phone': z.string().optional(),
+  'Mother Name': z.string().optional(),
+  'Mother Phone': z.string().optional(),
+  'Guardian Name': z.string().optional(),
+  'Guardian Phone': z.string().optional(),
+  'Guardian Relationship': z.string().optional(),
+  'Transport Student': z.string().optional(),
   'Reg Date': z.string().optional(),
-  'Bal Due': z.string().optional(),
-}).refine(data => data['Learner Name'] || data['Leaner Name'] || data['Name'] || data['Surname'] || data['First Name'] || data['Other Names'], {
-  message: "Learner Name is required",
-  path: ['Learner Name']
-});
+}).strict();
 
 type ParsedUploadRow = {
   line: number;
   data: Record<string, any>;
   sourceFile?: string;
-};
-
-const HEADER_ALIASES: Record<string, string> = {
-  SNO: 'S/No',
-  SERIALNO: 'S/No',
-  SERIALNUMBER: 'S/No',
-  SURNAME: 'Surname',
-  LASTNAME: 'Surname',
-  LEARNERLASTNAME: 'Surname',
-  FIRSTNAME: 'First Name',
-  GIVENNAME: 'First Name',
-  LEARNERSFIRSTNAME: 'First Name',
-  LEARNERFIRSTNAME: 'First Name',
-  OTHERNAMES: 'Other Names',
-  MIDDLENAME: 'Other Names',
-  MIDDLENAMES: 'Other Names',
-  LEARNERMIDDLENAME: 'Other Names',
-  LEARNERSMIDDLENAME: 'Other Names',
-  LEARNERNAME: 'Learner Name',
-  LEANERNAME: 'Learner Name',
-  STUDENTNAME: 'Learner Name',
-  PUPILNAME: 'Learner Name',
-  FULLNAME: 'Learner Name',
-  NAME: 'Learner Name',
-  ADMISSIONNO: 'Adm No',
-  ADMISSIONNUMBER: 'Adm No',
-  ADMNO: 'Adm No',
-  ADMNUMBER: 'Adm No',
-  ADMISSION: 'Adm No',
-  ADM: 'Adm No',
-  CLASS: 'Class',
-  GRADE: 'Class',
-  GRADECLASS: 'Class',
-  LEVEL: 'Class',
-  STREAM: 'Stream',
-  TERM: 'Term',
-  YEAR: 'Year',
-  GENDER: 'Gender',
-  SEX: 'Gender',
-  DOB: 'DOB',
-  DATEOFBIRTH: 'Date of Birth',
-  BIRTHDATE: 'Date of Birth',
-  AGE: 'Age',
-  BIRTHENTRYNUMBER: 'Birth Entry Number',
-  BIRTHENTRYNO: 'Birth Entry Number',
-  BIRTHENTRY: 'Birth Entry Number',
-  BIRTHCERTIFICATENUMBER: 'Birth Entry Number',
-  BIRTHCERTIFICATENO: 'Birth Entry Number',
-  BIRTHCERTNO: 'Birth Entry Number',
-  BCNO: 'Birth Entry Number',
-  UNIQUELEARNERIDENTIFIERULI: 'Birth Entry Number',
-  UNIQUELEARNERIDENTIFIER: 'Birth Entry Number',
-  ULI: 'Birth Entry Number',
-  UPI: 'Birth Entry Number',
-  UPINUMBER: 'Birth Entry Number',
-  NEMISUPI: 'Birth Entry Number',
-  KEMISULI: 'Birth Entry Number',
-  KCPEKCSEINDEXNUMBER: 'Index Number',
-  KCPEINDEXNUMBER: 'Index Number',
-  KCSEINDEXNUMBER: 'Index Number',
-  INDEXNUMBER: 'Index Number',
-  INDEXNO: 'Index Number',
-  SNESTATUS: 'SNE Status',
-  SNETYPE: 'Special Needs',
-  DISABILITYTYPEIFANY: 'Special Needs',
-  DISABILITYTYPE: 'Special Needs',
-  DISABILITY: 'Special Needs',
-  SPECIALNEEDS: 'Special Needs',
-  SPECIALNEED: 'Special Needs',
-  PARENTGUARDIAN: 'Parent/Guardian',
-  PARENTGUARDIANNAME: 'Parent/Guardian',
-  PARENTORGUARDIANNAME: 'Parent/Guardian',
-  PARENTORGUARDIAN: 'Parent/Guardian',
-  GUARDIAN: 'Parent/Guardian',
-  PARENT: 'Parent/Guardian',
-  PARENTNAME: 'Parent/Guardian',
-  GUARDIANNAME: 'Parent/Guardian',
-  PARENTSNAME: 'Parent/Guardian',
-  PHONE1: 'Phone 1',
-  PHONE: 'Phone 1',
-  PHONENO: 'Phone 1',
-  PHONENUMBER: 'Phone 1',
-  PARENTPHONE: 'Phone 1',
-  GUARDIANPHONE: 'Phone 1',
-  CONTACT: 'Phone 1',
-  CONTACTNO: 'Phone 1',
-  PHONE2: 'Phone 2',
-  ALTERNATEPHONE: 'Phone 2',
-  RELATIONSHIP: 'Relationship',
-  GUARDIANRELATION: 'Relationship',
-  REGDATE: 'Reg Date',
-  REGISTRATIONDATE: 'Reg Date',
-  ADMISSIONDATE: 'Reg Date',
-  CREATEDDATE: 'Reg Date',
-  CREATEDBY: 'Created By',
-  INSTITUTION: 'Institution',
-  BALDUE: 'Bal Due',
-  BALANCE: 'Bal Due',
 };
 
 function normalizeCellValue(value: any): string {
@@ -174,8 +91,8 @@ function normalizeHeaderKey(key: any): string {
 }
 
 function canonicalHeaderName(key: any): string {
-  const normalized = normalizeHeaderKey(key);
-  return HEADER_ALIASES[normalized] || normalizeCellValue(key);
+  const standardField = STANDARD_LEARNER_FIELDS.find((field) => normalizeHeaderKey(field) === normalizeHeaderKey(key));
+  return standardField ? STANDARD_HEADER_MAP[standardField] : normalizeCellValue(key);
 }
 
 function normalizeUploadRow(row: Record<string, any>): Record<string, string> {
@@ -192,22 +109,13 @@ function normalizeUploadRow(row: Record<string, any>): Record<string, string> {
 }
 
 function isKnownHeaderCell(value: any): boolean {
-  return Boolean(HEADER_ALIASES[normalizeHeaderKey(value)]);
+  return STANDARD_LEARNER_FIELDS.some((field) => normalizeHeaderKey(field) === normalizeHeaderKey(value));
 }
 
 function findHeaderRowIndex(rows: any[][]): number {
   return rows.findIndex((row) => {
     const knownHeaders = row.filter(isKnownHeaderCell).map(canonicalHeaderName);
-    const hasLearnerName = knownHeaders.includes('Learner Name') ||
-      knownHeaders.includes('Surname') ||
-      knownHeaders.includes('First Name');
-    return hasLearnerName && (
-      knownHeaders.includes('Class') ||
-      knownHeaders.includes('Adm No') ||
-      knownHeaders.includes('Year') ||
-      knownHeaders.includes('Gender') ||
-      knownHeaders.includes('Date of Birth')
-    );
+    return ['First Name', 'Surname', 'Class', 'Year'].every((header) => knownHeaders.includes(header));
   });
 }
 
@@ -221,7 +129,7 @@ function isSectionRow(row: any[]): boolean {
   return /GRADE|CLASS|PLAYGROUP|PP1|PP2/i.test(normalizeCellValue(populatedCells[0]));
 }
 
-function rowToRecord(headers: string[], values: any[], fallbackClass?: string): Record<string, string> {
+function rowToRecord(headers: string[], values: any[]): Record<string, string> {
   const record: Record<string, string> = {};
   headers.forEach((header, index) => {
     if (!header) return;
@@ -231,9 +139,6 @@ function rowToRecord(headers: string[], values: any[], fallbackClass?: string): 
     }
   });
   const normalized = normalizeUploadRow(record);
-  if (!normalized['Class'] && fallbackClass) {
-    normalized['Class'] = fallbackClass;
-  }
   return normalized;
 }
 
@@ -260,12 +165,6 @@ function parseUploadDate(value: any, fallback: Date): Date {
 
   const parsed = new Date(raw);
   return Number.isNaN(parsed.getTime()) ? fallback : parsed;
-}
-
-function inferClassFromSheetName(sheetName: string): string | undefined {
-  const normalized = normalizeCellValue(sheetName);
-  if (!normalized) return undefined;
-  return /GRADE|CLASS|PLAYGROUP|PP\s*[12]|PP[12]/i.test(normalized) ? normalized : undefined;
 }
 
 function isExcelUpload(file: Express.Multer.File): boolean {
@@ -296,12 +195,11 @@ async function parseUploadRows(file: Express.Multer.File): Promise<ParsedUploadR
       if (headerRowIndex === -1) continue;
 
       const headers = rows[headerRowIndex].map(canonicalHeaderName);
-      const fallbackClass = inferClassFromSheetName(sheetName);
       const sheetRows = rows
         .slice(headerRowIndex + 1)
         .map((row, index) => ({
           line: headerRowIndex + index + 2,
-          data: rowToRecord(headers, row, fallbackClass),
+          data: rowToRecord(headers, row),
           sourceFile: file.originalname,
         }))
         .filter((row) => !isEmptyExcelRow(Object.values(row.data)) && !isSectionRow(Object.values(row.data)));
@@ -334,13 +232,26 @@ async function parseUploadRows(file: Express.Multer.File): Promise<ParsedUploadR
   return rows;
 }
 
-async function generateBulkAdmissionNumber(stream: string, academicYear: number): Promise<string> {
+/**
+ * Generates the admission number for one bulk-import row.
+ *
+ * - No startFrom: uses the school's normal AUTO numbering sequence.
+ * - startFrom: an admin explicitly chose a starting point for this whole
+ *   batch (because the file had rows with no admission number). Passing the
+ *   same startFrom value on every row in the batch is safe — the sequence
+ *   only ever moves forward, so once the running counter passes startFrom it
+ *   takes over automatically (see minValue handling in the service).
+ */
+async function generateBulkAdmissionNumber(stream: string, academicYear: number, startFrom?: number): Promise<string> {
   try {
+    if (startFrom) {
+      return await generateAdmissionNumberFrom(startFrom, stream || 'A', academicYear);
+    }
     return await generateAdmissionNumber(stream || 'A', academicYear);
   } catch (error: any) {
     // Bulk imports must still work when school settings are in manual mode.
     // Use a deterministic fallback and check uniqueness before returning.
-    let seq = await prisma.learner.count();
+    let seq = startFrom ? startFrom - 1 : await prisma.learner.count();
     while (true) {
       seq += 1;
       const candidate = `ADM-${academicYear}-${String(seq).padStart(4, '0')}`;
@@ -404,6 +315,264 @@ async function enrollLearnerInClass(learnerId: string, classId: string) {
   }
 }
 
+function normalizeIdentityPart(value: any): string {
+  return normalizeCellValue(value).toUpperCase().replace(/\s+/g, ' ');
+}
+
+function sameLearnerName(
+  learner: { firstName: string; middleName: string | null; lastName: string; grade: string },
+  identity: { firstName: string; middleName?: string; lastName: string; grade: string },
+): boolean {
+  return learner.grade === identity.grade &&
+    normalizeIdentityPart(learner.firstName) === normalizeIdentityPart(identity.firstName) &&
+    normalizeIdentityPart(learner.middleName) === normalizeIdentityPart(identity.middleName) &&
+    normalizeIdentityPart(learner.lastName) === normalizeIdentityPart(identity.lastName);
+}
+
+type LearnerImportValidationResult = {
+  /** Set when the whole import must be rejected before any per-row validation runs. */
+  blocked: { status: number; body: any } | null;
+  importRows: ParsedUploadRow[];
+  skippedRows: number;
+  results: any[];
+  errors: any[];
+  /** How many otherwise-valid rows had no Admission Number in the file. */
+  missingAdmissionNumbers: number;
+  /** Academic year taken from the file, used to preview the next AUTO admission number. */
+  sampleAcademicYear: number;
+};
+
+/**
+ * Parses and validates an uploaded learner file (or files) without writing
+ * anything to the database. Shared by the real /upload endpoint and the
+ * dry-run /preview endpoint so the two can never drift apart.
+ */
+async function runLearnerImportValidation(
+  uploadedFiles: Express.Multer.File[]
+): Promise<LearnerImportValidationResult> {
+  const results: any[] = [];
+  const errors: any[] = [];
+  const parsedRows = (await Promise.all(uploadedFiles.map(parseUploadRows))).flat();
+  const importRows = parsedRows.filter((row) => !shouldSkipParsedRow(row.data));
+  const skippedRows = parsedRows.length - importRows.length;
+  const nowYear = new Date().getFullYear();
+
+  if (!importRows.length) {
+    return {
+      blocked: {
+        status: 422,
+        body: {
+          error: 'Import blocked. Use the downloaded standard learner template and provide learner rows.',
+          summary: { total: 0, processed: 0, skipped: skippedRows, failed: 1, validationErrors: 1, missingAdmissionNumbers: 0 },
+          details: { validationErrors: [{ line: 1, error: 'No standard learner rows were found.' }] },
+        },
+      },
+      importRows, skippedRows, results, errors, missingAdmissionNumbers: 0, sampleAcademicYear: nowYear,
+    };
+  }
+
+  // Imports use the authoritative configured stream and class catalogues.
+  const schoolStreams = await prisma.stream.findMany({
+    where: { active: true, archived: false },
+    select: { id: true, name: true, isDefault: true },
+  });
+  if (!schoolStreams.length) {
+    return {
+      blocked: {
+        status: 409,
+        body: { error: 'School setup is incomplete: create at least one active stream before importing learners.' },
+      },
+      importRows, skippedRows, results, errors, missingAdmissionNumbers: 0, sampleAcademicYear: nowYear,
+    };
+  }
+  const defaultStream = schoolStreams.find((stream) => stream.isDefault)?.name;
+  const streamByName = new Map(schoolStreams.map((stream) => [stream.name.trim().toUpperCase(), stream.name]));
+  const configuredClasses = await prisma.class.findMany({
+    where: { active: true, archived: false },
+    select: { id: true, grade: true, stream: true, academicYear: true },
+  });
+  const classByGradeStreamYear = new Map(
+    configuredClasses
+      .filter((classItem) => classItem.stream)
+      .map((classItem) => [`${classItem.grade}|${classItem.stream!.trim().toUpperCase()}|${classItem.academicYear}`, classItem.id]),
+  );
+  const automaticClassByGradeYear = new Map<string, { id: string; stream: string }>();
+  configuredClasses
+    .filter((classItem) => classItem.stream && streamByName.has(classItem.stream.trim().toUpperCase()))
+    .sort((left, right) => left.stream!.localeCompare(right.stream!))
+    .forEach((classItem) => {
+      const key = `${classItem.grade}|${classItem.academicYear}`;
+      if (!automaticClassByGradeYear.has(key)) {
+        automaticClassByGradeYear.set(key, { id: classItem.id, stream: classItem.stream! });
+      }
+    });
+
+  const existingLearners = await prisma.learner.findMany({
+    where: { archived: false },
+    select: {
+      id: true,
+      admissionNumber: true,
+      upiNumber: true,
+      firstName: true,
+      middleName: true,
+      lastName: true,
+      grade: true,
+    },
+  });
+  const existingByAdmission = new Map(existingLearners.map((learner) => [normalizeIdentityPart(learner.admissionNumber), learner]));
+  const existingByUpi = new Map(
+    existingLearners
+      .filter((learner) => learner.upiNumber)
+      .map((learner) => [normalizeIdentityPart(learner.upiNumber), learner]),
+  );
+  const seenImportIdentities = new Map<string, number>();
+  const seenImportNames = new Map<string, number>();
+
+  let missingAdmissionNumbers = 0;
+  let sampleAcademicYear = nowYear;
+
+  for (const row of importRows) {
+    try {
+      const validated = learnerSchema.parse(row.data);
+      const grade = resolveGrade((validated['Class'] || '').toString());
+      const academicYear = Number.parseInt(String(validated['Year'] || ''), 10);
+      if (Number.isFinite(academicYear)) sampleAcademicYear = academicYear;
+      const requestedStream = String(validated['Stream'] || '').trim();
+      let streamCode: string | undefined;
+      let targetClassId: string | undefined;
+
+      if (requestedStream) {
+        streamCode = streamByName.get(requestedStream.toUpperCase());
+        if (!streamCode) {
+          throw new ApiError(422, `Stream "${requestedStream}" is not an active configured stream.`);
+        }
+        targetClassId = classByGradeStreamYear.get(`${grade}|${streamCode.toUpperCase()}|${academicYear}`);
+      } else {
+        const defaultClassId = defaultStream
+          ? classByGradeStreamYear.get(`${grade}|${defaultStream.toUpperCase()}|${academicYear}`)
+          : undefined;
+        const automaticClass = automaticClassByGradeYear.get(`${grade}|${academicYear}`);
+        targetClassId = defaultClassId || automaticClass?.id;
+        streamCode = defaultClassId ? defaultStream : automaticClass?.stream;
+      }
+
+      if (!targetClassId) {
+        throw new ApiError(422, `No active ${grade.replace('_', ' ')} class exists for ${academicYear}. Create a class before importing learners.`);
+      }
+
+      const firstName = normalizeCellValue(validated['First Name']);
+      const middleName = normalizeCellValue(validated['Other Names']);
+      const lastName = normalizeCellValue(validated['Surname']);
+      const providedAdmNo = normalizeCellValue(validated['Adm No']);
+      const birthEntryNumber = normalizeCellValue(validated['Birth Entry Number']);
+      const identityKey = providedAdmNo
+        ? `ADM:${normalizeIdentityPart(providedAdmNo)}`
+        : birthEntryNumber
+          ? `ULI:${normalizeIdentityPart(birthEntryNumber)}`
+          : '';
+      const nameKey = `${grade}|${normalizeIdentityPart(firstName)}|${normalizeIdentityPart(middleName)}|${normalizeIdentityPart(lastName)}`;
+      const existingByAdm = providedAdmNo ? existingByAdmission.get(normalizeIdentityPart(providedAdmNo)) : undefined;
+      const existingByBirthEntry = birthEntryNumber ? existingByUpi.get(normalizeIdentityPart(birthEntryNumber)) : undefined;
+
+      if (identityKey && seenImportIdentities.has(identityKey)) {
+        throw new ApiError(422, `Duplicate learner identity in this upload; first seen on line ${seenImportIdentities.get(identityKey)}.`);
+      }
+      if (!identityKey && seenImportNames.has(nameKey)) {
+        throw new ApiError(422, `Possible duplicate learner name in this upload; first seen on line ${seenImportNames.get(nameKey)}. Add Admission Number or ULI.`);
+      }
+      if (existingByAdm && existingByBirthEntry && existingByAdm.id !== existingByBirthEntry.id) {
+        throw new ApiError(422, 'Admission Number and ULI belong to different learners. Resolve the conflict before importing.');
+      }
+
+      const existingMatch = existingByAdm || existingByBirthEntry;
+      if (existingMatch && !sameLearnerName(existingMatch, { firstName, middleName, lastName, grade })) {
+        throw new ApiError(422, 'Admission Number or ULI matches a learner with a different name or grade. Resolve the conflict before importing.');
+      }
+      if (!existingMatch && existingLearners.some((learner) => sameLearnerName(learner, { firstName, middleName, lastName, grade }))) {
+        throw new ApiError(422, 'A learner with the same name and grade already exists. Add Admission Number or ULI to confirm the intended record.');
+      }
+
+      if (identityKey) seenImportIdentities.set(identityKey, row.line);
+      seenImportNames.set(nameKey, row.line);
+      if (!providedAdmNo) missingAdmissionNumbers += 1;
+      results.push({
+        line: row.line,
+        sourceFile: row.sourceFile,
+        data: { ...validated, Stream: streamCode! },
+        targetClassId,
+        valid: true
+      });
+    } catch (error) {
+      errors.push({
+        line: row.line,
+        sourceFile: row.sourceFile,
+        data: row.data,
+        error: error instanceof z.ZodError
+          ? error.errors
+          : error instanceof Error ? error.message : 'Validation failed',
+        valid: false
+      });
+    }
+  }
+
+  return { blocked: null, importRows, skippedRows, results, errors, missingAdmissionNumbers, sampleAcademicYear };
+}
+
+/**
+ * POST /api/bulk/learners/preview
+ * Dry-run: parses and validates the file(s) exactly like /upload, but writes
+ * nothing. Lets the UI ask "N students have no Admission Number — how should
+ * we number them?" before the real import commits anything.
+ */
+router.post(
+  '/preview',
+  upload.fields([{ name: 'files', maxCount: 20 }, { name: 'file', maxCount: 1 }]),
+  authenticate,
+  rateLimit({ windowMs: 60_000, maxRequests: 20 }),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      if (!hasAnyRole(req.user as any, ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'])) {
+        return res.status(403).json({ error: 'Only school administrators can import learners.' });
+      }
+      const uploadedFiles = Object.values((req.files || {}) as Record<string, Express.Multer.File[]>).flat();
+      if (!uploadedFiles.length) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      const validation = await runLearnerImportValidation(uploadedFiles);
+      if (validation.blocked) {
+        return res.status(validation.blocked.status).json(validation.blocked.body);
+      }
+      const { importRows, skippedRows, errors, missingAdmissionNumbers, sampleAcademicYear } = validation;
+
+      let nextAdmissionNumberPreview: string | null = null;
+      try {
+        nextAdmissionNumberPreview = await getNextAdmissionNumberPreview('A', sampleAcademicYear);
+      } catch {
+        // Numbering mode is MANUAL, or no school settings yet — no preview available;
+        // the UI falls back to just asking for a starting number.
+        nextAdmissionNumberPreview = null;
+      }
+
+      res.json({
+        success: true,
+        summary: {
+          total: importRows.length,
+          skipped: skippedRows,
+          failed: errors.length,
+          validationErrors: errors.length,
+          missingAdmissionNumbers,
+        },
+        nextAdmissionNumberPreview,
+        details: { validationErrors: errors },
+      });
+    } catch (error) {
+      console.error('Bulk preview error:', error);
+      res.status(500).json({ error: 'Failed to preview upload', details: error instanceof Error ? error.message : 'Unknown error' });
+    }
+  }
+);
+
 /**
  * POST /api/bulk/learners/upload
  */
@@ -415,103 +584,41 @@ router.post(
   auditLog('BULK_UPLOAD_LEARNERS'),
   async (req: AuthRequest, res: Response) => {
   try {
+    if (!hasAnyRole(req.user as any, ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'])) {
+      return res.status(403).json({ error: 'Only school administrators can import learners.' });
+    }
     const uploadedFiles = Object.values((req.files || {}) as Record<string, Express.Multer.File[]>).flat();
     if (!uploadedFiles.length) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const results: any[] = [];
-    const errors: any[] = [];
-    const parsedRows = (await Promise.all(uploadedFiles.map(parseUploadRows))).flat();
-    const importRows = parsedRows.filter((row) => !shouldSkipParsedRow(row.data));
-    const skippedRows = parsedRows.length - importRows.length;
-
-    // Imports use the authoritative Stream catalogue. KEMIS exports commonly
-    // omit Stream, so those learners are placed in the school's configured
-    // default stream or the first eligible active class for their grade.
-    const schoolStreams = await prisma.stream.findMany({
-      where: { active: true, archived: false },
-      select: { id: true, name: true, isDefault: true },
-    });
-    if (!schoolStreams.length) {
-      return res.status(409).json({ error: 'School setup is incomplete: create at least one active stream before importing learners.' });
+    const validation = await runLearnerImportValidation(uploadedFiles);
+    if (validation.blocked) {
+      return res.status(validation.blocked.status).json(validation.blocked.body);
     }
-    const defaultStream = schoolStreams.find((stream) => stream.isDefault)?.name;
-    const streamByName = new Map(schoolStreams.map((stream) => [stream.name.trim().toUpperCase(), stream.name]));
-    const configuredClasses = await prisma.class.findMany({
-      where: { active: true, archived: false },
-      select: { id: true, grade: true, stream: true, academicYear: true },
-    });
-    const classByGradeStreamYear = new Map(
-      configuredClasses
-        .filter((classItem) => classItem.stream)
-        .map((classItem) => [`${classItem.grade}|${classItem.stream!.trim().toUpperCase()}|${classItem.academicYear}`, classItem.id]),
-    );
-    const automaticClassByGradeYear = new Map<string, { id: string; stream: string }>();
-    configuredClasses
-      .filter((classItem) => classItem.stream && streamByName.has(classItem.stream.trim().toUpperCase()))
-      .sort((left, right) => left.stream!.localeCompare(right.stream!))
-      .forEach((classItem) => {
-        const key = `${classItem.grade}|${classItem.academicYear}`;
-        if (!automaticClassByGradeYear.has(key)) {
-          automaticClassByGradeYear.set(key, { id: classItem.id, stream: classItem.stream! });
-        }
-      });
-
-    for (const row of importRows) {
-      try {
-        const validated = learnerSchema.parse(row.data);
-        const grade = resolveGrade((validated['Class'] || '').toString());
-        const academicYear = Number.parseInt(String(validated['Year'] || ''), 10) || new Date().getFullYear();
-        const requestedStream = String(validated['Stream'] || '').trim();
-        let streamCode: string | undefined;
-        let targetClassId: string | undefined;
-
-        if (requestedStream) {
-          streamCode = streamByName.get(requestedStream.toUpperCase());
-          if (!streamCode) {
-            throw new ApiError(422, `Stream "${requestedStream}" is not an active configured stream.`);
-          }
-          targetClassId = classByGradeStreamYear.get(`${grade}|${streamCode.toUpperCase()}|${academicYear}`);
-        } else {
-          const defaultClassId = defaultStream
-            ? classByGradeStreamYear.get(`${grade}|${defaultStream.toUpperCase()}|${academicYear}`)
-            : undefined;
-          const automaticClass = automaticClassByGradeYear.get(`${grade}|${academicYear}`);
-          targetClassId = defaultClassId || automaticClass?.id;
-          streamCode = defaultClassId ? defaultStream : automaticClass?.stream;
-        }
-
-        if (!targetClassId) {
-          throw new ApiError(422, `No active ${grade.replace('_', ' ')} class exists for ${academicYear}. Create a class before importing learners.`);
-        }
-        results.push({
-          line: row.line,
-          sourceFile: row.sourceFile,
-          data: { ...validated, Stream: streamCode! },
-          targetClassId,
-          valid: true
-        });
-      } catch (error) {
-        errors.push({
-          line: row.line,
-          sourceFile: row.sourceFile,
-          data: row.data,
-          error: error instanceof z.ZodError ? error.errors : 'Validation failed',
-          valid: false
-        });
-      }
-    }
+    const { importRows, skippedRows, results, errors, missingAdmissionNumbers } = validation;
 
     // The file is all-or-nothing: configuration and row errors must be fixed
     // before any learner, parent, account, or enrolment record is written.
     if (errors.length) {
       return res.status(422).json({
         error: 'Import blocked. Complete school setup and correct the listed rows before retrying.',
-        summary: { total: importRows.length, processed: 0, skipped: skippedRows, failed: errors.length, validationErrors: errors.length },
+        summary: { total: importRows.length, processed: 0, skipped: skippedRows, failed: errors.length, validationErrors: errors.length, missingAdmissionNumbers },
         details: { validationErrors: errors },
       });
     }
+
+    // ── Admission numbering strategy for this batch ───────────────────────
+    // 'auto' (default): continue the school's existing numbering sequence.
+    // 'manual': the admin chose a specific starting number for the rows in
+    // this file that had no Admission Number — every such row is passed the
+    // same start value; the sequence only ever counts upward from there (see
+    // generateAdmissionNumberFrom), so this is safe to pass on every row.
+    const admissionNumberStrategy = String(req.body?.admissionNumberStrategy || 'auto').toLowerCase();
+    const requestedStart = Number.parseInt(String(req.body?.admissionNumberStart || ''), 10);
+    const admissionNumberStart = admissionNumberStrategy === 'manual' && Number.isFinite(requestedStart) && requestedStart > 0
+      ? requestedStart
+      : undefined;
 
     const created: any[] = [];
     const updated: any[] = [];
@@ -522,14 +629,14 @@ router.post(
       try {
         const csvData = item.data;
         const grade = resolveGrade((csvData['Class'] || '').toString());
-        const academicYear = Number.parseInt(String(csvData['Year'] || ''), 10) || new Date().getFullYear();
+        const academicYear = Number.parseInt(String(csvData['Year'] || ''), 10);
         const streamCode = String(csvData['Stream'] || '').trim();
         const providedAdmNo = String(csvData['Adm No'] || '').trim();
 
         const { rawName, firstName, middleName, lastName } = buildLearnerNameParts(csvData);
         const birthEntryNumber = normalizeCellValue(csvData['Birth Entry Number'] || csvData['ULI']);
 
-        // Date of birth: compute from Age if exact DOB is absent (common in KEMIS)
+        // Date of birth: compute from Age if exact DOB is absent.
         let dob = parseUploadDate(csvData['DOB'] || csvData['Date of Birth'], new Date(2015, 0, 1));
         const rawAge = normalizeCellValue(csvData['Age']);
         if ((!csvData['DOB'] && !csvData['Date of Birth']) && rawAge) {
@@ -539,19 +646,12 @@ router.post(
           }
         }
 
-        // Special Needs
-        let specialNeeds = normalizeCellValue(csvData['Special Needs']);
-        const sneStatus = normalizeCellValue(csvData['SNE Status']).toUpperCase();
-        if (specialNeeds === 'NA' || specialNeeds === 'NONE' || specialNeeds === 'NO') {
-          specialNeeds = '';
-        }
-        if (sneStatus === 'YES' && !specialNeeds) {
-          specialNeeds = 'Special Needs Education (SNE)';
-        }
-
         let parentId: string | undefined;
-        const parentName = csvData['Parent/Guardian'] || csvData['Parent Name'] || (lastName ? `${lastName} Family` : 'Parent');
-        let parentPhone = csvData['Phone 1'] || csvData['Parent Phone'] ? String(csvData['Phone 1'] || csvData['Parent Phone']).trim() : null;
+        const fatherName = normalizeCellValue(csvData['Father Name']);
+        const motherName = normalizeCellValue(csvData['Mother Name']);
+        const guardianName = normalizeCellValue(csvData['Guardian Name']);
+        const parentName = guardianName || fatherName || motherName || csvData['Parent/Guardian'] || csvData['Parent Name'] || (lastName ? `${lastName} Family` : 'Parent');
+        let parentPhone = csvData['Guardian Phone'] || csvData['Father Phone'] || csvData['Mother Phone'] || csvData['Phone 1'] || csvData['Parent Phone'] ? String(csvData['Guardian Phone'] || csvData['Father Phone'] || csvData['Mother Phone'] || csvData['Phone 1'] || csvData['Parent Phone']).trim() : null;
         if (parentPhone) {
           const digitsOnly = parentPhone.replace(/\D/g, '');
           if (digitsOnly.length === 9 && (digitsOnly.startsWith('7') || digitsOnly.startsWith('1'))) {
@@ -585,7 +685,13 @@ router.post(
           existing = await prisma.learner.findUnique({ where: { upiNumber: birthEntryNumber } });
         }
 
-        const admNo = providedAdmNo || existing?.admissionNumber || await generateBulkAdmissionNumber(streamCode || 'A', academicYear);
+        const admNo = providedAdmNo || existing?.admissionNumber || await generateBulkAdmissionNumber(streamCode || 'A', academicYear, admissionNumberStart);
+        // Defensive guarantee: never let a row through without a number. If the
+        // generation chain somehow returns nothing, fail this row explicitly
+        // rather than silently writing a learner with a blank admission number.
+        if (!admNo) {
+          throw new Error('Failed to assign an admission number for this student.');
+        }
 
         if (existing) {
           const updatedLearner = await prisma.learner.update({
@@ -599,10 +705,17 @@ router.post(
               gender: gender,
               dateOfBirth: dob,
               upiNumber: birthEntryNumber || existing.upiNumber || undefined,
-              specialNeeds: specialNeeds || existing.specialNeeds || undefined,
+              nationality: normalizeCellValue(csvData['Nationality']) || existing.nationality || undefined,
+              religion: normalizeCellValue(csvData['Religion']) || existing.religion || undefined,
+              isTransportStudent: /^(Y|YES|TRUE|1)$/i.test(normalizeCellValue(csvData['Transport Student'])),
+              fatherName: fatherName || existing.fatherName || undefined,
+              fatherPhone: normalizeCellValue(csvData['Father Phone']) || existing.fatherPhone || undefined,
+              motherName: motherName || existing.motherName || undefined,
+              motherPhone: normalizeCellValue(csvData['Mother Phone']) || existing.motherPhone || undefined,
               parentId: parentId || existing.parentId,
-              guardianName: parentName || existing.guardianName,
+              guardianName: guardianName || parentName || existing.guardianName,
               guardianPhone: parentPhone || existing.guardianPhone,
+              guardianRelation: normalizeCellValue(csvData['Guardian Relationship'] || csvData['Relationship']) || existing.guardianRelation || undefined,
             }
           });
 
@@ -642,9 +755,16 @@ router.post(
               status: 'ACTIVE',
               admissionDate,
               upiNumber: birthEntryNumber || undefined,
-              specialNeeds: specialNeeds || undefined,
+              nationality: normalizeCellValue(csvData['Nationality']) || undefined,
+              religion: normalizeCellValue(csvData['Religion']) || undefined,
+              isTransportStudent: /^(Y|YES|TRUE|1)$/i.test(normalizeCellValue(csvData['Transport Student'])),
+              fatherName: fatherName || undefined,
+              fatherPhone: normalizeCellValue(csvData['Father Phone']) || undefined,
+              motherName: motherName || undefined,
+              motherPhone: normalizeCellValue(csvData['Mother Phone']) || undefined,
               guardianName: parentName || undefined,
               guardianPhone: parentPhone || undefined,
+              guardianRelation: normalizeCellValue(csvData['Guardian Relationship'] || csvData['Relationship']) || undefined,
               parentId: parentId,
             }
           });
@@ -693,7 +813,10 @@ router.post(
         studentAccountsCreated,
         skipped: skippedRows,
         failed: failed.length + errors.length,
-        validationErrors: errors.length
+        validationErrors: errors.length,
+        missingAdmissionNumbers,
+        admissionNumberStrategy: admissionNumberStart ? 'manual' : 'auto',
+        ...(admissionNumberStart ? { admissionNumberStartedAt: admissionNumberStart } : {}),
       },
       details: { created, updated, failed, validationErrors: errors }
     });
@@ -819,27 +942,34 @@ router.get(
 
     const csvData = learners.map((learner, index) => ({
       'S/No': index + 1,
-      'Surname': learner.lastName,
+      'Admission Number': learner.admissionNumber,
       'First Name': learner.firstName,
-      'Other Names': learner.middleName || '',
+      'Middle Name': learner.middleName || '',
+      'Last Name': learner.lastName,
+      'Grade': learner.grade.replace('_', ' '),
+      'Stream': learner.stream || '',
       'Gender': learner.gender,
       'Date of Birth': learner.dateOfBirth ? new Date(learner.dateOfBirth).toLocaleDateString('en-GB') : '',
-      'Birth Entry Number': learner.upiNumber || '',
-      'Disability type (if any)': learner.specialNeeds || '',
-      'Learner Name': `${learner.firstName} ${learner.lastName}`,
-      'Adm No': learner.admissionNumber,
-      'Class': learner.grade.replace('_', ' '),
-      'Term': req.query.term || 'Term 1',
-      'Year': req.query.year || new Date().getFullYear(),
-      'Parent/Guardian': learner.guardianName || '',
-      'Phone 1': learner.guardianPhone || '',
-      'Phone 2': '',
+      'Age': '',
+      'ULI': learner.upiNumber || '',
+      'Nationality': learner.nationality || '',
+      'Religion': learner.religion || '',
+      'Parent/Guardian Name': learner.guardianName || '',
+      'Parent Phone': learner.guardianPhone || '',
+      'Relationship': '',
+      'Father Name': learner.fatherName || '',
+      'Father Phone': learner.fatherPhone || '',
+      'Mother Name': learner.motherName || '',
+      'Mother Phone': learner.motherPhone || '',
+      'Guardian Name': learner.guardianName || '',
+      'Guardian Phone': learner.guardianPhone || '',
+      'Guardian Relationship': learner.guardianRelation || '',
+      'Transport Student': learner.isTransportStudent ? 'Yes' : 'No',
       'Reg Date': learner.admissionDate ? new Date(learner.admissionDate).toLocaleDateString('en-GB') : '',
-      'Bal Due': '0.00'
     }));
 
     const parser = new Parser({
-      fields: ['S/No', 'Surname', 'First Name', 'Other Names', 'Gender', 'Date of Birth', 'Birth Entry Number', 'Disability type (if any)', 'Learner Name', 'Adm No', 'Class', 'Term', 'Year', 'Parent/Guardian', 'Phone 1', 'Phone 2', 'Reg Date', 'Bal Due']
+      fields: STANDARD_LEARNER_FIELDS
     });
     const csv = parser.parse(csvData);
 
@@ -860,149 +990,41 @@ router.get(
   '/template',
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   (_req: Request, res: Response) => {
-  const fields = [
-    'S/No',
-    'Unique Learner Identifier (ULI)',
-    'Learners First Name',
-    'Learner Middle Name',
-    'Learner Last Name',
-    'Grade',
-    'Gender',
-    'Age',
-    'Date of Birth',
-    'SNE Status',
-    'SNE Type',
-    'KCPE/KCSE Index Number',
-    'Admission Number',
-    'Stream',
-    'Parent/Guardian Name',
-    'Parent Phone',
-    'Relationship',
-    'Reg Date'
-  ];
+  const fields = STANDARD_LEARNER_FIELDS;
   const template = [
     {
       'S/No': '1',
-      'Unique Learner Identifier (ULI)': 'KEN202611RMCJE8YO-0',
-      'Learners First Name': 'Munira',
-      'Learner Middle Name': 'Hussein',
-      'Learner Last Name': 'Boru',
-      'Grade': 'Grade 4',
-      'Gender': 'Female',
-      'Age': '9',
-      'Date of Birth': '2017-04-12',
-      'SNE Status': 'NO',
-      'SNE Type': 'NA',
-      'KCPE/KCSE Index Number': 'B007601065',
       'Admission Number': '',
-      'Stream': 'Blue',
-      'Parent/Guardian Name': 'Hussein Boru',
-      'Parent Phone': '0712345678',
-      'Relationship': 'Father',
-      'Reg Date': '29-07-2026'
-    },
-    {
-      'S/No': '2',
-      'Unique Learner Identifier (ULI)': 'KEN202611YC9KSJI-6',
-      'Learners First Name': 'Farhat',
-      'Learner Middle Name': 'Abdishakur',
-      'Learner Last Name': 'Mohamed',
-      'Grade': 'Grade 4',
-      'Gender': 'Female',
-      'Age': '9',
-      'Date of Birth': '2017-06-20',
-      'SNE Status': 'NO',
-      'SNE Type': 'NA',
-      'KCPE/KCSE Index Number': 'B007600983',
-      'Admission Number': '',
-      'Stream': 'Blue',
-      'Parent/Guardian Name': 'Abdishakur Mohamed',
-      'Parent Phone': '0722000111',
-      'Relationship': 'Father',
-      'Reg Date': '29-07-2026'
+      'First Name': '',
+      'Middle Name': '',
+      'Last Name': '',
+      'Grade': '',
+      'Stream': '',
+      'Academic Year': String(new Date().getFullYear()),
+      'Gender': '',
+      'Age': '',
+      'Date of Birth': '',
+      'ULI': '',
+      'Nationality': 'Kenya',
+      'Religion': '',
+      'Parent/Guardian Name': '',
+      'Parent Phone': '',
+      'Relationship': '',
+      'Father Name': '',
+      'Father Phone': '',
+      'Mother Name': '',
+      'Mother Phone': '',
+      'Guardian Name': '',
+      'Guardian Phone': '',
+      'Guardian Relationship': '',
+      'Transport Student': 'No',
+      'Reg Date': ''
     }
   ];
   const parser = new Parser({ fields });
   const csv = parser.parse(template);
   res.header('Content-Type', 'text/csv');
   res.header('Content-Disposition', 'attachment; filename="trendscore_learners_template.csv"');
-  res.send(csv);
-});
-
-/**
- * GET /api/bulk/learners/template/kemis
- * Direct KEMIS Standard CSV Template
- */
-router.get(
-  '/template/kemis',
-  rateLimit({ windowMs: 60_000, maxRequests: 100 }),
-  (_req: Request, res: Response) => {
-  const fields = [
-    'S. No',
-    'Unique Learner Identifier(ULI)',
-    'KCPE/KCSE Index Number',
-    'Learners First Name',
-    'Learner Middle Name',
-    'Learner Last Name',
-    'Institution',
-    'Grade',
-    'Gender',
-    'SNE Status',
-    'SNE Type',
-    'Age',
-    'Created Date',
-    'Created By',
-    'Stream',
-    'Parent Name',
-    'Parent Phone',
-    'Relationship'
-  ];
-  const template = [
-    {
-      'S. No': '1',
-      'Unique Learner Identifier(ULI)': 'KEN202611RMCJE8YO-0',
-      'KCPE/KCSE Index Number': 'B007601065',
-      'Learners First Name': 'Munira',
-      'Learner Middle Name': 'Hussein',
-      'Learner Last Name': 'Boru',
-      'Institution': 'IBSE ACADEMY',
-      'Grade': 'Grade 4',
-      'Gender': 'Female',
-      'SNE Status': 'NO',
-      'SNE Type': 'NA',
-      'Age': '9',
-      'Created Date': '29-07-2026',
-      'Created By': 'IBSE ACADEMY',
-      'Stream': 'Blue',
-      'Parent Name': 'Hussein Boru',
-      'Parent Phone': '0712345678',
-      'Relationship': 'Father'
-    },
-    {
-      'S. No': '2',
-      'Unique Learner Identifier(ULI)': 'KEN202611YC9KSJI-6',
-      'KCPE/KCSE Index Number': 'B007600983',
-      'Learners First Name': 'Farhat',
-      'Learner Middle Name': 'Abdishakur',
-      'Learner Last Name': 'Mohamed',
-      'Institution': 'IBSE ACADEMY',
-      'Grade': 'Grade 4',
-      'Gender': 'Female',
-      'SNE Status': 'NO',
-      'SNE Type': 'NA',
-      'Age': '9',
-      'Created Date': '29-07-2026',
-      'Created By': 'IBSE ACADEMY',
-      'Stream': 'Blue',
-      'Parent Name': 'Abdishakur Mohamed',
-      'Parent Phone': '0722000111',
-      'Relationship': 'Father'
-    }
-  ];
-  const parser = new Parser({ fields });
-  const csv = parser.parse(template);
-  res.header('Content-Type', 'text/csv');
-  res.header('Content-Disposition', 'attachment; filename="kemis_learners_template.csv"');
   res.send(csv);
 });
 

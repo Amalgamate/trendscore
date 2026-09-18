@@ -86,10 +86,20 @@ export async function generateReport(
     return { engine, data, templateId: null, templateKey: null, templateVersion: null };
   }
 
-  const template = await prisma.template.findUnique({
-    where: { id: templateId },
-    select: { id: true, key: true, version: true },
-  });
+  let template: { id: string; key: string; version: number } | null = null;
+  try {
+    template = await prisma.template.findUnique({
+      where: { id: templateId },
+      select: { id: true, key: true, version: true },
+    });
+  } catch (error: any) {
+    const code = error?.code;
+    const message = String(error?.message || '');
+    if (code === 'P2021' || code === 'P2022' || message.includes('report_templates') || message.includes('template')) {
+      return { engine, data, templateId: null, templateKey: null, templateVersion: null };
+    }
+    throw error;
+  }
 
   if (!template) {
     // Selected template was deleted/deactivated out from under the school's

@@ -104,6 +104,20 @@ describe('reportEngine.service', () => {
       expect(mockedPrisma.reportSnapshot.upsert).not.toHaveBeenCalled();
     });
 
+    it('treats a missing template table as an empty template catalog instead of crashing', async () => {
+      mockedResolveCurrentSchool.mockResolvedValue({ reportEngine: 'NEW', reportTemplateId: 'template-1' });
+      mockedPrisma.template.findUnique.mockRejectedValue({ code: 'P2021', message: 'table "report_templates" does not exist' });
+
+      await expect(generateReport('learner-1', 'TERM_1' as any, 2026, 'user-1')).resolves.toMatchObject({
+        engine: 'NEW',
+        data: FAKE_REPORT_DATA,
+        templateId: null,
+        templateKey: null,
+        templateVersion: null,
+      });
+      expect(mockedPrisma.reportSnapshot.upsert).not.toHaveBeenCalled();
+    });
+
     it('upserts a snapshot and returns full template info for a valid NEW template', async () => {
       mockedResolveCurrentSchool.mockResolvedValue({ reportEngine: 'NEW', reportTemplateId: 'template-1' });
       mockedPrisma.template.findUnique.mockResolvedValue({ id: 'template-1', key: 'modern', version: 2 });

@@ -111,7 +111,9 @@ export class LearnerController {
     if (currentUserRole === 'PARENT') {
       whereClause.id = { in: await parentAccessService.getAccessibleLearnerIds(currentUserId) };
     }
-    if (grade && String(grade).toLowerCase() !== 'all') whereClause.grade = String(grade);
+    if (grade && String(grade).toLowerCase() !== 'all') {
+      whereClause.grade = { equals: String(grade).trim(), mode: 'insensitive' };
+    }
     if (stream && String(stream).toLowerCase() !== 'all') {
       whereClause.stream = { equals: String(stream).trim(), mode: 'insensitive' };
     }
@@ -177,9 +179,29 @@ export class LearnerController {
     }
   }
 
-  async getLearnerStats(_req: AuthRequest, res: Response) {
-    const institutionType = getInstitutionType(_req);
-    const whereClause: any = applyInstitutionGradeScope(institutionType, { archived: false, institutionType });
+  async getLearnerStats(req: AuthRequest, res: Response) {
+    const institutionType = getInstitutionType(req);
+    const { grade, stream, status, search } = req.query;
+    let whereClause: any = applyInstitutionGradeScope(institutionType, { archived: false, institutionType });
+    // Mirror getAllLearners' filters so the KPI cards reflect whatever the
+    // learner list is currently filtered to, instead of always showing the
+    // unfiltered institution-wide totals.
+    if (grade && String(grade).toLowerCase() !== 'all') whereClause.grade = String(grade);
+    if (stream && String(stream).toLowerCase() !== 'all') {
+      whereClause.stream = { equals: String(stream).trim(), mode: 'insensitive' };
+    }
+    if (status && String(status).toLowerCase() !== 'all') {
+      whereClause.status = String(status).toUpperCase() as LearnerStatus;
+    }
+    if (search) {
+      whereClause.OR = [
+        { firstName:       { contains: search as string, mode: 'insensitive' } },
+        { lastName:        { contains: search as string, mode: 'insensitive' } },
+        { middleName:      { contains: search as string, mode: 'insensitive' } },
+        { admissionNumber: { contains: search as string, mode: 'insensitive' } },
+        { upiNumber:       { contains: search as string, mode: 'insensitive' } },
+      ];
+    }
     try {
       const [statusCounts, gradeCounts, genderCounts, total, active] = await Promise.all([
         prisma.learner.groupBy({ by: ['status'], _count: true, where: whereClause }),
@@ -194,6 +216,12 @@ export class LearnerController {
         data: {
           total,
           active,
+          appliedFilters: {
+            grade: grade ? String(grade).trim() : 'all',
+            stream: stream ? String(stream).trim() : 'all',
+            status: status ? String(status).trim() : 'all',
+            search: search ? String(search) : '',
+          },
           byStatus: statusCounts.reduce((a, i) => { a[i.status] = i._count; return a; }, {} as any),
           byGrade:  gradeCounts.reduce((a, i)  => { a[i.grade]  = i._count; return a; }, {} as any),
           byGender: genderCounts.reduce((a, i) => { a[i.gender] = i._count; return a; }, {} as any),
