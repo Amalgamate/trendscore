@@ -66,7 +66,6 @@ const applyOrphanMapping = (payload: Record<string, any>) => {
   const normalized: Record<string, any> = { ...payload };
   const orphanFields = { ...(payload.orphanFields || {}) };
 
-  if (payload.nationality) orphanFields.nationality = String(payload.nationality).trim();
   if (payload.previousClass) orphanFields.previousClass = String(payload.previousClass).trim();
   if (payload.doctorName) orphanFields.doctorName = String(payload.doctorName).trim();
   if (payload.doctorPhone) orphanFields.doctorPhone = String(payload.doctorPhone).trim();
@@ -74,7 +73,6 @@ const applyOrphanMapping = (payload: Record<string, any>) => {
   if (!normalized.emergencyContact && payload.doctorName) normalized.emergencyContact = payload.doctorName;
   if (!normalized.emergencyPhone && payload.doctorPhone) normalized.emergencyPhone = payload.doctorPhone;
 
-  delete normalized.nationality;
   delete normalized.previousClass;
   delete normalized.doctorName;
   delete normalized.doctorPhone;

@@ -7,7 +7,7 @@ export const LEARNER_PAYLOAD_KEYS = [
   'primaryContactType', 'primaryContactName', 'primaryContactPhone', 'primaryContactEmail',
   'bloodGroup', 'allergies', 'medicalConditions', 'specialNeeds',
   'emergencyContact', 'emergencyPhone',
-  'address', 'county', 'subCounty', 'previousSchool', 'religion',
+  'address', 'county', 'subCounty', 'previousSchool', 'religion', 'nationality',
   'isTransportStudent', 'photo',
   'isScholarshipStudent', 'scholarshipType', 'scholarshipAmount',
   'generateInvoice', 'changeReason', 'status', 'exitDate', 'exitReason',
@@ -16,7 +16,6 @@ export const LEARNER_PAYLOAD_KEYS = [
 
 export const sanitizeLearnerPayload = (payload = {}) => {
   const orphanFields = {};
-  if (payload.nationality) orphanFields.nationality = String(payload.nationality).trim();
   if (payload.previousClass) orphanFields.previousClass = String(payload.previousClass).trim();
   if (payload.doctorName) orphanFields.doctorName = String(payload.doctorName).trim();
   if (payload.doctorPhone) orphanFields.doctorPhone = String(payload.doctorPhone).trim();

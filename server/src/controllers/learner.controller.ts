@@ -275,7 +275,7 @@ export class LearnerController {
       admissionNumber, firstName, lastName, middleName, dateOfBirth, gender, grade, stream,
       parentId, guardianName, guardianPhone, guardianEmail, medicalConditions, allergies,
       emergencyContact, emergencyPhone, bloodGroup, address, county, subCounty, previousSchool,
-      religion, specialNeeds, isTransportStudent, photo, fatherName, fatherPhone, fatherEmail, fatherDeceased,
+      religion, nationality, specialNeeds, isTransportStudent, photo, fatherName, fatherPhone, fatherEmail, fatherDeceased,
       motherName, motherPhone, motherEmail, motherDeceased, guardianRelation,
       primaryContactType, primaryContactName, primaryContactPhone, primaryContactEmail,
       generateInvoice, isScholarshipStudent, scholarshipType, scholarshipAmount,
@@ -368,7 +368,7 @@ export class LearnerController {
         institutionType,
         stream: resolvedStream, guardianName, guardianPhone, guardianEmail,
         medicalConditions, allergies, emergencyContact, emergencyPhone, bloodGroup,
-        address, county, subCounty, previousSchool, religion, specialNeeds,
+        address, county, subCounty, previousSchool, religion, nationality, specialNeeds,
         isTransportStudent: isTransportStudent === true || isTransportStudent === 'true',
         ...(includeScholarshipFields ? {
           isScholarshipStudent: scholarshipSelected,
@@ -563,7 +563,7 @@ export class LearnerController {
         'primaryContactType', 'primaryContactName', 'primaryContactPhone', 'primaryContactEmail',
         'medicalConditions', 'allergies', 'emergencyContact', 'emergencyPhone',
         'bloodGroup', 'address', 'county', 'subCounty',
-        'previousSchool', 'religion', 'specialNeeds', 'isTransportStudent',
+        'previousSchool', 'religion', 'nationality', 'specialNeeds', 'isTransportStudent',
         'isScholarshipStudent', 'scholarshipType', 'scholarshipAmount',
         'status', 'exitDate', 'exitReason',
       ];
