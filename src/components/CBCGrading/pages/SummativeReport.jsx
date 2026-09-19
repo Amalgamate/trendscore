@@ -388,8 +388,16 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
     resultsByArea[area].push(result);
   });
 
-  // Keep each test as its own column. Grouping by test type would collapse
-  // Week 1, Week 2, and later weekly tests into a single column.
+  // Build one column per test occurrence.
+  //
+  // Singleton types (OPENER, MID_TERM, END_TERM) appear exactly once on the
+  // report regardless of how many per-subject test records exist in the DB.
+  // We key them by their type string so every subject's result maps to the
+  // same column.
+  //
+  // Repeatable types (WEEKLY, CAT, MONTHLY, …) get one column per distinct
+  // occurrence, keyed by test-ID (or a date/weekNumber fallback). This lets
+  // Week 1 and Week 3 appear as separate columns.
   const testColumnsByKey = new Map();
   results?.forEach((result) => {
     const weekNumber = result.test?.weekNumber || result.weekNumber;
@@ -398,20 +406,23 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
       title: result.test?.title || result.title,
       weekNumber
     });
+    const isSingleton = CORE_GROUPS_WITHOUT_STAMP.has(getTestGroupType(type));
     const testId = result.test?.id || result.testId;
     const dateValue = result.testDate || result.test?.testDate || result.createdAt;
     const date = new Date(dateValue || 0);
-    // Derive weekNumber from the type string as an authoritative fallback —
-    // the bulk API may not embed weekNumber on every result object.
     const resolvedWeekNumber = weekNumber || getTestGroupWeekNumber(type);
-    const fallbackKey = `${type}:${resolvedWeekNumber || ''}:${dateValue || ''}`;
-    const key = String(testId || fallbackKey);
+
+    // Singletons collapse all per-subject records into one column keyed by type.
+    // Repeatables keep one column per test-ID (or fallback to type+week+date).
+    const repeatableFallbackKey = `${type}:${resolvedWeekNumber || ''}:${dateValue || ''}`;
+    const key = isSingleton ? type : String(testId || repeatableFallbackKey);
+
     if (testColumnsByKey.has(key)) return;
 
     const label = getTestGroupType(type) === 'WEEKLY' && resolvedWeekNumber
       ? `WEEK ${resolvedWeekNumber}`
       : formatTestGroup(type);
-    testColumnsByKey.set(key, { key, label, type, weekNumber: resolvedWeekNumber, date });
+    testColumnsByKey.set(key, { key, label, type, weekNumber: resolvedWeekNumber, date, isSingleton });
   });
 
   // Sort columns: Opener -> Midterm -> End Term -> weekly tests by week/date.
@@ -436,7 +447,24 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
     const scoresByCol = {};
     const maxByCol = {};
     testColumns.forEach((column) => {
-      const match = areaResults.find((result) => String(result.test?.id || result.testId || '') === column.key);
+      let match;
+      if (column.isSingleton) {
+        // Singleton columns (OPENER, MID_TERM, END_TERM): match any result
+        // whose resolved type equals this column's type — there is only one
+        // result per subject for these types.
+        match = areaResults.find((result) => {
+          const rWeekNumber = result.test?.weekNumber || result.weekNumber;
+          const rType = resolveTestGroup({
+            testType: result.test?.testType || result.testType,
+            title: result.test?.title || result.title,
+            weekNumber: rWeekNumber
+          });
+          return rType === column.type;
+        });
+      } else {
+        // Repeatable columns: match by test ID
+        match = areaResults.find((result) => String(result.test?.id || result.testId || '') === column.key);
+      }
       scoresByCol[column.key] = match ? (match.score || 0) : null;
       maxByCol[column.key] = match ? (match.totalMarks || 0) : null;
     });
@@ -2039,12 +2067,17 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
     }
 
     if (testTypes.length === 0) {
-      testTypes = (row?.results || []).map((result) => resolveTestGroup({
-        testType: result.test?.testType || result.testType,
-        title: result.test?.title || result.title,
-      }));
+      testTypes = (row?.results || []).map((result) => {
+        const wn = result.test?.weekNumber || result.weekNumber;
+        return resolveTestGroup({
+          testType: result.test?.testType || result.testType,
+          title: result.test?.title || result.title,
+          weekNumber: wn,
+        });
+      });
     }
 
+    // Deduplicate — singleton types collapse to one entry, repeatables keep distinct occurrences
     const uniqueTypes = [...new Set(testTypes.filter(Boolean))];
     if (uniqueTypes.length === 1) {
       return `${formatTestGroup(uniqueTypes[0])} ${termLabel}`;
