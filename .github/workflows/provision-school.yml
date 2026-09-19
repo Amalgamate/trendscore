@@ -179,6 +179,12 @@ jobs:
 
           sudo docker exec "${CONTAINER}" sh -c '
             set -e
+
+            # Detect whether this DB already has any migration history.
+            # A count > 0 means an existing (live-migrated) DB whose history just
+            # needs to be baselined.  count == 0 means a brand-new empty DB —
+            # in that case we must NOT baseline; we let migrate deploy execute
+            # every migration SQL file from scratch so the schema is actually built.
             count=$(node -e "
               const { Client } = require(\"pg\");
               const c = new Client({ connectionString: process.env.DATABASE_URL });
@@ -187,22 +193,16 @@ jobs:
                 .then(r => { console.log(r.rows[0].n); c.end(); })
                 .catch(() => { console.log(0); c.end(); });
             " 2>/dev/null || echo 0)
-            if [ "$count" -eq 0 ]; then
-              echo "[baseline] No migration history — baselining"
-              SKIP1=20260707121500_allow_multiple_summative_series
-              SKIP2=20260811090000_link_learners_to_student_users
-              marked=0
-              for dir in prisma/migrations/*/; do
-                name="$(basename "${dir}")"
-                [ "${name}" = "${SKIP1}" ] && continue
-                [ "${name}" = "${SKIP2}" ] && continue
-                npx prisma migrate resolve --applied "${name}" --schema prisma/schema.prisma 2>&1 | tail -1
-                marked=$((marked+1))
-              done
-              echo "[baseline] marked ${marked} migrations as applied"
+
+            if [ "$count" -gt 0 ]; then
+              # Existing DB — schema already applied; just record any missing history entries.
+              echo "[baseline] ${count} migrations already recorded — skipping baseline"
             else
-              echo "[baseline] ${count} migrations already recorded — skipping"
+              # Fresh empty DB — do NOT baseline.
+              # migrate deploy will run all migration SQL files in order.
+              echo "[baseline] Fresh DB detected (count=0) — skipping baseline, running full migrate deploy"
             fi
+
             npx prisma migrate deploy
             echo "[migrate] done"
           '
