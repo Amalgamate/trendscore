@@ -177,43 +177,29 @@ jobs:
             --format '{{.Names}}' | head -n1)"
           echo "Backend container: ${CONTAINER}"
 
+          DB_CONTAINER="$(sudo docker ps \
+            --filter "label=com.docker.compose.project=${PROJECT}" \
+            --filter "label=com.docker.compose.service=db" \
+            --format '{{.Names}}' | head -n1)"
+          echo "DB container: ${DB_CONTAINER}"
+
+          # Drop _prisma_migrations if it has no successfully completed entries.
+          # Previous botched provision attempts leave stuck/rolled-back records that
+          # cause P3009/P3018. Dropping the table lets migrate deploy start clean.
+          COMPLETED=$(sudo docker exec "${DB_CONTAINER}" \
+            psql -U zawadi -d "${DB_NAME}" -tAc \
+            "SELECT COUNT(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL" \
+            2>/dev/null || echo "0")
+          echo "[baseline] Completed migrations in DB: ${COMPLETED}"
+          if [ "${COMPLETED}" = "0" ]; then
+            echo "[baseline] Dropping _prisma_migrations for a clean start"
+            sudo docker exec "${DB_CONTAINER}" \
+              psql -U zawadi -d "${DB_NAME}" -c \
+              "DROP TABLE IF EXISTS _prisma_migrations" 2>/dev/null || true
+          fi
+
           sudo docker exec "${CONTAINER}" sh -c '
             set -e
-
-            # Wipe any partial migration history left by a previous failed provision.
-            # If the table exists but has no successfully-finished migrations (count=0),
-            # it only contains stuck/rolled-back records that will confuse Prisma.
-            # Dropping the table lets migrate deploy rebuild history from scratch.
-            node -e "
-              const { Client } = require(\"pg\");
-              const c = new Client({ connectionString: process.env.DATABASE_URL });
-              c.connect()
-                .then(() => c.query(\"SELECT COUNT(*)::int AS n FROM _prisma_migrations WHERE finished_at IS NOT NULL\"))
-                .then(r => {
-                  const n = r.rows[0].n;
-                  console.log(n);
-                  c.end();
-                })
-                .catch(() => { console.log(0); c.end(); });
-            " 2>/dev/null > /tmp/mig_count.txt || echo 0 > /tmp/mig_count.txt
-
-            COUNT=$(cat /tmp/mig_count.txt)
-            echo "[baseline] Completed migrations in DB: ${COUNT}"
-
-            if [ "${COUNT}" -eq 0 ]; then
-              echo "[baseline] No completed migrations — dropping _prisma_migrations so migrate deploy starts clean"
-              node -e "
-                const { Client } = require(\"pg\");
-                const c = new Client({ connectionString: process.env.DATABASE_URL });
-                c.connect()
-                  .then(() => c.query(\"DROP TABLE IF EXISTS _prisma_migrations\"))
-                  .then(() => { console.log(\"Dropped\"); c.end(); })
-                  .catch(err => { console.error(err.message); c.end(); process.exit(1); });
-              " 2>&1
-            else
-              echo "[baseline] ${COUNT} completed migrations found — keeping history intact"
-            fi
-
             npx prisma migrate deploy
             echo "[migrate] done"
           '
