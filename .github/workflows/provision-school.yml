@@ -180,32 +180,23 @@ jobs:
           sudo docker exec "${CONTAINER}" sh -c '
             set -e
 
-            # Clear any failed migration records left by a previous botched provision
-            # attempt. Prisma P3009 blocks all new migrations until failed entries are
-            # resolved. We mark them rolled-back so migrate deploy can re-apply them
-            # cleanly on a fresh DB. Only known-safe migrations to resolve are listed.
-            FAILED=$(node -e "
-              const { Client } = require(\"pg\");
-              const c = new Client({ connectionString: process.env.DATABASE_URL });
-              c.connect()
-                .then(() => c.query(\"SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL\"))
-                .then(r => { r.rows.forEach(row => console.log(row.migration_name)); c.end(); })
-                .catch(() => c.end());
-            " 2>/dev/null || true)
-
-            if [ -n "$FAILED" ]; then
-              echo "[repair] Found failed migrations — marking rolled-back:"
-              echo "$FAILED"
-              echo "$FAILED" | while read -r name; do
-                [ -z "$name" ] && continue
-                npx prisma migrate resolve --rolled-back "$name" --schema prisma/schema.prisma 2>&1 | tail -1
-              done
-            fi
+            # A previous botched provision may have left a migration in a "started
+            # but never finished" (P3009) state inside _prisma_migrations.
+            # Prisma blocks all future deploys until failed entries are resolved.
+            # Unconditionally mark the two known-problematic migrations as rolled-back
+            # so migrate deploy can re-apply them cleanly on a fresh DB.
+            # The --rolled-back flag is idempotent: safe to run even if the record
+            # does not exist or is already resolved.
+            npx prisma migrate resolve \
+              --rolled-back 20260707121500_allow_multiple_summative_series \
+              --schema prisma/schema.prisma 2>&1 | tail -1 || true
+            npx prisma migrate resolve \
+              --rolled-back 20260811090000_link_learners_to_student_users \
+              --schema prisma/schema.prisma 2>&1 | tail -1 || true
 
             # Detect whether this DB already has any completed migration history.
-            # count > 0 means an existing (live-migrated) DB — skip baseline.
-            # count == 0 means a brand-new empty DB — let migrate deploy run all
-            # migration SQL files in order from scratch (no baseline needed).
+            # count > 0 means an existing (live-migrated) DB — history is intact.
+            # count == 0 means a brand-new empty DB — migrate deploy runs everything.
             count=$(node -e "
               const { Client } = require(\"pg\");
               const c = new Client({ connectionString: process.env.DATABASE_URL });
