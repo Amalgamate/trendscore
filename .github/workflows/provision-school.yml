@@ -180,11 +180,32 @@ jobs:
           sudo docker exec "${CONTAINER}" sh -c '
             set -e
 
-            # Detect whether this DB already has any migration history.
-            # A count > 0 means an existing (live-migrated) DB whose history just
-            # needs to be baselined.  count == 0 means a brand-new empty DB —
-            # in that case we must NOT baseline; we let migrate deploy execute
-            # every migration SQL file from scratch so the schema is actually built.
+            # Clear any failed migration records left by a previous botched provision
+            # attempt. Prisma P3009 blocks all new migrations until failed entries are
+            # resolved. We mark them rolled-back so migrate deploy can re-apply them
+            # cleanly on a fresh DB. Only known-safe migrations to resolve are listed.
+            FAILED=$(node -e "
+              const { Client } = require(\"pg\");
+              const c = new Client({ connectionString: process.env.DATABASE_URL });
+              c.connect()
+                .then(() => c.query(\"SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL\"))
+                .then(r => { r.rows.forEach(row => console.log(row.migration_name)); c.end(); })
+                .catch(() => c.end());
+            " 2>/dev/null || true)
+
+            if [ -n "$FAILED" ]; then
+              echo "[repair] Found failed migrations — marking rolled-back:"
+              echo "$FAILED"
+              echo "$FAILED" | while read -r name; do
+                [ -z "$name" ] && continue
+                npx prisma migrate resolve --rolled-back "$name" --schema prisma/schema.prisma 2>&1 | tail -1
+              done
+            fi
+
+            # Detect whether this DB already has any completed migration history.
+            # count > 0 means an existing (live-migrated) DB — skip baseline.
+            # count == 0 means a brand-new empty DB — let migrate deploy run all
+            # migration SQL files in order from scratch (no baseline needed).
             count=$(node -e "
               const { Client } = require(\"pg\");
               const c = new Client({ connectionString: process.env.DATABASE_URL });
@@ -195,12 +216,9 @@ jobs:
             " 2>/dev/null || echo 0)
 
             if [ "$count" -gt 0 ]; then
-              # Existing DB — schema already applied; just record any missing history entries.
               echo "[baseline] ${count} migrations already recorded — skipping baseline"
             else
-              # Fresh empty DB — do NOT baseline.
-              # migrate deploy will run all migration SQL files in order.
-              echo "[baseline] Fresh DB detected (count=0) — skipping baseline, running full migrate deploy"
+              echo "[baseline] Fresh DB (count=0) — running full migrate deploy from scratch"
             fi
 
             npx prisma migrate deploy
