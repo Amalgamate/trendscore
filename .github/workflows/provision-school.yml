@@ -72,6 +72,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REKOGNITION_LIVENESS_ROLE_ARN: ${{ vars.AWS_REKOGNITION_LIVENESS_ROLE_ARN }}
+          BIOMETRIC_ENCRYPTION_KEY: ${{ secrets.BIOMETRIC_ENCRYPTION_KEY }}
         run: |
           set -euo pipefail
 
@@ -82,6 +83,7 @@ jobs:
           JWT_S="${JWT_SECRET:-$(openssl rand -hex 32)}"
           JWT_R="${JWT_REFRESH_SECRET:-$(openssl rand -hex 32)}"
           ENC_K="${ENCRYPTION_KEY:-$(openssl rand -hex 32)}"
+          BIO_KEY="${BIOMETRIC_ENCRYPTION_KEY:-759728fc56aaaea8e79fed20aa8409635cb3a58731207e22b073d33bcb061f1c}"
 
           cat > /tmp/provision-school.sh <<'REMOTE'
           set -euo pipefail
@@ -97,6 +99,7 @@ jobs:
           JWT_S="${JWT_S}"
           JWT_R="${JWT_R}"
           ENC_K="${ENC_K}"
+          BIO_KEY="${BIO_KEY:-759728fc56aaaea8e79fed20aa8409635cb3a58731207e22b073d33bcb061f1c}"
           ADMIN_EMAIL="${ADMIN_EMAIL}"
           AWS_REGION="${AWS_REGION:-ap-south-1}"
           AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-}"
@@ -106,7 +109,12 @@ jobs:
           VAPID_PRIVATE_KEY="${VAPID_PRIVATE_KEY:-}"
 
           if [[ -f "${ENV_FILE}" ]]; then
-            echo "⚠️  Env file already exists: ${ENV_FILE} — skipping creation (stack will still be started)"
+            echo "⚠️  Env file already exists: ${ENV_FILE} — checking required keys"
+            if ! sudo grep -q "BIOMETRIC_ENCRYPTION_KEY=" "${ENV_FILE}" 2>/dev/null; then
+              echo "Adding missing BIOMETRIC_ENCRYPTION_KEY to existing env file"
+              echo "BIOMETRIC_ENCRYPTION_KEY=${BIO_KEY}" | sudo tee -a "${ENV_FILE}" >/dev/null
+              echo "BIOMETRIC_KEY_VERSION=1" | sudo tee -a "${ENV_FILE}" >/dev/null
+            fi
           else
             echo "✅ Creating env file: ${ENV_FILE}"
             sudo tee "${ENV_FILE}" > /dev/null <<ENVEOF
@@ -121,6 +129,8 @@ jobs:
           JWT_SECRET=${JWT_S}
           JWT_REFRESH_SECRET=${JWT_R}
           ENCRYPTION_KEY=${ENC_K}
+          BIOMETRIC_ENCRYPTION_KEY=${BIO_KEY}
+          BIOMETRIC_KEY_VERSION=1
           SUPER_ADMIN_EMAIL=${ADMIN_EMAIL}
           SUPER_ADMIN_PASSWORD=Admin@123!
           CREATE_EXTRA_DEMO_USERS=false
@@ -201,7 +211,7 @@ jobs:
           REMOTE
 
           ssh production \
-            "PROJECT='${PROJECT}' ENV_FILE='${ENV_FILE}' COMPOSE_FILE='${COMPOSE_FILE}' SCHOOL_SLUG='${SCHOOL_SLUG}' FRONTEND_PORT='${FRONTEND_PORT}' BACKEND_PORT='${BACKEND_PORT}' DB_PASSWORD='${DB_PASSWORD}' DB_NAME='${DB_NAME}' JWT_S='${JWT_S}' JWT_R='${JWT_R}' ENC_K='${ENC_K}' ADMIN_EMAIL='${ADMIN_EMAIL}' AWS_REGION='${AWS_REGION:-ap-south-1}' AWS_ACCESS_KEY_ID='${AWS_ACCESS_KEY_ID:-}' AWS_SECRET_ACCESS_KEY='${AWS_SECRET_ACCESS_KEY:-}' AWS_REKOGNITION_LIVENESS_ROLE_ARN='${AWS_REKOGNITION_LIVENESS_ROLE_ARN:-}' VAPID_PUBLIC_KEY='${VAPID_PUBLIC_KEY:-}' VAPID_PRIVATE_KEY='${VAPID_PRIVATE_KEY:-}' bash -s" < /tmp/provision-school.sh
+            "PROJECT='${PROJECT}' ENV_FILE='${ENV_FILE}' COMPOSE_FILE='${COMPOSE_FILE}' SCHOOL_SLUG='${SCHOOL_SLUG}' FRONTEND_PORT='${FRONTEND_PORT}' BACKEND_PORT='${BACKEND_PORT}' DB_PASSWORD='${DB_PASSWORD}' DB_NAME='${DB_NAME}' JWT_S='${JWT_S}' JWT_R='${JWT_R}' ENC_K='${ENC_K}' BIO_KEY='${BIO_KEY}' ADMIN_EMAIL='${ADMIN_EMAIL}' AWS_REGION='${AWS_REGION:-ap-south-1}' AWS_ACCESS_KEY_ID='${AWS_ACCESS_KEY_ID:-}' AWS_SECRET_ACCESS_KEY='${AWS_SECRET_ACCESS_KEY:-}' AWS_REKOGNITION_LIVENESS_ROLE_ARN='${AWS_REKOGNITION_LIVENESS_ROLE_ARN:-}' VAPID_PUBLIC_KEY='${VAPID_PUBLIC_KEY:-}' VAPID_PRIVATE_KEY='${VAPID_PRIVATE_KEY:-}' bash -s" < /tmp/provision-school.sh
 
       - name: Report
         if: success()
