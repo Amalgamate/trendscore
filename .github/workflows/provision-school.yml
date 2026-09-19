@@ -109,7 +109,9 @@ jobs:
           VAPID_PRIVATE_KEY="${VAPID_PRIVATE_KEY:-}"
 
           if [[ -f "${ENV_FILE}" ]]; then
-            echo "⚠️  Env file already exists: ${ENV_FILE} — checking required keys"
+            echo "⚠️  Env file already exists: ${ENV_FILE} — syncing port assignments and checking required keys"
+            sudo sed -i "s/^FRONTEND_PORT=.*/FRONTEND_PORT=${FRONTEND_PORT}/" "${ENV_FILE}"
+            sudo sed -i "s/^BACKEND_PORT=.*/BACKEND_PORT=${BACKEND_PORT}/" "${ENV_FILE}"
             if ! sudo grep -q "BIOMETRIC_ENCRYPTION_KEY=" "${ENV_FILE}" 2>/dev/null; then
               echo "Adding missing BIOMETRIC_ENCRYPTION_KEY to existing env file"
               echo "BIOMETRIC_ENCRYPTION_KEY=${BIO_KEY}" | sudo tee -a "${ENV_FILE}" >/dev/null
