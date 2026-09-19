@@ -190,19 +190,34 @@ jobs:
             2>/dev/null || echo "${DB_NAME}")"
           echo "[baseline] Actual Prisma DB name: ${ACTUAL_DB}"
 
-          # Drop _prisma_migrations if it has no successfully completed entries.
-          # Previous botched provision attempts leave stuck/rolled-back records that
-          # cause P3009/P3018. Dropping the table lets migrate deploy start clean.
+          # Check for completed migrations to decide strategy.
           COMPLETED="$(sudo docker exec "${DB_CONTAINER}" \
             psql -U zawadi -d "${ACTUAL_DB}" -tAc \
             "SELECT COUNT(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL" \
             2>/dev/null || echo "0")"
           echo "[baseline] Completed migrations in DB: ${COMPLETED}"
+
           if [ "${COMPLETED}" = "0" ]; then
+            # No completed migrations — drop any partial records so migrate deploy
+            # starts completely fresh and runs all 138 migrations from scratch.
             echo "[baseline] Dropping _prisma_migrations for a clean start"
             sudo docker exec "${DB_CONTAINER}" \
               psql -U zawadi -d "${ACTUAL_DB}" -c \
               "DROP TABLE IF EXISTS _prisma_migrations" 2>&1 || true
+          else
+            # Some migrations completed — clear any failed/stuck records using
+            # Prisma's own resolve command (marks them rolled-back so migrate deploy
+            # can re-apply them cleanly now that dependent tables exist).
+            echo "[baseline] Clearing any failed migration records via prisma resolve"
+            sudo docker exec "${CONTAINER}" sh -c '
+              set -e
+              npx prisma migrate resolve \
+                --rolled-back 20260707121500_allow_multiple_summative_series \
+                --schema prisma/schema.prisma 2>&1 | tail -2 || true
+              npx prisma migrate resolve \
+                --rolled-back 20260811090000_link_learners_to_student_users \
+                --schema prisma/schema.prisma 2>&1 | tail -2 || true
+            '
           fi
 
           sudo docker exec "${CONTAINER}" sh -c '
