@@ -1,0 +1,101 @@
+name: Reset School Database (One-Shot)
+
+# DESTRUCTIVE — drops and recreates a school's Postgres database.
+# Use only when a provisioning attempt has left the DB in a broken state.
+# The Docker stack stays running; only the database contents are wiped.
+# After this runs, re-run Provision New School to rebuild the schema.
+
+on:
+  workflow_dispatch:
+    inputs:
+      school_slug:
+        description: 'School slug (e.g. malkagalla). Compose project = zawadi-<slug>'
+        required: true
+        type: string
+      actual_db_name:
+        description: 'Actual Postgres DB name used by the container (e.g. school_malkagalla — check DATABASE_URL in env file or container inspect)'
+        required: true
+        type: string
+      confirm:
+        description: "Type RESET to confirm — this permanently wipes all data in the named database"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate confirmation
+        run: |
+          if [[ "${{ inputs.confirm }}" != "RESET" ]]; then
+            echo "::error::Confirmation must be exactly 'RESET'. Aborting."
+            exit 1
+          fi
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Drop and recreate database
+        env:
+          SCHOOL_SLUG: ${{ inputs.school_slug }}
+          ACTUAL_DB: ${{ inputs.actual_db_name }}
+        run: |
+          set -euo pipefail
+          ssh production "
+            set -euo pipefail
+            PROJECT='zawadi-${SCHOOL_SLUG}'
+            ACTUAL_DB='${ACTUAL_DB}'
+
+            DB_CONTAINER=\"\$(sudo docker ps \
+              --filter 'label=com.docker.compose.project='\${PROJECT} \
+              --filter 'label=com.docker.compose.service=db' \
+              --format '{{.Names}}' | head -n1)\"
+
+            if [[ -z \"\${DB_CONTAINER}\" ]]; then
+              echo '❌ DB container not found for project '\${PROJECT}
+              sudo docker ps --format 'table {{.Label \"com.docker.compose.project\"}}\t{{.Label \"com.docker.compose.service\"}}\t{{.Names}}'
+              exit 1
+            fi
+
+            echo \"✅ DB container: \${DB_CONTAINER}\"
+            echo \"⚠️  Resetting database: \${ACTUAL_DB}\"
+
+            # Terminate active connections
+            sudo docker exec \"\${DB_CONTAINER}\" \
+              psql -U zawadi -d postgres -c \
+              \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='\${ACTUAL_DB}' AND pid <> pg_backend_pid()\" 2>&1 || true
+
+            sudo docker exec \"\${DB_CONTAINER}\" \
+              psql -U zawadi -d postgres -c \"DROP DATABASE IF EXISTS \\\"\${ACTUAL_DB}\\\"\" 2>&1
+
+            sudo docker exec \"\${DB_CONTAINER}\" \
+              psql -U zawadi -d postgres -c \"CREATE DATABASE \\\"\${ACTUAL_DB}\\\"\" 2>&1
+
+            echo '✅ Database '\${ACTUAL_DB}' wiped and recreated empty'
+          "
+
+      - name: Report
+        if: success()
+        run: |
+          {
+            echo "## ✅ Database reset: \`${{ inputs.actual_db_name }}\`"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| School slug | \`${{ inputs.school_slug }}\` |"
+            echo "| Database | \`${{ inputs.actual_db_name }}\` |"
+            echo ""
+            echo "The database has been dropped and recreated empty."
+            echo ""
+            echo "**Next step:** run **Provision New School** for \`${{ inputs.school_slug }}\` to rebuild the schema and seed the admin user."
+          } >> "$GITHUB_STEP_SUMMARY"
