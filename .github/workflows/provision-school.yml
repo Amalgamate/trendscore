@@ -110,37 +110,37 @@ jobs:
           else
             echo "✅ Creating env file: ${ENV_FILE}"
             sudo tee "${ENV_FILE}" > /dev/null <<ENVEOF
-SCHOOL_CODE=${SCHOOL_SLUG}
-FRONTEND_IMAGE=ghcr.io/amalgamate/zawadi-frontend:latest
-BACKEND_IMAGE=ghcr.io/amalgamate/zawadi-backend:latest
-FRONTEND_PORT=${FRONTEND_PORT}
-BACKEND_PORT=${BACKEND_PORT}
-DB_USER=zawadi
-DB_PASSWORD=${DB_PASSWORD}
-DB_NAME=${DB_NAME}
-JWT_SECRET=${JWT_S}
-JWT_REFRESH_SECRET=${JWT_R}
-ENCRYPTION_KEY=${ENC_K}
-SUPER_ADMIN_EMAIL=${ADMIN_EMAIL}
-SUPER_ADMIN_PASSWORD=Admin@123!
-CREATE_EXTRA_DEMO_USERS=false
-DEMO_USER_PASSWORD=Demo@123!
-AWS_REGION=${AWS_REGION:-ap-south-1}
-AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-AWS_SESSION_TOKEN=
-AWS_REKOGNITION_LIVENESS_ROLE_ARN=${AWS_REKOGNITION_LIVENESS_ROLE_ARN:-}
-AWS_REKOGNITION_COLLECTION_PREFIX=trendscore
-AWS_REKOGNITION_LIVENESS_THRESHOLD=90
-AWS_REKOGNITION_MATCH_THRESHOLD=97
-FRONTEND_URL=https://${SCHOOL_SLUG}.trendscore.co.ke
-API_URL=https://${SCHOOL_SLUG}.trendscore.co.ke/api
-CORS_ORIGIN=https://${SCHOOL_SLUG}.trendscore.co.ke
-HTTPS_ONLY=false
-VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
-VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
-VAPID_SUBJECT=mailto:admin@trendscore.app
-ENVEOF
+          SCHOOL_CODE=${SCHOOL_SLUG}
+          FRONTEND_IMAGE=ghcr.io/amalgamate/zawadi-frontend:latest
+          BACKEND_IMAGE=ghcr.io/amalgamate/zawadi-backend:latest
+          FRONTEND_PORT=${FRONTEND_PORT}
+          BACKEND_PORT=${BACKEND_PORT}
+          DB_USER=zawadi
+          DB_PASSWORD=${DB_PASSWORD}
+          DB_NAME=${DB_NAME}
+          JWT_SECRET=${JWT_S}
+          JWT_REFRESH_SECRET=${JWT_R}
+          ENCRYPTION_KEY=${ENC_K}
+          SUPER_ADMIN_EMAIL=${ADMIN_EMAIL}
+          SUPER_ADMIN_PASSWORD=Admin@123!
+          CREATE_EXTRA_DEMO_USERS=false
+          DEMO_USER_PASSWORD=Demo@123!
+          AWS_REGION=${AWS_REGION:-ap-south-1}
+          AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+          AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+          AWS_SESSION_TOKEN=
+          AWS_REKOGNITION_LIVENESS_ROLE_ARN=${AWS_REKOGNITION_LIVENESS_ROLE_ARN:-}
+          AWS_REKOGNITION_COLLECTION_PREFIX=trendscore
+          AWS_REKOGNITION_LIVENESS_THRESHOLD=90
+          AWS_REKOGNITION_MATCH_THRESHOLD=97
+          FRONTEND_URL=https://${SCHOOL_SLUG}.trendscore.co.ke
+          API_URL=https://${SCHOOL_SLUG}.trendscore.co.ke/api
+          CORS_ORIGIN=https://${SCHOOL_SLUG}.trendscore.co.ke
+          HTTPS_ONLY=false
+          VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+          VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+          VAPID_SUBJECT=mailto:admin@trendscore.app
+          ENVEOF
             sudo chmod 600 "${ENV_FILE}"
             echo "✅ Env file written"
           fi
@@ -198,7 +198,7 @@ ENVEOF
           echo "=== Seeding super-admin ==="
           sudo docker exec "${CONTAINER}" node dist/scripts/setup-system.js
           echo "✅ Provision complete for ${SCHOOL_SLUG}"
-REMOTE
+          REMOTE
 
           ssh production \
             "PROJECT='${PROJECT}' ENV_FILE='${ENV_FILE}' COMPOSE_FILE='${COMPOSE_FILE}' SCHOOL_SLUG='${SCHOOL_SLUG}' FRONTEND_PORT='${FRONTEND_PORT}' BACKEND_PORT='${BACKEND_PORT}' DB_PASSWORD='${DB_PASSWORD}' DB_NAME='${DB_NAME}' JWT_S='${JWT_S}' JWT_R='${JWT_R}' ENC_K='${ENC_K}' ADMIN_EMAIL='${ADMIN_EMAIL}' AWS_REGION='${AWS_REGION:-ap-south-1}' AWS_ACCESS_KEY_ID='${AWS_ACCESS_KEY_ID:-}' AWS_SECRET_ACCESS_KEY='${AWS_SECRET_ACCESS_KEY:-}' AWS_REKOGNITION_LIVENESS_ROLE_ARN='${AWS_REKOGNITION_LIVENESS_ROLE_ARN:-}' VAPID_PUBLIC_KEY='${VAPID_PUBLIC_KEY:-}' VAPID_PRIVATE_KEY='${VAPID_PRIVATE_KEY:-}' bash -s" < /tmp/provision-school.sh
