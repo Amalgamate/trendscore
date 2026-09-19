@@ -388,16 +388,18 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
     resultsByArea[area].push(result);
   });
 
-  // Build one column per test occurrence.
+  // Build one column per assessment group.
   //
-  // Singleton types (OPENER, MID_TERM, END_TERM) appear exactly once on the
-  // report regardless of how many per-subject test records exist in the DB.
-  // We key them by their type string so every subject's result maps to the
-  // same column.
-  //
-  // Repeatable types (WEEKLY, CAT, MONTHLY, …) get one column per distinct
-  // occurrence, keyed by test-ID (or a date/weekNumber fallback). This lets
-  // Week 1 and Week 3 appear as separate columns.
+  // Every type — OPENER, MID_TERM, END_TERM, WEEKLY_WEEK_1, WEEKLY_WEEK_3,
+  // CAT, MONTHLY, etc. — is stored as one test record *per subject* in the DB.
+  // We want one column per round, not one column per subject's test record.
+  // Keying by the resolved group string (type) collapses all per-subject
+  // records for the same round into a single column automatically:
+  //   OPENER        → key "OPENER"
+  //   Week 1        → key "WEEKLY_WEEK_1"
+  //   Week 3        → key "WEEKLY_WEEK_3"
+  //   Mid Term      → key "MID_TERM"
+  // Different week numbers stay separate because their type strings differ.
   const testColumnsByKey = new Map();
   results?.forEach((result) => {
     const weekNumber = result.test?.weekNumber || result.weekNumber;
@@ -406,23 +408,18 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
       title: result.test?.title || result.title,
       weekNumber
     });
-    const isSingleton = CORE_GROUPS_WITHOUT_STAMP.has(getTestGroupType(type));
-    const testId = result.test?.id || result.testId;
+    const resolvedWeekNumber = weekNumber || getTestGroupWeekNumber(type);
     const dateValue = result.testDate || result.test?.testDate || result.createdAt;
     const date = new Date(dateValue || 0);
-    const resolvedWeekNumber = weekNumber || getTestGroupWeekNumber(type);
 
-    // Singletons collapse all per-subject records into one column keyed by type.
-    // Repeatables keep one column per test-ID (or fallback to type+week+date).
-    const repeatableFallbackKey = `${type}:${resolvedWeekNumber || ''}:${dateValue || ''}`;
-    const key = isSingleton ? type : String(testId || repeatableFallbackKey);
-
+    // Use the group type string as the key — one column per assessment round.
+    const key = type;
     if (testColumnsByKey.has(key)) return;
 
     const label = getTestGroupType(type) === 'WEEKLY' && resolvedWeekNumber
       ? `WEEK ${resolvedWeekNumber}`
       : formatTestGroup(type);
-    testColumnsByKey.set(key, { key, label, type, weekNumber: resolvedWeekNumber, date, isSingleton });
+    testColumnsByKey.set(key, { key, label, type, weekNumber: resolvedWeekNumber, date });
   });
 
   // Sort columns: Opener -> Midterm -> End Term -> weekly tests by week/date.
@@ -447,24 +444,16 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
     const scoresByCol = {};
     const maxByCol = {};
     testColumns.forEach((column) => {
-      let match;
-      if (column.isSingleton) {
-        // Singleton columns (OPENER, MID_TERM, END_TERM): match any result
-        // whose resolved type equals this column's type — there is only one
-        // result per subject for these types.
-        match = areaResults.find((result) => {
-          const rWeekNumber = result.test?.weekNumber || result.weekNumber;
-          const rType = resolveTestGroup({
-            testType: result.test?.testType || result.testType,
-            title: result.test?.title || result.title,
-            weekNumber: rWeekNumber
-          });
-          return rType === column.type;
+      // All columns are now keyed by group type string, so match by resolved type.
+      const match = areaResults.find((result) => {
+        const rWeekNumber = result.test?.weekNumber || result.weekNumber;
+        const rType = resolveTestGroup({
+          testType: result.test?.testType || result.testType,
+          title: result.test?.title || result.title,
+          weekNumber: rWeekNumber
         });
-      } else {
-        // Repeatable columns: match by test ID
-        match = areaResults.find((result) => String(result.test?.id || result.testId || '') === column.key);
-      }
+        return rType === column.type;
+      });
       scoresByCol[column.key] = match ? (match.score || 0) : null;
       maxByCol[column.key] = match ? (match.totalMarks || 0) : null;
     });
