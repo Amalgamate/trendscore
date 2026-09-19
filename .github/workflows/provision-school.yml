@@ -180,36 +180,38 @@ jobs:
           sudo docker exec "${CONTAINER}" sh -c '
             set -e
 
-            # A previous botched provision may have left a migration in a "started
-            # but never finished" (P3009) state inside _prisma_migrations.
-            # Prisma blocks all future deploys until failed entries are resolved.
-            # Unconditionally mark the two known-problematic migrations as rolled-back
-            # so migrate deploy can re-apply them cleanly on a fresh DB.
-            # The --rolled-back flag is idempotent: safe to run even if the record
-            # does not exist or is already resolved.
-            npx prisma migrate resolve \
-              --rolled-back 20260707121500_allow_multiple_summative_series \
-              --schema prisma/schema.prisma 2>&1 | tail -1 || true
-            npx prisma migrate resolve \
-              --rolled-back 20260811090000_link_learners_to_student_users \
-              --schema prisma/schema.prisma 2>&1 | tail -1 || true
-
-            # Detect whether this DB already has any completed migration history.
-            # count > 0 means an existing (live-migrated) DB — history is intact.
-            # count == 0 means a brand-new empty DB — migrate deploy runs everything.
-            count=$(node -e "
+            # Wipe any partial migration history left by a previous failed provision.
+            # If the table exists but has no successfully-finished migrations (count=0),
+            # it only contains stuck/rolled-back records that will confuse Prisma.
+            # Dropping the table lets migrate deploy rebuild history from scratch.
+            node -e "
               const { Client } = require(\"pg\");
               const c = new Client({ connectionString: process.env.DATABASE_URL });
               c.connect()
                 .then(() => c.query(\"SELECT COUNT(*)::int AS n FROM _prisma_migrations WHERE finished_at IS NOT NULL\"))
-                .then(r => { console.log(r.rows[0].n); c.end(); })
+                .then(r => {
+                  const n = r.rows[0].n;
+                  console.log(n);
+                  c.end();
+                })
                 .catch(() => { console.log(0); c.end(); });
-            " 2>/dev/null || echo 0)
+            " 2>/dev/null > /tmp/mig_count.txt || echo 0 > /tmp/mig_count.txt
 
-            if [ "$count" -gt 0 ]; then
-              echo "[baseline] ${count} migrations already recorded — skipping baseline"
+            COUNT=$(cat /tmp/mig_count.txt)
+            echo "[baseline] Completed migrations in DB: ${COUNT}"
+
+            if [ "${COUNT}" -eq 0 ]; then
+              echo "[baseline] No completed migrations — dropping _prisma_migrations so migrate deploy starts clean"
+              node -e "
+                const { Client } = require(\"pg\");
+                const c = new Client({ connectionString: process.env.DATABASE_URL });
+                c.connect()
+                  .then(() => c.query(\"DROP TABLE IF EXISTS _prisma_migrations\"))
+                  .then(() => { console.log(\"Dropped\"); c.end(); })
+                  .catch(err => { console.error(err.message); c.end(); process.exit(1); });
+              " 2>&1
             else
-              echo "[baseline] Fresh DB (count=0) — running full migrate deploy from scratch"
+              echo "[baseline] ${COUNT} completed migrations found — keeping history intact"
             fi
 
             npx prisma migrate deploy
