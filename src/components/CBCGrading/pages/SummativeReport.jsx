@@ -392,22 +392,26 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
   // Week 1, Week 2, and later weekly tests into a single column.
   const testColumnsByKey = new Map();
   results?.forEach((result) => {
+    const weekNumber = result.test?.weekNumber || result.weekNumber;
     const type = resolveTestGroup({
       testType: result.test?.testType || result.testType,
-      title: result.test?.title || result.title
+      title: result.test?.title || result.title,
+      weekNumber
     });
     const testId = result.test?.id || result.testId;
-    const weekNumber = result.test?.weekNumber || result.weekNumber;
     const dateValue = result.testDate || result.test?.testDate || result.createdAt;
     const date = new Date(dateValue || 0);
-    const fallbackKey = `${type}:${weekNumber || ''}:${dateValue || ''}`;
+    // Derive weekNumber from the type string as an authoritative fallback —
+    // the bulk API may not embed weekNumber on every result object.
+    const resolvedWeekNumber = weekNumber || getTestGroupWeekNumber(type);
+    const fallbackKey = `${type}:${resolvedWeekNumber || ''}:${dateValue || ''}`;
     const key = String(testId || fallbackKey);
     if (testColumnsByKey.has(key)) return;
 
-    const label = getTestGroupType(type) === 'WEEKLY' && weekNumber
-      ? `WEEK ${weekNumber}`
-      : formatTestTypeLabel(type);
-    testColumnsByKey.set(key, { key, label, type, weekNumber, date });
+    const label = getTestGroupType(type) === 'WEEKLY' && resolvedWeekNumber
+      ? `WEEK ${resolvedWeekNumber}`
+      : formatTestGroup(type);
+    testColumnsByKey.set(key, { key, label, type, weekNumber: resolvedWeekNumber, date });
   });
 
   // Sort columns: Opener -> Midterm -> End Term -> weekly tests by week/date.
@@ -2913,7 +2917,8 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
               const matchingTest = currentTests.find(t => t.id === r.testId);
               const group = resolveTestGroup({
                 testType: r.test?.testType || r.testType || matchingTest?.testType,
-                title: r.test?.title || matchingTest?.title || r.title
+                title: r.test?.title || matchingTest?.title || r.title,
+                weekNumber: r.test?.weekNumber ?? r.weekNumber ?? matchingTest?.weekNumber
               });
               return selectedTestGroups.includes(group);
             });
