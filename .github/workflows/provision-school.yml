@@ -183,19 +183,26 @@ jobs:
             --format '{{.Names}}' | head -n1)"
           echo "DB container: ${DB_CONTAINER}"
 
+          # Resolve the actual database name from the backend container's DATABASE_URL
+          # (may differ from the DB_NAME input — e.g. schema prefix like "school_*")
+          ACTUAL_DB="$(sudo docker exec "${CONTAINER}" sh -c \
+            'node -e "const u=new URL(process.env.DATABASE_URL); console.log(u.pathname.replace(\"/\",\"\"))"' \
+            2>/dev/null || echo "${DB_NAME}")"
+          echo "[baseline] Actual Prisma DB name: ${ACTUAL_DB}"
+
           # Drop _prisma_migrations if it has no successfully completed entries.
           # Previous botched provision attempts leave stuck/rolled-back records that
           # cause P3009/P3018. Dropping the table lets migrate deploy start clean.
-          COMPLETED=$(sudo docker exec "${DB_CONTAINER}" \
-            psql -U zawadi -d "${DB_NAME}" -tAc \
+          COMPLETED="$(sudo docker exec "${DB_CONTAINER}" \
+            psql -U zawadi -d "${ACTUAL_DB}" -tAc \
             "SELECT COUNT(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL" \
-            2>/dev/null || echo "0")
+            2>/dev/null || echo "0")"
           echo "[baseline] Completed migrations in DB: ${COMPLETED}"
           if [ "${COMPLETED}" = "0" ]; then
             echo "[baseline] Dropping _prisma_migrations for a clean start"
             sudo docker exec "${DB_CONTAINER}" \
-              psql -U zawadi -d "${DB_NAME}" -c \
-              "DROP TABLE IF EXISTS _prisma_migrations" 2>/dev/null || true
+              psql -U zawadi -d "${ACTUAL_DB}" -c \
+              "DROP TABLE IF EXISTS _prisma_migrations" 2>&1 || true
           fi
 
           sudo docker exec "${CONTAINER}" sh -c '
