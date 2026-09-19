@@ -623,6 +623,8 @@ auto_baseline_if_needed() {
   # have all tables but zero rows in _prisma_migrations, causing P3005 on the
   # first `prisma migrate deploy`. Detect this and mark every migration file
   # as applied so the subsequent deploy is a safe no-op.
+  # A truly fresh empty DB (no tables, no history) must NOT be baselined —
+  # migrate deploy will build the entire schema from scratch.
   log "━━ Baseline check ━━"
 
   local migration_count
@@ -642,7 +644,25 @@ auto_baseline_if_needed() {
     return 0
   fi
 
-  log "Baseline check: no migration history found — auto-baselining all migrations"
+  # No migration history — check if schema tables actually exist (db-push case).
+  local schema_present
+  schema_present="$(compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
+    run -T --no-deps --rm backend sh -c \
+    'node -e "
+      const { Client } = require(\"pg\");
+      const c = new Client({ connectionString: process.env.DATABASE_URL });
+      c.connect()
+        .then(() => c.query(\"SELECT to_regclass(\\\"public.users\\\") IS NOT NULL AS present\"))
+        .then(r => { console.log(r.rows[0].present ? \"1\" : \"0\"); c.end(); })
+        .catch(() => { console.log(\"0\"); c.end(); });
+    "' < /dev/null 2>/dev/null | grep -E '^[01]$' | tail -n1 || echo "0")"
+
+  if [[ "${schema_present}" != "1" ]]; then
+    log "Baseline check: fresh empty DB (no schema, no history) — skipping baseline, migrate deploy will build from scratch"
+    return 0
+  fi
+
+  log "Baseline check: no migration history found but schema exists — auto-baselining all migrations"
   compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
     run -T --no-deps --rm backend sh -c '
       set -e
@@ -676,6 +696,11 @@ run_migrations() {
       SKIP2=20260811090000_link_learners_to_student_users
 
       # 1. Baseline check
+      # Three possible states:
+      #   a) migration_count > 0  → existing live DB, history intact → skip baseline
+      #   b) migration_count == 0 AND schema tables exist → db-push DB → baseline all
+      #   c) migration_count == 0 AND schema tables absent → truly fresh empty DB →
+      #      skip baseline entirely; migrate deploy builds schema from scratch
       migration_count=$(node -e "
         const { Client } = require(\"pg\");
         const c = new Client({ connectionString: process.env.DATABASE_URL });
@@ -684,19 +709,41 @@ run_migrations() {
           .then(r => { console.log(r.rows[0].n); c.end(); })
           .catch(() => { console.log(0); c.end(); });
       " 2>/dev/null || echo 0)
+
       if [ "${migration_count}" -gt 0 ]; then
         echo "  [baseline] ${migration_count} migration(s) recorded - skipping baseline"
       else
-        echo "  [baseline] no history - auto-baselining all migrations"
-        count=0
-        for dir in prisma/migrations/*/; do
-          name="$(basename "${dir}")"
-          [ "${name}" = "${SKIP1}" ] && continue
-          [ "${name}" = "${SKIP2}" ] && continue
-          npx prisma migrate resolve --applied "${name}" --schema prisma/schema.prisma 2>&1 | tail -1
-          count=$((count+1))
-        done
-        echo "  [baseline] marked ${count} migrations as applied"
+        # Check whether the schema was applied outside Prisma (db push / manual SQL).
+        # If the users table exists the schema is there but history is missing → baseline.
+        # If the users table is absent this is a brand-new empty DB → skip baseline.
+        schema_present=$(node -e "
+          const { Client } = require(\"pg\");
+          const c = new Client({ connectionString: process.env.DATABASE_URL });
+          c.connect()
+            .then(() => c.query(\"SELECT to_regclass('public.users') IS NOT NULL AS present\"))
+            .then(r => { console.log(r.rows[0].present ? '1' : '0'); c.end(); })
+            .catch(() => { console.log('0'); c.end(); });
+        " 2>/dev/null || echo 0)
+
+        if [ "${schema_present}" = "1" ]; then
+          echo "  [baseline] no history but schema present - auto-baselining all migrations"
+          count=0
+          for dir in prisma/migrations/*/; do
+            name="$(basename "${dir}")"
+            [ "${name}" = "${SKIP1}" ] && continue
+            [ "${name}" = "${SKIP2}" ] && continue
+            npx prisma migrate resolve --applied "${name}" --schema prisma/schema.prisma 2>&1 | tail -1
+            count=$((count+1))
+          done
+          echo "  [baseline] marked ${count} migrations as applied"
+        else
+          echo "  [baseline] fresh empty DB - skipping baseline, migrate deploy will build schema from scratch"
+          # Skip directly to migrate deploy; all repair steps and SKIP handling
+          # are irrelevant on an empty schema.
+          npx prisma migrate deploy
+          echo "[migrate] done (fresh DB path)"
+          exit 0
+        fi
       fi
 
       # 2. Repair summative series migration preconditions
