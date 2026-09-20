@@ -79,31 +79,31 @@ const AcademicSettings = () => {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Load Configs
+  // Load the settings data required by every academic-settings tab. Teachers
+  // are deliberately kept out of this request: they are only needed by the
+  // class assignment form, and fetching them while viewing Streams used to
+  // produce a misleading error (and two requests on initial Streams loads).
   const loadConfigs = React.useCallback(async () => {
     try {
       setLoading(true);
-      // The four settings resources are independent. Keep successful class
+      // The settings resources are independent. Keep successful class
       // and stream responses visible if another optional lookup fails.
       const results = await Promise.allSettled([
         configAPI.getTermConfigs(),
         configAPI.getStreamConfigs(),
-        configAPI.getClasses(),
-        userAPI.getAll()
+        configAPI.getClasses()
       ]);
-      const [terms, streams, classes, teachersList] = results.map((result) => (
+      const [terms, streams, classes] = results.map((result) => (
         result.status === 'fulfilled' ? result.value : null
       ));
       const termsArr = Array.isArray(terms) ? terms : (terms && terms.data) ? terms.data : [];
       const streamsArr = Array.isArray(streams) ? streams : (streams && streams.data) ? streams.data : [];
       const classesArr = Array.isArray(classes) ? classes : (classes && classes.data) ? classes.data : [];
-      const teachersArr = Array.isArray(teachersList) ? teachersList : (teachersList && teachersList.data) ? teachersList.data : [];
       setTermConfigs(termsArr);
       setStreamConfigs(streamsArr || []);
       setClassConfigs(classesArr || []);
-      setTeachers(teachersArr.filter(t => t.role === 'TEACHER' || t.role === 'HEAD_TEACHER') || []);
 
-      const failedLookups = ['term settings', 'streams', 'classes', 'teachers']
+      const failedLookups = ['term settings', 'streams', 'classes']
         .filter((_name, index) => results[index].status === 'rejected');
       if (failedLookups.length) {
         showError(`Could not load ${failedLookups.join(', ')}. Please refresh or sign in again.`);
@@ -115,6 +115,20 @@ const AcademicSettings = () => {
       setLoading(false);
     }
   }, []);
+
+  // Teacher data is only needed when a class can be created or edited. Use
+  // the role-specific endpoint so the request is smaller and unambiguous.
+  const loadTeachers = React.useCallback(async () => {
+    try {
+      const response = await userAPI.getByRole('TEACHER', { limit: 200 });
+      const data = Array.isArray(response) ? response : response?.data;
+      setTeachers(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Failed to load teachers for class assignment:', error);
+      setTeachers([]);
+      showError('Could not load teachers for class assignment. Please refresh or sign in again.');
+    }
+  }, [showError]);
 
   // Load Learning Areas from Database — single-tenant, no schoolId needed
   const loadLearningAreas = React.useCallback(async () => {
@@ -212,10 +226,10 @@ const AcademicSettings = () => {
   }, [loadConfigs]);
 
   useEffect(() => {
-    if (activeTab === 'streams' || activeTab === 'classes') {
-      loadConfigs();
+    if (activeTab === 'classes') {
+      loadTeachers();
     }
-  }, [activeTab, loadConfigs]);
+  }, [activeTab, loadTeachers]);
 
   useEffect(() => {
     if (activeTab === 'learning-areas') {
