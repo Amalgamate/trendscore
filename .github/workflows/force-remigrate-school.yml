@@ -1,0 +1,118 @@
+name: Force Re-migrate School DB (One-Shot)
+
+# For schools whose _prisma_migrations table is stale/incomplete (fast-baseline
+# drift where migration records exist but the actual schema is far behind).
+#
+# Steps:
+#   1. Back up the database
+#   2. Clear _prisma_migrations so Prisma sees all migrations as pending
+#   3. Run prisma migrate deploy — applies every missing migration idempotently
+#   4. Restart the backend container
+#
+# The schema SQL is additive (CREATE TABLE IF NOT EXISTS, ADD COLUMN IF NOT
+# EXISTS) so re-applying already-executed migrations is safe.
+
+on:
+  workflow_dispatch:
+    inputs:
+      school_slug:
+        description: 'School instance id (e.g. goda, mwangaza-cs)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  remigrate:
+    name: Force re-migrate ${{ inputs.school_slug }}
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Clear migration history and re-deploy all migrations
+        env:
+          SCHOOL_ID: ${{ inputs.school_slug }}
+        run: |
+          set -euo pipefail
+          ssh production "SCHOOL_ID='${SCHOOL_ID}' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          manifest=/srv/zawadi/apps/deploy/instances.manifest.json
+          instance="$(jq -c --arg id "$SCHOOL_ID" '.instances[] | select(.id == $id)' "$manifest")"
+          [[ -n "$instance" ]] || { echo "Unknown school: $SCHOOL_ID"; exit 1; }
+
+          kind="$(jq -r '.kind' <<<"$instance")"
+          project="$(jq -r '.compose_project // empty' <<<"$instance")"
+          if [[ "$kind" == "main" ]]; then
+            backend=zawadi-backend
+          else
+            backend="$(sudo docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=backend' --format '{{.Names}}' | head -n1)"
+          fi
+          [[ -n "$backend" ]] || { echo "Backend container not found for $SCHOOL_ID"; exit 1; }
+
+          echo "=== Target: $SCHOOL_ID / container: $backend ==="
+
+          echo "=== Step 1: Check current migration state ==="
+          sudo docker exec "$backend" sh -lc \
+            'psql "$DATABASE_URL" -c "SELECT COUNT(*) AS migration_records FROM _prisma_migrations;" 2>/dev/null || echo "(_prisma_migrations does not exist yet)"'
+
+          echo "=== Step 2: Backup current DB ==="
+          BACKUP_DIR="/srv/zawadi/backups/${SCHOOL_ID}"
+          sudo mkdir -p "$BACKUP_DIR"
+          BACKUP_FILE="${BACKUP_DIR}/pre-remigrate-$(date +%Y%m%dT%H%M%SZ).sql.gz"
+          sudo docker exec "$backend" sh -lc \
+            'pg_dump "$DATABASE_URL" 2>/dev/null | gzip' > "$BACKUP_FILE" || echo "Warning: backup failed (DB may be empty)"
+          echo "Backup written to $BACKUP_FILE"
+
+          echo "=== Step 3: Clear _prisma_migrations (so migrate deploy re-applies all) ==="
+          sudo docker exec "$backend" sh -lc \
+            'psql "$DATABASE_URL" -c "DROP TABLE IF EXISTS _prisma_migrations;" 2>/dev/null && echo "Cleared _prisma_migrations" || echo "Table did not exist"'
+
+          echo "=== Step 4: Run prisma migrate deploy ==="
+          sudo docker exec "$backend" sh -lc \
+            'cd /app && npx prisma migrate deploy'
+
+          echo "=== Step 5: Restart backend to reload Prisma client ==="
+          sudo docker restart "$backend"
+          sleep 5
+
+          echo "=== Step 6: Verify critical columns ==="
+          sudo docker exec "$backend" sh -lc \
+            'psql "$DATABASE_URL" -c "
+              SELECT table_name, column_name
+              FROM information_schema.columns
+              WHERE table_schema = '"'"'public'"'"'
+                AND (table_name, column_name) IN (
+                  ('"'"'streams'"'"', '"'"'isDefault'"'"'),
+                  ('"'"'schools'"'"', '"'"'reportEngine'"'"'),
+                  ('"'"'subject_assignments'"'"', '"'"'classId'"'"'),
+                  ('"'"'summative_tests'"'"', '"'"'weekNumber'"'"'),
+                  ('"'"'users'"'"', '"'"'verificationRequired'"'"')
+                )
+              ORDER BY table_name, column_name;
+            "'
+
+          echo "=== Re-migration complete for $SCHOOL_ID ==="
+          REMOTE
+
+      - name: Report success
+        if: success()
+        run: |
+          echo "## Re-migration succeeded for \`${{ inputs.school_slug }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "All migrations applied from scratch. Backend restarted." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report failure
+        if: failure()
+        run: |
+          echo "## Re-migration FAILED for \`${{ inputs.school_slug }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Check logs. The pre-migration backup is at \`/srv/zawadi/backups/${{ inputs.school_slug }}/pre-remigrate-*.sql.gz\`" >> "$GITHUB_STEP_SUMMARY"
