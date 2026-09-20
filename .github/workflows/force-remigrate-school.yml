@@ -1,17 +1,14 @@
 name: Force Re-migrate School DB (One-Shot)
 
 # For schools whose _prisma_migrations table is stale/incomplete (fast-baseline
-# drift where migration records exist but the actual schema is far behind).
+# drift). The repair-schema-drift workflow already applied the SQL; this
+# workflow rebuilds the _prisma_migrations history table to match so Prisma
+# stops throwing P2022/P3005 errors.
 #
-# Steps:
-#   1. Check current migration state
-#   2. Clear _prisma_migrations so Prisma sees all migrations as pending
-#   3. Run prisma migrate deploy — applies every missing migration idempotently
-#   4. Restart the backend container
-#   5. Verify critical columns exist
-#
-# The schema SQL is additive (CREATE TABLE IF NOT EXISTS, ADD COLUMN IF NOT
-# EXISTS) so re-applying already-executed migrations is safe.
+# Strategy: clear _prisma_migrations, then mark ALL migrations as applied
+# via migrate resolve --applied. This is safe because repair-schema-drift
+# already ran all the SQL. We cannot run migrate deploy because older
+# migrations lack IF NOT EXISTS and will fail on already-existing columns.
 
 on:
   workflow_dispatch:
@@ -40,7 +37,7 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: bash scripts/ci/configure-deploy-ssh.sh
 
-      - name: Clear migration history and re-deploy all migrations
+      - name: Rebuild migration history and restart backend
         env:
           SCHOOL_ID: ${{ inputs.school_slug }}
         run: |
@@ -63,41 +60,38 @@ jobs:
 
           echo "=== Target: $SCHOOL_ID / container: $backend ==="
 
-          echo "=== Step 1: Check current migration state ==="
-          sudo docker exec "$backend" sh -lc \
-            'echo "SELECT COUNT(*) AS migration_records FROM _prisma_migrations;" | npx prisma db execute --schema prisma/schema.prisma --stdin 2>/dev/null || echo "(_prisma_migrations does not exist yet)"'
-
-          echo "=== Step 2: Clear _prisma_migrations (so migrate deploy re-applies all) ==="
+          echo "=== Step 1: Clear _prisma_migrations ==="
           sudo docker exec "$backend" sh -lc \
             'echo "DROP TABLE IF EXISTS _prisma_migrations;" | npx prisma db execute --schema prisma/schema.prisma --stdin && echo "Cleared _prisma_migrations"'
 
-          echo "=== Step 3: Baseline the init migration, then deploy all subsequent migrations ==="
-          # Prisma P3005: DB has tables but no migration history.
-          # Resolve the init migration as already applied (schema exists), then
-          # migrate deploy will apply every migration after it.
-          sudo docker exec "$backend" sh -lc \
-            'cd /app && npx prisma migrate resolve --applied 20260304031433_init && echo "Init migration baselined"'
-          sudo docker exec "$backend" sh -lc \
-            'cd /app && npx prisma migrate deploy'
+          echo "=== Step 2: Baseline ALL migrations as applied ==="
+          # The schema was already repaired by repair-schema-drift.
+          # Mark every migration as applied so Prisma state matches reality.
+          sudo docker exec "$backend" sh -lc '
+            set -e
+            cd /app
+            count=0
+            for dir in $(ls -d prisma/migrations/*/); do
+              name=$(basename "$dir")
+              [[ -f "${dir}migration.sql" ]] || continue
+              npx prisma migrate resolve --applied "$name" 2>&1 | tail -1
+              count=$((count + 1))
+            done
+            echo "Baselined $count migrations."
+          '
 
-          echo "=== Step 4: Restart backend to reload Prisma client ==="
+          echo "=== Step 3: Verify no pending migrations ==="
+          sudo docker exec "$backend" sh -lc \
+            'cd /app && npx prisma migrate status 2>&1 | grep -E "applied|pending|Database schema|migrations" | head -5'
+
+          echo "=== Step 4: Restart backend ==="
           sudo docker restart "$backend"
           sleep 8
 
           echo "=== Step 5: Verify critical columns ==="
-          sudo docker exec "$backend" sh -lc 'echo "
-            SELECT table_name, column_name
-            FROM information_schema.columns
-            WHERE table_schema = '"'"'public'"'"'
-              AND (table_name, column_name) IN (
-                ('"'"'streams'"'"',            '"'"'isDefault'"'"'),
-                ('"'"'schools'"'"',            '"'"'reportEngine'"'"'),
-                ('"'"'subject_assignments'"'"', '"'"'classId'"'"'),
-                ('"'"'summative_tests'"'"',     '"'"'weekNumber'"'"'),
-                ('"'"'users'"'"',              '"'"'verificationRequired'"'"')
-              )
-            ORDER BY table_name, column_name;
-          " | npx prisma db execute --schema prisma/schema.prisma --stdin'
+          sudo docker exec "$backend" sh -lc '
+            echo "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = '"'"'public'"'"' AND (table_name, column_name) IN (('"'"'streams'"'"','"'"'isDefault'"'"'),('"'"'schools'"'"','"'"'reportEngine'"'"'),('"'"'subject_assignments'"'"','"'"'classId'"'"'),('"'"'summative_tests'"'"','"'"'weekNumber'"'"'),('"'"'users'"'"','"'"'verificationRequired'"'"')) ORDER BY 1,2;" | npx prisma db execute --schema prisma/schema.prisma --stdin
+          '
 
           echo "=== Re-migration complete for $SCHOOL_ID ==="
           REMOTE
@@ -106,7 +100,7 @@ jobs:
         if: success()
         run: |
           echo "## Re-migration succeeded for \`${{ inputs.school_slug }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "All migrations applied from scratch. Backend restarted." >> "$GITHUB_STEP_SUMMARY"
+          echo "All migrations baselined. Backend restarted." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report failure
         if: failure()
