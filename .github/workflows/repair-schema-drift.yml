@@ -1,0 +1,220 @@
+name: Repair Schema Drift (One-Shot)
+
+# Applies specific missing migrations to a school whose _prisma_migrations
+# table incorrectly marks them as applied (fast-baseline drift).
+#
+# Currently repairs:
+#   1. streams.isDefault (migration 20260902093000_add_default_stream)
+#   2. schools.reportEngine + related tables (migration 20260917103000_add_ereport_engine_schema)
+#
+# All SQL is idempotent — safe to run multiple times.
+
+on:
+  workflow_dispatch:
+    inputs:
+      school_slug:
+        description: 'School instance id (e.g. goda, mwangaza-cs)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    name: Repair schema drift for selected school
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Apply missing migrations
+        env:
+          SCHOOL_ID: ${{ inputs.school_slug }}
+        run: |
+          set -euo pipefail
+          ssh production "SCHOOL_ID='${SCHOOL_ID}' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          manifest=/srv/zawadi/apps/deploy/instances.manifest.json
+          instance="$(jq -c --arg id "$SCHOOL_ID" '.instances[] | select(.id == $id)' "$manifest")"
+          [[ -n "$instance" ]] || { echo "Unknown school id: $SCHOOL_ID"; exit 1; }
+
+          kind="$(jq -r '.kind' <<<"$instance")"
+          project="$(jq -r '.compose_project // empty' <<<"$instance")"
+          if [[ "$kind" == "main" ]]; then
+            backend=zawadi-backend
+          else
+            backend="$(sudo docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=backend' --format '{{.Names}}' | head -n1)"
+          fi
+          [[ -n "$backend" ]] || { echo "Backend container not found for $SCHOOL_ID"; exit 1; }
+
+          echo "=== Applying schema drift repairs to: $SCHOOL_ID (container: $backend) ==="
+
+          cat >/tmp/repair-schema-drift.sql <<'SQL'
+          -- ----------------------------------------------------------------
+          -- 1. streams.isDefault  (20260902093000_add_default_stream)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "streams"
+            ADD COLUMN IF NOT EXISTS "isDefault" BOOLEAN NOT NULL DEFAULT false;
+
+          CREATE UNIQUE INDEX IF NOT EXISTS "streams_one_active_default_idx"
+            ON "streams" ("isDefault")
+            WHERE "isDefault" = true AND "active" = true AND "archived" = false;
+
+          -- Migrate any legacy stream_configs rows into streams (idempotent)
+          INSERT INTO "streams" ("id", "name", "active", "archived", "createdAt", "updatedAt")
+          SELECT 'legacy-stream-' || "id", "name", "active", "archived", "createdAt", "updatedAt"
+          FROM "stream_configs"
+          ON CONFLICT ("name") DO NOTHING;
+
+          -- ----------------------------------------------------------------
+          -- 2. schools.reportEngine + report tables
+          --    (20260917103000_add_ereport_engine_schema)
+          -- ----------------------------------------------------------------
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ReportEngine') THEN
+              CREATE TYPE "ReportEngine" AS ENUM ('LEGACY', 'NEW');
+            END IF;
+          END $$;
+
+          ALTER TABLE "schools"
+            ADD COLUMN IF NOT EXISTS "reportEngine" "ReportEngine" NOT NULL DEFAULT 'LEGACY',
+            ADD COLUMN IF NOT EXISTS "reportTemplateId" TEXT;
+
+          CREATE TABLE IF NOT EXISTS "report_templates" (
+            "id" TEXT NOT NULL DEFAULT (gen_random_uuid())::text,
+            "key" TEXT NOT NULL,
+            "name" TEXT NOT NULL,
+            "version" INTEGER NOT NULL DEFAULT 1,
+            "isActive" BOOLEAN NOT NULL DEFAULT true,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT "report_templates_pkey" PRIMARY KEY ("id")
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS "report_templates_key_key" ON "report_templates"("key");
+          CREATE INDEX IF NOT EXISTS "report_templates_isActive_idx" ON "report_templates"("isActive");
+
+          CREATE TABLE IF NOT EXISTS "report_snapshots" (
+            "id" TEXT NOT NULL DEFAULT (gen_random_uuid())::text,
+            "learnerId" TEXT NOT NULL,
+            "term" "Term" NOT NULL,
+            "academicYear" INTEGER NOT NULL,
+            "templateId" TEXT NOT NULL,
+            "templateVersion" INTEGER NOT NULL,
+            "reportData" JSONB NOT NULL,
+            "generatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "generatedBy" TEXT NOT NULL,
+            CONSTRAINT "report_snapshots_pkey" PRIMARY KEY ("id")
+          );
+
+          ALTER TABLE "report_snapshots" DROP COLUMN IF EXISTS "termId";
+
+          DO $$
+          BEGIN
+            IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'report_snapshots' AND column_name = 'term'
+            ) THEN
+              ALTER TABLE "report_snapshots" ADD COLUMN "term" "Term" NOT NULL DEFAULT 'TERM_1';
+              ALTER TABLE "report_snapshots" ALTER COLUMN "term" DROP DEFAULT;
+            END IF;
+
+            IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'report_snapshots' AND column_name = 'academicYear'
+            ) THEN
+              ALTER TABLE "report_snapshots" ADD COLUMN "academicYear" INTEGER NOT NULL DEFAULT 2026;
+              ALTER TABLE "report_snapshots" ALTER COLUMN "academicYear" DROP DEFAULT;
+            END IF;
+          END $$;
+
+          CREATE UNIQUE INDEX IF NOT EXISTS "report_snapshots_learnerId_term_academicYear_key"
+            ON "report_snapshots"("learnerId", "term", "academicYear");
+
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ReportEngineAction') THEN
+              CREATE TYPE "ReportEngineAction" AS ENUM (
+                'ENGINE_SWITCHED_TO_NEW', 'ENGINE_ROLLED_BACK_TO_LEGACY', 'TEMPLATE_CHANGED'
+              );
+            END IF;
+          END $$;
+
+          CREATE TABLE IF NOT EXISTS "report_engine_audit_logs" (
+            "id" TEXT NOT NULL DEFAULT (gen_random_uuid())::text,
+            "schoolId" TEXT NOT NULL,
+            "action" "ReportEngineAction" NOT NULL,
+            "fromValue" TEXT,
+            "toValue" TEXT,
+            "performedBy" TEXT NOT NULL,
+            "roleAtTime" TEXT NOT NULL,
+            "ipAddress" TEXT,
+            "userAgent" TEXT,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT "report_engine_audit_logs_pkey" PRIMARY KEY ("id")
+          );
+          CREATE INDEX IF NOT EXISTS "report_engine_audit_logs_schoolId_idx" ON "report_engine_audit_logs"("schoolId");
+          CREATE INDEX IF NOT EXISTS "report_engine_audit_logs_performedBy_idx" ON "report_engine_audit_logs"("performedBy");
+          CREATE INDEX IF NOT EXISTS "report_engine_audit_logs_createdAt_idx" ON "report_engine_audit_logs"("createdAt");
+
+          DO $$
+          BEGIN
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint WHERE conname = 'report_engine_audit_logs_performedBy_fkey'
+            ) THEN
+              ALTER TABLE "report_engine_audit_logs"
+                ADD CONSTRAINT "report_engine_audit_logs_performedBy_fkey"
+                FOREIGN KEY ("performedBy") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+            END IF;
+          END $$;
+          SQL
+
+          sudo docker cp /tmp/repair-schema-drift.sql "$backend:/tmp/repair-schema-drift.sql"
+          sudo docker exec "$backend" sh -lc 'npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-schema-drift.sql'
+          echo "=== SQL applied successfully ==="
+
+          # Verify the critical columns now exist
+          sudo docker exec -i "$backend" node - <<'NODE'
+          const { PrismaClient } = require('@prisma/client');
+          const prisma = new PrismaClient();
+          const required = [
+            ['streams', 'isDefault'],
+            ['schools', 'reportEngine'],
+          ];
+          prisma.$queryRawUnsafe(
+            `SELECT table_name, column_name
+               FROM information_schema.columns
+              WHERE table_schema = 'public'
+                AND (table_name, column_name) IN (('streams', 'isDefault'), ('schools', 'reportEngine'))`
+          ).then(result => {
+            const found = new Set(result.map(row => `${row.table_name}.${row.column_name}`));
+            const missing = required.map(([t, c]) => `${t}.${c}`).filter(k => !found.has(k));
+            if (missing.length) throw new Error('Still missing after repair: ' + missing.join(', '));
+            console.log('Verified columns present:', [...found].sort().join(', '));
+          }).catch(err => { console.error(err); process.exitCode = 1; })
+            .finally(() => prisma.$disconnect());
+          NODE
+
+          echo "=== Repair complete for $SCHOOL_ID ==="
+          REMOTE
+
+      - name: Report success
+        if: success()
+        run: |
+          echo "## Schema drift repair succeeded" >> "$GITHUB_STEP_SUMMARY"
+          echo "School \`${{ inputs.school_slug }}\` — streams.isDefault and schools.reportEngine columns verified." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report failure
+        if: failure()
+        run: |
+          echo "## Schema drift repair FAILED" >> "$GITHUB_STEP_SUMMARY"
+          echo "Check the logs above for the specific SQL or verification error." >> "$GITHUB_STEP_SUMMARY"
