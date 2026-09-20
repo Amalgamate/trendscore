@@ -71,7 +71,12 @@ jobs:
           sudo docker exec "$backend" sh -lc \
             'echo "DROP TABLE IF EXISTS _prisma_migrations;" | npx prisma db execute --schema prisma/schema.prisma --stdin && echo "Cleared _prisma_migrations"'
 
-          echo "=== Step 3: Run prisma migrate deploy ==="
+          echo "=== Step 3: Baseline the init migration, then deploy all subsequent migrations ==="
+          # Prisma P3005: DB has tables but no migration history.
+          # Resolve the init migration as already applied (schema exists), then
+          # migrate deploy will apply every migration after it.
+          sudo docker exec "$backend" sh -lc \
+            'cd /app && npx prisma migrate resolve --applied 20260304031433_init && echo "Init migration baselined"'
           sudo docker exec "$backend" sh -lc \
             'cd /app && npx prisma migrate deploy'
 
