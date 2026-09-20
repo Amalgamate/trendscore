@@ -4,10 +4,11 @@ name: Force Re-migrate School DB (One-Shot)
 # drift where migration records exist but the actual schema is far behind).
 #
 # Steps:
-#   1. Back up the database
+#   1. Check current migration state
 #   2. Clear _prisma_migrations so Prisma sees all migrations as pending
 #   3. Run prisma migrate deploy — applies every missing migration idempotently
 #   4. Restart the backend container
+#   5. Verify critical columns exist
 #
 # The schema SQL is additive (CREATE TABLE IF NOT EXISTS, ADD COLUMN IF NOT
 # EXISTS) so re-applying already-executed migrations is safe.
@@ -64,43 +65,34 @@ jobs:
 
           echo "=== Step 1: Check current migration state ==="
           sudo docker exec "$backend" sh -lc \
-            'psql "$DATABASE_URL" -c "SELECT COUNT(*) AS migration_records FROM _prisma_migrations;" 2>/dev/null || echo "(_prisma_migrations does not exist yet)"'
+            'echo "SELECT COUNT(*) AS migration_records FROM _prisma_migrations;" | npx prisma db execute --schema prisma/schema.prisma --stdin 2>/dev/null || echo "(_prisma_migrations does not exist yet)"'
 
-          echo "=== Step 2: Backup current DB ==="
-          BACKUP_DIR="/srv/zawadi/backups/${SCHOOL_ID}"
-          sudo mkdir -p "$BACKUP_DIR"
-          BACKUP_FILE="${BACKUP_DIR}/pre-remigrate-$(date +%Y%m%dT%H%M%SZ).sql.gz"
+          echo "=== Step 2: Clear _prisma_migrations (so migrate deploy re-applies all) ==="
           sudo docker exec "$backend" sh -lc \
-            'pg_dump "$DATABASE_URL" 2>/dev/null | gzip' > "$BACKUP_FILE" || echo "Warning: backup failed (DB may be empty)"
-          echo "Backup written to $BACKUP_FILE"
+            'echo "DROP TABLE IF EXISTS _prisma_migrations;" | npx prisma db execute --schema prisma/schema.prisma --stdin && echo "Cleared _prisma_migrations"'
 
-          echo "=== Step 3: Clear _prisma_migrations (so migrate deploy re-applies all) ==="
-          sudo docker exec "$backend" sh -lc \
-            'psql "$DATABASE_URL" -c "DROP TABLE IF EXISTS _prisma_migrations;" 2>/dev/null && echo "Cleared _prisma_migrations" || echo "Table did not exist"'
-
-          echo "=== Step 4: Run prisma migrate deploy ==="
+          echo "=== Step 3: Run prisma migrate deploy ==="
           sudo docker exec "$backend" sh -lc \
             'cd /app && npx prisma migrate deploy'
 
-          echo "=== Step 5: Restart backend to reload Prisma client ==="
+          echo "=== Step 4: Restart backend to reload Prisma client ==="
           sudo docker restart "$backend"
-          sleep 5
+          sleep 8
 
-          echo "=== Step 6: Verify critical columns ==="
-          sudo docker exec "$backend" sh -lc \
-            'psql "$DATABASE_URL" -c "
-              SELECT table_name, column_name
-              FROM information_schema.columns
-              WHERE table_schema = '"'"'public'"'"'
-                AND (table_name, column_name) IN (
-                  ('"'"'streams'"'"', '"'"'isDefault'"'"'),
-                  ('"'"'schools'"'"', '"'"'reportEngine'"'"'),
-                  ('"'"'subject_assignments'"'"', '"'"'classId'"'"'),
-                  ('"'"'summative_tests'"'"', '"'"'weekNumber'"'"'),
-                  ('"'"'users'"'"', '"'"'verificationRequired'"'"')
-                )
-              ORDER BY table_name, column_name;
-            "'
+          echo "=== Step 5: Verify critical columns ==="
+          sudo docker exec "$backend" sh -lc 'echo "
+            SELECT table_name, column_name
+            FROM information_schema.columns
+            WHERE table_schema = '"'"'public'"'"'
+              AND (table_name, column_name) IN (
+                ('"'"'streams'"'"',            '"'"'isDefault'"'"'),
+                ('"'"'schools'"'"',            '"'"'reportEngine'"'"'),
+                ('"'"'subject_assignments'"'"', '"'"'classId'"'"'),
+                ('"'"'summative_tests'"'"',     '"'"'weekNumber'"'"'),
+                ('"'"'users'"'"',              '"'"'verificationRequired'"'"')
+              )
+            ORDER BY table_name, column_name;
+          " | npx prisma db execute --schema prisma/schema.prisma --stdin'
 
           echo "=== Re-migration complete for $SCHOOL_ID ==="
           REMOTE
@@ -115,4 +107,4 @@ jobs:
         if: failure()
         run: |
           echo "## Re-migration FAILED for \`${{ inputs.school_slug }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "Check logs. The pre-migration backup is at \`/srv/zawadi/backups/${{ inputs.school_slug }}/pre-remigrate-*.sql.gz\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Check logs above for the specific error." >> "$GITHUB_STEP_SUMMARY"
