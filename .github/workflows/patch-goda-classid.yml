@@ -1,4 +1,5 @@
 name: Patch Goda subject_assignments.classId (One-Shot)
+# v2
 
 on:
   workflow_dispatch:
