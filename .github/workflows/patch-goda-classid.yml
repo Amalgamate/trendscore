@@ -1,0 +1,73 @@
+name: Patch Goda subject_assignments.classId (One-Shot)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  patch:
+    name: Add classId column to Goda subject_assignments
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Apply missing classId column and verify
+        run: |
+          set -euo pipefail
+          ssh production bash <<'REMOTE'
+          set -euo pipefail
+
+          manifest=/srv/zawadi/apps/deploy/instances.manifest.json
+          project=$(jq -r '.instances[] | select(.id == "goda") | .compose_project' $manifest)
+          backend=$(sudo docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=backend' --format '{{.Names}}' | head -n1)
+          echo "Container: $backend"
+
+          echo "=== Before: subject_assignments columns ==="
+          sudo docker exec "$backend" sh -c \
+            'echo "SELECT column_name FROM information_schema.columns WHERE table_schema='"'"'public'"'"' AND table_name='"'"'subject_assignments'"'"' ORDER BY column_name;" | npx prisma db execute --schema prisma/schema.prisma --stdin'
+
+          echo "=== Applying all missing columns directly ==="
+          cat > /tmp/patch-goda.sql << 'SQL'
+ALTER TABLE "subject_assignments" ADD COLUMN IF NOT EXISTS "classId" TEXT;
+ALTER TABLE "subject_assignments" ADD COLUMN IF NOT EXISTS "attendanceLockExempt" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "classes" ADD COLUMN IF NOT EXISTS "attendanceLockExempt" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "summative_tests" ADD COLUMN IF NOT EXISTS "weekNumber" INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "verificationRequired" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "presenceConsentAcceptedAt" TIMESTAMP(3);
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "parentCode" TEXT;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "shifNumber" TEXT;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "housingLevyExempt" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "reportEngine" "ReportEngine" NOT NULL DEFAULT 'LEGACY';
+ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "reportTemplateId" TEXT;
+ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "presenceMonitoringEnabled" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "presenceHeartbeatMinutes" INTEGER NOT NULL DEFAULT 5;
+ALTER TABLE "schools" ADD COLUMN IF NOT EXISTS "presenceStaleThresholdMinutes" INTEGER NOT NULL DEFAULT 25;
+ALTER TABLE "streams" ADD COLUMN IF NOT EXISTS "isDefault" BOOLEAN NOT NULL DEFAULT false;
+SQL
+          sudo docker cp /tmp/patch-goda.sql "$backend:/tmp/patch-goda.sql"
+          sudo docker exec "$backend" sh -c 'npx prisma db execute --schema prisma/schema.prisma --file /tmp/patch-goda.sql && echo "SQL applied."'
+
+          echo "=== After: verify classId exists ==="
+          sudo docker exec "$backend" sh -c \
+            'echo "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema='"'"'public'"'"' AND (table_name,column_name) IN (('"'"'subject_assignments'"'"','"'"'classId'"'"'),('"'"'streams'"'"','"'"'isDefault'"'"'),('"'"'schools'"'"','"'"'reportEngine'"'"'),('"'"'summative_tests'"'"','"'"'weekNumber'"'"')) ORDER BY 1,2;" | npx prisma db execute --schema prisma/schema.prisma --stdin'
+
+          echo "=== Restarting backend ==="
+          sudo docker restart "$backend"
+          sleep 8
+          echo "=== Done ==="
+          REMOTE
+
+      - name: Summary
+        if: success()
+        run: echo "Goda classId and all missing columns patched successfully." >> "$GITHUB_STEP_SUMMARY"
