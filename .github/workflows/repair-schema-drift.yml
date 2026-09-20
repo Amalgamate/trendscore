@@ -1,11 +1,9 @@
 name: Repair Schema Drift (One-Shot)
 
-# Applies specific missing migrations to a school whose _prisma_migrations
-# table incorrectly marks them as applied (fast-baseline drift).
-#
-# Currently repairs:
-#   1. streams.isDefault (migration 20260902093000_add_default_stream)
-#   2. schools.reportEngine + related tables (migration 20260917103000_add_ereport_engine_schema)
+# Applies ALL additive column/table migrations to a school whose
+# _prisma_migrations table incorrectly marks them as applied (fast-baseline
+# drift).  Covers every ADD COLUMN IF NOT EXISTS found across all migrations
+# post-init, plus table creations.
 #
 # All SQL is idempotent — safe to run multiple times.
 
@@ -60,8 +58,20 @@ jobs:
           echo "=== Applying schema drift repairs to: $SCHOOL_ID (container: $backend) ==="
 
           cat >/tmp/repair-schema-drift.sql <<'SQL'
+          -- ================================================================
+          -- COMPREHENSIVE SCHEMA DRIFT REPAIR
+          -- Covers every known additive migration post-init.
+          -- All statements are idempotent (IF NOT EXISTS / ON CONFLICT).
+          -- ================================================================
+
           -- ----------------------------------------------------------------
-          -- 1. streams.isDefault  (20260902093000_add_default_stream)
+          -- subject_assignments.classId  (20260903000000)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "subject_assignments"
+            ADD COLUMN IF NOT EXISTS "classId" TEXT;
+
+          -- ----------------------------------------------------------------
+          -- streams.isDefault  (20260902093000)
           -- ----------------------------------------------------------------
           ALTER TABLE "streams"
             ADD COLUMN IF NOT EXISTS "isDefault" BOOLEAN NOT NULL DEFAULT false;
@@ -70,15 +80,13 @@ jobs:
             ON "streams" ("isDefault")
             WHERE "isDefault" = true AND "active" = true AND "archived" = false;
 
-          -- Migrate any legacy stream_configs rows into streams (idempotent)
           INSERT INTO "streams" ("id", "name", "active", "archived", "createdAt", "updatedAt")
           SELECT 'legacy-stream-' || "id", "name", "active", "archived", "createdAt", "updatedAt"
           FROM "stream_configs"
           ON CONFLICT ("name") DO NOTHING;
 
           -- ----------------------------------------------------------------
-          -- 2. schools.reportEngine + report tables
-          --    (20260917103000_add_ereport_engine_schema)
+          -- schools.reportEngine + report tables  (20260917103000)
           -- ----------------------------------------------------------------
           DO $$
           BEGIN
@@ -115,37 +123,25 @@ jobs:
             "generatedBy" TEXT NOT NULL,
             CONSTRAINT "report_snapshots_pkey" PRIMARY KEY ("id")
           );
-
           ALTER TABLE "report_snapshots" DROP COLUMN IF EXISTS "termId";
-
           DO $$
           BEGIN
-            IF NOT EXISTS (
-              SELECT 1 FROM information_schema.columns
-              WHERE table_schema = 'public' AND table_name = 'report_snapshots' AND column_name = 'term'
-            ) THEN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='report_snapshots' AND column_name='term') THEN
               ALTER TABLE "report_snapshots" ADD COLUMN "term" "Term" NOT NULL DEFAULT 'TERM_1';
               ALTER TABLE "report_snapshots" ALTER COLUMN "term" DROP DEFAULT;
             END IF;
-
-            IF NOT EXISTS (
-              SELECT 1 FROM information_schema.columns
-              WHERE table_schema = 'public' AND table_name = 'report_snapshots' AND column_name = 'academicYear'
-            ) THEN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='report_snapshots' AND column_name='academicYear') THEN
               ALTER TABLE "report_snapshots" ADD COLUMN "academicYear" INTEGER NOT NULL DEFAULT 2026;
               ALTER TABLE "report_snapshots" ALTER COLUMN "academicYear" DROP DEFAULT;
             END IF;
           END $$;
-
           CREATE UNIQUE INDEX IF NOT EXISTS "report_snapshots_learnerId_term_academicYear_key"
             ON "report_snapshots"("learnerId", "term", "academicYear");
 
           DO $$
           BEGIN
             IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ReportEngineAction') THEN
-              CREATE TYPE "ReportEngineAction" AS ENUM (
-                'ENGINE_SWITCHED_TO_NEW', 'ENGINE_ROLLED_BACK_TO_LEGACY', 'TEMPLATE_CHANGED'
-              );
+              CREATE TYPE "ReportEngineAction" AS ENUM ('ENGINE_SWITCHED_TO_NEW','ENGINE_ROLLED_BACK_TO_LEGACY','TEMPLATE_CHANGED');
             END IF;
           END $$;
 
@@ -165,17 +161,202 @@ jobs:
           CREATE INDEX IF NOT EXISTS "report_engine_audit_logs_schoolId_idx" ON "report_engine_audit_logs"("schoolId");
           CREATE INDEX IF NOT EXISTS "report_engine_audit_logs_performedBy_idx" ON "report_engine_audit_logs"("performedBy");
           CREATE INDEX IF NOT EXISTS "report_engine_audit_logs_createdAt_idx" ON "report_engine_audit_logs"("createdAt");
-
           DO $$
           BEGIN
-            IF NOT EXISTS (
-              SELECT 1 FROM pg_constraint WHERE conname = 'report_engine_audit_logs_performedBy_fkey'
-            ) THEN
+            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='report_engine_audit_logs_performedBy_fkey') THEN
               ALTER TABLE "report_engine_audit_logs"
                 ADD CONSTRAINT "report_engine_audit_logs_performedBy_fkey"
                 FOREIGN KEY ("performedBy") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
             END IF;
           END $$;
+
+          -- ----------------------------------------------------------------
+          -- presence monitoring  (20260914123000)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "users"
+            ADD COLUMN IF NOT EXISTS "presenceConsentAcceptedAt" TIMESTAMP(3);
+          ALTER TABLE "schools"
+            ADD COLUMN IF NOT EXISTS "presenceMonitoringEnabled" BOOLEAN NOT NULL DEFAULT false,
+            ADD COLUMN IF NOT EXISTS "presenceHeartbeatMinutes" INTEGER NOT NULL DEFAULT 5,
+            ADD COLUMN IF NOT EXISTS "presenceStaleThresholdMinutes" INTEGER NOT NULL DEFAULT 25;
+
+          -- ----------------------------------------------------------------
+          -- attendance lock exempt  (20260915090000)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "classes"
+            ADD COLUMN IF NOT EXISTS "attendanceLockExempt" BOOLEAN NOT NULL DEFAULT false;
+          ALTER TABLE "subject_assignments"
+            ADD COLUMN IF NOT EXISTS "attendanceLockExempt" BOOLEAN NOT NULL DEFAULT false;
+
+          -- ----------------------------------------------------------------
+          -- summative assessment weekNumber  (20260915101500 / 20260915111500)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "summative_tests"
+            ADD COLUMN IF NOT EXISTS "weekNumber" INTEGER NOT NULL DEFAULT 1;
+
+          -- ----------------------------------------------------------------
+          -- school attendance settings  (20260619103000)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "schools"
+            ADD COLUMN IF NOT EXISTS "attendanceLockEnabled" BOOLEAN NOT NULL DEFAULT true,
+            ADD COLUMN IF NOT EXISTS "attendanceLockTime" TEXT NOT NULL DEFAULT '07:30',
+            ADD COLUMN IF NOT EXISTS "attendanceUnlockWindowMinutes" INTEGER NOT NULL DEFAULT 60,
+            ADD COLUMN IF NOT EXISTS "attendanceAllowLateAfterLock" BOOLEAN NOT NULL DEFAULT true,
+            ADD COLUMN IF NOT EXISTS "attendanceRequireRemarksForLateExcused" BOOLEAN NOT NULL DEFAULT true,
+            ADD COLUMN IF NOT EXISTS "attendanceNotifyAbsentDefault" BOOLEAN NOT NULL DEFAULT true;
+
+          -- ----------------------------------------------------------------
+          -- school misc settings  (20260526085000)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "schools"
+            ADD COLUMN IF NOT EXISTS "pwaLogoUrl" TEXT,
+            ADD COLUMN IF NOT EXISTS "mpesaOnboardingChecklist" JSONB,
+            ADD COLUMN IF NOT EXISTS "mpesaOnboardingUpdatedAt" TIMESTAMP(3),
+            ADD COLUMN IF NOT EXISTS "mpesaOnboardingUpdatedBy" TEXT,
+            ADD COLUMN IF NOT EXISTS "mpesaPasskey" TEXT,
+            ADD COLUMN IF NOT EXISTS "allowedClockInIps" TEXT,
+            ADD COLUMN IF NOT EXISTS "geofenceRadiusMeters" INTEGER NOT NULL DEFAULT 30;
+
+          -- ----------------------------------------------------------------
+          -- users  (20260526084000 / 20260602100000 / 20260526073000 / 20260419111300 / 20260725170000)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "users"
+            ADD COLUMN IF NOT EXISTS "upiNumber" TEXT,
+            ADD COLUMN IF NOT EXISTS "verificationRequired" BOOLEAN NOT NULL DEFAULT true,
+            ADD COLUMN IF NOT EXISTS "housingLevyExempt" BOOLEAN NOT NULL DEFAULT false,
+            ADD COLUMN IF NOT EXISTS "shifNumber" TEXT,
+            ADD COLUMN IF NOT EXISTS "parentCode" TEXT;
+
+          -- ----------------------------------------------------------------
+          -- school requires user verification  (20260602100000)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "schools"
+            ADD COLUMN IF NOT EXISTS "requiresUserVerification" BOOLEAN NOT NULL DEFAULT true;
+
+          -- ----------------------------------------------------------------
+          -- learners  (20260526084000 / 20260428120000)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "learners"
+            ADD COLUMN IF NOT EXISTS "upiNumber" TEXT,
+            ADD COLUMN IF NOT EXISTS "isScholarshipStudent" BOOLEAN NOT NULL DEFAULT false,
+            ADD COLUMN IF NOT EXISTS "scholarshipType" TEXT,
+            ADD COLUMN IF NOT EXISTS "scholarshipAmount" DECIMAL(12,2);
+
+          -- ----------------------------------------------------------------
+          -- notifications  (20260426120000 / 20260502120000)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "notifications"
+            ADD COLUMN IF NOT EXISTS "readAt" TIMESTAMP(3),
+            ADD COLUMN IF NOT EXISTS "showAsPopup" BOOLEAN NOT NULL DEFAULT false,
+            ADD COLUMN IF NOT EXISTS "metadata" JSONB;
+
+          -- ----------------------------------------------------------------
+          -- events  (20260626090000)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "events"
+            ADD COLUMN IF NOT EXISTS "isParentVisible" BOOLEAN NOT NULL DEFAULT true,
+            ADD COLUMN IF NOT EXISTS "academicYear" INTEGER,
+            ADD COLUMN IF NOT EXISTS "term" TEXT;
+
+          -- ----------------------------------------------------------------
+          -- summative_results  (20260608143000 / 20260626100000)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "summative_results"
+            ADD COLUMN IF NOT EXISTS "rawScore" DOUBLE PRECISION,
+            ADD COLUMN IF NOT EXISTS "rubricRating" TEXT,
+            ADD COLUMN IF NOT EXISTS "gradeCode" TEXT,
+            ADD COLUMN IF NOT EXISTS "achievementLevel" INTEGER,
+            ADD COLUMN IF NOT EXISTS "competencyBand" TEXT,
+            ADD COLUMN IF NOT EXISTS "gradeDescription" TEXT,
+            ADD COLUMN IF NOT EXISTS "assessmentStatusCode" TEXT,
+            ADD COLUMN IF NOT EXISTS "moderationComment" TEXT,
+            ADD COLUMN IF NOT EXISTS "orphanFields" JSONB;
+
+          -- ----------------------------------------------------------------
+          -- cbe_results  (20260608143000)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "cbe_results"
+            ADD COLUMN IF NOT EXISTS "gradeCode" TEXT,
+            ADD COLUMN IF NOT EXISTS "achievementLevel" INTEGER,
+            ADD COLUMN IF NOT EXISTS "competencyBand" TEXT,
+            ADD COLUMN IF NOT EXISTS "gradeDescription" TEXT,
+            ADD COLUMN IF NOT EXISTS "assessmentStatusCode" TEXT;
+
+          -- ----------------------------------------------------------------
+          -- summative_tests.testType  (20260411111000)
+          -- ----------------------------------------------------------------
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='summative_tests' AND column_name='testType') THEN
+              ALTER TABLE "summative_tests" ADD COLUMN "testType" TEXT;
+            END IF;
+          END $$;
+
+          -- ----------------------------------------------------------------
+          -- learning_areas  (20260407170000)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "learning_areas"
+            ADD COLUMN IF NOT EXISTS "isCore" BOOLEAN NOT NULL DEFAULT false,
+            ADD COLUMN IF NOT EXISTS "pathway" TEXT,
+            ADD COLUMN IF NOT EXISTS "category" TEXT;
+
+          -- ----------------------------------------------------------------
+          -- staff_attendance.schoolId  (20260611150000)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "staff_attendances"
+            ADD COLUMN IF NOT EXISTS "schoolId" TEXT;
+
+          -- ----------------------------------------------------------------
+          -- salary/payroll  (20260902100000)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "payroll_runs"
+            ADD COLUMN IF NOT EXISTS "grossSalary" DECIMAL(10,2),
+            ADD COLUMN IF NOT EXISTS "paidAt" TIMESTAMP(3),
+            ADD COLUMN IF NOT EXISTS "paymentReference" TEXT;
+
+          -- ----------------------------------------------------------------
+          -- fee_transactions  (20260526090000 / 20260526091500)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "fee_transactions"
+            ADD COLUMN IF NOT EXISTS "transportBilled" DECIMAL(10,2) NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS "transportPaid" DECIMAL(10,2) NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS "transportBalance" DECIMAL(10,2) NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS "transportAmount" DECIMAL(10,2) NOT NULL DEFAULT 0;
+
+          -- ----------------------------------------------------------------
+          -- communications config  (20260609060000 / 20260610181500)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "communication_configs"
+            ADD COLUMN IF NOT EXISTS "mpesaSandbox" BOOLEAN NOT NULL DEFAULT false,
+            ADD COLUMN IF NOT EXISTS "mpesaApiKey" TEXT;
+
+          -- ----------------------------------------------------------------
+          -- class_schedules  (20260825140000)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "class_schedules"
+            ADD COLUMN IF NOT EXISTS "isOverride" BOOLEAN NOT NULL DEFAULT false,
+            ADD COLUMN IF NOT EXISTS "overrideNote" TEXT,
+            ADD COLUMN IF NOT EXISTS "overriddenAt" TIMESTAMP(3),
+            ADD COLUMN IF NOT EXISTS "overriddenBy" TEXT;
+
+          -- ----------------------------------------------------------------
+          -- fee_configurations  (20260830000000 / 20260613143000)
+          -- ----------------------------------------------------------------
+          ALTER TABLE "fee_configurations"
+            ADD COLUMN IF NOT EXISTS "scholarshipType" VARCHAR(30) NOT NULL DEFAULT 'NONE',
+            ADD COLUMN IF NOT EXISTS "scholarshipAmount" DECIMAL(10,2);
+
+          ALTER TABLE "fee_invoices"
+            ADD COLUMN IF NOT EXISTS "grossAmount" DECIMAL(10,2),
+            ADD COLUMN IF NOT EXISTS "adjustmentAmount" DECIMAL(10,2),
+            ADD COLUMN IF NOT EXISTS "sponsorAmount" DECIMAL(10,2),
+            ADD COLUMN IF NOT EXISTS "sponsorPaidAmount" DECIMAL(10,2) NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS "sponsorBalance" DECIMAL(10,2) NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS "studentAmount" DECIMAL(10,2),
+            ADD COLUMN IF NOT EXISTS "carryForwardAmount" DECIMAL(10,2),
+            ADD COLUMN IF NOT EXISTS "calculationSnapshot" JSONB,
+            ADD COLUMN IF NOT EXISTS "feeConfigurationId" TEXT,
+            ADD COLUMN IF NOT EXISTS "revisionNumber" INTEGER NOT NULL DEFAULT 0;
           SQL
 
           sudo docker cp /tmp/repair-schema-drift.sql "$backend:/tmp/repair-schema-drift.sql"
@@ -189,12 +370,21 @@ jobs:
           const required = [
             ['streams', 'isDefault'],
             ['schools', 'reportEngine'],
+            ['subject_assignments', 'classId'],
+            ['summative_tests', 'weekNumber'],
+            ['users', 'verificationRequired'],
           ];
           prisma.$queryRawUnsafe(
             `SELECT table_name, column_name
                FROM information_schema.columns
               WHERE table_schema = 'public'
-                AND (table_name, column_name) IN (('streams', 'isDefault'), ('schools', 'reportEngine'))`
+                AND (table_name, column_name) IN (
+                  ('streams','isDefault'),
+                  ('schools','reportEngine'),
+                  ('subject_assignments','classId'),
+                  ('summative_tests','weekNumber'),
+                  ('users','verificationRequired')
+                )`
           ).then(result => {
             const found = new Set(result.map(row => `${row.table_name}.${row.column_name}`));
             const missing = required.map(([t, c]) => `${t}.${c}`).filter(k => !found.has(k));
