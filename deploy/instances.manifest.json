@@ -188,7 +188,7 @@
       "kind": "stack",
       "compose_project": "zawadi-gamachu-school",
       "env_file": "/srv/zawadi/apps/env/.zawadi-gamachu-school.env",
-      "public_domain": "gamachu-school.trendscore.co.ke"
+      "public_domain": "gamachu.trendscore.co.ke"
     }
   ],
   "discovery": {
