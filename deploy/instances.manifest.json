@@ -189,6 +189,17 @@
       "compose_project": "zawadi-gamachu-school",
       "env_file": "/srv/zawadi/apps/env/.zawadi-gamachu-school.env",
       "public_domain": "gamachu.trendscore.co.ke"
+    },
+    {
+      "id": "memu-school",
+      "label": "Memu School",
+      "tier": "production",
+      "active": true,
+      "deployment_allowed": true,
+      "kind": "stack",
+      "compose_project": "zawadi-memu-school",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-memu-school.env",
+      "public_domain": "memu.trendscore.co.ke"
     }
   ],
   "discovery": {
