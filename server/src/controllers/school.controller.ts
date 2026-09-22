@@ -405,6 +405,16 @@ export const configureInstitutionTypeLock = async (req: AuthRequest, res: Respon
 export const getInstitutionSetupProgress = async (req: AuthRequest, res: Response) => {
   const institutionType = validInstitutionTypeOrThrow(req.params?.institutionType);
 
+  // Fresh PRIMARY_CBC and SECONDARY databases may predate the tertiary schema.
+  // Do not query those optional tables unless the requested setup flow is tertiary.
+  const tertiaryCounts = institutionType === 'TERTIARY'
+    ? Promise.all([
+      prisma.tertiaryDepartment.count(),
+      prisma.tertiaryProgram.count(),
+      prisma.tertiaryUnit.count(),
+    ])
+    : Promise.resolve([0, 0, 0] as const);
+
   const [
     school,
     activeTermCount,
@@ -414,9 +424,7 @@ export const getInstitutionSetupProgress = async (req: AuthRequest, res: Respons
     classCount,
     learningAreaCount,
     gradingRangeCount,
-    departmentCount,
-    programCount,
-    unitCount,
+    [departmentCount, programCount, unitCount],
   ] = await Promise.all([
     prisma.school.findFirst({
       where: { archived: false },
@@ -430,9 +438,7 @@ export const getInstitutionSetupProgress = async (req: AuthRequest, res: Respons
     prisma.class.count({ where: { archived: false, institutionType: institutionType as any } }),
     prisma.learningArea.count({ where: { institutionType: institutionType as any } }),
     prisma.gradingRange.count({ where: { archived: false } as any }),
-    prisma.tertiaryDepartment.count(),
-    prisma.tertiaryProgram.count(),
-    prisma.tertiaryUnit.count(),
+    tertiaryCounts,
   ]);
 
   const commonItems = [
