@@ -178,6 +178,17 @@
       "env_file": "/srv/zawadi/apps/env/.zawadi-malkagalla.env",
       "public_domain": "malkagalla.trendscore.co.ke",
       "notes": "Provisioned 2026-09-18 via provision-school workflow (run 35345888953)"
+    },
+    {
+      "id": "gamachu-school",
+      "label": "Gamachu School",
+      "tier": "production",
+      "active": true,
+      "deployment_allowed": true,
+      "kind": "stack",
+      "compose_project": "zawadi-gamachu-school",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-gamachu-school.env",
+      "public_domain": "gamachu-school.trendscore.co.ke"
     }
   ],
   "discovery": {
