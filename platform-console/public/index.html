@@ -103,8 +103,8 @@
     <a class="nav-item" data-section="controls" href="#">
       <span class="nav-icon">⚙️</span> Controls
     </a>
-    <a class="nav-item" data-section="pricing" href="#">
-      <span class="nav-icon">💳</span> Pricing Plans
+          <a class="nav-item" data-section="billing" href="#">
+            <span class="nav-icon">💳</span> Billing &amp; Invoices
     </a>
     <a class="nav-item" data-section="logs" href="#">
       <span class="nav-icon">📋</span> Audit Log
@@ -117,7 +117,7 @@
       </div>
       <div class="sb-footer-row">
         <span class="sb-footer-label">Server</span>
-        <span class="sb-footer-val">185.127.16.124</span>
+        <span class="sb-footer-val">Not reported</span>
       </div>
       <div class="env-badge">
         <span class="env-dot"></span>
@@ -281,7 +281,7 @@
             <table>
               <thead>
                 <tr>
-                  <th>School</th><th>Status</th><th>Institution Type</th><th>Pricing Plan</th><th>Created</th>
+              <th>School</th><th>Status</th><th>Institution Type</th><th>Billing</th><th>Created</th>
                   <th>Version</th><th>Ports</th><th>Storage</th><th>Actions</th>
                 </tr>
               </thead>
@@ -550,81 +550,36 @@
       </div>
       <!-- ── END CONTROLS ── -->
 
-      <!-- ── PRICING PLANS section ── -->
-      <div id="section-pricing" class="section-hidden">
+      <!-- ── BILLING section ── -->
+      <div id="section-billing" class="section-hidden">
         <div class="page-header">
           <div>
             <div class="page-eyebrow">The Silicone Sahara · v1</div>
-            <div class="page-title">Pricing Plans</div>
-            <div class="page-sub">Define, manage and assign billing plans for school instances</div>
+            <div class="page-title">Billing &amp; Invoices</div>
+            <div class="page-sub">Manage customer billing contacts and signed service terms</div>
           </div>
-          <div class="page-actions">
-            <button class="btn teal" id="btn-new-plan" type="button">+ New Plan</button>
-          </div>
+          <div class="page-actions"><button class="btn primary" id="billing-add-customer" data-super-admin-only type="button">+ Add customer</button></div>
         </div>
-        <div class="metric-row" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
-          <div class="metric-card">
-            <div class="m-label">Active Plans</div>
-            <div class="m-value" id="p-active-plans">4</div>
-            <div class="m-sub">Published pricing tiers</div>
-            <div class="m-badge up">↑ Live</div>
-          </div>
-          <div class="metric-card teal">
-            <div class="m-label">Assigned Instances</div>
-            <div class="m-value" id="p-assigned">3</div>
-            <div class="m-sub">Schools on a billing plan</div>
-            <div class="m-badge up">All assigned</div>
-          </div>
-          <div class="metric-card green">
-            <div class="m-label">Monthly Revenue</div>
-            <div class="m-value" id="p-revenue">KES 47K</div>
-            <div class="m-sub">Across all active subscriptions</div>
-            <div class="m-badge up">↑ This month</div>
-          </div>
-          <div class="metric-card amber">
-            <div class="m-label">Renewals Due</div>
-            <div class="m-value" id="p-renewals">1</div>
-            <div class="m-sub">Within next 30 days</div>
-            <div class="m-badge warn">Action needed</div>
-          </div>
-        </div>
-        <div class="plans-section-label">Defined Plans</div>
-        <div class="plans-grid" id="plans-grid"></div>
         <div class="panel" style="margin-top:20px">
           <div class="panel-header">
             <div>
-              <div class="panel-title">Instance Plan Assignments</div>
-              <div class="panel-sub">Which billing plan each school instance is on</div>
+              <div class="panel-title">Billing customers</div>
+              <div class="panel-sub">Customer and contract records are stored centrally. No prices or invoices are generated in this stage.</div>
             </div>
           </div>
           <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>School Instance</th><th>Assigned Plan</th><th>Billing Cycle</th>
-                  <th>Amount (KES)</th><th>Next Renewal</th><th>Status</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="plan-assignment-table"></tbody>
+            <table><thead><tr><th>Customer</th><th>Tenant key</th><th>Billing contact</th><th>Currency</th><th>Status</th><th>Contracts</th><th>Actions</th></tr></thead>
+              <tbody id="billing-customers-table"><tr><td colspan="7">Loading customers…</td></tr></tbody>
             </table>
           </div>
         </div>
         <div class="panel" style="margin-top:14px">
-          <div class="panel-header">
-            <div>
-              <div class="panel-title">Plan Feature Matrix</div>
-              <div class="panel-sub">What each tier includes at a glance</div>
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table id="feature-matrix-table" style="min-width:700px">
-              <thead id="feature-matrix-head"></thead>
-              <tbody id="feature-matrix-body"></tbody>
-            </table>
-          </div>
+          <div class="panel-header"><div><div class="panel-title">Service contracts</div><div class="panel-sub">Capture signed service terms; enter billing amounts only from approved agreements in a later step.</div></div></div>
+          <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Reference</th><th>Service</th><th>Cadence</th><th>Term</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="billing-contracts-table"><tr><td colspan="7">Loading contracts…</td></tr></tbody></table></div>
         </div>
       </div>
-      <!-- ── END PRICING PLANS ── -->
+      <!-- ── END BILLING ── -->
 
       <!-- ── LOGS section ── -->
       <div id="section-logs" class="section-hidden">
@@ -779,16 +734,6 @@
           <option value="TERTIARY">Tertiary / College</option>
         </select>
       </div>
-      <div class="form-row" id="f-plan-row">
-        <label class="form-label" for="f-plan">Pricing Plan</label>
-        <select class="form-select" id="f-plan">
-          <option value="">Select plan…</option>
-          <option value="starter">Starter</option>
-          <option value="standard">Standard</option>
-          <option value="professional">Professional</option>
-          <option value="enterprise">Enterprise</option>
-        </select>
-      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px" id="f-ports-grid">
         <div class="form-row" style="margin-bottom:0">
           <label class="form-label" for="f-port-fe" id="f-port-fe-label">Frontend Port</label>
@@ -815,68 +760,6 @@
     <div class="modal-footer">
       <button class="btn" id="modal-cancel" type="button">Cancel</button>
       <button class="btn primary" id="modal-submit" type="button">Provision</button>
-    </div>
-  </div>
-</div>
-
-<!-- PLAN MODAL -->
-<div class="overlay" id="plan-modal-overlay" aria-modal="true" role="dialog">
-  <div class="modal" style="max-width:560px">
-    <div class="modal-header">
-      <div class="modal-title" id="plan-modal-title">New Pricing Plan</div>
-      <button class="modal-close" id="plan-modal-close" type="button" aria-label="Close">×</button>
-    </div>
-    <div class="modal-body">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="form-row">
-          <label class="form-label" for="p-name">Plan Name</label>
-          <input class="form-input" id="p-name" placeholder="e.g. Professional" type="text"/>
-        </div>
-        <div class="form-row">
-          <label class="form-label" for="p-badge">Badge Label</label>
-          <input class="form-input" id="p-badge" placeholder="e.g. Most Popular" type="text"/>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
-        <div class="form-row">
-          <label class="form-label" for="p-monthly">Monthly (KES)</label>
-          <input class="form-input" id="p-monthly" placeholder="e.g. 15000" type="number"/>
-        </div>
-        <div class="form-row">
-          <label class="form-label" for="p-termly">Termly (KES)</label>
-          <input class="form-input" id="p-termly" placeholder="e.g. 40000" type="number"/>
-        </div>
-        <div class="form-row">
-          <label class="form-label" for="p-annual">Annual (KES)</label>
-          <input class="form-input" id="p-annual" placeholder="e.g. 140000" type="number"/>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="form-row">
-          <label class="form-label" for="p-students">Max Students</label>
-          <input class="form-input" id="p-students" placeholder="e.g. 500 or Unlimited" type="text"/>
-        </div>
-        <div class="form-row">
-          <label class="form-label" for="p-storage">Storage Limit</label>
-          <input class="form-input" id="p-storage-limit" placeholder="e.g. 10 GB" type="text"/>
-        </div>
-      </div>
-      <div class="form-row">
-        <label class="form-label">Included Features (one per line)</label>
-        <textarea class="form-input" id="p-features" rows="5" placeholder="SMS notifications&#10;Exam management&#10;Parent portal&#10;Custom domain&#10;Priority support" style="resize:vertical;font-family:var(--sans)"></textarea>
-      </div>
-      <div class="form-row" style="margin-bottom:0">
-        <label class="form-label" for="p-status">Plan Status</label>
-        <select class="form-select" id="p-status">
-          <option value="active">Active (available to assign)</option>
-          <option value="draft">Draft (hidden from assignment)</option>
-          <option value="deprecated">Deprecated (existing only)</option>
-        </select>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn" id="plan-modal-cancel" type="button">Cancel</button>
-      <button class="btn primary" id="plan-modal-submit" type="button">Save Plan</button>
     </div>
   </div>
 </div>
@@ -1023,6 +906,50 @@
   </div>
 </div>
 <!-- END LEAD MODAL -->
+
+<!-- BILLING CUSTOMER MODAL -->
+<div class="overlay" id="billing-customer-overlay" aria-modal="true" role="dialog">
+  <div class="modal" style="max-width:650px">
+    <div class="modal-header"><div class="modal-title" id="billing-customer-title">Add billing customer</div><button class="modal-close" id="billing-customer-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <input id="bc-id" type="hidden"/>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-row"><label class="form-label" for="bc-name">Customer name *</label><input class="form-input" id="bc-name" maxlength="160"/></div>
+        <div class="form-row"><label class="form-label" for="bc-legal-name">Legal name</label><input class="form-input" id="bc-legal-name" maxlength="200"/></div>
+        <div class="form-row"><label class="form-label" for="bc-tenant-key">Tenant key (optional)</label><input class="form-input" id="bc-tenant-key" maxlength="160" placeholder="Stable tenant ID or school slug"/></div>
+        <div class="form-row"><label class="form-label" for="bc-email">Billing email</label><input class="form-input" id="bc-email" type="email" maxlength="254"/></div>
+        <div class="form-row"><label class="form-label" for="bc-phone">Billing phone</label><input class="form-input" id="bc-phone" type="tel" maxlength="40"/></div>
+        <div class="form-row"><label class="form-label" for="bc-tax-id">Tax identifier</label><input class="form-input" id="bc-tax-id" maxlength="100"/></div>
+        <div class="form-row"><label class="form-label" for="bc-currency">Currency</label><input class="form-input" id="bc-currency" maxlength="3" value="KES"/></div>
+        <div class="form-row"><label class="form-label" for="bc-payment-terms">Payment terms</label><input class="form-input" id="bc-payment-terms" maxlength="160" placeholder="As specified in the agreement"/></div>
+      </div>
+      <div class="form-row"><label class="form-label" for="bc-address">Billing address</label><textarea class="form-input" id="bc-address" rows="2" maxlength="1000"></textarea></div>
+      <div class="form-row" style="margin-bottom:0"><label class="form-label" for="bc-status">Status</label><select class="form-select" id="bc-status"><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
+    </div>
+    <div class="modal-footer"><button class="btn" id="billing-customer-cancel" type="button">Cancel</button><button class="btn primary" id="billing-customer-save" type="button">Save customer</button></div>
+  </div>
+</div>
+
+<!-- BILLING CONTRACT MODAL -->
+<div class="overlay" id="billing-contract-overlay" aria-modal="true" role="dialog">
+  <div class="modal" style="max-width:650px">
+    <div class="modal-header"><div class="modal-title" id="billing-contract-title">Add service contract</div><button class="modal-close" id="billing-contract-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <input id="bct-id" type="hidden"/><input id="bct-customer-id" type="hidden"/>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-row"><label class="form-label" for="bct-reference">Contract reference</label><input class="form-input" id="bct-reference" maxlength="120"/></div>
+        <div class="form-row"><label class="form-label" for="bct-cadence">Billing cadence</label><select class="form-select" id="bct-cadence"><option value="monthly">Monthly</option><option value="termly">Termly</option><option value="annual">Annual</option><option value="one_off">One off</option><option value="custom">Custom</option></select></div>
+        <div class="form-row"><label class="form-label" for="bct-start">Start date</label><input class="form-input" id="bct-start" type="date"/></div>
+        <div class="form-row"><label class="form-label" for="bct-end">End date</label><input class="form-input" id="bct-end" type="date"/></div>
+        <div class="form-row"><label class="form-label" for="bct-renewal">Renewal date</label><input class="form-input" id="bct-renewal" type="date"/></div>
+        <div class="form-row"><label class="form-label" for="bct-status">Status</label><select class="form-select" id="bct-status"><option value="draft">Draft</option><option value="active">Active</option><option value="ended">Ended</option><option value="cancelled">Cancelled</option></select></div>
+      </div>
+      <div class="form-row"><label class="form-label" for="bct-service">Service description *</label><input class="form-input" id="bct-service" maxlength="500"/></div>
+      <div class="form-row" style="margin-bottom:0"><label class="form-label" for="bct-terms">Approved terms / notes</label><textarea class="form-input" id="bct-terms" rows="3" maxlength="3000" placeholder="Record a short reference to the signed agreement. Do not enter unapproved prices."></textarea></div>
+    </div>
+    <div class="modal-footer"><button class="btn" id="billing-contract-cancel" type="button">Cancel</button><button class="btn primary" id="billing-contract-save" type="button">Save contract</button></div>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 <script src="./app.js"></script>

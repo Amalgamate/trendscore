@@ -1,0 +1,111 @@
+name: Deploy Platform Console
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch/ref to build and deploy'
+        required: true
+        type: string
+        default: main
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-platform-console
+  cancel-in-progress: false
+
+env:
+  CONSOLE_IMAGE: ghcr.io/amalgamate/zawadi-console
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      commit_sha: ${{ steps.revision.outputs.commit_sha }}
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+
+      - name: Resolve revision
+        id: revision
+        run: echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare deploy assets
+        run: |
+          set -euo pipefail
+          mkdir -p platform-console/deploy
+          cp scripts/deploy-release.sh platform-console/deploy/deploy-release.sh
+          cp deploy/instances.manifest.json platform-console/deploy/instances.manifest.json
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Console image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.CONSOLE_IMAGE }}
+          tags: |
+            type=sha,prefix=sha-,format=long
+
+      - name: Build and publish console
+        uses: docker/build-push-action@v6
+        with:
+          context: ./platform-console
+          file: ./platform-console/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=console
+          cache-to: type=gha,mode=max,scope=console
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Confirm published image exists
+        run: docker manifest inspect "${CONSOLE_IMAGE}:${{ needs.build.outputs.commit_sha }}" >/dev/null
+
+      - name: Deploy console only
+        env:
+          IMAGE_TAG: sha-${{ needs.build.outputs.commit_sha }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          set -euo pipefail
+          ssh production "DEPLOY_CONSOLE_ONLY=true IMAGE_TAG='${IMAGE_TAG}' MANIFEST_PATH=/srv/zawadi/apps/deploy/instances.manifest.json bash /srv/zawadi/apps/deploy/deploy-release.sh"

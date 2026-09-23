@@ -1,128 +1,5 @@
-// Trends CORE Control Panel demo shell.
-// This file keeps the current console interactive while the real control API is
-// still being built. No Docker or billing action is executed from this demo UI.
-
-// Demo data
-let INSTANCES = [
-  {
-    name: 'Trends CORE Main',
-    domain: 'core.trendscore.co.ke',
-    status: 'Online',
-    type: 'PRIMARY_CBC',
-    typeLabel: 'Junior CBC',
-    created: '2026-04-27',
-    version: '91a4982',
-    fe: 3000,
-    be: 5000,
-    db: 'trends_core_main',
-    storage: 2.1,
-    dbGb: 0.42,
-    uploads: 1.2,
-    backups: 0.48,
-    containers: 3,
-    planId: 'professional',
-    billingCycle: 'Monthly',
-    nextRenewal: '2026-05-29',
-    billingStatus: 'Active',
-  },
-  {
-    name: 'School B',
-    domain: 'schoolb.trendscore.co.ke',
-    status: 'Online',
-    type: 'SECONDARY',
-    typeLabel: 'Senior CBC',
-    created: '2026-04-28',
-    version: '91a4982',
-    fe: 3001,
-    be: 5001,
-    db: 'trends_core_school_b',
-    storage: 1.3,
-    dbGb: 0.18,
-    uploads: 0.61,
-    backups: 0.51,
-    containers: 3,
-    planId: 'standard',
-    billingCycle: 'Termly',
-    nextRenewal: '2026-06-12',
-    billingStatus: 'Active',
-  },
-  {
-    name: 'School C',
-    domain: 'schoolc.trendscore.co.ke',
-    status: 'Degraded',
-    type: 'TERTIARY',
-    typeLabel: 'Tertiary',
-    created: '2026-04-28',
-    version: '91a4982',
-    fe: 3002,
-    be: 5002,
-    db: 'trends_core_school_c',
-    storage: 1.6,
-    dbGb: 0.21,
-    uploads: 0.76,
-    backups: 0.63,
-    containers: 2,
-    planId: 'starter',
-    billingCycle: 'Monthly',
-    nextRenewal: '2026-05-08',
-    billingStatus: 'Due Soon',
-  },
-];
-
-const PRICING_PLANS = [
-  {
-    id: 'starter',
-    name: 'Starter',
-    badge: 'Entry',
-    monthly: 8000,
-    termly: 22000,
-    annual: 84000,
-    maxStudents: '250',
-    storageLimit: '5 GB',
-    status: 'active',
-    featured: false,
-    features: ['Core school setup', 'Learner records', 'Basic fee tracking', 'Attendance', 'Email support'],
-  },
-  {
-    id: 'standard',
-    name: 'Standard',
-    badge: 'Core',
-    monthly: 14000,
-    termly: 38000,
-    annual: 145000,
-    maxStudents: '600',
-    storageLimit: '12 GB',
-    status: 'active',
-    featured: false,
-    features: ['Core school setup', 'Learner records', 'Fee tracking', 'Attendance', 'Assessments', 'Parent portal', 'SMS notifications'],
-  },
-  {
-    id: 'professional',
-    name: 'Professional',
-    badge: 'Most Popular',
-    monthly: 25000,
-    termly: 68000,
-    annual: 260000,
-    maxStudents: '1,500',
-    storageLimit: '30 GB',
-    status: 'active',
-    featured: true,
-    features: ['Everything in Standard', 'Advanced dashboards', 'Inventory', 'HR overview', 'Custom domain', 'Priority support', 'Audit logs'],
-  },
-  {
-    id: 'enterprise',
-    name: 'Enterprise',
-    badge: 'Scale',
-    monthly: 45000,
-    termly: 125000,
-    annual: 480000,
-    maxStudents: 'Unlimited',
-    storageLimit: 'Custom',
-    status: 'draft',
-    featured: false,
-    features: ['Everything in Professional', 'Multi-campus reporting', 'Dedicated onboarding', 'Custom storage', 'SLA support', 'API access'],
-  },
-];
+// The console starts empty and fills operational state from authenticated APIs.
+let INSTANCES = [];
 
 const PLATFORM_MODULES = [
   { id: 'admissions', name: 'Admissions', desc: 'Student registration and enrollment', enabled: true },
@@ -134,45 +11,12 @@ const PLATFORM_MODULES = [
   { id: 'ai', name: 'AI Smart Insights', desc: 'Automated school insights', enabled: true },
 ];
 
-let DEPLOYMENTS = [
-  { time: '10:47 EAT', title: 'Trends CORE v1 - initial release', copy: 'Frontend + backend images published, all live instances redeployed.' },
-  { time: '10:36 EAT', title: 'Health check retries enabled', copy: 'Deploy script now waits for services to warm up before failing.' },
-  { time: '10:20 EAT', title: 'All instances moved to GHCR images', copy: 'Main, School B, and School C use the shared latest images.' },
-  { time: '09:55 EAT', title: 'Institution setup wizard shipped', copy: 'After factory reset, super admin is redirected to institution picker.' },
-  { time: '09:30 EAT', title: 'Core apps auto-activation on lock', copy: 'PRIMARY_CBC, SECONDARY, TERTIARY each activate 9 core modules on confirm.' },
-];
+let DEPLOYMENTS = [];
+let AUDIT_LOGS = [];
 
-let AUDIT_LOGS = [
-  { time: '10:47 EAT', action: 'Redeploy', instance: 'All Instances', by: 'system@trendscore.app', details: 'Latest GHCR images deployed', status: 'Success' },
-  { time: '10:36 EAT', action: 'Config Update', instance: 'Trends CORE Main', by: 'admin@trendscore.app', details: 'Health retry window changed', status: 'Success' },
-  { time: '10:20 EAT', action: 'Image Pull', instance: 'School B', by: 'system@trendscore.app', details: 'Frontend and backend image pull', status: 'Success' },
-  { time: '09:55 EAT', action: 'Restart', instance: 'School C', by: 'admin@trendscore.app', details: 'Manual restart after degraded check', status: 'Warning' },
-];
-
-const FEATURE_MATRIX = [
-  'Core school setup',
-  'Learner records',
-  'Fee tracking',
-  'Attendance',
-  'Assessments',
-  'Parent portal',
-  'SMS notifications',
-  'Advanced dashboards',
-  'Inventory',
-  'HR overview',
-  'Custom domain',
-  'Audit logs',
-  'API access',
-];
-
-const DEFAULT_LEADS = [
-  { id: 'L1', name: 'Mary Wanjiku', phone: '+254 712 345 678', school: 'Sunshine Academy', stage: 'new', priority: '2', students: 350, tags: ['CBC'], systems: { assessment: 'Manual', fees: 'Excel', lms: 'None' }, nextActivity: 'Call tomorrow', notes: 'Interested in core modules.', created: '2026-05-15' },
-  { id: 'L2', name: 'John Doe', phone: '+254 799 123 456', school: 'Pioneer High', stage: 'contacted', priority: '3', students: 800, tags: ['Large School', 'Urgent'], systems: { assessment: 'Zeraki', fees: 'Manual', lms: 'Google Classroom' }, nextActivity: 'Demo scheduled', notes: 'Looking to replace Zeraki.', created: '2026-05-16' },
-  { id: 'L3', name: 'Sarah Musyoka', phone: '+254 722 000 111', school: 'Greenfield Primary', stage: 'interested', priority: '2', students: 200, tags: ['Follow-up'], systems: { assessment: 'None', fees: 'None', lms: 'None' }, nextActivity: 'Send quote', notes: 'Wants the Starter plan.', created: '2026-05-10' },
-  { id: 'L4', name: 'Peter Omondi', phone: '+254 700 999 888', school: 'Nairobi Heights', stage: 'converted', priority: '3', students: 1200, tags: ['Client'], systems: { assessment: 'Trends CORE', fees: 'Trends CORE', lms: 'Trends CORE' }, nextActivity: 'Onboarding', notes: 'Signed 1 year contract.', created: '2026-04-20' },
-  { id: 'L5', name: 'Jane Kamau', phone: '+254 733 444 555', school: 'Hilltop Secondary', stage: 'new', priority: '1', students: 150, tags: [], systems: { assessment: 'Manual', fees: 'Manual', lms: 'None' }, nextActivity: 'Initial contact', notes: 'Found us via web search.', created: '2026-05-17' }
-];
-let LEADS = [...DEFAULT_LEADS];
+let LEADS = [];
+let BILLING_CUSTOMERS = [];
+let BILLING_CONTRACTS = [];
 
 // Helpers
 const $ = id => document.getElementById(id);
@@ -184,12 +28,10 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   "'": '&#39;',
 }[char]));
 const fmt = value => parseFloat(value).toFixed(1).replace(/\.0$/, '');
-const money = value => new Intl.NumberFormat('en-KE').format(value);
 const slugify = value => String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const nowLabel = () => new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }) + ' EAT';
 const fmtDate = value => new Intl.DateTimeFormat('en-KE', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value + 'T00:00'));
 const statusCls = status => status === 'Online' || status === 'Active' || status === 'Success' ? 'online' : status === 'Degraded' || status === 'Warning' || status === 'Due Soon' ? 'warn' : 'offline';
-const findPlan = id => PRICING_PLANS.find(plan => plan.id === id) || PRICING_PLANS[0];
 
 let toastTimer;
 let installProgressTimer = null;
@@ -198,40 +40,8 @@ let runtimePollBusy = false;
 let pendingProvisionLeadId = null;
 let selectedInstanceName = INSTANCES[0]?.name || '';
 let pendingConfirm = null;
-let editingPlanId = null;
 let liveMode = false;
 let RUNTIME_METRICS = null;
-const DOMAIN_OVERRIDES = {
-  amalgamate: 'amalgamate.trendscore.co.ke',
-  console: 'admin.trendscore.co.ke',
-  admin: 'admin.trendscore.co.ke',
-  demo: 'demoschool.trendscore.co.ke',
-  demoschool: 'demoschool.trendscore.co.ke',
-  'demo-school': 'demoschool.trendscore.co.ke',
-  ighs: 'ighs.trendscore.co.ke',
-  jrn: 'zawadi.trendscore.co.ke',
-  zawadijrn: 'zawadi.trendscore.co.ke',
-  'kambigarba-cs': 'kambigarba-cs.trendscore.co.ke',
-  'kambi-garba-cs': 'kambigarba-cs.trendscore.co.ke',
-  'kambi-garba': 'kambigarba-cs.trendscore.co.ke',
-  kambigarba: 'kambigarba-cs.trendscore.co.ke',
-  lionscomplex: 'lionscomplex.trendscore.co.ke',
-  'lions-complex': 'lionscomplex.trendscore.co.ke',
-  lions: 'lionscomplex.trendscore.co.ke',
-  mck: 'mck.trendscore.co.ke',
-  'merti-cs': 'merti-cs.trendscore.co.ke',
-  mertics: 'merti-cs.trendscore.co.ke',
-  merti: 'merti-cs.trendscore.co.ke',
-  'waso-cs': 'waso-cs.trendscore.co.ke',
-  waso: 'waso-cs.trendscore.co.ke',
-  'daawa-cs': 'daawa-cs.trendscore.co.ke',
-  daawa: 'daawa-cs.trendscore.co.ke',
-  naet: 'naet.trendscore.co.ke',
-  'zayan-electricals': 'zayan.trendscore.co.ke',
-  zayan: 'zayan.trendscore.co.ke',
-  zawadi: 'zawadi.trendscore.co.ke',
-};
-
 function toast(message) {
   const el = $('toast');
   if (!el) return;
@@ -242,15 +52,8 @@ function toast(message) {
 }
 
 function addAudit({ action, instance, details, status = 'Success' }) {
-  AUDIT_LOGS.unshift({
-    time: nowLabel(),
-    action,
-    instance,
-    by: 'admin@trendscore.app',
-    details,
-    status,
-  });
-  renderAuditLog();
+  // The audit table is server-authoritative. Never create browser-only rows
+  // that look like durable operator audit events.
 }
 
 function selectedInstance() {
@@ -671,7 +474,6 @@ function applyProvisionMode(appKey) {
   if ($('f-port-be-label')) $('f-port-be-label').textContent = app.beLabel;
   if ($('f-port-be-row')) $('f-port-be-row').style.display = appRange.requireBe ? '' : 'none';
   if ($('f-type-row')) $('f-type-row').style.display = app.showInstitutionFields ? '' : 'none';
-  if ($('f-plan-row')) $('f-plan-row').style.display = app.showInstitutionFields ? '' : 'none';
   if ($('f-admin-email-row')) $('f-admin-email-row').style.display = app.showAdminEmail ? '' : 'none';
   renderProvisionVersionOptions(currentProvisionApp);
   syncProvisionImage();
@@ -722,15 +524,8 @@ async function refreshFromRuntime() {
     if (runtime?.ok && Array.isArray(runtime.instances)) {
       INSTANCES = runtime.instances.map(item => ({
         ...item,
-        domain: item.domain
-          || DOMAIN_OVERRIDES[inferGroupKey(item)]
-          || `${slugify(item.name).replace(/-(frontend|backend|db|database)-?\d*$/i, '')}.trendscore.co.ke`,
-        type: item.type || 'PRIMARY_CBC',
+        domain: item.domain || '',
         typeLabel: item.typeLabel || 'Managed',
-        planId: item.planId || 'professional',
-        billingCycle: item.billingCycle || 'Monthly',
-        nextRenewal: item.nextRenewal || '2026-12-31',
-        billingStatus: item.billingStatus || 'Active',
       }));
       selectedInstanceName = INSTANCES.find(i => i.name === selectedInstanceName)?.name || INSTANCES[0]?.name || '';
     }
@@ -774,38 +569,140 @@ function startRuntimePolling(intervalMs = 20000) {
 
 // ── Running Instances panel ───────────────────────────────────────────────
 function containerRows(instance) {
-  const isOnline = instance.status === 'Online';
-  const isDegraded = instance.status === 'Degraded';
-  const containers = [
-    { name: 'Frontend', port: instance.fe, status: isOnline ? 'running' : isDegraded ? 'running' : 'stopped' },
-    { name: 'Backend',  port: instance.be, status: isOnline ? 'running' : 'stopped' },
-    { name: 'Database', port: null,        status: isOnline ? 'running' : isDegraded ? 'running' : 'stopped' },
-  ];
-  if (isDegraded) containers[1].status = 'unhealthy';
-  return containers;
+  const total = Math.max(0, Number(instance.containers) || 0);
+  const running = Math.max(0, Number(instance.runningContainers) || 0);
+  const state = total > 0 && running === total ? 'running' : running > 0 ? 'unhealthy' : 'stopped';
+  return [{
+    name: 'Containers',
+    port: null,
+    state,
+    status: total > 0 ? `${running}/${total} running` : 'No container data',
+  }];
+}
+
+async function loadBillingData() {
+  try {
+    const [customersResponse, contractsResponse] = await Promise.all([
+      fetch('/api/billing/customers', { credentials: 'same-origin' }),
+      fetch('/api/billing/contracts', { credentials: 'same-origin' }),
+    ]);
+    if (!customersResponse.ok || !contractsResponse.ok) throw new Error('Could not load billing records');
+    const [customersData, contractsData] = await Promise.all([customersResponse.json(), contractsResponse.json()]);
+    BILLING_CUSTOMERS = customersData.customers || [];
+    BILLING_CONTRACTS = contractsData.contracts || [];
+    renderBillingRegistry();
+  } catch (error) {
+    if ($('billing-customers-table')) $('billing-customers-table').innerHTML = `<tr><td colspan="7">${esc(error.message || 'Billing data is unavailable.')}</td></tr>`;
+    if ($('billing-contracts-table')) $('billing-contracts-table').innerHTML = '<tr><td colspan="7">Billing contracts are unavailable.</td></tr>';
+  }
+}
+
+function renderBillingRegistry() {
+  const customersBody = $('billing-customers-table');
+  const contractsBody = $('billing-contracts-table');
+  if (!customersBody || !contractsBody) return;
+  if (!BILLING_CUSTOMERS.length) {
+    customersBody.innerHTML = '<tr><td colspan="7">No billing customers recorded yet.</td></tr>';
+  } else {
+    customersBody.innerHTML = BILLING_CUSTOMERS.map(customer => {
+      const count = BILLING_CONTRACTS.filter(contract => contract.customerId === customer.id).length;
+      return `<tr><td><strong>${esc(customer.name)}</strong>${customer.legalName ? `<div class="table-sub">${esc(customer.legalName)}</div>` : ''}</td>
+        <td>${esc(customer.tenantKey || 'Not linked')}</td><td>${esc(customer.billingEmail || 'No email')}<div class="table-sub">${esc(customer.billingPhone || '')}</div></td>
+        <td>${esc(customer.currency)}</td><td>${esc(customer.status)}</td><td>${count}</td>
+        <td><button class="btn sm" data-billing-customer-edit="${esc(customer.id)}" data-super-admin-only type="button">Edit</button>
+        <button class="btn sm" data-billing-contract-add="${esc(customer.id)}" data-super-admin-only type="button">Add contract</button></td></tr>`;
+    }).join('');
+  }
+  if (!BILLING_CONTRACTS.length) {
+    contractsBody.innerHTML = '<tr><td colspan="7">No contracts recorded yet.</td></tr>';
+  } else {
+    contractsBody.innerHTML = BILLING_CONTRACTS.map(contract => {
+      const customer = BILLING_CUSTOMERS.find(item => item.id === contract.customerId);
+      const dates = [contract.startDate, contract.endDate].filter(Boolean).join(' – ') || 'Dates not set';
+      return `<tr><td>${esc(customer?.name || 'Unknown customer')}</td><td>${esc(contract.reference || '—')}</td>
+        <td>${esc(contract.serviceDescription)}</td><td>${esc(contract.cadence)}</td><td>${esc(dates)}</td><td>${esc(contract.status)}</td>
+        <td><button class="btn sm" data-billing-contract-edit="${esc(contract.id)}" data-super-admin-only type="button">Edit</button></td></tr>`;
+    }).join('');
+  }
+  document.querySelectorAll('[data-super-admin-only]').forEach(element => {
+    if (window.consoleUserRole) element.hidden = window.consoleUserRole !== 'super_admin';
+  });
+}
+
+function openBillingCustomer(customer = null) {
+  $('billing-customer-title').textContent = customer ? 'Edit billing customer' : 'Add billing customer';
+  $('bc-id').value = customer?.id || '';
+  $('bc-name').value = customer?.name || '';
+  $('bc-legal-name').value = customer?.legalName || '';
+  $('bc-tenant-key').value = customer?.tenantKey || '';
+  $('bc-email').value = customer?.billingEmail || '';
+  $('bc-phone').value = customer?.billingPhone || '';
+  $('bc-tax-id').value = customer?.taxIdentifier || '';
+  $('bc-currency').value = customer?.currency || 'KES';
+  $('bc-payment-terms').value = customer?.paymentTerms || '';
+  $('bc-address').value = customer?.billingAddress || '';
+  $('bc-status').value = customer?.status || 'active';
+  $('billing-customer-overlay')?.classList.add('open');
+}
+
+function closeBillingCustomer() { $('billing-customer-overlay')?.classList.remove('open'); }
+
+function openBillingContract(customerId, contract = null) {
+  $('billing-contract-title').textContent = contract ? 'Edit service contract' : 'Add service contract';
+  $('bct-id').value = contract?.id || '';
+  $('bct-customer-id').value = customerId || contract?.customerId || '';
+  $('bct-reference').value = contract?.reference || '';
+  $('bct-cadence').value = contract?.cadence || 'annual';
+  $('bct-start').value = contract?.startDate || '';
+  $('bct-end').value = contract?.endDate || '';
+  $('bct-renewal').value = contract?.renewalDate || '';
+  $('bct-status').value = contract?.status || 'draft';
+  $('bct-service').value = contract?.serviceDescription || '';
+  $('bct-terms').value = contract?.termsNote || '';
+  $('billing-contract-overlay')?.classList.add('open');
+}
+
+function closeBillingContract() { $('billing-contract-overlay')?.classList.remove('open'); }
+
+function billingCustomerPayload() {
+  return {
+    name: $('bc-name').value, legalName: $('bc-legal-name').value, tenantKey: $('bc-tenant-key').value,
+    billingEmail: $('bc-email').value, billingPhone: $('bc-phone').value, taxIdentifier: $('bc-tax-id').value,
+    currency: $('bc-currency').value, paymentTerms: $('bc-payment-terms').value,
+    billingAddress: $('bc-address').value, status: $('bc-status').value,
+  };
+}
+
+function billingContractPayload() {
+  return {
+    reference: $('bct-reference').value, cadence: $('bct-cadence').value,
+    startDate: $('bct-start').value, endDate: $('bct-end').value, renewalDate: $('bct-renewal').value,
+    status: $('bct-status').value, serviceDescription: $('bct-service').value, termsNote: $('bct-terms').value,
+  };
 }
 
 function renderRunningInstances() {
   const el = $('running-instances-grid');
   if (!el) return;
+  if (!INSTANCES.length) {
+    el.innerHTML = '<div class="ri-card">No runtime instances are available. Check the live connection and school registry.</div>';
+    return;
+  }
 
   el.innerHTML = INSTANCES.map(instance => {
     const containers = containerRows(instance);
     const overallCls = instance.status === 'Online' ? 'online' : instance.status === 'Degraded' ? 'warn' : 'offline';
-    const plan = findPlan(instance.planId);
-    const uptime = instance.status === 'Online' ? '99.9%' : instance.status === 'Degraded' ? '71.2%' : '0%';
-    const runningCount = containers.filter(c => c.status === 'running').length;
 
     const containerDots = containers.map(c => {
-      const dot = c.status === 'running' ? 'ri-dot-green' : c.status === 'unhealthy' ? 'ri-dot-amber' : 'ri-dot-red';
-      return `<span class="ri-container-dot ${dot}" title="${esc(c.name)}: ${esc(c.status)}${c.port ? ' (:' + c.port + ')' : ''}"></span>`;
+      const dot = c.state === 'running' ? 'ri-dot-green' : c.state === 'unhealthy' ? 'ri-dot-amber' : 'ri-dot-red';
+      return `<span class="ri-container-dot ${dot}" title="${esc(c.name)}: ${esc(c.status)}"></span>`;
     }).join('');
 
     const containerList = containers.map(c => {
-      const sCls = c.status === 'running' ? 'online' : c.status === 'unhealthy' ? 'warn' : 'offline';
+      const sCls = c.state === 'running' ? 'online' : c.state === 'unhealthy' ? 'warn' : 'offline';
       return `<div class="ri-container-row">
         <span class="ri-c-name">${esc(c.name)}</span>
-        ${c.port ? `<span class="ri-c-port">:${c.port}</span>` : '<span class="ri-c-port">—</span>'}
+        <span class="ri-c-port">—</span>
         <span class="badge ${sCls}" style="font-size:10px;padding:1px 6px">${esc(c.status)}</span>
       </div>`;
     }).join('');
@@ -821,7 +718,7 @@ function renderRunningInstances() {
         </div>
         <div class="ri-dots-row">
           ${containerDots}
-          <span class="ri-dots-label">${runningCount}/${containers.length} running</span>
+          <span class="ri-dots-label">${Number(instance.runningContainers) || 0}/${Number(instance.containers) || 0} running</span>
         </div>
       </div>
       <div class="ri-container-list">
@@ -829,12 +726,12 @@ function renderRunningInstances() {
       </div>
       <div class="ri-card-footer">
         <div class="ri-meta-row">
-          <span class="ri-meta-label">Plan</span>
-          <span class="ri-meta-val">${esc(plan.name)}</span>
+          <span class="ri-meta-label">Billing</span>
+          <span class="ri-meta-val">Not connected</span>
         </div>
         <div class="ri-meta-row">
           <span class="ri-meta-label">Uptime</span>
-          <span class="ri-meta-val" style="font-family:var(--mono)">${uptime}</span>
+          <span class="ri-meta-val" style="font-family:var(--mono)">Not measured</span>
         </div>
         <div class="ri-meta-row">
           <span class="ri-meta-label">Version</span>
@@ -859,30 +756,28 @@ function renderSpaceUsage() {
   const el = $('space-usage-panel');
   if (!el) return;
 
+  if (!liveMode || !RUNTIME_METRICS) {
+    el.innerHTML = '<div class="su-summary-label">Live host storage metrics are unavailable.</div>';
+    return;
+  }
+
   const diskTotal = totalDiskGb();
-  const totalSchoolDb = INSTANCES.reduce((s, i) => s + i.dbGb, 0);
-  const totalUploads  = INSTANCES.reduce((s, i) => s + i.uploads, 0);
-  const totalBackups  = INSTANCES.reduce((s, i) => s + i.backups, 0);
-  const schoolData    = INSTANCES.reduce((s, i) => s + i.storage, 0);
-  const runtimeUsed   = Number(RUNTIME_METRICS?.storageUsedGb || 0);
-  const appStack      = Math.max(0, runtimeUsed - schoolData);
-  const usedTotal     = appStack + schoolData;
-  const freeSpace     = Math.max(0, diskTotal - usedTotal);
-  const usedPct       = Math.round(usedTotal / Math.max(diskTotal, 1) * 100);
+  const hostUsed      = Number(RUNTIME_METRICS.diskUsedGb || 0);
+  const dockerUsed    = Number(RUNTIME_METRICS.storageUsedGb || 0);
+  const schoolVolumes = INSTANCES.reduce((sum, instance) => sum + Number(instance.storage || 0), 0);
+  const freeSpace     = Math.max(0, diskTotal - hostUsed);
+  const usedPct       = Math.round(hostUsed / Math.max(diskTotal, 1) * 100);
 
   const segments = [
-    { label: 'Platform Stack', value: appStack, color: '#030b82' },
-    { label: 'School DBs', value: totalSchoolDb, color: '#059669' },
-    { label: 'Uploads', value: totalUploads, color: '#f59e0b' },
-    { label: 'Backups', value: totalBackups, color: '#8b5cf6' },
+    { label: 'Host used', value: hostUsed, color: '#030b82' },
     { label: 'Free', value: freeSpace, color: '#e8ebf4' },
   ];
 
   el.innerHTML = `
     <div class="su-summary-row">
       <div class="su-summary-stat">
-        <div class="su-stat-val">${fmt(usedTotal)} <span class="su-stat-unit">GB</span></div>
-        <div class="su-stat-label">Used of ${fmt(diskTotal)} GB</div>
+        <div class="su-stat-val">${fmt(hostUsed)} <span class="su-stat-unit">GB</span></div>
+        <div class="su-stat-label">Host disk used of ${fmt(diskTotal)} GB</div>
       </div>
       <div class="su-summary-stat">
         <div class="su-stat-val">${fmt(freeSpace)} <span class="su-stat-unit">GB</span></div>
@@ -893,8 +788,8 @@ function renderSpaceUsage() {
         <div class="su-stat-label">Disk Utilisation</div>
       </div>
       <div class="su-summary-stat">
-        <div class="su-stat-val">${fmt(schoolData)} <span class="su-stat-unit">GB</span></div>
-        <div class="su-stat-label">School Data</div>
+        <div class="su-stat-val">${fmt(dockerUsed)} <span class="su-stat-unit">GB</span></div>
+        <div class="su-stat-label">Docker storage used</div>
       </div>
     </div>
 
@@ -904,7 +799,7 @@ function renderSpaceUsage() {
       ).join('')}
     </div>
     <div class="su-legend">
-      ${segments.filter(s => s.label !== 'Free').map(s =>
+      ${segments.map(s =>
         `<div class="su-legend-item">
           <span class="su-legend-dot" style="background:${s.color}"></span>
           <span class="su-legend-label">${esc(s.label)}</span>
@@ -914,7 +809,10 @@ function renderSpaceUsage() {
     </div>
 
     <div class="su-breakdown-grid">
-      ${segments.filter(s => s.label !== 'Free').map(s => {
+      ${[
+        { label: 'Docker storage', value: dockerUsed, color: '#030b82' },
+        { label: 'Volumes attributed to running school projects', value: schoolVolumes, color: '#059669' },
+      ].map(s => {
         const pct = Math.round(s.value / Math.max(diskTotal, 1) * 100);
         return `<div class="su-breakdown-item">
           <div class="su-b-row">
@@ -938,11 +836,7 @@ function renderSpaceUsage() {
               <span class="su-pi-total">${fmt(inst.storage)} GB</span>
             </div>
             <div class="su-meter" style="margin:6px 0 4px"><div class="su-meter-fill" style="width:${instPct}%;background:var(--brand)"></div></div>
-            <div class="su-pi-rows">
-              <div class="su-pi-row"><span>Database</span><span>${fmt(inst.dbGb)} GB</span></div>
-              <div class="su-pi-row"><span>Uploads</span><span>${fmt(inst.uploads)} GB</span></div>
-              <div class="su-pi-row"><span>Backups</span><span>${fmt(inst.backups)} GB</span></div>
-            </div>
+            <div class="su-pi-rows"><div class="su-pi-row"><span>Attributed Docker volumes</span><span>${fmt(inst.storage)} GB</span></div></div>
           </div>`;
         }).join('')}
       </div>
@@ -1035,6 +929,10 @@ function renderLeadsList() {
   if (!table) return;
 
   const filteredLeads = activeLeadFilter ? LEADS.filter(l => l.stage === activeLeadFilter) : LEADS;
+  if (!filteredLeads.length) {
+    table.innerHTML = '<tr><td colspan="8">No lead records are available.</td></tr>';
+    return;
+  }
 
   table.innerHTML = filteredLeads.map(lead => `
     <tr>
@@ -1099,16 +997,6 @@ window.convertLeadToProvision = function(leadId) {
     delete $('f-domain').dataset.userEdited;
   }
 
-  const studentCount = Number(lead.students || 0);
-  const inferredPlan = studentCount >= 1000
-    ? 'enterprise'
-    : studentCount >= 500
-      ? 'professional'
-      : studentCount >= 250
-        ? 'standard'
-        : 'starter';
-  if ($('f-plan')) $('f-plan').value = inferredPlan;
-
   const source = `Lead source: ${lead.name}${lead.phone ? ` (${lead.phone})` : ''}`;
   const existingNotes = (lead.notes || '').trim();
   if ($('f-notes')) $('f-notes').value = existingNotes ? `${existingNotes}\n${source}` : source;
@@ -1130,10 +1018,9 @@ function toggleCrmMetrics() {
 
 // Rendering
 function renderInstanceRow(instance, mode = 'compact') {
-  const plan = findPlan(instance.planId);
   const extraCols = mode === 'full'
     ? `<td><span class="version-chip">${esc(instance.typeLabel)}</span></td>
-       <td><span class="version-chip">${esc(plan.name)}</span></td>`
+       <td><span class="version-chip">Not connected</span></td>`
     : '';
 
   return `<tr>
@@ -1231,10 +1118,10 @@ function resolveServerIp() {
     const label = row.querySelector('.sb-footer-label')?.textContent?.trim().toLowerCase();
     if (label === 'server') {
       const value = row.querySelector('.sb-footer-val')?.textContent?.trim();
-      if (value) return value;
+      if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(value || '')) return value;
     }
   }
-  return '185.127.16.124';
+  return '';
 }
 
 function renderInstances() {
@@ -1243,11 +1130,9 @@ function renderInstances() {
 
   const renderGroupHeader = group => {
     const primary = group.items.find(item => Number(item.fe) > 0) || group.items[0] || {};
-    const domain = primary.domain
-      || DOMAIN_OVERRIDES[group.key]
-      || `${slugify(group.name).replace(/-(frontend|backend|db|database)-?\d*$/i, '')}.trendscore.co.ke`;
-    const feLabel = Number.isFinite(group.fePort) ? `${serverIp}:${group.fePort}` : '-';
-    const openIpUrl = Number.isFinite(group.fePort) ? `http://${serverIp}:${group.fePort}` : '';
+    const domain = primary.domain || '';
+    const feLabel = serverIp && Number.isFinite(group.fePort) ? `${serverIp}:${group.fePort}` : '-';
+    const openIpUrl = serverIp && Number.isFinite(group.fePort) ? `http://${serverIp}:${group.fePort}` : '';
     const openDomainUrl = domain ? `https://${domain}` : '';
     const domainLink = openDomainUrl ? `<a class="group-open-link group-open-domain-link" href="${esc(openDomainUrl)}" target="_blank" rel="noopener noreferrer" title="Open domain" style="margin-left:8px;display:inline-flex;align-items:center;text-decoration:none;">↗</a>` : '';
     const ipLink = openIpUrl ? `<a class="group-open-link group-open-ip-link" href="${esc(openIpUrl)}" target="_blank" rel="noopener noreferrer" title="Open IP endpoint" style="margin-left:8px;display:inline-flex;align-items:center;text-decoration:none;">↗</a>` : '';
@@ -1276,10 +1161,10 @@ function renderInstances() {
   }).join('');
 
   const overview = $('instance-table');
-  if (overview) overview.innerHTML = renderGroupedBody('compact');
+  if (overview) overview.innerHTML = groups.length ? renderGroupedBody('compact') : '<tr><td colspan="7">No runtime instances are available.</td></tr>';
 
   const full = $('instance-table-full');
-  if (full) full.innerHTML = renderGroupedBody('full');
+  if (full) full.innerHTML = groups.length ? renderGroupedBody('full') : '<tr><td colspan="9">No runtime instances are available.</td></tr>';
 }
 
 function renderMetrics() {
@@ -1288,19 +1173,19 @@ function renderMetrics() {
   const total = INSTANCES.reduce((sum, instance) => sum + instance.containers, 0);
   const schoolGroups = groupInstances(INSTANCES).filter(group => group.complete).length;
 
-  if ($('m-schools')) $('m-schools').textContent = Number.isFinite(Number(RUNTIME_METRICS?.liveSchools)) ? RUNTIME_METRICS.liveSchools : schoolGroups;
-  if ($('m-containers')) $('m-containers').textContent = RUNTIME_METRICS?.containersHealthy || `${healthy}/${total}`;
-  if ($('m-storage')) $('m-storage').textContent = `${fmt(Number(RUNTIME_METRICS?.storageUsedGb ?? totalStorage))} GB`;
+  if ($('m-schools')) $('m-schools').textContent = liveMode ? (Number.isFinite(Number(RUNTIME_METRICS?.liveSchools)) ? RUNTIME_METRICS.liveSchools : schoolGroups) : '—';
+  if ($('m-containers')) $('m-containers').textContent = liveMode ? (RUNTIME_METRICS?.containersHealthy || `${healthy}/${total}`) : '—';
+  if ($('m-storage')) $('m-storage').textContent = liveMode ? `${fmt(Number(RUNTIME_METRICS?.storageUsedGb ?? totalStorage))} GB` : '—';
 
   const latestDeploy = DEPLOYMENTS[0];
   if ($('m-deploy')) {
     $('m-deploy').textContent = latestDeploy?.imageTag || latestDeploy?.title?.replace(/^Promoted /, '')?.slice(0, 12) || '—';
   }
   if ($('m-deploy-sub')) {
-    $('m-deploy-sub').textContent = latestDeploy?.copy || 'Promote tested demo build to schools';
+    $('m-deploy-sub').textContent = latestDeploy?.copy || 'No deployment record is available.';
   }
   if ($('m-deploy-badge')) {
-    $('m-deploy-badge').textContent = latestDeploy?.time ? latestDeploy.time : 'Promote →';
+    $('m-deploy-badge').textContent = latestDeploy?.time || 'No deployment yet';
   }
   if ($('overview-sub')) {
     $('overview-sub').textContent = liveMode
@@ -1312,6 +1197,10 @@ function renderMetrics() {
 function renderTimeline(elId, maxItems = 99) {
   const el = $(elId);
   if (!el) return;
+  if (!DEPLOYMENTS.length) {
+    el.innerHTML = '<div class="tl-item"><div class="tl-copy">No deployment history is available.</div></div>';
+    return;
+  }
   el.innerHTML = DEPLOYMENTS.slice(0, maxItems).map(item => `
     <div class="tl-item">
       <div class="tl-time">${esc(item.time)}</div>
@@ -1323,23 +1212,29 @@ function renderTimeline(elId, maxItems = 99) {
 }
 
 function renderCapacity() {
-  const diskTotal = totalDiskGb();
   const capacitySub = $('capacity-sub');
+  const el = $('capacity-items');
+  if (!liveMode || !RUNTIME_METRICS) {
+    if (capacitySub) capacitySub.textContent = 'Live host capacity metrics are unavailable.';
+    if (el) el.innerHTML = '<div class="capacity-item">No capacity figures are shown without live metrics.</div>';
+    return;
+  }
+
+  const diskTotal = totalDiskGb();
   if (capacitySub) capacitySub.textContent = `VPS disk allocation \u00b7 ${fmt(diskTotal)} GB total`;
   const totalStorage = INSTANCES.reduce((sum, instance) => sum + instance.storage, 0);
   const imagesUsed = Number(RUNTIME_METRICS?.imagesGb || 0);
   const volumesUsed = Number(RUNTIME_METRICS?.volumesGb || 0);
   const runtimeUsed = Number(RUNTIME_METRICS?.storageUsedGb || 0);
   const stackUsed = Math.max(0, runtimeUsed - totalStorage);
-  const freeUsed = Math.max(0, diskTotal - runtimeUsed);
+  const freeUsed = Math.max(0, diskTotal - Number(RUNTIME_METRICS.diskUsedGb || 0));
   const items = [
     { label: 'Images', used: imagesUsed, total: diskTotal, color: 'brand', meta: 'Docker images stored on this server' },
     { label: 'Volumes', used: volumesUsed, total: diskTotal, color: 'teal', meta: 'Persistent Docker volumes' },
-    { label: 'Platform Stack', used: stackUsed, total: diskTotal, color: 'amber', meta: 'Containers and shared runtime layers' },
-    { label: 'School Data', used: totalStorage, total: diskTotal, color: 'teal', meta: 'DB + uploads + backups across all instances' },
-    { label: 'Free Space', used: freeUsed, total: diskTotal, color: 'green', meta: 'Available for new instances' },
+    { label: 'Other Docker storage', used: stackUsed, total: diskTotal, color: 'amber', meta: 'Docker usage not attributed to school project volumes' },
+    { label: 'School project volumes', used: totalStorage, total: diskTotal, color: 'teal', meta: 'Docker volumes attributed to runtime school projects' },
+    { label: 'Host free space', used: freeUsed, total: diskTotal, color: 'green', meta: 'Filesystem free space, including non-Docker files' },
   ];
-  const el = $('capacity-items');
   if (!el) return;
   el.innerHTML = items.map(item => {
     const pct = Math.round(Math.max(0, item.used) / Math.max(item.total, 1) * 100);
@@ -1352,6 +1247,13 @@ function renderCapacity() {
 }
 
 function renderStorageSection() {
+  if (!liveMode || !RUNTIME_METRICS) {
+    if ($('s-total')) $('s-total').textContent = '—';
+    if ($('disk-breakdown')) $('disk-breakdown').innerHTML = '<div class="capacity-item">Live storage metrics are unavailable.</div>';
+    if ($('per-instance-storage')) $('per-instance-storage').innerHTML = '<div class="storage-item">No instance storage figures are shown without live metrics.</div>';
+    return;
+  }
+
   const total = INSTANCES.reduce((sum, instance) => sum + instance.storage, 0);
   if ($('s-total')) $('s-total').textContent = fmt(total) + ' GB';
 
@@ -1359,12 +1261,14 @@ function renderStorageSection() {
   if (disk) {
     const diskTotal = totalDiskGb();
     const runtimeUsed = Number(RUNTIME_METRICS?.storageUsedGb || 0);
-    const platformUsed = Math.max(0, runtimeUsed - total);
+    const imagesUsed = Number(RUNTIME_METRICS?.imagesGb || 0);
+    const volumesUsed = Number(RUNTIME_METRICS?.volumesGb || 0);
+    const otherDockerUsed = Math.max(0, runtimeUsed - imagesUsed - volumesUsed);
     const rows = [
-      { label: 'Platform Stack', used: platformUsed, total: diskTotal, color: 'brand' },
-      { label: 'School Databases', used: INSTANCES.reduce((sum, instance) => sum + instance.dbGb, 0), total: diskTotal, color: 'green' },
-      { label: 'Uploaded Files', used: INSTANCES.reduce((sum, instance) => sum + instance.uploads, 0), total: diskTotal, color: 'amber' },
-      { label: 'Backups', used: INSTANCES.reduce((sum, instance) => sum + instance.backups, 0), total: diskTotal, color: 'brand' },
+      { label: 'Docker images', used: imagesUsed, total: diskTotal, color: 'brand' },
+      { label: 'Docker volumes', used: volumesUsed, total: diskTotal, color: 'green' },
+      { label: 'Other Docker layers', used: otherDockerUsed, total: diskTotal, color: 'amber' },
+      { label: 'School project volumes (subset of volumes)', used: total, total: diskTotal, color: 'teal' },
     ];
     disk.innerHTML = rows.map(row => {
       const pct = Math.round(row.used / row.total * 100);
@@ -1381,7 +1285,7 @@ function renderStorageSection() {
     perInstance.innerHTML = INSTANCES.map(instance => `
       <div class="storage-item">
         <div class="sto-row"><span class="sto-name">${esc(instance.name)}</span><span class="sto-size">${fmt(instance.storage)} GB</span></div>
-        <div class="sto-meta">DB ${fmt(instance.dbGb)} GB · Uploads ${fmt(instance.uploads)} GB · Backups ${fmt(instance.backups)} GB</div>
+        <div class="sto-meta">Attributed Docker volume/container storage; DB, uploads, and backups are not separately measured.</div>
       </div>`).join('');
   }
 }
@@ -1394,6 +1298,10 @@ function renderAuditLog() {
 
   const el = $('audit-table');
   if (!el) return;
+  if (!logs.length) {
+    el.innerHTML = '<tr><td colspan="6">No audit entries are available.</td></tr>';
+    return;
+  }
   el.innerHTML = logs.map(log => `
     <tr>
       <td style="font-family:var(--mono);font-size:11px">${esc(log.time)}</td>
@@ -1417,12 +1325,11 @@ function renderControlInstances() {
   const info = $('ctrl-instance-info');
   const instance = selectedInstance();
   if (!info || !instance) return;
-  const plan = findPlan(instance.planId);
   info.innerHTML = `
     <span class="ctrl-info-chip"><span class="ctrl-info-label">Status</span><span class="badge ${statusCls(instance.status)}">${esc(instance.status)}</span></span>
     <span class="ctrl-info-chip"><span class="ctrl-info-label">Domain</span>${esc(instance.domain)}</span>
     <span class="ctrl-info-chip"><span class="ctrl-info-label">Ports</span><span class="port-list">FE :${instance.fe} · BE :${instance.be}</span></span>
-    <span class="ctrl-info-chip"><span class="ctrl-info-label">Plan</span>${esc(plan.name)}</span>
+    <span class="ctrl-info-chip"><span class="ctrl-info-label">Billing</span>Not connected</span>
     <span class="ctrl-info-chip"><span class="ctrl-info-label">Storage</span>${fmt(instance.storage)} GB</span>`;
 }
 
@@ -1450,86 +1357,6 @@ function renderLogs(lines = []) {
     return;
   }
   el.innerHTML = lines.map(line => `<span class="log-line ${esc(line.type || '')}">${esc(line.text)}</span>`).join('');
-}
-
-function renderPricingPlans() {
-  const grid = $('plans-grid');
-  if (grid) {
-    grid.innerHTML = PRICING_PLANS.map(plan => `
-      <div class="plan-card ${plan.featured ? 'featured' : ''}">
-        <div class="plan-card-top">
-          <div class="plan-name">${esc(plan.name)}</div>
-          <span class="plan-badge">${esc(plan.badge || plan.status)}</span>
-          <div class="plan-price">
-            <span class="plan-price-main">KES ${money(plan.monthly)}</span>
-            <span class="plan-price-period">/mo</span>
-          </div>
-          <div class="plan-price-alt">KES ${money(plan.termly)} termly · KES ${money(plan.annual)} annual</div>
-        </div>
-        <div class="plan-card-body">
-          <div class="plan-limit">Up to ${esc(plan.maxStudents)} learners · ${esc(plan.storageLimit)} storage</div>
-          <ul class="plan-feature-list">
-            ${plan.features.slice(0, 7).map(feature => `<li>${esc(feature)}</li>`).join('')}
-          </ul>
-        </div>
-        <div class="plan-card-footer">
-          <button class="tbl-btn primary" type="button" data-plan-edit="${esc(plan.id)}">Edit</button>
-          <button class="tbl-btn" type="button" data-plan-assign="${esc(plan.id)}">Assign</button>
-          <span class="badge ${statusCls(plan.status === 'active' ? 'Active' : plan.status === 'draft' ? 'Warning' : 'Offline')}">
-            <span class="plan-status-dot ${esc(plan.status)}"></span>${esc(plan.status)}
-          </span>
-        </div>
-      </div>`).join('');
-  }
-
-  const assignedInstances = INSTANCES.filter(instance => instance.planId).length;
-  const monthlyRevenue = INSTANCES.reduce((sum, instance) => sum + findPlan(instance.planId).monthly, 0);
-  const renewalsDue = INSTANCES.filter(instance => new Date(instance.nextRenewal) <= new Date('2026-05-29T00:00:00')).length;
-
-  if ($('p-active-plans')) $('p-active-plans').textContent = PRICING_PLANS.filter(plan => plan.status === 'active').length;
-  if ($('p-assigned')) $('p-assigned').textContent = assignedInstances;
-  if ($('p-revenue')) $('p-revenue').textContent = `KES ${Math.round(monthlyRevenue / 1000)}K`;
-  if ($('p-renewals')) $('p-renewals').textContent = renewalsDue;
-
-  const table = $('plan-assignment-table');
-  if (table) {
-    table.innerHTML = INSTANCES.map(instance => {
-      const plan = findPlan(instance.planId);
-      const amount = instance.billingCycle === 'Annual' ? plan.annual : instance.billingCycle === 'Termly' ? plan.termly : plan.monthly;
-      return `<tr>
-        <td><div class="cell-school"><strong>${esc(instance.name)}</strong><div class="cell-domain">${esc(instance.domain)}</div></div></td>
-        <td><span class="version-chip">${esc(plan.name)}</span></td>
-        <td>${esc(instance.billingCycle)}</td>
-        <td><strong>KES ${money(amount)}</strong></td>
-        <td>${fmtDate(instance.nextRenewal)}</td>
-        <td><span class="badge ${statusCls(instance.billingStatus)}">${esc(instance.billingStatus)}</span></td>
-        <td>
-          <div class="action-row">
-            <button class="tbl-btn primary" type="button" data-billing-edit="${esc(instance.name)}">Change Plan</button>
-            <button class="tbl-btn" type="button" data-billing-renew="${esc(instance.name)}">Mark Paid</button>
-          </div>
-        </td>
-      </tr>`;
-    }).join('');
-  }
-
-  renderFeatureMatrix();
-}
-
-function renderFeatureMatrix() {
-  const head = $('feature-matrix-head');
-  const body = $('feature-matrix-body');
-  if (!head || !body) return;
-
-  head.innerHTML = `<tr><th>Feature</th>${PRICING_PLANS.map(plan => `<th class="feat-plan-head">${esc(plan.name)}</th>`).join('')}</tr>`;
-  body.innerHTML = FEATURE_MATRIX.map(feature => `
-    <tr>
-      <td><strong>${esc(feature)}</strong></td>
-      ${PRICING_PLANS.map(plan => {
-        const included = plan.features.some(item => item.toLowerCase().includes(feature.toLowerCase().replace('fee tracking', 'fee')));
-        return `<td style="text-align:center"><span class="${included ? 'feat-check' : 'feat-cross'}">${included ? 'Yes' : '-'}</span></td>`;
-      }).join('')}
-    </tr>`).join('');
 }
 
 // Promote release (admin panel deploy)
@@ -1810,14 +1637,14 @@ function runConsoleDeploy() {
 }
 
 // Navigation
-const SECTIONS = ['overview', 'instances', 'storage', 'deployments', 'controls', 'pricing', 'logs', 'leads'];
+const SECTIONS = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'logs', 'leads'];
 const SECTION_LABELS = {
   overview: 'Overview',
   instances: 'Instances',
   storage: 'Storage',
   deployments: 'Promote Release',
   controls: 'Controls',
-  pricing: 'Pricing Plans',
+  billing: 'Billing & Invoices',
   logs: 'Audit Log',
   leads: 'Leads & CRM',
 };
@@ -1841,6 +1668,7 @@ function showSection(id, options = {}) {
   if (targetSection === 'deployments' && !options.skipDeployLoad) {
     refreshDeployPanel(options.deployPrefill || null);
   }
+  if (targetSection === 'billing') loadBillingData();
 
   if (!options.skipHashUpdate) {
     const nextHash = `#${targetSection}`;
@@ -1859,6 +1687,10 @@ document.querySelectorAll('.nav-item').forEach(el => {
 
 window.addEventListener('hashchange', () => {
   showSection(sectionFromHash(), { skipHashUpdate: true });
+});
+
+window.addEventListener('console:authenticated', () => {
+  if (sectionFromHash() === 'billing') loadBillingData();
 });
 
 function setSidebarCollapsed(collapsed) {
@@ -1906,26 +1738,6 @@ function closeModal() {
   $('modal-overlay')?.classList.remove('open');
 }
 
-function openPlanModal(plan = null) {
-  editingPlanId = plan?.id || null;
-  if ($('plan-modal-title')) $('plan-modal-title').textContent = plan ? `Edit ${plan.name}` : 'New Pricing Plan';
-  if ($('p-name')) $('p-name').value = plan?.name || '';
-  if ($('p-badge')) $('p-badge').value = plan?.badge || '';
-  if ($('p-monthly')) $('p-monthly').value = plan?.monthly || '';
-  if ($('p-termly')) $('p-termly').value = plan?.termly || '';
-  if ($('p-annual')) $('p-annual').value = plan?.annual || '';
-  if ($('p-students')) $('p-students').value = plan?.maxStudents || '';
-  if ($('p-storage-limit')) $('p-storage-limit').value = plan?.storageLimit || '';
-  if ($('p-features')) $('p-features').value = plan?.features?.join('\n') || '';
-  if ($('p-status')) $('p-status').value = plan?.status || 'active';
-  $('plan-modal-overlay')?.classList.add('open');
-}
-
-function closePlanModal() {
-  editingPlanId = null;
-  $('plan-modal-overlay')?.classList.remove('open');
-}
-
 function openConfirm({ title, body, requireText = '', confirmLabel = 'Confirm', onConfirm }) {
   pendingConfirm = { requireText, onConfirm };
   if ($('confirm-title')) $('confirm-title').textContent = title;
@@ -1944,43 +1756,8 @@ function closeConfirm() {
   $('confirm-overlay')?.classList.remove('open');
 }
 
-function savePlan() {
-  const name = $('p-name')?.value.trim();
-  if (!name) {
-    toast('Please enter a plan name.');
-    return;
-  }
-
-  const plan = {
-    id: editingPlanId || slugify(name),
-    name,
-    badge: $('p-badge')?.value.trim() || 'Plan',
-    monthly: Number($('p-monthly')?.value || 0),
-    termly: Number($('p-termly')?.value || 0),
-    annual: Number($('p-annual')?.value || 0),
-    maxStudents: $('p-students')?.value.trim() || 'Custom',
-    storageLimit: $('p-storage-limit')?.value.trim() || 'Custom',
-    status: $('p-status')?.value || 'active',
-    featured: false,
-    features: ($('p-features')?.value || '').split(/\r?\n/).map(item => item.trim()).filter(Boolean),
-  };
-
-  const existingIndex = PRICING_PLANS.findIndex(item => item.id === plan.id);
-  if (existingIndex >= 0) {
-    PRICING_PLANS[existingIndex] = { ...PRICING_PLANS[existingIndex], ...plan };
-    addAudit({ action: 'Pricing Plan Updated', instance: plan.name, details: 'Demo plan edited locally' });
-  } else {
-    PRICING_PLANS.push(plan);
-    addAudit({ action: 'Pricing Plan Created', instance: plan.name, details: 'Demo plan added locally' });
-  }
-
-  renderPricingPlans();
-  closePlanModal();
-  toast(`${plan.name} saved in demo mode.`);
-}
-
 // Controls
-async function callControlStub(action, instanceKey = '') {
+async function callControlApi(action, instanceKey = '') {
   try {
     const endpoint = instanceKey
       ? `/api/instances/${encodeURIComponent(instanceKey)}/${encodeURIComponent(action)}`
@@ -1989,22 +1766,12 @@ async function callControlStub(action, instanceKey = '') {
       method: 'POST',
       credentials: 'same-origin',
     });
-    if (!response.ok) return { ok: false };
     const data = await response.json().catch(() => ({}));
+    if (!response.ok) return { ok: false, error: data.error || `Control failed (HTTP ${response.status})` };
     return { ok: true, data };
-  } catch (_) {
-    return { ok: false };
+  } catch (error) {
+    return { ok: false, error: error.message || 'Control API is unavailable.' };
   }
-}
-
-function controlLogLines(action, instance) {
-  const target = instance?.name || 'All Instances';
-  return [
-    { type: 'info', text: `[${nowLabel()}] queued ${action} for ${target}` },
-    { text: `[${nowLabel()}] checking container state and latest image tag` },
-    { text: `[${nowLabel()}] writing audit event to console activity log` },
-    { type: 'warn', text: `[${nowLabel()}] demo mode: no production container was changed` },
-  ];
 }
 
 async function runControl(action, label, options = {}) {
@@ -2014,7 +1781,7 @@ async function runControl(action, label, options = {}) {
   if (options.confirm) {
     openConfirm({
       title: label,
-      body: `${label} will be recorded for ${target}. This demo does not change production, but the real version will require this confirmation before continuing.`,
+      body: `${label} will affect ${target}. Confirm only if this operational change is intended.`,
       requireText: options.requireText ? instance.name : '',
       confirmLabel: label,
       onConfirm: () => runControl(action, label, { ...options, confirm: false }),
@@ -2024,22 +1791,16 @@ async function runControl(action, label, options = {}) {
 
   const actionMap = { redeploy: 'redeploy', restart: 'restart', stop: 'stop', drop: 'drop', start: 'start', health: 'health' };
   const mappedAction = actionMap[action] || action;
-  const result = await callControlStub(mappedAction, options.global ? '' : instance.key || instance.name);
+  const result = await callControlApi(mappedAction, options.global ? '' : instance.key || instance.name);
   if (!result.ok) {
-    toast('Control API is not available or your role is not allowed.');
+    renderLogs([{ type: 'error', text: result.error }]);
+    toast(result.error);
+    return;
   }
 
   await refreshFromRuntime();
-
-  renderLogs(controlLogLines(action, options.global ? null : instance));
-  addAudit({
-    action: label,
-    instance: target,
-    details: result.ok ? 'Live control endpoint executed request' : 'Control failed or denied',
-    status: action.includes('stop') || action.includes('reset') || action.includes('purge') || action.includes('remove') ? 'Warning' : 'Success',
-  });
   renderEverything();
-  toast(`${label} recorded for ${target}.`);
+  toast(`${label} completed for ${target}.`);
 }
 
 async function handleControlButton(btn) {
@@ -2075,9 +1836,9 @@ async function handleControlButton(btn) {
         return;
       }
     } catch (_) {}
-    renderLogs(controlLogLines('logs', active));
-    addAudit({ action: 'Fetch Logs', instance: active.name, details: 'Fallback demo logs shown', status: 'Warning' });
-    toast('Could not fetch live logs. Showing fallback.');
+    const message = 'Live logs could not be loaded; no sample logs are shown.';
+    renderLogs([{ type: 'error', text: message }]);
+    toast(message);
     return;
   }
 
@@ -2165,11 +1926,6 @@ document.body.addEventListener('click', event => {
     return;
   }
 
-  if (id === 'btn-new-plan') {
-    openPlanModal();
-    return;
-  }
-
   if (id === 'btn-export-logs') {
     exportLogsCsv();
     return;
@@ -2180,45 +1936,79 @@ document.body.addEventListener('click', event => {
     return;
   }
 
+  if (id === 'billing-add-customer') {
+    openBillingCustomer();
+    return;
+  }
+  if (id === 'billing-customer-close' || id === 'billing-customer-cancel') {
+    closeBillingCustomer();
+    return;
+  }
+  if (id === 'billing-contract-close' || id === 'billing-contract-cancel') {
+    closeBillingContract();
+    return;
+  }
+
+  const customerEditId = btn.dataset.billingCustomerEdit;
+  if (customerEditId) {
+    openBillingCustomer(BILLING_CUSTOMERS.find(item => item.id === customerEditId));
+    return;
+  }
+  const contractAddCustomerId = btn.dataset.billingContractAdd;
+  if (contractAddCustomerId) {
+    openBillingContract(contractAddCustomerId);
+    return;
+  }
+  const contractEditId = btn.dataset.billingContractEdit;
+  if (contractEditId) {
+    const contract = BILLING_CONTRACTS.find(item => item.id === contractEditId);
+    if (contract) openBillingContract(contract.customerId, contract);
+    return;
+  }
+
+  if (id === 'billing-customer-save') {
+    (async () => {
+      try {
+        const customerId = $('bc-id').value;
+        const response = await fetch(customerId ? `/api/billing/customers/${encodeURIComponent(customerId)}` : '/api/billing/customers', {
+          method: customerId ? 'PUT' : 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(billingCustomerPayload()),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not save customer');
+        closeBillingCustomer();
+        await loadBillingData();
+        toast('Billing customer saved.');
+      } catch (error) { toast(error.message); }
+    })();
+    return;
+  }
+
+  if (id === 'billing-contract-save') {
+    (async () => {
+      try {
+        const contractId = $('bct-id').value;
+        const customerId = $('bct-customer-id').value;
+        const endpoint = contractId ? `/api/billing/contracts/${encodeURIComponent(contractId)}` : `/api/billing/customers/${encodeURIComponent(customerId)}/contracts`;
+        const response = await fetch(endpoint, {
+          method: contractId ? 'PUT' : 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(billingContractPayload()),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not save contract');
+        closeBillingContract();
+        await loadBillingData();
+        toast('Service contract saved.');
+      } catch (error) { toast(error.message); }
+    })();
+    return;
+  }
+
   const instanceTab = btn.dataset.instance;
   if (instanceTab) {
     selectedInstanceName = instanceTab;
     renderControlInstances();
     renderLogs();
-    return;
-  }
-
-  const planEdit = btn.dataset.planEdit;
-  if (planEdit) {
-    openPlanModal(PRICING_PLANS.find(plan => plan.id === planEdit));
-    return;
-  }
-
-  const planAssign = btn.dataset.planAssign;
-  if (planAssign) {
-    const plan = findPlan(planAssign);
-    toast(`Choose a school from the assignment table to move it to ${plan.name}.`);
-    return;
-  }
-
-  const billingEdit = btn.dataset.billingEdit;
-  if (billingEdit) {
-    const instance = INSTANCES.find(item => item.name === billingEdit);
-    selectedInstanceName = instance?.name || selectedInstanceName;
-    toast('Plan assignment editing will connect to billing workflows in Phase 2.');
-    showSection('pricing');
-    return;
-  }
-
-  const billingRenew = btn.dataset.billingRenew;
-  if (billingRenew) {
-    const instance = INSTANCES.find(item => item.name === billingRenew);
-    if (instance) {
-      instance.billingStatus = 'Active';
-      addAudit({ action: 'Billing Renewal Marked', instance: instance.name, details: 'Demo renewal status updated locally' });
-      renderPricingPlans();
-      toast(`${instance.name} marked as paid in demo mode.`);
-    }
     return;
   }
 
@@ -2272,7 +2062,7 @@ function bindModalEvents() {
   $('f-domain')?.addEventListener('input', () => {
     if ($('f-domain')) $('f-domain').dataset.userEdited = 'true';
   });
-  ['f-domain', 'f-port-fe', 'f-port-be', 'f-admin-email', 'f-notes', 'f-type', 'f-plan', 'f-image'].forEach(id => {
+  ['f-domain', 'f-port-fe', 'f-port-be', 'f-admin-email', 'f-notes', 'f-type', 'f-image'].forEach(id => {
     $(id)?.addEventListener('input', renderComposePreview);
     $(id)?.addEventListener('change', renderComposePreview);
   });
@@ -2298,7 +2088,6 @@ function bindModalEvents() {
         fePort: Number($('f-port-fe')?.value || 0) || 0,
         bePort: appRange.requireBe ? (Number($('f-port-be')?.value || 0) || 0) : 0,
         institutionType: $('f-type')?.value || 'PRIMARY_CBC',
-        planId: $('f-plan')?.value || 'professional',
         adminEmail: $('f-admin-email')?.value.trim() || '',
         notes: $('f-notes')?.value.trim() || '',
         db: `${currentProvisionApp}_${slugify(name).replace(/-/g, '_')}`,
@@ -2433,11 +2222,6 @@ function bindModalEvents() {
     })();
   });
 
-  $('plan-modal-close')?.addEventListener('click', closePlanModal);
-  $('plan-modal-cancel')?.addEventListener('click', closePlanModal);
-  $('plan-modal-submit')?.addEventListener('click', savePlan);
-  $('plan-modal-overlay')?.addEventListener('click', event => { if (event.target === $('plan-modal-overlay')) closePlanModal(); });
-
   $('confirm-close')?.addEventListener('click', closeConfirm);
   $('confirm-cancel')?.addEventListener('click', closeConfirm);
   $('confirm-overlay')?.addEventListener('click', event => { if (event.target === $('confirm-overlay')) closeConfirm(); });
@@ -2468,7 +2252,6 @@ function renderEverything() {
   renderAuditLog();
   renderControlInstances();
   renderModuleToggles();
-  renderPricingPlans();
   if(typeof renderPipeline === 'function') renderPipeline();
   if(typeof renderLeadsList === 'function') renderLeadsList();
 }
