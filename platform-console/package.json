@@ -4,8 +4,9 @@
   "description": "Trends CORE — SaaS Platform Control Panel (v1)",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "start": "node --experimental-sqlite server.js",
+    "dev": "node --experimental-sqlite server.js",
+    "test": "node --test tests/verify.test.js tests/login.test.js"
   },
   "dependencies": {
     "cookie-parser": "^1.4.6",

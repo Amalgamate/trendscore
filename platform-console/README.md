@@ -11,11 +11,15 @@ cd platform-console
 npm install
 ```
 
-Then start it:
+Then start it (the npm script enables Node's SQLite runtime for the central billing store):
 
 ```bash
-node server.js
+npm start
 ```
+
+Use Node.js 22.5 or newer. The platform billing registry is stored in
+`CONSOLE_DATA_DIR/platform-billing.sqlite`; production deployment mounts
+`/app/data` to the console's persistent host data directory.
 
 Open: **http://localhost:3100**
 
@@ -103,3 +107,4 @@ platform-console/
 - Connect Docker status, real storage metrics, deploy history
 - Audited start, stop, restart, backup, redeploy controls
 - NGINX Proxy Manager at admin.trendscore.co.ke
+- Convert approved contract terms into reviewed draft invoices, then add PDF/email delivery after accounting and eTIMS decisions are signed off

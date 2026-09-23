@@ -140,6 +140,7 @@
 
     stopSessionTimer();
     currentUser  = null;
+    window.consoleUserRole = null;
     sessionStart = null;
 
     // Restore all nav items on lock (clean slate for next login)
@@ -148,6 +149,7 @@
       el.style.opacity = '';
       el.style.pointerEvents = '';
     });
+    document.querySelectorAll('[data-super-admin-only]').forEach(element => { element.hidden = false; });
 
     if (reason === 'expired') {
       showError('Your session has expired. Please sign in again.', 'session');
@@ -155,6 +157,7 @@
   }
 
   function unlockConsole(user, access) {
+    window.consoleUserRole = user.role;
     currentUser  = user;
     sessionStart = Date.now();
 
@@ -174,11 +177,12 @@
 
     startSessionTimer();
     applyRoleRestrictions(user.role, access);
+    window.dispatchEvent(new Event('console:authenticated'));
   }
 
   // ── Role-based UI restrictions ───────────────────────────────────────────
   function applyRoleRestrictions(role, access) {
-    const allSections = ['overview', 'instances', 'storage', 'deployments', 'controls', 'pricing', 'logs'];
+    const allSections = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'logs'];
 
     allSections.forEach(section => {
       const navItem = document.querySelector(`.nav-item[data-section="${section}"]`);
@@ -202,6 +206,10 @@
           panel.classList.remove('access-locked');
         }
       }
+    });
+
+    document.querySelectorAll('[data-super-admin-only]').forEach(element => {
+      element.hidden = role !== 'super_admin';
     });
 
     const activeNav = document.querySelector('.nav-item.active');

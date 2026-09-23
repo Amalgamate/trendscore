@@ -4,10 +4,12 @@ const cookieParser = require('cookie-parser');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const crypto = require('crypto');
 const { promisify } = require('util');
 const { execFile } = require('child_process');
 const Docker = require('dockerode');
 const si = require('systeminformation');
+const { createBillingStore } = require('./billing-store');
 
 const execFileAsync = promisify(execFile);
 
@@ -48,6 +50,7 @@ const CONSOLE_DATA_DIR = process.env.CONSOLE_DATA_DIR || __dirname;
 fs.mkdirSync(CONSOLE_DATA_DIR, { recursive: true });
 const LEADS_STORE_FILE = path.join(CONSOLE_DATA_DIR, 'leads.store.json');
 const AUDIT_STORE_FILE = path.join(CONSOLE_DATA_DIR, 'audit.store.json');
+const billingStore = createBillingStore(CONSOLE_DATA_DIR);
 const MAX_AUDIT_ENTRIES = 2000;
 
 // In-memory deployment log (ephemeral — only tracks this process session)
@@ -589,6 +592,49 @@ function requireRole(...allowedRoles) {
   };
 }
 
+// ── Login hardening (F-04): constant-time password compare + lockout ──────
+// This does not require the Stage-2 console database: it's an in-memory,
+// per-process mitigation for the two concrete weaknesses in the current
+// env-file auth (timing side-channel + unlimited brute force). Full P1-03
+// (personal DB accounts, argon2id hashes, TOTP MFA, revocable sessions)
+// still depends on the Postgres console DB (D-01, Stage 2) and is not done
+// here — bolting MFA/session tables onto env-file auth now would be
+// throwaway work once that DB exists.
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
+// Fixed-length target so a lookup for an unknown email takes the same
+// branch (and roughly the same time) as a lookup for a known one.
+const DUMMY_PASSWORD_COMPARE_TARGET = 'trends-core-unknown-account-dummy-compare-target';
+const loginAttempts = new Map(); // normalized email -> { count, firstAttemptAt, lockedUntil }
+
+function timingSafeStringsEqual(a, b) {
+  const aHash = crypto.createHash('sha256').update(String(a)).digest();
+  const bHash = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(aHash, bHash);
+}
+
+function isLoginLockedOut(normalizedEmail) {
+  const state = loginAttempts.get(normalizedEmail);
+  return Boolean(state && state.lockedUntil && Date.now() < state.lockedUntil);
+}
+
+function recordFailedLogin(normalizedEmail) {
+  const now = Date.now();
+  const prev = loginAttempts.get(normalizedEmail);
+  const windowExpired = prev && now - prev.firstAttemptAt > LOGIN_LOCKOUT_MS;
+  const next = (!prev || windowExpired)
+    ? { count: 1, firstAttemptAt: now, lockedUntil: 0 }
+    : { count: prev.count + 1, firstAttemptAt: prev.firstAttemptAt, lockedUntil: prev.lockedUntil };
+  if (next.count >= LOGIN_MAX_ATTEMPTS) {
+    next.lockedUntil = now + LOGIN_LOCKOUT_MS;
+  }
+  loginAttempts.set(normalizedEmail, next);
+}
+
+function clearLoginAttempts(normalizedEmail) {
+  loginAttempts.delete(normalizedEmail);
+}
+
 app.post('/api/login', (req, res) => {
   if (!JWT_SECRET || USERS.length === 0) {
     return res.status(503).json({ error: 'Console authentication is not configured.' });
@@ -599,11 +645,24 @@ app.post('/api/login', (req, res) => {
     return res.status(400).json({ error: 'Email and password are required.' });
   }
 
-  const user = USERS.find(
-    u => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-  );
+  const normalizedEmail = String(email).trim().toLowerCase();
 
-  if (!user) return res.status(401).json({ error: 'Invalid email or password.' });
+  if (isLoginLockedOut(normalizedEmail)) {
+    return res.status(429).json({ error: 'Too many failed attempts. Try again in a few minutes.' });
+  }
+
+  const user = USERS.find(u => u.email.toLowerCase() === normalizedEmail);
+  // Always run the comparison, even for an unknown email, against a
+  // same-shape dummy target — avoids both the string-compare timing
+  // side-channel and an early-return timing tell for "account exists".
+  const passwordMatches = timingSafeStringsEqual(password, user ? user.password : DUMMY_PASSWORD_COMPARE_TARGET);
+
+  if (!user || !passwordMatches) {
+    recordFailedLogin(normalizedEmail);
+    return res.status(401).json({ error: 'Invalid email or password.' });
+  }
+
+  clearLoginAttempts(normalizedEmail);
 
   const payload = { email: user.email, role: user.role, name: user.name };
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
@@ -1158,10 +1217,14 @@ async function applyInstanceAction(instanceKey, action) {
 
   for (const cid of target.containerIds) {
     const container = docker.getContainer(cid);
-    if (action === 'start') await container.start().catch(() => undefined);
-    if (action === 'stop') await container.stop({ t: 10 }).catch(() => undefined);
-    if (action === 'drop') await container.remove({ force: true }).catch(() => undefined);
-    if (action === 'restart' || action === 'redeploy') await container.restart({ t: 10 }).catch(() => undefined);
+    if (action === 'start') await container.start();
+    if (action === 'stop') await container.stop({ t: 10 });
+    if (action === 'drop') {
+      const err = new Error('Direct container removal is disabled. Use the reviewed school decommission workflow.');
+      err.code = 501;
+      throw err;
+    }
+    if (action === 'restart' || action === 'redeploy') await container.restart({ t: 10 });
   }
 
   return target;
@@ -1265,22 +1328,11 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
 
 app.post('/api/controls/:action', requireAuth, requireRole('super_admin'), async (req, res) => {
   const action = String(req.params.action || '').toLowerCase();
-  if (action === 'start-all' || action === 'stop-all' || action === 'redeploy-all') {
-    try {
-      const { instances } = await collectRuntime();
-      for (const i of instances) {
-        if (action === 'start-all') await applyInstanceAction(i.key, 'start');
-        if (action === 'stop-all') await applyInstanceAction(i.key, 'stop');
-        if (action === 'redeploy-all') await applyInstanceAction(i.key, 'redeploy');
-      }
-      pushAudit(action.toUpperCase(), 'All Instances', req.user.email, `Bulk action ${action} completed`, 'Warning');
-      return res.json({ ok: true, action, status: 'done' });
-    } catch (error) {
-      return res.status(500).json({ error: `Bulk action failed: ${error.message}` });
-    }
-  }
-
-  return res.json({ ok: true, action, status: 'accepted' });
+  return res.status(501).json({
+    ok: false,
+    action,
+    error: 'Bulk controls are disabled until they use an explicit school target and approved workflow.',
+  });
 });
 
 // ── Audit log endpoint (now reads from file) ──────────────────────────────
@@ -1538,7 +1590,135 @@ app.delete('/api/leads/:id', requireAuth, requireRole('super_admin', 'platform_o
   return res.json({ ok: true });
 });
 
-app.use(express.static(path.join(__dirname)));
+// ── Platform customer and contract registry ────────────────────────────────
+const BILLING_CADENCES = new Set(['one_off', 'monthly', 'termly', 'annual', 'custom']);
+const CONTRACT_STATUSES = new Set(['draft', 'active', 'ended', 'cancelled']);
+
+function billingText(value, maxLength = 500) {
+  return String(value ?? '').trim().slice(0, maxLength);
+}
+
+function normalizeBillingCustomer(body = {}) {
+  const status = billingText(body.status || 'active', 20).toLowerCase();
+  const currency = billingText(body.currency || 'KES', 3).toUpperCase();
+  if (!['active', 'inactive'].includes(status)) throw new Error('status must be active or inactive');
+  if (!/^[A-Z]{3}$/.test(currency)) throw new Error('currency must be a three-letter code');
+  const tenantKey = billingText(body.tenantKey, 160).toLowerCase();
+  if (tenantKey && !/^[a-z0-9][a-z0-9._-]*$/.test(tenantKey)) throw new Error('tenant key may contain only lowercase letters, numbers, dots, underscores, and hyphens');
+  const billingEmail = billingText(body.billingEmail, 254).toLowerCase();
+  if (billingEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(billingEmail)) throw new Error('billing email is invalid');
+  return {
+    name: billingText(body.name, 160),
+    legalName: billingText(body.legalName, 200),
+    tenantKey,
+    billingEmail,
+    billingPhone: billingText(body.billingPhone, 40),
+    billingAddress: billingText(body.billingAddress, 1000),
+    taxIdentifier: billingText(body.taxIdentifier, 100),
+    currency,
+    paymentTerms: billingText(body.paymentTerms, 160),
+    status,
+  };
+}
+
+function normalizeBillingContract(body = {}, customerId) {
+  const cadence = billingText(body.cadence, 20).toLowerCase();
+  const status = billingText(body.status || 'draft', 20).toLowerCase();
+  if (!BILLING_CADENCES.has(cadence)) throw new Error(`cadence must be one of: ${[...BILLING_CADENCES].join(', ')}`);
+  if (!CONTRACT_STATUSES.has(status)) throw new Error(`status must be one of: ${[...CONTRACT_STATUSES].join(', ')}`);
+  return {
+    customerId,
+    reference: billingText(body.reference, 120),
+    serviceDescription: billingText(body.serviceDescription, 500),
+    cadence,
+    startDate: billingText(body.startDate, 10),
+    endDate: billingText(body.endDate, 10),
+    renewalDate: billingText(body.renewalDate, 10),
+    termsNote: billingText(body.termsNote, 3000),
+    status,
+  };
+}
+
+function validateBillingDates(contract) {
+  for (const key of ['startDate', 'endDate', 'renewalDate']) {
+    const value = contract[key];
+    if (value && (!/^\d{4}-\d{2}-\d{2}$/.test(value) || new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) !== value)) {
+      throw new Error(`${key} must be a valid date in YYYY-MM-DD format`);
+    }
+  }
+  if (contract.startDate && contract.endDate && contract.endDate < contract.startDate) throw new Error('endDate cannot be before startDate');
+}
+
+app.get('/api/billing/customers', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
+  res.json({ ok: true, customers: billingStore.listCustomers() });
+});
+
+app.post('/api/billing/customers', requireAuth, requireRole('super_admin'), (req, res) => {
+  try {
+    const customer = normalizeBillingCustomer(req.body);
+    if (!customer.name) return res.status(400).json({ error: 'Customer name is required' });
+    customer.id = crypto.randomUUID();
+    const created = billingStore.createCustomer(customer);
+    pushAudit('BILLING_CUSTOMER_CREATE', created.name, req.user.email, `Created billing customer ${created.name}`);
+    return res.status(201).json({ ok: true, customer: created });
+  } catch (error) {
+    const duplicate = String(error.message).includes('UNIQUE constraint failed');
+    return res.status(duplicate ? 409 : 400).json({ error: duplicate ? 'That tenant key is already linked to a billing customer' : error.message });
+  }
+});
+
+app.put('/api/billing/customers/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+  try {
+    const customer = normalizeBillingCustomer(req.body);
+    if (!customer.name) return res.status(400).json({ error: 'Customer name is required' });
+    const updated = billingStore.updateCustomer(req.params.id, customer);
+    if (!updated) return res.status(404).json({ error: 'Billing customer not found' });
+    pushAudit('BILLING_CUSTOMER_UPDATE', updated.name, req.user.email, `Updated billing customer ${updated.name}`);
+    return res.json({ ok: true, customer: updated });
+  } catch (error) {
+    const duplicate = String(error.message).includes('UNIQUE constraint failed');
+    return res.status(duplicate ? 409 : 400).json({ error: duplicate ? 'That tenant key is already linked to a billing customer' : error.message });
+  }
+});
+
+app.get('/api/billing/contracts', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  const customerId = billingText(req.query.customerId, 80);
+  res.json({ ok: true, contracts: billingStore.listContracts(customerId) });
+});
+
+app.post('/api/billing/customers/:id/contracts', requireAuth, requireRole('super_admin'), (req, res) => {
+  try {
+    if (!billingStore.getCustomer(req.params.id)) return res.status(404).json({ error: 'Billing customer not found' });
+    const contract = normalizeBillingContract(req.body, req.params.id);
+    validateBillingDates(contract);
+    if (!contract.serviceDescription) return res.status(400).json({ error: 'Service description is required' });
+    contract.id = crypto.randomUUID();
+    const created = billingStore.createContract(contract);
+    pushAudit('BILLING_CONTRACT_CREATE', req.params.id, req.user.email, `Created contract ${created.reference || created.id}`);
+    return res.status(201).json({ ok: true, contract: created });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+app.put('/api/billing/contracts/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+  try {
+    const existing = billingStore.listContracts().find(item => item.id === req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Contract not found' });
+    const contract = normalizeBillingContract(req.body, existing.customerId);
+    validateBillingDates(contract);
+    if (!contract.serviceDescription) return res.status(400).json({ error: 'Service description is required' });
+    const updated = billingStore.updateContract(req.params.id, contract);
+    pushAudit('BILLING_CONTRACT_UPDATE', existing.customerId, req.user.email, `Updated contract ${updated.reference || updated.id}`);
+    return res.json({ ok: true, contract: updated });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+// Only the public/ dir is served statically — server.js, auth-config.js, .env,
+// data/*.store.json and everything else in __dirname stay unreachable over HTTP.
+app.use(express.static(path.join(__dirname, 'public')));
 
 app.listen(PORT, () => {
   console.log(`Trends CORE Control Panel  →  http://localhost:${PORT}`);
