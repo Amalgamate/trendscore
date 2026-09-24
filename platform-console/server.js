@@ -10,7 +10,7 @@ const { execFile } = require('child_process');
 const Docker = require('dockerode');
 const si = require('systeminformation');
 const { createBillingStore } = require('./billing-store');
-const { createPdfBuffer, quotePdfLines } = require('./billing-documents');
+const { createPdfBuffer, quotePdfLines, invoicePdfBuffer } = require('./billing-documents');
 
 const execFileAsync = promisify(execFile);
 
@@ -1940,7 +1940,7 @@ app.post('/api/billing/quotes/:id/convert', requireAuth, requireRole('super_admi
     const invoice = billingStore.createDraftInvoice({
       id: crypto.randomUUID(), invoiceNumber: `DRAFT-${quote.quoteNumber}`, quoteId: quote.id,
       customerId: quote.customerId, invoiceSnapshot: {
-        source: 'accepted_quote', quoteNumber: quote.quoteNumber,
+        source: 'accepted_quote', quoteNumber: quote.quoteNumber, enrollmentCount: quote.enrollmentCount,
         customerSnapshot: quote.customerSnapshot, quoteSnapshot: quote.quoteSnapshot,
         acceptedAt: new Date().toISOString(), taxNote: quote.quoteSnapshot.taxNote,
       }, amountKsh: quote.subtotalKsh, createdBy: req.user.email,
@@ -1957,6 +1957,17 @@ app.post('/api/billing/quotes/:id/convert', requireAuth, requireRole('super_admi
 
 app.get('/api/billing/invoices', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
   res.json({ ok: true, invoices: billingStore.listInvoices() });
+});
+
+app.get('/api/billing/invoices/:id/pdf', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  const invoice = billingStore.getInvoice(req.params.id);
+  if (!invoice) return res.status(404).json({ ok: false, error: 'Invoice not found' });
+  const pdf = invoicePdfBuffer(invoice);
+  const filename = String(invoice.invoiceNumber || 'draft-invoice').replace(/[^a-zA-Z0-9_-]/g, '_');
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}.pdf"`);
+  res.setHeader('Content-Length', pdf.length);
+  return res.send(pdf);
 });
 
 app.post('/api/billing/customers/:id/contracts', requireAuth, requireRole('super_admin'), (req, res) => {

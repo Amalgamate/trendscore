@@ -680,12 +680,13 @@ function renderBillingQuotes() {
     }).join('');
   }
   if (!BILLING_INVOICES.length) {
-    invoicesBody.innerHTML = '<tr><td colspan="6">No draft invoices yet.</td></tr>';
+    invoicesBody.innerHTML = '<tr><td colspan="7">No draft invoices yet.</td></tr>';
   } else {
     invoicesBody.innerHTML = BILLING_INVOICES.map(invoice => {
       const customer = BILLING_CUSTOMERS.find(item => item.id === invoice.customerId) || {};
       const quote = BILLING_QUOTES.find(item => item.id === invoice.quoteId);
-      return `<tr><td>${esc(invoice.invoiceNumber)}</td><td>${esc(customer.name || 'Customer')}</td><td>${esc(quote?.quoteNumber || '')}</td><td>${formatBillingKsh(invoice.amountKsh)}</td><td>${esc(invoice.status)}</td><td>${esc(String(invoice.createdAt || '').slice(0, 10))}</td></tr>`;
+      const pdfUrl = `/api/billing/invoices/${encodeURIComponent(invoice.id)}/pdf`;
+      return `<tr><td><strong>${esc(invoice.invoiceNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${esc(quote?.quoteNumber || '')}</td><td>${formatBillingKsh(invoice.amountKsh)}</td><td>${esc(invoice.status)}</td><td>${esc(String(invoice.createdAt || '').slice(0, 10))}</td><td><a class="btn sm" href="${pdfUrl}" target="_blank" rel="noopener">PDF preview</a></td></tr>`;
     }).join('');
   }
   document.querySelectorAll('[data-super-admin-only]').forEach(element => {

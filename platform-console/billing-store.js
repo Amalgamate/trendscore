@@ -194,6 +194,9 @@ function createBillingStore(dataDir) {
     listInvoices() {
       return db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices ORDER BY created_at DESC`).all().map(decodeInvoice);
     },
+    getInvoice(id) {
+      return decodeInvoice(db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices WHERE id=?`).get(id) || null);
+    },
     getInvoiceForQuote(quoteId) {
       return decodeInvoice(db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices WHERE quote_id=?`).get(quoteId) || null);
     },
