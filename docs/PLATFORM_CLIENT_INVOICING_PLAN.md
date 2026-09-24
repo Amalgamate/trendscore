@@ -1,6 +1,6 @@
 # TrendSCORE Client Invoicing Plan
 
-**Status:** Customer/contract registry and quote-to-draft-invoice slice are implemented; final invoice issuance, payments, and eTIMS remain outstanding.
+**Status:** Customer/contract registry, quote-to-draft conversion, and a draft invoice PDF preview are implemented; final invoice issuance, delivery, payments, and eTIMS remain outstanding.
 **Scope:** TrendSCORE billing its school customers for platform services, managed centrally from the platform admin console.
 
 ## Goal
@@ -53,7 +53,7 @@ Use database constraints for invoice-period uniqueness, money precision/currency
 
 **Implementation checkpoint (23 September 2026):** Stage 0 removed the sample pricing UI. The first Stage 2 slice is now present in the worktree: central SQLite customer/contract records on the console persistent data volume, authenticated APIs, and admin-console customer/contract forms. Invoice issuance, price books/amounts, PDF/email, payments, reminders, and eTIMS remain unimplemented. End-to-end role and persistence validation is pending.
 
-**Quote checkpoint (24 September 2026):** The console now supports draft quotes based on the KSh student rate bands, a user-selected flat-tier or progressive calculation, an explicit one-off setup fee, the termly Communications package, and named KSh 5,000 extra modules. Quote snapshots capture the selected enrollment, calculation rule, line items, and customer details. Quotes can be downloaded as PDF, emailed as a PDF attachment with plain-text and HTML summaries through Resend, recorded as accepted, and converted idempotently into a draft invoice. The app labels quotes as not tax invoices; draft invoices cannot yet be issued or emailed. The configured console environment must supply `RESEND_API_KEY` and `BILLING_FROM_EMAIL` (or `EMAIL_FROM`) to enable sending.
+**Quote checkpoint (24 September 2026):** The console now supports draft quotes based on the KSh student rate bands, a user-selected flat-tier or progressive calculation, an explicit one-off setup fee, the termly Communications package, and named KSh 5,000 extra modules. Quote snapshots capture the selected enrollment, calculation rule, line items, and customer details. Quotes can be downloaded as PDF, emailed as a PDF attachment with plain-text and HTML summaries through Resend, recorded as accepted, and converted idempotently into a draft invoice. Draft invoices now have a branded, multi-page PDF preview with customer and source-quote details, itemized amounts, totals, and clear draft/tax-status wording. The app labels quotes and draft invoices as not tax invoices; invoice issuing, invoice email delivery, payments, and eTIMS are still outstanding. The configured console environment must supply `RESEND_API_KEY` and `BILLING_FROM_EMAIL` (or `EMAIL_FROM`) to enable sending.
 
 The rate rule defaults to one tier rate applied to all students and can be switched to progressive bands on each quote. The setup fee is required per quote and may be explicitly set to zero. Student cadence and extra-module cadence are selected per quote. These defaults are operational choices; confirm the signed commercial terms before treating them as final price-book policy. Tax is not added to quotes.
 
