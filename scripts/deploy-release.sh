@@ -76,16 +76,6 @@ BACKEND_IMAGE="${BACKEND_IMAGE_BASE}:${IMAGE_TAG}"
 CONSOLE_IMAGE="${CONSOLE_IMAGE_BASE}:${IMAGE_TAG}"
 
 [[ -n "${IMAGE_TAG}" ]] || fail "IMAGE_TAG is required"
-if [[ "${DEPLOY_CONSOLE_ONLY}" == "true" ]]; then
-  [[ "${DRY_RUN}" == "true" ]] && { log "DRY_RUN: would deploy console only with tag ${IMAGE_TAG}"; exit 0; }
-  log "════════════════════════════════════════════════════════════"
-  log "Console-only deploy (no school stacks)"
-  log "  Image tag : ${IMAGE_TAG}"
-  log "════════════════════════════════════════════════════════════"
-  deploy_console || fail "Console deploy failed"
-  log "SUCCESS: platform console deployed with tag ${IMAGE_TAG}"
-  exit 0
-fi
 [[ -n "${DEPLOY_TARGET}" ]] || fail "DEPLOY_TARGET is required"
 if [[ "${DEPLOY_TARGET}" == "school" && -z "${SCHOOL_ID}" ]]; then
   fail "SCHOOL_ID is required when DEPLOY_TARGET=school"
@@ -896,6 +886,17 @@ deploy_console() {
   log "Console health check failed on :${console_port}"
   return 1
 }
+
+if [[ "${DEPLOY_CONSOLE_ONLY}" == "true" ]]; then
+  [[ "${DRY_RUN}" == "true" ]] && { log "DRY_RUN: would deploy console only with tag ${IMAGE_TAG}"; exit 0; }
+  log "════════════════════════════════════════════════════════════"
+  log "Console-only deploy (no school stacks)"
+  log "  Image tag : ${IMAGE_TAG}"
+  log "════════════════════════════════════════════════════════════"
+  deploy_console || fail "Console deploy failed"
+  log "SUCCESS: platform console deployed with tag ${IMAGE_TAG}"
+  exit 0
+fi
 
 deploy_one() {
   local id="$1"
