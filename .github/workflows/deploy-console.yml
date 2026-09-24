@@ -100,7 +100,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Confirm published image exists
-        run: docker manifest inspect "${CONSOLE_IMAGE}:${{ needs.build.outputs.commit_sha }}" >/dev/null
+        run: docker manifest inspect "${CONSOLE_IMAGE}:sha-${{ needs.build.outputs.commit_sha }}" >/dev/null
 
       - name: Deploy console only
         env:
