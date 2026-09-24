@@ -92,6 +92,13 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: bash scripts/ci/configure-deploy-ssh.sh
 
+      - name: Install current deploy assets
+        run: bash scripts/ci/sync-deploy-assets.sh
+
+      - name: Confirm uploaded release script includes console deployment
+        run: |
+          ssh production "grep -q '^deploy_console()' /srv/zawadi/apps/deploy/deploy-release.sh"
+
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
