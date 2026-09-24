@@ -21,7 +21,9 @@ let BILLING_SCHOOLS = [];
 let BILLING_QUOTES = [];
 let BILLING_INVOICES = [];
 let BILLING_DELIVERIES = [];
-let BILLING_EMAIL_READY = false;
+let BILLING_EMAIL_STATUS = 'unknown';
+const BILLING_DATA_STATUS = { customers: 'loading', contracts: 'loading', quotes: 'loading', invoices: 'loading' };
+const BILLING_FILTERS = { customers: '', quotes: '', quoteStatus: '', invoices: '', invoiceStatus: '' };
 let billingQuotePreviewTimer = null;
 
 // Helpers
@@ -589,15 +591,19 @@ function containerRows(instance) {
 async function loadBillingData() {
   try {
     const [customersResponse, contractsResponse, schoolsResponse, quotesResponse, invoicesResponse, emailStatusResponse] = await Promise.all([
-      fetch('/api/billing/customers', { credentials: 'same-origin' }),
-      fetch('/api/billing/contracts', { credentials: 'same-origin' }),
+      fetch('/api/billing/customers', { credentials: 'same-origin' }).catch(() => null),
+      fetch('/api/billing/contracts', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/schools', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/quotes', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/invoices', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/email-status', { credentials: 'same-origin' }).catch(() => null),
     ]);
-    if (!customersResponse.ok || !contractsResponse.ok) throw new Error('Could not load billing records');
-    const [customersData, contractsData] = await Promise.all([customersResponse.json(), contractsResponse.json()]);
+    const [customersData, contractsData] = await Promise.all([
+      customersResponse?.ok ? customersResponse.json().catch(() => ({})) : {},
+      contractsResponse?.ok ? contractsResponse.json().catch(() => ({})) : {},
+    ]);
+    BILLING_DATA_STATUS.customers = customersResponse?.ok && Array.isArray(customersData.customers) ? 'ready' : 'unavailable';
+    BILLING_DATA_STATUS.contracts = contractsResponse?.ok && Array.isArray(contractsData.contracts) ? 'ready' : 'unavailable';
     BILLING_CUSTOMERS = customersData.customers || [];
     BILLING_CONTRACTS = contractsData.contracts || [];
     const schoolsData = schoolsResponse?.ok ? await schoolsResponse.json().catch(() => ({})) : {};
@@ -605,14 +611,24 @@ async function loadBillingData() {
     const quotesData = quotesResponse?.ok ? await quotesResponse.json().catch(() => ({})) : {};
     const invoicesData = invoicesResponse?.ok ? await invoicesResponse.json().catch(() => ({})) : {};
     const emailData = emailStatusResponse?.ok ? await emailStatusResponse.json().catch(() => ({})) : {};
+    BILLING_DATA_STATUS.quotes = quotesResponse?.ok && Array.isArray(quotesData.quotes) ? 'ready' : 'unavailable';
+    BILLING_DATA_STATUS.invoices = invoicesResponse?.ok && Array.isArray(invoicesData.invoices) ? 'ready' : 'unavailable';
     BILLING_QUOTES = quotesData.quotes || [];
     BILLING_INVOICES = invoicesData.invoices || [];
     BILLING_DELIVERIES = quotesData.deliveries || [];
-    BILLING_EMAIL_READY = emailData.configured === true;
+    BILLING_EMAIL_STATUS = emailStatusResponse?.ok ? (emailData.configured === true ? 'ready' : 'unconfigured') : 'unavailable';
     renderBillingRegistry();
   } catch (error) {
+    Object.keys(BILLING_DATA_STATUS).forEach(key => { BILLING_DATA_STATUS[key] = 'unavailable'; });
+    BILLING_EMAIL_STATUS = 'unavailable';
     if ($('billing-customers-table')) $('billing-customers-table').innerHTML = `<tr><td colspan="7">${esc(error.message || 'Billing data is unavailable.')}</td></tr>`;
     if ($('billing-contracts-table')) $('billing-contracts-table').innerHTML = '<tr><td colspan="7">Billing contracts are unavailable.</td></tr>';
+    ['billing-kpi-customers', 'billing-kpi-open-quotes', 'billing-kpi-accepted', 'billing-kpi-drafts'].forEach(id => { if ($(id)) $(id).textContent = 'Unavailable'; });
+    if ($('billing-quotes-table')) $('billing-quotes-table').innerHTML = '<tr><td colspan="7">Quotes could not be loaded.</td></tr>';
+    if ($('billing-invoices-table')) $('billing-invoices-table').innerHTML = '<tr><td colspan="7">Invoices could not be loaded.</td></tr>';
+    if ($('billing-attention-list')) $('billing-attention-list').innerHTML = '<div class="billing-empty">Billing records could not be loaded. Refresh to try again.</div>';
+    if ($('billing-recent-list')) $('billing-recent-list').innerHTML = '<div class="billing-empty">Recent billing records are unavailable.</div>';
+    renderBillingSettings();
   }
 }
 
@@ -620,10 +636,16 @@ function renderBillingRegistry() {
   const customersBody = $('billing-customers-table');
   const contractsBody = $('billing-contracts-table');
   if (!customersBody || !contractsBody) return;
-  if (!BILLING_CUSTOMERS.length) {
+  const customerNeedle = BILLING_FILTERS.customers.trim().toLowerCase();
+  const customers = BILLING_CUSTOMERS.filter(customer => !customerNeedle || [customer.name, customer.legalName, customer.tenantKey, customer.billingEmail, customer.billingPhone].some(value => String(value || '').toLowerCase().includes(customerNeedle)));
+  if (BILLING_DATA_STATUS.customers === 'unavailable') {
+    customersBody.innerHTML = '<tr><td colspan="7">Customer records could not be loaded.</td></tr>';
+  } else if (!BILLING_CUSTOMERS.length) {
     customersBody.innerHTML = '<tr><td colspan="7">No billing customers recorded yet.</td></tr>';
+  } else if (!customers.length) {
+    customersBody.innerHTML = '<tr><td colspan="7">No customers match this search.</td></tr>';
   } else {
-    customersBody.innerHTML = BILLING_CUSTOMERS.map(customer => {
+    customersBody.innerHTML = customers.map(customer => {
       const count = BILLING_CONTRACTS.filter(contract => contract.customerId === customer.id).length;
       return `<tr><td><strong>${esc(customer.name)}</strong>${customer.legalName ? `<div class="table-sub">${esc(customer.legalName)}</div>` : ''}</td>
         <td>${esc(customer.tenantKey || 'Not linked')}</td><td>${esc(customer.billingEmail || 'No email')}<div class="table-sub">${esc(customer.billingPhone || '')}</div></td>
@@ -632,10 +654,19 @@ function renderBillingRegistry() {
         <button class="btn sm" data-billing-contract-add="${esc(customer.id)}" data-super-admin-only type="button">Add contract</button></td></tr>`;
     }).join('');
   }
-  if (!BILLING_CONTRACTS.length) {
+  const contracts = BILLING_CONTRACTS.filter(contract => {
+    if (!customerNeedle) return true;
+    const customer = BILLING_CUSTOMERS.find(item => item.id === contract.customerId);
+    return [customer?.name, contract.reference, contract.serviceDescription, contract.cadence, contract.status].some(value => String(value || '').toLowerCase().includes(customerNeedle));
+  });
+  if (BILLING_DATA_STATUS.contracts === 'unavailable') {
+    contractsBody.innerHTML = '<tr><td colspan="7">Contract records could not be loaded.</td></tr>';
+  } else if (!BILLING_CONTRACTS.length) {
     contractsBody.innerHTML = '<tr><td colspan="7">No contracts recorded yet.</td></tr>';
+  } else if (!contracts.length) {
+    contractsBody.innerHTML = '<tr><td colspan="7">No contracts match this search.</td></tr>';
   } else {
-    contractsBody.innerHTML = BILLING_CONTRACTS.map(contract => {
+    contractsBody.innerHTML = contracts.map(contract => {
       const customer = BILLING_CUSTOMERS.find(item => item.id === contract.customerId);
       const dates = [contract.startDate, contract.endDate].filter(Boolean).join(' – ') || 'Dates not set';
       return `<tr><td>${esc(customer?.name || 'Unknown customer')}</td><td>${esc(contract.reference || '—')}</td>
@@ -644,9 +675,12 @@ function renderBillingRegistry() {
     }).join('');
   }
   renderBillingQuotes();
+  renderBillingOverview();
+  renderBillingSettings();
   document.querySelectorAll('[data-super-admin-only]').forEach(element => {
     if (window.consoleUserRole) element.hidden = window.consoleUserRole !== 'super_admin';
   });
+  updateBillingActionVisibility();
 }
 
 function formatBillingKsh(amount) {
@@ -659,15 +693,28 @@ function renderBillingQuotes() {
   const emailStatus = $('billing-email-status');
   if (!quotesBody || !invoicesBody) return;
   if (emailStatus) {
-    emailStatus.textContent = BILLING_EMAIL_READY
+    emailStatus.textContent = BILLING_EMAIL_STATUS === 'ready'
       ? 'Quote email is configured. Sending attaches the quote PDF and includes the summary in the email.'
-      : 'Quote email is not configured yet. Set RESEND_API_KEY and BILLING_FROM_EMAIL (or EMAIL_FROM) for this console.';
-    emailStatus.className = `billing-email-status ${BILLING_EMAIL_READY ? 'ready' : 'unready'}`;
+      : BILLING_EMAIL_STATUS === 'unconfigured'
+        ? 'Quote email is not configured. Add the required server-side Resend key and sender address.'
+        : 'Quote email readiness could not be checked.';
+    emailStatus.className = `billing-email-status ${BILLING_EMAIL_STATUS === 'ready' ? 'ready' : BILLING_EMAIL_STATUS === 'unconfigured' ? 'unready' : ''}`;
   }
-  if (!BILLING_QUOTES.length) {
+  const quoteNeedle = BILLING_FILTERS.quotes.trim().toLowerCase();
+  const quoteStatus = BILLING_FILTERS.quoteStatus;
+  const quotes = BILLING_QUOTES.filter(quote => {
+    const customer = quote.customerSnapshot || BILLING_CUSTOMERS.find(item => item.id === quote.customerId) || {};
+    const matchesNeedle = !quoteNeedle || [quote.quoteNumber, customer.name, customer.legalName, customer.billingEmail, quote.status].some(value => String(value || '').toLowerCase().includes(quoteNeedle));
+    return matchesNeedle && (!quoteStatus || quote.status === quoteStatus);
+  });
+  if (BILLING_DATA_STATUS.quotes === 'unavailable') {
+    quotesBody.innerHTML = '<tr><td colspan="7">Quote records could not be loaded.</td></tr>';
+  } else if (!BILLING_QUOTES.length) {
     quotesBody.innerHTML = '<tr><td colspan="7">No quotes created yet.</td></tr>';
+  } else if (!quotes.length) {
+    quotesBody.innerHTML = '<tr><td colspan="7">No quotes match these filters.</td></tr>';
   } else {
-    quotesBody.innerHTML = BILLING_QUOTES.map(quote => {
+    quotesBody.innerHTML = quotes.map(quote => {
       const customer = quote.customerSnapshot || BILLING_CUSTOMERS.find(item => item.id === quote.customerId) || {};
       const existingInvoice = BILLING_INVOICES.find(invoice => invoice.quoteId === quote.id);
       const deliveryCount = BILLING_DELIVERIES.find(item => item.quoteId === quote.id)?.attempts?.length || 0;
@@ -679,10 +726,22 @@ function renderBillingQuotes() {
       return `<tr><td><strong>${esc(quote.quoteNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${Number(quote.enrollmentCount).toLocaleString('en-KE')}</td><td>${formatBillingKsh(quote.subtotalKsh)}</td><td>${esc(quote.expiresOn || 'No expiry')}</td><td>${esc(quote.status)}${deliveryCount ? `<div class="table-sub">${deliveryCount} email attempt${deliveryCount === 1 ? '' : 's'}</div>` : ''}</td><td><div class="billing-action-row">${actions.join('')}</div></td></tr>`;
     }).join('');
   }
-  if (!BILLING_INVOICES.length) {
-    invoicesBody.innerHTML = '<tr><td colspan="7">No draft invoices yet.</td></tr>';
+  const invoiceNeedle = BILLING_FILTERS.invoices.trim().toLowerCase();
+  const invoiceStatus = BILLING_FILTERS.invoiceStatus;
+  const invoices = BILLING_INVOICES.filter(invoice => {
+    const customer = BILLING_CUSTOMERS.find(item => item.id === invoice.customerId) || {};
+    const quote = BILLING_QUOTES.find(item => item.id === invoice.quoteId);
+    const matchesNeedle = !invoiceNeedle || [invoice.invoiceNumber, customer.name, customer.legalName, quote?.quoteNumber, invoice.status].some(value => String(value || '').toLowerCase().includes(invoiceNeedle));
+    return matchesNeedle && (!invoiceStatus || invoice.status === invoiceStatus);
+  });
+  if (BILLING_DATA_STATUS.invoices === 'unavailable') {
+    invoicesBody.innerHTML = '<tr><td colspan="7">Invoice records could not be loaded.</td></tr>';
+  } else if (!BILLING_INVOICES.length) {
+    invoicesBody.innerHTML = '<tr><td colspan="7">No invoices recorded yet.</td></tr>';
+  } else if (!invoices.length) {
+    invoicesBody.innerHTML = '<tr><td colspan="7">No invoices match these filters.</td></tr>';
   } else {
-    invoicesBody.innerHTML = BILLING_INVOICES.map(invoice => {
+    invoicesBody.innerHTML = invoices.map(invoice => {
       const customer = BILLING_CUSTOMERS.find(item => item.id === invoice.customerId) || {};
       const quote = BILLING_QUOTES.find(item => item.id === invoice.quoteId);
       const pdfUrl = `/api/billing/invoices/${encodeURIComponent(invoice.id)}/pdf`;
@@ -850,6 +909,106 @@ async function updateBillingQuotePreview() {
     preview.textContent = error.message;
   }
 }
+
+function renderBillingOverview() {
+  const acceptedWithoutInvoice = BILLING_QUOTES.filter(quote => quote.status === 'accepted' && !BILLING_INVOICES.some(invoice => invoice.quoteId === quote.id));
+  const openQuotes = BILLING_QUOTES.filter(quote => ['draft', 'sent'].includes(quote.status));
+  const drafts = BILLING_INVOICES.filter(invoice => invoice.status === 'draft');
+  const counts = {
+    'billing-kpi-customers': BILLING_DATA_STATUS.customers === 'ready' ? BILLING_CUSTOMERS.length : 'Unavailable',
+    'billing-kpi-open-quotes': BILLING_DATA_STATUS.quotes === 'ready' ? openQuotes.length : 'Unavailable',
+    'billing-kpi-accepted': BILLING_DATA_STATUS.quotes === 'ready' && BILLING_DATA_STATUS.invoices === 'ready' ? acceptedWithoutInvoice.length : 'Unavailable',
+    'billing-kpi-drafts': BILLING_DATA_STATUS.invoices === 'ready' ? drafts.length : 'Unavailable',
+  };
+  Object.entries(counts).forEach(([id, value]) => { if ($(id)) $(id).textContent = typeof value === 'number' ? value.toLocaleString('en-KE') : value; });
+
+  const attention = [
+    ...acceptedWithoutInvoice.map(quote => ({ type: 'quote', id: quote.id, title: `Accepted quote ${quote.quoteNumber}`, detail: `${quote.customerSnapshot?.name || 'Customer'} · ready for draft invoice`, status: 'Accepted' })),
+    ...openQuotes.map(quote => ({ type: 'quote', id: quote.id, title: `${quote.status === 'draft' ? 'Draft quote' : 'Awaiting response'} ${quote.quoteNumber}`, detail: quote.customerSnapshot?.name || 'Customer', status: quote.status })),
+    ...drafts.map(invoice => ({ type: 'invoice', id: invoice.id, title: `Draft invoice ${invoice.invoiceNumber}`, detail: `${BILLING_CUSTOMERS.find(item => item.id === invoice.customerId)?.name || 'Customer'} · ${formatBillingKsh(invoice.amountKsh)}`, status: 'Draft' })),
+  ].slice(0, 8);
+  const attentionList = $('billing-attention-list');
+  if (attentionList) {
+    const available = BILLING_DATA_STATUS.quotes === 'ready' && BILLING_DATA_STATUS.invoices === 'ready';
+    attentionList.innerHTML = !available ? '<div class="billing-empty">Attention items are unavailable while quote or invoice records cannot be loaded.</div>' : attention.length ? attention.map(item => `<button class="billing-attention-item" type="button" data-open-billing-tab="${item.type === 'quote' ? 'quotes' : 'invoices'}"><span><strong>${esc(item.title)}</strong><small>${esc(item.detail)}</small></span><span class="billing-status-chip">${esc(item.status)}</span></button>`).join('') : '<div class="billing-empty">Nothing needs attention in the current billing records.</div>';
+  }
+
+  const recentList = $('billing-recent-list');
+  const recent = [
+    ...(BILLING_DATA_STATUS.quotes === 'ready' ? BILLING_QUOTES : []).map(quote => ({ type: 'quote', reference: quote.quoteNumber, customer: quote.customerSnapshot?.name || BILLING_CUSTOMERS.find(item => item.id === quote.customerId)?.name || 'Customer', amount: quote.subtotalKsh, status: quote.status, date: quote.createdAt })),
+    ...(BILLING_DATA_STATUS.invoices === 'ready' ? BILLING_INVOICES : []).map(invoice => ({ type: 'invoice', reference: invoice.invoiceNumber, customer: BILLING_CUSTOMERS.find(item => item.id === invoice.customerId)?.name || 'Customer', amount: invoice.amountKsh, status: invoice.status, date: invoice.createdAt })),
+  ].sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))).slice(0, 6);
+  if (recentList) {
+    recentList.innerHTML = BILLING_DATA_STATUS.quotes !== 'ready' || BILLING_DATA_STATUS.invoices !== 'ready'
+      ? '<div class="billing-empty">Recent billing documents are unavailable.</div>'
+      : recent.length ? recent.map(item => `<button class="billing-recent-item" type="button" data-open-billing-tab="${item.type === 'quote' ? 'quotes' : 'invoices'}"><span><strong>${esc(item.reference)}</strong><small>${esc(item.customer)} · ${esc(String(item.date || '').slice(0, 10))}</small></span><span class="billing-recent-amount">${formatBillingKsh(item.amount)}<small>${esc(item.status)}</small></span></button>`).join('') : '<div class="billing-empty">Quotes and draft invoices will appear here when created.</div>';
+  }
+}
+
+function renderBillingSettings() {
+  const status = $('billing-settings-email-status');
+  if (!status) return;
+  status.textContent = BILLING_EMAIL_STATUS === 'ready'
+    ? 'Quote email is configured. Credentials are present and hidden.'
+    : BILLING_EMAIL_STATUS === 'unconfigured'
+      ? 'Quote email is not configured. Add the required server-side Resend key and sender address.'
+      : 'Quote email configuration could not be checked.';
+  status.className = `billing-email-status ${BILLING_EMAIL_STATUS === 'ready' ? 'ready' : BILLING_EMAIL_STATUS === 'unconfigured' ? 'unready' : ''}`;
+}
+
+const BILLING_TABS = ['overview', 'customers', 'quotes', 'invoices', 'payments', 'catalogue', 'reports', 'settings'];
+function selectBillingTab(tab, focus = false) {
+  const selected = BILLING_TABS.includes(tab) ? tab : 'overview';
+  BILLING_TABS.forEach(name => {
+    const button = $(`billing-tab-${name}`);
+    const panel = $(`billing-panel-${name}`);
+    const active = name === selected;
+    if (button) {
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-selected', active ? 'true' : 'false');
+      button.tabIndex = active ? 0 : -1;
+      if (active && focus) button.focus();
+    }
+    if (panel) panel.hidden = !active;
+  });
+  updateBillingActionVisibility(selected);
+}
+
+function updateBillingActionVisibility(activeTab = document.querySelector('.billing-tab[aria-selected="true"]')?.dataset.billingTab || 'overview') {
+  document.querySelectorAll('[data-billing-action-tab]').forEach(element => {
+    element.hidden = element.dataset.billingActionTab !== activeTab || (window.consoleUserRole && window.consoleUserRole !== 'super_admin');
+  });
+}
+
+document.querySelectorAll('[data-billing-tab]').forEach(button => {
+  button.addEventListener('click', () => selectBillingTab(button.dataset.billingTab));
+  button.addEventListener('keydown', event => {
+    const currentIndex = BILLING_TABS.indexOf(button.dataset.billingTab);
+    let nextIndex = currentIndex;
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % BILLING_TABS.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + BILLING_TABS.length) % BILLING_TABS.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = BILLING_TABS.length - 1;
+    else return;
+    event.preventDefault();
+    selectBillingTab(BILLING_TABS[nextIndex], true);
+  });
+});
+
+[
+  ['billing-customer-search', 'customers'], ['billing-quote-search', 'quotes'],
+  ['billing-invoice-search', 'invoices'], ['billing-quote-status', 'quoteStatus'],
+  ['billing-invoice-status', 'invoiceStatus'],
+].forEach(([id, key]) => {
+  const input = $(id);
+  if (!input) return;
+  const eventName = input.tagName === 'SELECT' ? 'change' : 'input';
+  input.addEventListener(eventName, () => {
+    BILLING_FILTERS[key] = input.value;
+    renderBillingRegistry();
+  });
+});
+selectBillingTab('overview');
 
 function scheduleBillingQuotePreview() {
   clearTimeout(billingQuotePreviewTimer);
@@ -2101,6 +2260,18 @@ document.body.addEventListener('click', event => {
 
   const btn = event.target.closest('button');
   if (!btn) return;
+
+  if (btn.dataset.openBillingTab) {
+    selectBillingTab(btn.dataset.openBillingTab);
+    if (btn.dataset.openBillingStatus) {
+      const key = btn.dataset.openBillingTab === 'quotes' ? 'quoteStatus' : 'invoiceStatus';
+      BILLING_FILTERS[key] = btn.dataset.openBillingStatus;
+      const filter = $(key === 'quoteStatus' ? 'billing-quote-status' : 'billing-invoice-status');
+      if (filter) filter.value = btn.dataset.openBillingStatus;
+      renderBillingQuotes();
+    }
+    return;
+  }
 
   const id = btn.id;
   const billingPickKind = btn.dataset.billingPickKind;

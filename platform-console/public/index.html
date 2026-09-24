@@ -555,40 +555,101 @@
         <div class="page-header">
           <div>
             <div class="page-eyebrow">The Silicone Sahara · v1</div>
-            <div class="page-title">Billing &amp; Invoices</div>
-            <div class="page-sub">Build customer quotes from approved school pricing and track them through draft invoicing</div>
+            <div class="page-title">Billing</div>
+            <div class="page-sub">Manage customer quotes and invoice records in one finance workspace.</div>
           </div>
-          <div class="page-actions"><button class="btn primary" id="billing-add-customer" data-super-admin-only type="button">+ Add customer</button></div>
+          <div class="page-actions">
+            <button class="btn primary" id="billing-add-customer" data-billing-action-tab="customers" data-super-admin-only type="button" hidden>+ Add customer</button>
+            <button class="btn primary" id="billing-quote-add" data-billing-action-tab="quotes" data-super-admin-only type="button" hidden>+ New quote</button>
+          </div>
         </div>
-        <div class="panel" style="margin-top:20px">
-          <div class="panel-header">
-            <div>
-              <div class="panel-title">Billing customers</div>
-              <div class="panel-sub">Manage billing contacts, build priced school quotes, and track accepted quotes through draft invoicing.</div>
+        <nav class="billing-tabs" role="tablist" aria-label="Billing workspace">
+          <button class="billing-tab active" id="billing-tab-overview" type="button" role="tab" aria-selected="true" aria-controls="billing-panel-overview" tabindex="0" data-billing-tab="overview">Overview</button>
+          <button class="billing-tab" id="billing-tab-customers" type="button" role="tab" aria-selected="false" aria-controls="billing-panel-customers" tabindex="-1" data-billing-tab="customers">Customers</button>
+          <button class="billing-tab" id="billing-tab-quotes" type="button" role="tab" aria-selected="false" aria-controls="billing-panel-quotes" tabindex="-1" data-billing-tab="quotes">Quotes</button>
+          <button class="billing-tab" id="billing-tab-invoices" type="button" role="tab" aria-selected="false" aria-controls="billing-panel-invoices" tabindex="-1" data-billing-tab="invoices">Invoices</button>
+          <button class="billing-tab" id="billing-tab-payments" type="button" role="tab" aria-selected="false" aria-controls="billing-panel-payments" tabindex="-1" data-billing-tab="payments">Payments</button>
+          <button class="billing-tab" id="billing-tab-catalogue" type="button" role="tab" aria-selected="false" aria-controls="billing-panel-catalogue" tabindex="-1" data-billing-tab="catalogue">Products &amp; pricing</button>
+          <button class="billing-tab" id="billing-tab-reports" type="button" role="tab" aria-selected="false" aria-controls="billing-panel-reports" tabindex="-1" data-billing-tab="reports">Reports</button>
+          <button class="billing-tab" id="billing-tab-settings" type="button" role="tab" aria-selected="false" aria-controls="billing-panel-settings" tabindex="-1" data-billing-tab="settings">Settings</button>
+        </nav>
+
+        <section class="billing-tab-panel" id="billing-panel-overview" role="tabpanel" aria-labelledby="billing-tab-overview" tabindex="0">
+          <div class="billing-kpis" aria-label="Current billing records">
+            <button class="billing-kpi" type="button" data-open-billing-tab="customers"><span>Customers</span><strong id="billing-kpi-customers">—</strong><small>Billing customer records</small></button>
+            <button class="billing-kpi" type="button" data-open-billing-tab="quotes"><span>Open quotes</span><strong id="billing-kpi-open-quotes">—</strong><small>Draft or awaiting response</small></button>
+            <button class="billing-kpi" type="button" data-open-billing-tab="quotes" data-open-billing-status="accepted"><span>Accepted, not invoiced</span><strong id="billing-kpi-accepted">—</strong><small>Accepted quotes without a draft</small></button>
+            <button class="billing-kpi" type="button" data-open-billing-tab="invoices" data-open-billing-status="draft"><span>Draft invoices</span><strong id="billing-kpi-drafts">—</strong><small>Not issued or payable</small></button>
+          </div>
+          <div class="billing-overview-grid">
+            <div class="panel">
+              <div class="panel-header"><div><div class="panel-title">Needs attention</div><div class="panel-sub">Actions based on the current billing records.</div></div></div>
+              <div id="billing-attention-list" class="billing-attention-list" aria-live="polite"><div class="billing-empty">Loading billing records…</div></div>
+            </div>
+            <div class="panel">
+              <div class="panel-header"><div><div class="panel-title">Recent documents</div><div class="panel-sub">Latest quotes and draft invoices.</div></div></div>
+              <div id="billing-recent-list" class="billing-recent-list" aria-live="polite"><div class="billing-empty">Loading billing records…</div></div>
             </div>
           </div>
-          <div class="table-wrap">
-            <table><thead><tr><th>Customer</th><th>Tenant key</th><th>Billing contact</th><th>Currency</th><th>Status</th><th>Contracts</th><th>Actions</th></tr></thead>
-              <tbody id="billing-customers-table"><tr><td colspan="7">Loading customers…</td></tr></tbody>
-            </table>
+          <div class="billing-readiness-note"><strong>Finance readiness:</strong> Invoices are still drafts. Seller identity, tax treatment, invoice numbering, and payment instructions must be confirmed before issuing.</div>
+        </section>
+
+        <section class="billing-tab-panel" id="billing-panel-customers" role="tabpanel" aria-labelledby="billing-tab-customers" tabindex="0" hidden>
+          <div class="panel">
+            <div class="panel-header"><div><div class="panel-title">Customers</div><div class="panel-sub">Billing contacts linked to provisioned schools where available.</div></div><input class="form-input billing-filter" id="billing-customer-search" type="search" placeholder="Search customers, schools, email" aria-label="Search billing customers"></div>
+            <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Tenant key</th><th>Billing contact</th><th>Currency</th><th>Status</th><th>Contracts</th><th>Actions</th></tr></thead>
+              <tbody id="billing-customers-table"><tr><td colspan="7">Loading customers…</td></tr></tbody></table></div>
           </div>
-        </div>
-        <div class="panel" style="margin-top:14px">
-          <div class="panel-header"><div><div class="panel-title">Quotes</div><div class="panel-sub">Create a reviewed quote from the approved rate card, download its PDF, or email it with a written summary.</div></div><div class="page-actions"><button class="btn primary" id="billing-quote-add" data-super-admin-only type="button">+ New quote</button></div></div>
-          <div id="billing-email-status" class="billing-email-status" role="status"></div>
-          <div class="table-wrap"><table><thead><tr><th>Quote</th><th>Customer</th><th>Students</th><th>Quoted total</th><th>Valid until</th><th>Status</th><th>Actions</th></tr></thead>
-            <tbody id="billing-quotes-table"><tr><td colspan="7">Loading quotes…</td></tr></tbody></table></div>
-        </div>
-        <div class="panel" style="margin-top:14px">
-          <div class="panel-header"><div><div class="panel-title">Draft invoices</div><div class="panel-sub">Accepted quotes can be converted once into a draft invoice. Drafts are not issued tax invoices.</div></div></div>
-          <div class="table-wrap"><table><thead><tr><th>Draft reference</th><th>Customer</th><th>Source quote</th><th>Amount</th><th>Status</th><th>Created</th><th>Document</th></tr></thead>
-            <tbody id="billing-invoices-table"><tr><td colspan="7">No draft invoices yet.</td></tr></tbody></table></div>
-        </div>
-        <div class="panel" style="margin-top:14px">
-          <div class="panel-header"><div><div class="panel-title">Service contracts</div><div class="panel-sub">Capture signed service terms; enter billing amounts only from approved agreements in a later step.</div></div></div>
-          <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Reference</th><th>Service</th><th>Cadence</th><th>Term</th><th>Status</th><th>Actions</th></tr></thead>
-            <tbody id="billing-contracts-table"><tr><td colspan="7">Loading contracts…</td></tr></tbody></table></div>
-        </div>
+          <div class="panel billing-subpanel">
+            <div class="panel-header"><div><div class="panel-title">Service contracts</div><div class="panel-sub">Signed service terms and cadence. Contract prices and recurring schedules are not yet configured.</div></div></div>
+            <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Reference</th><th>Service</th><th>Cadence</th><th>Term</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody id="billing-contracts-table"><tr><td colspan="7">Loading contracts…</td></tr></tbody></table></div>
+          </div>
+        </section>
+
+        <section class="billing-tab-panel" id="billing-panel-quotes" role="tabpanel" aria-labelledby="billing-tab-quotes" tabindex="0" hidden>
+          <div class="panel">
+            <div class="panel-header"><div><div class="panel-title">Quotes</div><div class="panel-sub">Prepare a quote, send its PDF, record the customer decision, and convert accepted quotes into draft invoices.</div></div><div class="billing-register-filters"><input class="form-input billing-filter" id="billing-quote-search" type="search" placeholder="Search quote or customer" aria-label="Search quotes"><select class="form-input billing-filter" id="billing-quote-status" aria-label="Filter quotes by status"><option value="">All statuses</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="declined">Declined</option><option value="expired">Expired</option><option value="converted">Converted</option></select></div></div>
+            <div id="billing-email-status" class="billing-email-status" role="status"></div>
+            <div class="table-wrap"><table><thead><tr><th>Quote</th><th>Customer</th><th>Students</th><th>Quoted total</th><th>Valid until</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody id="billing-quotes-table"><tr><td colspan="7">Loading quotes…</td></tr></tbody></table></div>
+          </div>
+        </section>
+
+        <section class="billing-tab-panel" id="billing-panel-invoices" role="tabpanel" aria-labelledby="billing-tab-invoices" tabindex="0" hidden>
+          <div class="panel">
+            <div class="panel-header"><div><div class="panel-title">Invoice register</div><div class="panel-sub">Draft documents from accepted quotes. Issuing, emailing, and payment tracking are not available yet.</div></div><div class="billing-register-filters"><input class="form-input billing-filter" id="billing-invoice-search" type="search" placeholder="Search invoice or customer" aria-label="Search invoices"><select class="form-input billing-filter" id="billing-invoice-status" aria-label="Filter invoices by status"><option value="">All statuses</option><option value="draft">Draft</option></select></div></div>
+            <div class="billing-register-note">Draft PDF previews are for review only. They are not issued invoices or tax invoices.</div>
+            <div class="table-wrap"><table><thead><tr><th>Draft reference</th><th>Customer</th><th>Source quote</th><th>Amount</th><th>Status</th><th>Created</th><th>Document</th></tr></thead>
+              <tbody id="billing-invoices-table"><tr><td colspan="7">Loading invoices…</td></tr></tbody></table></div>
+          </div>
+        </section>
+
+        <section class="billing-tab-panel" id="billing-panel-payments" role="tabpanel" aria-labelledby="billing-tab-payments" tabindex="0" hidden>
+          <div class="panel billing-future-panel"><div class="billing-future-icon" aria-hidden="true">KSh</div><div><div class="panel-title">Payment tracking is not available yet</div><p>Record payments, allocate partial amounts, issue receipts, and reconcile bank or M-Pesa references here once the invoice ledger and payment controls are ready.</p><span class="billing-future-status">Planned after invoice issuance</span></div></div>
+        </section>
+
+        <section class="billing-tab-panel" id="billing-panel-catalogue" role="tabpanel" aria-labelledby="billing-tab-catalogue" tabindex="0" hidden>
+          <div class="panel billing-future-panel"><div class="billing-future-icon" aria-hidden="true">PR</div><div><div class="panel-title">Products and approved pricing</div><p>The quote builder uses the current configured pricing assumptions. Versioned price approval, contract price selection, and effective dates are not available yet.</p><ul><li>Confirm flat-tier versus progressive student pricing.</li><li>Confirm the one-off school setup amount and add-on cadence.</li><li>Confirm SMS usage and charges beyond the included allowance.</li></ul><span class="billing-future-status">Pricing decisions pending approval</span></div></div>
+        </section>
+
+        <section class="billing-tab-panel" id="billing-panel-reports" role="tabpanel" aria-labelledby="billing-tab-reports" tabindex="0" hidden>
+          <div class="panel billing-future-panel"><div class="billing-future-icon" aria-hidden="true">R</div><div><div class="panel-title">Finance reports will appear here</div><p>Customer statements, receivables aging, and payment reconciliation require issued invoices and recorded payments. The console will not show estimated or sample financial totals.</p><span class="billing-future-status">Available after ledger workflow</span></div></div>
+        </section>
+
+        <section class="billing-tab-panel" id="billing-panel-settings" role="tabpanel" aria-labelledby="billing-tab-settings" tabindex="0" hidden>
+          <div class="panel">
+            <div class="panel-header"><div><div class="panel-title">Billing configuration readiness</div><div class="panel-sub">Configuration values are shown as readiness only; credentials are never displayed.</div></div></div>
+            <div id="billing-settings-email-status" class="billing-email-status" role="status">Checking email configuration…</div>
+            <div class="billing-settings-grid">
+              <div class="billing-setting-row"><span>Seller legal identity and tax details</span><strong>Needs confirmation</strong></div>
+              <div class="billing-setting-row"><span>Invoice numbering policy</span><strong>Needs confirmation</strong></div>
+              <div class="billing-setting-row"><span>Payment instructions and due terms</span><strong>Needs confirmation</strong></div>
+              <div class="billing-setting-row"><span>eTIMS setup and integration route</span><strong>Not configured</strong></div>
+            </div>
+            <div class="billing-register-note">These settings are intentionally read-only until the finance owner confirms the legal and accounting requirements.</div>
+          </div>
+        </section>
       </div>
       <!-- ── END BILLING ── -->
 
