@@ -82,16 +82,15 @@ if [[ "${DEPLOY_CONSOLE_ONLY}" == "true" ]]; then
   log "Console-only deploy (no school stacks)"
   log "  Image tag : ${IMAGE_TAG}"
   log "════════════════════════════════════════════════════════════"
-  deploy_console || fail "Console deploy failed"
-  log "SUCCESS: platform console deployed with tag ${IMAGE_TAG}"
-  exit 0
+  # Dispatch after the rest of this script has defined deploy_console.
 fi
-[[ -n "${DEPLOY_TARGET}" ]] || fail "DEPLOY_TARGET is required"
-if [[ "${DEPLOY_TARGET}" == "school" && -z "${SCHOOL_ID}" ]]; then
-  fail "SCHOOL_ID is required when DEPLOY_TARGET=school"
+if [[ "${DEPLOY_CONSOLE_ONLY}" != "true" ]]; then
+  [[ -n "${DEPLOY_TARGET}" ]] || fail "DEPLOY_TARGET is required"
+  if [[ "${DEPLOY_TARGET}" == "school" && -z "${SCHOOL_ID}" ]]; then
+    fail "SCHOOL_ID is required when DEPLOY_TARGET=school"
+  fi
+  log "Mode=${DEPLOY_TARGET} school_id=${SCHOOL_ID:-<unset>} manifest=${MANIFEST_PATH}"
 fi
-
-log "Mode=${DEPLOY_TARGET} school_id=${SCHOOL_ID:-<unset>} manifest=${MANIFEST_PATH}"
 
 discover_running_stacks() {
   docker_cmd ps \
@@ -896,6 +895,12 @@ deploy_console() {
   log "Console health check failed on :${console_port}"
   return 1
 }
+
+if [[ "${DEPLOY_CONSOLE_ONLY}" == "true" ]]; then
+  deploy_console || fail "Console deploy failed"
+  log "SUCCESS: platform console deployed with tag ${IMAGE_TAG}"
+  exit 0
+fi
 
 deploy_one() {
   local id="$1"
