@@ -556,7 +556,7 @@
           <div>
             <div class="page-eyebrow">The Silicone Sahara · v1</div>
             <div class="page-title">Billing &amp; Invoices</div>
-            <div class="page-sub">Manage customer billing contacts and signed service terms</div>
+            <div class="page-sub">Build customer quotes from approved school pricing and track them through draft invoicing</div>
           </div>
           <div class="page-actions"><button class="btn primary" id="billing-add-customer" data-super-admin-only type="button">+ Add customer</button></div>
         </div>
@@ -564,7 +564,7 @@
           <div class="panel-header">
             <div>
               <div class="panel-title">Billing customers</div>
-              <div class="panel-sub">Customer and contract records are stored centrally. No prices or invoices are generated in this stage.</div>
+              <div class="panel-sub">Manage billing contacts, build priced school quotes, and track accepted quotes through draft invoicing.</div>
             </div>
           </div>
           <div class="table-wrap">
@@ -572,6 +572,17 @@
               <tbody id="billing-customers-table"><tr><td colspan="7">Loading customers…</td></tr></tbody>
             </table>
           </div>
+        </div>
+        <div class="panel" style="margin-top:14px">
+          <div class="panel-header"><div><div class="panel-title">Quotes</div><div class="panel-sub">Create a reviewed quote from the approved rate card, download its PDF, or email it with a written summary.</div></div><div class="page-actions"><button class="btn primary" id="billing-quote-add" data-super-admin-only type="button">+ New quote</button></div></div>
+          <div id="billing-email-status" class="billing-email-status" role="status"></div>
+          <div class="table-wrap"><table><thead><tr><th>Quote</th><th>Customer</th><th>Students</th><th>Quoted total</th><th>Valid until</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="billing-quotes-table"><tr><td colspan="7">Loading quotes…</td></tr></tbody></table></div>
+        </div>
+        <div class="panel" style="margin-top:14px">
+          <div class="panel-header"><div><div class="panel-title">Draft invoices</div><div class="panel-sub">Accepted quotes can be converted once into a draft invoice. Drafts are not issued tax invoices.</div></div></div>
+          <div class="table-wrap"><table><thead><tr><th>Draft reference</th><th>Customer</th><th>Source quote</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead>
+            <tbody id="billing-invoices-table"><tr><td colspan="6">No draft invoices yet.</td></tr></tbody></table></div>
         </div>
         <div class="panel" style="margin-top:14px">
           <div class="panel-header"><div><div class="panel-title">Service contracts</div><div class="panel-sub">Capture signed service terms; enter billing amounts only from approved agreements in a later step.</div></div></div>
@@ -927,6 +938,32 @@
       <div class="form-row" style="margin-bottom:0"><label class="form-label" for="bc-status">Status</label><select class="form-select" id="bc-status"><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
     </div>
     <div class="modal-footer"><button class="btn" id="billing-customer-cancel" type="button">Cancel</button><button class="btn primary" id="billing-customer-save" type="button">Save customer</button></div>
+  </div>
+</div>
+
+<!-- BILLING QUOTE MODAL -->
+<div class="overlay" id="billing-quote-overlay" aria-modal="true" role="dialog">
+  <div class="modal" style="max-width:760px">
+    <div class="modal-header"><div class="modal-title">New school quote</div><button class="modal-close" id="billing-quote-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <div class="billing-quote-grid">
+        <div class="form-row"><label class="form-label" for="bq-customer">Customer *</label><select class="form-select" id="bq-customer"><option value="">Select a billing customer</option></select></div>
+        <div class="form-row"><label class="form-label" for="bq-students">Billable student count *</label><input class="form-input" id="bq-students" type="number" min="1" max="100000" step="1" placeholder="Enrollment snapshot"/></div>
+        <div class="form-row"><label class="form-label" for="bq-pricing-model">Student rate rule</label><select class="form-select" id="bq-pricing-model"><option value="rate_by_band">One rate for all students at this tier</option><option value="progressive">Progressive marginal bands</option></select><small class="form-help">Rate card: 1–300 KSh 50; 301–500 KSh 40; 501–1,000 KSh 35; above 1,000 KSh 30 per student.</small></div>
+        <div class="form-row"><label class="form-label" for="bq-cadence">Student charge period</label><select class="form-select" id="bq-cadence"><option value="termly">Per term</option><option value="annual">Per year</option><option value="monthly">Per month</option></select></div>
+        <div class="form-row"><label class="form-label" for="bq-setup">One-off school setup fee (KSh) *</label><input class="form-input" id="bq-setup" type="number" min="0" max="100000000" step="1" placeholder="Enter fee, or 0 if waived"/><small class="form-help">This amount was not specified in the rate card, so enter the approved fee.</small></div>
+        <div class="form-row"><label class="form-label" for="bq-expires">Quote expiry date</label><input class="form-input" id="bq-expires" type="date"/></div>
+      </div>
+      <label class="billing-option"><input id="bq-communications" type="checkbox"/><span><strong>Include Communications — KSh 10,000 per term</strong><small>Includes sender ID and 1,000 SMS for the term.</small></span></label>
+      <div class="billing-quote-grid billing-extra-row">
+        <div class="form-row"><label class="form-label" for="bq-extras">Extra modules</label><textarea class="form-input" id="bq-extras" rows="2" placeholder="One module name per line; KSh 5,000 each"></textarea><small class="form-help">Each entered module is quoted at KSh 5,000.</small></div>
+        <div class="form-row"><label class="form-label" for="bq-extra-cadence">Extra module charge</label><select class="form-select" id="bq-extra-cadence"><option value="termly">Per term</option><option value="one_off">One-off</option></select></div>
+      </div>
+      <div class="form-row"><label class="form-label" for="bq-notes">Quote notes / commercial terms</label><textarea class="form-input" id="bq-notes" rows="3" maxlength="3000" placeholder="Optional customer-specific terms"></textarea></div>
+      <div class="billing-quote-preview" id="billing-quote-preview" aria-live="polite">Enter the student count and setup fee to calculate a quote preview.</div>
+      <div class="form-help">The total adds all listed lines; recurring periods are shown per line. Each quote stores the selected pricing rule and enrollment snapshot. Tax is not added to this quote.</div>
+    </div>
+    <div class="modal-footer"><button class="btn" id="billing-quote-cancel" type="button">Cancel</button><button class="btn primary" id="billing-quote-save" data-super-admin-only type="button">Save draft quote</button></div>
   </div>
 </div>
 

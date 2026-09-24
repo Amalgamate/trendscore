@@ -557,6 +557,18 @@ tbody tr:hover td{background:#f8fbff}
 .billing-customer-suggestion strong,.billing-customer-suggestion small{display:block}
 .billing-customer-suggestion small{margin-top:3px;color:var(--muted);font-size:11px}
 .billing-suggestion-empty{padding:10px 12px;color:var(--muted);font-size:12px}
+.billing-quote-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.billing-option{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--border);margin-bottom:14px;cursor:pointer}
+.billing-option input{margin-top:3px;accent-color:var(--brand)}
+.billing-option strong,.billing-option small{display:block}
+.billing-option small{margin-top:3px;color:var(--muted);font-size:11px}
+.billing-extra-row{align-items:start}
+.billing-quote-preview{padding:12px 14px;margin:10px 0 12px;background:var(--table-header-bg);border:1px solid var(--border);color:var(--ink);font-size:13px;line-height:1.6;white-space:pre-line}
+.billing-email-status{padding:0 16px 12px;color:var(--muted);font-size:12px}
+.billing-email-status.ready{color:var(--green)}
+.billing-email-status.unready{color:var(--red)}
+.billing-action-row{display:flex;flex-wrap:wrap;gap:5px}
+@media(max-width:680px){.billing-quote-grid{grid-template-columns:1fr}.billing-extra-row{grid-template-columns:1fr}}
 .form-label{
   display:block;font-size:11px;font-weight:700;text-transform:uppercase;
   letter-spacing:.08em;color:var(--muted);margin-bottom:5px
