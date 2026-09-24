@@ -547,6 +547,16 @@ tbody tr:hover td{background:#f8fbff}
 }
 .modal-body{padding:20px}
 .form-row{margin-bottom:14px}
+.billing-customer-picker{position:relative}
+.form-help{display:block;margin-top:5px;color:var(--muted);font-size:11px;line-height:1.45}
+.billing-customer-suggestions{position:absolute;z-index:120;top:calc(100% - 20px);left:0;right:0;max-height:240px;overflow:auto;background:var(--surface);border:1px solid var(--border);box-shadow:0 8px 24px rgba(15,23,42,.16)}
+.billing-customer-suggestions[hidden]{display:none}
+.billing-customer-suggestion{display:block;width:100%;border:0;border-bottom:1px solid var(--border);background:transparent;padding:10px 12px;text-align:left;color:var(--ink);cursor:pointer}
+.billing-customer-suggestion:last-child{border-bottom:0}
+.billing-customer-suggestion:hover,.billing-customer-suggestion:focus{background:var(--table-header-bg);outline:0}
+.billing-customer-suggestion strong,.billing-customer-suggestion small{display:block}
+.billing-customer-suggestion small{margin-top:3px;color:var(--muted);font-size:11px}
+.billing-suggestion-empty{padding:10px 12px;color:var(--muted);font-size:12px}
 .form-label{
   display:block;font-size:11px;font-weight:700;text-transform:uppercase;
   letter-spacing:.08em;color:var(--muted);margin-bottom:5px

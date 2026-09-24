@@ -1653,6 +1653,25 @@ app.get('/api/billing/customers', requireAuth, requireRole('super_admin', 'platf
   res.json({ ok: true, customers: billingStore.listCustomers() });
 });
 
+app.get('/api/billing/schools', requireAuth, requireRole('super_admin', 'platform_owner'), async (_req, res) => {
+  try {
+    const manifest = loadDeployManifest();
+    const manifestById = new Map((manifest.instances || []).map(instance => [instance.id, instance]));
+    const schools = (await buildDeployTargets())
+      .filter(target => ['stack', 'main'].includes(target.kind))
+      .filter(target => target.tier === 'production')
+      .filter(target => {
+        const instance = manifestById.get(target.id);
+        return !instance || (instance.archived !== true && instance.active !== false
+          && !['inactive', 'disabled'].includes(String(instance.status || '').toLowerCase()));
+      })
+      .map(target => ({ id: target.id, name: target.label, tenantKey: target.id, domain: target.domain || '' }));
+    res.json({ ok: true, schools });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message || 'Could not load provisioned schools' });
+  }
+});
+
 app.post('/api/billing/customers', requireAuth, requireRole('super_admin'), (req, res) => {
   try {
     const customer = normalizeBillingCustomer(req.body);
