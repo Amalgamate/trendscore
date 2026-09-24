@@ -914,7 +914,7 @@
     <div class="modal-body">
       <input id="bc-id" type="hidden"/>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="form-row"><label class="form-label" for="bc-name">Customer name *</label><input class="form-input" id="bc-name" maxlength="160"/></div>
+          <div class="form-row billing-customer-picker"><label class="form-label" for="bc-name">Customer name *</label><input class="form-input" id="bc-name" maxlength="160" autocomplete="off" aria-autocomplete="list" aria-controls="bc-customer-suggestions" aria-expanded="false" placeholder="Search customers or provisioned schools"/><div id="bc-customer-suggestions" class="billing-customer-suggestions" role="listbox" hidden></div><small class="form-help">Choose a saved billing customer or a provisioned school, or type a new customer name.</small></div>
         <div class="form-row"><label class="form-label" for="bc-legal-name">Legal name</label><input class="form-input" id="bc-legal-name" maxlength="200"/></div>
         <div class="form-row"><label class="form-label" for="bc-tenant-key">Tenant key (optional)</label><input class="form-input" id="bc-tenant-key" maxlength="160" placeholder="Stable tenant ID or school slug"/></div>
         <div class="form-row"><label class="form-label" for="bc-email">Billing email</label><input class="form-input" id="bc-email" type="email" maxlength="254"/></div>

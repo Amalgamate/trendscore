@@ -17,6 +17,7 @@ let AUDIT_LOGS = [];
 let LEADS = [];
 let BILLING_CUSTOMERS = [];
 let BILLING_CONTRACTS = [];
+let BILLING_SCHOOLS = [];
 
 // Helpers
 const $ = id => document.getElementById(id);
@@ -582,14 +583,17 @@ function containerRows(instance) {
 
 async function loadBillingData() {
   try {
-    const [customersResponse, contractsResponse] = await Promise.all([
+    const [customersResponse, contractsResponse, schoolsResponse] = await Promise.all([
       fetch('/api/billing/customers', { credentials: 'same-origin' }),
       fetch('/api/billing/contracts', { credentials: 'same-origin' }),
+      fetch('/api/billing/schools', { credentials: 'same-origin' }).catch(() => null),
     ]);
     if (!customersResponse.ok || !contractsResponse.ok) throw new Error('Could not load billing records');
     const [customersData, contractsData] = await Promise.all([customersResponse.json(), contractsResponse.json()]);
     BILLING_CUSTOMERS = customersData.customers || [];
     BILLING_CONTRACTS = contractsData.contracts || [];
+    const schoolsData = schoolsResponse?.ok ? await schoolsResponse.json().catch(() => ({})) : {};
+    BILLING_SCHOOLS = schoolsData.schools || [];
     renderBillingRegistry();
   } catch (error) {
     if ($('billing-customers-table')) $('billing-customers-table').innerHTML = `<tr><td colspan="7">${esc(error.message || 'Billing data is unavailable.')}</td></tr>`;
@@ -632,6 +636,8 @@ function renderBillingRegistry() {
 function openBillingCustomer(customer = null) {
   $('billing-customer-title').textContent = customer ? 'Edit billing customer' : 'Add billing customer';
   $('bc-id').value = customer?.id || '';
+  $('bc-name').dataset.mode = customer ? 'edit' : 'add';
+  $('bc-name').dataset.selectedName = customer?.name || '';
   $('bc-name').value = customer?.name || '';
   $('bc-legal-name').value = customer?.legalName || '';
   $('bc-tenant-key').value = customer?.tenantKey || '';
@@ -642,10 +648,84 @@ function openBillingCustomer(customer = null) {
   $('bc-payment-terms').value = customer?.paymentTerms || '';
   $('bc-address').value = customer?.billingAddress || '';
   $('bc-status').value = customer?.status || 'active';
+  hideBillingCustomerSuggestions();
   $('billing-customer-overlay')?.classList.add('open');
 }
 
 function closeBillingCustomer() { $('billing-customer-overlay')?.classList.remove('open'); }
+
+function hideBillingCustomerSuggestions() {
+  const input = $('bc-name');
+  const list = $('bc-customer-suggestions');
+  if (!input || !list) return;
+  list.hidden = true;
+  input.setAttribute('aria-expanded', 'false');
+}
+
+function billingCustomerSuggestions(query = '') {
+  const normalized = query.trim().toLocaleLowerCase();
+  const suggestions = [];
+  const linkedKeys = new Set(BILLING_CUSTOMERS.map(customer => customer.tenantKey).filter(Boolean));
+  for (const customer of BILLING_CUSTOMERS) {
+    if (!normalized || `${customer.name} ${customer.legalName} ${customer.billingEmail} ${customer.tenantKey}`.toLocaleLowerCase().includes(normalized)) {
+      suggestions.push({ kind: 'customer', id: customer.id, name: customer.name, detail: [customer.billingEmail, customer.tenantKey && `Tenant ${customer.tenantKey}`].filter(Boolean).join(' · ') || 'Saved billing customer' });
+    }
+  }
+  for (const school of BILLING_SCHOOLS) {
+    if (linkedKeys.has(school.tenantKey)) continue;
+    if (!normalized || `${school.name} ${school.tenantKey} ${school.domain}`.toLocaleLowerCase().includes(normalized)) {
+      suggestions.push({ kind: 'school', id: school.id, name: school.name, detail: [school.domain, `Provisioned school · ${school.tenantKey}`].filter(Boolean).join(' · ') });
+    }
+  }
+  return suggestions.slice(0, 8);
+}
+
+function renderBillingCustomerSuggestions(query = '') {
+  const input = $('bc-name');
+  const list = $('bc-customer-suggestions');
+  if (!input || !list) return;
+  const suggestions = billingCustomerSuggestions(query);
+  if (!suggestions.length) {
+    list.innerHTML = query.trim() ? '<div class="billing-suggestion-empty">No match. Save this as a new customer.</div>' : '';
+  } else {
+    list.innerHTML = suggestions.map(item => `<button class="billing-customer-suggestion" type="button" role="option" data-billing-pick-kind="${item.kind}" data-billing-pick-id="${esc(item.id)}"><strong>${esc(item.name)}</strong><small>${esc(item.detail)}</small></button>`).join('');
+  }
+  list.hidden = false;
+  input.setAttribute('aria-expanded', 'true');
+}
+
+function selectBillingCustomerSuggestion(kind, id) {
+  const input = $('bc-name');
+  if (kind === 'customer') {
+    const customer = BILLING_CUSTOMERS.find(item => item.id === id);
+    if (!customer) return;
+    openBillingCustomer(customer);
+    $('billing-customer-title').textContent = 'Use saved billing customer';
+    input.dataset.mode = 'add';
+    return;
+  }
+  const school = BILLING_SCHOOLS.find(item => item.id === id);
+  if (!school) return;
+  const linkedCustomer = BILLING_CUSTOMERS.find(item => item.tenantKey === school.tenantKey);
+  if (linkedCustomer) {
+    selectBillingCustomerSuggestion('customer', linkedCustomer.id);
+    return;
+  }
+  $('bc-id').value = '';
+  input.value = school.name;
+  input.dataset.mode = 'add';
+  input.dataset.selectedName = school.name;
+  $('bc-legal-name').value = school.name;
+  $('bc-tenant-key').value = school.tenantKey;
+  hideBillingCustomerSuggestions();
+}
+
+$('bc-name')?.addEventListener('focus', event => renderBillingCustomerSuggestions(event.currentTarget.value));
+$('bc-name')?.addEventListener('input', event => {
+  const input = event.currentTarget;
+  if (input.dataset.mode === 'add' && input.value !== input.dataset.selectedName) $('bc-id').value = '';
+  renderBillingCustomerSuggestions(input.value);
+});
 
 function openBillingContract(customerId, contract = null) {
   $('billing-contract-title').textContent = contract ? 'Edit service contract' : 'Add service contract';
@@ -1867,6 +1947,7 @@ function exportLogsCsv() {
 
 // Event wiring
 document.body.addEventListener('click', event => {
+  if (!event.target.closest('#bc-name, #bc-customer-suggestions')) hideBillingCustomerSuggestions();
   if (event.target.closest('.group-open-link')) {
     return;
   }
@@ -1888,6 +1969,11 @@ document.body.addEventListener('click', event => {
   if (!btn) return;
 
   const id = btn.id;
+  const billingPickKind = btn.dataset.billingPickKind;
+  if (billingPickKind) {
+    selectBillingCustomerSuggestion(billingPickKind, btn.dataset.billingPickId);
+    return;
+  }
   const createButtonMap = {
     'btn-create-school': 'school',
     'btn-create2-school': 'school',
