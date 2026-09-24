@@ -10,6 +10,7 @@ const { execFile } = require('child_process');
 const Docker = require('dockerode');
 const si = require('systeminformation');
 const { createBillingStore } = require('./billing-store');
+const { createPdfBuffer, quotePdfLines } = require('./billing-documents');
 
 const execFileAsync = promisify(execFile);
 
@@ -1649,6 +1650,141 @@ function validateBillingDates(contract) {
   if (contract.startDate && contract.endDate && contract.endDate < contract.startDate) throw new Error('endDate cannot be before startDate');
 }
 
+const STUDENT_RATE_BANDS = [
+  { min: 1, max: 300, rate: 50 },
+  { min: 301, max: 500, rate: 40 },
+  { min: 501, max: 1000, rate: 35 },
+  { min: 1001, max: Infinity, rate: 30 },
+];
+const QUOTE_CADENCES = new Set(['monthly', 'termly', 'annual']);
+
+function calculateQuote(body = {}) {
+  const enrollmentCount = Number(body.enrollmentCount);
+  if (!Number.isInteger(enrollmentCount) || enrollmentCount < 1 || enrollmentCount > 100000) {
+    throw new Error('Student count must be a whole number between 1 and 100,000');
+  }
+  const pricingModel = billingText(body.pricingModel || 'rate_by_band', 30);
+  if (!['rate_by_band', 'progressive'].includes(pricingModel)) throw new Error('Choose a supported student pricing model');
+  const billingCadence = billingText(body.billingCadence || 'termly', 20);
+  if (!QUOTE_CADENCES.has(billingCadence)) throw new Error('Choose a supported student billing cadence');
+  if (body.setupFeeKsh === undefined || body.setupFeeKsh === null || body.setupFeeKsh === '') {
+    throw new Error('Enter the one-off school setup fee, or enter 0 if it is waived');
+  }
+  const setupFeeKsh = Number(body.setupFeeKsh);
+  if (!Number.isSafeInteger(setupFeeKsh) || setupFeeKsh < 0 || setupFeeKsh > 100000000) {
+    throw new Error('Setup fee must be a whole KSh amount');
+  }
+  const extraCadence = billingText(body.extraModuleCadence || 'termly', 20);
+  if (!['one_off', 'termly'].includes(extraCadence)) throw new Error('Extra modules can be one-off or termly');
+  const extraModules = (Array.isArray(body.extraModules) ? body.extraModules : [])
+    .map(value => billingText(value, 100))
+    .filter(Boolean);
+  if (extraModules.length > 20) throw new Error('A quote can include up to 20 extra modules');
+  if (new Set(extraModules.map(value => value.toLowerCase())).size !== extraModules.length) {
+    throw new Error('Remove duplicate extra module names');
+  }
+
+  const lines = [];
+  const addLine = (description, quantity, unitPriceKsh, cadence) => lines.push({
+    description, quantity, unitPriceKsh, amountKsh: quantity * unitPriceKsh, cadence,
+  });
+  let pricingDescription;
+  if (pricingModel === 'rate_by_band') {
+    const band = STUDENT_RATE_BANDS.find(item => enrollmentCount >= item.min && enrollmentCount <= item.max);
+    addLine(`Student platform service (${billingCadence})`, enrollmentCount, band.rate, billingCadence);
+    pricingDescription = `${enrollmentCount} students x KSh ${band.rate}/student (${band.min}-${Number.isFinite(band.max) ? band.max : 'above'} enrollment tier)`;
+  } else {
+    let remaining = enrollmentCount;
+    const tierParts = [];
+    for (const band of STUDENT_RATE_BANDS) {
+      if (remaining <= 0) break;
+      const width = Number.isFinite(band.max) ? band.max - band.min + 1 : remaining;
+      const quantity = Math.min(remaining, width);
+      if (quantity > 0) {
+        addLine(`Student service ${band.min}-${Number.isFinite(band.max) ? band.max : 'above'} tier (${billingCadence})`, quantity, band.rate, billingCadence);
+        tierParts.push(`${quantity} x KSh ${band.rate}`);
+        remaining -= quantity;
+      }
+    }
+    pricingDescription = `Progressive bands: ${tierParts.join(' + ')}`;
+  }
+  addLine('School setup (one-off)', 1, setupFeeKsh, 'one_off');
+  const communicationsIncluded = body.communicationsIncluded === true;
+  if (communicationsIncluded) addLine('Communications module (per term; 1,000 SMS included)', 1, 10000, 'termly');
+  for (const moduleName of extraModules) addLine(`Extra module: ${moduleName} (${extraCadence === 'one_off' ? 'one-off' : 'per term'})`, 1, 5000, extraCadence);
+
+  const subtotalKsh = lines.reduce((sum, item) => sum + item.amountKsh, 0);
+  if (!Number.isSafeInteger(subtotalKsh) || subtotalKsh > 1000000000) throw new Error('Quoted total exceeds the supported limit');
+  const expiresOn = billingText(body.expiresOn, 10);
+  if (expiresOn) validateBillingDates({ startDate: '', endDate: '', renewalDate: expiresOn });
+  const notes = billingText(body.notes, 3000);
+  return {
+    enrollmentCount, pricingModel, pricingDescription, billingCadence,
+    billingCadenceLabel: billingCadence.charAt(0).toUpperCase() + billingCadence.slice(1),
+    setupFeeKsh, communicationsIncluded, communicationsSmsPerTerm: communicationsIncluded ? 1000 : 0,
+    extraCadence, extraModules, lines, subtotalKsh, expiresOn, notes,
+    taxNote: 'Tax treatment is not included in this quotation and must be reviewed before issuing a tax invoice.',
+  };
+}
+
+function buildQuoteEmail(quote) {
+  const snapshot = quote.quoteSnapshot;
+  const customer = quote.customerSnapshot;
+  const money = amount => `KSh ${Number(amount || 0).toLocaleString('en-KE')}`;
+  const safe = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+  const text = [
+    `Hello ${customer.name},`,
+    '',
+    `Please find quotation ${quote.quoteNumber} attached.`,
+    `Enrollment used: ${quote.enrollmentCount} students.`,
+    ...snapshot.lines.map(item => `- ${item.description}: ${item.quantity} x ${money(item.unitPriceKsh)} = ${money(item.amountKsh)}`),
+    `Quoted total: ${money(quote.subtotalKsh)}`,
+    snapshot.taxNote,
+    `Valid until: ${quote.expiresOn || 'As agreed'}`,
+    '',
+    'This quotation is not a tax invoice.',
+    snapshot.notes ? `Notes: ${snapshot.notes}` : '',
+    '',
+    'Regards,\nTrendSCORE',
+  ].filter(Boolean).join('\n');
+  const rows = snapshot.lines.map(item => `<tr><td>${safe(item.description)}</td><td>${item.quantity}</td><td>${money(item.unitPriceKsh)}</td><td>${money(item.amountKsh)}</td></tr>`).join('');
+  const html = `<div style="font-family:Arial,sans-serif;color:#172033;line-height:1.5"><p>Hello ${safe(customer.name)},</p><p>Please find quotation <strong>${safe(quote.quoteNumber)}</strong> attached. This quotation uses an enrollment snapshot of ${quote.enrollmentCount} students and is valid until ${safe(quote.expiresOn || 'as agreed')}.</p><table cellpadding="8" cellspacing="0" border="1" style="border-collapse:collapse;border-color:#d8deea"><thead><tr><th align="left">Item</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>${rows}</tbody></table><p><strong>Quoted total: ${money(quote.subtotalKsh)}</strong></p><p>${safe(snapshot.taxNote)}</p>${snapshot.notes ? `<p>Notes: ${safe(snapshot.notes)}</p>` : ''}<p>This quotation is not a tax invoice.</p><p>Regards,<br/>TrendSCORE</p></div>`;
+  return { text, html };
+}
+
+async function deliverQuoteEmail(quote, actor) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM;
+  if (!apiKey || !fromEmail) throw new Error('Quote email is not configured. Set RESEND_API_KEY and BILLING_FROM_EMAIL (or EMAIL_FROM).');
+  const customer = quote.customerSnapshot || {};
+  if (!customer.billingEmail) throw new Error('Add a billing email to this customer before sending the quote');
+  const pdf = createPdfBuffer(quotePdfLines(quote));
+  const message = buildQuoteEmail(quote);
+  let providerMessageId = '';
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: `${process.env.BILLING_FROM_NAME || process.env.EMAIL_FROM_NAME || 'TrendSCORE'} <${fromEmail}>`,
+        to: [customer.billingEmail],
+        subject: `TrendSCORE quotation ${quote.quoteNumber}`,
+        text: message.text,
+        html: message.html,
+        attachments: [{ filename: `${quote.quoteNumber}.pdf`, content: pdf.toString('base64') }],
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.message || payload.error || `Email provider returned ${response.status}`);
+    providerMessageId = String(payload.id || '');
+    billingStore.recordQuoteDelivery({ id: crypto.randomUUID(), quoteId: quote.id, recipient: customer.billingEmail, actor, providerMessageId, status: 'sent', error: '' });
+    return providerMessageId;
+  } catch (error) {
+    billingStore.recordQuoteDelivery({ id: crypto.randomUUID(), quoteId: quote.id, recipient: customer.billingEmail, actor, providerMessageId: '', status: 'failed', error: billingText(error.message, 500) });
+    throw error;
+  }
+}
+
 app.get('/api/billing/customers', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
   res.json({ ok: true, customers: billingStore.listCustomers() });
 });
@@ -1703,6 +1839,124 @@ app.put('/api/billing/customers/:id', requireAuth, requireRole('super_admin'), (
 app.get('/api/billing/contracts', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   const customerId = billingText(req.query.customerId, 80);
   res.json({ ok: true, contracts: billingStore.listContracts(customerId) });
+});
+
+app.get('/api/billing/email-status', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
+  res.json({ ok: true, configured: Boolean(process.env.RESEND_API_KEY && (process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM)) });
+});
+
+app.get('/api/billing/quotes', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
+  res.json({ ok: true, quotes: billingStore.listQuotes(), deliveries: billingStore.listQuotes().map(quote => ({ quoteId: quote.id, attempts: billingStore.listQuoteDeliveries(quote.id) })) });
+});
+
+app.post('/api/billing/quotes/preview', requireAuth, requireRole('super_admin'), (req, res) => {
+  try {
+    const quote = calculateQuote(req.body);
+    return res.json({ ok: true, subtotalKsh: quote.subtotalKsh, lines: quote.lines, pricingDescription: quote.pricingDescription, taxNote: quote.taxNote });
+  } catch (error) {
+    return res.status(400).json({ ok: false, error: error.message });
+  }
+});
+
+app.post('/api/billing/quotes', requireAuth, requireRole('super_admin'), (req, res) => {
+  try {
+    const customerId = billingText(req.body.customerId, 80);
+    const customer = billingStore.getCustomer(customerId);
+    if (!customer) return res.status(404).json({ ok: false, error: 'Select a saved billing customer first' });
+    if (customer.currency !== 'KES') return res.status(400).json({ ok: false, error: 'The approved school rate card is in KSh. Set this customer currency to KES before quoting.' });
+    const quoteSnapshot = calculateQuote(req.body);
+    const quote = billingStore.createQuote({
+      id: crypto.randomUUID(),
+      quoteNumber: `Q-${new Date().getUTCFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
+      customerId,
+      customerSnapshot: {
+        name: customer.name, legalName: customer.legalName, tenantKey: customer.tenantKey,
+        billingEmail: customer.billingEmail, billingPhone: customer.billingPhone,
+        billingAddress: customer.billingAddress, taxIdentifier: customer.taxIdentifier, currency: customer.currency,
+      },
+      quoteSnapshot,
+      enrollmentCount: quoteSnapshot.enrollmentCount,
+      pricingModel: quoteSnapshot.pricingModel,
+      billingCadence: quoteSnapshot.billingCadence,
+      subtotalKsh: quoteSnapshot.subtotalKsh,
+      expiresOn: quoteSnapshot.expiresOn,
+      notes: quoteSnapshot.notes,
+      createdBy: req.user.email,
+    });
+    pushAudit('BILLING_QUOTE_CREATE', customer.name, req.user.email, `Created ${quote.quoteNumber} for KSh ${quote.subtotalKsh}`);
+    return res.status(201).json({ ok: true, quote });
+  } catch (error) {
+    return res.status(400).json({ ok: false, error: error.message });
+  }
+});
+
+app.get('/api/billing/quotes/:id/pdf', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  const quote = billingStore.getQuote(req.params.id);
+  if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
+  const pdf = createPdfBuffer(quotePdfLines(quote));
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${quote.quoteNumber}.pdf"`);
+  res.setHeader('Content-Length', pdf.length);
+  return res.send(pdf);
+});
+
+app.post('/api/billing/quotes/:id/send', requireAuth, requireRole('super_admin'), async (req, res) => {
+  const quote = billingStore.getQuote(req.params.id);
+  if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
+  if (!['draft', 'sent'].includes(quote.status)) return res.status(409).json({ ok: false, error: 'Only draft or sent quotes can be emailed' });
+  try {
+    await deliverQuoteEmail(quote, req.user.email);
+    pushAudit('BILLING_QUOTE_SEND', quote.customerSnapshot.name, req.user.email, `Emailed ${quote.quoteNumber} to ${quote.customerSnapshot.billingEmail}`);
+    return res.json({ ok: true, quote: billingStore.getQuote(quote.id), deliveries: billingStore.listQuoteDeliveries(quote.id) });
+  } catch (error) {
+    pushAudit('BILLING_QUOTE_SEND_FAILED', quote.customerSnapshot.name, req.user.email, `Email attempt failed for ${quote.quoteNumber}: ${billingText(error.message, 300)}`, 'Warning');
+    return res.status(502).json({ ok: false, error: error.message || 'Could not send quote email', deliveries: billingStore.listQuoteDeliveries(quote.id) });
+  }
+});
+
+app.post('/api/billing/quotes/:id/accept', requireAuth, requireRole('super_admin'), (req, res) => {
+  const quote = billingStore.getQuote(req.params.id);
+  if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
+  if (!['draft', 'sent'].includes(quote.status)) return res.status(409).json({ ok: false, error: `Quote is ${quote.status} and cannot be marked accepted` });
+  if (quote.expiresOn && quote.expiresOn < new Date().toISOString().slice(0, 10)) {
+    billingStore.setQuoteStatus(quote.id, 'expired');
+    return res.status(409).json({ ok: false, error: 'This quote has expired. Create a new quote before recording acceptance.' });
+  }
+  const updated = billingStore.setQuoteStatus(quote.id, 'accepted');
+  pushAudit('BILLING_QUOTE_ACCEPT', quote.customerSnapshot.name, req.user.email, `Recorded acceptance of ${quote.quoteNumber}`);
+  return res.json({ ok: true, quote: updated });
+});
+
+app.post('/api/billing/quotes/:id/convert', requireAuth, requireRole('super_admin'), (req, res) => {
+  const quote = billingStore.getQuote(req.params.id);
+  if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
+  if (quote.status !== 'accepted' && quote.status !== 'converted') return res.status(409).json({ ok: false, error: 'Record customer acceptance before creating a draft invoice' });
+  const existing = billingStore.getInvoiceForQuote(quote.id);
+  if (existing) {
+    billingStore.setQuoteStatus(quote.id, 'converted');
+    return res.json({ ok: true, invoice: existing, alreadyCreated: true });
+  }
+  try {
+    const invoice = billingStore.createDraftInvoice({
+      id: crypto.randomUUID(), invoiceNumber: `DRAFT-${quote.quoteNumber}`, quoteId: quote.id,
+      customerId: quote.customerId, invoiceSnapshot: {
+        source: 'accepted_quote', quoteNumber: quote.quoteNumber,
+        customerSnapshot: quote.customerSnapshot, quoteSnapshot: quote.quoteSnapshot,
+        acceptedAt: new Date().toISOString(), taxNote: quote.quoteSnapshot.taxNote,
+      }, amountKsh: quote.subtotalKsh, createdBy: req.user.email,
+    });
+    billingStore.setQuoteStatus(quote.id, 'converted');
+    pushAudit('BILLING_INVOICE_DRAFT', quote.customerSnapshot.name, req.user.email, `Created draft invoice from ${quote.quoteNumber}`);
+    return res.status(201).json({ ok: true, invoice });
+  } catch (error) {
+    const recovered = billingStore.getInvoiceForQuote(quote.id);
+    if (recovered) return res.json({ ok: true, invoice: recovered, alreadyCreated: true });
+    return res.status(400).json({ ok: false, error: error.message });
+  }
+});
+
+app.get('/api/billing/invoices', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
+  res.json({ ok: true, invoices: billingStore.listInvoices() });
 });
 
 app.post('/api/billing/customers/:id/contracts', requireAuth, requireRole('super_admin'), (req, res) => {

@@ -18,6 +18,11 @@ let LEADS = [];
 let BILLING_CUSTOMERS = [];
 let BILLING_CONTRACTS = [];
 let BILLING_SCHOOLS = [];
+let BILLING_QUOTES = [];
+let BILLING_INVOICES = [];
+let BILLING_DELIVERIES = [];
+let BILLING_EMAIL_READY = false;
+let billingQuotePreviewTimer = null;
 
 // Helpers
 const $ = id => document.getElementById(id);
@@ -583,10 +588,13 @@ function containerRows(instance) {
 
 async function loadBillingData() {
   try {
-    const [customersResponse, contractsResponse, schoolsResponse] = await Promise.all([
+    const [customersResponse, contractsResponse, schoolsResponse, quotesResponse, invoicesResponse, emailStatusResponse] = await Promise.all([
       fetch('/api/billing/customers', { credentials: 'same-origin' }),
       fetch('/api/billing/contracts', { credentials: 'same-origin' }),
       fetch('/api/billing/schools', { credentials: 'same-origin' }).catch(() => null),
+      fetch('/api/billing/quotes', { credentials: 'same-origin' }).catch(() => null),
+      fetch('/api/billing/invoices', { credentials: 'same-origin' }).catch(() => null),
+      fetch('/api/billing/email-status', { credentials: 'same-origin' }).catch(() => null),
     ]);
     if (!customersResponse.ok || !contractsResponse.ok) throw new Error('Could not load billing records');
     const [customersData, contractsData] = await Promise.all([customersResponse.json(), contractsResponse.json()]);
@@ -594,6 +602,13 @@ async function loadBillingData() {
     BILLING_CONTRACTS = contractsData.contracts || [];
     const schoolsData = schoolsResponse?.ok ? await schoolsResponse.json().catch(() => ({})) : {};
     BILLING_SCHOOLS = schoolsData.schools || [];
+    const quotesData = quotesResponse?.ok ? await quotesResponse.json().catch(() => ({})) : {};
+    const invoicesData = invoicesResponse?.ok ? await invoicesResponse.json().catch(() => ({})) : {};
+    const emailData = emailStatusResponse?.ok ? await emailStatusResponse.json().catch(() => ({})) : {};
+    BILLING_QUOTES = quotesData.quotes || [];
+    BILLING_INVOICES = invoicesData.invoices || [];
+    BILLING_DELIVERIES = quotesData.deliveries || [];
+    BILLING_EMAIL_READY = emailData.configured === true;
     renderBillingRegistry();
   } catch (error) {
     if ($('billing-customers-table')) $('billing-customers-table').innerHTML = `<tr><td colspan="7">${esc(error.message || 'Billing data is unavailable.')}</td></tr>`;
@@ -626,6 +641,51 @@ function renderBillingRegistry() {
       return `<tr><td>${esc(customer?.name || 'Unknown customer')}</td><td>${esc(contract.reference || '—')}</td>
         <td>${esc(contract.serviceDescription)}</td><td>${esc(contract.cadence)}</td><td>${esc(dates)}</td><td>${esc(contract.status)}</td>
         <td><button class="btn sm" data-billing-contract-edit="${esc(contract.id)}" data-super-admin-only type="button">Edit</button></td></tr>`;
+    }).join('');
+  }
+  renderBillingQuotes();
+  document.querySelectorAll('[data-super-admin-only]').forEach(element => {
+    if (window.consoleUserRole) element.hidden = window.consoleUserRole !== 'super_admin';
+  });
+}
+
+function formatBillingKsh(amount) {
+  return `KSh ${Number(amount || 0).toLocaleString('en-KE')}`;
+}
+
+function renderBillingQuotes() {
+  const quotesBody = $('billing-quotes-table');
+  const invoicesBody = $('billing-invoices-table');
+  const emailStatus = $('billing-email-status');
+  if (!quotesBody || !invoicesBody) return;
+  if (emailStatus) {
+    emailStatus.textContent = BILLING_EMAIL_READY
+      ? 'Quote email is configured. Sending attaches the quote PDF and includes the summary in the email.'
+      : 'Quote email is not configured yet. Set RESEND_API_KEY and BILLING_FROM_EMAIL (or EMAIL_FROM) for this console.';
+    emailStatus.className = `billing-email-status ${BILLING_EMAIL_READY ? 'ready' : 'unready'}`;
+  }
+  if (!BILLING_QUOTES.length) {
+    quotesBody.innerHTML = '<tr><td colspan="7">No quotes created yet.</td></tr>';
+  } else {
+    quotesBody.innerHTML = BILLING_QUOTES.map(quote => {
+      const customer = quote.customerSnapshot || BILLING_CUSTOMERS.find(item => item.id === quote.customerId) || {};
+      const existingInvoice = BILLING_INVOICES.find(invoice => invoice.quoteId === quote.id);
+      const deliveryCount = BILLING_DELIVERIES.find(item => item.quoteId === quote.id)?.attempts?.length || 0;
+      const actions = [`<a class="btn sm" href="/api/billing/quotes/${encodeURIComponent(quote.id)}/pdf" target="_blank" rel="noopener">PDF</a>`];
+      if (['draft', 'sent'].includes(quote.status)) actions.push(`<button class="btn sm" data-quote-send="${esc(quote.id)}" data-super-admin-only type="button">${quote.status === 'sent' ? 'Resend email' : 'Send email'}</button>`);
+      if (['draft', 'sent'].includes(quote.status)) actions.push(`<button class="btn sm" data-quote-accept="${esc(quote.id)}" data-super-admin-only type="button">Record accepted</button>`);
+      if (quote.status === 'accepted') actions.push(`<button class="btn sm" data-quote-convert="${esc(quote.id)}" data-super-admin-only type="button">Create draft invoice</button>`);
+      if (quote.status === 'converted' && existingInvoice) actions.push(`<span class="table-sub">${esc(existingInvoice.invoiceNumber)}</span>`);
+      return `<tr><td><strong>${esc(quote.quoteNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${Number(quote.enrollmentCount).toLocaleString('en-KE')}</td><td>${formatBillingKsh(quote.subtotalKsh)}</td><td>${esc(quote.expiresOn || 'No expiry')}</td><td>${esc(quote.status)}${deliveryCount ? `<div class="table-sub">${deliveryCount} email attempt${deliveryCount === 1 ? '' : 's'}</div>` : ''}</td><td><div class="billing-action-row">${actions.join('')}</div></td></tr>`;
+    }).join('');
+  }
+  if (!BILLING_INVOICES.length) {
+    invoicesBody.innerHTML = '<tr><td colspan="6">No draft invoices yet.</td></tr>';
+  } else {
+    invoicesBody.innerHTML = BILLING_INVOICES.map(invoice => {
+      const customer = BILLING_CUSTOMERS.find(item => item.id === invoice.customerId) || {};
+      const quote = BILLING_QUOTES.find(item => item.id === invoice.quoteId);
+      return `<tr><td>${esc(invoice.invoiceNumber)}</td><td>${esc(customer.name || 'Customer')}</td><td>${esc(quote?.quoteNumber || '')}</td><td>${formatBillingKsh(invoice.amountKsh)}</td><td>${esc(invoice.status)}</td><td>${esc(String(invoice.createdAt || '').slice(0, 10))}</td></tr>`;
     }).join('');
   }
   document.querySelectorAll('[data-super-admin-only]').forEach(element => {
@@ -725,6 +785,79 @@ $('bc-name')?.addEventListener('input', event => {
   const input = event.currentTarget;
   if (input.dataset.mode === 'add' && input.value !== input.dataset.selectedName) $('bc-id').value = '';
   renderBillingCustomerSuggestions(input.value);
+});
+
+function openBillingQuote() {
+  const select = $('bq-customer');
+  select.innerHTML = '<option value="">Select a billing customer</option>' + BILLING_CUSTOMERS
+    .filter(customer => customer.status === 'active')
+    .map(customer => `<option value="${esc(customer.id)}">${esc(customer.name)}${customer.tenantKey ? ` — ${esc(customer.tenantKey)}` : ''}</option>`)
+    .join('');
+  $('bq-students').value = '';
+  $('bq-pricing-model').value = 'rate_by_band';
+  $('bq-cadence').value = 'termly';
+  $('bq-setup').value = '';
+  $('bq-expires').value = '';
+  $('bq-communications').checked = false;
+  $('bq-extras').value = '';
+  $('bq-extra-cadence').value = 'termly';
+  $('bq-notes').value = '';
+  $('billing-quote-preview').textContent = 'Enter the student count and setup fee to calculate a quote preview.';
+  $('billing-quote-overlay')?.classList.add('open');
+  if (!BILLING_CUSTOMERS.some(customer => customer.status === 'active')) toast('Add or select a billing customer before creating a quote.');
+}
+
+function closeBillingQuote() { $('billing-quote-overlay')?.classList.remove('open'); }
+
+function billingQuotePayload() {
+  return {
+    customerId: $('bq-customer').value,
+    enrollmentCount: $('bq-students').value,
+    pricingModel: $('bq-pricing-model').value,
+    billingCadence: $('bq-cadence').value,
+    setupFeeKsh: $('bq-setup').value,
+    expiresOn: $('bq-expires').value,
+    communicationsIncluded: $('bq-communications').checked,
+    extraModules: $('bq-extras').value.split(/[\n,]/).map(value => value.trim()).filter(Boolean),
+    extraModuleCadence: $('bq-extra-cadence').value,
+    notes: $('bq-notes').value,
+  };
+}
+
+async function updateBillingQuotePreview() {
+  const preview = $('billing-quote-preview');
+  if (!preview) return;
+  const payload = billingQuotePayload();
+  if (!payload.enrollmentCount || payload.setupFeeKsh === '') {
+    preview.textContent = 'Enter the student count and one-off setup fee to calculate a quote preview.';
+    return;
+  }
+  preview.textContent = 'Calculating quote…';
+  try {
+    const response = await fetch('/api/billing/quotes/preview', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Could not calculate quote');
+    preview.textContent = [
+      data.pricingDescription,
+      ...data.lines.map(line => `${line.description}: ${line.quantity} × ${formatBillingKsh(line.unitPriceKsh)} = ${formatBillingKsh(line.amountKsh)}`),
+      `Quoted total: ${formatBillingKsh(data.subtotalKsh)}`,
+      data.taxNote,
+    ].join('\n');
+  } catch (error) {
+    preview.textContent = error.message;
+  }
+}
+
+function scheduleBillingQuotePreview() {
+  clearTimeout(billingQuotePreviewTimer);
+  billingQuotePreviewTimer = setTimeout(updateBillingQuotePreview, 250);
+}
+
+['bq-students', 'bq-pricing-model', 'bq-cadence', 'bq-setup', 'bq-communications', 'bq-extras', 'bq-extra-cadence'].forEach(id => {
+  $(id)?.addEventListener('input', scheduleBillingQuotePreview);
+  $(id)?.addEventListener('change', scheduleBillingQuotePreview);
 });
 
 function openBillingContract(customerId, contract = null) {
@@ -2026,6 +2159,14 @@ document.body.addEventListener('click', event => {
     openBillingCustomer();
     return;
   }
+  if (id === 'billing-quote-add') {
+    openBillingQuote();
+    return;
+  }
+  if (id === 'billing-quote-close' || id === 'billing-quote-cancel') {
+    closeBillingQuote();
+    return;
+  }
   if (id === 'billing-customer-close' || id === 'billing-customer-cancel') {
     closeBillingCustomer();
     return;
@@ -2065,6 +2206,68 @@ document.body.addEventListener('click', event => {
         closeBillingCustomer();
         await loadBillingData();
         toast('Billing customer saved.');
+      } catch (error) { toast(error.message); }
+    })();
+    return;
+  }
+
+  if (id === 'billing-quote-save') {
+    (async () => {
+      try {
+        const response = await fetch('/api/billing/quotes', {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(billingQuotePayload()),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not save quote');
+        closeBillingQuote();
+        await loadBillingData();
+        toast(`Draft ${payload.quote.quoteNumber} saved. Download the PDF or email it from the Quotes table.`);
+      } catch (error) { toast(error.message); }
+    })();
+    return;
+  }
+
+  const quoteSendId = btn.dataset.quoteSend;
+  if (quoteSendId) {
+    (async () => {
+      btn.disabled = true;
+      try {
+        const response = await fetch(`/api/billing/quotes/${encodeURIComponent(quoteSendId)}/send`, { method: 'POST', credentials: 'same-origin' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not send quote');
+        await loadBillingData();
+        toast('Quote email sent with PDF attachment.');
+      } catch (error) { toast(error.message); }
+      finally { btn.disabled = false; }
+    })();
+    return;
+  }
+
+  const quoteAcceptId = btn.dataset.quoteAccept;
+  if (quoteAcceptId) {
+    if (!window.confirm('Confirm that the customer has accepted this quote? This records acceptance and enables draft invoice creation.')) return;
+    (async () => {
+      try {
+        const response = await fetch(`/api/billing/quotes/${encodeURIComponent(quoteAcceptId)}/accept`, { method: 'POST', credentials: 'same-origin' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not record acceptance');
+        await loadBillingData();
+        toast('Customer acceptance recorded. You can now create a draft invoice.');
+      } catch (error) { toast(error.message); }
+    })();
+    return;
+  }
+
+  const quoteConvertId = btn.dataset.quoteConvert;
+  if (quoteConvertId) {
+    (async () => {
+      try {
+        const response = await fetch(`/api/billing/quotes/${encodeURIComponent(quoteConvertId)}/convert`, { method: 'POST', credentials: 'same-origin' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not create draft invoice');
+        await loadBillingData();
+        toast(`Draft invoice ${payload.invoice.invoiceNumber} created. It has not been issued.`);
       } catch (error) { toast(error.message); }
     })();
     return;

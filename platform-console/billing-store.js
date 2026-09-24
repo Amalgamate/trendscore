@@ -43,6 +43,50 @@ function createBillingStore(dataDir) {
       updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS billing_contracts_customer_idx ON billing_contracts(customer_id);
+    CREATE TABLE IF NOT EXISTS billing_quotes (
+      id TEXT PRIMARY KEY,
+      quote_number TEXT NOT NULL UNIQUE,
+      customer_id TEXT NOT NULL REFERENCES billing_customers(id) ON DELETE RESTRICT,
+      customer_snapshot TEXT NOT NULL,
+      quote_snapshot TEXT NOT NULL,
+      enrollment_count INTEGER NOT NULL,
+      pricing_model TEXT NOT NULL,
+      billing_cadence TEXT NOT NULL,
+      subtotal_ksh INTEGER NOT NULL,
+      expires_on TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'sent', 'accepted', 'declined', 'expired', 'converted')),
+      created_by TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      sent_at TEXT NOT NULL DEFAULT '',
+      email_message_id TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS billing_quotes_customer_idx ON billing_quotes(customer_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS billing_quote_deliveries (
+      id TEXT PRIMARY KEY,
+      quote_id TEXT NOT NULL REFERENCES billing_quotes(id) ON DELETE RESTRICT,
+      recipient TEXT NOT NULL,
+      actor TEXT NOT NULL DEFAULT '',
+      provider_message_id TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL CHECK (status IN ('sent', 'failed')),
+      error TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS billing_quote_deliveries_quote_idx ON billing_quote_deliveries(quote_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS billing_invoices (
+      id TEXT PRIMARY KEY,
+      invoice_number TEXT NOT NULL UNIQUE,
+      quote_id TEXT NOT NULL UNIQUE REFERENCES billing_quotes(id) ON DELETE RESTRICT,
+      customer_id TEXT NOT NULL REFERENCES billing_customers(id) ON DELETE RESTRICT,
+      invoice_snapshot TEXT NOT NULL,
+      amount_ksh INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'issued', 'sent', 'paid', 'void')),
+      created_by TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS billing_invoices_customer_idx ON billing_invoices(customer_id, created_at DESC);
   `);
 
   const customerColumns = `id, name, legal_name AS legalName, tenant_key AS tenantKey,
@@ -52,6 +96,20 @@ function createBillingStore(dataDir) {
   const contractColumns = `id, customer_id AS customerId, reference, service_description AS serviceDescription,
     cadence, start_date AS startDate, end_date AS endDate, renewal_date AS renewalDate,
     terms_note AS termsNote, status, created_at AS createdAt, updated_at AS updatedAt`;
+  const decodeJson = value => {
+    try { return JSON.parse(value); } catch { return null; }
+  };
+  const quoteColumns = `id, quote_number AS quoteNumber, customer_id AS customerId,
+    customer_snapshot AS customerSnapshotJson, quote_snapshot AS quoteSnapshotJson,
+    enrollment_count AS enrollmentCount, pricing_model AS pricingModel,
+    billing_cadence AS billingCadence, subtotal_ksh AS subtotalKsh, expires_on AS expiresOn,
+    notes, status, created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt,
+    sent_at AS sentAt, email_message_id AS emailMessageId`;
+  const invoiceColumns = `id, invoice_number AS invoiceNumber, quote_id AS quoteId,
+    customer_id AS customerId, invoice_snapshot AS invoiceSnapshotJson, amount_ksh AS amountKsh,
+    status, created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt`;
+  const decodeQuote = row => row && ({ ...row, customerSnapshot: decodeJson(row.customerSnapshotJson), quoteSnapshot: decodeJson(row.quoteSnapshotJson), customerSnapshotJson: undefined, quoteSnapshotJson: undefined });
+  const decodeInvoice = row => row && ({ ...row, invoiceSnapshot: decodeJson(row.invoiceSnapshotJson), invoiceSnapshotJson: undefined });
 
   return {
     listCustomers() {
@@ -97,6 +155,55 @@ function createBillingStore(dataDir) {
         terms_note=@termsNote, status=@status, updated_at=@updatedAt WHERE id=@id`).run({ ...contract, id, updatedAt: now });
       if (!result.changes) return null;
       return db.prepare(`SELECT ${contractColumns} FROM billing_contracts WHERE id = ?`).get(id);
+    },
+    listQuotes() {
+      return db.prepare(`SELECT ${quoteColumns} FROM billing_quotes ORDER BY created_at DESC`).all().map(decodeQuote);
+    },
+    getQuote(id) {
+      return decodeQuote(db.prepare(`SELECT ${quoteColumns} FROM billing_quotes WHERE id = ?`).get(id) || null);
+    },
+    createQuote(quote) {
+      const now = new Date().toISOString();
+      db.prepare(`INSERT INTO billing_quotes
+        (id,quote_number,customer_id,customer_snapshot,quote_snapshot,enrollment_count,pricing_model,billing_cadence,subtotal_ksh,expires_on,notes,status,created_by,created_at,updated_at)
+        VALUES (@id,@quoteNumber,@customerId,@customerSnapshot,@quoteSnapshot,@enrollmentCount,@pricingModel,@billingCadence,@subtotalKsh,@expiresOn,@notes,'draft',@createdBy,@createdAt,@updatedAt)`)
+        .run({ ...quote, customerSnapshot: JSON.stringify(quote.customerSnapshot), quoteSnapshot: JSON.stringify(quote.quoteSnapshot), createdAt: now, updatedAt: now });
+      return this.getQuote(quote.id);
+    },
+    setQuoteStatus(id, status) {
+      const now = new Date().toISOString();
+      const result = db.prepare(`UPDATE billing_quotes SET status=@status, updated_at=@updatedAt WHERE id=@id`).run({ id, status, updatedAt: now });
+      return result.changes ? this.getQuote(id) : null;
+    },
+    recordQuoteDelivery(delivery) {
+      const now = new Date().toISOString();
+      db.prepare(`INSERT INTO billing_quote_deliveries
+        (id,quote_id,recipient,actor,provider_message_id,status,error,created_at)
+        VALUES (@id,@quoteId,@recipient,@actor,@providerMessageId,@status,@error,@createdAt)`)
+        .run({ ...delivery, createdAt: now });
+      if (delivery.status === 'sent') {
+        db.prepare(`UPDATE billing_quotes SET status='sent', sent_at=@sentAt, email_message_id=@messageId, updated_at=@sentAt WHERE id=@id`)
+          .run({ id: delivery.quoteId, sentAt: now, messageId: delivery.providerMessageId || '' });
+      }
+      return now;
+    },
+    listQuoteDeliveries(quoteId) {
+      return db.prepare(`SELECT recipient,actor,provider_message_id AS providerMessageId,status,error,created_at AS createdAt
+        FROM billing_quote_deliveries WHERE quote_id=? ORDER BY created_at DESC`).all(quoteId);
+    },
+    listInvoices() {
+      return db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices ORDER BY created_at DESC`).all().map(decodeInvoice);
+    },
+    getInvoiceForQuote(quoteId) {
+      return decodeInvoice(db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices WHERE quote_id=?`).get(quoteId) || null);
+    },
+    createDraftInvoice(invoice) {
+      const now = new Date().toISOString();
+      db.prepare(`INSERT INTO billing_invoices
+        (id,invoice_number,quote_id,customer_id,invoice_snapshot,amount_ksh,status,created_by,created_at,updated_at)
+        VALUES (@id,@invoiceNumber,@quoteId,@customerId,@invoiceSnapshot,@amountKsh,'draft',@createdBy,@createdAt,@updatedAt)`)
+        .run({ ...invoice, invoiceSnapshot: JSON.stringify(invoice.invoiceSnapshot), createdAt: now, updatedAt: now });
+      return decodeInvoice(db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices WHERE id=?`).get(invoice.id));
     },
     close() { db.close(); },
   };
