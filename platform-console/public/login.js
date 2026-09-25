@@ -6,7 +6,6 @@
   'use strict';
 
   // ── Constants ────────────────────────────────────────────────────────────
-  const EXPIRY_WARN_MS      = 30 * 60 * 1000;      // warn when < 30 min remain
 
   // ── State ────────────────────────────────────────────────────────────────
   let currentUser     = null;
@@ -28,10 +27,6 @@
   const chipAvatar = document.getElementById('user-chip-avatar');
   const logoutBtn  = document.getElementById('btn-logout');
   const roleBtns   = document.querySelectorAll('.lg-role-btn');
-
-  // Session timer pill
-  const timerPill  = document.getElementById('session-timer-pill');
-  const timerLabel = document.getElementById('session-timer-label');
 
   // Logout modal
   const logoutOverlay   = document.getElementById('logout-overlay');
@@ -89,21 +84,14 @@
     });
   }
 
-  // ── Session countdown timer ──────────────────────────────────────────────
+  // ── Session expiry enforcement ──────────────────────────────────────────
   function startSessionTimer(expiresAt) {
     const deadline = Number(expiresAt);
-    if (!timerPill || !timerLabel || !Number.isFinite(deadline) || deadline <= 0) {
-      if (timerPill) timerPill.hidden = true;
-      return;
-    }
+    if (!Number.isFinite(deadline) || deadline <= 0) return;
     sessionExpiresAt = deadline;
-    timerPill.hidden = false;
 
     function tick() {
       const remaining = deadline - Date.now();
-
-      timerLabel.textContent = formatDuration(remaining);
-      timerPill.classList.toggle('is-warning', remaining < EXPIRY_WARN_MS);
 
       // Update logout modal timer display if it's open
       if (logoutTimerDisplay) {
@@ -112,7 +100,6 @@
 
       if (remaining <= 0) {
         stopSessionTimer();
-        timerLabel.textContent = 'Expired';
         lockConsole('expired');
         return;
       }
@@ -125,7 +112,6 @@
   function stopSessionTimer() {
     if (sessionTimerInterval) window.clearInterval(sessionTimerInterval);
     sessionTimerInterval = null;
-    if (timerPill) timerPill.hidden = true;
     sessionExpiresAt = null;
   }
 

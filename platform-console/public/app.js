@@ -2953,7 +2953,6 @@ function bindDeployEvents() {
   const openPromote = () => openPromoteDeploy();
   $('deploy-promote-btn')?.addEventListener('click', runPromoteDeploy);
   $('btn-deploy-open-promote')?.addEventListener('click', runPromoteDeploy);
-  $('btn-header-promote')?.addEventListener('click', openPromote);
   $('btn-overview-promote')?.addEventListener('click', openPromote);
   $('metric-last-deploy')?.addEventListener('click', openPromote);
   $('metric-last-deploy')?.addEventListener('keydown', event => {
