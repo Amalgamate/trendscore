@@ -505,6 +505,13 @@ tbody tr:hover td{background:#f8fbff}
 .tl-body{padding-left:14px;border-left:2px solid var(--brand)}
 .tl-title{font-weight:700;font-size:13px;color:var(--ink)}
 .tl-copy{font-size:12px;color:var(--muted);margin-top:3px}
+.timeline-compact .tl-item{grid-template-columns:78px minmax(0,1fr);align-items:center;gap:10px;padding:10px 14px}
+.timeline-compact .tl-time{white-space:nowrap;padding-top:0}
+.timeline-compact .tl-body{min-width:0;display:flex;align-items:center;gap:8px}
+.timeline-compact .tl-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.tl-status{flex:0 0 auto;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;line-height:1.5}
+.tl-status.success{background:var(--green-soft);color:var(--green)}
+.tl-status.failed{background:var(--red-soft);color:var(--red)}
 
 /* ── Controls ──────────────────────────────────────────────────────── */
 .ctrl-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:14px 18px}
@@ -1286,4 +1293,6 @@ input:checked + .toggle-slider::before{transform:translateX(18px)}
   .page-header>div:first-child{min-width:0}
   .panel,.panel-header,.panel-body{min-width:0}
   .log-viewer{overflow-x:auto;overscroll-behavior-x:contain}
+  .timeline-compact .tl-item{grid-template-columns:72px minmax(0,1fr);gap:7px;padding:10px}
+  .timeline-compact .tl-body{gap:6px;padding-left:8px}
 }

@@ -1629,14 +1629,22 @@ function renderTimeline(elId, maxItems = 99) {
     el.innerHTML = '<div class="tl-item"><div class="tl-copy">No deployment history is available.</div></div>';
     return;
   }
-  el.innerHTML = DEPLOYMENTS.slice(0, maxItems).map(item => `
+  el.innerHTML = DEPLOYMENTS.slice(0, maxItems).map(item => {
+    const status = String(item.status || (/fail|error/i.test(item.title || '') ? 'Failed' : 'Success'));
+    const failed = /fail|error/i.test(status);
+    const rawTitle = String(item.title || 'Deployment');
+    const title = /^deploy failed|^promoted\b/i.test(rawTitle)
+      ? 'School release'
+      : (/^console\b/i.test(rawTitle) ? 'Admin console' : rawTitle);
+    return `
     <div class="tl-item">
       <div class="tl-time">${esc(item.time)}</div>
       <div class="tl-body">
-        <div class="tl-title">${esc(item.title)}</div>
-        <div class="tl-copy">${esc(item.copy)}</div>
+        <span class="tl-status ${failed ? 'failed' : 'success'}">${failed ? 'Failed' : 'Complete'}</span>
+        <div class="tl-title" title="${esc(title)}">${esc(title)}</div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function renderCapacity() {
