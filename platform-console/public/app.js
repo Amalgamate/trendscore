@@ -1,5 +1,6 @@
 // The console starts empty and fills operational state from authenticated APIs.
 let INSTANCES = [];
+let INSTANCE_TYPE_METADATA = [];
 
 const PLATFORM_MODULES = [
   { id: 'admissions', name: 'Admissions', desc: 'Student registration and enrollment', enabled: true },
@@ -532,13 +533,15 @@ async function refreshFromRuntime() {
   try {
     const runtime = await fetchRuntimeData();
     if (runtime?.ok && Array.isArray(runtime.instances)) {
+      if (Array.isArray(runtime.appTypes)) INSTANCE_TYPE_METADATA = runtime.appTypes;
       INSTANCES = runtime.instances.map(item => ({
         ...item,
         domain: item.domain || '',
-        typeLabel: item.typeLabel || 'Managed',
+        appType: item.appType || 'other',
+        typeLabel: item.typeLabel || (item.appType ? item.appType.toUpperCase() : 'Other / unclassified'),
       }));
       selectedInstanceName = INSTANCES.find(i => i.name === selectedInstanceName)?.name || INSTANCES[0]?.name || '';
-    }
+      }
     RUNTIME_METRICS = runtime?.metrics || null;
     runtimeGeneratedAt = runtime?.generatedAt || null;
     if (Array.isArray(runtime?.deployments)) DEPLOYMENTS = runtime.deployments;
@@ -1420,15 +1423,10 @@ function toggleCrmMetrics() {
 
 // Rendering
 function renderInstanceRow(instance, mode = 'compact') {
-  const extraCols = mode === 'full'
-    ? `<td><span class="version-chip">${esc(instance.typeLabel)}</span></td>
-       <td><span class="version-chip">Not connected</span></td>`
-    : '';
-
   return `<tr>
     <td><div class="cell-school"><strong>${esc(instance.name)}</strong><div class="cell-domain">${esc(instance.domain)}</div></div></td>
+    <td><span class="instance-category-chip">${esc(instance.typeLabel || 'Other / unclassified')}</span></td>
     <td><span class="badge ${statusCls(instance.status)}">${esc(instance.status)}</span></td>
-    ${extraCols}
     <td>${fmtDate(instance.created)}</td>
     <td><span class="version-chip">${esc(instance.version)}</span></td>
     <td><div class="port-list">FE :${instance.fe}<br>BE :${instance.be}<br>${esc(instance.db)}</div></td>
@@ -1459,6 +1457,12 @@ function inferComponent(instance) {
 }
 
 function inferGroupKey(instance) {
+  // Compose project is the deployment boundary for every product type and
+  // avoids merging unrelated services that happen to share similar names.
+  if (instance.composeProject) return String(instance.composeProject).toLowerCase();
+  if (instance.appType && !['school', 'other', 'platform'].includes(instance.appType)) {
+    return slugify(instance.key || instance.name || instance.domain || instance.appType);
+  }
   const fromDomain = String(instance.domain || '').split('.')[0].toLowerCase();
   const fromName = slugify(instance.name || '');
   const base = (fromDomain || fromName)
@@ -1489,6 +1493,8 @@ function groupInstances(instances) {
       map.set(groupKey, {
         key: groupKey,
         name: prettyGroupName(groupKey),
+        appType: instance.appType || 'other',
+        typeLabel: instance.typeLabel || 'Other / unclassified',
         items: [],
         hasFrontend: false,
         hasBackend: false,
@@ -1514,6 +1520,15 @@ function groupInstances(instances) {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+const INSTANCE_CATEGORY_OPEN = { education: true };
+const INSTANCE_GROUP_OPEN = {};
+
+function categoryForAppType(appType) {
+  const metadata = INSTANCE_TYPE_METADATA.find(type => type.id === appType) || INSTANCE_TYPE_METADATA.find(type => type.id === 'other');
+  return metadata ? { key: slugify(metadata.category), label: metadata.category, icon: metadata.categoryIcon || '📦', order: Number(metadata.categoryOrder || 99) }
+    : { key: 'other', label: 'Other', icon: '📦', order: 99 };
+}
+
 function resolveServerIp() {
   const rows = Array.from(document.querySelectorAll('.sb-footer-row'));
   for (const row of rows) {
@@ -1528,6 +1543,13 @@ function resolveServerIp() {
 
 function renderInstances() {
   const groups = groupInstances(INSTANCES);
+  const categoryGroups = new Map();
+  groups.forEach(group => {
+    const category = categoryForAppType(group.appType);
+    if (!categoryGroups.has(category.key)) categoryGroups.set(category.key, { ...category, groups: [] });
+    categoryGroups.get(category.key).groups.push(group);
+  });
+  const categories = Array.from(categoryGroups.values()).sort((a, b) => a.order - b.order);
   const serverIp = resolveServerIp();
 
   const renderGroupHeader = group => {
@@ -1538,8 +1560,11 @@ function renderInstances() {
     const openDomainUrl = domain ? `https://${domain}` : '';
     const domainLink = openDomainUrl ? `<a class="group-open-link group-open-domain-link" href="${esc(openDomainUrl)}" target="_blank" rel="noopener noreferrer" title="Open domain" style="margin-left:8px;display:inline-flex;align-items:center;text-decoration:none;">↗</a>` : '';
     const ipLink = openIpUrl ? `<a class="group-open-link group-open-ip-link" href="${esc(openIpUrl)}" target="_blank" rel="noopener noreferrer" title="Open IP endpoint" style="margin-left:8px;display:inline-flex;align-items:center;text-decoration:none;">↗</a>` : '';
-    return `<tr class="group-head" data-group="${esc(group.key)}" style="background:#f6f8ff;cursor:pointer">
-      <td colspan="7">
+    const category = categoryForAppType(group.appType);
+    const categoryOpen = INSTANCE_CATEGORY_OPEN[category.key] === true;
+    const groupOpen = INSTANCE_GROUP_OPEN[group.key] === true;
+    return `<tr class="group-head category-child" data-category-owner="${esc(category.key)}" data-group="${esc(group.key)}" style="display:${categoryOpen ? '' : 'none'};background:#f6f8ff;cursor:pointer">
+      <td colspan="8">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
           <div>
             <strong>${esc(group.name)}</strong>
@@ -1548,25 +1573,36 @@ function renderInstances() {
             <span style="margin-left:12px;font-family:var(--mono);font-size:12px;color:var(--muted)">FE ${esc(feLabel)}</span>${ipLink}
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
-            <span class="group-chevron" style="font-size:16px;line-height:1">▸</span>
+            <span class="group-chevron" style="font-size:16px;line-height:1">${groupOpen ? '▾' : '▸'}</span>
           </div>
         </div>
       </td>
     </tr>`;
   };
 
-  const renderGroupedBody = mode => groups.map(group => {
+  const renderCategoryHeader = category => {
+    const count = category.groups.length;
+    const healthy = category.groups.filter(group => group.items.some(item => item.status === 'Online')).length;
+    const isOpen = INSTANCE_CATEGORY_OPEN[category.key] === true;
+    return `<tr class="instance-category-head"><td colspan="8"><button class="instance-category-toggle" type="button" data-instance-category-toggle="${esc(category.key)}" aria-expanded="${isOpen}"><span class="instance-category-icon" aria-hidden="true">${category.icon}</span><span class="instance-category-name">${esc(category.label)}</span><span class="instance-category-count">${count} deployments · ${healthy} online</span><span class="instance-category-chevron">${isOpen ? '▾' : '▸'}</span></button></td></tr>`;
+  };
+
+  const renderGroupedBody = mode => categories.map(category => {
+    const categoryOpen = INSTANCE_CATEGORY_OPEN[category.key] === true;
+    const groupsHtml = category.groups.map(group => {
     const rows = group.items.map(instance =>
-      renderInstanceRow(instance, mode).replace('<tr>', `<tr class="group-row" data-group="${esc(group.key)}" style="display:none">`)
+      renderInstanceRow(instance, mode).replace('<tr>', `<tr class="group-row category-child" data-category-owner="${esc(category.key)}" data-group="${esc(group.key)}" style="display:${categoryOpen && INSTANCE_GROUP_OPEN[group.key] === true ? '' : 'none'}">`)
     ).join('');
     return `${renderGroupHeader(group)}${rows}`;
+    }).join('');
+    return `${renderCategoryHeader(category)}${groupsHtml}`;
   }).join('');
 
   const overview = $('instance-table');
-  if (overview) overview.innerHTML = groups.length ? renderGroupedBody('compact') : '<tr><td colspan="7">No runtime instances are available.</td></tr>';
+  if (overview) overview.innerHTML = groups.length ? renderGroupedBody('compact') : '<tr><td colspan="8">No runtime instances are available.</td></tr>';
 
   const full = $('instance-table-full');
-  if (full) full.innerHTML = groups.length ? renderGroupedBody('full') : '<tr><td colspan="9">No runtime instances are available.</td></tr>';
+  if (full) full.innerHTML = groups.length ? renderGroupedBody('full') : '<tr><td colspan="8">No runtime instances are available.</td></tr>';
 }
 
 function renderMetrics() {
@@ -1581,8 +1617,8 @@ function renderMetrics() {
 
   if ($('overview-sub')) {
     $('overview-sub').textContent = liveMode
-      ? 'Live snapshot of all managed school instances'
-      : 'Live snapshot of all managed school instances · waiting for live metrics';
+      ? 'Live snapshot of all managed instances'
+      : 'Live snapshot of all managed instances · waiting for live metrics';
   }
 }
 
@@ -2166,6 +2202,40 @@ async function callControlApi(action, instanceKey = '') {
   }
 }
 
+function renderInstanceTypePicker(types) {
+  const host = $('instance-type-options');
+  if (!host) return;
+  const grouped = new Map();
+  for (const type of types.filter(item => item.inProvisionPicker !== false)) {
+    if (!grouped.has(type.category)) grouped.set(type.category, []);
+    grouped.get(type.category).push(type);
+  }
+  const icons = { school: '🎓', sacco: '🏦', hospital: '🏥', hotel: '🏨', organization: '🏢', odoo: '🧩', wordpress: '🌐', platform: '⚙️' };
+  const isSuperAdmin = window.consoleUserRole === 'super_admin';
+  host.innerHTML = Array.from(grouped.entries()).map(([category, items]) => `<section class="instance-type-group"><h3>${esc(category)}</h3><div class="instance-type-grid">${items.map(type => {
+    const canChoose = type.provisionable && isSuperAdmin;
+    const status = type.provisionable ? (isSuperAdmin ? 'Available' : 'Super Admin only') : 'Setup recipe needed';
+    const tag = type.provisionable ? 'ready' : 'planned';
+    return `<button class="instance-type-card ${canChoose ? '' : 'is-unavailable'}" type="button" data-instance-type="${esc(type.id)}" ${canChoose ? '' : 'disabled'}><span class="instance-type-icon" aria-hidden="true">${icons[type.id] || '📦'}</span><span class="instance-type-card-main"><strong>${esc(type.label)}</strong><small>${esc(type.description)}</small><span class="instance-type-status ${tag}">${esc(status)}</span></span><span class="instance-type-arrow" aria-hidden="true">${canChoose ? '→' : '·'}</span></button>`;
+  }).join('')}</div></section>`).join('');
+}
+
+async function openNewInstanceTypePicker() {
+  $('instance-type-overlay')?.classList.add('open');
+  const host = $('instance-type-options');
+  if (host) host.innerHTML = '<div class="billing-empty">Loading available instance types…</div>';
+  try {
+    const response = await fetch('/api/instances/types', { credentials: 'same-origin' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !Array.isArray(data.types)) throw new Error(data.error || 'Could not load instance types');
+    renderInstanceTypePicker(data.types);
+  } catch (error) {
+    if (host) host.innerHTML = `<div class="billing-empty">${esc(error.message)}. Refresh the console and try again.</div>`;
+  }
+}
+
+function closeInstanceTypePicker() { $('instance-type-overlay')?.classList.remove('open'); }
+
 async function runControl(action, label, options = {}) {
   const instance = selectedInstance();
   const target = options.global ? 'All Instances' : instance.name;
@@ -2264,16 +2334,35 @@ document.body.addEventListener('click', event => {
     return;
   }
 
+  const categoryToggle = event.target.closest('[data-instance-category-toggle]');
+  if (categoryToggle) {
+    const categoryKey = categoryToggle.dataset.instanceCategoryToggle;
+    const isOpen = INSTANCE_CATEGORY_OPEN[categoryKey] !== true;
+    INSTANCE_CATEGORY_OPEN[categoryKey] = isOpen;
+    document.querySelectorAll(`.instance-category-toggle[data-instance-category-toggle="${categoryKey}"]`).forEach(button => {
+      button.setAttribute('aria-expanded', String(isOpen));
+      const chevron = button.querySelector('.instance-category-chevron');
+      if (chevron) chevron.textContent = isOpen ? '▾' : '▸';
+    });
+    document.querySelectorAll(`.category-child[data-category-owner="${categoryKey}"]`).forEach(row => {
+      const groupOpen = INSTANCE_GROUP_OPEN[row.dataset.group] === true;
+      row.style.display = !isOpen ? 'none' : row.classList.contains('group-row') && !groupOpen ? 'none' : '';
+    });
+    return;
+  }
+
   const groupHead = event.target.closest('.group-head');
   if (groupHead) {
     const groupKey = groupHead.dataset.group;
+    const categoryKey = groupHead.dataset.categoryOwner;
     const rows = document.querySelectorAll(`.group-row[data-group="${groupKey}"]`);
-    const chevron = groupHead.querySelector('.group-chevron');
-    const isClosed = Array.from(rows).every(row => row.style.display === 'none');
+    const isClosed = INSTANCE_GROUP_OPEN[groupKey] !== true;
+    INSTANCE_GROUP_OPEN[groupKey] = isClosed;
+    groupHead.style.display = INSTANCE_CATEGORY_OPEN[categoryKey] === true ? '' : 'none';
     rows.forEach(row => {
-      row.style.display = isClosed ? '' : 'none';
+      row.style.display = INSTANCE_CATEGORY_OPEN[categoryKey] === true && isClosed ? '' : 'none';
     });
-    if (chevron) chevron.textContent = isClosed ? '▾' : '▸';
+    document.querySelectorAll(`.group-head[data-group="${groupKey}"] .group-chevron`).forEach(chevron => { chevron.textContent = isClosed ? '▾' : '▸'; });
     return;
   }
 
@@ -2293,34 +2382,25 @@ document.body.addEventListener('click', event => {
   }
 
   const id = btn.id;
+  if (id === 'btn-new-instance-overview' || id === 'btn-new-instance-list') {
+    openNewInstanceTypePicker();
+    return;
+  }
+  if (id === 'instance-type-close' || id === 'instance-type-cancel') {
+    closeInstanceTypePicker();
+    return;
+  }
+  const selectedInstanceType = btn.dataset.instanceType;
+  if (selectedInstanceType) {
+    closeInstanceTypePicker();
+    openModal(selectedInstanceType);
+    return;
+  }
   const billingPickKind = btn.dataset.billingPickKind;
   if (billingPickKind) {
     selectBillingCustomerSuggestion(billingPickKind, btn.dataset.billingPickId);
     return;
   }
-  const createButtonMap = {
-    'btn-create-school': 'school',
-    'btn-create2-school': 'school',
-    'btn-create3-school': 'school',
-    'btn-create2-odoo': 'odoo',
-    'btn-create3-odoo': 'odoo',
-    'btn-create2-wordpress': 'wordpress',
-    'btn-create3-wordpress': 'wordpress',
-    'btn-create2-sacco': 'sacco',
-    'btn-create3-sacco': 'sacco',
-    'btn-create2-hospital': 'hospital',
-    'btn-create3-hospital': 'hospital',
-    'btn-create2-hotel': 'hotel',
-    'btn-create3-hotel': 'hotel',
-    'btn-create2-organization': 'organization',
-    'btn-create3-organization': 'organization',
-  };
-
-  if (createButtonMap[id]) {
-    openModal(createButtonMap[id]);
-    return;
-  }
-
   if (id === 'btn-refresh') {
     (async () => {
       await refreshFromRuntime();
@@ -2620,6 +2700,9 @@ document.body.addEventListener('change', event => {
 });
 
 function bindModalEvents() {
+  $('instance-type-close')?.addEventListener('click', closeInstanceTypePicker);
+  $('instance-type-cancel')?.addEventListener('click', closeInstanceTypePicker);
+  $('instance-type-overlay')?.addEventListener('click', event => { if (event.target === $('instance-type-overlay')) closeInstanceTypePicker(); });
   $('modal-close')?.addEventListener('click', closeModal);
   $('modal-cancel')?.addEventListener('click', closeModal);
   $('modal-overlay')?.addEventListener('click', event => { if (event.target === $('modal-overlay')) closeModal(); });
@@ -2779,7 +2862,7 @@ function bindModalEvents() {
         renderEverything();
         closeModal();
         finishInstallProgress(true);
-        toast(`Provisioning "${name}" (${app.label}) started.`);
+        toast(`${app.label} "${name}" is provisioned. Its configured service health checks passed.`);
         return;
       } catch (error) {
         finishInstallProgress(false);

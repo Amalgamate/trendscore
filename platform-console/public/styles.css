@@ -413,6 +413,31 @@ th{
 }
 tbody tr:hover td{background:#f8fbff}
 .cell-school strong{font-weight:700;font-size:13px;display:block}
+.instance-category-head td{padding:0;border-bottom:1px solid var(--border);background:#eef2ff}
+.instance-category-toggle{width:100%;display:flex;align-items:center;gap:10px;text-align:left;padding:13px 16px;border:0;background:transparent;color:var(--ink);cursor:pointer}
+.instance-category-toggle:hover{background:rgba(79,70,229,.06)}
+.instance-category-icon{font-size:18px;line-height:1}
+.instance-category-name{font-size:13px;font-weight:800}
+.instance-category-count{font-size:11px;color:var(--muted);margin-left:auto}
+.instance-category-chevron{font-size:16px;color:var(--brand);width:16px;text-align:center}
+.instance-category-chip{display:inline-flex;padding:3px 8px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:10px;font-weight:700;white-space:nowrap}
+.instance-type-modal{max-width:790px}
+.instance-type-modal>.modal-header{align-items:flex-start}
+.instance-type-modal .modal-subtitle{color:var(--muted);font-size:12px;margin-top:3px}
+.instance-type-groups{display:grid;gap:18px}
+.instance-type-group h3{margin:0 0 8px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.instance-type-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.instance-type-card{display:flex;align-items:flex-start;gap:12px;width:100%;padding:13px;border:1px solid var(--border);border-radius:10px;background:#fff;text-align:left;color:var(--ink);cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s}
+.instance-type-card:not(:disabled):hover{border-color:#6366f1;box-shadow:0 5px 14px rgba(67,56,202,.12);transform:translateY(-1px)}
+.instance-type-card:disabled{cursor:not-allowed;background:#f8fafc;color:#64748b}
+.instance-type-icon{font-size:23px;line-height:1.1}
+.instance-type-card-main{display:grid;gap:4px;flex:1;min-width:0}
+.instance-type-card-main strong{font-size:13px}
+.instance-type-card-main small{font-size:11px;line-height:1.4;color:var(--muted)}
+.instance-type-status{font-size:10px;font-weight:700;color:#166534}
+.instance-type-status.planned{color:#92400e}
+.instance-type-arrow{font-size:17px;color:var(--brand);padding-top:1px}
+.instance-type-footnote{margin-top:14px;font-size:11px;color:var(--muted);line-height:1.5}
 .cell-domain{font-size:11px;color:var(--muted);margin-top:2px;font-family:var(--mono)}
 
 /* ── Badges ────────────────────────────────────────────────────────── */
@@ -696,6 +721,7 @@ tbody tr:hover td{background:#f8fbff}
 @media(max-width:560px){
   .metric-row{grid-template-columns:1fr}
   .overview-metric-row{grid-template-columns:1fr}
+  .instance-type-grid{grid-template-columns:1fr}
   .ctrl-grid{grid-template-columns:1fr}
 }
 

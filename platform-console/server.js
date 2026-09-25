@@ -505,7 +505,19 @@ function writeLeadsStore(leads) {
 }
 
 // ── App catalog & port ranges ─────────────────────────────────────────────
-const APP_TYPE_SET = new Set(['school', 'odoo', 'wordpress', 'sacco', 'hospital', 'hotel', 'organization']);
+const APP_TYPE_METADATA = [
+  { id: 'school', label: 'School', category: 'Education', categoryIcon: '🎓', categoryOrder: 1, description: 'School management platform with frontend, backend, and database.', provisionable: true, inProvisionPicker: true },
+  { id: 'sacco', label: 'SACCO', category: 'Financial services', categoryIcon: '🏦', categoryOrder: 2, description: 'Member, savings, and lending management.', provisionable: false, inProvisionPicker: true },
+  { id: 'hospital', label: 'Hospital', category: 'Healthcare', categoryIcon: '🏥', categoryOrder: 3, description: 'Hospital operations and patient management.', provisionable: false, inProvisionPicker: true },
+  { id: 'hotel', label: 'Hotel', category: 'Hospitality', categoryIcon: '🏨', categoryOrder: 4, description: 'Hotel and guest operations.', provisionable: false, inProvisionPicker: true },
+  { id: 'organization', label: 'Organization', category: 'Organizations', categoryIcon: '🏢', categoryOrder: 5, description: 'General organization management.', provisionable: false, inProvisionPicker: true },
+  { id: 'odoo', label: 'Odoo', category: 'Business applications', categoryIcon: '🧩', categoryOrder: 6, description: 'Odoo ERP with PostgreSQL.', provisionable: true, inProvisionPicker: true },
+  { id: 'wordpress', label: 'WordPress', category: 'Business applications', categoryIcon: '🧩', categoryOrder: 6, description: 'WordPress site with MySQL.', provisionable: true, inProvisionPicker: true },
+  { id: 'platform', label: 'Platform services', category: 'Platform', categoryIcon: '⚙️', categoryOrder: 7, description: 'TrendSCORE administration and shared services.', provisionable: false, inProvisionPicker: false },
+  { id: 'other', label: 'Other / unclassified', category: 'Other', categoryIcon: '📦', categoryOrder: 8, description: 'An instance that does not match a known application image.', provisionable: false, inProvisionPicker: false },
+];
+const APP_TYPE_SET = new Set(APP_TYPE_METADATA.filter(type => type.id !== 'platform').map(type => type.id));
+const PROVISIONING_READY_APP_TYPES = new Set(APP_TYPE_METADATA.filter(type => type.provisionable).map(type => type.id));
 
 const DEFAULT_IMAGE_CATALOG = {
   school: [
@@ -706,6 +718,19 @@ function humanizeInstanceName(raw) {
     .replace(/\b\w/g, c => c.toUpperCase()) || raw;
 }
 
+function inferAppTypeFromImage(image = '') {
+  const normalized = String(image).toLowerCase();
+  if (/(zawadi[-_]console|trendscore[-_]console|console-app)/.test(normalized)) return 'platform';
+  if (/(^|[/:_-])school([/:_-]|$)/.test(normalized)) return 'school';
+  if (/(^|[/:_-])odoo([/:_-]|$)/.test(normalized)) return 'odoo';
+  if (/(^|[/:_-])wordpress([/:_-]|$)/.test(normalized)) return 'wordpress';
+  for (const type of ['sacco', 'hospital', 'hotel', 'organization']) {
+    if (normalized.includes(`${type}-app`) || normalized.includes(`/${type}:`) || normalized.includes(`/${type}-`)) return type;
+  }
+  if (/zawadi-(frontend|backend)|trendscore-school/.test(normalized)) return 'school';
+  return '';
+}
+
 function mapContainersToInstances(containers) {
   const grouped = new Map();
 
@@ -720,6 +745,7 @@ function mapContainersToInstances(containers) {
       grouped.set(key, {
         key,
         name: humanizeInstanceName(key),
+        appType: '',
         domain: '',
         status: 'Online',
         created: new Date((c.Created || Date.now() / 1000) * 1000).toISOString().slice(0, 10),
@@ -742,6 +768,8 @@ function mapContainersToInstances(containers) {
     }
 
     const inst = grouped.get(key);
+    const detectedAppType = inferAppTypeFromImage(c.Image || '');
+    if (detectedAppType && (!inst.appType || inst.appType === 'other')) inst.appType = detectedAppType;
     const descriptor = `${cname} ${c.Image || ''}`.toLowerCase();
     inst.containers += 1;
     inst.containerIds.push(c.Id);
@@ -776,6 +804,8 @@ function mapContainersToInstances(containers) {
 
   const list = Array.from(grouped.values()).map(i => ({
     ...i,
+    appType: i.appType || 'other',
+    typeLabel: APP_TYPE_METADATA.find(type => type.id === i.appType)?.label || (i.appType === 'other' ? 'Other / unclassified' : 'Platform services'),
     storage: Number(i.storage.toFixed(2)),
     dbGb: Number(i.dbGb.toFixed(2)),
     uploads: Number(i.uploads.toFixed(2)),
@@ -1063,7 +1093,7 @@ async function collectRuntime() {
     : 0;
 
   const metrics = {
-    liveSchools: instances.filter(i => i.hasFrontend && i.hasBackend && i.hasDatabase).length,
+    liveSchools: instances.filter(i => i.appType === 'school' && i.hasFrontend && i.hasBackend && i.hasDatabase).length,
     containersHealthy: `${instances.reduce((s, i) => s + i.runningContainers, 0)}/${Math.max(1, instances.reduce((s, i) => s + i.containers, 0))}`,
     storageUsedGb: dockerDf
       ? Number((((imageBytes + volumeBytes) / (1024 ** 3))).toFixed(2))
@@ -1085,6 +1115,7 @@ app.get('/api/runtime', requireAuth, async (_req, res) => {
     res.json({
       ok: true,
       ...runtime,
+      appTypes: APP_TYPE_METADATA,
       deployments: readDeployStore().slice(0, 50),
       auditLogs: readAuditStore().slice(0, 200),
       mode: 'live',
@@ -1136,6 +1167,10 @@ app.post('/api/instances/suggest', requireAuth, requireRole('super_admin'), asyn
   }
 });
 
+app.get('/api/instances/types', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
+  res.json({ ok: true, types: APP_TYPE_METADATA });
+});
+
 app.post('/api/instances/preflight', requireAuth, requireRole('super_admin'), async (req, res) => {
   const {
     appType = 'school',
@@ -1151,6 +1186,8 @@ app.post('/api/instances/preflight', requireAuth, requireRole('super_admin'), as
 
   if (!APP_TYPE_SET.has(normalizedAppType)) {
     issues.push('Unsupported app type.');
+  } else if (!PROVISIONING_READY_APP_TYPES.has(normalizedAppType)) {
+    issues.push(`Provisioning for ${normalizedAppType} is not available yet because its deployment recipe is not configured.`);
   }
 
   if (!String(name || '').trim()) issues.push('Instance name is required.');
@@ -1279,6 +1316,10 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
   const appRange = APP_PORT_RANGES[normalizedAppType] || APP_PORT_RANGES.school;
   if (!APP_TYPE_SET.has(normalizedAppType)) {
     return res.status(400).json({ error: 'Unsupported appType.' });
+  }
+
+  if (!PROVISIONING_READY_APP_TYPES.has(normalizedAppType)) {
+    return res.status(409).json({ error: `Provisioning for ${normalizedAppType} is not available yet because its deployment recipe is not configured.` });
   }
 
   if (!name) {

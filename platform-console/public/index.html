@@ -175,9 +175,9 @@
 
         <div class="metric-row overview-metric-row">
           <div class="metric-card indigo">
-            <div class="m-label">Live Schools</div>
+            <div class="m-label">Managed Instances</div>
             <div class="m-value" id="m-schools">3</div>
-            <div class="m-sub">Instances under management</div>
+            <div class="m-sub">All application categories</div>
             <div class="m-badge up">↑ Active</div>
           </div>
           <div class="metric-card teal">
@@ -197,24 +197,18 @@
         <div class="panel" style="margin-bottom:14px">
           <div class="panel-header">
             <div>
-              <div class="panel-title">School Instances</div>
-              <div class="panel-sub">All active deployments on this server</div>
+              <div class="panel-title">Managed Instances</div>
+              <div class="panel-sub">Live applications grouped by category</div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button class="btn teal" id="btn-create2-school" type="button">+ New School</button>
-              <button class="btn" id="btn-create2-odoo" type="button">+ Odoo</button>
-              <button class="btn" id="btn-create2-wordpress" type="button">+ WordPress</button>
-              <button class="btn sacco" id="btn-create2-sacco" type="button">+ New Sacco</button>
-              <button class="btn hospital" id="btn-create2-hospital" type="button">+ New Hospital</button>
-              <button class="btn hotel" id="btn-create2-hotel" type="button">+ New Hotel</button>
-              <button class="btn organization" id="btn-create2-organization" type="button">+ New Organization</button>
+              <button class="btn teal" id="btn-new-instance-overview" data-super-admin-only type="button">+ New instance</button>
             </div>
           </div>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>School</th><th>Status</th><th>Created</th>
+                  <th>Instance</th><th>Category</th><th>Status</th><th>Created</th>
                   <th>Version</th><th>Ports</th><th>Storage</th><th>Actions</th>
                 </tr>
               </thead>
@@ -250,19 +244,11 @@
         <div class="page-header">
           <div>
             <div class="page-eyebrow">The Silicone Sahara · v1</div>
-            <div class="page-title">School Instances</div>
-            <div class="page-sub">Full management view for all deployed instances</div>
+            <div class="page-title">Instances</div>
+            <div class="page-sub">All managed applications grouped by product category</div>
           </div>
           <div class="page-actions">
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button class="btn teal" id="btn-create3-school" type="button">+ New School</button>
-              <button class="btn" id="btn-create3-odoo" type="button">+ Odoo</button>
-              <button class="btn" id="btn-create3-wordpress" type="button">+ WordPress</button>
-              <button class="btn sacco" id="btn-create3-sacco" type="button">+ New Sacco</button>
-              <button class="btn hospital" id="btn-create3-hospital" type="button">+ New Hospital</button>
-              <button class="btn hotel" id="btn-create3-hotel" type="button">+ New Hotel</button>
-              <button class="btn organization" id="btn-create3-organization" type="button">+ New Organization</button>
-            </div>
+            <button class="btn teal" id="btn-new-instance-list" data-super-admin-only type="button">+ New instance</button>
           </div>
         </div>
         <div class="panel">
@@ -270,7 +256,7 @@
             <table>
               <thead>
                 <tr>
-              <th>School</th><th>Status</th><th>Institution Type</th><th>Billing</th><th>Created</th>
+                  <th>Instance</th><th>Category</th><th>Status</th><th>Created</th>
                   <th>Version</th><th>Ports</th><th>Storage</th><th>Actions</th>
                 </tr>
               </thead>
@@ -762,6 +748,14 @@
 </div><!-- /shell -->
 
 <!-- CREATE SCHOOL MODAL -->
+<div class="overlay" id="instance-type-overlay" aria-modal="true" role="dialog" aria-labelledby="instance-type-title">
+  <div class="modal instance-type-modal">
+    <div class="modal-header"><div><div class="modal-title" id="instance-type-title">What would you like to provision?</div><div class="panel-sub">Choose a product type to open its setup form.</div></div><button class="modal-close" id="instance-type-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body"><div class="instance-type-groups" id="instance-type-options" aria-live="polite"><div class="billing-empty">Loading available instance types…</div></div><div class="instance-type-footnote">Unavailable types appear here so you can see what is planned. They become selectable when their provisioning recipe is ready.</div></div>
+    <div class="modal-footer"><button class="btn" id="instance-type-cancel" type="button">Cancel</button></div>
+  </div>
+</div>
+
 <div class="overlay" id="modal-overlay" aria-modal="true" role="dialog">
   <div class="modal">
     <div class="modal-header">
@@ -785,6 +779,7 @@
       <div class="form-row">
         <label class="form-label" for="f-domain">Subdomain</label>
         <input class="form-input" id="f-domain" placeholder="e.g. sunshine -> sunshine.trendscore.co.ke" type="text"/>
+        <small class="form-help">The provisioner checks the domain format and assigns ports. DNS binding and SSL certificate issuance still require the separate domain workflow.</small>
       </div>
       <div class="form-row" id="f-type-row">
         <label class="form-label" for="f-type">Institution Type</label>
