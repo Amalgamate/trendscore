@@ -1,9 +1,8 @@
-/* ── TrendScore Platform Console — Login Overlay ─────────────────────────
-   Glass-morphism overlay rendered over the blurred dashboard shell.
-   Matches the main TrendScore brand tokens exactly.
+/* ── Trends CORE ERP — Login Overlay ─────────────────────────────────────
+   Opaque navy sign-in surface.
    ────────────────────────────────────────────────────────────────────────── */
 
-/* Blur the entire shell when unauthenticated */
+/* Keep the application inaccessible until authentication. */
 .shell.auth-locked {
   filter: blur(5px);
   pointer-events: none;
@@ -18,20 +17,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(10, 15, 30, 0.52);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: #07142f;
 }
 
 #login-overlay.hidden {
   display: none;
 }
 
-/* Glass card */
+/* Opaque sign-in card */
 .login-glass {
   width: 360px;
-  background: rgba(255, 255, 255, 0.11);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: #0b1d3d;
+  border: 1px solid #20385f;
   overflow: hidden;
 }
 
