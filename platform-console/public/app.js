@@ -1,6 +1,9 @@
 // The console starts empty and fills operational state from authenticated APIs.
 let INSTANCES = [];
 let INSTANCE_TYPE_METADATA = [];
+let ASSESSMENT_ACTIVITY = {};
+let assessmentActivityFetchedAt = 0;
+let assessmentActivityRequest = null;
 
 const PLATFORM_MODULES = [
   { id: 'admissions', name: 'Admissions', desc: 'Student registration and enrollment', enabled: true },
@@ -65,6 +68,11 @@ const fmt = value => parseFloat(value).toFixed(1).replace(/\.0$/, '');
 const slugify = value => String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const nowLabel = () => new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }) + ' EAT';
 const fmtDate = value => new Intl.DateTimeFormat('en-KE', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value + 'T00:00'));
+const fmtActivityDate = value => {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? '—' : new Intl.DateTimeFormat('en-KE', { timeZone: 'Africa/Nairobi', dateStyle: 'medium', timeStyle: 'short' }).format(parsed);
+};
 const statusCls = status => status === 'Online' || status === 'Active' || status === 'Success' ? 'online' : status === 'Degraded' || status === 'Warning' || status === 'Due Soon' ? 'warn' : 'offline';
 
 let toastTimer;
@@ -614,6 +622,100 @@ async function refreshFromRuntime() {
     runtimeGeneratedAt = null;
     liveMode = false;
   }
+}
+
+function assessmentActivityTooltipText(activity, schoolName = 'School') {
+  if (!activity) return `${schoolName}\nLoading assessment activity…`;
+  if (activity.state === 'unavailable') return `${schoolName}\nAssessment data unavailable\n${activity.reason || 'The school database could not be read.'}`;
+  const latest = activity.tests?.[0];
+  if (!latest) return `${schoolName}\n${Number(activity.activeTestCount || 0)} active assessments\nNo tests have been created yet.`;
+  return `${schoolName}\n${Number(activity.activeTestCount || 0)} active assessments\nLatest: ${latest.title || 'Untitled test'}\n${latest.learning_area || 'Learning area not set'} · Grade ${latest.grade || '—'}\nTest updated ${fmtActivityDate(latest.updated_at)}\n${Number(latest.result_count || 0)} results · last result ${fmtActivityDate(latest.last_result_at)}`;
+}
+
+function showAssessmentActivityTooltip(button) {
+  const tooltip = $('assessment-activity-tooltip');
+  if (!tooltip || !button) return;
+  const activity = ASSESSMENT_ACTIVITY[button.dataset.assessmentActivityKey];
+  const lines = assessmentActivityTooltipText(activity, button.dataset.assessmentActivityName || 'School').split('\n');
+  tooltip.innerHTML = lines.map((line, index) => index === 0 ? `<strong>${esc(line)}</strong>` : `<span>${esc(line)}</span>`).join('');
+  tooltip.classList.add('is-visible');
+  tooltip.setAttribute('aria-hidden', 'false');
+  const rect = button.getBoundingClientRect();
+  const tipRect = tooltip.getBoundingClientRect();
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - tipRect.width - 8));
+  const top = rect.top - tipRect.height - 8 >= 8 ? rect.top - tipRect.height - 8 : Math.min(window.innerHeight - tipRect.height - 8, rect.bottom + 8);
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${Math.max(8, top)}px`;
+}
+
+function hideAssessmentActivityTooltip() {
+  const tooltip = $('assessment-activity-tooltip');
+  if (!tooltip) return;
+  tooltip.classList.remove('is-visible');
+  tooltip.setAttribute('aria-hidden', 'true');
+}
+
+async function refreshAssessmentActivity(force = false) {
+  if (window.consoleUserRole !== 'super_admin') return;
+  if (assessmentActivityRequest) return assessmentActivityRequest;
+  if (!force && Date.now() - assessmentActivityFetchedAt < 60_000) return;
+  assessmentActivityRequest = (async () => {
+    try {
+      const response = await fetch('/api/instances/assessment-activity', { credentials: 'same-origin' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !Array.isArray(data.activities)) throw new Error(data.error || 'Could not load assessment activity');
+      ASSESSMENT_ACTIVITY = Object.fromEntries(data.activities.map(activity => [activity.key, { ...activity, generatedAt: data.generatedAt }]));
+      assessmentActivityFetchedAt = Date.now();
+      renderInstances();
+    } catch (error) {
+      console.warn('[assessment-activity] Could not refresh activity:', error.message);
+    } finally {
+      assessmentActivityRequest = null;
+    }
+  })();
+  return assessmentActivityRequest;
+}
+
+function openAssessmentActivity(key, schoolName = 'School') {
+  const activity = ASSESSMENT_ACTIVITY[key];
+  const overlay = $('assessment-activity-overlay');
+  const title = $('assessment-activity-title');
+  const summary = $('assessment-activity-summary');
+  const list = $('assessment-activity-list');
+  if (!overlay || !title || !summary || !list) return;
+  title.textContent = `${schoolName} · Assessment activity`;
+  if (!activity) {
+    summary.innerHTML = '<div class="assessment-activity-empty">Assessment activity is loading. Please try again in a moment.</div>';
+    list.innerHTML = '';
+  } else if (activity.state === 'unavailable') {
+    summary.innerHTML = `<div class="assessment-activity-empty">${esc(activity.reason || 'Assessment data could not be read.')}</div>`;
+    list.innerHTML = '';
+  } else {
+    const tests = Array.isArray(activity.tests) ? activity.tests : [];
+    summary.innerHTML = `<div class="assessment-activity-kpi"><span>Active assessments</span><strong>${Number(activity.activeTestCount || 0)}</strong></div><div class="assessment-activity-kpi"><span>Recent tests shown</span><strong>${tests.length}</strong></div><div class="assessment-activity-updated">Snapshot updated ${esc(fmtActivityDate(activity.generatedAt || new Date().toISOString()))}</div>`;
+    list.innerHTML = tests.length ? tests.map(test => `<article class="assessment-test-card">
+      <div class="assessment-test-heading"><strong>${esc(test.title || 'Untitled test')}</strong><span class="assessment-status-tag ${test.active ? 'is-active' : ''}">${esc(test.status || (test.active ? 'ACTIVE' : 'INACTIVE'))}</span></div>
+      <div class="assessment-test-meta">${esc(test.learning_area || 'Learning area not set')} · Grade ${esc(test.grade || '—')} · ${esc(test.term || '—')} ${esc(test.academic_year || '')}</div>
+      <div class="assessment-test-stats"><span>${Number(test.result_count || 0)} results recorded</span><span>Test updated ${esc(fmtActivityDate(test.updated_at))}</span><span>Last result ${esc(fmtActivityDate(test.last_result_at))}</span><span>Test date ${esc(test.test_date ? fmtActivityDate(test.test_date) : '—')}</span></div>
+    </article>`).join('') : '<div class="assessment-activity-empty">No tests have been created for this school yet.</div>';
+  }
+  overlay.classList.add('open');
+  overlay.setAttribute('aria-hidden', 'false');
+  $('assessment-activity-close')?.focus();
+  if (!activity) {
+    void refreshAssessmentActivity(true).then(() => {
+      if (!overlay.classList.contains('open')) return;
+      if (ASSESSMENT_ACTIVITY[key]) openAssessmentActivity(key, schoolName);
+      else if (summary) summary.innerHTML = '<div class="assessment-activity-empty">Could not load assessment activity. Close and try again.</div>';
+    });
+  }
+}
+
+function closeAssessmentActivity() {
+  const overlay = $('assessment-activity-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('open');
+  overlay.setAttribute('aria-hidden', 'true');
 }
 
 function renderRuntimeStamp(label = liveMode ? 'Live' : 'Fallback') {
@@ -1723,6 +1825,12 @@ function toggleCrmMetrics() {
 
 // Rendering
 function renderInstanceRow(instance, mode = 'compact') {
+  const activityKey = instance.composeProject || instance.key || '';
+  const activity = instance.appType === 'school' ? ASSESSMENT_ACTIVITY[activityKey] : null;
+  const activityCount = Number(activity?.activeTestCount || 0);
+  const activityPill = instance.appType === 'school' ? `<button type="button" class="assessment-activity-pill ${activity?.state === 'unavailable' ? 'is-unavailable' : activityCount > 0 ? 'has-active' : 'has-none'}" data-assessment-activity-key="${esc(activityKey)}" data-assessment-activity-name="${esc(instance.displayName || instance.name)}" aria-label="View assessment activity for ${esc(instance.displayName || instance.name)}" aria-describedby="assessment-activity-tooltip" aria-haspopup="dialog" title="${esc(assessmentActivityTooltipText(activity, instance.displayName || instance.name))}">
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 13.5h12M3.5 11V7.5M7 11V4.5M10.5 11V6M14 11V2.5"/></svg><span>Activity</span><span class="assessment-activity-count">${activity?.state === 'unavailable' ? '—' : activity ? activityCount : '…'}</span>
+        </button>` : '';
   return `<tr>
     <td><div class="cell-school"><strong>${esc(instance.name)}</strong><div class="cell-domain">${esc(instance.domain)}</div></div></td>
     <td><span class="instance-category-chip">${esc(instance.typeLabel || 'Other / unclassified')}</span></td>
@@ -1736,6 +1844,7 @@ function renderInstanceRow(instance, mode = 'compact') {
     </td>
     <td>
       <div class="action-row">
+        ${activityPill}
         <button class="tbl-btn primary" data-action="Restart" data-school="${esc(instance.name)}">Restart</button>
         <button class="tbl-btn" data-action="Logs" data-school="${esc(instance.name)}">Logs</button>
         <button class="tbl-btn" data-action="Redeploy" data-school="${esc(instance.name)}">Redeploy</button>
@@ -2657,6 +2766,15 @@ function exportLogsCsv() {
 // Event wiring
 document.body.addEventListener('click', event => {
   if (!event.target.closest('#bc-name, #bc-customer-suggestions')) hideBillingCustomerSuggestions();
+  const activityButton = event.target.closest('[data-assessment-activity-key]');
+  if (activityButton) {
+    openAssessmentActivity(activityButton.dataset.assessmentActivityKey, activityButton.dataset.assessmentActivityName || 'School');
+    return;
+  }
+  if (event.target.closest('#assessment-activity-close, #assessment-activity-close-footer') || event.target.id === 'assessment-activity-overlay') {
+    closeAssessmentActivity();
+    return;
+  }
   if (event.target.closest('.group-open-link')) {
     return;
   }
@@ -3083,6 +3201,26 @@ document.body.addEventListener('click', event => {
   }
 });
 
+document.body.addEventListener('pointerover', event => {
+  const button = event.target.closest('[data-assessment-activity-key]');
+  if (button) showAssessmentActivityTooltip(button);
+});
+document.body.addEventListener('pointerout', event => {
+  const button = event.target.closest('[data-assessment-activity-key]');
+  if (button && !button.contains(event.relatedTarget) && !button.matches(':focus')) hideAssessmentActivityTooltip();
+});
+document.body.addEventListener('focusin', event => {
+  const button = event.target.closest('[data-assessment-activity-key]');
+  if (button) showAssessmentActivityTooltip(button);
+});
+document.body.addEventListener('focusout', event => {
+  const button = event.target.closest('[data-assessment-activity-key]');
+  if (button && !button.contains(event.relatedTarget)) hideAssessmentActivityTooltip();
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && $('assessment-activity-overlay')?.classList.contains('open')) closeAssessmentActivity();
+});
+
 document.body.addEventListener('change', event => {
   const toggle = event.target.closest('input[data-module]');
   if (!toggle) return;
@@ -3300,6 +3438,7 @@ function bindModalEvents() {
 function renderEverything() {
   renderMetrics();
   renderInstances();
+  void refreshAssessmentActivity();
   renderRunningInstances();
   renderCapacity();
   renderTimeline('timeline-mini', 3);

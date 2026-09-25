@@ -733,6 +733,35 @@ tbody tr:hover td{background:#f8fbff}
 }
 .toast.show{opacity:1;transform:translateY(0)}
 
+/* School assessment activity in the provisioned instance list */
+.assessment-activity-pill{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:5px 9px;border:1px solid #c7d2fe;border-radius:999px;background:#eef2ff;color:#3730a3;font:700 11px var(--sans);white-space:nowrap;cursor:pointer;transition:background .15s,border-color .15s,box-shadow .15s,transform .15s}
+.assessment-activity-pill svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.assessment-activity-pill:hover{transform:translateY(-1px);box-shadow:0 3px 10px rgba(49,46,129,.14)}
+.assessment-activity-pill:focus-visible{outline:2px solid #4f46e5;outline-offset:2px}
+.assessment-activity-pill.has-active{color:#047857;background:#ecfdf5;border-color:#a7f3d0}
+.assessment-activity-pill.has-none{color:#475569;background:#f1f5f9;border-color:#cbd5e1}
+.assessment-activity-pill.is-unavailable{color:#92400e;background:#fffbeb;border-color:#fcd34d}
+.assessment-activity-count{display:inline-flex;min-width:18px;height:18px;align-items:center;justify-content:center;padding:0 4px;border-radius:999px;background:rgba(255,255,255,.8);font-size:10px}
+.assessment-activity-tooltip{position:fixed;z-index:250;display:none;width:max-content;max-width:min(330px,calc(100vw - 24px));padding:11px 13px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#334155;box-shadow:0 10px 30px rgba(15,23,42,.2);font:12px/1.45 var(--sans);pointer-events:none}
+.assessment-activity-tooltip.is-visible{display:grid;gap:3px}
+.assessment-activity-tooltip strong{margin-bottom:2px;color:#0f172a;font-size:12px}
+.assessment-activity-modal{max-width:760px}
+.assessment-activity-summary{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.assessment-activity-kpi{display:flex;min-width:145px;flex-direction:column;gap:5px;padding:12px 15px;border:1px solid var(--border);border-radius:10px;background:#f8fafc}
+.assessment-activity-kpi span{color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.assessment-activity-kpi strong{color:var(--ink);font-size:22px;line-height:1.1}
+.assessment-activity-updated{align-self:center;margin-left:auto;color:var(--muted);font-size:11px}
+.assessment-activity-list{display:grid;gap:9px;max-height:55vh;overflow:auto}
+.assessment-test-card{padding:12px 14px;border:1px solid var(--border);border-radius:9px;background:var(--surface)}
+.assessment-test-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.assessment-test-heading strong{color:var(--ink);font-size:13px}
+.assessment-status-tag{flex:none;padding:4px 8px;border-radius:999px;background:#f1f5f9;color:#475569;font-size:10px;font-weight:800;letter-spacing:.04em}
+.assessment-status-tag.is-active{background:#dcfce7;color:#166534}
+.assessment-test-meta{margin-top:6px;color:var(--muted);font-size:11px}
+.assessment-test-stats{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:8px;color:#475569;font-size:11px}
+.assessment-activity-empty{padding:18px;border:1px dashed var(--border);border-radius:8px;color:var(--muted);font-size:13px;text-align:center}
+@media(max-width:680px){.assessment-activity-updated{width:100%;margin-left:0}.assessment-test-stats{display:grid;gap:4px}.assessment-activity-modal{max-width:none}}
+
 /* ── Responsive console refinements ─────────────────────────────────── */
 @media(max-width:900px){
   .shell,.shell.sidebar-collapsed{display:block;min-height:100vh}

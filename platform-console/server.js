@@ -7,6 +7,7 @@ const os = require('os');
 const crypto = require('crypto');
 const { promisify } = require('util');
 const { execFile } = require('child_process');
+const { Writable } = require('stream');
 const Docker = require('dockerode');
 const si = require('systeminformation');
 const { createBillingStore } = require('./billing-store');
@@ -54,6 +55,64 @@ const LEADS_STORE_FILE = path.join(CONSOLE_DATA_DIR, 'leads.store.json');
 const AUDIT_STORE_FILE = path.join(CONSOLE_DATA_DIR, 'audit.store.json');
 const billingStore = createBillingStore(CONSOLE_DATA_DIR);
 const MAX_AUDIT_ENTRIES = 2000;
+const ASSESSMENT_ACTIVITY_CACHE_MS = 60 * 1000;
+let assessmentActivityCache = { fetchedAt: 0, activities: [] };
+
+function captureDockerStream(stream) {
+  let stdout = '';
+  let stderr = '';
+  const out = new Writable({ write(chunk, _encoding, callback) { stdout += chunk.toString('utf8'); callback(); } });
+  const err = new Writable({ write(chunk, _encoding, callback) { stderr += chunk.toString('utf8'); callback(); } });
+  const completed = new Promise((resolve, reject) => {
+    stream.once('end', resolve);
+    stream.once('error', reject);
+  });
+  docker.modem.demuxStream(stream, out, err);
+  return completed.then(() => ({ stdout, stderr }));
+}
+
+async function readSchoolAssessmentActivity(dbContainer) {
+  const sql = `SELECT json_build_object(
+      'active_test_count', (
+        SELECT COUNT(*)::int
+        FROM public.summative_tests active_test
+        WHERE active_test.archived = false AND active_test.active = true
+      ),
+      'tests', COALESCE((
+        SELECT json_agg(to_jsonb(activity) ORDER BY activity.activity_at DESC)
+        FROM (
+          SELECT st.id, st.title, st."learningArea" AS learning_area, st.grade,
+            st.term::text AS term, st."academicYear" AS academic_year,
+            st."testDate" AS test_date, st.active, st.status::text AS status,
+            st."updatedAt" AS updated_at, COUNT(sr.id)::int AS result_count,
+            MAX(sr."updatedAt") AS last_result_at,
+            GREATEST(st."updatedAt", COALESCE(MAX(sr."updatedAt"), st."updatedAt")) AS activity_at
+          FROM (
+            SELECT * FROM public.summative_tests
+            WHERE archived = false
+            ORDER BY "updatedAt" DESC
+            LIMIT 8
+          ) st
+          LEFT JOIN public.summative_results sr ON sr."testId" = st.id AND sr.archived = false
+          GROUP BY st.id
+          ORDER BY activity_at DESC
+        ) activity
+      ), '[]'::json)
+    )::text`;
+  const command = `psql -X -q -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -c ${shellQuote(sql)}`;
+  const exec = await docker.getContainer(dbContainer.Id).exec({
+    Cmd: ['sh', '-lc', command], AttachStdout: true, AttachStderr: true, Tty: false,
+  });
+  const stream = await exec.start({ hijack: true, stdin: false });
+  const captured = await captureDockerStream(stream);
+  const state = await exec.inspect();
+  if (state.ExitCode !== 0) throw new Error(captured.stderr.trim() || `psql exited ${state.ExitCode}`);
+  const parsed = JSON.parse(captured.stdout.trim() || '{}');
+  return {
+    activeTestCount: Math.max(0, Number(parsed.active_test_count) || 0),
+    tests: Array.isArray(parsed.tests) ? parsed.tests : [],
+  };
+}
 
 // In-memory deployment log (ephemeral — only tracks this process session)
 const deploymentLog = [];
@@ -1183,6 +1242,49 @@ app.get('/api/runtime', requireAuth, async (_req, res) => {
     });
   } catch (error) {
     res.status(500).json({ ok: false, error: `Runtime fetch failed: ${error.message}` });
+  }
+});
+
+app.get('/api/instances/assessment-activity', requireAuth, requireRole('super_admin'), async (_req, res) => {
+  if (Date.now() - assessmentActivityCache.fetchedAt < ASSESSMENT_ACTIVITY_CACHE_MS) {
+    return res.json({ ok: true, generatedAt: new Date(assessmentActivityCache.fetchedAt).toISOString(), activities: assessmentActivityCache.activities });
+  }
+
+  try {
+    const containers = await docker.listContainers({ all: true });
+    const schools = mapContainersToInstances(containers).filter(instance => instance.appType === 'school');
+    const databases = new Map();
+    for (const container of containers) {
+      if (container.State !== 'running') continue;
+      const service = String(container.Labels?.['com.docker.compose.service'] || '').toLowerCase();
+      const project = container.Labels?.['com.docker.compose.project'];
+      const isPostgresDbService = ['db', 'database', 'postgres', 'postgresql'].includes(service)
+        || (/(^|[-_])(db|database|postgres|postgresql)([-_0-9]|$)/.test(service) && /postgres/i.test(container.Image || ''));
+      if (project && isPostgresDbService) databases.set(project, container);
+    }
+
+    const activities = [];
+    for (let offset = 0; offset < schools.length; offset += 4) {
+      const batch = schools.slice(offset, offset + 4);
+      const results = await Promise.all(batch.map(async school => {
+        const key = school.composeProject || school.key;
+        const dbContainer = databases.get(school.composeProject || school.key);
+        if (!dbContainer) return { key, name: school.name, state: 'unavailable', reason: 'School database is not running.' };
+        try {
+          const activity = await readSchoolAssessmentActivity(dbContainer);
+          return { key, name: school.name, state: 'available', ...activity };
+        } catch (error) {
+          console.warn(`[assessment-activity] Could not read ${key}: ${error.message}`);
+          return { key, name: school.name, state: 'unavailable', reason: 'Assessment data could not be read.' };
+        }
+      }));
+      activities.push(...results);
+    }
+
+    assessmentActivityCache = { fetchedAt: Date.now(), activities };
+    return res.json({ ok: true, generatedAt: new Date(assessmentActivityCache.fetchedAt).toISOString(), activities });
+  } catch (error) {
+    return res.status(502).json({ ok: false, error: `Could not load assessment activity: ${error.message}` });
   }
 });
 
