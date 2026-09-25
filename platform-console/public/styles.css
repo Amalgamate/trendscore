@@ -680,6 +680,96 @@ tbody tr:hover td{background:#f8fbff}
 }
 .toast.show{opacity:1;transform:translateY(0)}
 
+/* ── Responsive console refinements ─────────────────────────────────── */
+@media(max-width:900px){
+  .shell,.shell.sidebar-collapsed{display:block;min-height:100vh}
+  .sidebar{
+    position:relative;top:auto;height:auto;max-height:none;display:block;
+    overflow-x:auto;overflow-y:hidden;white-space:nowrap;padding-bottom:3px;
+    scrollbar-width:thin;overscroll-behavior-x:contain
+  }
+  .sb-logo{width:100%;padding:9px 14px;margin:0;white-space:normal}
+  .nav-section-label,.sb-footer{display:none}
+  .nav-item{
+    display:inline-flex;vertical-align:middle;align-items:center;gap:7px;
+    min-height:42px;padding:8px 11px;margin:2px 2px 0;
+    border-left:0;border-bottom:2px solid transparent;white-space:nowrap
+  }
+  .nav-item.active{border-left-color:transparent;border-bottom-color:var(--brand-bright)}
+  .main{width:100%;min-width:0}
+  .topbar{position:relative;min-height:54px;padding:8px 14px;gap:8px}
+  .topbar-right{margin-left:auto;justify-content:flex-end;flex-wrap:wrap}
+  .topbar-meta{width:auto;order:0;padding:0;margin:0;border:0}
+  .content{padding:18px 16px}
+  .panel-header{flex-wrap:wrap;align-items:flex-start}
+  .table-wrap{max-width:100%;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+  .table-wrap table{min-width:820px}
+  .page-actions{flex-shrink:1;flex-wrap:wrap}
+  .modal{width:calc(100% - 24px);max-width:560px;max-height:calc(100dvh - 24px);}
+}
+
+@media(max-width:680px){
+  body{font-size:14px}
+  .content{padding:14px 12px}
+  .topbar{align-items:flex-start;flex-direction:column;padding:9px 12px}
+  .topbar-left,.topbar-right{width:100%;min-width:0}
+  .topbar-right{justify-content:space-between;gap:8px;margin:0}
+  .topbar-live{font-size:11px}
+  .topbar-user{max-width:min(58vw,240px)}
+  .topbar-user-text{min-width:0}
+  .topbar-user-name,.topbar-user-role{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .page-header{flex-direction:column;align-items:stretch;gap:10px;margin-bottom:16px}
+  .page-title{font-size:20px;line-height:1.25}
+  .page-sub{font-size:12px;line-height:1.45}
+  .page-actions{width:100%;display:grid;grid-template-columns:1fr}
+  .page-actions>.btn,.page-header>.btn{width:100%;min-height:42px}
+  .panel-header{padding:12px;gap:10px}
+  .panel-body{padding:12px}
+  .panel-header>.btn,.panel-header>.page-actions{width:100%}
+  .metric-row,.overview-metric-row{grid-template-columns:1fr;gap:10px}
+  .metric-card{padding:15px}
+  .m-value{font-size:27px}
+  .two-col,.two-col-lower{grid-template-columns:minmax(0,1fr);gap:10px}
+  .table-wrap{margin:0;scrollbar-width:thin}
+  .table-wrap table{min-width:760px;font-size:12px}
+  th,td{padding:9px 10px}
+  .action-row,.billing-action-row{gap:6px}
+  .action-row .tbl-btn,.billing-action-row .btn{min-height:36px}
+  .ctrl-grid{grid-template-columns:1fr;padding:10px}
+  .ctrl-btn{min-height:44px}
+  .ctrl-instance-info{gap:10px;padding:12px;align-items:flex-start;flex-direction:column}
+  .ctrl-instance-tabs{max-width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:5px}
+  .inst-tab{flex:0 0 auto;min-height:38px}
+  .billing-tabs{position:sticky;top:0;z-index:5}
+  .billing-tab{min-height:44px}
+  .billing-kpis{grid-template-columns:1fr 1fr;gap:8px}
+  .billing-kpi{padding:11px}
+  .billing-kpi strong{font-size:20px}
+  .billing-quote-grid,.billing-extra-row{grid-template-columns:1fr}
+  .billing-register-filters{display:grid;grid-template-columns:1fr;width:100%;min-width:0}
+  .billing-register-filters>*{width:100%;max-width:none}
+  .billing-setting-row{align-items:flex-start;flex-direction:column;gap:4px}
+  .deploy-target-toolbar{align-items:stretch;flex-direction:column}
+  .deploy-target-actions{display:grid;grid-template-columns:1fr 1fr}
+  .deploy-target-actions .btn{min-height:38px}
+  .deploy-log-viewer{min-height:200px;max-height:45vh}
+  .timeline .tl-item{grid-template-columns:1fr;gap:4px;padding:12px}
+  .toast{left:12px;right:12px;bottom:12px;max-width:none}
+  .overlay.open{padding:12px;align-items:center}
+  .modal{width:100%;max-width:none;max-height:calc(100dvh - 24px);overflow-y:auto}
+  .modal-header,.modal-body{padding:14px}
+  .modal-footer{padding:12px 14px;position:sticky;bottom:0;background:var(--surface)}
+  #f-ports-grid{grid-template-columns:1fr!important;gap:10px!important}
+  input,select,textarea{max-width:100%;min-width:0}
+}
+
+@media(max-width:380px){
+  .nav-item{padding:7px 9px;font-size:12px}
+  .nav-icon{width:22px;height:22px}
+  .billing-kpis{grid-template-columns:1fr}
+  .topbar-right{align-items:flex-start;flex-wrap:wrap}
+}
+
 /* ── Section switching ─────────────────────────────────────────────── */
 .section-visible{display:block}
 .section-hidden{display:none}
@@ -1171,3 +1261,29 @@ input:checked + .toggle-slider::before{transform:translateX(18px)}
 }
 .stage-picker-item:last-child{border-bottom:0}
 .stage-picker-item:hover{background:var(--page)}
+
+/* Final responsive overrides: keep these after feature styles so they win. */
+@media(max-width:900px){
+  .sidebar{position:relative;height:auto;max-height:none;overflow-x:auto;overflow-y:hidden}
+  .nav-item{display:inline-flex;vertical-align:middle;min-height:42px;padding:8px 11px;margin:2px 2px 0;border-left:0;border-bottom:2px solid transparent}
+  .nav-item.active{border-left-color:transparent;border-bottom-color:var(--brand-bright)}
+  .shell.sidebar-collapsed .sb-logo>div:last-child{display:block}
+  .shell.sidebar-collapsed .nav-item{font-size:13px}
+  .topbar-meta{width:auto;order:0;padding:0;margin:0;border:0}
+}
+@media(max-width:680px){
+  .topbar-meta{width:auto;order:0;padding:0;margin:0;border:0}
+  .topbar{align-items:flex-start;flex-direction:column}
+  .topbar-left,.topbar-right{width:100%;min-width:0}
+  .topbar-right{justify-content:space-between;margin:0}
+  .topbar-user{max-width:min(58vw,240px)}
+  .topbar-user-name,.topbar-user-role{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .metric-row,.overview-metric-row{grid-template-columns:1fr}
+  .ctrl-grid{grid-template-columns:1fr}
+  .main,.content,.section-visible,.section-hidden{min-width:0;max-width:100%}
+  .form-input,.form-select,input,select,textarea{font-size:16px}
+  .btn,.tbl-btn,.topbar-btn{min-height:40px}
+  .page-header>div:first-child{min-width:0}
+  .panel,.panel-header,.panel-body{min-width:0}
+  .log-viewer{overflow-x:auto;overscroll-behavior-x:contain}
+}

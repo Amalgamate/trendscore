@@ -273,3 +273,15 @@
   pointer-events: none;
   position: relative;
 }
+
+@media(max-width:560px){
+  #login-overlay{padding:16px;align-items:center}
+  .login-glass{width:100%;max-width:400px;max-height:calc(100dvh - 32px);overflow-y:auto}
+  .lg-header{padding:18px 18px 15px}
+  .lg-body{padding:18px}
+  .lg-footer{padding:12px 18px;gap:8px;flex-wrap:wrap}
+  .lg-label{font-size:11px}
+  .lg-input{font-size:16px;min-height:44px}
+  .lg-role-btn{min-height:40px;flex:1;padding:7px 9px}
+  .lg-submit{min-height:46px}
+}
