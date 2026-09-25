@@ -225,8 +225,8 @@
       "active": true,
       "deployment_allowed": true,
       "kind": "stack",
-      "compose_project": "zawadi-alahma",
-      "env_file": "/srv/zawadi/apps/env/.zawadi-alahma.env",
+      "compose_project": "zawadi-alrahma",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-alrahma.env",
       "public_domain": "alrahma.trendscore.co.ke",
       "auto_deploy_on_main": false,
       "notes": "Existing Alahma stack registered for requested domain binding and TLS. Frontend host port 3017; backend host port 5014."
