@@ -42,6 +42,9 @@ jobs:
           mkdir -p platform-console/deploy
           cp scripts/deploy-release.sh platform-console/deploy/deploy-release.sh
           cp deploy/instances.manifest.json platform-console/deploy/instances.manifest.json
+          cp public/favicon-32x32.png platform-console/public/favicon-32x32.png
+          cp public/favicon-16x16.png platform-console/public/favicon-16x16.png
+          cp public/apple-touch-icon.png platform-console/public/apple-touch-icon.png
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
