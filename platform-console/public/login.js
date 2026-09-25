@@ -6,14 +6,13 @@
   'use strict';
 
   // ── Constants ────────────────────────────────────────────────────────────
-  const SESSION_DURATION_MS = 8 * 60 * 60 * 1000; // 8 hours (matches server JWT)
   const EXPIRY_WARN_MS      = 30 * 60 * 1000;      // warn when < 30 min remain
 
   // ── State ────────────────────────────────────────────────────────────────
   let currentUser     = null;
-  let sessionStart    = null;   // Date when we logged in / restored session
+  let sessionExpiresAt = null;  // Absolute expiry issued by the server JWT
   let selectedRole    = 'super_admin';
-  let sessionTimerRAF = null;   // requestAnimationFrame handle
+  let sessionTimerInterval = null;
 
   // ── Element refs ─────────────────────────────────────────────────────────
   const overlay    = document.getElementById('login-overlay');
@@ -91,13 +90,17 @@
   }
 
   // ── Session countdown timer ──────────────────────────────────────────────
-  function startSessionTimer() {
-    if (!timerPill || !timerLabel) return;
+  function startSessionTimer(expiresAt) {
+    const deadline = Number(expiresAt);
+    if (!timerPill || !timerLabel || !Number.isFinite(deadline) || deadline <= 0) {
+      if (timerPill) timerPill.hidden = true;
+      return;
+    }
+    sessionExpiresAt = deadline;
     timerPill.hidden = false;
 
     function tick() {
-      const elapsed = Date.now() - sessionStart;
-      const remaining = SESSION_DURATION_MS - elapsed;
+      const remaining = deadline - Date.now();
 
       timerLabel.textContent = formatDuration(remaining);
       timerPill.classList.toggle('is-warning', remaining < EXPIRY_WARN_MS);
@@ -109,22 +112,21 @@
 
       if (remaining <= 0) {
         stopSessionTimer();
-        // Server will return 401 on the next API call; the fetch interceptor
-        // handles the re-lock. We just show the pill as expired.
         timerLabel.textContent = 'Expired';
+        lockConsole('expired');
         return;
       }
-
-      sessionTimerRAF = requestAnimationFrame(tick);
     }
 
-    sessionTimerRAF = requestAnimationFrame(tick);
+    tick();
+    sessionTimerInterval = window.setInterval(tick, 1000);
   }
 
   function stopSessionTimer() {
-    if (sessionTimerRAF) cancelAnimationFrame(sessionTimerRAF);
-    sessionTimerRAF = null;
+    if (sessionTimerInterval) window.clearInterval(sessionTimerInterval);
+    sessionTimerInterval = null;
     if (timerPill) timerPill.hidden = true;
+    sessionExpiresAt = null;
   }
 
   // ── Show / hide overlay ──────────────────────────────────────────────────
@@ -141,7 +143,7 @@
     stopSessionTimer();
     currentUser  = null;
     window.consoleUserRole = null;
-    sessionStart = null;
+    sessionExpiresAt = null;
 
     // Restore all nav items on lock (clean slate for next login)
     document.querySelectorAll('.nav-item').forEach(el => {
@@ -156,11 +158,9 @@
     }
   }
 
-  function unlockConsole(user, access) {
+  function unlockConsole(user, access, expiresAt) {
     window.consoleUserRole = user.role;
     currentUser  = user;
-    sessionStart = Date.now();
-
     overlay.classList.add('hidden');
     shell.classList.remove('auth-locked');
 
@@ -175,7 +175,7 @@
       logoutBtn.classList.add('visible');
     }
 
-    startSessionTimer();
+    startSessionTimer(expiresAt);
     applyRoleRestrictions(user.role, access);
     window.dispatchEvent(new Event('console:authenticated'));
   }
@@ -264,7 +264,7 @@
         return;
       }
 
-      unlockConsole(data.user, data.access);
+      unlockConsole(data.user, data.access, data.sessionExpiresAt);
 
     } catch (err) {
       showError('Network error — is the Trends CORE server running?');
@@ -290,8 +290,8 @@
     if (logoutRoleDisplay) {
       logoutRoleDisplay.textContent = currentUser.role === 'super_admin' ? 'Super Admin' : 'Platform Owner';
     }
-    if (logoutTimerDisplay && sessionStart) {
-      const remaining = SESSION_DURATION_MS - (Date.now() - sessionStart);
+    if (logoutTimerDisplay && sessionExpiresAt) {
+      const remaining = sessionExpiresAt - Date.now();
       logoutTimerDisplay.textContent = formatDuration(remaining);
     }
 
@@ -368,7 +368,7 @@
       const res = await _origFetch('/api/me', { credentials: 'same-origin' });
       if (res.ok) {
         const data = await res.json();
-        unlockConsole(data.user, data.access);
+        unlockConsole(data.user, data.access, data.sessionExpiresAt);
         return;
       }
     } catch (_) {}

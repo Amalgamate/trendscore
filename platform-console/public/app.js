@@ -49,6 +49,7 @@ let pendingProvisionLeadId = null;
 let selectedInstanceName = INSTANCES[0]?.name || '';
 let pendingConfirm = null;
 let liveMode = false;
+let runtimeGeneratedAt = null;
 let RUNTIME_METRICS = null;
 function toast(message) {
   const el = $('toast');
@@ -538,11 +539,13 @@ async function refreshFromRuntime() {
       selectedInstanceName = INSTANCES.find(i => i.name === selectedInstanceName)?.name || INSTANCES[0]?.name || '';
     }
     RUNTIME_METRICS = runtime?.metrics || null;
+    runtimeGeneratedAt = runtime?.generatedAt || null;
     if (Array.isArray(runtime?.deployments)) DEPLOYMENTS = runtime.deployments;
     if (Array.isArray(runtime?.auditLogs)) AUDIT_LOGS = runtime.auditLogs;
     liveMode = runtime?.mode === 'live';
   } catch (_) {
     RUNTIME_METRICS = null;
+    runtimeGeneratedAt = null;
     liveMode = false;
   }
 }
@@ -550,8 +553,17 @@ async function refreshFromRuntime() {
 function renderRuntimeStamp(label = liveMode ? 'Live' : 'Fallback') {
   const el = $('last-updated');
   if (!el) return;
-  el.textContent = `${label} · ${nowLabel()}`;
-  el.classList.toggle('is-fallback', label === 'Fallback');
+  const generatedAt = Date.parse(runtimeGeneratedAt || '');
+  const hasLiveTimestamp = liveMode && Number.isFinite(generatedAt);
+  const time = hasLiveTimestamp
+    ? new Intl.DateTimeFormat('en-KE', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit' }).format(generatedAt)
+    : '';
+  const status = hasLiveTimestamp ? 'Live' : 'Runtime unavailable';
+  el.textContent = time ? `${status} · ${time} EAT` : status;
+  el.title = hasLiveTimestamp
+    ? `Runtime data generated ${new Intl.DateTimeFormat('en-KE', { timeZone: 'Africa/Nairobi', dateStyle: 'medium', timeStyle: 'medium' }).format(generatedAt)}`
+    : 'The runtime API has not returned a current health snapshot.';
+  el.classList.toggle('is-fallback', !hasLiveTimestamp || label === 'Fallback' || label === 'Retrying');
 }
 
 async function pollRuntimeAndRender() {
@@ -2305,8 +2317,8 @@ document.body.addEventListener('click', event => {
   if (id === 'btn-refresh') {
     (async () => {
       await refreshFromRuntime();
-      if ($('last-updated')) $('last-updated').textContent = `Refreshed ${nowLabel()}${liveMode ? ' · live' : ' · fallback'}`;
       renderEverything();
+      renderRuntimeStamp();
       toast(liveMode ? 'Live metrics refreshed.' : 'Could not refresh live metrics; fallback data shown.');
     })();
     return;

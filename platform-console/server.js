@@ -667,16 +667,21 @@ app.post('/api/login', (req, res) => {
 
   const payload = { email: user.email, role: user.role, name: user.name };
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+  const tokenClaims = jwt.decode(token);
+  const sessionExpiresAt = Number(tokenClaims?.exp) * 1000;
+  if (!Number.isFinite(sessionExpiresAt)) {
+    return res.status(500).json({ error: 'Could not determine the console session expiry.' });
+  }
 
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'Strict',
     secure: COOKIE_SECURE,
-    maxAge: 8 * 60 * 60 * 1000,
+    maxAge: Math.max(0, sessionExpiresAt - Date.now()),
   });
 
   pushAudit('LOGIN', 'Console', user.email, `User logged in`, 'Success');
-  return res.json({ ok: true, user: { email: user.email, role: user.role, name: user.name }, access: ROLE_ACCESS[user.role] || [] });
+  return res.json({ ok: true, user: { email: user.email, role: user.role, name: user.name }, access: ROLE_ACCESS[user.role] || [], sessionExpiresAt });
 });
 
 app.post('/api/logout', requireAuth, (req, res) => {
@@ -686,7 +691,11 @@ app.post('/api/logout', requireAuth, (req, res) => {
 });
 
 app.get('/api/me', requireAuth, (req, res) => {
-  return res.json({ user: { email: req.user.email, role: req.user.role, name: req.user.name }, access: ROLE_ACCESS[req.user.role] || [] });
+  return res.json({
+    user: { email: req.user.email, role: req.user.role, name: req.user.name },
+    access: ROLE_ACCESS[req.user.role] || [],
+    sessionExpiresAt: Number.isFinite(Number(req.user.exp)) ? Number(req.user.exp) * 1000 : null,
+  });
 });
 
 function humanizeInstanceName(raw) {
