@@ -72,11 +72,35 @@ function captureDockerStream(stream) {
 }
 
 async function readSchoolAssessmentActivity(dbContainer) {
-  const sql = `SELECT json_build_object(
+  const sql = `WITH configured_context AS (
+      SELECT "academicYear" AS academic_year, term::text AS term
+      FROM public.term_configs
+      WHERE "isActive" = true AND archived = false
+      ORDER BY "updatedAt" DESC
+      LIMIT 1
+    ), test_fallback AS (
+      SELECT "academicYear" AS academic_year, term::text AS term
+      FROM public.summative_tests
+      WHERE archived = false
+      ORDER BY "academicYear" DESC, "updatedAt" DESC
+      LIMIT 1
+    ), school_context AS (
+      SELECT
+        COALESCE((SELECT academic_year FROM configured_context), (SELECT academic_year FROM test_fallback), EXTRACT(YEAR FROM CURRENT_DATE)::int) AS academic_year,
+        COALESCE((SELECT term FROM configured_context), (SELECT term FROM test_fallback), 'TERM_1') AS term
+    )
+    SELECT json_build_object(
+      'current_term', (SELECT term FROM school_context),
+      'academic_year', (SELECT academic_year FROM school_context),
+      'test_count', (
+        SELECT COUNT(*)::int
+        FROM public.summative_tests st CROSS JOIN school_context context
+        WHERE st.archived = false AND st."academicYear" = context.academic_year AND st.term::text = context.term
+      ),
       'active_test_count', (
         SELECT COUNT(*)::int
-        FROM public.summative_tests active_test
-        WHERE active_test.archived = false AND active_test.active = true
+        FROM public.summative_tests st CROSS JOIN school_context context
+        WHERE st.archived = false AND st.active = true AND st."academicYear" = context.academic_year AND st.term::text = context.term
       ),
       'tests', COALESCE((
         SELECT json_agg(to_jsonb(activity) ORDER BY activity.activity_at DESC)
@@ -88,9 +112,12 @@ async function readSchoolAssessmentActivity(dbContainer) {
             MAX(sr."updatedAt") AS last_result_at,
             GREATEST(st."updatedAt", COALESCE(MAX(sr."updatedAt"), st."updatedAt")) AS activity_at
           FROM (
-            SELECT * FROM public.summative_tests
-            WHERE archived = false
-            ORDER BY "updatedAt" DESC
+            SELECT school_test.*
+            FROM public.summative_tests school_test CROSS JOIN school_context context
+            WHERE school_test.archived = false
+              AND school_test."academicYear" = context.academic_year
+              AND school_test.term::text = context.term
+            ORDER BY school_test."updatedAt" DESC
             LIMIT 8
           ) st
           LEFT JOIN public.summative_results sr ON sr."testId" = st.id AND sr.archived = false
@@ -109,6 +136,9 @@ async function readSchoolAssessmentActivity(dbContainer) {
   if (state.ExitCode !== 0) throw new Error(captured.stderr.trim() || `psql exited ${state.ExitCode}`);
   const parsed = JSON.parse(captured.stdout.trim() || '{}');
   return {
+    currentTerm: String(parsed.current_term || ''),
+    academicYear: Number(parsed.academic_year) || null,
+    testCount: Math.max(0, Number(parsed.test_count) || 0),
     activeTestCount: Math.max(0, Number(parsed.active_test_count) || 0),
     tests: Array.isArray(parsed.tests) ? parsed.tests : [],
   };

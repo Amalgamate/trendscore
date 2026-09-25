@@ -73,6 +73,7 @@ const fmtActivityDate = value => {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? '—' : new Intl.DateTimeFormat('en-KE', { timeZone: 'Africa/Nairobi', dateStyle: 'medium', timeStyle: 'short' }).format(parsed);
 };
+const fmtAcademicTerm = (term, year) => `${String(term || 'Current term').replace(/^TERM_/i, 'Term ')}${year ? ` · ${year}` : ''}`;
 const statusCls = status => status === 'Online' || status === 'Active' || status === 'Success' ? 'online' : status === 'Degraded' || status === 'Warning' || status === 'Due Soon' ? 'warn' : 'offline';
 
 let toastTimer;
@@ -628,8 +629,9 @@ function assessmentActivityTooltipText(activity, schoolName = 'School') {
   if (!activity) return `${schoolName}\nLoading assessment activity…`;
   if (activity.state === 'unavailable') return `${schoolName}\nAssessment data unavailable\n${activity.reason || 'The school database could not be read.'}`;
   const latest = activity.tests?.[0];
-  if (!latest) return `${schoolName}\n${Number(activity.activeTestCount || 0)} active assessments\nNo tests have been created yet.`;
-  return `${schoolName}\n${Number(activity.activeTestCount || 0)} active assessments\nLatest: ${latest.title || 'Untitled test'}\n${latest.learning_area || 'Learning area not set'} · Grade ${latest.grade || '—'}\nTest updated ${fmtActivityDate(latest.updated_at)}\n${Number(latest.result_count || 0)} results · last result ${fmtActivityDate(latest.last_result_at)}`;
+  const termLine = `Current term: ${fmtAcademicTerm(activity.currentTerm, activity.academicYear)}`;
+  if (!latest) return `${schoolName}\n${termLine}\n${Number(activity.testCount || 0)} tests · ${Number(activity.activeTestCount || 0)} active\nNo tests for this term yet.`;
+  return `${schoolName}\n${termLine}\n${Number(activity.testCount || 0)} tests · ${Number(activity.activeTestCount || 0)} active\nLatest: ${latest.title || 'Untitled test'}\n${latest.learning_area || 'Learning area not set'} · Grade ${latest.grade || '—'}\nTest updated ${fmtActivityDate(latest.updated_at)}\n${Number(latest.result_count || 0)} results · last result ${fmtActivityDate(latest.last_result_at)}`;
 }
 
 function showAssessmentActivityTooltip(button) {
@@ -692,12 +694,12 @@ function openAssessmentActivity(key, schoolName = 'School') {
     list.innerHTML = '';
   } else {
     const tests = Array.isArray(activity.tests) ? activity.tests : [];
-    summary.innerHTML = `<div class="assessment-activity-kpi"><span>Active assessments</span><strong>${Number(activity.activeTestCount || 0)}</strong></div><div class="assessment-activity-kpi"><span>Recent tests shown</span><strong>${tests.length}</strong></div><div class="assessment-activity-updated">Snapshot updated ${esc(fmtActivityDate(activity.generatedAt || new Date().toISOString()))}</div>`;
+    summary.innerHTML = `<div class="assessment-activity-current-term">${esc(fmtAcademicTerm(activity.currentTerm, activity.academicYear))}</div><div class="assessment-activity-kpi"><span>Tests this term</span><strong>${Number(activity.testCount || 0)}</strong></div><div class="assessment-activity-kpi"><span>Active tests</span><strong>${Number(activity.activeTestCount || 0)}</strong></div><div class="assessment-activity-kpi"><span>Recent tests shown</span><strong>${tests.length}</strong></div><div class="assessment-activity-updated">Snapshot updated ${esc(fmtActivityDate(activity.generatedAt || new Date().toISOString()))}</div>`;
     list.innerHTML = tests.length ? tests.map(test => `<article class="assessment-test-card">
       <div class="assessment-test-heading"><strong>${esc(test.title || 'Untitled test')}</strong><span class="assessment-status-tag ${test.active ? 'is-active' : ''}">${esc(test.status || (test.active ? 'ACTIVE' : 'INACTIVE'))}</span></div>
       <div class="assessment-test-meta">${esc(test.learning_area || 'Learning area not set')} · Grade ${esc(test.grade || '—')} · ${esc(test.term || '—')} ${esc(test.academic_year || '')}</div>
       <div class="assessment-test-stats"><span>${Number(test.result_count || 0)} results recorded</span><span>Test updated ${esc(fmtActivityDate(test.updated_at))}</span><span>Last result ${esc(fmtActivityDate(test.last_result_at))}</span><span>Test date ${esc(test.test_date ? fmtActivityDate(test.test_date) : '—')}</span></div>
-    </article>`).join('') : '<div class="assessment-activity-empty">No tests have been created for this school yet.</div>';
+    </article>`).join('') : '<div class="assessment-activity-empty">No tests have been created for this term yet.</div>';
   }
   overlay.classList.add('open');
   overlay.setAttribute('aria-hidden', 'false');
@@ -1828,8 +1830,9 @@ function renderInstanceRow(instance, mode = 'compact') {
   const activityKey = instance.composeProject || instance.key || '';
   const activity = instance.appType === 'school' ? ASSESSMENT_ACTIVITY[activityKey] : null;
   const activityCount = Number(activity?.activeTestCount || 0);
+  const termTestCount = Number(activity?.testCount || 0);
   const activityPill = instance.appType === 'school' ? `<button type="button" class="assessment-activity-pill ${activity?.state === 'unavailable' ? 'is-unavailable' : activityCount > 0 ? 'has-active' : 'has-none'}" data-assessment-activity-key="${esc(activityKey)}" data-assessment-activity-name="${esc(instance.displayName || instance.name)}" aria-label="View assessment activity for ${esc(instance.displayName || instance.name)}" aria-describedby="assessment-activity-tooltip" aria-haspopup="dialog" title="${esc(assessmentActivityTooltipText(activity, instance.displayName || instance.name))}">
-          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 13.5h12M3.5 11V7.5M7 11V4.5M10.5 11V6M14 11V2.5"/></svg><span>Activity</span><span class="assessment-activity-count">${activity?.state === 'unavailable' ? '—' : activity ? activityCount : '…'}</span>
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 13.5h12M3.5 11V7.5M7 11V4.5M10.5 11V6M14 11V2.5"/></svg><span>Activity</span><span class="assessment-activity-count">${activity?.state === 'unavailable' ? '—' : activity ? termTestCount : '…'}</span>
         </button>` : '';
   return `<tr>
     <td><div class="cell-school"><strong>${esc(instance.name)}</strong><div class="cell-domain">${esc(instance.domain)}</div></div></td>

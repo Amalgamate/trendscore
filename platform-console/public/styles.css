@@ -747,6 +747,7 @@ tbody tr:hover td{background:#f8fbff}
 .assessment-activity-tooltip strong{margin-bottom:2px;color:#0f172a;font-size:12px}
 .assessment-activity-modal{max-width:760px}
 .assessment-activity-summary{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.assessment-activity-current-term{display:flex;align-items:center;margin-right:auto;padding:8px 11px;border:1px solid #c7d2fe;border-radius:8px;background:#eef2ff;color:#3730a3;font-size:12px;font-weight:800}
 .assessment-activity-kpi{display:flex;min-width:145px;flex-direction:column;gap:5px;padding:12px 15px;border:1px solid var(--border);border-radius:10px;background:#f8fafc}
 .assessment-activity-kpi span{color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
 .assessment-activity-kpi strong{color:var(--ink);font-size:22px;line-height:1.1}
