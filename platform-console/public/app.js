@@ -3026,7 +3026,6 @@ function bindDeployEvents() {
   const openPromote = () => openPromoteDeploy();
   $('deploy-promote-btn')?.addEventListener('click', runPromoteDeploy);
   $('btn-deploy-open-promote')?.addEventListener('click', runPromoteDeploy);
-  $('btn-overview-promote')?.addEventListener('click', openPromote);
   $('btn-deploy-clear-log')?.addEventListener('click', () => clearDeployLog());
   $('deploy-console-btn')?.addEventListener('click', runConsoleDeploy);
   $('deploy-select-all')?.addEventListener('click', () => {
