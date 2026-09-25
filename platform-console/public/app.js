@@ -1579,16 +1579,6 @@ function renderMetrics() {
   if ($('m-containers')) $('m-containers').textContent = liveMode ? (RUNTIME_METRICS?.containersHealthy || `${healthy}/${total}`) : '—';
   if ($('m-storage')) $('m-storage').textContent = liveMode ? `${fmt(Number(RUNTIME_METRICS?.storageUsedGb ?? totalStorage))} GB` : '—';
 
-  const latestDeploy = DEPLOYMENTS[0];
-  if ($('m-deploy')) {
-    $('m-deploy').textContent = latestDeploy?.imageTag || latestDeploy?.title?.replace(/^Promoted /, '')?.slice(0, 12) || '—';
-  }
-  if ($('m-deploy-sub')) {
-    $('m-deploy-sub').textContent = latestDeploy?.copy || 'No deployment record is available.';
-  }
-  if ($('m-deploy-badge')) {
-    $('m-deploy-badge').textContent = latestDeploy?.time || 'No deployment yet';
-  }
   if ($('overview-sub')) {
     $('overview-sub').textContent = liveMode
       ? 'Live snapshot of all managed school instances'
@@ -2954,13 +2944,6 @@ function bindDeployEvents() {
   $('deploy-promote-btn')?.addEventListener('click', runPromoteDeploy);
   $('btn-deploy-open-promote')?.addEventListener('click', runPromoteDeploy);
   $('btn-overview-promote')?.addEventListener('click', openPromote);
-  $('metric-last-deploy')?.addEventListener('click', openPromote);
-  $('metric-last-deploy')?.addEventListener('keydown', event => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      openPromote();
-    }
-  });
   $('btn-deploy-clear-log')?.addEventListener('click', () => clearDeployLog());
   $('deploy-console-btn')?.addEventListener('click', runConsoleDeploy);
   $('deploy-select-all')?.addEventListener('click', () => {
