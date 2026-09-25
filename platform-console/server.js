@@ -108,9 +108,9 @@ async function readSchoolAssessmentActivity(dbContainer) {
           SELECT st.id, st.title, st."learningArea" AS learning_area, st.grade,
             st.term::text AS term, st."academicYear" AS academic_year,
             st."testDate" AS test_date, st.active, st.status::text AS status,
-            st."updatedAt" AS updated_at, COUNT(sr.id)::int AS result_count,
-            MAX(sr."updatedAt") AS last_result_at,
-            GREATEST(st."updatedAt", COALESCE(MAX(sr."updatedAt"), st."updatedAt")) AS activity_at
+            st."updatedAt" AS updated_at, COALESCE(result_activity.result_count, 0)::int AS result_count,
+            result_activity.last_result_at,
+            GREATEST(st."updatedAt", COALESCE(result_activity.last_result_at, st."updatedAt")) AS activity_at
           FROM (
             SELECT school_test.*
             FROM public.summative_tests school_test CROSS JOIN school_context context
@@ -120,8 +120,11 @@ async function readSchoolAssessmentActivity(dbContainer) {
             ORDER BY school_test."updatedAt" DESC
             LIMIT 8
           ) st
-          LEFT JOIN public.summative_results sr ON sr."testId" = st.id AND sr.archived = false
-          GROUP BY st.id
+          LEFT JOIN LATERAL (
+            SELECT COUNT(*)::int AS result_count, MAX(sr."updatedAt") AS last_result_at
+            FROM public.summative_results sr
+            WHERE sr."testId" = st.id AND sr.archived = false
+          ) result_activity ON true
           ORDER BY activity_at DESC
         ) activity
       ), '[]'::json)
