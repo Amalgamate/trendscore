@@ -1474,7 +1474,8 @@ function inferGroupKey(instance) {
 }
 
 function prettyGroupName(groupKey) {
-  return groupKey
+  const cleanKey = String(groupKey || '').replace(/^zawadijrn$/i, 'jrn').replace(/^zawadi-/i, '');
+  return cleanKey
     .split('-')
     .filter(Boolean)
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
@@ -1492,7 +1493,7 @@ function groupInstances(instances) {
     if (!map.has(groupKey)) {
       map.set(groupKey, {
         key: groupKey,
-        name: prettyGroupName(groupKey),
+        name: instance.displayName || prettyGroupName(groupKey),
         appType: instance.appType || 'other',
         typeLabel: instance.typeLabel || 'Other / unclassified',
         items: [],
@@ -1503,6 +1504,9 @@ function groupInstances(instances) {
       });
     }
     const group = map.get(groupKey);
+    if (!group.name || group.name === prettyGroupName(groupKey)) {
+      group.name = instance.displayName || group.name;
+    }
     group.items.push(instance);
     group.storage += Number(instance.storage || 0);
     const component = inferComponent(instance);

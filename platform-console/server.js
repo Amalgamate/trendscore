@@ -183,6 +183,33 @@ function buildManifestDomainIndex(manifest = {}) {
   return { byId, byProject };
 }
 
+function buildManifestDisplayNameIndex(manifest = {}) {
+  const byId = new Map();
+  const byProject = new Map();
+  for (const inst of manifest.instances || []) {
+    const displayName = String(inst.label || inst.id || '')
+      .replace(/^zawadi[\s_-]+/i, '')
+      .replace(/\s*[—–-]\s*zawadi$/i, '')
+      .trim();
+    if (!displayName) continue;
+    byId.set(String(inst.id || '').toLowerCase(), displayName);
+    for (const alias of inst.aliases || []) byId.set(String(alias).toLowerCase(), displayName);
+    const project = inst.compose_project
+      || (inst.kind === 'main' ? 'zawadijrn' : `zawadi-${inst.id}`);
+    byProject.set(String(project).toLowerCase(), displayName);
+  }
+  return { byId, byProject };
+}
+
+function resolveRuntimeDisplayName(instance, displayNames) {
+  const project = String(instance.composeProject || instance.key || '').trim().toLowerCase();
+  const slug = slugifyName(slugFromComposeProject(project) || instance.key || instance.name);
+  return displayNames.byProject.get(project)
+    || displayNames.byId.get(normalizeDeploySchoolId(slug))
+    || displayNames.byId.get(slug)
+    || humanizeInstanceName(project || instance.name);
+}
+
 function resolveRuntimeDomain(instance, nginxMap, manifestIndex) {
   const project = String(instance.composeProject || instance.key || '').trim();
   const slug = slugifyName(slugFromComposeProject(project) || instance.key || instance.name);
@@ -1052,9 +1079,12 @@ async function collectRuntime() {
 
   const instances = mapContainersToInstances(containers);
   const nginxMap = parseNginxDomainMap();
-  const manifestDomains = buildManifestDomainIndex(loadDeployManifest());
+  const manifest = loadDeployManifest();
+  const manifestDomains = buildManifestDomainIndex(manifest);
+  const manifestDisplayNames = buildManifestDisplayNameIndex(manifest);
   for (const i of instances) {
     i.domain = resolveRuntimeDomain(i, nginxMap, manifestDomains);
+    i.displayName = resolveRuntimeDisplayName(i, manifestDisplayNames);
   }
 
   if (dockerDf && Array.isArray(dockerDf.Volumes)) {
