@@ -10,12 +10,16 @@
     "backend_image": "ghcr.io/amalgamate/zawadi-backend",
     "console_image": "ghcr.io/amalgamate/zawadi-console",
     "health_host": "127.0.0.1",
-    "static_publish_dir": "/srv/zawadi/apps/zawadijrn/build"
+    "static_publish_dir": "/srv/zawadi/apps/zawadijrn/build",
+    "public_ipv4": "185.127.16.124"
   },
   "instances": [
     {
       "id": "demo",
-      "aliases": ["demoschool", "demo-school"],
+      "aliases": [
+        "demoschool",
+        "demo-school"
+      ],
       "label": "Canary — Demo School",
       "tier": "demo",
       "active": true,
@@ -40,7 +44,11 @@
     },
     {
       "id": "jrn",
-      "aliases": ["zawadi-junior", "zawadi-jrn", "zawadijrn"],
+      "aliases": [
+        "zawadi-junior",
+        "zawadi-jrn",
+        "zawadijrn"
+      ],
       "label": "JRN — Zawadi",
       "tier": "production",
       "active": true,
@@ -63,7 +71,9 @@
     },
     {
       "id": "lionscomplex",
-      "aliases": ["lions-complex"],
+      "aliases": [
+        "lions-complex"
+      ],
       "label": "Lions Complex",
       "tier": "production",
       "active": true,
@@ -97,7 +107,9 @@
     },
     {
       "id": "waso-cs",
-      "aliases": ["waso"],
+      "aliases": [
+        "waso"
+      ],
       "label": "Waso CS",
       "tier": "production",
       "active": true,
@@ -109,7 +121,9 @@
     },
     {
       "id": "daawa-cs",
-      "aliases": ["daawa"],
+      "aliases": [
+        "daawa"
+      ],
       "label": "Daawa CS",
       "tier": "production",
       "active": true,
@@ -121,7 +135,10 @@
     },
     {
       "id": "barracks-comprehesive-school",
-      "aliases": ["barracks", "baracks"],
+      "aliases": [
+        "barracks",
+        "baracks"
+      ],
       "label": "Barracks Comprehensive School",
       "tier": "production",
       "active": true,
@@ -200,6 +217,19 @@
       "compose_project": "zawadi-memu-school",
       "env_file": "/srv/zawadi/apps/env/.zawadi-memu-school.env",
       "public_domain": "memu.trendscore.co.ke"
+    },
+    {
+      "id": "alrahma",
+      "label": "Alahma",
+      "tier": "production",
+      "active": true,
+      "deployment_allowed": true,
+      "kind": "stack",
+      "compose_project": "zawadi-alahma",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-alahma.env",
+      "public_domain": "alrahma.trendscore.co.ke",
+      "auto_deploy_on_main": false,
+      "notes": "Existing Alahma stack registered for requested domain binding and TLS. Frontend host port 3017; backend host port 5014."
     }
   ],
   "discovery": {
