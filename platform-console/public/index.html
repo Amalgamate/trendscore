@@ -106,8 +106,11 @@
     <a class="nav-item" data-section="controls" href="#">
       <span class="nav-icon">⚙️</span> Controls
     </a>
-          <a class="nav-item" data-section="billing" href="#">
-            <span class="nav-icon">💳</span> Billing &amp; Invoices
+    <a class="nav-item" data-section="billing" href="#">
+      <span class="nav-icon">💳</span> Billing &amp; Invoices
+    </a>
+    <a class="nav-item" data-section="communications" href="#">
+      <span class="nav-icon">✉️</span> Communications
     </a>
     <a class="nav-item" data-section="logs" href="#">
       <span class="nav-icon">📋</span> Audit Log
@@ -616,6 +619,44 @@
         </section>
       </div>
       <!-- ── END BILLING ── -->
+
+      <!-- ── COMMUNICATIONS SETTINGS ── -->
+      <div id="section-communications" class="section-hidden">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Communications Settings</div>
+            <div class="page-sub">Configure the email provider used for customer quotes and draft invoice review copies.</div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><div><div class="panel-title">Email delivery · Resend</div><div class="panel-sub">The API key is stored on the production server, never returned to the browser, and never written to the Git repository.</div></div></div>
+          <div class="panel-body">
+            <div id="communications-email-status" class="billing-email-status" role="status" aria-live="polite">Checking email configuration…</div>
+            <form id="communications-email-form" class="communications-settings-form" autocomplete="off">
+              <div class="form-group">
+                <label class="form-label" for="communications-resend-key">Resend API key</label>
+                <input class="form-input" id="communications-resend-key" name="resendApiKey" type="password" autocomplete="new-password" placeholder="Paste a new Resend API key to replace the stored key" />
+                <div class="form-hint" id="communications-key-hint">The current key is hidden. Leave this blank to keep the saved key.</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="communications-from-email">Sender email address</label>
+                <input class="form-input" id="communications-from-email" name="fromEmail" type="email" autocomplete="email" placeholder="billing@your-verified-domain" required />
+                <div class="form-hint">Use an address on a domain that Resend reports as verified with sending enabled.</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="communications-from-name">Sender display name</label>
+                <input class="form-input" id="communications-from-name" name="fromName" type="text" maxlength="120" autocomplete="organization" placeholder="TrendSCORE" />
+              </div>
+              <div class="communications-settings-actions">
+                <button class="btn" id="communications-email-save" type="submit">Save email settings</button>
+                <button class="btn secondary" id="communications-email-test" type="button">Validate Resend connection</button>
+              </div>
+            </form>
+            <div class="billing-register-note">Validation checks the API key and sender-domain status without sending an email. After validation, test delivery using a quote or the draft invoice review-copy action.</div>
+          </div>
+        </div>
+      </div>
+      <!-- ── END COMMUNICATIONS SETTINGS ── -->
 
       <!-- ── LOGS section ── -->
       <div id="section-logs" class="section-hidden">

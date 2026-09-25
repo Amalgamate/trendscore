@@ -349,6 +349,11 @@ button,input,select,textarea{font:inherit}
 .metric-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
 .overview-metric-row{grid-template-columns:repeat(3,minmax(0,1fr))}
 .storage-summary-row{grid-template-columns:repeat(3,minmax(0,1fr))}
+.communications-settings-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:16px}
+.communications-settings-form .form-group{display:flex;flex-direction:column;gap:7px;min-width:0}
+.communications-settings-form .form-input{width:100%;min-width:0}
+.communications-settings-form .form-hint{font-size:12px;color:var(--muted);line-height:1.45}
+.communications-settings-actions{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:10px}
 .metric-card{
   background:var(--surface);border:1px solid var(--border);
   padding:18px;position:relative;overflow:hidden
@@ -715,6 +720,7 @@ tbody tr:hover td{background:#f8fbff}
   .page-actions{flex-shrink:1;flex-wrap:wrap}
   .modal{width:calc(100% - 24px);max-width:560px;max-height:calc(100dvh - 24px);}
 }
+@media(max-width:640px){.communications-settings-form{grid-template-columns:1fr}.communications-settings-actions{grid-column:auto}.communications-settings-actions .btn{width:100%}}
 
 @media(max-width:680px){
   body{font-size:14px}

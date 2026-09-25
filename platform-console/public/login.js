@@ -168,12 +168,12 @@
 
   // ── Role-based UI restrictions ───────────────────────────────────────────
   function applyRoleRestrictions(role, access) {
-    const allSections = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'logs'];
+    const allSections = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'communications', 'logs'];
 
     allSections.forEach(section => {
       const navItem = document.querySelector(`.nav-item[data-section="${section}"]`);
       const panel   = document.getElementById(`section-${section}`);
-      const allowed = !access || access.includes(section);
+      const allowed = !access || access.includes(section) || (section === 'communications' && role === 'super_admin');
 
       if (navItem) {
         if (!allowed) {

@@ -35,6 +35,7 @@ const { USERS, JWT_SECRET, JWT_EXPIRES_IN, ROLE_ACCESS } = require('./auth-confi
 
 const app = express();
 const PORT = process.env.PORT || 3100;
+const CONSOLE_ENV_FILE = path.resolve(process.env.CONSOLE_ENV_FILE || '/srv/zawadi/apps/.env.console');
 const COOKIE_NAME = 'trends_core_token';
 const COOKIE_SECURE = process.env.CONSOLE_COOKIE_SECURE === 'true';
 const docker = process.env.DOCKER_HOST
@@ -1983,8 +1984,113 @@ app.get('/api/billing/contracts', requireAuth, requireRole('super_admin', 'platf
   res.json({ ok: true, contracts: billingStore.listContracts(customerId) });
 });
 
+function writeConsoleEmailSettings(values) {
+  const envFilePath = CONSOLE_ENV_FILE;
+  if (!fs.existsSync(envFilePath)) {
+    throw new Error('The persistent console environment file is unavailable. Ask an operator to check the production console mount.');
+  }
+  if (fs.lstatSync(envFilePath).isSymbolicLink()) {
+    throw new Error('The console environment file must not be a symbolic link.');
+  }
+
+  let lines = fs.readFileSync(envFilePath, 'utf8').split(/\r?\n/);
+  for (const [key, value] of Object.entries(values)) {
+    if (value === undefined) continue;
+    const nextLine = `${key}=${value}`;
+    lines = lines.filter(line => !new RegExp(`^\\s*${key}\\s*=`).test(line));
+    lines.push(nextLine);
+  }
+
+  const temporaryPath = `${envFilePath}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+  try {
+    fs.writeFileSync(temporaryPath, `${lines.join('\n').replace(/\n+$/, '')}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    fs.chmodSync(temporaryPath, 0o600);
+    fs.renameSync(temporaryPath, envFilePath);
+    fs.chmodSync(envFilePath, 0o600);
+    for (const [key, value] of Object.entries(values)) {
+      if (value !== undefined) process.env[key] = value;
+    }
+  } catch (error) {
+    try { fs.unlinkSync(temporaryPath); } catch (_) {}
+    throw error;
+  }
+}
+
+function currentEmailSettings() {
+  return {
+    keyConfigured: Boolean(process.env.RESEND_API_KEY),
+    fromEmail: process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM || '',
+    fromName: process.env.BILLING_FROM_NAME || process.env.EMAIL_FROM_NAME || 'TrendSCORE',
+  };
+}
+
+app.get('/api/settings/communications/email', requireAuth, requireRole('super_admin'), (_req, res) => {
+  return res.json({ ok: true, ...currentEmailSettings() });
+});
+
+app.put('/api/settings/communications/email', requireAuth, requireRole('super_admin'), (req, res) => {
+  const apiKey = String(req.body?.apiKey || '').trim();
+  const fromEmail = String(req.body?.fromEmail || '').trim();
+  const fromName = String(req.body?.fromName || 'TrendSCORE').trim();
+  if (apiKey && (!/^re_[A-Za-z0-9_-]{8,250}$/.test(apiKey) || /[\r\n]/.test(apiKey))) {
+    return res.status(400).json({ ok: false, error: 'Enter a validly formatted Resend API key beginning with re_.' });
+  }
+  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(fromEmail) || fromEmail.length > 254) {
+    return res.status(400).json({ ok: false, error: 'Enter a valid sender email address.' });
+  }
+  if (/[\r\n]/.test(fromName) || fromName.length > 120) {
+    return res.status(400).json({ ok: false, error: 'Sender name must be 120 characters or fewer on one line.' });
+  }
+  if (!apiKey && !process.env.RESEND_API_KEY) {
+    return res.status(400).json({ ok: false, error: 'Paste a Resend API key before saving the first email configuration.' });
+  }
+
+  try {
+    const values = {
+      ...(apiKey ? { RESEND_API_KEY: apiKey } : {}),
+      BILLING_FROM_EMAIL: fromEmail,
+      BILLING_FROM_NAME: fromName || 'TrendSCORE',
+    };
+    writeConsoleEmailSettings(values);
+    pushAudit('COMMUNICATIONS_EMAIL_SETTINGS', 'Communications', req.user.email, `Updated Resend sender settings for ${fromEmail}`);
+    return res.json({ ok: true, ...currentEmailSettings() });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message || 'Could not save email settings on the server.' });
+  }
+});
+
+app.post('/api/settings/communications/email/test', requireAuth, requireRole('super_admin'), async (_req, res) => {
+  const { keyConfigured, fromEmail } = currentEmailSettings();
+  if (!keyConfigured || !fromEmail) return res.status(400).json({ ok: false, error: 'Save a Resend API key and sender address first.' });
+  try {
+    const response = await fetch('https://api.resend.com/domains?limit=100', {
+      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
+      signal: AbortSignal.timeout(12000),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = response.status === 401 || response.status === 403
+        ? 'Resend rejected this API key. Replace it with a valid key.'
+        : `Resend connection check failed (HTTP ${response.status}).`;
+      return res.status(502).json({ ok: false, error });
+    }
+    const senderDomain = fromEmail.split('@').pop().toLowerCase();
+    const domainEntry = (Array.isArray(payload.data) ? payload.data : []).find(item => {
+      const domain = String(item.name || '').toLowerCase();
+      return senderDomain === domain || senderDomain.endsWith(`.${domain}`);
+    });
+    const verified = domainEntry?.status === 'verified'
+      && (!domainEntry.capabilities?.sending || domainEntry.capabilities.sending === 'enabled');
+    pushAudit('COMMUNICATIONS_EMAIL_TEST', 'Communications', 'system', `Checked Resend configuration for ${fromEmail}: ${verified ? 'verified' : 'domain needs verification'}`);
+    return res.json({ ok: true, verified, fromEmail, domain: domainEntry?.name || senderDomain, domainStatus: domainEntry?.status || 'not found' });
+  } catch (error) {
+    return res.status(502).json({ ok: false, error: error.name === 'TimeoutError' ? 'Resend validation timed out.' : 'Could not reach Resend to validate the saved configuration.' });
+  }
+});
+
 app.get('/api/billing/email-status', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
-  res.json({ ok: true, configured: Boolean(process.env.RESEND_API_KEY && (process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM)) });
+  const config = currentEmailSettings();
+  res.json({ ok: true, configured: Boolean(config.keyConfigured && config.fromEmail) });
 });
 
 app.get('/api/billing/quotes', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {

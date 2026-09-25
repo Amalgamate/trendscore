@@ -988,6 +988,81 @@ function renderBillingSettings() {
   status.className = `billing-email-status ${BILLING_EMAIL_STATUS === 'ready' ? 'ready' : BILLING_EMAIL_STATUS === 'unconfigured' ? 'unready' : ''}`;
 }
 
+async function loadCommunicationsSettings() {
+  const status = $('communications-email-status');
+  try {
+    const response = await fetch('/api/settings/communications/email', { credentials: 'same-origin' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Could not load email settings.');
+    if ($('communications-from-email')) $('communications-from-email').value = data.fromEmail || '';
+    if ($('communications-from-name')) $('communications-from-name').value = data.fromName || 'TrendSCORE';
+    if ($('communications-key-hint')) $('communications-key-hint').textContent = data.keyConfigured
+      ? 'A key is saved on the server and hidden here. Leave blank to keep it, or paste a new key to replace it.'
+      : 'No key is saved yet. Paste a Resend API key to enable email delivery.';
+    if (status) {
+      status.textContent = data.keyConfigured
+        ? `Resend key saved${data.fromEmail ? ` · sender ${data.fromEmail}` : ''}. Validate the connection before sending.`
+        : 'Resend is not configured. Add an API key and sender address, then save.';
+      status.className = `billing-email-status ${data.keyConfigured ? 'ready' : 'unready'}`;
+    }
+  } catch (error) {
+    if (status) {
+      status.textContent = error.message || 'Email settings could not be loaded.';
+      status.className = 'billing-email-status unready';
+    }
+  }
+}
+
+async function saveCommunicationsSettings(event) {
+  event?.preventDefault();
+  const button = $('communications-email-save');
+  if (button) { button.disabled = true; button.textContent = 'Saving…'; }
+  try {
+    const response = await fetch('/api/settings/communications/email', {
+      method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        apiKey: $('communications-resend-key')?.value || '',
+        fromEmail: $('communications-from-email')?.value || '',
+        fromName: $('communications-from-name')?.value || '',
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Could not save email settings.');
+    if ($('communications-resend-key')) $('communications-resend-key').value = '';
+    toast('Email settings saved on the server. The key stays hidden.');
+    await loadCommunicationsSettings();
+  } catch (error) {
+    toast(error.message || 'Could not save email settings.');
+  } finally {
+    if (button) { button.disabled = false; button.textContent = 'Save email settings'; }
+  }
+}
+
+async function validateCommunicationsSettings() {
+  const button = $('communications-email-test');
+  const status = $('communications-email-status');
+  if (button) { button.disabled = true; button.textContent = 'Checking Resend…'; }
+  if (status) { status.textContent = 'Checking the saved API key and sender domain…'; status.className = 'billing-email-status'; }
+  try {
+    const response = await fetch('/api/settings/communications/email/test', { method: 'POST', credentials: 'same-origin' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Resend validation failed.');
+    if (status) {
+      status.textContent = data.verified
+        ? `Resend connection verified · ${data.domain} is ready to send from ${data.fromEmail}. No email was sent.`
+        : `Resend accepted the API key, but ${data.domain || 'the sender domain'} is not verified for sending yet.`;
+      status.className = `billing-email-status ${data.verified ? 'ready' : 'unready'}`;
+    }
+  } catch (error) {
+    if (status) { status.textContent = error.message || 'Resend validation failed.'; status.className = 'billing-email-status unready'; }
+  } finally {
+    if (button) { button.disabled = false; button.textContent = 'Validate Resend connection'; }
+  }
+}
+
+$('communications-email-form')?.addEventListener('submit', saveCommunicationsSettings);
+$('communications-email-test')?.addEventListener('click', validateCommunicationsSettings);
+
 const BILLING_TABS = ['overview', 'customers', 'quotes', 'invoices', 'payments', 'catalogue', 'reports', 'settings'];
 function selectBillingTab(tab, focus = false) {
   const selected = BILLING_TABS.includes(tab) ? tab : 'overview';
@@ -2089,7 +2164,7 @@ function runConsoleDeploy() {
 }
 
 // Navigation
-const SECTIONS = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'logs', 'leads'];
+const SECTIONS = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'communications', 'logs', 'leads'];
 const SECTION_LABELS = {
   overview: 'Overview',
   instances: 'Instances',
@@ -2097,6 +2172,7 @@ const SECTION_LABELS = {
   deployments: 'Promote Release',
   controls: 'Controls',
   billing: 'Billing & Invoices',
+  communications: 'Communications Settings',
   logs: 'Audit Log',
   leads: 'Leads & CRM',
 };
@@ -2121,6 +2197,7 @@ function showSection(id, options = {}) {
     refreshDeployPanel(options.deployPrefill || null);
   }
   if (targetSection === 'billing') loadBillingData();
+  if (targetSection === 'communications') loadCommunicationsSettings();
 
   if (!options.skipHashUpdate) {
     const nextHash = `#${targetSection}`;
@@ -2143,6 +2220,7 @@ window.addEventListener('hashchange', () => {
 
 window.addEventListener('console:authenticated', () => {
   if (sectionFromHash() === 'billing') loadBillingData();
+  if (sectionFromHash() === 'communications') loadCommunicationsSettings();
 });
 
 function setSidebarCollapsed(collapsed) {
