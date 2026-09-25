@@ -87,7 +87,28 @@ function createBillingStore(dataDir) {
       updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS billing_invoices_customer_idx ON billing_invoices(customer_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS billing_invoice_deliveries (
+      id TEXT PRIMARY KEY,
+      invoice_id TEXT NOT NULL REFERENCES billing_invoices(id) ON DELETE RESTRICT,
+      recipient TEXT NOT NULL,
+      actor TEXT NOT NULL DEFAULT '',
+      provider_message_id TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL CHECK (status IN ('sent', 'failed')),
+      error TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS billing_invoice_deliveries_invoice_idx ON billing_invoice_deliveries(invoice_id, created_at DESC);
   `);
+
+  const ensureColumn = (table, column, definition) => {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+    if (!columns.some(item => item.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  };
+  ensureColumn('billing_quotes', 'cancelled_at', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('billing_quotes', 'cancelled_by', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('billing_quotes', 'cancel_reason', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('billing_invoices', 'cancel_reason', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('billing_invoices', 'cancelled_by', "TEXT NOT NULL DEFAULT ''");
 
   const customerColumns = `id, name, legal_name AS legalName, tenant_key AS tenantKey,
     billing_email AS billingEmail, billing_phone AS billingPhone,
@@ -104,11 +125,13 @@ function createBillingStore(dataDir) {
     enrollment_count AS enrollmentCount, pricing_model AS pricingModel,
     billing_cadence AS billingCadence, subtotal_ksh AS subtotalKsh, expires_on AS expiresOn,
     notes, status, created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt,
-    sent_at AS sentAt, email_message_id AS emailMessageId`;
+    sent_at AS sentAt, email_message_id AS emailMessageId, cancelled_at AS cancelledAt,
+    cancelled_by AS cancelledBy, cancel_reason AS cancelReason`;
   const invoiceColumns = `id, invoice_number AS invoiceNumber, quote_id AS quoteId,
     customer_id AS customerId, invoice_snapshot AS invoiceSnapshotJson, amount_ksh AS amountKsh,
-    status, created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt`;
-  const decodeQuote = row => row && ({ ...row, customerSnapshot: decodeJson(row.customerSnapshotJson), quoteSnapshot: decodeJson(row.quoteSnapshotJson), customerSnapshotJson: undefined, quoteSnapshotJson: undefined });
+    status, created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt,
+    cancel_reason AS cancelReason, cancelled_by AS cancelledBy`;
+  const decodeQuote = row => row && ({ ...row, status: row.cancelledAt ? 'cancelled' : row.status, customerSnapshot: decodeJson(row.customerSnapshotJson), quoteSnapshot: decodeJson(row.quoteSnapshotJson), customerSnapshotJson: undefined, quoteSnapshotJson: undefined });
   const decodeInvoice = row => row && ({ ...row, invoiceSnapshot: decodeJson(row.invoiceSnapshotJson), invoiceSnapshotJson: undefined });
 
   return {
@@ -170,6 +193,28 @@ function createBillingStore(dataDir) {
         .run({ ...quote, customerSnapshot: JSON.stringify(quote.customerSnapshot), quoteSnapshot: JSON.stringify(quote.quoteSnapshot), createdAt: now, updatedAt: now });
       return this.getQuote(quote.id);
     },
+    updateQuote(id, quote) {
+      const now = new Date().toISOString();
+      const result = db.prepare(`UPDATE billing_quotes SET customer_id=@customerId, customer_snapshot=@customerSnapshot,
+        quote_snapshot=@quoteSnapshot, enrollment_count=@enrollmentCount, pricing_model=@pricingModel,
+        billing_cadence=@billingCadence, subtotal_ksh=@subtotalKsh, expires_on=@expiresOn, notes=@notes,
+        updated_at=@updatedAt WHERE id=@id AND status='draft' AND sent_at='' AND cancelled_at=''`)
+        .run({ ...quote, id, customerSnapshot: JSON.stringify(quote.customerSnapshot), quoteSnapshot: JSON.stringify(quote.quoteSnapshot), updatedAt: now });
+      return result.changes ? this.getQuote(id) : null;
+    },
+    deleteDraftQuote(id) {
+      const result = db.prepare(`DELETE FROM billing_quotes WHERE id=? AND status='draft' AND sent_at='' AND cancelled_at=''
+        AND NOT EXISTS (SELECT 1 FROM billing_quote_deliveries WHERE quote_id=?)
+        AND NOT EXISTS (SELECT 1 FROM billing_invoices WHERE quote_id=?)`).run(id, id, id);
+      return result.changes > 0;
+    },
+    cancelQuote(id, actor, reason) {
+      const now = new Date().toISOString();
+      const result = db.prepare(`UPDATE billing_quotes SET cancelled_at=?,cancelled_by=?,cancel_reason=?,updated_at=?
+        WHERE id=? AND status IN ('draft','sent','accepted') AND cancelled_at='' AND NOT EXISTS
+        (SELECT 1 FROM billing_invoices WHERE quote_id=?)`).run(now, actor, reason, now, id, id);
+      return result.changes ? this.getQuote(id) : null;
+    },
     setQuoteStatus(id, status) {
       const now = new Date().toISOString();
       const result = db.prepare(`UPDATE billing_quotes SET status=@status, updated_at=@updatedAt WHERE id=@id`).run({ id, status, updatedAt: now });
@@ -207,6 +252,33 @@ function createBillingStore(dataDir) {
         VALUES (@id,@invoiceNumber,@quoteId,@customerId,@invoiceSnapshot,@amountKsh,'draft',@createdBy,@createdAt,@updatedAt)`)
         .run({ ...invoice, invoiceSnapshot: JSON.stringify(invoice.invoiceSnapshot), createdAt: now, updatedAt: now });
       return decodeInvoice(db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices WHERE id=?`).get(invoice.id));
+    },
+    updateDraftInvoice(id, details) {
+      const invoice = this.getInvoice(id);
+      if (!invoice || invoice.status !== 'draft') return null;
+      const snapshot = { ...invoice.invoiceSnapshot, dueDate: details.dueDate, termsNote: details.termsNote };
+      const now = new Date().toISOString();
+      const result = db.prepare(`UPDATE billing_invoices SET invoice_snapshot=?,updated_at=? WHERE id=? AND status='draft'`)
+        .run(JSON.stringify(snapshot), now, id);
+      return result.changes ? this.getInvoice(id) : null;
+    },
+    cancelDraftInvoice(id, actor, reason) {
+      const now = new Date().toISOString();
+      const result = db.prepare(`UPDATE billing_invoices SET status='void',cancelled_by=?,cancel_reason=?,updated_at=?
+        WHERE id=? AND status='draft'`).run(actor, reason, now, id);
+      return result.changes ? this.getInvoice(id) : null;
+    },
+    recordInvoiceDelivery(delivery) {
+      const now = new Date().toISOString();
+      db.prepare(`INSERT INTO billing_invoice_deliveries
+        (id,invoice_id,recipient,actor,provider_message_id,status,error,created_at)
+        VALUES (@id,@invoiceId,@recipient,@actor,@providerMessageId,@status,@error,@createdAt)`)
+        .run({ ...delivery, createdAt: now });
+      return now;
+    },
+    listInvoiceDeliveries(invoiceId) {
+      return db.prepare(`SELECT recipient,actor,provider_message_id AS providerMessageId,status,error,created_at AS createdAt
+        FROM billing_invoice_deliveries WHERE invoice_id=? ORDER BY created_at DESC`).all(invoiceId);
     },
     close() { db.close(); },
   };

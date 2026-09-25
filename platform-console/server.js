@@ -10,7 +10,7 @@ const { execFile } = require('child_process');
 const Docker = require('dockerode');
 const si = require('systeminformation');
 const { createBillingStore } = require('./billing-store');
-const { createPdfBuffer, quotePdfLines, invoicePdfBuffer } = require('./billing-documents');
+const { quotePdfBuffer, invoicePdfBuffer } = require('./billing-documents');
 
 const execFileAsync = promisify(execFile);
 
@@ -1767,7 +1767,7 @@ async function deliverQuoteEmail(quote, actor) {
   if (!apiKey || !fromEmail) throw new Error('Quote email is not configured. Set RESEND_API_KEY and BILLING_FROM_EMAIL (or EMAIL_FROM).');
   const customer = quote.customerSnapshot || {};
   if (!customer.billingEmail) throw new Error('Add a billing email to this customer before sending the quote');
-  const pdf = createPdfBuffer(quotePdfLines(quote));
+  const pdf = quotePdfBuffer(quote);
   const message = buildQuoteEmail(quote);
   let providerMessageId = '';
   try {
@@ -1790,6 +1790,39 @@ async function deliverQuoteEmail(quote, actor) {
     return providerMessageId;
   } catch (error) {
     billingStore.recordQuoteDelivery({ id: crypto.randomUUID(), quoteId: quote.id, recipient: customer.billingEmail, actor, providerMessageId: '', status: 'failed', error: billingText(error.message, 500) });
+    throw error;
+  }
+}
+
+async function deliverDraftInvoiceEmail(invoice, actor) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM;
+  if (!apiKey || !fromEmail) throw new Error('Invoice email is not configured. Set the server-side Resend key and billing sender address.');
+  const customer = invoice.invoiceSnapshot?.customerSnapshot || {};
+  if (!customer.billingEmail) throw new Error('Add a billing email to this customer before sending the draft');
+  const safe = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+  const money = amount => `KSh ${Number(amount || 0).toLocaleString('en-KE')}`;
+  const pdf = invoicePdfBuffer(invoice);
+  const text = [`Hello ${customer.name || 'Customer'},`, '', `Please review the attached draft invoice ${invoice.invoiceNumber}.`,
+    `Draft total: ${money(invoice.amountKsh)}.`, 'This is for review only. It is not an issued invoice, payment request, or tax invoice.',
+    'Please reply with corrections or approval.'].join('\n');
+  const html = `<div style="font-family:Arial,sans-serif;color:#172033;line-height:1.5"><p>Hello ${safe(customer.name || 'Customer')},</p><p>Please review the attached draft invoice <strong>${safe(invoice.invoiceNumber)}</strong>.</p><p><strong>Draft total: ${money(invoice.amountKsh)}</strong></p><p>This is for review only. It is not an issued invoice, payment request, or tax invoice.</p><p>Please reply with corrections or approval.</p><p>Regards,<br/>TrendSCORE</p></div>`;
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: `${process.env.BILLING_FROM_NAME || process.env.EMAIL_FROM_NAME || 'TrendSCORE'} <${fromEmail}>`,
+        to: [customer.billingEmail], subject: `Draft invoice for review: ${invoice.invoiceNumber}`,
+        text, html, attachments: [{ filename: `${invoice.invoiceNumber}.pdf`, content: pdf.toString('base64') }],
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.message || payload.error || `Email provider returned ${response.status}`);
+    const providerMessageId = String(payload.id || '');
+    billingStore.recordInvoiceDelivery({ id: crypto.randomUUID(), invoiceId: invoice.id, recipient: customer.billingEmail, actor, providerMessageId, status: 'sent', error: '' });
+    return providerMessageId;
+  } catch (error) {
+    billingStore.recordInvoiceDelivery({ id: crypto.randomUUID(), invoiceId: invoice.id, recipient: customer.billingEmail, actor, providerMessageId: '', status: 'failed', error: billingText(error.message, 500) });
     throw error;
   }
 }
@@ -1899,10 +1932,54 @@ app.post('/api/billing/quotes', requireAuth, requireRole('super_admin'), (req, r
   }
 });
 
+app.put('/api/billing/quotes/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+  try {
+    const existing = billingStore.getQuote(req.params.id);
+    if (!existing) return res.status(404).json({ ok: false, error: 'Quote not found' });
+    if (existing.status !== 'draft' || existing.sentAt || existing.cancelledAt) return res.status(409).json({ ok: false, error: 'Only an unsent draft quote can be edited. Create a revision for a quote already sent.' });
+    const customerId = billingText(req.body.customerId, 80);
+    const customer = billingStore.getCustomer(customerId);
+    if (!customer) return res.status(404).json({ ok: false, error: 'Select a saved billing customer first' });
+    if (customer.currency !== 'KES') return res.status(400).json({ ok: false, error: 'The approved school rate card is in KSh. Set this customer currency to KES before quoting.' });
+    const quoteSnapshot = calculateQuote(req.body);
+    const updated = billingStore.updateQuote(existing.id, {
+      customerId,
+      customerSnapshot: { name: customer.name, legalName: customer.legalName, tenantKey: customer.tenantKey,
+        billingEmail: customer.billingEmail, billingPhone: customer.billingPhone, billingAddress: customer.billingAddress,
+        taxIdentifier: customer.taxIdentifier, currency: customer.currency },
+      quoteSnapshot, enrollmentCount: quoteSnapshot.enrollmentCount, pricingModel: quoteSnapshot.pricingModel,
+      billingCadence: quoteSnapshot.billingCadence, subtotalKsh: quoteSnapshot.subtotalKsh,
+      expiresOn: quoteSnapshot.expiresOn, notes: quoteSnapshot.notes,
+    });
+    if (!updated) return res.status(409).json({ ok: false, error: 'This quote can no longer be edited' });
+    pushAudit('BILLING_QUOTE_UPDATE', customer.name, req.user.email, `Updated unsent draft ${updated.quoteNumber}`);
+    return res.json({ ok: true, quote: updated });
+  } catch (error) { return res.status(400).json({ ok: false, error: error.message }); }
+});
+
+app.delete('/api/billing/quotes/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+  const quote = billingStore.getQuote(req.params.id);
+  if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
+  if (!billingStore.deleteDraftQuote(quote.id)) return res.status(409).json({ ok: false, error: 'Only an unsent draft with no email attempts or invoice can be deleted. Cancel sent or accepted quotes to preserve their history.' });
+  pushAudit('BILLING_QUOTE_DELETE', quote.customerSnapshot?.name || quote.customerId, req.user.email, `Deleted unsent draft ${quote.quoteNumber}`, 'Warning');
+  return res.json({ ok: true });
+});
+
+app.post('/api/billing/quotes/:id/cancel', requireAuth, requireRole('super_admin'), (req, res) => {
+  const quote = billingStore.getQuote(req.params.id);
+  if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
+  const reason = billingText(req.body.reason, 500);
+  if (!reason) return res.status(400).json({ ok: false, error: 'Enter a reason for cancelling this quote' });
+  const cancelled = billingStore.cancelQuote(quote.id, req.user.email, reason);
+  if (!cancelled) return res.status(409).json({ ok: false, error: 'This quote cannot be cancelled after an invoice exists or after it reached a final state' });
+  pushAudit('BILLING_QUOTE_CANCEL', quote.customerSnapshot?.name || quote.customerId, req.user.email, `Cancelled ${quote.quoteNumber}: ${reason}`, 'Warning');
+  return res.json({ ok: true, quote: cancelled });
+});
+
 app.get('/api/billing/quotes/:id/pdf', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   const quote = billingStore.getQuote(req.params.id);
   if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
-  const pdf = createPdfBuffer(quotePdfLines(quote));
+  const pdf = quotePdfBuffer(quote);
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${quote.quoteNumber}.pdf"`);
   res.setHeader('Content-Length', pdf.length);
@@ -1912,7 +1989,7 @@ app.get('/api/billing/quotes/:id/pdf', requireAuth, requireRole('super_admin', '
 app.post('/api/billing/quotes/:id/send', requireAuth, requireRole('super_admin'), async (req, res) => {
   const quote = billingStore.getQuote(req.params.id);
   if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
-  if (!['draft', 'sent'].includes(quote.status)) return res.status(409).json({ ok: false, error: 'Only draft or sent quotes can be emailed' });
+  if (!['draft', 'sent'].includes(quote.status) || quote.cancelledAt) return res.status(409).json({ ok: false, error: 'Only active draft or sent quotes can be emailed' });
   try {
     await deliverQuoteEmail(quote, req.user.email);
     pushAudit('BILLING_QUOTE_SEND', quote.customerSnapshot.name, req.user.email, `Emailed ${quote.quoteNumber} to ${quote.customerSnapshot.billingEmail}`);
@@ -1926,7 +2003,7 @@ app.post('/api/billing/quotes/:id/send', requireAuth, requireRole('super_admin')
 app.post('/api/billing/quotes/:id/accept', requireAuth, requireRole('super_admin'), (req, res) => {
   const quote = billingStore.getQuote(req.params.id);
   if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
-  if (!['draft', 'sent'].includes(quote.status)) return res.status(409).json({ ok: false, error: `Quote is ${quote.status} and cannot be marked accepted` });
+  if (!['draft', 'sent'].includes(quote.status) || quote.cancelledAt) return res.status(409).json({ ok: false, error: `Quote is ${quote.status} and cannot be marked accepted` });
   if (quote.expiresOn && quote.expiresOn < new Date().toISOString().slice(0, 10)) {
     billingStore.setQuoteStatus(quote.id, 'expired');
     return res.status(409).json({ ok: false, error: 'This quote has expired. Create a new quote before recording acceptance.' });
@@ -1965,7 +2042,40 @@ app.post('/api/billing/quotes/:id/convert', requireAuth, requireRole('super_admi
 });
 
 app.get('/api/billing/invoices', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
-  res.json({ ok: true, invoices: billingStore.listInvoices() });
+  const invoices = billingStore.listInvoices();
+  res.json({ ok: true, invoices, deliveries: invoices.map(invoice => ({ invoiceId: invoice.id, attempts: billingStore.listInvoiceDeliveries(invoice.id) })) });
+});
+
+app.put('/api/billing/invoices/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+  const dueDate = billingText(req.body.dueDate, 10); const termsNote = billingText(req.body.termsNote, 1000);
+  if (dueDate && (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || new Date(`${dueDate}T00:00:00.000Z`).toISOString().slice(0, 10) !== dueDate)) return res.status(400).json({ ok: false, error: 'Due date must be a valid date in YYYY-MM-DD format' });
+  const invoice = billingStore.updateDraftInvoice(req.params.id, { dueDate, termsNote });
+  if (!invoice) return res.status(409).json({ ok: false, error: 'Only draft invoices can be edited' });
+  pushAudit('BILLING_INVOICE_UPDATE', invoice.customerId, req.user.email, `Updated draft invoice details ${invoice.invoiceNumber}`);
+  return res.json({ ok: true, invoice });
+});
+
+app.post('/api/billing/invoices/:id/cancel', requireAuth, requireRole('super_admin'), (req, res) => {
+  const reason = billingText(req.body.reason, 500);
+  if (!reason) return res.status(400).json({ ok: false, error: 'Enter a reason for cancelling this draft invoice' });
+  const invoice = billingStore.cancelDraftInvoice(req.params.id, req.user.email, reason);
+  if (!invoice) return res.status(409).json({ ok: false, error: 'Only draft invoices can be cancelled' });
+  pushAudit('BILLING_INVOICE_CANCEL', invoice.customerId, req.user.email, `Cancelled draft ${invoice.invoiceNumber}: ${reason}`, 'Warning');
+  return res.json({ ok: true, invoice });
+});
+
+app.post('/api/billing/invoices/:id/send-review-email', requireAuth, requireRole('super_admin'), async (req, res) => {
+  const invoice = billingStore.getInvoice(req.params.id);
+  if (!invoice) return res.status(404).json({ ok: false, error: 'Invoice not found' });
+  if (invoice.status !== 'draft') return res.status(409).json({ ok: false, error: 'Only draft invoices can be sent as a review copy' });
+  try {
+    await deliverDraftInvoiceEmail(invoice, req.user.email);
+    pushAudit('BILLING_INVOICE_REVIEW_SEND', invoice.customerId, req.user.email, `Emailed draft review copy ${invoice.invoiceNumber}`);
+    return res.json({ ok: true, deliveries: billingStore.listInvoiceDeliveries(invoice.id) });
+  } catch (error) {
+    pushAudit('BILLING_INVOICE_REVIEW_SEND_FAILED', invoice.customerId, req.user.email, `Draft review email failed for ${invoice.invoiceNumber}: ${billingText(error.message, 300)}`, 'Warning');
+    return res.status(502).json({ ok: false, error: error.message || 'Could not send draft invoice review email', deliveries: billingStore.listInvoiceDeliveries(invoice.id) });
+  }
 });
 
 app.get('/api/billing/invoices/:id/pdf', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {

@@ -612,7 +612,7 @@
 
         <section class="billing-tab-panel" id="billing-panel-quotes" role="tabpanel" aria-labelledby="billing-tab-quotes" tabindex="0" hidden>
           <div class="panel">
-            <div class="panel-header"><div><div class="panel-title">Quotes</div><div class="panel-sub">Prepare a quote, send its PDF, record the customer decision, and convert accepted quotes into draft invoices.</div></div><div class="billing-register-filters"><input class="form-input billing-filter" id="billing-quote-search" type="search" placeholder="Search quote or customer" aria-label="Search quotes"><select class="form-input billing-filter" id="billing-quote-status" aria-label="Filter quotes by status"><option value="">All statuses</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="declined">Declined</option><option value="expired">Expired</option><option value="converted">Converted</option></select></div></div>
+            <div class="panel-header"><div><div class="panel-title">Quotes</div><div class="panel-sub">Prepare a quote, send its PDF, record the customer decision, and convert accepted quotes into draft invoices. Sent quotes are kept as history.</div></div><div class="billing-register-filters"><input class="form-input billing-filter" id="billing-quote-search" type="search" placeholder="Search quote or customer" aria-label="Search quotes"><select class="form-input billing-filter" id="billing-quote-status" aria-label="Filter quotes by status"><option value="">All statuses</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="declined">Declined</option><option value="expired">Expired</option><option value="converted">Converted</option><option value="cancelled">Cancelled</option></select></div></div>
             <div id="billing-email-status" class="billing-email-status" role="status"></div>
             <div class="table-wrap"><table><thead><tr><th>Quote</th><th>Customer</th><th>Students</th><th>Quoted total</th><th>Valid until</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody id="billing-quotes-table"><tr><td colspan="7">Loading quotes…</td></tr></tbody></table></div>
@@ -621,8 +621,8 @@
 
         <section class="billing-tab-panel" id="billing-panel-invoices" role="tabpanel" aria-labelledby="billing-tab-invoices" tabindex="0" hidden>
           <div class="panel">
-            <div class="panel-header"><div><div class="panel-title">Invoice register</div><div class="panel-sub">Draft documents from accepted quotes. Issuing, emailing, and payment tracking are not available yet.</div></div><div class="billing-register-filters"><input class="form-input billing-filter" id="billing-invoice-search" type="search" placeholder="Search invoice or customer" aria-label="Search invoices"><select class="form-input billing-filter" id="billing-invoice-status" aria-label="Filter invoices by status"><option value="">All statuses</option><option value="draft">Draft</option></select></div></div>
-            <div class="billing-register-note">Draft PDF previews are for review only. They are not issued invoices or tax invoices.</div>
+            <div class="panel-header"><div><div class="panel-title">Invoice register</div><div class="panel-sub">Manage draft invoices created from accepted quotes. Send review copies, edit terms, or cancel drafts.</div></div><div class="billing-register-filters"><input class="form-input billing-filter" id="billing-invoice-search" type="search" placeholder="Search invoice or customer" aria-label="Search invoices"><select class="form-input billing-filter" id="billing-invoice-status" aria-label="Filter invoices by status"><option value="">All statuses</option><option value="draft">Draft</option><option value="void">Cancelled</option></select></div></div>
+            <div class="billing-register-note">Draft PDF previews and email copies are for review only. They are not issued invoices, payment requests, or tax invoices. Official invoice issuance and payment tracking are not available yet.</div>
             <div class="table-wrap"><table><thead><tr><th>Draft reference</th><th>Customer</th><th>Source quote</th><th>Amount</th><th>Status</th><th>Created</th><th>Document</th></tr></thead>
               <tbody id="billing-invoices-table"><tr><td colspan="7">Loading invoices…</td></tr></tbody></table></div>
           </div>
@@ -1010,6 +1010,7 @@
   <div class="modal" style="max-width:760px">
     <div class="modal-header"><div class="modal-title">New school quote</div><button class="modal-close" id="billing-quote-close" type="button" aria-label="Close">×</button></div>
     <div class="modal-body">
+      <input id="bq-id" type="hidden"/>
       <div class="billing-quote-grid">
         <div class="form-row"><label class="form-label" for="bq-customer">Customer *</label><select class="form-select" id="bq-customer"><option value="">Select a billing customer</option></select></div>
         <div class="form-row"><label class="form-label" for="bq-students">Billable student count *</label><input class="form-input" id="bq-students" type="number" min="1" max="100000" step="1" placeholder="Enrollment snapshot"/></div>
@@ -1028,6 +1029,19 @@
       <div class="form-help">The total adds all listed lines; recurring periods are shown per line. Each quote stores the selected pricing rule and enrollment snapshot. Tax is not added to this quote.</div>
     </div>
     <div class="modal-footer"><button class="btn" id="billing-quote-cancel" type="button">Cancel</button><button class="btn primary" id="billing-quote-save" data-super-admin-only type="button">Save draft quote</button></div>
+  </div>
+</div>
+
+<!-- BILLING INVOICE DETAILS MODAL -->
+<div class="overlay" id="billing-invoice-overlay" aria-modal="true" role="dialog">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header"><div class="modal-title">Edit draft invoice details</div><button class="modal-close" id="billing-invoice-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <input id="bi-id" type="hidden"/>
+      <div class="form-row"><label class="form-label" for="bi-due-date">Proposed due date</label><input class="form-input" id="bi-due-date" type="date"/><small class="form-help">Shown on the draft for review; this does not make it payable.</small></div>
+      <div class="form-row"><label class="form-label" for="bi-terms">Payment terms / notes</label><textarea class="form-input" id="bi-terms" rows="4" maxlength="1000" placeholder="Optional terms for review"></textarea></div>
+    </div>
+    <div class="modal-footer"><button class="btn" id="billing-invoice-cancel" type="button">Close</button><button class="btn primary" id="billing-invoice-save" data-super-admin-only type="button">Save details</button></div>
   </div>
 </div>
 
