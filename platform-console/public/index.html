@@ -585,36 +585,32 @@
 
         <section class="billing-tab-panel" id="billing-panel-invoices" role="tabpanel" aria-labelledby="billing-tab-invoices" tabindex="0" hidden>
           <div class="panel">
-            <div class="panel-header"><div><div class="panel-title">Invoice register</div><div class="panel-sub">Manage draft invoices created from accepted quotes. Send review copies, edit terms, or cancel drafts.</div></div><div class="billing-register-filters"><input class="form-input billing-filter" id="billing-invoice-search" type="search" placeholder="Search invoice or customer" aria-label="Search invoices"><select class="form-input billing-filter" id="billing-invoice-status" aria-label="Filter invoices by status"><option value="">All statuses</option><option value="draft">Draft</option><option value="void">Cancelled</option></select></div></div>
-            <div class="billing-register-note">Draft PDF previews and email copies are for review only. They are not issued invoices, payment requests, or tax invoices. Official invoice issuance and payment tracking are not available yet.</div>
+            <div class="panel-header"><div><div class="panel-title">Invoice register</div><div class="panel-sub">Review draft invoices, issue commercial invoices, send them, and monitor allocated payments.</div></div><div class="billing-register-filters"><input class="form-input billing-filter" id="billing-invoice-search" type="search" placeholder="Search invoice or customer" aria-label="Search invoices"><select class="form-input billing-filter" id="billing-invoice-status" aria-label="Filter invoices by status"><option value="">All statuses</option><option value="draft">Draft</option><option value="issued">Issued</option><option value="sent">Sent</option><option value="paid">Paid</option><option value="void">Cancelled</option></select></div></div>
+            <div class="billing-register-note">Issue creates a commercial invoice that can be emailed and paid. It does not create or submit an eTIMS tax invoice.</div>
             <div class="table-wrap"><table><thead><tr><th>Draft reference</th><th>Customer</th><th>Source quote</th><th>Amount</th><th>Status</th><th>Created</th><th>Document</th></tr></thead>
               <tbody id="billing-invoices-table"><tr><td colspan="7">Loading invoices…</td></tr></tbody></table></div>
           </div>
         </section>
 
         <section class="billing-tab-panel" id="billing-panel-payments" role="tabpanel" aria-labelledby="billing-tab-payments" tabindex="0" hidden>
-          <div class="panel billing-future-panel"><div class="billing-future-icon" aria-hidden="true">KSh</div><div><div class="panel-title">Payment tracking is not available yet</div><p>Record payments, allocate partial amounts, issue receipts, and reconcile bank or M-Pesa references here once the invoice ledger and payment controls are ready.</p><span class="billing-future-status">Planned after invoice issuance</span></div></div>
+          <div class="billing-kpis" aria-label="Payment totals"><div class="billing-kpi"><span>Payments recorded</span><strong id="billing-kpi-payment-count">—</strong><small>Manual entries in the ledger</small></div><div class="billing-kpi"><span>Collected</span><strong id="billing-kpi-collected">—</strong><small>Payments allocated to invoices</small></div><div class="billing-kpi"><span>Outstanding</span><strong id="billing-kpi-outstanding">—</strong><small>Issued invoices less payments</small></div></div>
+          <div class="panel"><div class="panel-header"><div><div class="panel-title">Payment history</div><div class="panel-sub">Record verified bank, M-Pesa, cheque, or cash payments against issued invoices. Entries are kept in the ledger.</div></div><button class="btn primary" id="billing-payment-add" data-super-admin-only type="button">+ Record payment</button></div><div class="billing-register-note">Record a payment only after confirming receipt in your bank or payment provider. This does not initiate or verify a transfer.</div><div class="table-wrap"><table><thead><tr><th>Payment date</th><th>Invoice</th><th>Customer</th><th>Method</th><th>Reference</th><th>Amount</th><th>Recorded by</th><th>Receipt</th></tr></thead><tbody id="billing-payments-table"><tr><td colspan="8">Loading payments…</td></tr></tbody></table></div></div>
+          <div class="panel billing-subpanel"><div class="panel-header"><div><div class="panel-title">Open invoice balances</div><div class="panel-sub">Only issued invoices can receive payment allocations.</div></div></div><div class="table-wrap"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Issued</th><th>Due</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody id="billing-open-invoices-table"><tr><td colspan="8">Loading invoices…</td></tr></tbody></table></div></div>
         </section>
 
         <section class="billing-tab-panel" id="billing-panel-catalogue" role="tabpanel" aria-labelledby="billing-tab-catalogue" tabindex="0" hidden>
-          <div class="panel billing-future-panel"><div class="billing-future-icon" aria-hidden="true">PR</div><div><div class="panel-title">Products and approved pricing</div><p>The quote builder uses the current configured pricing assumptions. Versioned price approval, contract price selection, and effective dates are not available yet.</p><ul><li>Confirm flat-tier versus progressive student pricing.</li><li>Confirm the one-off school setup amount and add-on cadence.</li><li>Confirm SMS usage and charges beyond the included allowance.</li></ul><span class="billing-future-status">Pricing decisions pending approval</span></div></div>
+          <div class="panel"><div class="panel-header"><div><div class="panel-title">School platform rate card</div><div class="panel-sub">Current quoted student rate is selected by the school's total enrollment. This rate card applies to new quotes; each saved quote retains its pricing snapshot.</div></div><span class="billing-status-chip">KES · Current rate card</span></div><div class="table-wrap"><table><thead><tr><th>Enrolled students</th><th>Rate per student</th><th>Cadence</th></tr></thead><tbody><tr><td>1–300</td><td>KSh 50</td><td>Selected quote cadence</td></tr><tr><td>301–500</td><td>KSh 40</td><td>Selected quote cadence</td></tr><tr><td>501–1,000</td><td>KSh 35</td><td>Selected quote cadence</td></tr><tr><td>1,001+</td><td>KSh 30</td><td>Selected quote cadence</td></tr></tbody></table></div><div class="billing-price-extras"><article><span>School setup</span><strong>One-off · customer-specific</strong><small>Entered and shown separately on each quote.</small></article><article><span>Communications module</span><strong>KSh 10,000 per term</strong><small>Sender ID and 1,000 SMS included each term.</small></article><article><span>Additional module</span><strong>KSh 5,000 per module</strong><small>Charge cadence is selected on each quote.</small></article></div><div class="billing-register-note">The quote form offers flat-tier pricing (one rate applied to all students based on total enrollment) or progressive pricing (each rate applies only to students in that band). The selected method is saved with the quote. Tax is not included; existing quotes keep their original rate snapshots.</div></div>
         </section>
 
         <section class="billing-tab-panel" id="billing-panel-reports" role="tabpanel" aria-labelledby="billing-tab-reports" tabindex="0" hidden>
-          <div class="panel billing-future-panel"><div class="billing-future-icon" aria-hidden="true">R</div><div><div class="panel-title">Finance reports will appear here</div><p>Customer statements, receivables aging, and payment reconciliation require issued invoices and recorded payments. The console will not show estimated or sample financial totals.</p><span class="billing-future-status">Available after ledger workflow</span></div></div>
+          <div class="billing-kpis" aria-label="Billing report totals"><div class="billing-kpi"><span>Invoices issued</span><strong id="billing-report-issued">—</strong><small>Commercial invoices only</small></div><div class="billing-kpi"><span>Invoice value</span><strong id="billing-report-value">—</strong><small>Issued invoice totals</small></div><div class="billing-kpi"><span>Cash collected</span><strong id="billing-report-collected">—</strong><small>Recorded payments</small></div><div class="billing-kpi"><span>Open balance</span><strong id="billing-report-balance">—</strong><small>Outstanding on issued invoices</small></div></div><div class="panel"><div class="panel-header"><div><div class="panel-title">Collections by month</div><div class="panel-sub">Based on payment dates entered in the billing ledger.</div></div></div><div class="table-wrap"><table><thead><tr><th>Month</th><th>Payments</th><th>Collected</th></tr></thead><tbody id="billing-report-months"><tr><td colspan="3">Reports will populate from the ledger.</td></tr></tbody></table></div></div><div class="billing-register-note">These are management totals from manually recorded commercial invoices and payments, not audited accounts, bank reconciliation, or eTIMS tax reporting.</div>
         </section>
 
         <section class="billing-tab-panel" id="billing-panel-settings" role="tabpanel" aria-labelledby="billing-tab-settings" tabindex="0" hidden>
           <div class="panel">
             <div class="panel-header"><div><div class="panel-title">Billing configuration readiness</div><div class="panel-sub">Configuration values are shown as readiness only; credentials are never displayed.</div></div></div>
             <div id="billing-settings-email-status" class="billing-email-status" role="status">Checking email configuration…</div>
-            <div class="billing-settings-grid">
-              <div class="billing-setting-row"><span>Seller legal identity and tax details</span><strong>Needs confirmation</strong></div>
-              <div class="billing-setting-row"><span>Invoice numbering policy</span><strong>Needs confirmation</strong></div>
-              <div class="billing-setting-row"><span>Payment instructions and due terms</span><strong>Needs confirmation</strong></div>
-              <div class="billing-setting-row"><span>eTIMS setup and integration route</span><strong>Not configured</strong></div>
-            </div>
-            <div class="billing-register-note">These settings are intentionally read-only until the finance owner confirms the legal and accounting requirements.</div>
+            <div class="billing-settings-grid"><div class="billing-setting-row"><span>Invoice status</span><strong>Commercial invoice issuance enabled</strong></div><div class="billing-setting-row"><span>Invoice numbering</span><strong>INV- prefix · based on quote reference</strong></div><div class="billing-setting-row"><span>Payments</span><strong>Manual recording · allocation to issued invoices</strong></div><div class="billing-setting-row"><span>Tax invoice / eTIMS integration</span><strong>Not configured</strong></div><div class="billing-setting-row"><span>Seller legal identity and tax details</span><strong>Confirm before tax invoice use</strong></div><div class="billing-setting-row"><span>Payment instructions</span><strong>Use customer-approved terms and verified references</strong></div></div><div class="billing-register-note">The issue action creates a commercial invoice and does not certify tax compliance or submit anything to eTIMS. Configure seller tax identity and an approved eTIMS route before treating these as tax invoices. Email sender credentials are managed in Communications.</div>
           </div>
         </section>
       </div>
@@ -1047,10 +1043,55 @@
     <div class="modal-header"><div class="modal-title">Edit draft invoice details</div><button class="modal-close" id="billing-invoice-close" type="button" aria-label="Close">×</button></div>
     <div class="modal-body">
       <input id="bi-id" type="hidden"/>
-      <div class="form-row"><label class="form-label" for="bi-due-date">Proposed due date</label><input class="form-input" id="bi-due-date" type="date"/><small class="form-help">Shown on the draft for review; this does not make it payable.</small></div>
+      <div class="form-row"><label class="form-label" for="bi-due-date">Payment due date</label><input class="form-input" id="bi-due-date" type="date"/><small class="form-help">When blank, the issued commercial invoice is payable on receipt.</small></div>
       <div class="form-row"><label class="form-label" for="bi-terms">Payment terms / notes</label><textarea class="form-input" id="bi-terms" rows="4" maxlength="1000" placeholder="Optional terms for review"></textarea></div>
     </div>
     <div class="modal-footer"><button class="btn" id="billing-invoice-cancel" type="button">Close</button><button class="btn primary" id="billing-invoice-save" data-super-admin-only type="button">Save details</button></div>
+  </div>
+</div>
+
+<!-- BILLING PAYMENT MODAL -->
+<div class="overlay" id="billing-payment-overlay" aria-modal="true" role="dialog" aria-labelledby="billing-payment-title">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-header"><div class="modal-title" id="billing-payment-title">Record a received payment</div><button class="modal-close" id="billing-payment-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <div class="form-row"><label class="form-label" for="bp-invoice">Issued invoice *</label><select class="form-select" id="bp-invoice" required><option value="">Choose invoice</option></select><small class="form-help" id="bp-balance-help">Only issued invoices with an outstanding balance are shown.</small></div>
+      <div class="billing-quote-grid"><div class="form-row"><label class="form-label" for="bp-amount">Amount received (KSh) *</label><input class="form-input" id="bp-amount" type="number" min="1" step="1" required/></div><div class="form-row"><label class="form-label" for="bp-date">Payment date *</label><input class="form-input" id="bp-date" type="date" required/></div></div>
+      <div class="billing-quote-grid"><div class="form-row"><label class="form-label" for="bp-method">Payment method *</label><select class="form-select" id="bp-method" required><option value="mpesa">M-Pesa</option><option value="bank_transfer">Bank transfer</option><option value="cash">Cash</option><option value="cheque">Cheque</option><option value="other">Other</option></select></div><div class="form-row"><label class="form-label" for="bp-reference">Provider / bank reference</label><input class="form-input" id="bp-reference" maxlength="120" placeholder="e.g. M-Pesa receipt code"/></div></div>
+      <div class="form-row"><label class="form-label" for="bp-notes">Notes</label><textarea class="form-input" id="bp-notes" rows="2" maxlength="500"></textarea></div>
+      <div class="billing-register-note">This records a payment you have already verified. The ledger entry cannot currently be edited or deleted; check the invoice, amount, date, and reference before saving.</div>
+    </div>
+    <div class="modal-footer"><button class="btn" id="billing-payment-cancel" type="button">Cancel</button><button class="btn primary" id="billing-payment-save" data-super-admin-only type="button">Record payment</button></div>
+  </div>
+</div>
+
+<!-- PREMIUM BILLING EMAIL COMPOSER -->
+<div class="overlay billing-mail-overlay" id="billing-mail-overlay" aria-modal="true" role="dialog" aria-labelledby="billing-mail-title" aria-describedby="billing-mail-description">
+  <div class="modal billing-mail-modal">
+    <div class="modal-header billing-mail-header">
+      <div><div class="modal-title" id="billing-mail-title">Review email before sending</div><div class="billing-mail-subtitle" id="billing-mail-description">Personalize the message, review the branded email and PDF, then send.</div></div>
+      <button class="modal-close" id="billing-mail-close" type="button" aria-label="Close">×</button>
+    </div>
+    <div class="billing-mail-meta" id="billing-mail-meta">Loading message…</div>
+    <div class="billing-mail-layout">
+      <div class="billing-mail-compose">
+        <input id="billing-mail-id" type="hidden" />
+        <input id="billing-mail-kind" type="hidden" />
+        <div class="form-row"><label class="form-label" for="billing-mail-to">To</label><input class="form-input" id="billing-mail-to" type="email" autocomplete="email" required /></div>
+        <div class="form-row"><label class="form-label" for="billing-mail-subject">Subject</label><input class="form-input" id="billing-mail-subject" type="text" maxlength="180" required /></div>
+        <div class="form-row"><label class="form-label" for="billing-mail-message">Message</label><textarea class="form-input billing-mail-message" id="billing-mail-message" rows="13" maxlength="5000" spellcheck="true"></textarea><small class="form-help">The branded footer and attached PDF are included automatically.</small></div>
+        <div class="billing-mail-attachment" id="billing-mail-attachment"><span aria-hidden="true">▤</span><div><strong id="billing-mail-filename">PDF attachment</strong><small>Branded PDF · attached to the email</small></div></div>
+      </div>
+      <div class="billing-mail-preview-wrap">
+        <div class="billing-mail-preview-tabs" role="tablist" aria-label="Email and attachment preview">
+          <button type="button" class="billing-mail-preview-tab active" id="billing-mail-tab-email" data-billing-mail-tab="email" role="tab" aria-selected="true" aria-controls="billing-mail-preview-email">Email preview</button>
+          <button type="button" class="billing-mail-preview-tab" id="billing-mail-tab-pdf" data-billing-mail-tab="pdf" role="tab" aria-selected="false" aria-controls="billing-mail-preview-pdf">PDF attachment</button>
+        </div>
+        <iframe class="billing-mail-preview-frame" id="billing-mail-preview-email" title="Rendered email preview" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe>
+        <iframe class="billing-mail-preview-frame" id="billing-mail-preview-pdf" title="Attached PDF preview" hidden></iframe>
+      </div>
+    </div>
+    <div class="modal-footer billing-mail-footer"><span class="billing-mail-sender" id="billing-mail-sender"></span><div><button class="btn" id="billing-mail-cancel" type="button">Cancel</button><button class="btn primary" id="billing-mail-send" type="button" data-super-admin-only>Send email</button></div></div>
   </div>
 </div>
 

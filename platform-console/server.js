@@ -10,7 +10,7 @@ const { execFile } = require('child_process');
 const Docker = require('dockerode');
 const si = require('systeminformation');
 const { createBillingStore } = require('./billing-store');
-const { quotePdfBuffer, invoicePdfBuffer } = require('./billing-documents');
+const { quotePdfBuffer, invoicePdfBuffer, paymentReceiptPdfBuffer } = require('./billing-documents');
 
 const execFileAsync = promisify(execFile);
 
@@ -1837,39 +1837,65 @@ function calculateQuote(body = {}) {
   };
 }
 
-function buildQuoteEmail(quote) {
-  const snapshot = quote.quoteSnapshot;
-  const customer = quote.customerSnapshot;
-  const money = amount => `KSh ${Number(amount || 0).toLocaleString('en-KE')}`;
-  const safe = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-  const text = [
-    `Hello ${customer.name},`,
-    '',
-    `Please find quotation ${quote.quoteNumber} attached.`,
-    `Enrollment used: ${quote.enrollmentCount} students.`,
-    ...snapshot.lines.map(item => `- ${item.description}: ${item.quantity} x ${money(item.unitPriceKsh)} = ${money(item.amountKsh)}`),
-    `Quoted total: ${money(quote.subtotalKsh)}`,
-    snapshot.taxNote,
-    `Valid until: ${quote.expiresOn || 'As agreed'}`,
-    '',
-    'This quotation is not a tax invoice.',
-    snapshot.notes ? `Notes: ${snapshot.notes}` : '',
-    '',
-    'Regards,\nTrendSCORE',
-  ].filter(Boolean).join('\n');
-  const rows = snapshot.lines.map(item => `<tr><td>${safe(item.description)}</td><td>${item.quantity}</td><td>${money(item.unitPriceKsh)}</td><td>${money(item.amountKsh)}</td></tr>`).join('');
-  const html = `<div style="font-family:Arial,sans-serif;color:#172033;line-height:1.5"><p>Hello ${safe(customer.name)},</p><p>Please find quotation <strong>${safe(quote.quoteNumber)}</strong> attached. This quotation uses an enrollment snapshot of ${quote.enrollmentCount} students and is valid until ${safe(quote.expiresOn || 'as agreed')}.</p><table cellpadding="8" cellspacing="0" border="1" style="border-collapse:collapse;border-color:#d8deea"><thead><tr><th align="left">Item</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>${rows}</tbody></table><p><strong>Quoted total: ${money(quote.subtotalKsh)}</strong></p><p>${safe(snapshot.taxNote)}</p>${snapshot.notes ? `<p>Notes: ${safe(snapshot.notes)}</p>` : ''}<p>This quotation is not a tax invoice.</p><p>Regards,<br/>TrendSCORE</p></div>`;
-  return { text, html };
+const BILLING_EMAIL_LOGO_URL = process.env.BILLING_EMAIL_LOGO_URL || 'https://trendscore.co.ke/splash/new/TrendsCORE-Logo.png';
+
+function billingEmailEscape(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 }
 
-async function deliverQuoteEmail(quote, actor) {
+function billingEmailDraft(kind, record) {
+  const quote = kind === 'quote';
+  const draftInvoice = !quote && record.status === 'draft';
+  const customer = quote ? record.customerSnapshot || {} : record.invoiceSnapshot?.customerSnapshot || {};
+  const documentNumber = quote ? record.quoteNumber : record.invoiceNumber;
+  const amountKsh = quote ? record.subtotalKsh : record.amountKsh;
+  const customerName = customer.name || 'Customer';
+  const subject = quote ? `Your TrendSCORE quotation ${documentNumber}` : draftInvoice ? `Draft invoice for your review · ${documentNumber}` : `Invoice ${documentNumber} from TrendSCORE`;
+  const message = quote
+    ? `Hello ${customerName},\n\nPlease find quotation ${documentNumber} attached for your review. It is based on an enrollment snapshot of ${Number(record.enrollmentCount || 0).toLocaleString('en-KE')} students${record.expiresOn ? ` and is valid until ${record.expiresOn}` : ''}.\n\n${record.quoteSnapshot?.taxNote || 'Tax treatment is not included in this quotation and should be reviewed before invoicing.'} This quotation is not a tax invoice.\n\nPlease reply to this email if you have any questions or would like to proceed.\n\nWarm regards,\nTrendSCORE Billing Team`
+    : draftInvoice
+      ? `Hello ${customerName},\n\nPlease review the attached draft invoice ${documentNumber} for KSh ${Number(amountKsh || 0).toLocaleString('en-KE')}.\n\nThis is a review copy only. It is not an issued invoice, payment request, or tax invoice. Please reply with any corrections or approval.\n\nWarm regards,\nTrendSCORE Billing Team`
+      : `Hello ${customerName},\n\nPlease find invoice ${documentNumber} attached for KSh ${Number(amountKsh || 0).toLocaleString('en-KE')}.${record.invoiceSnapshot?.dueDate ? ` Payment is due by ${record.invoiceSnapshot.dueDate}.` : ' Payment is due upon receipt.'}\n\nPlease include the invoice number as your payment reference. This commercial invoice is not an eTIMS tax invoice.\n\nWarm regards,\nTrendSCORE Billing Team`;
+  return {
+    kind, customerName, documentNumber, recipient: customer.billingEmail || '',
+    subject, message, amountKsh, logoUrl: BILLING_EMAIL_LOGO_URL,
+    isDraftInvoice: draftInvoice,
+    documentName: `${String(documentNumber || 'document').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`,
+    pdfUrl: quote ? `/api/billing/quotes/${encodeURIComponent(record.id)}/pdf?preview=1` : `/api/billing/invoices/${encodeURIComponent(record.id)}/pdf?preview=1`,
+    senderName: process.env.BILLING_FROM_NAME || process.env.EMAIL_FROM_NAME || 'TrendSCORE',
+    senderEmail: process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM || '',
+  };
+}
+
+function renderBillingEmailHtml(draft) {
+  const safe = billingEmailEscape;
+  const message = String(draft.message || '').split(/\r?\n/).map(line => line ? `<p style="margin:0 0 14px">${safe(line)}</p>` : '<div style="height:8px"></div>').join('');
+  const isQuote = draft.kind === 'quote';
+  const label = isQuote ? 'QUOTATION' : draft.isDraftInvoice ? 'DRAFT INVOICE · REVIEW COPY' : 'COMMERCIAL INVOICE';
+  const attachment = `${safe(draft.documentName)} · PDF`;
+  const amount = `KSh ${Number(draft.amountKsh || 0).toLocaleString('en-KE')}`;
+  return `<!doctype html><html><body style="margin:0;background:#f1f4f9;font-family:Arial,Helvetica,sans-serif;color:#172033"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f1f4f9;padding:32px 12px"><tr><td align="center"><table role="presentation" width="620" cellspacing="0" cellpadding="0" style="max-width:620px;width:100%;background:#fff;border:1px solid #dce3ee;border-radius:14px;overflow:hidden"><tr><td style="padding:24px 32px;border-bottom:1px solid #e7ebf2"><img src="${safe(draft.logoUrl)}" alt="TrendSCORE" width="150" style="display:block;max-width:150px;height:auto"><div style="margin-top:10px;color:#61708b;font-size:12px;letter-spacing:1.4px;font-weight:bold">BUSINESS SERVICES</div></td></tr><tr><td style="padding:30px 32px 12px"><span style="display:inline-block;padding:7px 10px;background:#eef2ff;color:#18258b;font-size:11px;font-weight:bold;letter-spacing:1px;border-radius:4px">${label}</span><h1 style="margin:16px 0 5px;color:#101b36;font-size:22px;line-height:1.3">${safe(draft.documentNumber)}</h1><div style="color:#66748d;font-size:13px">Prepared for ${safe(draft.customerName)}</div></td></tr><tr><td style="padding:8px 32px 24px;color:#34415a;font-size:14px;line-height:1.75">${message}</td></tr><tr><td style="padding:0 32px 28px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f7f9fc;border:1px solid #e5eaf2;border-radius:8px"><tr><td style="padding:14px 16px;color:#60708b;font-size:12px">${attachment}</td><td align="right" style="padding:14px 16px;color:#111c39;font-size:14px;font-weight:bold">${amount}</td></tr></table></td></tr><tr><td style="padding:21px 32px;background:#f7f9fc;color:#172033;border-top:1px solid #e7ebf2"><img src="${safe(draft.logoUrl)}" alt="TrendSCORE" width="112" style="display:block;max-width:112px;height:auto;margin-bottom:12px"><div style="font-size:13px;font-weight:bold">${safe(draft.senderName || 'TrendSCORE')}</div><div style="font-size:12px;color:#5f6f89;margin-top:5px">Questions? Reply to this email or reach us at ${safe(draft.senderEmail || 'billing@trendscore.co.ke')}.</div><div style="font-size:11px;color:#7a879b;margin-top:14px">TrendSCORE · School operations, made clearer.</div></td></tr></table><div style="max-width:620px;padding:14px 8px;color:#7a879b;font-size:11px;line-height:1.5;text-align:center">This message and its attached document were prepared for ${safe(draft.customerName)}.</div></td></tr></table></body></html>`;
+}
+
+function normalizeBillingEmailDraft(req, defaults) {
+  const body = req.body || {};
+  const recipient = billingText(Object.prototype.hasOwnProperty.call(body, 'recipient') ? body.recipient : defaults.recipient, 254).toLowerCase();
+  const subject = billingText(Object.prototype.hasOwnProperty.call(body, 'subject') ? body.subject : defaults.subject, 180);
+  const message = String(req.body?.message ?? defaults.message).replace(/\r\n/g, '\n').trim().slice(0, 5000);
+  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(recipient)) throw new Error('Enter a valid recipient email address');
+  if (!subject) throw new Error('Email subject is required');
+  if (!message) throw new Error('Email message is required');
+  return { ...defaults, recipient, subject, message };
+}
+
+async function deliverQuoteEmail(quote, actor, draftInput = {}) {
   const apiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM;
   if (!apiKey || !fromEmail) throw new Error('Quote email is not configured. Set RESEND_API_KEY and BILLING_FROM_EMAIL (or EMAIL_FROM).');
   const customer = quote.customerSnapshot || {};
-  if (!customer.billingEmail) throw new Error('Add a billing email to this customer before sending the quote');
+  if (!customer.billingEmail && !draftInput.recipient) throw new Error('Add a billing email to this customer before sending the quote');
+  const draft = normalizeBillingEmailDraft({ body: draftInput }, billingEmailDraft('quote', quote));
   const pdf = quotePdfBuffer(quote);
-  const message = buildQuoteEmail(quote);
   let providerMessageId = '';
   try {
     const response = await fetch('https://api.resend.com/emails', {
@@ -1877,53 +1903,48 @@ async function deliverQuoteEmail(quote, actor) {
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         from: `${process.env.BILLING_FROM_NAME || process.env.EMAIL_FROM_NAME || 'TrendSCORE'} <${fromEmail}>`,
-        to: [customer.billingEmail],
-        subject: `TrendSCORE quotation ${quote.quoteNumber}`,
-        text: message.text,
-        html: message.html,
-        attachments: [{ filename: `${quote.quoteNumber}.pdf`, content: pdf.toString('base64') }],
+        to: [draft.recipient], reply_to: process.env.BILLING_REPLY_TO || fromEmail,
+        subject: draft.subject,
+        text: draft.message,
+        html: renderBillingEmailHtml(draft),
+        attachments: [{ filename: draft.documentName, content: pdf.toString('base64') }],
       }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.message || payload.error || `Email provider returned ${response.status}`);
     providerMessageId = String(payload.id || '');
-    billingStore.recordQuoteDelivery({ id: crypto.randomUUID(), quoteId: quote.id, recipient: customer.billingEmail, actor, providerMessageId, status: 'sent', error: '' });
+    billingStore.recordQuoteDelivery({ id: crypto.randomUUID(), quoteId: quote.id, recipient: draft.recipient, actor, providerMessageId, status: 'sent', error: '' });
     return providerMessageId;
   } catch (error) {
-    billingStore.recordQuoteDelivery({ id: crypto.randomUUID(), quoteId: quote.id, recipient: customer.billingEmail, actor, providerMessageId: '', status: 'failed', error: billingText(error.message, 500) });
+    billingStore.recordQuoteDelivery({ id: crypto.randomUUID(), quoteId: quote.id, recipient: draft.recipient, actor, providerMessageId: '', status: 'failed', error: billingText(error.message, 500) });
     throw error;
   }
 }
 
-async function deliverDraftInvoiceEmail(invoice, actor) {
+async function deliverDraftInvoiceEmail(invoice, actor, draftInput = {}) {
   const apiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM;
   if (!apiKey || !fromEmail) throw new Error('Invoice email is not configured. Set the server-side Resend key and billing sender address.');
   const customer = invoice.invoiceSnapshot?.customerSnapshot || {};
-  if (!customer.billingEmail) throw new Error('Add a billing email to this customer before sending the draft');
-  const safe = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-  const money = amount => `KSh ${Number(amount || 0).toLocaleString('en-KE')}`;
+  if (!customer.billingEmail && !draftInput.recipient) throw new Error('Add a billing email to this customer before sending the draft');
+  const draft = normalizeBillingEmailDraft({ body: draftInput }, billingEmailDraft('invoice', invoice));
   const pdf = invoicePdfBuffer(invoice);
-  const text = [`Hello ${customer.name || 'Customer'},`, '', `Please review the attached draft invoice ${invoice.invoiceNumber}.`,
-    `Draft total: ${money(invoice.amountKsh)}.`, 'This is for review only. It is not an issued invoice, payment request, or tax invoice.',
-    'Please reply with corrections or approval.'].join('\n');
-  const html = `<div style="font-family:Arial,sans-serif;color:#172033;line-height:1.5"><p>Hello ${safe(customer.name || 'Customer')},</p><p>Please review the attached draft invoice <strong>${safe(invoice.invoiceNumber)}</strong>.</p><p><strong>Draft total: ${money(invoice.amountKsh)}</strong></p><p>This is for review only. It is not an issued invoice, payment request, or tax invoice.</p><p>Please reply with corrections or approval.</p><p>Regards,<br/>TrendSCORE</p></div>`;
   try {
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         from: `${process.env.BILLING_FROM_NAME || process.env.EMAIL_FROM_NAME || 'TrendSCORE'} <${fromEmail}>`,
-        to: [customer.billingEmail], subject: `Draft invoice for review: ${invoice.invoiceNumber}`,
-        text, html, attachments: [{ filename: `${invoice.invoiceNumber}.pdf`, content: pdf.toString('base64') }],
+        to: [draft.recipient], reply_to: process.env.BILLING_REPLY_TO || fromEmail, subject: draft.subject,
+        text: draft.message, html: renderBillingEmailHtml(draft), attachments: [{ filename: draft.documentName, content: pdf.toString('base64') }],
       }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.message || payload.error || `Email provider returned ${response.status}`);
     const providerMessageId = String(payload.id || '');
-    billingStore.recordInvoiceDelivery({ id: crypto.randomUUID(), invoiceId: invoice.id, recipient: customer.billingEmail, actor, providerMessageId, status: 'sent', error: '' });
+    billingStore.recordInvoiceDelivery({ id: crypto.randomUUID(), invoiceId: invoice.id, recipient: draft.recipient, actor, providerMessageId, status: 'sent', error: '' });
     return providerMessageId;
   } catch (error) {
-    billingStore.recordInvoiceDelivery({ id: crypto.randomUUID(), invoiceId: invoice.id, recipient: customer.billingEmail, actor, providerMessageId: '', status: 'failed', error: billingText(error.message, 500) });
+    billingStore.recordInvoiceDelivery({ id: crypto.randomUUID(), invoiceId: invoice.id, recipient: draft.recipient, actor, providerMessageId: '', status: 'failed', error: billingText(error.message, 500) });
     throw error;
   }
 }
@@ -2187,9 +2208,17 @@ app.get('/api/billing/quotes/:id/pdf', requireAuth, requireRole('super_admin', '
   if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
   const pdf = quotePdfBuffer(quote);
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${quote.quoteNumber}.pdf"`);
+  res.setHeader('Content-Disposition', `${req.query.preview === '1' ? 'inline' : 'attachment'}; filename="${quote.quoteNumber}.pdf"`);
   res.setHeader('Content-Length', pdf.length);
   return res.send(pdf);
+});
+
+app.get('/api/billing/quotes/:id/email-preview', requireAuth, requireRole('super_admin'), (req, res) => {
+  const quote = billingStore.getQuote(req.params.id);
+  if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
+  if (!['draft', 'sent'].includes(quote.status) || quote.cancelledAt) return res.status(409).json({ ok: false, error: 'Only active draft or sent quotes can be emailed' });
+  const draft = billingEmailDraft('quote', quote);
+  return res.json({ ok: true, draft: { ...draft, html: renderBillingEmailHtml(draft) } });
 });
 
 app.post('/api/billing/quotes/:id/send', requireAuth, requireRole('super_admin'), async (req, res) => {
@@ -2197,8 +2226,9 @@ app.post('/api/billing/quotes/:id/send', requireAuth, requireRole('super_admin')
   if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
   if (!['draft', 'sent'].includes(quote.status) || quote.cancelledAt) return res.status(409).json({ ok: false, error: 'Only active draft or sent quotes can be emailed' });
   try {
-    await deliverQuoteEmail(quote, req.user.email);
-    pushAudit('BILLING_QUOTE_SEND', quote.customerSnapshot.name, req.user.email, `Emailed ${quote.quoteNumber} to ${quote.customerSnapshot.billingEmail}`);
+    const deliveredTo = billingText(req.body?.recipient || quote.customerSnapshot.billingEmail, 254).toLowerCase();
+    await deliverQuoteEmail(quote, req.user.email, req.body || {});
+    pushAudit('BILLING_QUOTE_SEND', quote.customerSnapshot.name, req.user.email, `Emailed ${quote.quoteNumber} to ${deliveredTo}`);
     return res.json({ ok: true, quote: billingStore.getQuote(quote.id), deliveries: billingStore.listQuoteDeliveries(quote.id) });
   } catch (error) {
     pushAudit('BILLING_QUOTE_SEND_FAILED', quote.customerSnapshot.name, req.user.email, `Email attempt failed for ${quote.quoteNumber}: ${billingText(error.message, 300)}`, 'Warning');
@@ -2252,6 +2282,45 @@ app.get('/api/billing/invoices', requireAuth, requireRole('super_admin', 'platfo
   res.json({ ok: true, invoices, deliveries: invoices.map(invoice => ({ invoiceId: invoice.id, attempts: billingStore.listInvoiceDeliveries(invoice.id) })) });
 });
 
+app.get('/api/billing/payments', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
+  return res.json({ ok: true, payments: billingStore.listPayments() });
+});
+
+app.get('/api/billing/payments/:id/receipt', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  const payment = billingStore.getPayment(req.params.id);
+  if (!payment) return res.status(404).json({ ok: false, error: 'Payment record not found' });
+  const invoice = billingStore.getInvoice(payment.invoiceId);
+  if (!invoice) return res.status(404).json({ ok: false, error: 'Linked invoice was not found' });
+  const receiptNumber = `RCPT-${String(payment.paymentDate || '').replace(/-/g, '')}-${String(payment.id || '').replace(/-/g, '').slice(0, 6).toUpperCase()}`;
+  const pdf = paymentReceiptPdfBuffer({ ...payment, receiptNumber }, invoice);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${receiptNumber}.pdf"`);
+  res.setHeader('Content-Length', pdf.length);
+  return res.send(pdf);
+});
+
+app.post('/api/billing/payments', requireAuth, requireRole('super_admin'), (req, res) => {
+  const invoiceId = billingText(req.body?.invoiceId, 80);
+  const amountKsh = Number(req.body?.amountKsh);
+  const paymentDate = billingText(req.body?.paymentDate, 10);
+  const method = billingText(req.body?.method, 30);
+  const reference = billingText(req.body?.reference, 120);
+  const notes = billingText(req.body?.notes, 500);
+  if (!invoiceId) return res.status(400).json({ ok: false, error: 'Select an issued invoice' });
+  if (!Number.isSafeInteger(amountKsh) || amountKsh <= 0) return res.status(400).json({ ok: false, error: 'Enter a whole amount in KSh greater than zero' });
+  const parsedPaymentDate = new Date(`${paymentDate}T00:00:00.000Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDate) || !Number.isFinite(parsedPaymentDate.getTime()) || parsedPaymentDate.toISOString().slice(0, 10) !== paymentDate) return res.status(400).json({ ok: false, error: 'Enter a valid payment date' });
+  if (!['mpesa', 'bank_transfer', 'cash', 'cheque', 'other'].includes(method)) return res.status(400).json({ ok: false, error: 'Choose a supported payment method' });
+  try {
+    const payment = billingStore.recordPayment({ id: crypto.randomUUID(), invoiceId, amountKsh, paymentDate, method, reference, notes, recordedBy: req.user.email });
+    const invoice = billingStore.getInvoice(invoiceId);
+    pushAudit('BILLING_PAYMENT_RECORD', invoice?.customerId || invoiceId, req.user.email, `Recorded KSh ${amountKsh.toLocaleString('en-KE')} payment against ${invoice?.invoiceNumber || invoiceId}${reference ? ` · reference ${reference}` : ''}`);
+    return res.status(201).json({ ok: true, payment, invoice });
+  } catch (error) {
+    return res.status(409).json({ ok: false, error: error.message || 'Could not record payment' });
+  }
+});
+
 app.put('/api/billing/invoices/:id', requireAuth, requireRole('super_admin'), (req, res) => {
   const dueDate = billingText(req.body.dueDate, 10); const termsNote = billingText(req.body.termsNote, 1000);
   if (dueDate && (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || new Date(`${dueDate}T00:00:00.000Z`).toISOString().slice(0, 10) !== dueDate)) return res.status(400).json({ ok: false, error: 'Due date must be a valid date in YYYY-MM-DD format' });
@@ -2259,6 +2328,21 @@ app.put('/api/billing/invoices/:id', requireAuth, requireRole('super_admin'), (r
   if (!invoice) return res.status(409).json({ ok: false, error: 'Only draft invoices can be edited' });
   pushAudit('BILLING_INVOICE_UPDATE', invoice.customerId, req.user.email, `Updated draft invoice details ${invoice.invoiceNumber}`);
   return res.json({ ok: true, invoice });
+});
+
+app.post('/api/billing/invoices/:id/issue', requireAuth, requireRole('super_admin'), (req, res) => {
+  const existing = billingStore.getInvoice(req.params.id);
+  if (!existing) return res.status(404).json({ ok: false, error: 'Invoice not found' });
+  if (existing.status !== 'draft') return res.status(409).json({ ok: false, error: 'Only a draft invoice can be issued' });
+  const invoiceNumber = `INV-${String(existing.invoiceSnapshot?.quoteNumber || existing.invoiceNumber.replace(/^DRAFT-/, '')).replace(/^Q-/, '')}`;
+  try {
+    const invoice = billingStore.issueDraftInvoice(existing.id, invoiceNumber, new Date().toISOString());
+    if (!invoice) return res.status(409).json({ ok: false, error: 'This invoice has already been issued or changed' });
+    pushAudit('BILLING_INVOICE_ISSUE', invoice.customerId, req.user.email, `Issued commercial invoice ${invoice.invoiceNumber}; tax invoice/eTIMS is not represented`);
+    return res.json({ ok: true, invoice });
+  } catch (error) {
+    return res.status(409).json({ ok: false, error: error.message || 'Could not issue invoice' });
+  }
 });
 
 app.post('/api/billing/invoices/:id/cancel', requireAuth, requireRole('super_admin'), (req, res) => {
@@ -2270,17 +2354,26 @@ app.post('/api/billing/invoices/:id/cancel', requireAuth, requireRole('super_adm
   return res.json({ ok: true, invoice });
 });
 
+app.get('/api/billing/invoices/:id/email-preview', requireAuth, requireRole('super_admin'), (req, res) => {
+  const invoice = billingStore.getInvoice(req.params.id);
+  if (!invoice) return res.status(404).json({ ok: false, error: 'Invoice not found' });
+  if (!['draft', 'issued', 'sent', 'paid'].includes(invoice.status)) return res.status(409).json({ ok: false, error: 'This invoice cannot be emailed in its current status' });
+  const draft = billingEmailDraft('invoice', invoice);
+  return res.json({ ok: true, draft: { ...draft, html: renderBillingEmailHtml(draft) } });
+});
+
 app.post('/api/billing/invoices/:id/send-review-email', requireAuth, requireRole('super_admin'), async (req, res) => {
   const invoice = billingStore.getInvoice(req.params.id);
   if (!invoice) return res.status(404).json({ ok: false, error: 'Invoice not found' });
-  if (invoice.status !== 'draft') return res.status(409).json({ ok: false, error: 'Only draft invoices can be sent as a review copy' });
+  if (!['draft', 'issued', 'sent', 'paid'].includes(invoice.status)) return res.status(409).json({ ok: false, error: 'This invoice cannot be emailed in its current status' });
   try {
-    await deliverDraftInvoiceEmail(invoice, req.user.email);
-    pushAudit('BILLING_INVOICE_REVIEW_SEND', invoice.customerId, req.user.email, `Emailed draft review copy ${invoice.invoiceNumber}`);
+    const deliveredTo = billingText(req.body?.recipient || invoice.invoiceSnapshot?.customerSnapshot?.billingEmail, 254).toLowerCase();
+    await deliverDraftInvoiceEmail(invoice, req.user.email, req.body || {});
+    pushAudit(invoice.status === 'draft' ? 'BILLING_INVOICE_REVIEW_SEND' : 'BILLING_INVOICE_SEND', invoice.customerId, req.user.email, `Emailed ${invoice.status === 'draft' ? 'draft review copy' : 'commercial invoice'} ${invoice.invoiceNumber} to ${deliveredTo}`);
     return res.json({ ok: true, deliveries: billingStore.listInvoiceDeliveries(invoice.id) });
   } catch (error) {
-    pushAudit('BILLING_INVOICE_REVIEW_SEND_FAILED', invoice.customerId, req.user.email, `Draft review email failed for ${invoice.invoiceNumber}: ${billingText(error.message, 300)}`, 'Warning');
-    return res.status(502).json({ ok: false, error: error.message || 'Could not send draft invoice review email', deliveries: billingStore.listInvoiceDeliveries(invoice.id) });
+    pushAudit('BILLING_INVOICE_SEND_FAILED', invoice.customerId, req.user.email, `Invoice email failed for ${invoice.invoiceNumber}: ${billingText(error.message, 300)}`, 'Warning');
+    return res.status(502).json({ ok: false, error: error.message || 'Could not send invoice email', deliveries: billingStore.listInvoiceDeliveries(invoice.id) });
   }
 });
 
@@ -2290,7 +2383,7 @@ app.get('/api/billing/invoices/:id/pdf', requireAuth, requireRole('super_admin',
   const pdf = invoicePdfBuffer(invoice);
   const filename = String(invoice.invoiceNumber || 'draft-invoice').replace(/[^a-zA-Z0-9_-]/g, '_');
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}.pdf"`);
+  res.setHeader('Content-Disposition', `${req.query.preview === '1' ? 'inline' : 'attachment'}; filename="${filename}.pdf"`);
   res.setHeader('Content-Length', pdf.length);
   return res.send(pdf);
 });

@@ -98,6 +98,19 @@ function createBillingStore(dataDir) {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS billing_invoice_deliveries_invoice_idx ON billing_invoice_deliveries(invoice_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS billing_payments (
+      id TEXT PRIMARY KEY,
+      invoice_id TEXT NOT NULL REFERENCES billing_invoices(id) ON DELETE RESTRICT,
+      amount_ksh INTEGER NOT NULL CHECK (amount_ksh > 0),
+      payment_date TEXT NOT NULL,
+      method TEXT NOT NULL CHECK (method IN ('mpesa', 'bank_transfer', 'cash', 'cheque', 'other')),
+      reference TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '',
+      recorded_by TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS billing_payments_invoice_idx ON billing_payments(invoice_id, payment_date DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS billing_payments_reference_unique ON billing_payments(method, lower(reference)) WHERE reference <> '';
   `);
 
   const ensureColumn = (table, column, definition) => {
@@ -133,6 +146,13 @@ function createBillingStore(dataDir) {
     cancel_reason AS cancelReason, cancelled_by AS cancelledBy`;
   const decodeQuote = row => row && ({ ...row, status: row.cancelledAt ? 'cancelled' : row.status, customerSnapshot: decodeJson(row.customerSnapshotJson), quoteSnapshot: decodeJson(row.quoteSnapshotJson), customerSnapshotJson: undefined, quoteSnapshotJson: undefined });
   const decodeInvoice = row => row && ({ ...row, invoiceSnapshot: decodeJson(row.invoiceSnapshotJson), invoiceSnapshotJson: undefined });
+  const invoicePaidAmount = invoiceId => Number(db.prepare('SELECT COALESCE(SUM(amount_ksh), 0) AS amount FROM billing_payments WHERE invoice_id=?').get(invoiceId)?.amount || 0);
+  const withPaymentTotals = invoice => {
+    if (!invoice) return null;
+    const paidAmountKsh = invoicePaidAmount(invoice.id);
+    const amountKsh = Number(invoice.amountKsh || 0);
+    return { ...invoice, paidAmountKsh, balanceKsh: Math.max(0, amountKsh - paidAmountKsh), paymentStatus: paidAmountKsh >= amountKsh ? 'paid' : paidAmountKsh > 0 ? 'partially_paid' : invoice.status === 'draft' ? 'not_issued' : 'unpaid' };
+  };
 
   return {
     listCustomers() {
@@ -237,13 +257,13 @@ function createBillingStore(dataDir) {
         FROM billing_quote_deliveries WHERE quote_id=? ORDER BY created_at DESC`).all(quoteId);
     },
     listInvoices() {
-      return db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices ORDER BY created_at DESC`).all().map(decodeInvoice);
+      return db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices ORDER BY created_at DESC`).all().map(decodeInvoice).map(withPaymentTotals);
     },
     getInvoice(id) {
-      return decodeInvoice(db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices WHERE id=?`).get(id) || null);
+      return withPaymentTotals(decodeInvoice(db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices WHERE id=?`).get(id) || null));
     },
     getInvoiceForQuote(quoteId) {
-      return decodeInvoice(db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices WHERE quote_id=?`).get(quoteId) || null);
+      return withPaymentTotals(decodeInvoice(db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices WHERE quote_id=?`).get(quoteId) || null));
     },
     createDraftInvoice(invoice) {
       const now = new Date().toISOString();
@@ -262,6 +282,14 @@ function createBillingStore(dataDir) {
         .run(JSON.stringify(snapshot), now, id);
       return result.changes ? this.getInvoice(id) : null;
     },
+    issueDraftInvoice(id, invoiceNumber, issuedAt) {
+      const invoice = this.getInvoice(id);
+      if (!invoice || invoice.status !== 'draft') return null;
+      const snapshot = { ...invoice.invoiceSnapshot, issuedAt };
+      const result = db.prepare(`UPDATE billing_invoices SET status='issued',invoice_number=?,invoice_snapshot=?,updated_at=? WHERE id=? AND status='draft'`)
+        .run(invoiceNumber, JSON.stringify(snapshot), issuedAt, id);
+      return result.changes ? this.getInvoice(id) : null;
+    },
     cancelDraftInvoice(id, actor, reason) {
       const now = new Date().toISOString();
       const result = db.prepare(`UPDATE billing_invoices SET status='void',cancelled_by=?,cancel_reason=?,updated_at=?
@@ -274,11 +302,44 @@ function createBillingStore(dataDir) {
         (id,invoice_id,recipient,actor,provider_message_id,status,error,created_at)
         VALUES (@id,@invoiceId,@recipient,@actor,@providerMessageId,@status,@error,@createdAt)`)
         .run({ ...delivery, createdAt: now });
+      if (delivery.status === 'sent') db.prepare(`UPDATE billing_invoices SET status='sent',updated_at=? WHERE id=? AND status='issued'`).run(now, delivery.invoiceId);
       return now;
     },
     listInvoiceDeliveries(invoiceId) {
       return db.prepare(`SELECT recipient,actor,provider_message_id AS providerMessageId,status,error,created_at AS createdAt
         FROM billing_invoice_deliveries WHERE invoice_id=? ORDER BY created_at DESC`).all(invoiceId);
+    },
+    listPayments() {
+      return db.prepare(`SELECT id,invoice_id AS invoiceId,amount_ksh AS amountKsh,payment_date AS paymentDate,
+        method,reference,notes,recorded_by AS recordedBy,created_at AS createdAt FROM billing_payments ORDER BY payment_date DESC,created_at DESC`).all();
+    },
+    getPayment(id) {
+      return db.prepare(`SELECT id,invoice_id AS invoiceId,amount_ksh AS amountKsh,payment_date AS paymentDate,
+        method,reference,notes,recorded_by AS recordedBy,created_at AS createdAt FROM billing_payments WHERE id=?`).get(id) || null;
+    },
+    recordPayment(payment) {
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const invoice = this.getInvoice(payment.invoiceId);
+        if (!invoice || !['issued', 'sent', 'paid'].includes(invoice.status)) throw new Error('Payments can only be recorded against an issued invoice');
+        if (payment.reference && db.prepare('SELECT 1 FROM billing_payments WHERE method=? AND lower(reference)=lower(?)').get(payment.method, payment.reference)) throw new Error('This payment reference has already been recorded for this method');
+        const balance = Math.max(0, Number(invoice.amountKsh) - Number(invoice.paidAmountKsh || 0));
+        if (Number(payment.amountKsh) > balance) throw new Error(`Payment exceeds the outstanding balance of KSh ${balance.toLocaleString('en-KE')}`);
+        const now = new Date().toISOString();
+        db.prepare(`INSERT INTO billing_payments (id,invoice_id,amount_ksh,payment_date,method,reference,notes,recorded_by,created_at)
+          VALUES (@id,@invoiceId,@amountKsh,@paymentDate,@method,@reference,@notes,@recordedBy,@createdAt)`)
+          .run({ ...payment, createdAt: now });
+        const totalPaid = invoicePaidAmount(payment.invoiceId);
+        if (totalPaid >= Number(invoice.amountKsh)) {
+          db.prepare(`UPDATE billing_invoices SET status='paid',updated_at=? WHERE id=?`).run(now, payment.invoiceId);
+        }
+        db.exec('COMMIT');
+        return db.prepare(`SELECT id,invoice_id AS invoiceId,amount_ksh AS amountKsh,payment_date AS paymentDate,
+          method,reference,notes,recorded_by AS recordedBy,created_at AS createdAt FROM billing_payments WHERE id=?`).get(payment.id);
+      } catch (error) {
+        try { db.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
     },
     close() { db.close(); },
   };

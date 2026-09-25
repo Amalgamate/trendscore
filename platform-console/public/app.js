@@ -21,15 +21,39 @@ let BILLING_CONTRACTS = [];
 let BILLING_SCHOOLS = [];
 let BILLING_QUOTES = [];
 let BILLING_INVOICES = [];
+let BILLING_PAYMENTS = [];
+let BILLING_PAYMENTS_STATUS = 'loading';
 let BILLING_DELIVERIES = [];
 let BILLING_INVOICE_DELIVERIES = [];
 let BILLING_EMAIL_STATUS = 'unknown';
+let BILLING_MAIL_DRAFT = null;
 const BILLING_DATA_STATUS = { customers: 'loading', contracts: 'loading', quotes: 'loading', invoices: 'loading' };
 const BILLING_FILTERS = { customers: '', quotes: '', quoteStatus: '', invoices: '', invoiceStatus: '' };
 let billingQuotePreviewTimer = null;
 
 // Helpers
 const $ = id => document.getElementById(id);
+
+// Track user-facing API work while leaving routine runtime health polling quiet.
+const nativeFetch = window.fetch.bind(window);
+window.fetch = (...args) => {
+  const input = args[0];
+  const requestUrl = typeof input === 'string' ? input : input?.url || '';
+  let shouldTrack = false;
+  try {
+    const url = new URL(requestUrl, window.location.href);
+    shouldTrack = url.origin === window.location.origin
+      && url.pathname.startsWith('/api/')
+      && url.pathname !== '/api/runtime';
+  } catch (_) {}
+  if (!shouldTrack) return nativeFetch(...args);
+  trackedApiRequests += 1;
+  syncPageProgress();
+  return nativeFetch(...args).finally(() => {
+    trackedApiRequests = Math.max(0, trackedApiRequests - 1);
+    syncPageProgress();
+  });
+};
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&': '&amp;',
   '<': '&lt;',
@@ -45,6 +69,10 @@ const statusCls = status => status === 'Online' || status === 'Active' || status
 
 let toastTimer;
 let installProgressTimer = null;
+let installProgressActive = false;
+let trackedApiRequests = 0;
+let progressFinishTimer = null;
+let progressStartedAt = 0;
 let runtimePollTimer = null;
 let runtimePollBusy = false;
 let pendingProvisionLeadId = null;
@@ -152,13 +180,51 @@ function setInstallProgress(value) {
   if (!wrap || !line) return;
   const pct = Math.max(0, Math.min(100, Number(value) || 0));
   line.style.width = `${pct}%`;
+  wrap.setAttribute('aria-valuenow', String(pct));
+}
+
+function syncPageProgress() {
+  const wrap = $('install-progress');
+  const line = $('install-progress-line');
+  if (!wrap || !line) return;
+  clearTimeout(progressFinishTimer);
+  progressFinishTimer = null;
+  const active = installProgressActive || trackedApiRequests > 0;
+  if (active) {
+    if (!wrap.classList.contains('active')) {
+      progressStartedAt = Date.now();
+      wrap.classList.add('active');
+      wrap.setAttribute('aria-hidden', 'false');
+    }
+    wrap.classList.toggle('indeterminate', !installProgressActive);
+    if (!installProgressActive) {
+      line.style.width = '';
+      wrap.removeAttribute('aria-valuenow');
+    }
+    return;
+  }
+
+  wrap.classList.remove('indeterminate');
+  if (!wrap.classList.contains('active')) return;
+  const delay = Math.max(0, 180 - (Date.now() - progressStartedAt));
+  progressFinishTimer = setTimeout(() => {
+    if (installProgressActive || trackedApiRequests > 0) return;
+    line.style.width = '100%';
+    wrap.setAttribute('aria-valuenow', '100');
+    setTimeout(() => {
+      if (installProgressActive || trackedApiRequests > 0) return;
+      wrap.classList.remove('active');
+      wrap.setAttribute('aria-hidden', 'true');
+      line.style.width = '0%';
+      wrap.removeAttribute('aria-valuenow');
+    }, 180);
+  }, delay);
 }
 
 function startInstallProgress() {
   const wrap = $('install-progress');
   if (!wrap) return;
-  wrap.classList.add('active');
-  wrap.setAttribute('aria-hidden', 'false');
+  installProgressActive = true;
   setInstallProgress(8);
   clearInterval(installProgressTimer);
   installProgressTimer = setInterval(() => {
@@ -167,19 +233,15 @@ function startInstallProgress() {
     const current = parseFloat(String(line.style.width || '0').replace('%', '')) || 0;
     if (current < 90) setInstallProgress(current + 4);
   }, 450);
+  syncPageProgress();
 }
 
 function finishInstallProgress(ok = true) {
-  const wrap = $('install-progress');
-  if (!wrap) return;
   clearInterval(installProgressTimer);
   installProgressTimer = null;
+  installProgressActive = false;
   setInstallProgress(ok ? 100 : 0);
-  setTimeout(() => {
-    wrap.classList.remove('active');
-    wrap.setAttribute('aria-hidden', 'true');
-    if (ok) setInstallProgress(0);
-  }, ok ? 350 : 150);
+  syncPageProgress();
 }
 
 const APP_PORT_RANGES = {
@@ -606,12 +668,13 @@ function containerRows(instance) {
 
 async function loadBillingData() {
   try {
-    const [customersResponse, contractsResponse, schoolsResponse, quotesResponse, invoicesResponse, emailStatusResponse] = await Promise.all([
+    const [customersResponse, contractsResponse, schoolsResponse, quotesResponse, invoicesResponse, paymentsResponse, emailStatusResponse] = await Promise.all([
       fetch('/api/billing/customers', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/contracts', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/schools', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/quotes', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/invoices', { credentials: 'same-origin' }).catch(() => null),
+      fetch('/api/billing/payments', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/email-status', { credentials: 'same-origin' }).catch(() => null),
     ]);
     const [customersData, contractsData] = await Promise.all([
@@ -626,11 +689,14 @@ async function loadBillingData() {
     BILLING_SCHOOLS = schoolsData.schools || [];
     const quotesData = quotesResponse?.ok ? await quotesResponse.json().catch(() => ({})) : {};
     const invoicesData = invoicesResponse?.ok ? await invoicesResponse.json().catch(() => ({})) : {};
+    const paymentsData = paymentsResponse?.ok ? await paymentsResponse.json().catch(() => ({})) : {};
     const emailData = emailStatusResponse?.ok ? await emailStatusResponse.json().catch(() => ({})) : {};
     BILLING_DATA_STATUS.quotes = quotesResponse?.ok && Array.isArray(quotesData.quotes) ? 'ready' : 'unavailable';
     BILLING_DATA_STATUS.invoices = invoicesResponse?.ok && Array.isArray(invoicesData.invoices) ? 'ready' : 'unavailable';
     BILLING_QUOTES = quotesData.quotes || [];
     BILLING_INVOICES = invoicesData.invoices || [];
+    BILLING_PAYMENTS = paymentsData.payments || [];
+    BILLING_PAYMENTS_STATUS = paymentsResponse?.ok && Array.isArray(paymentsData.payments) ? 'ready' : 'unavailable';
     BILLING_DELIVERIES = quotesData.deliveries || [];
     BILLING_INVOICE_DELIVERIES = invoicesData.deliveries || [];
     BILLING_EMAIL_STATUS = emailStatusResponse?.ok ? (emailData.configured === true ? 'ready' : 'unconfigured') : 'unavailable';
@@ -638,6 +704,7 @@ async function loadBillingData() {
   } catch (error) {
     Object.keys(BILLING_DATA_STATUS).forEach(key => { BILLING_DATA_STATUS[key] = 'unavailable'; });
     BILLING_EMAIL_STATUS = 'unavailable';
+    BILLING_PAYMENTS_STATUS = 'unavailable';
     if ($('billing-customers-table')) $('billing-customers-table').innerHTML = `<tr><td colspan="7">${esc(error.message || 'Billing data is unavailable.')}</td></tr>`;
     if ($('billing-contracts-table')) $('billing-contracts-table').innerHTML = '<tr><td colspan="7">Billing contracts are unavailable.</td></tr>';
     ['billing-kpi-customers', 'billing-kpi-open-quotes', 'billing-kpi-accepted', 'billing-kpi-drafts'].forEach(id => { if ($(id)) $(id).textContent = 'Unavailable'; });
@@ -646,6 +713,8 @@ async function loadBillingData() {
     if ($('billing-attention-list')) $('billing-attention-list').innerHTML = '<div class="billing-empty">Billing records could not be loaded. Refresh to try again.</div>';
     if ($('billing-recent-list')) $('billing-recent-list').innerHTML = '<div class="billing-empty">Recent billing records are unavailable.</div>';
     renderBillingSettings();
+    renderBillingPayments();
+    renderBillingReports();
   }
 }
 
@@ -694,14 +763,80 @@ function renderBillingRegistry() {
   renderBillingQuotes();
   renderBillingOverview();
   renderBillingSettings();
+  renderBillingPayments();
+  renderBillingReports();
   document.querySelectorAll('[data-super-admin-only]').forEach(element => {
     if (window.consoleUserRole) element.hidden = window.consoleUserRole !== 'super_admin';
   });
   updateBillingActionVisibility();
 }
 
+function billingEmailPreviewHtml(draft) {
+  const body = String(draft.message || '').split(/\r?\n/).map(line => line ? `<p style="margin:0 0 14px">${esc(line)}</p>` : '<div style="height:8px"></div>').join('');
+  const kind = draft.kind === 'quote';
+  const label = kind ? 'QUOTATION' : draft.isDraftInvoice ? 'DRAFT INVOICE · REVIEW COPY' : 'COMMERCIAL INVOICE';
+  const amount = formatBillingKsh(draft.amountKsh);
+  return `<!doctype html><html><body style="margin:0;background:#f1f4f9;font-family:Arial,Helvetica,sans-serif;color:#172033"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f1f4f9;padding:24px 10px"><tr><td align="center"><table role="presentation" width="620" cellspacing="0" cellpadding="0" style="max-width:620px;width:100%;background:#fff;border:1px solid #dce3ee;border-radius:14px;overflow:hidden"><tr><td style="padding:24px 30px;border-bottom:1px solid #e7ebf2"><img src="${esc(draft.logoUrl)}" alt="TrendSCORE" width="150" style="display:block;max-width:150px;height:auto"><div style="margin-top:10px;color:#61708b;font-size:12px;letter-spacing:1.4px;font-weight:bold">BUSINESS SERVICES</div></td></tr><tr><td style="padding:28px 30px 10px"><span style="display:inline-block;padding:7px 10px;background:#eef2ff;color:#18258b;font-size:11px;font-weight:bold;letter-spacing:1px;border-radius:4px">${label}</span><h1 style="margin:16px 0 5px;color:#101b36;font-size:22px;line-height:1.3">${esc(draft.documentNumber)}</h1><div style="color:#66748d;font-size:13px">Prepared for ${esc(draft.customerName)}</div></td></tr><tr><td style="padding:8px 30px 22px;color:#34415a;font-size:14px;line-height:1.75">${body}</td></tr><tr><td style="padding:0 30px 26px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f7f9fc;border:1px solid #e5eaf2;border-radius:8px"><tr><td style="padding:14px 16px;color:#60708b;font-size:12px">${esc(draft.documentName)} · PDF</td><td align="right" style="padding:14px 16px;color:#111c39;font-size:14px;font-weight:bold">${esc(amount)}</td></tr></table></td></tr><tr><td style="padding:20px 30px;background:#f7f9fc;color:#172033;border-top:1px solid #e7ebf2"><img src="${esc(draft.logoUrl)}" alt="TrendSCORE" width="112" style="display:block;max-width:112px;height:auto;margin-bottom:12px"><div style="font-size:13px;font-weight:bold">${esc(draft.senderName || 'TrendSCORE')}</div><div style="font-size:12px;color:#5f6f89;margin-top:5px">Questions? Reply to this email or reach us at ${esc(draft.senderEmail || '')}.</div><div style="font-size:11px;color:#7a879b;margin-top:14px">TrendSCORE · School operations, made clearer.</div></td></tr></table><div style="max-width:620px;padding:14px 8px;color:#7a879b;font-size:11px;line-height:1.5;text-align:center">This message and its attached document were prepared for ${esc(draft.customerName)}.</div></td></tr></table></body></html>`;
+}
+
+async function openBillingEmailComposer(kind, id) {
+  const overlay = $('billing-mail-overlay');
+  const send = $('billing-mail-send');
+  if (!overlay) return;
+  $('billing-mail-tab-email')?.classList.add('active');
+  $('billing-mail-tab-email')?.setAttribute('aria-selected', 'true');
+  $('billing-mail-tab-pdf')?.classList.remove('active');
+  $('billing-mail-tab-pdf')?.setAttribute('aria-selected', 'false');
+  $('billing-mail-preview-email').hidden = false;
+  $('billing-mail-preview-pdf').hidden = true;
+  if (send) { send.disabled = true; send.textContent = 'Loading…'; }
+  overlay.classList.add('open');
+  $('billing-mail-meta').textContent = 'Preparing your message and branded document preview…';
+  try {
+    const response = await fetch(`/api/billing/${kind === 'quote' ? 'quotes' : 'invoices'}/${encodeURIComponent(id)}/email-preview`, { credentials: 'same-origin' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || 'Could not prepare the email preview');
+    BILLING_MAIL_DRAFT = { ...payload.draft, id };
+    $('billing-mail-id').value = id;
+    $('billing-mail-kind').value = kind;
+    $('billing-mail-title').textContent = kind === 'quote' ? 'Send quotation' : payload.draft.isDraftInvoice ? 'Send draft invoice review copy' : 'Send commercial invoice';
+    $('billing-mail-meta').textContent = `${kind === 'quote' ? 'Quotation' : 'Review copy'} · ${payload.draft.documentNumber} · To ${payload.draft.customerName}`;
+    $('billing-mail-to').value = payload.draft.recipient || '';
+    $('billing-mail-subject').value = payload.draft.subject || '';
+    $('billing-mail-message').value = payload.draft.message || '';
+    $('billing-mail-filename').textContent = payload.draft.documentName || 'Branded PDF';
+    $('billing-mail-sender').textContent = `From ${payload.draft.senderName} <${payload.draft.senderEmail}>`;
+    $('billing-mail-preview-pdf').src = payload.draft.pdfUrl;
+    updateBillingEmailPreview();
+    if (send) { send.disabled = false; send.textContent = kind === 'quote' ? 'Send quotation' : payload.draft.isDraftInvoice ? 'Send review copy' : 'Send invoice'; }
+    $('billing-mail-to').focus();
+  } catch (error) {
+    overlay.classList.remove('open');
+    toast(error.message || 'Could not prepare the email');
+    if (send) { send.disabled = false; send.textContent = 'Send email'; }
+  }
+}
+
+function updateBillingEmailPreview() {
+  if (!BILLING_MAIL_DRAFT) return;
+  BILLING_MAIL_DRAFT.recipient = $('billing-mail-to')?.value || '';
+  BILLING_MAIL_DRAFT.subject = $('billing-mail-subject')?.value || '';
+  BILLING_MAIL_DRAFT.message = $('billing-mail-message')?.value || '';
+  const iframe = $('billing-mail-preview-email');
+  if (iframe) iframe.srcdoc = billingEmailPreviewHtml(BILLING_MAIL_DRAFT);
+}
+
+['billing-mail-to', 'billing-mail-subject', 'billing-mail-message'].forEach(id => {
+  $(id)?.addEventListener('input', updateBillingEmailPreview);
+});
+
 function formatBillingKsh(amount) {
   return `KSh ${Number(amount || 0).toLocaleString('en-KE')}`;
+}
+
+function billingTodayDate() {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date()).map(part => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 function renderBillingQuotes() {
@@ -768,15 +903,96 @@ function renderBillingQuotes() {
       const attempts = BILLING_INVOICE_DELIVERIES.find(item => item.invoiceId === invoice.id)?.attempts || [];
       const actions = [`<a class="btn sm" href="${pdfUrl}" target="_blank" rel="noopener">PDF preview</a>`];
       if (invoice.status === 'draft') actions.push(`<button class="btn sm" data-invoice-send-review="${esc(invoice.id)}" data-super-admin-only type="button">${attempts.length ? 'Resend review copy' : 'Email review copy'}</button>`);
+      if (['issued', 'sent', 'paid'].includes(invoice.status)) actions.push(`<button class="btn sm" data-invoice-send-review="${esc(invoice.id)}" data-super-admin-only type="button">${attempts.length ? 'Resend invoice' : 'Email invoice'}</button>`);
+      if (invoice.status === 'draft') actions.push(`<button class="btn sm primary" data-invoice-issue="${esc(invoice.id)}" data-super-admin-only type="button">Issue commercial invoice</button>`);
       if (invoice.status === 'draft') actions.push(`<button class="btn sm" data-invoice-edit="${esc(invoice.id)}" data-super-admin-only type="button">Edit</button>`);
       if (invoice.status === 'draft') actions.push(`<button class="btn sm danger-btn" data-invoice-cancel="${esc(invoice.id)}" data-super-admin-only type="button">Cancel</button>`);
       if (attempts.length) actions.push(`<small class="table-sub">${attempts.length} email attempt${attempts.length === 1 ? '' : 's'}</small>`);
-      return `<tr><td><strong>${esc(invoice.invoiceNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${esc(quote?.quoteNumber || '')}</td><td>${formatBillingKsh(invoice.amountKsh)}</td><td>${invoice.status === 'void' ? 'cancelled' : esc(invoice.status)}</td><td>${esc(String(invoice.createdAt || '').slice(0, 10))}</td><td><div class="billing-action-row">${actions.join('')}</div></td></tr>`;
+      const today = billingTodayDate();
+      const status = invoice.status === 'void' ? 'cancelled' : invoice.paymentStatus === 'partially_paid' ? 'partially paid' : invoice.balanceKsh > 0 && invoice.invoiceSnapshot?.dueDate && invoice.invoiceSnapshot.dueDate < today && ['issued', 'sent'].includes(invoice.status) ? 'overdue' : esc(invoice.status);
+      const amountCell = invoice.paidAmountKsh > 0 ? `${formatBillingKsh(invoice.amountKsh)}<div class="table-sub">Paid ${formatBillingKsh(invoice.paidAmountKsh)} · Due ${formatBillingKsh(invoice.balanceKsh)}</div>` : formatBillingKsh(invoice.amountKsh);
+      return `<tr><td><strong>${esc(invoice.invoiceNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${esc(quote?.quoteNumber || '')}</td><td>${amountCell}</td><td>${status}</td><td>${esc(String(invoice.invoiceSnapshot?.issuedAt || invoice.createdAt || '').slice(0, 10))}</td><td><div class="billing-action-row">${actions.join('')}</div></td></tr>`;
     }).join('');
   }
   document.querySelectorAll('[data-super-admin-only]').forEach(element => {
     if (window.consoleUserRole) element.hidden = window.consoleUserRole !== 'super_admin';
   });
+}
+
+function renderBillingPayments() {
+  const history = $('billing-payments-table');
+  const open = $('billing-open-invoices-table');
+  if (!history || !open) return;
+  if (BILLING_PAYMENTS_STATUS !== 'ready' || BILLING_DATA_STATUS.invoices !== 'ready') {
+    history.innerHTML = '<tr><td colspan="8">Payment records could not be loaded. Refresh to try again.</td></tr>';
+    open.innerHTML = '<tr><td colspan="8">Invoice balances are unavailable.</td></tr>';
+    ['billing-kpi-payment-count', 'billing-kpi-collected', 'billing-kpi-outstanding'].forEach(id => { if ($(id)) $(id).textContent = 'Unavailable'; });
+    return;
+  }
+  const collected = BILLING_PAYMENTS.reduce((total, item) => total + Number(item.amountKsh || 0), 0);
+  const receivables = BILLING_INVOICES.filter(invoice => ['issued', 'sent', 'paid'].includes(invoice.status));
+  const outstanding = receivables.reduce((total, invoice) => total + Number(invoice.balanceKsh ?? invoice.amountKsh ?? 0), 0);
+  $('billing-kpi-payment-count').textContent = BILLING_PAYMENTS.length.toLocaleString('en-KE');
+  $('billing-kpi-collected').textContent = formatBillingKsh(collected);
+  $('billing-kpi-outstanding').textContent = formatBillingKsh(outstanding);
+  history.innerHTML = BILLING_PAYMENTS.length ? BILLING_PAYMENTS.map(payment => {
+    const invoice = BILLING_INVOICES.find(item => item.id === payment.invoiceId);
+    const customer = BILLING_CUSTOMERS.find(item => item.id === invoice?.customerId) || {};
+    const methods = { mpesa: 'M-Pesa', bank_transfer: 'Bank transfer', cash: 'Cash', cheque: 'Cheque', other: 'Other' };
+    return `<tr><td>${esc(payment.paymentDate)}</td><td><strong>${esc(invoice?.invoiceNumber || 'Invoice unavailable')}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${esc(methods[payment.method] || payment.method)}</td><td>${esc(payment.reference || '—')}</td><td>${formatBillingKsh(payment.amountKsh)}</td><td>${esc(payment.recordedBy || '—')}</td><td><a class="btn sm" href="/api/billing/payments/${encodeURIComponent(payment.id)}/receipt">PDF receipt</a></td></tr>`;
+  }).join('') : '<tr><td colspan="8">No payments recorded yet. Payments will appear here after a verified receipt is allocated to an issued invoice.</td></tr>';
+  const openInvoices = receivables.filter(invoice => Number(invoice.balanceKsh || 0) > 0);
+  open.innerHTML = openInvoices.length ? openInvoices.map(invoice => {
+    const customer = BILLING_CUSTOMERS.find(item => item.id === invoice.customerId) || {};
+    const dueDate = invoice.invoiceSnapshot?.dueDate || '';
+    const overdue = dueDate && dueDate < billingTodayDate();
+    return `<tr><td><strong>${esc(invoice.invoiceNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${esc(String(invoice.invoiceSnapshot?.issuedAt || '').slice(0, 10) || '—')}</td><td>${esc(dueDate || 'On receipt')}</td><td>${formatBillingKsh(invoice.amountKsh)}</td><td>${formatBillingKsh(invoice.paidAmountKsh)}</td><td><strong>${formatBillingKsh(invoice.balanceKsh)}</strong></td><td>${overdue ? 'Overdue' : invoice.paymentStatus === 'partially_paid' ? 'Partially paid' : 'Unpaid'}</td></tr>`;
+  }).join('') : '<tr><td colspan="8">No outstanding issued invoices.</td></tr>';
+}
+
+function renderBillingReports() {
+  if (BILLING_PAYMENTS_STATUS !== 'ready' || BILLING_DATA_STATUS.invoices !== 'ready') {
+    ['billing-report-issued', 'billing-report-value', 'billing-report-collected', 'billing-report-balance'].forEach(id => { if ($(id)) $(id).textContent = 'Unavailable'; });
+    if ($('billing-report-months')) $('billing-report-months').innerHTML = '<tr><td colspan="3">Payment or invoice records could not be loaded.</td></tr>';
+    return;
+  }
+  const issued = BILLING_INVOICES.filter(invoice => ['issued', 'sent', 'paid'].includes(invoice.status));
+  const totalValue = issued.reduce((total, invoice) => total + Number(invoice.amountKsh || 0), 0);
+  const collected = BILLING_PAYMENTS.reduce((total, payment) => total + Number(payment.amountKsh || 0), 0);
+  const balance = issued.reduce((total, invoice) => total + Number(invoice.balanceKsh || 0), 0);
+  $('billing-report-issued').textContent = issued.length.toLocaleString('en-KE');
+  $('billing-report-value').textContent = formatBillingKsh(totalValue);
+  $('billing-report-collected').textContent = formatBillingKsh(collected);
+  $('billing-report-balance').textContent = formatBillingKsh(balance);
+  const months = new Map();
+  for (const payment of BILLING_PAYMENTS) {
+    const month = String(payment.paymentDate || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(month)) continue;
+    const entry = months.get(month) || { count: 0, amount: 0 };
+    entry.count += 1;
+    entry.amount += Number(payment.amountKsh || 0);
+    months.set(month, entry);
+  }
+  const rows = [...months.entries()].sort(([a], [b]) => b.localeCompare(a)).slice(0, 12);
+  $('billing-report-months').innerHTML = rows.length ? rows.map(([month, item]) => `<tr><td>${esc(new Intl.DateTimeFormat('en-KE', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${month}-01T00:00:00Z`)))}</td><td>${item.count}</td><td>${formatBillingKsh(item.amount)}</td></tr>`).join('') : '<tr><td colspan="3">No recorded collections yet.</td></tr>';
+}
+
+function openBillingPayment() {
+  const select = $('bp-invoice');
+  const eligible = BILLING_INVOICES.filter(invoice => ['issued', 'sent'].includes(invoice.status) && Number(invoice.balanceKsh || 0) > 0);
+  select.innerHTML = '<option value="">Choose invoice</option>' + eligible.map(invoice => {
+    const customer = BILLING_CUSTOMERS.find(item => item.id === invoice.customerId);
+    return `<option value="${esc(invoice.id)}">${esc(invoice.invoiceNumber)} · ${esc(customer?.name || 'Customer')} · balance ${esc(formatBillingKsh(invoice.balanceKsh))}</option>`;
+  }).join('');
+  $('bp-amount').value = '';
+  $('bp-amount').max = '';
+  $('bp-date').value = billingTodayDate();
+  $('bp-method').value = 'mpesa';
+  $('bp-reference').value = '';
+  $('bp-notes').value = '';
+  $('bp-balance-help').textContent = eligible.length ? 'Only issued invoices with an outstanding balance are shown.' : 'No issued invoice has a balance available for payment allocation.';
+  $('billing-payment-save').disabled = !eligible.length;
+  $('billing-payment-overlay')?.classList.add('open');
 }
 
 function openBillingCustomer(customer = null) {
@@ -1116,6 +1332,15 @@ document.querySelectorAll('[data-billing-tab]').forEach(button => {
   });
 });
 selectBillingTab('overview');
+
+$('bp-invoice')?.addEventListener('change', () => {
+  const invoice = BILLING_INVOICES.find(item => item.id === $('bp-invoice').value);
+  const balance = Number(invoice?.balanceKsh || 0);
+  $('bp-amount').max = balance || '';
+  $('bp-balance-help').textContent = invoice
+    ? `Outstanding balance: ${formatBillingKsh(balance)}. Amount cannot exceed this balance.`
+    : 'Only issued invoices with an outstanding balance are shown.';
+});
 
 function scheduleBillingQuotePreview() {
   clearTimeout(billingQuotePreviewTimer);
@@ -2540,6 +2765,61 @@ document.body.addEventListener('click', event => {
     $('billing-invoice-overlay')?.classList.remove('open');
     return;
   }
+  if (id === 'billing-payment-close' || id === 'billing-payment-cancel') {
+    $('billing-payment-overlay')?.classList.remove('open');
+    return;
+  }
+  if (id === 'billing-payment-add') {
+    openBillingPayment();
+    return;
+  }
+  if (id === 'billing-mail-close' || id === 'billing-mail-cancel') {
+    $('billing-mail-overlay')?.classList.remove('open');
+    BILLING_MAIL_DRAFT = null;
+    return;
+  }
+  if (btn.dataset.billingMailTab) {
+    const showPdf = btn.dataset.billingMailTab === 'pdf';
+    $('billing-mail-tab-email')?.classList.toggle('active', !showPdf);
+    $('billing-mail-tab-email')?.setAttribute('aria-selected', String(!showPdf));
+    $('billing-mail-tab-pdf')?.classList.toggle('active', showPdf);
+    $('billing-mail-tab-pdf')?.setAttribute('aria-selected', String(showPdf));
+    $('billing-mail-preview-email').hidden = showPdf;
+    $('billing-mail-preview-pdf').hidden = !showPdf;
+    return;
+  }
+  if (id === 'billing-mail-send') {
+    if (!BILLING_MAIL_DRAFT) return;
+    const kind = $('billing-mail-kind').value;
+    const isDraftInvoice = BILLING_MAIL_DRAFT.isDraftInvoice === true;
+    const mailId = $('billing-mail-id').value;
+    const sendButton = $('billing-mail-send');
+    sendButton.disabled = true;
+    sendButton.textContent = 'Sending…';
+    (async () => {
+      try {
+        const endpoint = kind === 'quote'
+          ? `/api/billing/quotes/${encodeURIComponent(mailId)}/send`
+          : `/api/billing/invoices/${encodeURIComponent(mailId)}/send-review-email`;
+        const response = await fetch(endpoint, {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipient: $('billing-mail-to').value, subject: $('billing-mail-subject').value, message: $('billing-mail-message').value }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not send email');
+        $('billing-mail-overlay')?.classList.remove('open');
+        BILLING_MAIL_DRAFT = null;
+        await loadBillingData();
+        toast(kind === 'quote' ? 'Quotation email sent with the reviewed PDF attached.' : isDraftInvoice ? 'Draft invoice review copy sent. It remains unissued.' : 'Commercial invoice emailed with the PDF attached.');
+      } catch (error) {
+        toast(error.message || 'Could not send email');
+      } finally {
+        sendButton.disabled = false;
+        sendButton.textContent = kind === 'quote' ? 'Send quotation' : 'Send review copy';
+      }
+    })();
+    return;
+  }
   if (id === 'billing-quote-close' || id === 'billing-quote-cancel') {
     closeBillingQuote();
     return;
@@ -2617,18 +2897,24 @@ document.body.addEventListener('click', event => {
     })();
     return;
   }
+  const invoiceIssueId = btn.dataset.invoiceIssue;
+  if (invoiceIssueId) {
+    const invoice = BILLING_INVOICES.find(item => item.id === invoiceIssueId);
+    if (!invoice || !window.confirm(`Issue ${invoice.invoiceNumber} as a commercial invoice? This action makes it payable and changes its reference. It is not an eTIMS tax invoice.`)) return;
+    (async () => {
+      try {
+        const response = await fetch(`/api/billing/invoices/${encodeURIComponent(invoiceIssueId)}/issue`, { method: 'POST', credentials: 'same-origin' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not issue the invoice');
+        await loadBillingData();
+        toast(`Commercial invoice ${payload.invoice.invoiceNumber} issued. You can now email it or record payments.`);
+      } catch (error) { toast(error.message); }
+    })();
+    return;
+  }
   const invoiceSendReviewId = btn.dataset.invoiceSendReview;
   if (invoiceSendReviewId) {
-    (async () => {
-      btn.disabled = true;
-      try {
-        const response = await fetch(`/api/billing/invoices/${encodeURIComponent(invoiceSendReviewId)}/send-review-email`, { method: 'POST', credentials: 'same-origin' });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error || 'Could not email draft invoice review copy');
-        await loadBillingData(); toast('Draft invoice review copy emailed with PDF attachment. It remains unissued.');
-      } catch (error) { toast(error.message); }
-      finally { btn.disabled = false; }
-    })();
+    openBillingEmailComposer('invoice', invoiceSendReviewId);
     return;
   }
   const contractAddCustomerId = btn.dataset.billingContractAdd;
@@ -2696,19 +2982,30 @@ document.body.addEventListener('click', event => {
     return;
   }
 
+  if (id === 'billing-payment-save') {
+    const saveButton = $('billing-payment-save');
+    saveButton.disabled = true;
+    saveButton.textContent = 'Recording…';
+    (async () => {
+      try {
+        const response = await fetch('/api/billing/payments', {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ invoiceId: $('bp-invoice').value, amountKsh: Number($('bp-amount').value), paymentDate: $('bp-date').value, method: $('bp-method').value, reference: $('bp-reference').value, notes: $('bp-notes').value }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not record payment');
+        $('billing-payment-overlay')?.classList.remove('open');
+        await loadBillingData();
+        toast(`Payment of ${formatBillingKsh(payload.payment.amountKsh)} recorded against ${payload.invoice.invoiceNumber}.`);
+      } catch (error) { toast(error.message); }
+      finally { saveButton.disabled = false; saveButton.textContent = 'Record payment'; }
+    })();
+    return;
+  }
+
   const quoteSendId = btn.dataset.quoteSend;
   if (quoteSendId) {
-    (async () => {
-      btn.disabled = true;
-      try {
-        const response = await fetch(`/api/billing/quotes/${encodeURIComponent(quoteSendId)}/send`, { method: 'POST', credentials: 'same-origin' });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error || 'Could not send quote');
-        await loadBillingData();
-        toast('Quote email sent with PDF attachment.');
-      } catch (error) { toast(error.message); }
-      finally { btn.disabled = false; }
-    })();
+    openBillingEmailComposer('quote', quoteSendId);
     return;
   }
 
