@@ -1088,18 +1088,47 @@ async function collectRuntime() {
   const usedDiskBytes = Number(rootFs?.used || 0);
 
   const imageBytes = Number(dockerDf?.LayersSize || 0);
-  const volumeBytes = Array.isArray(dockerDf?.Volumes)
-    ? dockerDf.Volumes.reduce((s, v) => s + Number(v?.UsageData?.Size || 0), 0)
-    : 0;
+  const dockerVolumes = Array.isArray(dockerDf?.Volumes) ? dockerDf.Volumes : [];
+  const dockerBuildCache = Array.isArray(dockerDf?.BuildCache) ? dockerDf.BuildCache : [];
+  const volumeBytes = dockerVolumes.reduce((s, v) => {
+    const size = Number(v?.UsageData?.Size);
+    return Number.isFinite(size) && size > 0 ? s + size : s;
+  }, 0);
+  const managedComposeProjects = new Set(instances.map(instance => String(instance.composeProject || '')).filter(Boolean));
+  const managedInstanceVolumeBytes = dockerVolumes.reduce((sum, volume) => {
+    const project = String(volume?.Labels?.['com.docker.compose.project'] || '');
+    const size = Number(volume?.UsageData?.Size);
+    return managedComposeProjects.has(project) && Number.isFinite(size) && size > 0 ? sum + size : sum;
+  }, 0);
+  const containerWritableBytes = containers.reduce((sum, container) => {
+    const size = Number(container?.SizeRw);
+    return Number.isFinite(size) && size > 0 ? sum + size : sum;
+  }, 0);
+  const buildCacheBytes = dockerBuildCache.reduce((sum, cacheEntry) => {
+    const size = Number(cacheEntry?.Size);
+    return Number.isFinite(size) && size > 0 ? sum + size : sum;
+  }, 0);
+  const dockerStorageBytes = imageBytes + volumeBytes + containerWritableBytes + buildCacheBytes;
+  const dockerUsageAvailable = Boolean(dockerDf)
+    && Number.isFinite(Number(dockerDf?.LayersSize)) && Number(dockerDf?.LayersSize) >= 0
+    && Array.isArray(dockerDf?.Volumes)
+    && Array.isArray(dockerDf?.BuildCache)
+    && dockerVolumes.every(volume => Number.isFinite(Number(volume?.UsageData?.Size)) && Number(volume?.UsageData?.Size) >= 0)
+    && dockerBuildCache.every(cacheEntry => Number.isFinite(Number(cacheEntry?.Size)) && Number(cacheEntry?.Size) >= 0)
+    && containers.every(container => Number.isFinite(Number(container?.SizeRw)) && Number(container?.SizeRw) >= 0);
 
   const metrics = {
+    liveInstances: instances.length,
     liveSchools: instances.filter(i => i.appType === 'school' && i.hasFrontend && i.hasBackend && i.hasDatabase).length,
-    containersHealthy: `${instances.reduce((s, i) => s + i.runningContainers, 0)}/${Math.max(1, instances.reduce((s, i) => s + i.containers, 0))}`,
-    storageUsedGb: dockerDf
-      ? Number((((imageBytes + volumeBytes) / (1024 ** 3))).toFixed(2))
-      : Number(instances.reduce((s, i) => s + i.storage, 0).toFixed(2)),
+    containersHealthy: `${containers.filter(container => container.State === 'running').length}/${containers.length}`,
+    dockerUsageAvailable,
+    storageUsedGb: Number((dockerStorageBytes / (1024 ** 3)).toFixed(2)),
     imagesGb: Number((imageBytes / (1024 ** 3)).toFixed(2)),
     volumesGb: Number((volumeBytes / (1024 ** 3)).toFixed(2)),
+    managedInstanceVolumesGb: Number((managedInstanceVolumeBytes / (1024 ** 3)).toFixed(2)),
+    unassignedVolumesGb: Number((Math.max(0, volumeBytes - managedInstanceVolumeBytes) / (1024 ** 3)).toFixed(2)),
+    containerWritableGb: Number((containerWritableBytes / (1024 ** 3)).toFixed(2)),
+    buildCacheGb: Number((buildCacheBytes / (1024 ** 3)).toFixed(2)),
     cpuLoadPercent: Math.round(load.currentLoad || 0),
     memoryUsedPercent: Math.round((mem.used / Math.max(mem.total, 1)) * 100),
     diskTotalGb: Number((totalDiskBytes / (1024 ** 3)).toFixed(1)),

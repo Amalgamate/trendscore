@@ -1152,9 +1152,8 @@ function renderRunningInstances() {
 }
 
 // ── Space & Usage panel ───────────────────────────────────────────────────
-const TOTAL_DISK = 80;
 function totalDiskGb() {
-  return Number(RUNTIME_METRICS?.diskTotalGb || TOTAL_DISK);
+  return Number(RUNTIME_METRICS?.diskTotalGb || 0);
 }
 
 function renderSpaceUsage() {
@@ -1168,8 +1167,9 @@ function renderSpaceUsage() {
 
   const diskTotal = totalDiskGb();
   const hostUsed      = Number(RUNTIME_METRICS.diskUsedGb || 0);
+  const dockerAvailable = RUNTIME_METRICS.dockerUsageAvailable === true;
   const dockerUsed    = Number(RUNTIME_METRICS.storageUsedGb || 0);
-  const schoolVolumes = INSTANCES.reduce((sum, instance) => sum + Number(instance.storage || 0), 0);
+  const managedVolumes = Number(RUNTIME_METRICS.managedInstanceVolumesGb || 0);
   const freeSpace     = Math.max(0, diskTotal - hostUsed);
   const usedPct       = Math.round(hostUsed / Math.max(diskTotal, 1) * 100);
 
@@ -1193,8 +1193,8 @@ function renderSpaceUsage() {
         <div class="su-stat-label">Disk Utilisation</div>
       </div>
       <div class="su-summary-stat">
-        <div class="su-stat-val">${fmt(dockerUsed)} <span class="su-stat-unit">GB</span></div>
-        <div class="su-stat-label">Docker storage used</div>
+        <div class="su-stat-val">${dockerAvailable ? `${fmt(dockerUsed)} <span class="su-stat-unit">GB</span>` : '—'}</div>
+        <div class="su-stat-label">Docker storage${dockerAvailable ? '' : ' unavailable'}</div>
       </div>
     </div>
 
@@ -1214,10 +1214,10 @@ function renderSpaceUsage() {
     </div>
 
     <div class="su-breakdown-grid">
-      ${[
+      ${(dockerAvailable ? [
         { label: 'Docker storage', value: dockerUsed, color: '#030b82' },
-        { label: 'Volumes attributed to running school projects', value: schoolVolumes, color: '#059669' },
-      ].map(s => {
+        { label: 'Managed instance volumes (subset of Docker volumes)', value: managedVolumes, color: '#059669' },
+      ] : []).map(s => {
         const pct = Math.round(s.value / Math.max(diskTotal, 1) * 100);
         return `<div class="su-breakdown-item">
           <div class="su-b-row">
@@ -1241,7 +1241,7 @@ function renderSpaceUsage() {
               <span class="su-pi-total">${fmt(inst.storage)} GB</span>
             </div>
             <div class="su-meter" style="margin:6px 0 4px"><div class="su-meter-fill" style="width:${instPct}%;background:var(--brand)"></div></div>
-            <div class="su-pi-rows"><div class="su-pi-row"><span>Attributed Docker volumes</span><span>${fmt(inst.storage)} GB</span></div></div>
+            <div class="su-pi-rows"><div class="su-pi-row"><span>Attributed Docker storage</span><span>${fmt(inst.storage)} GB</span></div></div>
           </div>`;
         }).join('')}
       </div>
@@ -1606,14 +1606,12 @@ function renderInstances() {
 }
 
 function renderMetrics() {
-  const totalStorage = INSTANCES.reduce((sum, instance) => sum + instance.storage, 0);
   const healthy = INSTANCES.filter(instance => instance.status === 'Online').reduce((sum, instance) => sum + instance.containers, 0);
   const total = INSTANCES.reduce((sum, instance) => sum + instance.containers, 0);
-  const schoolGroups = groupInstances(INSTANCES).filter(group => group.complete).length;
 
-  if ($('m-schools')) $('m-schools').textContent = liveMode ? (Number.isFinite(Number(RUNTIME_METRICS?.liveSchools)) ? RUNTIME_METRICS.liveSchools : schoolGroups) : '—';
+  if ($('m-instances')) $('m-instances').textContent = liveMode ? (Number.isFinite(Number(RUNTIME_METRICS?.liveInstances)) ? RUNTIME_METRICS.liveInstances : INSTANCES.length) : '—';
   if ($('m-containers')) $('m-containers').textContent = liveMode ? (RUNTIME_METRICS?.containersHealthy || `${healthy}/${total}`) : '—';
-  if ($('m-storage')) $('m-storage').textContent = liveMode ? `${fmt(Number(RUNTIME_METRICS?.storageUsedGb ?? totalStorage))} GB` : '—';
+  if ($('m-storage')) $('m-storage').textContent = liveMode && RUNTIME_METRICS?.dockerUsageAvailable ? `${fmt(Number(RUNTIME_METRICS.storageUsedGb || 0))} GB` : '—';
 
   if ($('overview-sub')) {
     $('overview-sub').textContent = liveMode
@@ -1657,61 +1655,75 @@ function renderCapacity() {
   }
 
   const diskTotal = totalDiskGb();
-  if (capacitySub) capacitySub.textContent = `VPS disk allocation \u00b7 ${fmt(diskTotal)} GB total`;
-  const totalStorage = INSTANCES.reduce((sum, instance) => sum + instance.storage, 0);
-  const imagesUsed = Number(RUNTIME_METRICS?.imagesGb || 0);
-  const volumesUsed = Number(RUNTIME_METRICS?.volumesGb || 0);
-  const runtimeUsed = Number(RUNTIME_METRICS?.storageUsedGb || 0);
-  const stackUsed = Math.max(0, runtimeUsed - totalStorage);
-  const freeUsed = Math.max(0, diskTotal - Number(RUNTIME_METRICS.diskUsedGb || 0));
+  if (capacitySub) capacitySub.textContent = `Detected host filesystem \u00b7 ${fmt(diskTotal)} GB total`;
+  const hostUsed = Number(RUNTIME_METRICS.diskUsedGb || 0);
+  const freeUsed = Math.max(0, diskTotal - hostUsed);
+  const dockerAvailable = RUNTIME_METRICS.dockerUsageAvailable === true;
   const items = [
-    { label: 'Images', used: imagesUsed, total: diskTotal, color: 'brand', meta: 'Docker images stored on this server' },
-    { label: 'Volumes', used: volumesUsed, total: diskTotal, color: 'teal', meta: 'Persistent Docker volumes' },
-    { label: 'Other Docker storage', used: stackUsed, total: diskTotal, color: 'amber', meta: 'Docker usage not attributed to school project volumes' },
-    { label: 'School project volumes', used: totalStorage, total: diskTotal, color: 'teal', meta: 'Docker volumes attributed to runtime school projects' },
-    { label: 'Host free space', used: freeUsed, total: diskTotal, color: 'green', meta: 'Filesystem free space, including non-Docker files' },
+    { label: 'Host disk used', used: hostUsed, total: diskTotal, color: 'brand', meta: 'Filesystem usage, including Docker data and other files' },
+    { label: 'Host disk available', used: freeUsed, total: diskTotal, color: 'green', meta: 'Free space on the detected root filesystem' },
   ];
+  if (dockerAvailable) {
+    items.push(
+      { label: 'Docker images', used: Number(RUNTIME_METRICS.imagesGb || 0), total: diskTotal, color: 'teal', meta: 'Image layer storage; included in host disk used' },
+      { label: 'Docker volumes', used: Number(RUNTIME_METRICS.volumesGb || 0), total: diskTotal, color: 'amber', meta: 'All Docker volumes; includes the two subsets below' },
+      { label: 'Managed instance volumes', used: Number(RUNTIME_METRICS.managedInstanceVolumesGb || 0), total: diskTotal, color: 'teal', meta: 'Subset of volumes mapped to detected instance projects' },
+      { label: 'Unassigned Docker volumes', used: Number(RUNTIME_METRICS.unassignedVolumesGb || 0), total: diskTotal, color: 'amber', meta: 'Volume data not mapped to a detected instance project' },
+      { label: 'Container writable layers', used: Number(RUNTIME_METRICS.containerWritableGb || 0), total: diskTotal, color: 'brand', meta: 'Container-local changes; included in Docker storage and host disk used' },
+      { label: 'Docker build cache', used: Number(RUNTIME_METRICS.buildCacheGb || 0), total: diskTotal, color: 'amber', meta: 'Build cache; included in Docker storage and host disk used' },
+    );
+  } else {
+    items.push({ label: 'Docker storage details', used: null, total: diskTotal, color: 'amber', meta: 'Detailed Docker usage is unavailable from the host.' });
+  }
   if (!el) return;
   el.innerHTML = items.map(item => {
-    const pct = Math.round(Math.max(0, item.used) / Math.max(item.total, 1) * 100);
+    const hasValue = item.used !== null && item.used !== undefined && Number.isFinite(Number(item.used));
+    const pct = hasValue ? Math.round(Math.max(0, item.used) / Math.max(item.total, 1) * 100) : null;
     return `<div class="capacity-item">
-      <div class="cap-row"><span class="cap-name">${esc(item.label)}</span><span class="cap-val">${fmt(item.used)} GB</span></div>
-      <div class="meter"><div class="meter-fill ${item.color}" style="width:${pct}%"></div></div>
-      <div class="cap-meta">${esc(item.meta)} · ${pct}% of ${fmt(item.total)} GB</div>
+      <div class="cap-row"><span class="cap-name">${esc(item.label)}</span><span class="cap-val">${hasValue ? `${fmt(item.used)} GB` : '—'}</span></div>
+      <div class="meter"><div class="meter-fill ${item.color}" style="width:${pct ?? 0}%"></div></div>
+      <div class="cap-meta">${esc(item.meta)}${pct === null ? '' : ` · ${pct}% of ${fmt(item.total)} GB host disk`}</div>
     </div>`;
   }).join('');
 }
 
 function renderStorageSection() {
   if (!liveMode || !RUNTIME_METRICS) {
-    if ($('s-total')) $('s-total').textContent = '—';
+    if ($('s-host-total')) $('s-host-total').textContent = '—';
+    if ($('s-docker-total')) $('s-docker-total').textContent = '—';
+    if ($('s-instance-volumes')) $('s-instance-volumes').textContent = '—';
     if ($('disk-breakdown')) $('disk-breakdown').innerHTML = '<div class="capacity-item">Live storage metrics are unavailable.</div>';
     if ($('per-instance-storage')) $('per-instance-storage').innerHTML = '<div class="storage-item">No instance storage figures are shown without live metrics.</div>';
     return;
   }
 
-  const total = INSTANCES.reduce((sum, instance) => sum + instance.storage, 0);
-  if ($('s-total')) $('s-total').textContent = fmt(total) + ' GB';
+  if ($('s-host-total')) $('s-host-total').textContent = `${fmt(totalDiskGb())} GB`;
+  if ($('s-docker-total')) $('s-docker-total').textContent = RUNTIME_METRICS.dockerUsageAvailable ? `${fmt(Number(RUNTIME_METRICS.storageUsedGb || 0))} GB` : '—';
+  if ($('s-instance-volumes')) $('s-instance-volumes').textContent = RUNTIME_METRICS.dockerUsageAvailable ? `${fmt(Number(RUNTIME_METRICS.managedInstanceVolumesGb || 0))} GB` : '—';
 
   const disk = $('disk-breakdown');
   if (disk) {
     const diskTotal = totalDiskGb();
-    const runtimeUsed = Number(RUNTIME_METRICS?.storageUsedGb || 0);
-    const imagesUsed = Number(RUNTIME_METRICS?.imagesGb || 0);
-    const volumesUsed = Number(RUNTIME_METRICS?.volumesGb || 0);
-    const otherDockerUsed = Math.max(0, runtimeUsed - imagesUsed - volumesUsed);
     const rows = [
-      { label: 'Docker images', used: imagesUsed, total: diskTotal, color: 'brand' },
-      { label: 'Docker volumes', used: volumesUsed, total: diskTotal, color: 'green' },
-      { label: 'Other Docker layers', used: otherDockerUsed, total: diskTotal, color: 'amber' },
-      { label: 'School project volumes (subset of volumes)', used: total, total: diskTotal, color: 'teal' },
+      { label: 'Host disk used (includes Docker)', used: Number(RUNTIME_METRICS.diskUsedGb || 0), total: diskTotal, color: 'brand' },
+      { label: 'Host disk available', used: Math.max(0, diskTotal - Number(RUNTIME_METRICS.diskUsedGb || 0)), total: diskTotal, color: 'green' },
     ];
+    if (RUNTIME_METRICS.dockerUsageAvailable) rows.push(
+      { label: 'Docker images', used: Number(RUNTIME_METRICS.imagesGb || 0), total: diskTotal, color: 'brand' },
+      { label: 'Docker volumes (includes subsets below)', used: Number(RUNTIME_METRICS.volumesGb || 0), total: diskTotal, color: 'green' },
+      { label: 'Managed instance volumes', used: Number(RUNTIME_METRICS.managedInstanceVolumesGb || 0), total: diskTotal, color: 'teal' },
+      { label: 'Unassigned Docker volumes', used: Number(RUNTIME_METRICS.unassignedVolumesGb || 0), total: diskTotal, color: 'amber' },
+      { label: 'Container writable layers', used: Number(RUNTIME_METRICS.containerWritableGb || 0), total: diskTotal, color: 'amber' },
+      { label: 'Docker build cache', used: Number(RUNTIME_METRICS.buildCacheGb || 0), total: diskTotal, color: 'amber' },
+    );
+    else rows.push({ label: 'Docker usage details unavailable', used: null, total: diskTotal, color: 'amber' });
     disk.innerHTML = rows.map(row => {
-      const pct = Math.round(row.used / row.total * 100);
+      const hasValue = Number.isFinite(Number(row.used)) && row.used !== null;
+      const pct = hasValue ? Math.round(row.used / row.total * 100) : null;
       return `<div class="capacity-item">
-        <div class="cap-row"><span class="cap-name">${esc(row.label)}</span><span class="cap-val">${fmt(row.used)} GB</span></div>
-        <div class="meter"><div class="meter-fill ${row.color}" style="width:${pct}%"></div></div>
-        <div class="cap-meta">${pct}% of ${row.total} GB total disk</div>
+        <div class="cap-row"><span class="cap-name">${esc(row.label)}</span><span class="cap-val">${hasValue ? `${fmt(row.used)} GB` : '—'}</span></div>
+        <div class="meter"><div class="meter-fill ${row.color}" style="width:${pct ?? 0}%"></div></div>
+        <div class="cap-meta">${pct === null ? 'Metric not reported by Docker.' : `${pct}% of ${row.total} GB host disk`}</div>
       </div>`;
     }).join('');
   }
@@ -1721,7 +1733,7 @@ function renderStorageSection() {
     perInstance.innerHTML = INSTANCES.map(instance => `
       <div class="storage-item">
         <div class="sto-row"><span class="sto-name">${esc(instance.name)}</span><span class="sto-size">${fmt(instance.storage)} GB</span></div>
-        <div class="sto-meta">Attributed Docker volume/container storage; DB, uploads, and backups are not separately measured.</div>
+        <div class="sto-meta">Attributed Docker volume or writable-layer usage; database, uploads, and backups are not measured separately.</div>
       </div>`).join('');
   }
 }

@@ -165,28 +165,25 @@
         <div class="page-header">
           <div>
             <div class="page-title">Platform Overview</div>
-            <div class="page-sub" id="overview-sub">Live snapshot of all managed school instances</div>
+            <div class="page-sub" id="overview-sub">Live snapshot of all managed instances</div>
           </div>
         </div>
 
         <div class="metric-row overview-metric-row">
           <div class="metric-card indigo">
             <div class="m-label">Managed Instances</div>
-            <div class="m-value" id="m-schools">3</div>
+            <div class="m-value" id="m-instances">—</div>
             <div class="m-sub">All application categories</div>
-            <div class="m-badge up">↑ Active</div>
           </div>
           <div class="metric-card teal">
-            <div class="m-label">Healthy Containers</div>
-            <div class="m-value" id="m-containers">9/9</div>
-            <div class="m-sub">Frontend · Backend · Database</div>
-            <div class="m-badge up">All green</div>
+            <div class="m-label">Running Containers</div>
+            <div class="m-value" id="m-containers">—</div>
+            <div class="m-sub">Running / total containers</div>
           </div>
           <div class="metric-card green">
-            <div class="m-label">Storage Used</div>
-            <div class="m-value" id="m-storage">5.0 GB</div>
-            <div class="m-sub">DB · Uploads · Backups</div>
-            <div class="m-badge up">+1.2 GB</div>
+            <div class="m-label">Docker Storage</div>
+            <div class="m-value" id="m-storage">—</div>
+            <div class="m-sub">Images · volumes · containers · build cache</div>
           </div>
         </div>
 
@@ -218,7 +215,7 @@
             <div class="panel-header">
               <div>
                 <div class="panel-title">Server Capacity</div>
-                <div class="panel-sub" id="capacity-sub">VPS disk allocation · 80 GB total</div>
+                <div class="panel-sub" id="capacity-sub">Reading host filesystem capacity…</div>
               </div>
             </div>
             <div id="capacity-items"></div>
@@ -269,29 +266,29 @@
             <div class="page-sub">Per-instance and total server storage breakdown</div>
           </div>
         </div>
-        <div class="metric-row" style="grid-template-columns:repeat(3,1fr)">
+        <div class="metric-row storage-summary-row">
           <div class="metric-card">
-            <div class="m-label">Total VPS Disk</div>
-            <div class="m-value">80 GB</div>
-            <div class="m-sub">Root volume provisioned</div>
+            <div class="m-label">Host Disk Total</div>
+            <div class="m-value" id="s-host-total">—</div>
+            <div class="m-sub">Detected root filesystem capacity</div>
           </div>
           <div class="metric-card teal">
-            <div class="m-label">App Stack Used</div>
-            <div class="m-value">36.8 GB</div>
-            <div class="m-sub">Docker images + volumes</div>
+            <div class="m-label">Docker Storage</div>
+            <div class="m-value" id="s-docker-total">—</div>
+            <div class="m-sub">Images + volumes + containers + build cache</div>
           </div>
           <div class="metric-card green">
-            <div class="m-label">School Data</div>
-            <div class="m-value" id="s-total">5.0 GB</div>
-            <div class="m-sub">DB + uploads + backups</div>
+            <div class="m-label">Managed Instance Volumes</div>
+            <div class="m-value" id="s-instance-volumes">—</div>
+            <div class="m-sub">Subset of Docker volume storage</div>
           </div>
         </div>
         <div class="two-col">
           <div class="panel">
             <div class="panel-header">
               <div>
-                <div class="panel-title">Disk Allocation</div>
-                <div class="panel-sub">80 GB root volume breakdown</div>
+                <div class="panel-title">Host &amp; Docker Storage</div>
+                <div class="panel-sub">Host disk usage includes Docker data; Docker rows below are components of host usage.</div>
               </div>
             </div>
             <div id="disk-breakdown"></div>
@@ -300,7 +297,7 @@
             <div class="panel-header">
               <div>
                 <div class="panel-title">Per-Instance Storage</div>
-                <div class="panel-sub">Database · Uploads · Backups</div>
+                <div class="panel-sub">Attributed Docker volumes or writable container layers where available</div>
               </div>
             </div>
             <div class="panel-body" id="per-instance-storage"></div>
