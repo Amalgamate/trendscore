@@ -105,7 +105,8 @@ async function readSchoolAssessmentActivity(dbContainer) {
       'tests', COALESCE((
         SELECT json_agg(to_jsonb(activity) ORDER BY activity.activity_at DESC)
         FROM (
-          SELECT st.id, st.title, st."learningArea" AS learning_area, st.grade,
+          SELECT st.id, st.title, st."testType"::text AS test_type,
+            st."learningArea" AS learning_area, st.grade,
             st.term::text AS term, st."academicYear" AS academic_year,
             st."testDate" AS test_date, st.active, st.status::text AS status,
             st."updatedAt" AS updated_at, COALESCE(result_activity.result_count, 0)::int AS result_count,

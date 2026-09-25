@@ -629,9 +629,12 @@ function assessmentActivityTooltipText(activity, schoolName = 'School') {
   if (!activity) return `${schoolName}\nLoading assessment activity…`;
   if (activity.state === 'unavailable') return `${schoolName}\nAssessment data unavailable\n${activity.reason || 'The school database could not be read.'}`;
   const latest = activity.tests?.[0];
-  const termLine = `Current term: ${fmtAcademicTerm(activity.currentTerm, activity.academicYear)}`;
-  if (!latest) return `${schoolName}\n${termLine}\n${Number(activity.testCount || 0)} tests · ${Number(activity.activeTestCount || 0)} active\nNo tests for this term yet.`;
-  return `${schoolName}\n${termLine}\n${Number(activity.testCount || 0)} tests · ${Number(activity.activeTestCount || 0)} active\nLatest: ${latest.title || 'Untitled test'}\n${latest.learning_area || 'Learning area not set'} · Grade ${latest.grade || '—'}\nTest updated ${fmtActivityDate(latest.updated_at)}\n${Number(latest.result_count || 0)} results · last result ${fmtActivityDate(latest.last_result_at)}`;
+  const termLine = `Current term · ${fmtAcademicTerm(activity.currentTerm, activity.academicYear)}`;
+  if (!latest) return `${schoolName}\n${termLine}\nNo current-term exam yet.`;
+  const examType = latest.test_type
+    ? String(latest.test_type).replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, letter => letter.toUpperCase())
+    : 'Not specified';
+  return `${schoolName}\n${termLine}\nExam · ${latest.title || 'Untitled exam'}\nUpdated · ${fmtActivityDate(latest.updated_at)}\nExam type · ${examType}`;
 }
 
 function showAssessmentActivityTooltip(button) {
