@@ -94,6 +94,7 @@ let selectedInstanceName = INSTANCES[0]?.name || '';
 let pendingConfirm = null;
 let liveMode = false;
 let runtimeGeneratedAt = null;
+let runtimeFetchError = '';
 let RUNTIME_METRICS = null;
 function toast(message) {
   const el = $('toast');
@@ -154,6 +155,19 @@ async function loadLeadsFromApi() {
     }
   } catch (_) {}
   return false;
+}
+
+async function loadAuditLogsFromApi() {
+  if (window.consoleUserRole !== 'super_admin') return;
+  try {
+    const response = await fetch('/api/audit-logs?limit=200', { credentials: 'same-origin' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok || !Array.isArray(data.logs)) return;
+    AUDIT_LOGS = data.logs;
+    renderAuditLog();
+  } catch (_) {
+    // Audit history remains available from /api/runtime when this endpoint is unavailable.
+  }
 }
 
 async function createLeadApi(lead) {
@@ -600,9 +614,19 @@ function prepareProvisionDefaults(appKey = 'school') {
 }
 
 async function fetchRuntimeData() {
-  const response = await fetch('/api/runtime', { credentials: 'same-origin' });
-  if (!response.ok) throw new Error(`runtime http ${response.status}`);
-  return response.json();
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch('/api/runtime', { credentials: 'same-origin', signal: controller.signal });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error(data.error || `Runtime request failed (HTTP ${response.status}).`);
+    return data;
+  } catch (error) {
+    if (error.name === 'AbortError') throw new Error('Runtime request timed out while contacting the host.');
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 async function refreshFromRuntime() {
@@ -623,10 +647,12 @@ async function refreshFromRuntime() {
     if (Array.isArray(runtime?.deployments)) DEPLOYMENTS = runtime.deployments;
     if (Array.isArray(runtime?.auditLogs)) AUDIT_LOGS = runtime.auditLogs;
     liveMode = runtime?.mode === 'live';
-  } catch (_) {
+    runtimeFetchError = '';
+  } catch (error) {
     RUNTIME_METRICS = null;
     runtimeGeneratedAt = null;
     liveMode = false;
+    runtimeFetchError = error.message || 'Runtime request failed.';
   }
 }
 
@@ -740,7 +766,7 @@ function renderRuntimeStamp(label = liveMode ? 'Live' : 'Fallback') {
   el.textContent = time ? `${status} · ${time} EAT` : status;
   el.title = hasLiveTimestamp
     ? `Runtime data generated ${new Intl.DateTimeFormat('en-KE', { timeZone: 'Africa/Nairobi', dateStyle: 'medium', timeStyle: 'medium' }).format(generatedAt)}`
-    : 'The runtime API has not returned a current health snapshot.';
+    : runtimeFetchError || 'The runtime API has not returned a current health snapshot.';
   el.classList.toggle('is-fallback', !hasLiveTimestamp || label === 'Fallback' || label === 'Retrying');
 }
 
@@ -2910,6 +2936,7 @@ window.addEventListener('hashchange', () => {
 });
 
 window.addEventListener('console:authenticated', () => {
+  loadAuditLogsFromApi();
   if (sectionFromHash() === 'billing') loadBillingData();
   if (sectionFromHash() === 'controls' && window.consoleUserRole === 'super_admin') loadCommunicationsSettings();
   if (sectionFromHash() === 'users' && window.consoleUserRole === 'super_admin') loadUsersData();
@@ -3964,7 +3991,7 @@ async function init() {
   bindDeployEvents();
   initSidebarToggle();
   showSection(sectionFromHash(), { skipHashUpdate: true });
-  await loadLeadsFromApi();
+  void loadLeadsFromApi().then(() => renderLeadsList());
   await refreshFromRuntime();
   renderEverything();
   renderLogs();
