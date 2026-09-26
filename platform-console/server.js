@@ -1357,7 +1357,7 @@ async function collectRuntime() {
   return { instances, metrics };
 }
 
-app.get('/api/runtime', requireAuth, async (_req, res) => {
+app.get('/api/runtime', requireAuth, async (req, res) => {
   try {
     const runtime = await collectRuntime();
     res.json({
