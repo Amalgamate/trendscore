@@ -763,6 +763,40 @@ tbody tr:hover td{background:#f8fbff}
 .assessment-activity-empty{padding:18px;border:1px dashed var(--border);border-radius:8px;color:var(--muted);font-size:13px;text-align:center}
 @media(max-width:680px){.assessment-activity-updated{width:100%;margin-left:0}.assessment-test-stats{display:grid;gap:4px}.assessment-activity-modal{max-width:none}}
 
+/* Per-instance management drawer */
+.instance-manage-button{display:inline-grid;place-items:center;flex:none;width:32px;height:32px;padding:0;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#334155;cursor:pointer;transition:background .15s,border-color .15s,color .15s}
+.instance-manage-button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.instance-manage-button:hover,.instance-manage-button:focus-visible{border-color:#818cf8;background:#eef2ff;color:#3730a3;outline:none}
+.ri-actions .instance-manage-button{display:inline-flex;width:auto;min-height:32px;align-items:center;gap:7px;padding:0 10px;font-size:12px;font-weight:700}
+.instance-drawer-overlay{position:fixed;inset:0;z-index:90;display:flex;justify-content:flex-end;background:rgba(15,23,42,.38);opacity:0;visibility:hidden;transition:opacity .18s,visibility .18s}
+.instance-drawer-overlay.open{opacity:1;visibility:visible}
+.instance-drawer{display:flex;width:min(500px,100vw);height:100%;flex-direction:column;background:#fff;box-shadow:-16px 0 48px rgba(15,23,42,.2);transform:translateX(20px);transition:transform .2s ease}
+.instance-drawer-overlay.open .instance-drawer{transform:translateX(0)}
+.instance-drawer-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:22px 24px 18px;border-bottom:1px solid var(--border)}
+.instance-drawer-header h2{margin:4px 0;color:var(--ink);font-size:20px;line-height:1.25}
+.instance-drawer-domain{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+.instance-drawer-close{display:grid;place-items:center;flex:none;width:34px;height:34px;border:0;border-radius:8px;background:transparent;color:#64748b;font-size:25px;cursor:pointer}
+.instance-drawer-close:hover{background:#f1f5f9;color:#0f172a}
+.instance-drawer-body{flex:1;overflow:auto;padding:4px 24px 24px}
+.instance-drawer-section{padding:18px 0;border-bottom:1px solid #e2e8f0}
+.instance-drawer-section h3{margin:0 0 12px;color:#0f172a;font-size:13px;font-weight:800}
+.instance-drawer-details{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.instance-drawer-detail{padding:10px 11px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc}
+.instance-drawer-detail span{display:block;margin-bottom:3px;color:#64748b;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.instance-drawer-detail strong{color:#1e293b;font-size:12px;overflow-wrap:anywhere}
+.instance-drawer-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.instance-drawer-actions .btn{justify-content:center}
+.instance-drawer-help{margin:-4px 0 12px;color:#64748b;font-size:12px;line-height:1.5}
+#instance-drawer-release-tag,#instance-drawer-release-custom{margin-bottom:8px}
+#instance-drawer-promote{width:100%;justify-content:center}
+.instance-drawer-release-status{margin-top:8px;color:#475569;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.instance-drawer-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.instance-drawer-section-heading h3{margin-bottom:0}
+.instance-drawer-log{max-height:280px;overflow:auto;margin:12px 0 0;padding:12px;border-radius:8px;background:#0f172a;color:#cbd5e1;font:11px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere}
+.instance-drawer-footer{display:flex;justify-content:flex-end;padding:14px 24px;border-top:1px solid var(--border);background:#fff}
+.general-settings-empty .panel-body{color:#64748b;font-size:13px;line-height:1.6}
+@media(max-width:520px){.instance-drawer-header{padding:18px}.instance-drawer-body{padding:0 18px 20px}.instance-drawer-footer{padding:12px 18px}.instance-drawer-details{grid-template-columns:1fr 1fr}}
+
 /* ── Responsive console refinements ─────────────────────────────────── */
 @media(max-width:900px){
   .shell,.shell.sidebar-collapsed{display:block;min-height:100vh}

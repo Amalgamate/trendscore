@@ -1550,8 +1550,7 @@ function renderRunningInstances() {
           <span class="ri-meta-val" style="font-family:var(--mono)">${esc(instance.version)}</span>
         </div>
         <div class="ri-actions">
-          <button class="tbl-btn primary" data-action="Restart" data-school="${esc(instance.name)}">Restart</button>
-          <button class="tbl-btn" data-action="Logs" data-school="${esc(instance.name)}">Logs</button>
+          <button class="instance-manage-button" type="button" data-open-instance-drawer="${esc(inferGroupKey(instance))}" aria-label="Manage ${esc(instance.displayName || instance.name)}" title="Manage ${esc(instance.displayName || instance.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg><span>Manage</span></button>
         </div>
       </div>
     </div>`;
@@ -1837,6 +1836,7 @@ function renderInstanceRow(instance, mode = 'compact') {
   const activityPill = instance.appType === 'school' ? `<button type="button" class="assessment-activity-pill ${activity?.state === 'unavailable' ? 'is-unavailable' : activityCount > 0 ? 'has-active' : 'has-none'}" data-assessment-activity-key="${esc(activityKey)}" data-assessment-activity-name="${esc(instance.displayName || instance.name)}" aria-label="View assessment activity for ${esc(instance.displayName || instance.name)}" aria-describedby="assessment-activity-tooltip" aria-haspopup="dialog" title="${esc(assessmentActivityTooltipText(activity, instance.displayName || instance.name))}">
           <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 13.5h12M3.5 11V7.5M7 11V4.5M10.5 11V6M14 11V2.5"/></svg><span>Activity</span><span class="assessment-activity-count">${activity?.state === 'unavailable' ? '—' : activity ? termTestCount : '…'}</span>
         </button>` : '';
+  const manageButton = `<button class="instance-manage-button" type="button" data-open-instance-drawer="${esc(inferGroupKey(instance))}" aria-label="Manage ${esc(instance.displayName || instance.name)}" title="Manage ${esc(instance.displayName || instance.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg></button>`;
   return `<tr>
     <td><div class="cell-school"><strong>${esc(instance.name)}</strong><div class="cell-domain">${esc(instance.domain)}</div></div></td>
     <td><span class="instance-category-chip">${esc(instance.typeLabel || 'Other / unclassified')}</span></td>
@@ -1851,11 +1851,7 @@ function renderInstanceRow(instance, mode = 'compact') {
     <td>
       <div class="action-row">
         ${activityPill}
-        <button class="tbl-btn primary" data-action="Restart" data-school="${esc(instance.name)}">Restart</button>
-        <button class="tbl-btn" data-action="Logs" data-school="${esc(instance.name)}">Logs</button>
-        <button class="tbl-btn" data-action="Redeploy" data-school="${esc(instance.name)}">Redeploy</button>
-        <button class="tbl-btn danger" data-action="Stop" data-school="${esc(instance.name)}">Stop</button>
-        <button class="tbl-btn danger" data-action="Drop" data-school="${esc(instance.name)}">Drop</button>
+        ${manageButton}
       </div>
     </td>
   </tr>`;
@@ -1941,6 +1937,155 @@ function groupInstances(instances) {
 
 const INSTANCE_CATEGORY_OPEN = { education: true };
 const INSTANCE_GROUP_OPEN = {};
+let activeInstanceDrawerKey = '';
+
+function getRuntimeInstanceForGroup(groupKey) {
+  const group = groupInstances(INSTANCES).find(item => item.key === groupKey);
+  if (!group) return null;
+  return group.items.find(item => Number(item.fe) > 0) || group.items[0] || null;
+}
+
+function renderInstanceDrawer(instance) {
+  if (!instance) return;
+  $('instance-drawer-title').textContent = instance.displayName || instance.name;
+  $('instance-drawer-domain').textContent = instance.domain || 'Domain not configured';
+  const details = [
+    ['Status', instance.status || 'Unknown'],
+    ['Application', instance.typeLabel || instance.appType || 'Unknown'],
+    ['Frontend', instance.fe ? `Port ${instance.fe}` : 'Not assigned'],
+    ['Backend', instance.be ? `Port ${instance.be}` : 'Not assigned'],
+    ['Version', instance.version || 'Unknown'],
+    ['Storage', `${fmt(instance.storage)} GB`],
+    ['Containers', `${Number(instance.runningContainers) || 0} of ${Number(instance.containers) || 0} running`],
+  ];
+  $('instance-drawer-details').innerHTML = details.map(([label, value]) => `<div class="instance-drawer-detail"><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join('');
+  document.querySelectorAll('[data-instance-drawer-action]').forEach(button => {
+    button.dataset.instanceKey = instance.key || instance.name;
+    if (button.dataset.instanceDrawerAction === 'activity') {
+      button.hidden = instance.appType !== 'school';
+      button.dataset.activityKey = instance.composeProject || instance.key || '';
+    }
+  });
+  $('instance-drawer-release-section').hidden = instance.appType !== 'school';
+}
+
+async function loadInstanceDrawerReleases(instance) {
+  const select = $('instance-drawer-release-tag');
+  if (!select) return;
+  select.innerHTML = '<option value="">Loading releases…</option>';
+  $('instance-drawer-release-custom').value = '';
+  $('instance-drawer-release-status').textContent = '';
+  try {
+    const [tagsResponse, targetsResponse] = await Promise.all([
+      fetch('/api/deploy/releases?segment=school', { credentials: 'same-origin' }),
+      fetch('/api/deploy/targets', { credentials: 'same-origin' }),
+    ]);
+    const tagsData = await tagsResponse.json().catch(() => ({}));
+    const targetsData = await targetsResponse.json().catch(() => ({}));
+    if (!tagsResponse.ok) throw new Error(tagsData.error || 'Could not load available releases.');
+    if (targetsResponse.ok && Array.isArray(targetsData.targets)) DEPLOY_TARGETS = targetsData.targets.filter(target => target.selectable !== false);
+    fillDeployTagSelect(select, tagsData.tags);
+    if (!select.options.length) select.innerHTML = '<option value="">No releases available</option>';
+    const target = DEPLOY_TARGETS.find(item => item.composeProject === (instance.composeProject || instance.key));
+    if (!target) throw new Error('This school is not configured as a promotable release target.');
+  } catch (error) {
+    select.innerHTML = '<option value="">Release list unavailable</option>';
+    $('instance-drawer-release-status').textContent = error.message;
+  }
+}
+
+async function openInstanceDrawer(groupKey) {
+  const instance = getRuntimeInstanceForGroup(groupKey);
+  if (!instance) return;
+  activeInstanceDrawerKey = groupKey;
+  selectedInstanceName = instance.name;
+  renderInstanceDrawer(instance);
+  $('instance-drawer-log-section').hidden = true;
+  $('instance-drawer-log').textContent = 'Select View logs to fetch recent output.';
+  $('instance-drawer-overlay').classList.add('open');
+  $('instance-drawer-overlay').setAttribute('aria-hidden', 'false');
+  $('instance-drawer-close')?.focus();
+  if (instance.appType === 'school') await loadInstanceDrawerReleases(instance);
+}
+
+function closeInstanceDrawer() {
+  $('instance-drawer-overlay')?.classList.remove('open');
+  $('instance-drawer-overlay')?.setAttribute('aria-hidden', 'true');
+  activeInstanceDrawerKey = '';
+}
+
+async function handleInstanceDrawerAction(action, instanceKey) {
+  const instance = getRuntimeInstanceForGroup(activeInstanceDrawerKey);
+  if (!instance) return;
+  selectedInstanceName = instance.name;
+  if (action === 'activity') {
+    openAssessmentActivity(instance.composeProject || instance.key || '', instance.displayName || instance.name);
+    return;
+  }
+  if (action === 'logs') {
+    $('instance-drawer-log-section').hidden = false;
+    $('instance-drawer-log').textContent = 'Fetching recent logs…';
+    try {
+      const response = await fetch(`/api/instances/${encodeURIComponent(instanceKey || instance.key || instance.name)}/logs`, { credentials: 'same-origin' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Could not fetch logs.');
+      $('instance-drawer-log').textContent = String(data.logs || 'No recent log output.').split(/\r?\n/).slice(-120).join('\n');
+    } catch (error) {
+      $('instance-drawer-log').textContent = error.message;
+    }
+    return;
+  }
+  const labels = { start: 'Start', restart: 'Restart', stop: 'Stop', health: 'Health check' };
+  if (!labels[action]) return;
+  await handleControlButton({ dataset: { ctrl: action, label: labels[action] } });
+}
+
+function promoteFromInstanceDrawer() {
+  const instance = getRuntimeInstanceForGroup(activeInstanceDrawerKey);
+  if (!instance || instance.appType !== 'school') return;
+  const target = DEPLOY_TARGETS.find(item => item.composeProject === (instance.composeProject || instance.key));
+  const imageTag = $('instance-drawer-release-custom').value.trim() || $('instance-drawer-release-tag').value.trim();
+  if (!target) {
+    $('instance-drawer-release-status').textContent = 'This school is not configured as a promotable release target.';
+    return;
+  }
+  if (!imageTag) {
+    $('instance-drawer-release-status').textContent = 'Choose a release image tag first.';
+    return;
+  }
+  const isDemo = target.tier === 'demo';
+  openConfirm({
+    title: 'Promote release to this school',
+    body: `Deploy ${imageTag} to ${target.label}? The deployment runs backup, migration, restart, and health checks.`,
+    confirmLabel: 'Promote release',
+    onConfirm: async () => {
+      const status = $('instance-drawer-release-status');
+      const button = $('instance-drawer-promote');
+      button.disabled = true;
+      status.textContent = `Promoting ${imageTag} to ${target.label}…`;
+      try {
+        const response = await fetch('/api/deploy/promote', {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageTag, allSchools: false, includeDemo: isDemo, schoolIds: isDemo ? [] : [target.id] }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Release promotion failed.');
+        const details = (data.results || []).map(result => `${result.target}: ${result.ok ? 'complete' : 'failed'}${result.durationSec ? ` (${result.durationSec}s)` : ''}`).join(' · ');
+        status.textContent = `Promotion complete. ${details}`;
+        await refreshFromRuntime();
+        renderEverything();
+        const updatedInstance = getRuntimeInstanceForGroup(activeInstanceDrawerKey);
+        if (updatedInstance) renderInstanceDrawer(updatedInstance);
+        toast(`Promoted ${imageTag} to ${target.label}.`);
+      } catch (error) {
+        status.textContent = error.message;
+        toast(error.message);
+      } finally {
+        button.disabled = false;
+      }
+    },
+  });
+}
 
 function categoryForAppType(appType) {
   const metadata = INSTANCE_TYPE_METADATA.find(type => type.id === appType) || INSTANCE_TYPE_METADATA.find(type => type.id === 'other');
@@ -1982,6 +2127,7 @@ function renderInstances() {
     const category = categoryForAppType(group.appType);
     const categoryOpen = INSTANCE_CATEGORY_OPEN[category.key] === true;
     const groupOpen = INSTANCE_GROUP_OPEN[group.key] === true;
+    const manageButton = `<button class="instance-manage-button" type="button" data-open-instance-drawer="${esc(group.key)}" aria-label="Manage ${esc(group.name)}" title="Manage ${esc(group.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg></button>`;
     return `<tr class="group-head category-child" data-category-owner="${esc(category.key)}" data-group="${esc(group.key)}" style="display:${categoryOpen ? '' : 'none'};background:#f6f8ff;cursor:pointer">
       <td colspan="8">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
@@ -1992,6 +2138,7 @@ function renderInstances() {
             <span style="margin-left:12px;font-family:var(--mono);font-size:12px;color:var(--muted)">FE ${esc(feLabel)}</span>${ipLink}
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
+            ${manageButton}
             <span class="group-chevron" style="font-size:16px;line-height:1">${groupOpen ? '▾' : '▸'}</span>
           </div>
         </div>
@@ -2509,8 +2656,8 @@ const SECTION_LABELS = {
   overview: 'Overview',
   instances: 'Instances',
   storage: 'Storage',
-  deployments: 'Promote Release',
-  controls: 'Controls',
+  deployments: 'Releases',
+  controls: 'General Settings',
   billing: 'Billing & Invoices',
   communications: 'Communications Settings',
   logs: 'Audit Log',
@@ -2698,12 +2845,20 @@ async function runControl(action, label, options = {}) {
   const result = await callControlApi(mappedAction, options.global ? '' : instance.key || instance.name);
   if (!result.ok) {
     renderLogs([{ type: 'error', text: result.error }]);
+    if (activeInstanceDrawerKey) {
+      $('instance-drawer-log-section').hidden = false;
+      $('instance-drawer-log').textContent = result.error;
+    }
     toast(result.error);
     return;
   }
 
   await refreshFromRuntime();
   renderEverything();
+  if (activeInstanceDrawerKey) {
+    const drawerInstance = getRuntimeInstanceForGroup(activeInstanceDrawerKey);
+    if (drawerInstance) renderInstanceDrawer(drawerInstance);
+  }
   toast(`${label} completed for ${target}.`);
 }
 
@@ -2772,6 +2927,26 @@ function exportLogsCsv() {
 // Event wiring
 document.body.addEventListener('click', event => {
   if (!event.target.closest('#bc-name, #bc-customer-suggestions')) hideBillingCustomerSuggestions();
+  if (event.target.closest('#instance-drawer-close, #instance-drawer-close-footer') || event.target.id === 'instance-drawer-overlay') {
+    closeInstanceDrawer();
+    return;
+  }
+  const drawerOpenButton = event.target.closest('[data-open-instance-drawer]');
+  if (drawerOpenButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    void openInstanceDrawer(drawerOpenButton.dataset.openInstanceDrawer);
+    return;
+  }
+  const drawerActionButton = event.target.closest('[data-instance-drawer-action]');
+  if (drawerActionButton) {
+    void handleInstanceDrawerAction(drawerActionButton.dataset.instanceDrawerAction, drawerActionButton.dataset.instanceKey);
+    return;
+  }
+  if (event.target.closest('#instance-drawer-promote')) {
+    promoteFromInstanceDrawer();
+    return;
+  }
   const activityButton = event.target.closest('[data-assessment-activity-key]');
   if (activityButton) {
     openAssessmentActivity(activityButton.dataset.assessmentActivityKey, activityButton.dataset.assessmentActivityName || 'School');
@@ -3207,6 +3382,10 @@ document.body.addEventListener('click', event => {
   }
 });
 
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && $('instance-drawer-overlay')?.classList.contains('open')) closeInstanceDrawer();
+});
+
 document.body.addEventListener('pointerover', event => {
   const button = event.target.closest('[data-assessment-activity-key]');
   if (button) showAssessmentActivityTooltip(button);
@@ -3225,21 +3404,6 @@ document.body.addEventListener('focusout', event => {
 });
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && $('assessment-activity-overlay')?.classList.contains('open')) closeAssessmentActivity();
-});
-
-document.body.addEventListener('change', event => {
-  const toggle = event.target.closest('input[data-module]');
-  if (!toggle) return;
-  const module = PLATFORM_MODULES.find(item => item.id === toggle.dataset.module);
-  if (!module) return;
-  module.enabled = toggle.checked;
-  addAudit({
-    action: toggle.checked ? 'Module Enabled' : 'Module Disabled',
-    instance: selectedInstance().name,
-    details: `${module.name} toggled in demo mode`,
-    status: 'Success',
-  });
-  toast(`${module.name} ${toggle.checked ? 'enabled' : 'disabled'} for ${selectedInstance().name}.`);
 });
 
 function bindModalEvents() {
@@ -3452,8 +3616,6 @@ function renderEverything() {
   renderStorageSection();
   renderSpaceUsage();
   renderAuditLog();
-  renderControlInstances();
-  renderModuleToggles();
   if(typeof renderPipeline === 'function') renderPipeline();
   if(typeof renderLeadsList === 'function') renderLeadsList();
 }

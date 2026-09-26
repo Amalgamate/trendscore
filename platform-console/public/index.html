@@ -99,13 +99,10 @@
       <span class="nav-icon">💾</span> Storage
     </a>
     <a class="nav-item" data-section="deployments" href="#">
-      <span class="nav-icon">🚀</span> Promote Release
+      <span class="nav-icon">🚀</span> Releases
     </a>
 
     <div class="nav-section-label">Platform</div>
-    <a class="nav-item" data-section="controls" href="#">
-      <span class="nav-icon">⚙️</span> Controls
-    </a>
     <a class="nav-item" data-section="billing" href="#">
       <span class="nav-icon">💳</span> Billing &amp; Invoices
     </a>
@@ -114,6 +111,11 @@
     </a>
     <a class="nav-item" data-section="logs" href="#">
       <span class="nav-icon">📋</span> Audit Log
+    </a>
+
+    <div class="nav-section-label">Administration</div>
+    <a class="nav-item" data-section="controls" href="#" title="General Settings">
+      <span class="nav-icon">⚙️</span> General Settings
     </a>
 
     <div class="sb-footer">
@@ -313,7 +315,7 @@
         <div class="page-header">
           <div>
             <div class="page-eyebrow">Release operations</div>
-            <div class="page-title">Promote release</div>
+            <div class="page-title">Releases</div>
             <div class="page-sub">School apps (frontend + backend) and the admin console deploy separately — same tag family, different targets</div>
           </div>
         </div>
@@ -409,114 +411,21 @@
         </div>
       </div>
 
-      <!-- ── CONTROLS section ── -->
+      <!-- ── GENERAL SETTINGS section ── -->
       <div id="section-controls" class="section-hidden">
         <div class="page-header">
           <div>
-            <div class="page-title">Instance Controls</div>
-            <div class="page-sub">Select an instance and run audited operations</div>
+            <div class="page-title">General Settings</div>
+            <div class="page-sub">Platform-wide configuration and defaults</div>
           </div>
         </div>
 
-        <div class="panel" style="margin-bottom:14px">
-          <div class="panel-header">
-            <div class="panel-title">Select Instance</div>
-            <div class="ctrl-instance-tabs" id="ctrl-instance-tabs"></div>
-          </div>
-          <div class="ctrl-instance-info" id="ctrl-instance-info"></div>
-        </div>
-
-        <div class="controls-layout">
-          <div class="panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Quick Actions</div>
-                <div class="panel-sub">Targeted at selected instance</div>
-              </div>
-            </div>
-            <div class="ctrl-grid">
-              <button class="ctrl-btn primary" type="button" data-ctrl="start" data-label="Start Instance"><span class="ctrl-icon">▶️</span>Start Instance</button>
-              <button class="ctrl-btn warn-ctrl" type="button" data-ctrl="stop" data-label="Stop Instance"><span class="ctrl-icon">⏹️</span>Stop Instance</button>
-              <button class="ctrl-btn" type="button" data-ctrl="restart" data-label="Restart Containers"><span class="ctrl-icon">🔄</span>Restart Containers</button>
-              <button class="ctrl-btn teal-ctrl" type="button" data-ctrl="redeploy" data-label="Promote Release"><span class="ctrl-icon">🚀</span>Promote Release</button>
-              <button class="ctrl-btn" type="button" data-ctrl="health" data-label="Health Check"><span class="ctrl-icon">❤️</span>Health Check</button>
-              <button class="ctrl-btn" type="button" data-ctrl="backup" data-label="Create Backup"><span class="ctrl-icon">💾</span>Create Backup</button>
-              <button class="ctrl-btn" type="button" data-ctrl="restore" data-label="Restore Backup"><span class="ctrl-icon">📦</span>Restore Backup…</button>
-              <button class="ctrl-btn danger-ctrl" type="button" data-ctrl="reset" data-label="Factory Reset"><span class="ctrl-icon">⚠️</span>Factory Reset…</button>
-            </div>
-          </div>
-          <div class="panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Global Actions</div>
-                <div class="panel-sub">Applied to all instances</div>
-              </div>
-            </div>
-            <div class="ctrl-grid" style="grid-template-columns:1fr">
-              <button class="ctrl-btn primary" type="button" data-ctrl="start-all" data-label="Start All Instances"><span class="ctrl-icon">▶️</span>Start All Instances</button>
-              <button class="ctrl-btn warn-ctrl" type="button" data-ctrl="stop-all" data-label="Stop All Instances"><span class="ctrl-icon">⏹️</span>Stop All Instances</button>
-              <button class="ctrl-btn teal-ctrl" type="button" data-ctrl="redeploy-all" data-label="Promote All Schools"><span class="ctrl-icon">🚀</span>Promote All Schools</button>
-              <button class="ctrl-btn" type="button" data-ctrl="backup-all" data-label="Backup All Instances"><span class="ctrl-icon">💾</span>Backup All Instances</button>
-              <button class="ctrl-btn" type="button" data-ctrl="health-all" data-label="Global Health Check"><span class="ctrl-icon">❤️</span>Global Health Check</button>
-            </div>
-          </div>
-          <div class="panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Module Toggles</div>
-                <div class="panel-sub">Enable / disable features per instance</div>
-              </div>
-            </div>
-            <div class="module-toggle-list" id="module-toggle-list"></div>
-          </div>
-          <div class="panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Live Logs</div>
-                <div class="panel-sub">Streamed container output</div>
-              </div>
-              <div style="display:flex;gap:6px">
-                <button class="btn" type="button" id="btn-clear-logs">Clear</button>
-                <button class="btn teal" type="button" data-ctrl="logs" data-label="Fetch Logs">Fetch Logs</button>
-              </div>
-            </div>
-            <div class="log-viewer" id="log-viewer"><span class="log-placeholder">Select an instance and click Fetch Logs →</span></div>
-          </div>
-        </div>
-
-        <div class="panel danger-zone" style="margin-top:14px">
-          <div class="panel-header">
-            <div>
-              <div class="panel-title" style="color:var(--red)">⚠️ Danger Zone</div>
-              <div class="panel-sub">These actions are irreversible. Requires confirmation.</div>
-            </div>
-          </div>
-          <div class="danger-grid">
-            <div class="danger-item">
-              <div>
-                <div class="danger-item-title">Purge Instance Data</div>
-                <div class="danger-item-sub">Delete all database records and uploaded files for the selected instance. Containers remain.</div>
-              </div>
-              <button class="btn danger-btn" type="button" data-ctrl="purge" data-label="Purge Instance Data">Purge Data…</button>
-            </div>
-            <div class="danger-item">
-              <div>
-                <div class="danger-item-title">Remove Instance</div>
-                <div class="danger-item-sub">Stop containers, delete volumes, and remove the instance from the platform entirely.</div>
-              </div>
-              <button class="btn danger-btn" type="button" data-ctrl="remove" data-label="Remove Instance">Remove…</button>
-            </div>
-            <div class="danger-item">
-              <div>
-                <div class="danger-item-title">Factory Reset Instance</div>
-                <div class="danger-item-sub">Wipe data and reconfigure from scratch. Super admin credentials are reset.</div>
-              </div>
-              <button class="btn danger-btn" type="button" data-ctrl="reset" data-label="Factory Reset Instance">Reset…</button>
-            </div>
-          </div>
+        <div class="panel general-settings-empty">
+          <div class="panel-header"><div><div class="panel-title">Platform defaults</div><div class="panel-sub">This workspace is reserved for settings that apply across all instances.</div></div></div>
+          <div class="panel-body">School-specific actions, logs, assessment activity, and release promotion are available from the management drawer on each instance.</div>
         </div>
       </div>
-      <!-- ── END CONTROLS ── -->
+      <!-- ── END GENERAL SETTINGS ── -->
 
       <!-- ── BILLING section ── -->
       <div id="section-billing" class="section-hidden">
@@ -1128,6 +1037,47 @@
   </section>
 </div>
 <div class="assessment-activity-tooltip" id="assessment-activity-tooltip" role="tooltip" aria-hidden="true"></div>
+
+<!-- INSTANCE MANAGEMENT DRAWER -->
+<div class="instance-drawer-overlay" id="instance-drawer-overlay" aria-hidden="true">
+  <aside class="instance-drawer" role="dialog" aria-modal="true" aria-labelledby="instance-drawer-title">
+    <header class="instance-drawer-header">
+      <div><div class="page-eyebrow">Instance management</div><h2 id="instance-drawer-title">School</h2><div id="instance-drawer-domain" class="instance-drawer-domain"></div></div>
+      <button class="instance-drawer-close" id="instance-drawer-close" type="button" aria-label="Close instance controls">×</button>
+    </header>
+    <div class="instance-drawer-body">
+      <section class="instance-drawer-section">
+        <h3>Instance details</h3>
+        <div class="instance-drawer-details" id="instance-drawer-details"></div>
+      </section>
+      <section class="instance-drawer-section">
+        <h3>Operations</h3>
+        <div class="instance-drawer-actions">
+          <button class="btn primary" type="button" data-instance-drawer-action="start">Start</button>
+          <button class="btn" type="button" data-instance-drawer-action="restart">Restart</button>
+          <button class="btn danger-btn" type="button" data-instance-drawer-action="stop">Stop</button>
+          <button class="btn" type="button" data-instance-drawer-action="health">Health check</button>
+          <button class="btn" type="button" data-instance-drawer-action="logs">View logs</button>
+          <button class="btn" type="button" data-instance-drawer-action="activity" hidden>Assessment activity</button>
+        </div>
+      </section>
+      <section class="instance-drawer-section" id="instance-drawer-release-section">
+        <h3>Promote release to this school</h3>
+        <p class="instance-drawer-help">Promote a school application release to this school only. This runs the deployment backup, migration, restart, and health checks.</p>
+        <label class="form-label" for="instance-drawer-release-tag">Release image tag</label>
+        <select class="form-select" id="instance-drawer-release-tag"><option value="">Loading releases…</option></select>
+        <input class="form-input" id="instance-drawer-release-custom" placeholder="Or enter an image tag" autocomplete="off" />
+        <button class="btn teal" id="instance-drawer-promote" type="button">Promote to this school</button>
+        <div class="instance-drawer-release-status" id="instance-drawer-release-status" aria-live="polite"></div>
+      </section>
+      <section class="instance-drawer-section instance-drawer-log-section" id="instance-drawer-log-section" hidden>
+        <div class="instance-drawer-section-heading"><h3>Recent logs</h3><button class="btn" type="button" data-instance-drawer-action="logs">Refresh</button></div>
+        <pre class="instance-drawer-log" id="instance-drawer-log">Select View logs to fetch recent output.</pre>
+      </section>
+    </div>
+    <footer class="instance-drawer-footer"><button class="btn" id="instance-drawer-close-footer" type="button">Close</button></footer>
+  </aside>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 <script src="./app.js"></script>
