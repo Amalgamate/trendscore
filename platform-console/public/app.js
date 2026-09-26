@@ -1393,26 +1393,45 @@ $('communications-email-test')?.addEventListener('click', validateCommunications
 
 let CONSOLE_USERS = [];
 let USERS_LOADING = false;
+let USERS_ERROR = '';
 
 async function loadUsersData() {
   const tbody = $('users-table');
   if (!tbody || window.consoleUserRole !== 'super_admin') return;
   USERS_LOADING = true;
-  tbody.innerHTML = '<tr><td colspan="6">Loading users…</td></tr>';
+  USERS_ERROR = '';
+  renderUsersTable();
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 10000);
   try {
-    const response = await fetch('/api/users', { credentials: 'same-origin' });
+    const response = await fetch('/api/users', { credentials: 'same-origin', signal: controller.signal });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.ok) throw new Error(data.error || 'Could not load users.');
+    if (!response.ok || !data.ok) {
+      const message = response.status === 403
+        ? 'Your account is not permitted to manage console users.'
+        : response.status === 401
+          ? 'Your session has expired. Sign in again to load console users.'
+          : data.error || `Could not load users (HTTP ${response.status}).`;
+      throw new Error(message);
+    }
     CONSOLE_USERS = data.users || [];
+  } catch (error) {
+    USERS_ERROR = error.name === 'AbortError'
+      ? 'Loading users timed out. Check the console connection and retry.'
+      : error.message || 'Could not load users.';
+    toast(USERS_ERROR);
+  } finally {
+    window.clearTimeout(timeout);
+    USERS_LOADING = false;
     renderUsersTable();
-  } catch (error) { tbody.innerHTML = `<tr><td colspan="6">${esc(error.message || 'Could not load users.')}</td></tr>`; }
-  finally { USERS_LOADING = false; }
+  }
 }
 
 function renderUsersTable() {
   const tbody = $('users-table');
   if (!tbody) return;
   if (USERS_LOADING) { tbody.innerHTML = '<tr><td colspan="6">Loading users…</td></tr>'; return; }
+  if (USERS_ERROR) { tbody.innerHTML = `<tr><td colspan="6">${esc(USERS_ERROR)} <button class="btn sm" id="users-retry" type="button">Retry</button></td></tr>`; return; }
   if (!CONSOLE_USERS.length) { tbody.innerHTML = '<tr><td colspan="6">No users have been added yet.</td></tr>'; return; }
   tbody.innerHTML = CONSOLE_USERS.map(user => `<tr>
     <td>${esc(user.name || '—')}</td><td>${esc(user.email)}</td>
@@ -1487,6 +1506,7 @@ $('user-password-close')?.addEventListener('click', () => $('user-password-overl
 $('user-password-cancel')?.addEventListener('click', () => $('user-password-overlay').classList.remove('open'));
 $('user-password-save')?.addEventListener('click', resetUserPassword);
 $('users-table')?.addEventListener('click', event => {
+  if (event.target.closest('#users-retry')) { loadUsersData(); return; }
   const edit = event.target.closest('[data-user-edit]');
   const reset = event.target.closest('[data-user-password]');
   if (edit) openUserModal(CONSOLE_USERS.find(user => user.id === edit.dataset.userEdit));
@@ -2781,6 +2801,18 @@ function sectionFromHash() {
   return SECTIONS.includes(raw) ? raw : 'overview';
 }
 
+function positionCollapsedNavFlyout(toggle, submenu) {
+  if (!toggle || !submenu) return;
+  const shell = $('app-shell');
+  if (!shell?.classList.contains('sidebar-collapsed') || window.innerWidth <= 900 || submenu.hidden) {
+    submenu.style.top = '';
+    return;
+  }
+  const preferredTop = toggle.getBoundingClientRect().top;
+  const maxTop = window.innerHeight - submenu.getBoundingClientRect().height - 8;
+  submenu.style.top = `${Math.max(8, Math.min(preferredTop, maxTop))}px`;
+}
+
 function showSection(id, options = {}) {
   const targetSection = SECTIONS.includes(id) ? id : 'overview';
   const roleRestrictedSections = ['storage', 'deployments', 'logs', 'users'];
@@ -2805,6 +2837,7 @@ function showSection(id, options = {}) {
       toggle.classList.add('active');
       toggle.setAttribute('aria-expanded', 'true');
       if (submenu) submenu.hidden = false;
+      positionCollapsedNavFlyout(toggle, submenu);
     } else if (toggle) toggle.classList.remove('active');
   });
   if ($('breadcrumb-active')) $('breadcrumb-active').textContent = SECTION_LABELS[targetSection] || targetSection;
@@ -2832,6 +2865,11 @@ document.querySelectorAll('.nav-item').forEach(el => {
 });
 
 document.querySelectorAll('.nav-group-toggle').forEach(toggle => {
+  const label = toggle.querySelector('.nav-icon + span')?.textContent.trim();
+  if (label) {
+    toggle.title = `${label} menu`;
+    toggle.setAttribute('aria-label', `${label} menu`);
+  }
   toggle.addEventListener('click', () => {
     const group = toggle.closest('.nav-group');
     const submenu = group?.querySelector('.nav-submenu');
@@ -2844,6 +2882,13 @@ document.querySelectorAll('.nav-group-toggle').forEach(toggle => {
     });
     toggle.setAttribute('aria-expanded', String(willOpen));
     if (submenu) submenu.hidden = !willOpen;
+    if (willOpen) positionCollapsedNavFlyout(toggle, submenu);
+  });
+});
+
+window.addEventListener('resize', () => {
+  document.querySelectorAll('.nav-group-toggle[aria-expanded="true"]').forEach(toggle => {
+    positionCollapsedNavFlyout(toggle, toggle.closest('.nav-group')?.querySelector('.nav-submenu'));
   });
 });
 
