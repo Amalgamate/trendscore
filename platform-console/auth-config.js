@@ -19,7 +19,7 @@ const USERS = [
     emailKey: 'CONSOLE_SUPER_ADMIN_EMAIL',
     passwordKey: 'CONSOLE_SUPER_ADMIN_PASSWORD',
     role: 'super_admin',
-    name: 'Super Admin',
+    name: 'System Administrator',
   }),
   optionalUser({
     emailKey: 'CONSOLE_PLATFORM_OWNER_EMAIL',
@@ -34,8 +34,8 @@ const JWT_EXPIRES_IN = process.env.CONSOLE_JWT_EXPIRES_IN || '8h';
 
 // Which roles can access which sections
 const ROLE_ACCESS = {
-  super_admin: ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'logs'],
-  platform_owner: ['overview', 'instances', 'storage', 'deployments', 'billing', 'logs'],
+  super_admin: ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'logs', 'leads', 'users'],
+  platform_owner: ['overview', 'instances', 'controls', 'billing', 'leads'],
 };
 
 module.exports = { USERS, JWT_SECRET, JWT_EXPIRES_IN, ROLE_ACCESS };

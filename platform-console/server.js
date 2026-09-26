@@ -11,6 +11,7 @@ const { Writable } = require('stream');
 const Docker = require('dockerode');
 const si = require('systeminformation');
 const { createBillingStore } = require('./billing-store');
+const { createUsersStore } = require('./users-store');
 const { quotePdfBuffer, invoicePdfBuffer, paymentReceiptPdfBuffer } = require('./billing-documents');
 
 const execFileAsync = promisify(execFile);
@@ -54,6 +55,32 @@ fs.mkdirSync(CONSOLE_DATA_DIR, { recursive: true });
 const LEADS_STORE_FILE = path.join(CONSOLE_DATA_DIR, 'leads.store.json');
 const AUDIT_STORE_FILE = path.join(CONSOLE_DATA_DIR, 'audit.store.json');
 const billingStore = createBillingStore(CONSOLE_DATA_DIR);
+const usersStore = createUsersStore(CONSOLE_DATA_DIR);
+const USER_ROLES = new Set(['super_admin', 'platform_owner']);
+const MIN_USER_PASSWORD_LENGTH = 12;
+const EMAIL_PATTERN = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
+function hashUserPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+  return `scrypt$${salt}$${crypto.scryptSync(String(password), salt, 64).toString('hex')}`;
+}
+function verifyUserPassword(password, encodedHash) {
+  const [algorithm, salt, expectedHex] = String(encodedHash || '').split('$');
+  if (algorithm !== 'scrypt' || !salt || !/^[a-f0-9]{128}$/i.test(expectedHex || '')) return false;
+  const expected = Buffer.from(expectedHex, 'hex');
+  const actual = crypto.scryptSync(String(password), salt, expected.length);
+  return crypto.timingSafeEqual(actual, expected);
+}
+const DUMMY_USER_PASSWORD_HASH = hashUserPassword('TrendSCORE-invalid-account-password-check');
+for (const configuredUser of USERS) {
+  if (!usersStore.getUserByEmail(configuredUser.email)) {
+    usersStore.createUser({
+      email: configuredUser.email,
+      name: configuredUser.name,
+      role: configuredUser.role,
+      active: true,
+      passwordHash: hashUserPassword(configuredUser.password),
+    });
+  }
+}
 const MAX_AUDIT_ENTRIES = 2000;
 const ASSESSMENT_ACTIVITY_CACHE_MS = 60 * 1000;
 let assessmentActivityCache = { fetchedAt: 0, activities: [] };
@@ -695,7 +722,7 @@ function isLikelyBackendPort(port) {
 
 if (process.env.NODE_ENV === 'production') {
   if (!JWT_SECRET) throw new Error('CONSOLE_JWT_SECRET is required in production.');
-  if (USERS.length === 0) throw new Error('At least one console user must be configured in production.');
+  if (usersStore.countActiveByRole('super_admin') === 0) throw new Error('At least one active System Administrator must exist in production.');
 }
 
 app.use(express.json());
@@ -709,7 +736,17 @@ function requireAuth(req, res, next) {
   const token = req.cookies?.[COOKIE_NAME];
   if (!token) return res.status(401).json({ error: 'Unauthenticated' });
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
+    const claims = jwt.verify(token, JWT_SECRET);
+    const user = claims.sub ? usersStore.getUser(claims.sub) : usersStore.getUserByEmail(claims.email);
+    if (!user || !user.active) {
+      res.clearCookie(COOKIE_NAME);
+      return res.status(401).json({ error: 'Account is inactive or no longer exists.' });
+    }
+    if (Number(claims.sessionVersion || 0) !== Number(user.sessionVersion || 0)) {
+      res.clearCookie(COOKIE_NAME);
+      return res.status(401).json({ error: 'Your password changed. Please sign in again.' });
+    }
+    req.user = { ...claims, sub: user.id, email: user.email, role: user.role, name: user.name };
     next();
   } catch {
     res.clearCookie(COOKIE_NAME);
@@ -738,14 +775,7 @@ const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
 // Fixed-length target so a lookup for an unknown email takes the same
 // branch (and roughly the same time) as a lookup for a known one.
-const DUMMY_PASSWORD_COMPARE_TARGET = 'trends-core-unknown-account-dummy-compare-target';
 const loginAttempts = new Map(); // normalized email -> { count, firstAttemptAt, lockedUntil }
-
-function timingSafeStringsEqual(a, b) {
-  const aHash = crypto.createHash('sha256').update(String(a)).digest();
-  const bHash = crypto.createHash('sha256').update(String(b)).digest();
-  return crypto.timingSafeEqual(aHash, bHash);
-}
 
 function isLoginLockedOut(normalizedEmail) {
   const state = loginAttempts.get(normalizedEmail);
@@ -770,7 +800,7 @@ function clearLoginAttempts(normalizedEmail) {
 }
 
 app.post('/api/login', (req, res) => {
-  if (!JWT_SECRET || USERS.length === 0) {
+  if (!JWT_SECRET || usersStore.listUsers().length === 0) {
     return res.status(503).json({ error: 'Console authentication is not configured.' });
   }
 
@@ -785,20 +815,20 @@ app.post('/api/login', (req, res) => {
     return res.status(429).json({ error: 'Too many failed attempts. Try again in a few minutes.' });
   }
 
-  const user = USERS.find(u => u.email.toLowerCase() === normalizedEmail);
-  // Always run the comparison, even for an unknown email, against a
-  // same-shape dummy target — avoids both the string-compare timing
-  // side-channel and an early-return timing tell for "account exists".
-  const passwordMatches = timingSafeStringsEqual(password, user ? user.password : DUMMY_PASSWORD_COMPARE_TARGET);
+  const user = usersStore.getUserByEmail(normalizedEmail);
+  // Always run the same scrypt comparison for unknown and inactive accounts
+  // so login responses do not reveal whether an email has a user record.
+  const passwordMatches = verifyUserPassword(password, user?.passwordHash || DUMMY_USER_PASSWORD_HASH);
 
-  if (!user || !passwordMatches) {
+  if (!user || !user.active || !passwordMatches) {
     recordFailedLogin(normalizedEmail);
     return res.status(401).json({ error: 'Invalid email or password.' });
   }
 
   clearLoginAttempts(normalizedEmail);
+  usersStore.recordLogin(user.id);
 
-  const payload = { email: user.email, role: user.role, name: user.name };
+  const payload = { sub: user.id, email: user.email, role: user.role, name: user.name, sessionVersion: Number(user.sessionVersion || 0) };
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
   const tokenClaims = jwt.decode(token);
   const sessionExpiresAt = Number(tokenClaims?.exp) * 1000;
@@ -829,6 +859,71 @@ app.get('/api/me', requireAuth, (req, res) => {
     access: ROLE_ACCESS[req.user.role] || [],
     sessionExpiresAt: Number.isFinite(Number(req.user.exp)) ? Number(req.user.exp) * 1000 : null,
   });
+});
+
+function publicUser(user) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    active: user.active,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+    lastLoginAt: user.lastLoginAt || null,
+  };
+}
+
+function assertActiveSystemAdministratorRemains(existing, next) {
+  const wasActiveAdmin = existing.role === 'super_admin' && existing.active;
+  const remainsActiveAdmin = next.role === 'super_admin' && next.active;
+  if (wasActiveAdmin && !remainsActiveAdmin && usersStore.countActiveByRole('super_admin') <= 1) {
+    throw new Error('At least one active System Administrator must remain. Promote or activate another account first.');
+  }
+}
+
+app.get('/api/users', requireAuth, requireRole('super_admin'), (_req, res) => {
+  res.json({ ok: true, users: usersStore.listUsers().map(publicUser) });
+});
+
+app.post('/api/users', requireAuth, requireRole('super_admin'), (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const name = String(req.body?.name || '').trim().slice(0, 160);
+  const role = String(req.body?.role || '');
+  const password = String(req.body?.password || '');
+  if (!EMAIL_PATTERN.test(email) || email.length > 254) return res.status(400).json({ ok: false, error: 'Enter a valid email address.' });
+  if (!USER_ROLES.has(role)) return res.status(400).json({ ok: false, error: 'Choose a valid role.' });
+  if (password.length < MIN_USER_PASSWORD_LENGTH) return res.status(400).json({ ok: false, error: `Password must be at least ${MIN_USER_PASSWORD_LENGTH} characters.` });
+  if (usersStore.getUserByEmail(email)) return res.status(409).json({ ok: false, error: 'An account with that email already exists.' });
+  const user = usersStore.createUser({ email, name, role, active: true, passwordHash: hashUserPassword(password) });
+  pushAudit('USER_CREATE', user.email, req.user.email, `Created ${role} account for ${user.email}`);
+  return res.status(201).json({ ok: true, user: publicUser(user) });
+});
+
+app.put('/api/users/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+  const existing = usersStore.getUser(req.params.id);
+  if (!existing) return res.status(404).json({ ok: false, error: 'User not found.' });
+  const next = {
+    name: req.body?.name !== undefined ? String(req.body.name || '').trim().slice(0, 160) : existing.name,
+    role: req.body?.role !== undefined ? String(req.body.role) : existing.role,
+    active: req.body?.active !== undefined ? Boolean(req.body.active) : existing.active,
+  };
+  if (!USER_ROLES.has(next.role)) return res.status(400).json({ ok: false, error: 'Choose a valid role.' });
+  try { assertActiveSystemAdministratorRemains(existing, next); }
+  catch (error) { return res.status(409).json({ ok: false, error: error.message }); }
+  const user = usersStore.updateUser(existing.id, next);
+  pushAudit('USER_UPDATE', user.email, req.user.email, `Updated ${user.email} (role=${user.role}, active=${user.active})`, user.active ? 'Success' : 'Warning');
+  return res.json({ ok: true, user: publicUser(user) });
+});
+
+app.post('/api/users/:id/password', requireAuth, requireRole('super_admin'), (req, res) => {
+  const existing = usersStore.getUser(req.params.id);
+  if (!existing) return res.status(404).json({ ok: false, error: 'User not found.' });
+  const password = String(req.body?.password || '');
+  if (password.length < MIN_USER_PASSWORD_LENGTH) return res.status(400).json({ ok: false, error: `Password must be at least ${MIN_USER_PASSWORD_LENGTH} characters.` });
+  usersStore.setPassword(existing.id, hashUserPassword(password));
+  pushAudit('USER_PASSWORD_RESET', existing.email, req.user.email, `Reset password for ${existing.email}`, 'Warning');
+  return res.json({ ok: true });
 });
 
 function humanizeInstanceName(raw) {
@@ -1269,8 +1364,8 @@ app.get('/api/runtime', requireAuth, async (_req, res) => {
       ok: true,
       ...runtime,
       appTypes: APP_TYPE_METADATA,
-      deployments: readDeployStore().slice(0, 50),
-      auditLogs: readAuditStore().slice(0, 200),
+      deployments: req.user.role === 'super_admin' ? readDeployStore().slice(0, 50) : [],
+      auditLogs: req.user.role === 'super_admin' ? readAuditStore().slice(0, 200) : [],
       mode: 'live',
       generatedAt: new Date().toISOString(),
     });
@@ -1431,7 +1526,7 @@ app.post('/api/instances/preflight', requireAuth, requireRole('super_admin'), as
   });
 });
 
-app.get('/api/instances/:key/logs', requireAuth, requireRole('super_admin', 'platform_owner'), async (req, res) => {
+app.get('/api/instances/:key/logs', requireAuth, requireRole('super_admin'), async (req, res) => {
   try {
     const { instances } = await collectRuntime();
     const target = instances.find(i => i.key === req.params.key || i.name === req.params.key);
@@ -1583,7 +1678,7 @@ app.post('/api/controls/:action', requireAuth, requireRole('super_admin'), async
 });
 
 // ── Audit log endpoint (now reads from file) ──────────────────────────────
-app.get('/api/audit-logs', requireAuth, (req, res) => {
+app.get('/api/audit-logs', requireAuth, requireRole('super_admin'), (req, res) => {
   const logs = readAuditStore();
   const limit = Math.min(Number(req.query.limit) || 200, MAX_AUDIT_ENTRIES);
   res.json({ ok: true, logs: logs.slice(0, limit), total: logs.length });

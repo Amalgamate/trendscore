@@ -61,7 +61,7 @@
   }
 
   function roleLabel(role) {
-    return role === 'super_admin' ? 'Super Admin' : 'Platform Owner';
+    return role === 'super_admin' ? 'System Administrator' : 'Platform Owner';
   }
 
   function formatDuration(ms) {
@@ -132,11 +132,13 @@
     sessionExpiresAt = null;
 
     // Restore all nav items on lock (clean slate for next login)
-    document.querySelectorAll('.nav-item').forEach(el => {
+    document.querySelectorAll('.nav-item,.nav-subitem').forEach(el => {
       el.style.display = '';
       el.style.opacity = '';
       el.style.pointerEvents = '';
+      el.hidden = false;
     });
+    document.querySelectorAll('.nav-group').forEach(group => { group.hidden = false; });
     document.querySelectorAll('[data-super-admin-only]').forEach(element => { element.hidden = false; });
 
     if (reason === 'expired') {
@@ -168,12 +170,12 @@
 
   // ── Role-based UI restrictions ───────────────────────────────────────────
   function applyRoleRestrictions(role, access) {
-    const allSections = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'communications', 'logs'];
+    const allSections = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'logs', 'leads', 'users'];
 
     allSections.forEach(section => {
-      const navItem = document.querySelector(`.nav-item[data-section="${section}"]`);
+      const navItem = document.querySelector(`.nav-item[data-section="${section}"], .nav-subitem[data-section="${section}"]`);
       const panel   = document.getElementById(`section-${section}`);
-      const allowed = !access || access.includes(section) || (section === 'communications' && role === 'super_admin');
+      const allowed = !access || access.includes(section);
 
       if (navItem) {
         if (!allowed) {
@@ -198,10 +200,13 @@
       element.hidden = role !== 'super_admin';
     });
 
-    const activeNav = document.querySelector('.nav-item.active');
-    if (activeNav && activeNav.style.display === 'none') {
-      if (typeof showSection === 'function') showSection('overview');
-    }
+    document.querySelectorAll('.nav-group').forEach(group => {
+      const hasVisibleChild = Array.from(group.querySelectorAll('.nav-subitem')).some(item => !item.hidden && item.style.display !== 'none');
+      group.hidden = !hasVisibleChild;
+    });
+
+    const currentSection = typeof sectionFromHash === 'function' ? sectionFromHash() : 'overview';
+    if (access && !access.includes(currentSection) && typeof showSection === 'function') showSection('overview');
   }
 
   // ── Role toggle buttons ──────────────────────────────────────────────────
@@ -244,8 +249,8 @@
 
       if (data.user.role !== selectedRole) {
         showError(
-          `This account is a ${data.user.role === 'super_admin' ? 'Super Admin' : 'Platform Owner'}, ` +
-          `not a ${selectedRole === 'super_admin' ? 'Super Admin' : 'Platform Owner'}.`
+          `This account is a ${data.user.role === 'super_admin' ? 'System Administrator' : 'Platform Owner'}, ` +
+          `not a ${selectedRole === 'super_admin' ? 'System Administrator' : 'Platform Owner'}.`
         );
         return;
       }
@@ -274,7 +279,7 @@
     // Populate session summary
     if (logoutUserDisplay) logoutUserDisplay.textContent = currentUser.email || '—';
     if (logoutRoleDisplay) {
-      logoutRoleDisplay.textContent = currentUser.role === 'super_admin' ? 'Super Admin' : 'Platform Owner';
+      logoutRoleDisplay.textContent = currentUser.role === 'super_admin' ? 'System Administrator' : 'Platform Owner';
     }
     if (logoutTimerDisplay && sessionExpiresAt) {
       const remaining = sessionExpiresAt - Date.now();

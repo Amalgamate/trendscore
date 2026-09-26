@@ -57,7 +57,7 @@
       <div style="margin-bottom:20px">
         <div class="lg-label" style="margin-bottom:8px">Signing in as</div>
         <div class="lg-roles">
-          <button class="lg-role-btn active" data-role="super_admin" type="button">Super admin</button>
+          <button class="lg-role-btn active" data-role="super_admin" type="button">System administrator</button>
           <button class="lg-role-btn" data-role="platform_owner" type="button">Platform owner</button>
         </div>
       </div>
@@ -85,38 +85,52 @@
       </div>
     </div>
 
-    <div class="nav-section-label">Operations</div>
+    <div class="nav-section-label">Workspace</div>
     <a class="nav-item active" data-section="overview" href="#">
       <span class="nav-icon">📊</span> Overview
     </a>
-    <a class="nav-item" data-section="leads" href="#">
-      <span class="nav-icon">👥</span> Leads &amp; CRM
-    </a>
-    <a class="nav-item" data-section="instances" href="#">
-      <span class="nav-icon">🏫</span> Instances
-    </a>
-    <a class="nav-item" data-section="storage" href="#">
-      <span class="nav-icon">💾</span> Storage
-    </a>
-    <a class="nav-item" data-section="deployments" href="#">
-      <span class="nav-icon">🚀</span> Releases
-    </a>
 
-    <div class="nav-section-label">Platform</div>
-    <a class="nav-item" data-section="billing" href="#">
-      <span class="nav-icon">💳</span> Billing &amp; Invoices
-    </a>
-    <a class="nav-item" data-section="communications" href="#">
-      <span class="nav-icon">✉️</span> Communications
-    </a>
-    <a class="nav-item" data-section="logs" href="#">
-      <span class="nav-icon">📋</span> Audit Log
-    </a>
+    <div class="nav-section-label">Modules</div>
+    <section class="nav-group" data-nav-group="crm">
+      <button class="nav-group-toggle" type="button" aria-expanded="false" aria-controls="nav-submenu-crm"><span class="nav-icon">👥</span><span>CRM</span><span class="nav-group-chevron">▸</span></button>
+      <div class="nav-submenu" id="nav-submenu-crm" hidden><a class="nav-subitem" data-section="leads" href="#">Leads &amp; CRM</a></div>
+    </section>
+    <section class="nav-group" data-nav-group="instances">
+      <button class="nav-group-toggle" type="button" aria-expanded="false" aria-controls="nav-submenu-instances"><span class="nav-icon">🏫</span><span>Instances</span><span class="nav-group-chevron">▸</span></button>
+      <div class="nav-submenu" id="nav-submenu-instances" hidden><a class="nav-subitem" data-section="instances" href="#">All instances</a></div>
+    </section>
+    <section class="nav-group" data-nav-group="releases">
+      <button class="nav-group-toggle" type="button" aria-expanded="false" aria-controls="nav-submenu-releases"><span class="nav-icon">🚀</span><span>Releases</span><span class="nav-group-chevron">▸</span></button>
+      <div class="nav-submenu" id="nav-submenu-releases" hidden>
+        <a class="nav-subitem" data-section="deployments" data-nav-anchor="release-school" href="#">School releases</a>
+        <a class="nav-subitem" data-section="deployments" data-nav-anchor="release-console" href="#">Console release</a>
+        <a class="nav-subitem" data-section="deployments" data-nav-anchor="release-history" href="#">Release history</a>
+      </div>
+    </section>
+    <section class="nav-group" data-nav-group="billing">
+      <button class="nav-group-toggle" type="button" aria-expanded="false" aria-controls="nav-submenu-billing"><span class="nav-icon">💳</span><span>Billing</span><span class="nav-group-chevron">▸</span></button>
+      <div class="nav-submenu" id="nav-submenu-billing" hidden>
+        <a class="nav-subitem" data-section="billing" data-billing-nav="overview" href="#">Overview</a>
+        <a class="nav-subitem" data-section="billing" data-billing-nav="customers" href="#">Customers</a>
+        <a class="nav-subitem" data-section="billing" data-billing-nav="quotes" href="#">Quotes</a>
+        <a class="nav-subitem" data-section="billing" data-billing-nav="invoices" href="#">Invoices</a>
+        <a class="nav-subitem" data-section="billing" data-billing-nav="payments" href="#">Payments</a>
+        <a class="nav-subitem" data-section="billing" data-billing-nav="catalogue" href="#">Products &amp; pricing</a>
+        <a class="nav-subitem" data-section="billing" data-billing-nav="reports" href="#">Reports</a>
+        <a class="nav-subitem" data-section="billing" data-billing-nav="settings" href="#">Billing setup</a>
+      </div>
+    </section>
 
-    <div class="nav-section-label">Administration</div>
-    <a class="nav-item" data-section="controls" href="#" title="General Settings">
-      <span class="nav-icon">⚙️</span> General Settings
-    </a>
+    <div class="sidebar-settings-spacer"></div>
+    <section class="nav-group nav-group-settings" data-nav-group="settings">
+      <button class="nav-group-toggle" type="button" aria-expanded="false" aria-controls="nav-submenu-settings"><span class="nav-icon">⚙️</span><span>Settings</span><span class="nav-group-chevron">▸</span></button>
+      <div class="nav-submenu" id="nav-submenu-settings" hidden>
+        <a class="nav-subitem" data-section="controls" href="#">General settings</a>
+        <a class="nav-subitem" data-section="storage" data-super-admin-only href="#">Server management</a>
+        <a class="nav-subitem" data-section="users" data-super-admin-only href="#">Users &amp; roles</a>
+        <a class="nav-subitem" data-section="logs" data-super-admin-only href="#">Audit log</a>
+      </div>
+    </section>
 
     <div class="sb-footer">
       <div class="sb-footer-row">
@@ -267,8 +281,8 @@
       <div id="section-storage" class="section-hidden">
         <div class="page-header">
           <div>
-            <div class="page-title">Storage</div>
-            <div class="page-sub">Per-instance and total server storage breakdown</div>
+            <div class="page-title">Server management</div>
+            <div class="page-sub">Host health, Docker usage, and managed-instance capacity</div>
           </div>
         </div>
         <div class="metric-row storage-summary-row">
@@ -321,7 +335,7 @@
         </div>
 
         <div class="deploy-segments">
-          <section class="deploy-segment panel">
+          <section class="deploy-segment panel" id="release-school">
             <div class="panel-header">
               <div>
                 <div class="panel-title">School application</div>
@@ -374,7 +388,7 @@
             </div>
           </section>
 
-          <section class="deploy-segment panel deploy-segment--console">
+          <section class="deploy-segment panel deploy-segment--console" id="release-console">
             <div class="panel-header">
               <div>
                 <div class="panel-title">Platform console</div>
@@ -393,7 +407,7 @@
           </section>
         </div>
 
-        <div class="two-col-lower" style="margin-top:14px">
+        <div class="two-col-lower" id="release-history" style="margin-top:14px">
           <div class="panel">
             <div class="panel-header"><div class="panel-title">Release history</div></div>
             <div class="timeline timeline-compact" id="timeline-full"></div>
@@ -421,8 +435,21 @@
         </div>
 
         <div class="panel general-settings-empty">
-          <div class="panel-header"><div><div class="panel-title">Platform defaults</div><div class="panel-sub">This workspace is reserved for settings that apply across all instances.</div></div></div>
-          <div class="panel-body">School-specific actions, logs, assessment activity, and release promotion are available from the management drawer on each instance.</div>
+          <div class="panel-header"><div><div class="panel-title">Platform defaults</div><div class="panel-sub">Configuration shared by platform workspaces and all school instances.</div></div></div>
+          <div class="panel-body">School-specific actions, logs, assessment activity, and release promotion are available from each instance’s management drawer.</div>
+        </div>
+        <div class="panel communications-settings-panel" data-super-admin-only>
+          <div class="panel-header"><div><div class="panel-title">Communications</div><div class="panel-sub">Email provider and sender details used for quotes and invoice messages.</div></div></div>
+          <div class="panel-body">
+            <div id="communications-email-status" class="billing-email-status" role="status" aria-live="polite">Checking email configuration…</div>
+            <form id="communications-email-form" class="communications-settings-form" autocomplete="off">
+              <div class="form-group"><label class="form-label" for="communications-resend-key">Resend API key</label><input class="form-input" id="communications-resend-key" name="resendApiKey" type="password" autocomplete="new-password" placeholder="Paste a new Resend API key to replace the stored key" /><div class="form-hint" id="communications-key-hint">The current key is hidden. Leave this blank to keep the saved key.</div></div>
+              <div class="form-group"><label class="form-label" for="communications-from-email">Sender email address</label><input class="form-input" id="communications-from-email" name="fromEmail" type="email" autocomplete="email" placeholder="billing@your-verified-domain" required /><div class="form-hint">Use an address on a domain that Resend reports as verified with sending enabled.</div></div>
+              <div class="form-group"><label class="form-label" for="communications-from-name">Sender display name</label><input class="form-input" id="communications-from-name" name="fromName" type="text" maxlength="120" autocomplete="organization" placeholder="TrendSCORE" /></div>
+              <div class="communications-settings-actions"><button class="btn" id="communications-email-save" type="submit">Save email settings</button><button class="btn secondary" id="communications-email-test" type="button">Validate Resend connection</button></div>
+            </form>
+            <div class="billing-register-note">Validation checks the API key and sender-domain status without sending an email. The API key is stored on the server and is never returned to the browser.</div>
+          </div>
         </div>
       </div>
       <!-- ── END GENERAL SETTINGS ── -->
@@ -525,43 +552,17 @@
       </div>
       <!-- ── END BILLING ── -->
 
-      <!-- ── COMMUNICATIONS SETTINGS ── -->
-      <div id="section-communications" class="section-hidden">
+      <!-- ── USERS & ROLES ── -->
+      <div id="section-users" class="section-hidden" data-super-admin-only>
         <div class="page-header">
-          <div>
-            <div class="page-title">Communications Settings</div>
-            <div class="page-sub">Configure the email provider used for customer quotes and draft invoice review copies.</div>
-          </div>
+          <div><div class="page-title">Users &amp; roles</div><div class="page-sub">Create console accounts and control their platform access.</div></div>
+          <div class="page-actions"><button class="btn primary" id="user-add" type="button">+ Add user</button></div>
         </div>
-        <div class="panel">
-          <div class="panel-header"><div><div class="panel-title">Email delivery · Resend</div><div class="panel-sub">The API key is stored on the production server, never returned to the browser, and never written to the Git repository.</div></div></div>
-          <div class="panel-body">
-            <div id="communications-email-status" class="billing-email-status" role="status" aria-live="polite">Checking email configuration…</div>
-            <form id="communications-email-form" class="communications-settings-form" autocomplete="off">
-              <div class="form-group">
-                <label class="form-label" for="communications-resend-key">Resend API key</label>
-                <input class="form-input" id="communications-resend-key" name="resendApiKey" type="password" autocomplete="new-password" placeholder="Paste a new Resend API key to replace the stored key" />
-                <div class="form-hint" id="communications-key-hint">The current key is hidden. Leave this blank to keep the saved key.</div>
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="communications-from-email">Sender email address</label>
-                <input class="form-input" id="communications-from-email" name="fromEmail" type="email" autocomplete="email" placeholder="billing@your-verified-domain" required />
-                <div class="form-hint">Use an address on a domain that Resend reports as verified with sending enabled.</div>
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="communications-from-name">Sender display name</label>
-                <input class="form-input" id="communications-from-name" name="fromName" type="text" maxlength="120" autocomplete="organization" placeholder="TrendSCORE" />
-              </div>
-              <div class="communications-settings-actions">
-                <button class="btn" id="communications-email-save" type="submit">Save email settings</button>
-                <button class="btn secondary" id="communications-email-test" type="button">Validate Resend connection</button>
-              </div>
-            </form>
-            <div class="billing-register-note">Validation checks the API key and sender-domain status without sending an email. After validation, test delivery using a quote or the draft invoice review-copy action.</div>
-          </div>
+        <div class="panel"><div class="panel-header"><div><div class="panel-title">Console users</div><div class="panel-sub">System Administrators can access sensitive platform controls. Platform Owners can access approved business workspaces.</div></div></div>
+          <div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Last sign in</th><th>Actions</th></tr></thead><tbody id="users-table"><tr><td colspan="6">Loading users…</td></tr></tbody></table></div>
         </div>
       </div>
-      <!-- ── END COMMUNICATIONS SETTINGS ── -->
+      <!-- ── END USERS & ROLES ── -->
 
       <!-- ── LOGS section ── -->
       <div id="section-logs" class="section-hidden">
@@ -1046,11 +1047,11 @@
       <button class="instance-drawer-close" id="instance-drawer-close" type="button" aria-label="Close instance controls">×</button>
     </header>
     <div class="instance-drawer-body">
-      <section class="instance-drawer-section">
+      <section class="instance-drawer-section" data-super-admin-only>
         <h3>Instance details</h3>
         <div class="instance-drawer-details" id="instance-drawer-details"></div>
       </section>
-      <section class="instance-drawer-section">
+      <section class="instance-drawer-section" data-super-admin-only>
         <h3>Operations</h3>
         <div class="instance-drawer-actions">
           <button class="btn primary" type="button" data-instance-drawer-action="start">Start</button>
@@ -1061,7 +1062,7 @@
           <button class="btn" type="button" data-instance-drawer-action="activity" hidden>Assessment activity</button>
         </div>
       </section>
-      <section class="instance-drawer-section" id="instance-drawer-release-section">
+      <section class="instance-drawer-section" id="instance-drawer-release-section" data-super-admin-only>
         <h3>Promote release to this school</h3>
         <p class="instance-drawer-help">Promote a school application release to this school only. This runs the deployment backup, migration, restart, and health checks.</p>
         <label class="form-label" for="instance-drawer-release-tag">Release image tag</label>
@@ -1070,13 +1071,36 @@
         <button class="btn teal" id="instance-drawer-promote" type="button">Promote to this school</button>
         <div class="instance-drawer-release-status" id="instance-drawer-release-status" aria-live="polite"></div>
       </section>
-      <section class="instance-drawer-section instance-drawer-log-section" id="instance-drawer-log-section" hidden>
+      <section class="instance-drawer-section instance-drawer-log-section" id="instance-drawer-log-section" data-super-admin-only hidden>
         <div class="instance-drawer-section-heading"><h3>Recent logs</h3><button class="btn" type="button" data-instance-drawer-action="logs">Refresh</button></div>
         <pre class="instance-drawer-log" id="instance-drawer-log">Select View logs to fetch recent output.</pre>
       </section>
     </div>
     <footer class="instance-drawer-footer"><button class="btn" id="instance-drawer-close-footer" type="button">Close</button></footer>
   </aside>
+</div>
+
+<!-- USER MANAGEMENT -->
+<div class="overlay" id="user-overlay" aria-modal="true" role="dialog" aria-labelledby="user-modal-title">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header"><div class="modal-title" id="user-modal-title">Add user</div><button class="modal-close" id="user-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <input id="u-id" type="hidden" />
+      <div class="form-row"><label class="form-label" for="u-email">Email *</label><input class="form-input" id="u-email" type="email" maxlength="254" autocomplete="off" required /></div>
+      <div class="form-row"><label class="form-label" for="u-name">Name</label><input class="form-input" id="u-name" maxlength="160" autocomplete="name" /></div>
+      <div class="form-row"><label class="form-label" for="u-role">Role *</label><select class="form-select" id="u-role"><option value="platform_owner">Platform Owner</option><option value="super_admin">System Administrator</option></select><small class="form-help">System Administrators can manage users, server settings, and releases.</small></div>
+      <div class="form-row" id="u-password-row"><label class="form-label" for="u-password">Temporary password *</label><input class="form-input" id="u-password" type="password" autocomplete="new-password" minlength="12" /><small class="form-help">At least 12 characters. Share it securely with the user.</small></div>
+      <div class="form-row" id="u-active-row"><label class="billing-option"><input id="u-active" type="checkbox" checked /><span><strong>Active</strong><small>Inactive users cannot sign in.</small></span></label></div>
+    </div>
+    <div class="modal-footer"><button class="btn" id="user-cancel" type="button">Cancel</button><button class="btn primary" id="user-save" type="button">Save user</button></div>
+  </div>
+</div>
+<div class="overlay" id="user-password-overlay" aria-modal="true" role="dialog" aria-labelledby="user-password-title">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header"><div class="modal-title" id="user-password-title">Reset password</div><button class="modal-close" id="user-password-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body"><input id="up-id" type="hidden" /><div class="form-row"><label class="form-label" for="up-password">New temporary password *</label><input class="form-input" id="up-password" type="password" minlength="12" autocomplete="new-password" /><small class="form-help">At least 12 characters. Share it with the user through a secure channel.</small></div></div>
+    <div class="modal-footer"><button class="btn" id="user-password-cancel" type="button">Cancel</button><button class="btn primary" id="user-password-save" type="button">Reset password</button></div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>

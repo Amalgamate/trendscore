@@ -36,6 +36,11 @@ let billingQuotePreviewTimer = null;
 
 // Helpers
 const $ = id => document.getElementById(id);
+function syncSensitiveControlVisibility(root = document) {
+  root.querySelectorAll('[data-super-admin-only]').forEach(element => {
+    element.hidden = window.consoleUserRole !== 'super_admin';
+  });
+}
 
 // Track user-facing API work while leaving routine runtime health polling quiet.
 const nativeFetch = window.fetch.bind(window);
@@ -1386,6 +1391,108 @@ async function validateCommunicationsSettings() {
 $('communications-email-form')?.addEventListener('submit', saveCommunicationsSettings);
 $('communications-email-test')?.addEventListener('click', validateCommunicationsSettings);
 
+let CONSOLE_USERS = [];
+let USERS_LOADING = false;
+
+async function loadUsersData() {
+  const tbody = $('users-table');
+  if (!tbody || window.consoleUserRole !== 'super_admin') return;
+  USERS_LOADING = true;
+  tbody.innerHTML = '<tr><td colspan="6">Loading users…</td></tr>';
+  try {
+    const response = await fetch('/api/users', { credentials: 'same-origin' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Could not load users.');
+    CONSOLE_USERS = data.users || [];
+    renderUsersTable();
+  } catch (error) { tbody.innerHTML = `<tr><td colspan="6">${esc(error.message || 'Could not load users.')}</td></tr>`; }
+  finally { USERS_LOADING = false; }
+}
+
+function renderUsersTable() {
+  const tbody = $('users-table');
+  if (!tbody) return;
+  if (USERS_LOADING) { tbody.innerHTML = '<tr><td colspan="6">Loading users…</td></tr>'; return; }
+  if (!CONSOLE_USERS.length) { tbody.innerHTML = '<tr><td colspan="6">No users have been added yet.</td></tr>'; return; }
+  tbody.innerHTML = CONSOLE_USERS.map(user => `<tr>
+    <td>${esc(user.name || '—')}</td><td>${esc(user.email)}</td>
+    <td>${user.role === 'super_admin' ? 'System Administrator' : 'Platform Owner'}</td>
+    <td><span class="billing-status-chip ${user.active ? '' : 'unready'}">${user.active ? 'Active' : 'Inactive'}</span></td>
+    <td>${user.lastLoginAt ? esc(new Date(user.lastLoginAt).toLocaleString('en-KE')) : 'Never'}</td>
+    <td><div class="action-row"><button class="btn sm" type="button" data-user-edit="${esc(user.id)}">Edit</button><button class="btn sm" type="button" data-user-password="${esc(user.id)}">Reset password</button></div></td>
+  </tr>`).join('');
+}
+
+function openUserModal(user = null) {
+  $('user-modal-title').textContent = user ? 'Edit user' : 'Add user';
+  $('u-id').value = user?.id || '';
+  $('u-email').value = user?.email || '';
+  $('u-email').disabled = Boolean(user);
+  $('u-name').value = user?.name || '';
+  $('u-role').value = user?.role || 'platform_owner';
+  $('u-active').checked = user ? user.active : true;
+  $('u-active-row').hidden = !user;
+  $('u-password-row').hidden = Boolean(user);
+  $('u-password').value = '';
+  $('user-overlay').classList.add('open');
+}
+
+async function saveUser() {
+  const id = $('u-id').value;
+  const payload = { name: $('u-name').value.trim(), role: $('u-role').value };
+  if (id) payload.active = $('u-active').checked;
+  else Object.assign(payload, { email: $('u-email').value.trim(), password: $('u-password').value });
+  const button = $('user-save');
+  button.disabled = true;
+  try {
+    const response = await fetch(id ? `/api/users/${encodeURIComponent(id)}` : '/api/users', {
+      method: id ? 'PUT' : 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Could not save user.');
+    $('user-overlay').classList.remove('open');
+    toast(id ? 'User updated.' : 'User created.');
+    await loadUsersData();
+  } catch (error) { toast(error.message || 'Could not save user.'); }
+  finally { button.disabled = false; }
+}
+
+function openUserPasswordReset(userId) {
+  $('up-id').value = userId;
+  $('up-password').value = '';
+  $('user-password-overlay').classList.add('open');
+}
+
+async function resetUserPassword() {
+  const id = $('up-id').value;
+  const button = $('user-password-save');
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/users/${encodeURIComponent(id)}/password`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: $('up-password').value }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Could not reset password.');
+    $('user-password-overlay').classList.remove('open');
+    toast('Password reset. Share it with the user through a secure channel.');
+  } catch (error) { toast(error.message || 'Could not reset password.'); }
+  finally { button.disabled = false; }
+}
+
+$('user-add')?.addEventListener('click', () => openUserModal());
+$('user-close')?.addEventListener('click', () => $('user-overlay').classList.remove('open'));
+$('user-cancel')?.addEventListener('click', () => $('user-overlay').classList.remove('open'));
+$('user-save')?.addEventListener('click', saveUser);
+$('user-password-close')?.addEventListener('click', () => $('user-password-overlay').classList.remove('open'));
+$('user-password-cancel')?.addEventListener('click', () => $('user-password-overlay').classList.remove('open'));
+$('user-password-save')?.addEventListener('click', resetUserPassword);
+$('users-table')?.addEventListener('click', event => {
+  const edit = event.target.closest('[data-user-edit]');
+  const reset = event.target.closest('[data-user-password]');
+  if (edit) openUserModal(CONSOLE_USERS.find(user => user.id === edit.dataset.userEdit));
+  if (reset) openUserPasswordReset(reset.dataset.userPassword);
+});
+
 const BILLING_TABS = ['overview', 'customers', 'quotes', 'invoices', 'payments', 'catalogue', 'reports', 'settings'];
 function selectBillingTab(tab, focus = false) {
   const selected = BILLING_TABS.includes(tab) ? tab : 'overview';
@@ -1400,6 +1507,9 @@ function selectBillingTab(tab, focus = false) {
       if (active && focus) button.focus();
     }
     if (panel) panel.hidden = !active;
+  });
+  document.querySelectorAll('.nav-subitem[data-billing-nav]').forEach(item => {
+    item.classList.toggle('active', item.dataset.billingNav === selected);
   });
   updateBillingActionVisibility(selected);
 }
@@ -1550,7 +1660,7 @@ function renderRunningInstances() {
           <span class="ri-meta-val" style="font-family:var(--mono)">${esc(instance.version)}</span>
         </div>
         <div class="ri-actions">
-          <button class="instance-manage-button" type="button" data-open-instance-drawer="${esc(inferGroupKey(instance))}" aria-label="Manage ${esc(instance.displayName || instance.name)}" title="Manage ${esc(instance.displayName || instance.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg><span>Manage</span></button>
+          <button class="instance-manage-button" type="button" data-super-admin-only data-open-instance-drawer="${esc(inferGroupKey(instance))}" aria-label="Manage ${esc(instance.displayName || instance.name)}" title="Manage ${esc(instance.displayName || instance.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg><span>Manage</span></button>
         </div>
       </div>
     </div>`;
@@ -1833,10 +1943,10 @@ function renderInstanceRow(instance, mode = 'compact') {
   const activity = instance.appType === 'school' ? ASSESSMENT_ACTIVITY[activityKey] : null;
   const activityCount = Number(activity?.activeTestCount || 0);
   const termTestCount = Number(activity?.testCount || 0);
-  const activityPill = instance.appType === 'school' ? `<button type="button" class="assessment-activity-pill ${activity?.state === 'unavailable' ? 'is-unavailable' : activityCount > 0 ? 'has-active' : 'has-none'}" data-assessment-activity-key="${esc(activityKey)}" data-assessment-activity-name="${esc(instance.displayName || instance.name)}" aria-label="View assessment activity for ${esc(instance.displayName || instance.name)}" aria-describedby="assessment-activity-tooltip" aria-haspopup="dialog" title="${esc(assessmentActivityTooltipText(activity, instance.displayName || instance.name))}">
+  const activityPill = instance.appType === 'school' ? `<button type="button" class="assessment-activity-pill ${activity?.state === 'unavailable' ? 'is-unavailable' : activityCount > 0 ? 'has-active' : 'has-none'}" data-super-admin-only data-assessment-activity-key="${esc(activityKey)}" data-assessment-activity-name="${esc(instance.displayName || instance.name)}" aria-label="View assessment activity for ${esc(instance.displayName || instance.name)}" aria-describedby="assessment-activity-tooltip" aria-haspopup="dialog" title="${esc(assessmentActivityTooltipText(activity, instance.displayName || instance.name))}">
           <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 13.5h12M3.5 11V7.5M7 11V4.5M10.5 11V6M14 11V2.5"/></svg><span>Activity</span><span class="assessment-activity-count">${activity?.state === 'unavailable' ? '—' : activity ? termTestCount : '…'}</span>
         </button>` : '';
-  const manageButton = `<button class="instance-manage-button" type="button" data-open-instance-drawer="${esc(inferGroupKey(instance))}" aria-label="Manage ${esc(instance.displayName || instance.name)}" title="Manage ${esc(instance.displayName || instance.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg></button>`;
+  const manageButton = `<button class="instance-manage-button" type="button" data-super-admin-only data-open-instance-drawer="${esc(inferGroupKey(instance))}" aria-label="Manage ${esc(instance.displayName || instance.name)}" title="Manage ${esc(instance.displayName || instance.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg></button>`;
   return `<tr>
     <td><div class="cell-school"><strong>${esc(instance.name)}</strong><div class="cell-domain">${esc(instance.domain)}</div></div></td>
     <td><span class="instance-category-chip">${esc(instance.typeLabel || 'Other / unclassified')}</span></td>
@@ -2127,7 +2237,7 @@ function renderInstances() {
     const category = categoryForAppType(group.appType);
     const categoryOpen = INSTANCE_CATEGORY_OPEN[category.key] === true;
     const groupOpen = INSTANCE_GROUP_OPEN[group.key] === true;
-    const manageButton = `<button class="instance-manage-button" type="button" data-open-instance-drawer="${esc(group.key)}" aria-label="Manage ${esc(group.name)}" title="Manage ${esc(group.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg></button>`;
+    const manageButton = `<button class="instance-manage-button" type="button" data-super-admin-only data-open-instance-drawer="${esc(group.key)}" aria-label="Manage ${esc(group.name)}" title="Manage ${esc(group.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg></button>`;
     return `<tr class="group-head category-child" data-category-owner="${esc(category.key)}" data-group="${esc(group.key)}" style="display:${categoryOpen ? '' : 'none'};background:#f6f8ff;cursor:pointer">
       <td colspan="8">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
@@ -2169,6 +2279,7 @@ function renderInstances() {
 
   const full = $('instance-table-full');
   if (full) full.innerHTML = groups.length ? renderGroupedBody('full') : '<tr><td colspan="8">No runtime instances are available.</td></tr>';
+  syncSensitiveControlVisibility();
 }
 
 function renderMetrics() {
@@ -2651,26 +2762,32 @@ function runConsoleDeploy() {
 }
 
 // Navigation
-const SECTIONS = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'communications', 'logs', 'leads'];
+const SECTIONS = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'logs', 'leads', 'users'];
 const SECTION_LABELS = {
   overview: 'Overview',
   instances: 'Instances',
-  storage: 'Storage',
+  storage: 'Server management',
   deployments: 'Releases',
   controls: 'General Settings',
-  billing: 'Billing & Invoices',
-  communications: 'Communications Settings',
+  billing: 'Billing',
   logs: 'Audit Log',
   leads: 'Leads & CRM',
+  users: 'Users & roles',
 };
 
 function sectionFromHash() {
   const raw = decodeURIComponent(window.location.hash || '').replace(/^#\/?/, '');
+  if (raw === 'communications') return 'controls';
   return SECTIONS.includes(raw) ? raw : 'overview';
 }
 
 function showSection(id, options = {}) {
   const targetSection = SECTIONS.includes(id) ? id : 'overview';
+  const roleRestrictedSections = ['storage', 'deployments', 'logs', 'users'];
+  if (window.consoleUserRole && window.consoleUserRole !== 'super_admin' && roleRestrictedSections.includes(targetSection)) {
+    toast('This section is available to System Administrators.');
+    return showSection('overview', { ...options, skipHashUpdate: false });
+  }
   SECTIONS.forEach(section => {
     const el = $(`section-${section}`);
     if (el) el.className = section === targetSection ? 'section-visible' : 'section-hidden';
@@ -2678,13 +2795,26 @@ function showSection(id, options = {}) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.section === targetSection);
   });
+  const activeSubitem = document.querySelector(`.nav-subitem[data-section="${targetSection}"]${targetSection === 'billing' ? '[data-billing-nav="overview"]' : ''}`);
+  document.querySelectorAll('.nav-subitem').forEach(el => el.classList.toggle('active', el === activeSubitem));
+  document.querySelectorAll('.nav-group').forEach(group => {
+    const active = Boolean(group.querySelector('.nav-subitem.active'));
+    const toggle = group.querySelector('.nav-group-toggle');
+    const submenu = group.querySelector('.nav-submenu');
+    if (toggle && active) {
+      toggle.classList.add('active');
+      toggle.setAttribute('aria-expanded', 'true');
+      if (submenu) submenu.hidden = false;
+    } else if (toggle) toggle.classList.remove('active');
+  });
   if ($('breadcrumb-active')) $('breadcrumb-active').textContent = SECTION_LABELS[targetSection] || targetSection;
 
   if (targetSection === 'deployments' && !options.skipDeployLoad) {
     refreshDeployPanel(options.deployPrefill || null);
   }
   if (targetSection === 'billing') loadBillingData();
-  if (targetSection === 'communications') loadCommunicationsSettings();
+  if (targetSection === 'controls' && window.consoleUserRole === 'super_admin') loadCommunicationsSettings();
+  if (targetSection === 'users' && window.consoleUserRole === 'super_admin') loadUsersData();
 
   if (!options.skipHashUpdate) {
     const nextHash = `#${targetSection}`;
@@ -2701,13 +2831,43 @@ document.querySelectorAll('.nav-item').forEach(el => {
   });
 });
 
+document.querySelectorAll('.nav-group-toggle').forEach(toggle => {
+  toggle.addEventListener('click', () => {
+    const group = toggle.closest('.nav-group');
+    const submenu = group?.querySelector('.nav-submenu');
+    const willOpen = toggle.getAttribute('aria-expanded') !== 'true';
+    document.querySelectorAll('.nav-group-toggle').forEach(other => {
+      if (other === toggle) return;
+      other.setAttribute('aria-expanded', 'false');
+      const otherMenu = other.closest('.nav-group')?.querySelector('.nav-submenu');
+      if (otherMenu) otherMenu.hidden = true;
+    });
+    toggle.setAttribute('aria-expanded', String(willOpen));
+    if (submenu) submenu.hidden = !willOpen;
+  });
+});
+
+document.querySelectorAll('.nav-subitem').forEach(el => {
+  el.addEventListener('click', event => {
+    event.preventDefault();
+    const targetSection = el.dataset.section;
+    if (el.dataset.billingNav) selectBillingTab(el.dataset.billingNav);
+    showSection(targetSection);
+    document.querySelectorAll('.nav-subitem').forEach(item => item.classList.toggle('active', item === el));
+    if (el.dataset.navAnchor) {
+      window.setTimeout(() => document.getElementById(el.dataset.navAnchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 180);
+    }
+  });
+});
+
 window.addEventListener('hashchange', () => {
   showSection(sectionFromHash(), { skipHashUpdate: true });
 });
 
 window.addEventListener('console:authenticated', () => {
   if (sectionFromHash() === 'billing') loadBillingData();
-  if (sectionFromHash() === 'communications') loadCommunicationsSettings();
+  if (sectionFromHash() === 'controls' && window.consoleUserRole === 'super_admin') loadCommunicationsSettings();
+  if (sectionFromHash() === 'users' && window.consoleUserRole === 'super_admin') loadUsersData();
 });
 
 function setSidebarCollapsed(collapsed) {
@@ -3618,6 +3778,7 @@ function renderEverything() {
   renderAuditLog();
   if(typeof renderPipeline === 'function') renderPipeline();
   if(typeof renderLeadsList === 'function') renderLeadsList();
+  syncSensitiveControlVisibility();
 }
 
 // CRM View Toggles
