@@ -1,8 +1,7 @@
-name: Provision New School (One-Shot)
+name: Provision and Secure New School
 
-# Creates the env file and brings up a brand-new school stack on the server.
-# Safe to re-run — uses IF NOT EXISTS logic for the env file.
-# After this runs, follow with Promote Release to get the pinned image + migrations.
+# Provisions an active manifest entry and then invokes the shared HTTPS workflow.
+# The school's DNS A record must already point at defaults.public_ipv4.
 
 on:
   workflow_dispatch:
@@ -15,22 +14,29 @@ on:
         description: 'Human-readable school name stored in DB (e.g. Mwangaza CS)'
         required: true
         type: string
+      institution_type:
+        description: 'School institution type'
+        required: true
+        type: choice
+        options:
+          - PRIMARY_CBC
+          - SECONDARY
+          - TERTIARY
       frontend_port:
-        description: 'Host port for frontend (must be unique on the server, e.g. 3012)'
-        required: true
+        description: 'Optional host port override; normally allocated automatically'
+        required: false
         type: string
+        default: ''
       backend_port:
-        description: 'Host port for backend (must be unique on the server, e.g. 5012)'
-        required: true
+        description: 'Optional host port override; normally allocated automatically'
+        required: false
         type: string
+        default: ''
       db_name:
-        description: 'PostgreSQL database name (e.g. zawadi_mwangaza_cs)'
-        required: true
+        description: 'Optional database name override; normally derived from the school slug'
+        required: false
         type: string
-      db_password:
-        description: 'PostgreSQL password for this school DB'
-        required: true
-        type: string
+        default: ''
       admin_email:
         description: 'Super-admin email for this school'
         required: false
@@ -39,13 +45,44 @@ on:
 
 permissions:
   contents: read
+  packages: read
+
+concurrency:
+  group: provision-production-school
+  cancel-in-progress: false
 
 jobs:
   provision:
     runs-on: ubuntu-latest
+    environment: deploy-production-school
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate registry, DNS, and administrator credential
+        env:
+          SCHOOL_SLUG: ${{ inputs.school_slug }}
+          SUPER_ADMIN_PASSWORD: ${{ secrets.SCHOOL_INITIAL_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("fs");
+            const slug = process.env.SCHOOL_SLUG;
+            if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new Error("school_slug must be lowercase kebab-case");
+            const manifest = JSON.parse(fs.readFileSync("deploy/instances.manifest.json", "utf8"));
+            const school = manifest.instances.find(x => x.id === slug && x.active === true && x.archived !== true);
+            if (!school) throw new Error(`Active school ${slug} must be registered in the manifest before provisioning`);
+            if (!school.public_domain) throw new Error(`School ${slug} has no public_domain in the manifest`);
+            console.log(`Manifest target: ${school.id} (${school.public_domain})`);
+          '
+          [[ -n "$SUPER_ADMIN_PASSWORD" ]] || { echo "SCHOOL_INITIAL_ADMIN_PASSWORD must be set in the protected environment"; exit 1; }
+          domain="$(node -e 'const m=require("./deploy/instances.manifest.json"); console.log(m.instances.find(x=>x.id===process.env.SCHOOL_SLUG).public_domain)')"
+          echo "PUBLIC_DOMAIN=${domain}" >> "$GITHUB_ENV"
+          expected_ip="$(node -e 'const m=require("./deploy/instances.manifest.json"); console.log(m.defaults.public_ipv4 || "")')"
+          [[ -n "$expected_ip" ]] || { echo "defaults.public_ipv4 is required in the manifest"; exit 1; }
+          resolved="$(dig +short A "$domain" | sort -u)"
+          echo "DNS for $domain: ${resolved:-<none>} (expected $expected_ip)"
+          printf '%s\n' "$resolved" | grep -Fxq "$expected_ip" || { echo "Create/fix the DNS record before provisioning."; exit 1; }
 
       - name: Configure SSH
         env:
@@ -54,15 +91,79 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: bash scripts/ci/configure-deploy-ssh.sh
 
+      - name: Allocate school resources
+        id: resources
+        env:
+          SCHOOL_SLUG: ${{ inputs.school_slug }}
+          REQUESTED_FE_PORT: ${{ inputs.frontend_port }}
+          REQUESTED_BE_PORT: ${{ inputs.backend_port }}
+          REQUESTED_DB_NAME: ${{ inputs.db_name }}
+        run: |
+          set -euo pipefail
+          slug="${SCHOOL_SLUG//-/_}"
+          db_name="${REQUESTED_DB_NAME:-zawadi_${slug}}"
+          if [[ ! "$db_name" =~ ^[a-zA-Z][a-zA-Z0-9_]{0,62}$ ]]; then
+            echo "Invalid database name: $db_name" >&2
+            exit 1
+          fi
+
+          allocation="$(ssh production 'python3 -' <<'PY'
+          import socket
+
+          def available(start, end, reserved):
+              for port in range(start, end + 1):
+                  if port in reserved:
+                      continue
+                  sock = socket.socket()
+                  try:
+                      sock.bind(("0.0.0.0", port))
+                      return port
+                  except OSError:
+                      pass
+                  finally:
+                      sock.close()
+              raise SystemExit(f"No free port in {start}-{end}")
+
+          fe = available(3000, 3499, set())
+          be = available(5000, 5499, {fe})
+          print(f"{fe} {be}")
+          PY
+          )"
+          read -r allocated_fe allocated_be <<< "$allocation"
+          fe="${REQUESTED_FE_PORT:-$allocated_fe}"
+          be="${REQUESTED_BE_PORT:-$allocated_be}"
+          [[ "$fe" =~ ^[0-9]+$ && "$fe" -ge 3000 && "$fe" -le 3499 ]] || { echo "Frontend port must be 3000-3499" >&2; exit 1; }
+          [[ "$be" =~ ^[0-9]+$ && "$be" -ge 5000 && "$be" -le 5499 ]] || { echo "Backend port must be 5000-5499" >&2; exit 1; }
+          if [[ -n "$REQUESTED_FE_PORT" || -n "$REQUESTED_BE_PORT" ]]; then
+            ssh production "python3 - $fe $be" <<'PY'
+          import socket, sys
+          for value in sys.argv[1:]:
+              port = int(value)
+              sock = socket.socket()
+              try:
+                  sock.bind(("0.0.0.0", port))
+              except OSError:
+                  raise SystemExit(f"Requested port {port} is already in use")
+              finally:
+                  sock.close()
+          PY
+          fi
+          echo "frontend_port=$fe" >> "$GITHUB_OUTPUT"
+          echo "backend_port=$be" >> "$GITHUB_OUTPUT"
+          echo "db_name=$db_name" >> "$GITHUB_OUTPUT"
+          echo "Allocated frontend $fe, backend $be, database $db_name"
+
       - name: Create env file and spin up stack
         env:
           SCHOOL_SLUG: ${{ inputs.school_slug }}
+          PUBLIC_DOMAIN: ${{ env.PUBLIC_DOMAIN }}
           SCHOOL_NAME: ${{ inputs.school_name }}
-          FRONTEND_PORT: ${{ inputs.frontend_port }}
-          BACKEND_PORT: ${{ inputs.backend_port }}
-          DB_NAME: ${{ inputs.db_name }}
-          DB_PASSWORD: ${{ inputs.db_password }}
+          SCHOOL_INSTITUTION_TYPE: ${{ inputs.institution_type }}
+          FRONTEND_PORT: ${{ steps.resources.outputs.frontend_port }}
+          BACKEND_PORT: ${{ steps.resources.outputs.backend_port }}
+          DB_NAME: ${{ steps.resources.outputs.db_name }}
           ADMIN_EMAIL: ${{ inputs.admin_email }}
+          SUPER_ADMIN_PASSWORD: ${{ secrets.SCHOOL_INITIAL_ADMIN_PASSWORD }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
@@ -80,10 +181,19 @@ jobs:
           ENV_FILE="/srv/zawadi/apps/env/.${PROJECT}.env"
           COMPOSE_FILE="/srv/zawadi/apps/docker-compose.stack.yml"
 
+          [[ -n "$SUPER_ADMIN_PASSWORD" ]] || { echo "Initial super-admin password is missing" >&2; exit 1; }
+          [[ -n "$SCHOOL_NAME" && ${#SCHOOL_NAME} -le 100 ]] || { echo "School name is required and must be at most 100 characters" >&2; exit 1; }
+          [[ "$ADMIN_EMAIL" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || { echo "Administrator email is invalid" >&2; exit 1; }
+
           JWT_S="${JWT_SECRET:-$(openssl rand -hex 32)}"
           JWT_R="${JWT_REFRESH_SECRET:-$(openssl rand -hex 32)}"
           ENC_K="${ENCRYPTION_KEY:-$(openssl rand -hex 32)}"
-          BIO_KEY="${BIOMETRIC_ENCRYPTION_KEY:-759728fc56aaaea8e79fed20aa8409635cb3a58731207e22b073d33bcb061f1c}"
+          BIO_KEY="${BIOMETRIC_ENCRYPTION_KEY:-$(openssl rand -hex 32)}"
+          DB_PASSWORD="$(openssl rand -hex 24)"
+          SCHOOL_NAME_B64="$(printf '%s' "$SCHOOL_NAME" | base64 -w0)"
+          PUBLIC_DOMAIN_B64="$(printf '%s' "$PUBLIC_DOMAIN" | base64 -w0)"
+          SUPER_ADMIN_PASSWORD_B64="$(printf '%s' "$SUPER_ADMIN_PASSWORD" | base64 -w0)"
+          echo "::add-mask::${DB_PASSWORD}"
 
           cat > /tmp/provision-school.sh <<'REMOTE'
           set -euo pipefail
@@ -92,6 +202,9 @@ jobs:
           ENV_FILE="${ENV_FILE}"
           COMPOSE_FILE="${COMPOSE_FILE}"
           SCHOOL_SLUG="${SCHOOL_SLUG}"
+          SCHOOL_NAME="$(printf '%s' "$SCHOOL_NAME_B64" | base64 -d)"
+          PUBLIC_DOMAIN="$(printf '%s' "$PUBLIC_DOMAIN_B64" | base64 -d)"
+          SUPER_ADMIN_PASSWORD="$(printf '%s' "$SUPER_ADMIN_PASSWORD_B64" | base64 -d)"
           FRONTEND_PORT="${FRONTEND_PORT}"
           BACKEND_PORT="${BACKEND_PORT}"
           DB_PASSWORD="${DB_PASSWORD}"
@@ -99,7 +212,7 @@ jobs:
           JWT_S="${JWT_S}"
           JWT_R="${JWT_R}"
           ENC_K="${ENC_K}"
-          BIO_KEY="${BIO_KEY:-759728fc56aaaea8e79fed20aa8409635cb3a58731207e22b073d33bcb061f1c}"
+          BIO_KEY="${BIO_KEY}"
           ADMIN_EMAIL="${ADMIN_EMAIL}"
           AWS_REGION="${AWS_REGION:-ap-south-1}"
           AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-}"
@@ -108,19 +221,15 @@ jobs:
           VAPID_PUBLIC_KEY="${VAPID_PUBLIC_KEY:-}"
           VAPID_PRIVATE_KEY="${VAPID_PRIVATE_KEY:-}"
 
-          if [[ -f "${ENV_FILE}" ]]; then
-            echo "⚠️  Env file already exists: ${ENV_FILE} — syncing port assignments and checking required keys"
-            sudo sed -i "s/^FRONTEND_PORT=.*/FRONTEND_PORT=${FRONTEND_PORT}/" "${ENV_FILE}"
-            sudo sed -i "s/^BACKEND_PORT=.*/BACKEND_PORT=${BACKEND_PORT}/" "${ENV_FILE}"
-            if ! sudo grep -q "BIOMETRIC_ENCRYPTION_KEY=" "${ENV_FILE}" 2>/dev/null; then
-              echo "Adding missing BIOMETRIC_ENCRYPTION_KEY to existing env file"
-              echo "BIOMETRIC_ENCRYPTION_KEY=${BIO_KEY}" | sudo tee -a "${ENV_FILE}" >/dev/null
-              echo "BIOMETRIC_KEY_VERSION=1" | sudo tee -a "${ENV_FILE}" >/dev/null
-            fi
+          if [[ -e "${ENV_FILE}" ]]; then
+            echo "An environment file already exists for ${SCHOOL_SLUG}; refusing to overwrite or rotate an existing school's settings. Use the dedicated recovery/management workflow."
+            exit 1
           else
             echo "✅ Creating env file: ${ENV_FILE}"
             sudo tee "${ENV_FILE}" > /dev/null <<ENVEOF
           SCHOOL_CODE=${SCHOOL_SLUG}
+          SCHOOL_NAME=${SCHOOL_NAME}
+          SCHOOL_INSTITUTION_TYPE=${SCHOOL_INSTITUTION_TYPE}
           FRONTEND_IMAGE=ghcr.io/amalgamate/zawadi-frontend:latest
           BACKEND_IMAGE=ghcr.io/amalgamate/zawadi-backend:latest
           FRONTEND_PORT=${FRONTEND_PORT}
@@ -134,7 +243,7 @@ jobs:
           BIOMETRIC_ENCRYPTION_KEY=${BIO_KEY}
           BIOMETRIC_KEY_VERSION=1
           SUPER_ADMIN_EMAIL=${ADMIN_EMAIL}
-          SUPER_ADMIN_PASSWORD=Admin@123!
+          SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD}
           CREATE_EXTRA_DEMO_USERS=false
           DEMO_USER_PASSWORD=Demo@123!
           AWS_REGION=${AWS_REGION:-ap-south-1}
@@ -145,9 +254,9 @@ jobs:
           AWS_REKOGNITION_COLLECTION_PREFIX=trendscore
           AWS_REKOGNITION_LIVENESS_THRESHOLD=90
           AWS_REKOGNITION_MATCH_THRESHOLD=97
-          FRONTEND_URL=https://${SCHOOL_SLUG}.trendscore.co.ke
-          API_URL=https://${SCHOOL_SLUG}.trendscore.co.ke/api
-          CORS_ORIGIN=https://${SCHOOL_SLUG}.trendscore.co.ke
+          FRONTEND_URL=https://${PUBLIC_DOMAIN}
+          API_URL=https://${PUBLIC_DOMAIN}/api
+          CORS_ORIGIN=https://${PUBLIC_DOMAIN}
           HTTPS_ONLY=false
           VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
           VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
@@ -190,34 +299,16 @@ jobs:
             2>/dev/null || echo "${DB_NAME}")"
           echo "[baseline] Actual Prisma DB name: ${ACTUAL_DB}"
 
-          # Check for completed migrations to decide strategy.
-          COMPLETED="$(sudo docker exec "${DB_CONTAINER}" \
+          # Never rewrite migration history as part of provisioning. A failed or
+          # partially initialized database requires the dedicated repair workflow.
+          MIGRATION_STATE="$(sudo docker exec "${DB_CONTAINER}" \
             psql -U zawadi -d "${ACTUAL_DB}" -tAc \
-            "SELECT COUNT(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL" \
-            2>/dev/null || echo "0")"
-          echo "[baseline] Completed migrations in DB: ${COMPLETED}"
-
-          if [ "${COMPLETED}" = "0" ]; then
-            # No completed migrations — drop any partial records so migrate deploy
-            # starts completely fresh and runs all 138 migrations from scratch.
-            echo "[baseline] Dropping _prisma_migrations for a clean start"
-            sudo docker exec "${DB_CONTAINER}" \
-              psql -U zawadi -d "${ACTUAL_DB}" -c \
-              "DROP TABLE IF EXISTS _prisma_migrations" 2>&1 || true
-          else
-            # Some migrations completed — clear any failed/stuck records using
-            # Prisma's own resolve command (marks them rolled-back so migrate deploy
-            # can re-apply them cleanly now that dependent tables exist).
-            echo "[baseline] Clearing any failed migration records via prisma resolve"
-            sudo docker exec "${CONTAINER}" sh -c '
-              set -e
-              npx prisma migrate resolve \
-                --rolled-back 20260707121500_allow_multiple_summative_series \
-                --schema prisma/schema.prisma 2>&1 | tail -2 || true
-              npx prisma migrate resolve \
-                --rolled-back 20260811090000_link_learners_to_student_users \
-                --schema prisma/schema.prisma 2>&1 | tail -2 || true
-            '
+            "SELECT CASE WHEN to_regclass('public._prisma_migrations') IS NULL THEN 'fresh' WHEN EXISTS (SELECT 1 FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL) THEN 'failed' ELSE 'ready' END" \
+            2>/dev/null)"
+          echo "[migrate] Current migration state: ${MIGRATION_STATE}"
+          if [ "${MIGRATION_STATE}" = "failed" ]; then
+            echo "A failed migration record exists. Stop and use the reviewed migration repair workflow."
+            exit 1
           fi
 
           sudo docker exec "${CONTAINER}" sh -c '
@@ -232,7 +323,7 @@ jobs:
           REMOTE
 
           ssh production \
-            "PROJECT='${PROJECT}' ENV_FILE='${ENV_FILE}' COMPOSE_FILE='${COMPOSE_FILE}' SCHOOL_SLUG='${SCHOOL_SLUG}' FRONTEND_PORT='${FRONTEND_PORT}' BACKEND_PORT='${BACKEND_PORT}' DB_PASSWORD='${DB_PASSWORD}' DB_NAME='${DB_NAME}' JWT_S='${JWT_S}' JWT_R='${JWT_R}' ENC_K='${ENC_K}' BIO_KEY='${BIO_KEY}' ADMIN_EMAIL='${ADMIN_EMAIL}' AWS_REGION='${AWS_REGION:-ap-south-1}' AWS_ACCESS_KEY_ID='${AWS_ACCESS_KEY_ID:-}' AWS_SECRET_ACCESS_KEY='${AWS_SECRET_ACCESS_KEY:-}' AWS_REKOGNITION_LIVENESS_ROLE_ARN='${AWS_REKOGNITION_LIVENESS_ROLE_ARN:-}' VAPID_PUBLIC_KEY='${VAPID_PUBLIC_KEY:-}' VAPID_PRIVATE_KEY='${VAPID_PRIVATE_KEY:-}' bash -s" < /tmp/provision-school.sh
+            "PROJECT='${PROJECT}' ENV_FILE='${ENV_FILE}' COMPOSE_FILE='${COMPOSE_FILE}' SCHOOL_SLUG='${SCHOOL_SLUG}' SCHOOL_NAME_B64='${SCHOOL_NAME_B64}' SCHOOL_INSTITUTION_TYPE='${SCHOOL_INSTITUTION_TYPE}' PUBLIC_DOMAIN_B64='${PUBLIC_DOMAIN_B64}' SUPER_ADMIN_PASSWORD_B64='${SUPER_ADMIN_PASSWORD_B64}' FRONTEND_PORT='${FRONTEND_PORT}' BACKEND_PORT='${BACKEND_PORT}' DB_PASSWORD='${DB_PASSWORD}' DB_NAME='${DB_NAME}' JWT_S='${JWT_S}' JWT_R='${JWT_R}' ENC_K='${ENC_K}' BIO_KEY='${BIO_KEY}' ADMIN_EMAIL='${ADMIN_EMAIL}' AWS_REGION='${AWS_REGION:-ap-south-1}' AWS_ACCESS_KEY_ID='${AWS_ACCESS_KEY_ID:-}' AWS_SECRET_ACCESS_KEY='${AWS_SECRET_ACCESS_KEY:-}' AWS_REKOGNITION_LIVENESS_ROLE_ARN='${AWS_REKOGNITION_LIVENESS_ROLE_ARN:-}' VAPID_PUBLIC_KEY='${VAPID_PUBLIC_KEY:-}' VAPID_PRIVATE_KEY='${VAPID_PRIVATE_KEY:-}' bash -s" < /tmp/provision-school.sh
 
       - name: Report
         if: success()
@@ -244,12 +335,19 @@ jobs:
             echo "|-------|-------|"
             echo "| School name | ${{ inputs.school_name }} |"
             echo "| Compose project | \`zawadi-${{ inputs.school_slug }}\` |"
-            echo "| Domain | \`${{ inputs.school_slug }}.trendscore.co.ke\` |"
-            echo "| Frontend port | ${{ inputs.frontend_port }} |"
-            echo "| Backend port | ${{ inputs.backend_port }} |"
-            echo "| DB name | \`${{ inputs.db_name }}\` |"
+            echo "| Domain | \`${{ env.PUBLIC_DOMAIN }}\` |"
+            echo "| Frontend port | \`${{ steps.resources.outputs.frontend_port }}\` |"
+            echo "| Backend port | \`${{ steps.resources.outputs.backend_port }}\` |"
+            echo "| DB name | \`${{ steps.resources.outputs.db_name }}\` |"
             echo "| Admin email | ${{ inputs.admin_email }} |"
-            echo "| Admin password | \`Admin@123!\` |"
+            echo "| Admin password | Set from protected GitHub environment secret |"
             echo ""
-            echo "Next step: run **Promote Release** with \`school_slug=${{ inputs.school_slug }}\` to pin the latest image tag."
+            echo "The next job issues and verifies HTTPS before this run is complete."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  issue-https:
+    needs: provision
+    uses: ./.github/workflows/bind-school-domain-ssl.yml
+    with:
+      school_slug: ${{ inputs.school_slug }}
+    secrets: inherit
