@@ -39,6 +39,15 @@ jobs:
             sudo docker ps -a --no-trunc --format "table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.ID}}"
 
             echo ""
+            echo "=== Trevor's Academy PostgreSQL startup log ==="
+            sudo docker logs --tail 80 zawadi-trevorsacaemy-db-1 2>&1 || true
+
+            echo ""
+            echo "=== Trevor's Academy databases ==="
+            sudo docker exec zawadi-trevorsacaemy-db-1 \
+              psql -U zawadi -d postgres -Atc "SELECT datname FROM pg_database ORDER BY datname" 2>&1 || true
+
+            echo ""
             echo "=== All env files in /srv/zawadi/apps/env/ ==="
             ls -la /srv/zawadi/apps/env/ 2>/dev/null || echo "(dir missing)"
 
