@@ -230,6 +230,18 @@
       "public_domain": "alrahma.trendscore.co.ke",
       "auto_deploy_on_main": false,
       "notes": "Existing Alrahma stack registered for requested domain binding and TLS. Frontend host port 3017; backend host port 5014."
+    },
+    {
+      "id": "trevorsacaemy",
+      "label": "Trevor's Academy",
+      "tier": "production",
+      "active": true,
+      "deployment_allowed": true,
+      "kind": "stack",
+      "compose_project": "zawadi-trevorsacaemy",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-trevorsacaemy.env",
+      "public_domain": "trevorsacaemy.trendscore.co.ke",
+      "notes": "Registered 2026-09-28; DNS verified against defaults.public_ipv4."
     }
   ],
   "discovery": {
