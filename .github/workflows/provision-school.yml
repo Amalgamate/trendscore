@@ -107,6 +107,21 @@ jobs:
             exit 1
           fi
 
+          existing_env="/srv/zawadi/apps/env/.zawadi-${SCHOOL_SLUG}.env"
+          existing_ports="$(ssh production "if sudo test -f '$existing_env'; then sudo grep -E '^(FRONTEND|BACKEND)_PORT=' '$existing_env' | cut -d= -f2 | xargs; fi" || true)"
+          if [[ -n "$existing_ports" ]]; then
+            read -r existing_fe existing_be <<< "$existing_ports"
+            if [[ -n "$REQUESTED_FE_PORT" && "$REQUESTED_FE_PORT" != "$existing_fe" ]] || [[ -n "$REQUESTED_BE_PORT" && "$REQUESTED_BE_PORT" != "$existing_be" ]]; then
+              echo "This provisioning retry must reuse the ports already recorded for $SCHOOL_SLUG" >&2
+              exit 1
+            fi
+            echo "frontend_port=$existing_fe" >> "$GITHUB_OUTPUT"
+            echo "backend_port=$existing_be" >> "$GITHUB_OUTPUT"
+            echo "db_name=$db_name" >> "$GITHUB_OUTPUT"
+            echo "Reusing the existing frontend/backend ports for the in-progress school setup"
+            exit 0
+          fi
+
           allocation="$(ssh production 'python3 -' <<'PY'
           import socket
 
@@ -194,6 +209,7 @@ jobs:
           PUBLIC_DOMAIN_B64="$(printf '%s' "$PUBLIC_DOMAIN" | base64 -w0)"
           SUPER_ADMIN_PASSWORD_B64="$(printf '%s' "$SUPER_ADMIN_PASSWORD" | base64 -w0)"
           echo "::add-mask::${DB_PASSWORD}"
+          echo "::add-mask::${SUPER_ADMIN_PASSWORD_B64}"
 
           cat > /tmp/provision-school.sh <<'REMOTE'
           set -euo pipefail
@@ -222,8 +238,14 @@ jobs:
           VAPID_PRIVATE_KEY="${VAPID_PRIVATE_KEY:-}"
 
           if [[ -e "${ENV_FILE}" ]]; then
-            echo "An environment file already exists for ${SCHOOL_SLUG}; refusing to overwrite or rotate an existing school's settings. Use the dedicated recovery/management workflow."
-            exit 1
+            current_school="$(sudo awk -F= '$1 == "SCHOOL_CODE" { print $2; exit }' "${ENV_FILE}")"
+            current_db="$(sudo awk -F= '$1 == "DB_NAME" { print $2; exit }' "${ENV_FILE}")"
+            [[ "$current_school" == "$SCHOOL_SLUG" && "$current_db" == "$DB_NAME" ]] || {
+              echo "Existing env file identity does not match this request; refusing to modify it."
+              exit 1
+            }
+            echo "Resuming the matching in-progress setup; preserving its generated DB/JWT/biometric secrets and ports."
+            sudo sed -i "s/^SUPER_ADMIN_PASSWORD=.*/SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD}/" "${ENV_FILE}"
           else
             echo "✅ Creating env file: ${ENV_FILE}"
             sudo tee "${ENV_FILE}" > /dev/null <<ENVEOF
@@ -269,11 +291,27 @@ jobs:
           echo "=== Pulling latest images ==="
           sudo docker compose --env-file "${ENV_FILE}" -p "${PROJECT}" -f "${COMPOSE_FILE}" pull
 
-          echo "=== Starting stack ==="
-          sudo docker compose --env-file "${ENV_FILE}" -p "${PROJECT}" -f "${COMPOSE_FILE}" up -d
+          echo "=== Starting database and cache ==="
+          sudo docker compose --env-file "${ENV_FILE}" -p "${PROJECT}" -f "${COMPOSE_FILE}" up -d db redis
 
-          echo "=== Waiting 15s for DB to become healthy ==="
-          sleep 15
+          echo "=== Waiting for database health ==="
+          DB_CONTAINER="$(sudo docker ps -a --filter "label=com.docker.compose.project=${PROJECT}" --filter 'label=com.docker.compose.service=db' --format '{{.Names}}' | head -n1)"
+          [[ -n "$DB_CONTAINER" ]] || { echo "Database container was not created"; exit 1; }
+          DB_HEALTH=""
+          for attempt in $(seq 1 30); do
+            DB_HEALTH="$(sudo docker inspect "$DB_CONTAINER" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}')"
+            [[ "$DB_HEALTH" == "healthy" ]] && break
+            [[ "$DB_HEALTH" == "unhealthy" || "$DB_HEALTH" == "exited" ]] && break
+            sleep 5
+          done
+          if [[ "$DB_HEALTH" != "healthy" ]]; then
+            echo "Database did not become healthy (state: ${DB_HEALTH:-unknown}). Recent database logs follow:"
+            sudo docker logs --tail 100 "$DB_CONTAINER" 2>&1 || true
+            exit 1
+          fi
+
+          echo "=== Starting application services ==="
+          sudo docker compose --env-file "${ENV_FILE}" -p "${PROJECT}" -f "${COMPOSE_FILE}" up -d backend frontend
 
           echo "=== Container status ==="
           sudo docker ps --filter "label=com.docker.compose.project=${PROJECT}" \
