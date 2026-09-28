@@ -31,6 +31,14 @@ jobs:
             sudo docker ps --format "table {{.Label \"com.docker.compose.project\"}}\t{{.Label \"com.docker.compose.service\"}}\t{{.Image}}\t{{.Ports}}" | sort
 
             echo ""
+            echo "=== Docker image inventory (CONTAINERS=0 means no container references the image) ==="
+            sudo docker system df -v
+
+            echo ""
+            echo "=== All containers (including stopped; image IDs and references) ==="
+            sudo docker ps -a --no-trunc --format "table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.ID}}"
+
+            echo ""
             echo "=== All env files in /srv/zawadi/apps/env/ ==="
             ls -la /srv/zawadi/apps/env/ 2>/dev/null || echo "(dir missing)"
 
