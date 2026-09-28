@@ -2321,9 +2321,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                           {visibleColumns.waived && (
                             <td className="px-3 py-1.5 border-r border-gray-300 text-right w-24">
                               <div className="text-xs font-medium text-teal-600">
-                                {(invoice.waivers || [])
-                                  .filter(w => w.status === 'APPROVED')
-                                  {formatKes((invoice.waivers || []).filter(w => w.status === 'APPROVED').reduce((acc, w) => acc + Number(w.amountWaived), 0)))}
+                                {formatKes((invoice.waivers || []).filter(w => w.status === 'APPROVED').reduce((acc, w) => acc + Number(w.amountWaived), 0)))}
                               </div>
                               {invoice.waivers?.some(w => w.status === 'PENDING') && (
                                 <span className="block mt-0.5 text-[9px] font-medium text-amber-600">
