@@ -78,6 +78,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
   const [showPledgeModal, setShowPledgeModal] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetScope, setResetScope] = useState({ academicYear: new Date().getFullYear(), term: 'TERM_1' });
+  const [resetConfirmText, setResetConfirmText] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: 'createdAt', direction: 'desc' });
   const [downloadingId, setDownloadingId] = useState(null);
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState([]);
@@ -1220,17 +1221,19 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
   }, [statusFilter, termFilter, startDate, endDate, gradeFilter, paymentMethodFilter, searchLearnerId]);
 
   const handleResetInvoices = () => {
-    // Open the scoped reset modal instead of calling directly
+    setResetConfirmText('');
     setShowResetModal(true);
   };
 
   const handleConfirmReset = async () => {
     try {
       setLoading(true);
-      await api.fees.resetInvoices({ ...resetScope, confirmToken: 'CONFIRM_RESET' });
-      showSuccess('Invoices and payments reset successfully');
+      const result = await api.fees.resetInvoices({ ...resetScope, confirmToken: 'CONFIRM_RESET' });
+      showSuccess(result?.message || 'Invoices and payments reset successfully');
       setShowResetModal(false);
       fetchInvoices();
+      fetchStatsInvoices();
+      fetchGrandTotals();
     } catch (err) {
       showError(err.message || 'Failed to reset invoices');
     } finally {
@@ -1741,6 +1744,20 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                   <Download size={13} strokeWidth={2.5} />
                   Export
                 </button>
+                {user?.role === 'SUPER_ADMIN' && (
+                  <>
+                    <span className="h-4 w-px bg-gray-200" />
+                    <button
+                      type="button"
+                      onClick={handleResetInvoices}
+                      className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-red-700 transition-colors hover:bg-red-50"
+                      title="Permanently delete invoices and payments for one academic year and term"
+                    >
+                      <Trash2 size={13} strokeWidth={2.5} />
+                      Reset Invoices
+                    </button>
+                  </>
+                )}
                 <span className="h-4 w-px bg-gray-200" />
                 <button
                   type="button"
@@ -3034,6 +3051,10 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                     ⚠️ Only invoices and payments matching the selected <strong>Term</strong> and <strong>Year</strong> will be deleted. This cannot be undone.
                   </div>
 
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-900">
+                    Accounting journal entries are not reversed by this reset. Check accounting and compliance obligations before proceeding.
+                  </div>
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider">Academic Year</label>
@@ -3061,6 +3082,19 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                     </div>
                   </div>
 
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      Type RESET {String(resetScope.term).replace('_', ' ')} {resetScope.academicYear} to confirm
+                    </label>
+                    <input
+                      type="text"
+                      value={resetConfirmText}
+                      onChange={(e) => setResetConfirmText(e.target.value)}
+                      placeholder={`RESET ${String(resetScope.term).replace('_', ' ')} ${resetScope.academicYear}`}
+                      className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl font-medium focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none transition-all"
+                    />
+                  </div>
+
                   <div className="flex gap-3 pt-2">
                     <button
                       onClick={() => setShowResetModal(false)}
@@ -3070,9 +3104,10 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                     </button>
                     <button
                       onClick={handleConfirmReset}
-                      className="flex-1 py-3 px-4 rounded-xl font-semibold text-white bg-red-600 hover:bg-red-700 shadow-lg shadow-red-600/20 transition-all active:scale-95 transform"
+                      disabled={loading || resetConfirmText.trim().toUpperCase() !== `RESET ${String(resetScope.term).replace('_', ' ')} ${resetScope.academicYear}`.toUpperCase()}
+                      className="flex-1 py-3 px-4 rounded-xl font-semibold text-white bg-red-600 hover:bg-red-700 shadow-lg shadow-red-600/20 transition-all active:scale-95 transform disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Confirm Reset
+                      {loading ? 'Resetting…' : 'Confirm Reset'}
                     </button>
                   </div>
                 </div>
