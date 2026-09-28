@@ -45,6 +45,8 @@ import { useMobile } from '../../../hooks/useMobileDetection';
 import { DataCard } from '../shared';
 
 const TERM_ORDER = { TERM_1: 1, TERM_2: 2, TERM_3: 3 };
+// Display KES in whole shillings while retaining cents in stored finance records.
+const formatKes = (value) => Math.round(Number(value || 0)).toLocaleString('en-KE');
 const PAYMENT_METHOD_OPTIONS = [
   { value: 'OTHER', label: 'Other / Manual Reconciliation' },
   { value: 'CASH', label: 'Cash' },
@@ -722,7 +724,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
               <td>${i + 1}</td>
               <td style="font-weight: 600;">${item.name || item.description || 'General Fees'}</td>
               <td style="text-align: center; font-size: 10px; color: #64748b;">${item.mandatory !== false ? 'MANDATORY' : 'OPTIONAL'}</td>
-              <td style="text-align: right; font-weight: 700;">${Number(item.amount || 0).toLocaleString('en-KE')}</td>
+              <td style="text-align: right; font-weight: 700;">${Math.round(Number(item.amount || 0)).toLocaleString('en-KE')}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -732,19 +734,19 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
         <div style="width: 250px;">
           <div style="display: flex; justify-content: space-between; padding: 5px 0; color: #64748b; font-size: 12px;">
             <span>Subtotal Charged:</span>
-            <span>KES ${Number(invoice.totalAmount || 0).toLocaleString()}</span>
+            <span>KES ${formatKes(invoice.totalAmount)}</span>
           </div>
           <div style="display: flex; justify-content: space-between; padding: 5px 0; color: #16a34a; font-size: 12px; font-weight: 600;">
             <span>Total Paid:</span>
-            <span>KES ${Number(getInvoiceCashPaid(invoice) || 0).toLocaleString()}</span>
+            <span>KES ${formatKes(getInvoiceCashPaid(invoice))}</span>
           </div>
           <div style="display: flex; justify-content: space-between; padding: 5px 0; color: #00A09D; font-size: 12px; font-weight: 600;">
             <span>Total Waived:</span>
-            <span>KES ${Number(getApprovedWaiverAmount(invoice) || 0).toLocaleString()}</span>
+            <span>KES ${formatKes(getApprovedWaiverAmount(invoice))}</span>
           </div>
           <div style="display: flex; justify-content: space-between; padding: 10px 0; border-top: 2px solid #e2e8f0; margin-top: 5px; color: ${getInvoiceNetBalance(invoice) <= 0 ? '#16a34a' : '#dc2626'}; font-size: 16px; font-weight: 800;">
             <span>${getInvoiceNetBalance(invoice) < 0 ? 'CREDIT BALANCE:' : 'BALANCE DUE:'}</span>
-            <span>KES ${Math.abs(Number(getInvoiceNetBalance(invoice) || 0)).toLocaleString()}</span>
+            <span>KES ${formatKes(Math.abs(Number(getInvoiceNetBalance(invoice) || 0)))}</span>
           </div>
         </div>
       </div>
@@ -1315,7 +1317,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
 
   // ——— Computed KES totals for each metric card —————————————
   const stats = React.useMemo(() => {
-    const fmt = (n) => `KES ${Number(n || 0).toLocaleString('en-KE')}`;
+    const fmt = (n) => `KES ${formatKes(n)}`;
     const src = currentCycleStatsInvoices;
     const getStructureExpected = (invoice) => {
       const fs = invoice?.feeStructure;
@@ -2030,8 +2032,8 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                     subtitle={`${invoice.invoiceNumber} • ${invoice.learner?.grade || ''}`}
                     badges={getStatusBadge(invoice.status)}
                     stats={{
-                      "Total Billed": `KES ${Number(invoice.totalAmount).toLocaleString()}`,
-                      "Current Balance": `KES ${Number(invoice.balance).toLocaleString()}`
+                      "Total Billed": `KES ${formatKes(invoice.totalAmount)}`,
+                      "Current Balance": `KES ${formatKes(invoice.balance)}`
                     }}
                     actions={
                       <div className="flex items-center gap-2 w-full justify-end mt-2">
@@ -2223,34 +2225,34 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
 
                     {visibleColumns.billed && (
                       <td className="px-3 py-2 text-xs font-semibold text-gray-900 border-r border-gray-300 text-right">
-                        {Number(listTotals.totalBilled || 0).toLocaleString()}
+                        {formatKes(listTotals.totalBilled)}
                       </td>
                     )}
                     {visibleColumns.paid && (
                       <td className="px-3 py-2 text-xs font-semibold text-emerald-700 border-r border-gray-300 text-right">
-                        {Number(listTotals.totalPaid || 0).toLocaleString()}
+                        {formatKes(listTotals.totalPaid)}
                       </td>
                     )}
                     {visibleColumns.waived && (
                       <td className="px-3 py-2 text-xs font-semibold text-teal-700 border-r border-gray-300 text-right">
-                        {Number(listTotals.totalWaived || 0).toLocaleString()}
+                        {formatKes(listTotals.totalWaived)}
                       </td>
                     )}
                     {visibleColumns.balance && (
                       <td className="px-3 py-2 text-xs font-semibold border-r border-gray-300 text-right">
                         {showBalanceBreakdown ? (
                           <div className="grid grid-cols-2 gap-3">
-                            <span className="text-amber-700">B/F {Number(grandTotals.carryFwd || 0).toLocaleString()}</span>
-                            <span className="text-red-700 border-l border-gray-200 pl-3">Current {Number(grandTotals.currentTermDue || 0).toLocaleString()}</span>
+                            <span className="text-amber-700">B/F {formatKes(grandTotals.carryFwd)}</span>
+                            <span className="text-red-700 border-l border-gray-200 pl-3">Current {formatKes(grandTotals.currentTermDue)}</span>
                           </div>
                         ) : (
-                          <span className="text-red-700">{Number(grandTotals.totalBalance ?? listTotals.totalBalance ?? 0).toLocaleString()}</span>
+                          <span className="text-red-700">{formatKes(grandTotals.totalBalance ?? listTotals.totalBalance ?? 0)}</span>
                         )}
                       </td>
                     )}
                     {visibleColumns.overpaid && (
                       <td className="px-3 py-2 text-xs font-semibold text-purple-700 border-r border-gray-300 text-right">
-                        {Number(listTotals.totalOverpaid || 0).toLocaleString()}
+                        {formatKes(listTotals.totalOverpaid)}
                       </td>
                     )}
 
@@ -2296,7 +2298,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                               </div>
                               {invoice.totalAmount > 0 && (
                                 <div className="text-[9px] font-medium text-blue-600 uppercase tracking-tight hidden">
-                                  KES {Number(invoice.totalAmount).toLocaleString()}
+                                  KES {formatKes(invoice.totalAmount)}
                                 </div>
                               )}
                             </td>
@@ -2308,12 +2310,12 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                           )}
                           {visibleColumns.billed && (
                             <td className="px-3 py-1.5 text-xs font-medium text-gray-900 border-r border-gray-300 text-right w-24">
-                              {Number(invoice.totalAmount).toLocaleString()}
+                              {formatKes(invoice.totalAmount)}
                             </td>
                           )}
                           {visibleColumns.paid && (
                             <td className="px-3 py-1.5 text-xs font-medium text-green-600 border-r border-gray-300 text-right w-24">
-                              {Number(getInvoiceCashPaid(invoice)).toLocaleString()}
+                              {formatKes(getInvoiceCashPaid(invoice))}
                             </td>
                           )}
                           {visibleColumns.waived && (
@@ -2321,7 +2323,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                               <div className="text-xs font-medium text-teal-600">
                                 {(invoice.waivers || [])
                                   .filter(w => w.status === 'APPROVED')
-                                  .reduce((acc, w) => acc + Number(w.amountWaived), 0).toLocaleString()}
+                                  {formatKes((invoice.waivers || []).filter(w => w.status === 'APPROVED').reduce((acc, w) => acc + Number(w.amountWaived), 0))}
                               </div>
                               {invoice.waivers?.some(w => w.status === 'PENDING') && (
                                 <span className="block mt-0.5 text-[9px] font-medium text-amber-600">
@@ -2334,17 +2336,17 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                             <td className="px-3 py-1.5 text-xs font-medium border-r border-gray-300 w-32 text-right">
                               {showBalanceBreakdown ? (
                                 <div className="grid grid-cols-2 gap-3">
-                                  <span className="text-amber-700">{Number(getInvoiceCarryFwd(invoice) || 0).toLocaleString()}</span>
-                                  <span className="text-red-600 border-l border-gray-200 pl-3">{Number(getInvoiceCurrentTermDue(invoice) || 0).toLocaleString()}</span>
+                                  <span className="text-amber-700">{formatKes(getInvoiceCarryFwd(invoice))}</span>
+                                  <span className="text-red-600 border-l border-gray-200 pl-3">{formatKes(getInvoiceCurrentTermDue(invoice))}</span>
                                 </div>
                               ) : (
-                                <span className="text-red-600">{Number(getInvoiceCurrentDue(invoice) || 0).toLocaleString()}</span>
+                                <span className="text-red-600">{formatKes(getInvoiceCurrentDue(invoice))}</span>
                               )}
                             </td>
                           )}
                           {visibleColumns.overpaid && (
                             <td className="px-3 py-1.5 text-xs font-medium text-purple-600 border-r border-gray-300 text-right w-24">
-                              {Number(getInvoiceNetOverpaid(invoice) || 0).toLocaleString()}
+                              {formatKes(getInvoiceNetOverpaid(invoice))}
                             </td>
                           )}
 
@@ -2442,34 +2444,34 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
 
                     {visibleColumns.billed && (
                       <td className="px-3 py-3 text-xs font-semibold text-gray-900 border-r border-gray-300 text-right">
-                        {Number(listTotals.totalBilled || 0).toLocaleString()}
+                        {formatKes(listTotals.totalBilled)}
                       </td>
                     )}
                     {visibleColumns.paid && (
                       <td className="px-3 py-3 text-xs font-semibold text-emerald-600 border-r border-gray-300 text-right">
-                        {Number(listTotals.totalPaid || 0).toLocaleString()}
+                        {formatKes(listTotals.totalPaid)}
                       </td>
                     )}
                     {visibleColumns.waived && (
                       <td className="px-3 py-3 text-xs font-semibold text-teal-600 border-r border-gray-300 text-right">
-                        {Number(listTotals.totalWaived || 0).toLocaleString()}
+                        {formatKes(listTotals.totalWaived)}
                       </td>
                     )}
                     {visibleColumns.balance && (
                       <td className="px-3 py-3 text-xs font-semibold border-r border-gray-300 text-right">
                         {showBalanceBreakdown ? (
                           <div className="grid grid-cols-2 gap-3">
-                            <span className="text-amber-700">B/F {Number(grandTotals.carryFwd || 0).toLocaleString()}</span>
-                            <span className="text-red-600 border-l border-gray-200 pl-3">Current {Number(grandTotals.currentTermDue || 0).toLocaleString()}</span>
+                            <span className="text-amber-700">B/F {formatKes(grandTotals.carryFwd)}</span>
+                            <span className="text-red-600 border-l border-gray-200 pl-3">Current {formatKes(grandTotals.currentTermDue)}</span>
                           </div>
                         ) : (
-                          <span className="text-red-600">{Number(grandTotals.totalBalance ?? listTotals.totalBalance ?? 0).toLocaleString()}</span>
+                          <span className="text-red-600">{formatKes(grandTotals.totalBalance ?? listTotals.totalBalance ?? 0)}</span>
                         )}
                       </td>
                     )}
                     {visibleColumns.overpaid && (
                       <td className="px-3 py-3 text-xs font-semibold text-purple-600 border-r border-gray-300 text-right">
-                        {Number(listTotals.totalOverpaid || 0).toLocaleString()}
+                        {formatKes(listTotals.totalOverpaid)}
                       </td>
                     )}
 
@@ -2955,7 +2957,7 @@ const FeeCollectionPage = ({ learnerId, grade: gradeParam, initialTab = 'invoice
                             : `${selectedInvoiceIds.length} highlighted invoice${selectedInvoiceIds.length === 1 ? '' : 's'}`}
                         </p>
                         <p className="text-xs mt-1">
-                          Approx. balance to clear: KES {Number(markPaidPreviewAmount || 0).toLocaleString()}
+                          Approx. balance to clear: KES {formatKes(markPaidPreviewAmount)}
                         </p>
                       </div>
                     </div>
