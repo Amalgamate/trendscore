@@ -7,6 +7,12 @@ on:
         description: 'Active school id from deploy/instances.manifest.json (for example mwangaza-cs)'
         required: true
         type: string
+  workflow_call:
+    inputs:
+      school_slug:
+        description: 'Active school id from deploy/instances.manifest.json'
+        required: true
+        type: string
 
 permissions:
   contents: read
