@@ -48,6 +48,18 @@ jobs:
               psql -U zawadi -d postgres -Atc "SELECT datname FROM pg_database ORDER BY datname" 2>&1 || true
 
             echo ""
+            echo "=== Trevor's Academy Prisma migration table ==="
+            sudo docker exec zawadi-trevorsacaemy-db-1 \
+              psql -U zawadi -d zawadi_trevorsacaemy -Atc \
+              "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='_prisma_migrations' ORDER BY ordinal_position" 2>&1 || true
+
+            echo ""
+            echo "=== Trevor's Academy migration state query ==="
+            sudo docker exec zawadi-trevorsacaemy-db-1 \
+              psql -U zawadi -d zawadi_trevorsacaemy -tAc \
+              "SELECT CASE WHEN to_regclass('public._prisma_migrations') IS NULL THEN 'fresh' WHEN EXISTS (SELECT 1 FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL) THEN 'failed' ELSE 'ready' END" 2>&1 || true
+
+            echo ""
             echo "=== All env files in /srv/zawadi/apps/env/ ==="
             ls -la /srv/zawadi/apps/env/ 2>/dev/null || echo "(dir missing)"
 
