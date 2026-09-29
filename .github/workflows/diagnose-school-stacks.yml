@@ -74,3 +74,10 @@ jobs:
               --format "{{.Label \"com.docker.compose.project\"}}|{{.Label \"com.docker.compose.project.environment_file\"}}" \
               | sort
           '
+
+      - name: Read Trevor API module-config errors
+        run: |
+          ssh production '
+            sudo docker logs --since 30m zawadi-trevorsacaemy-backend-1 2>&1 \
+              | grep -E -C 3 "schools/modules/config|Unhandled server error" || true
+          '
