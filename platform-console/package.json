@@ -6,13 +6,17 @@
   "scripts": {
     "start": "node --experimental-sqlite server.js",
     "dev": "node --experimental-sqlite server.js",
-    "test": "node --test tests/verify.test.js tests/login.test.js"
+    "test": "node --experimental-sqlite --test tests/verify.test.js tests/login.test.js",
+    "test:users-store": "node --experimental-sqlite --test tests/users-store.test.js",
+    "test:all": "node --experimental-sqlite --test tests/verify.test.js tests/login.test.js tests/users-store.test.js"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.6",
     "dockerode": "^4.0.2",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.2",
+    "otplib": "^12.0.1",
     "systeminformation": "^5.27.11"
   }
 }

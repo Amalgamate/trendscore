@@ -1,5 +1,9 @@
 // The console starts empty and fills operational state from authenticated APIs.
 let INSTANCES = [];
+let INSTANCE_TYPE_METADATA = [];
+let ASSESSMENT_ACTIVITY = {};
+let assessmentActivityFetchedAt = 0;
+let assessmentActivityRequest = null;
 
 const PLATFORM_MODULES = [
   { id: 'admissions', name: 'Admissions', desc: 'Student registration and enrollment', enabled: true },
@@ -13,6 +17,7 @@ const PLATFORM_MODULES = [
 
 let DEPLOYMENTS = [];
 let AUDIT_LOGS = [];
+let PROVISION_JOBS = [];
 
 let LEADS = [];
 let BILLING_CUSTOMERS = [];
@@ -20,14 +25,39 @@ let BILLING_CONTRACTS = [];
 let BILLING_SCHOOLS = [];
 let BILLING_QUOTES = [];
 let BILLING_INVOICES = [];
+let BILLING_PAYMENTS = [];
+let BILLING_PAYMENTS_STATUS = 'loading';
 let BILLING_DELIVERIES = [];
+let BILLING_INVOICE_DELIVERIES = [];
 let BILLING_EMAIL_STATUS = 'unknown';
+let BILLING_MAIL_DRAFT = null;
 const BILLING_DATA_STATUS = { customers: 'loading', contracts: 'loading', quotes: 'loading', invoices: 'loading' };
 const BILLING_FILTERS = { customers: '', quotes: '', quoteStatus: '', invoices: '', invoiceStatus: '' };
 let billingQuotePreviewTimer = null;
 
 // Helpers
 const $ = id => document.getElementById(id);
+
+// Track user-facing API work while leaving routine runtime health polling quiet.
+const nativeFetch = window.fetch.bind(window);
+window.fetch = (...args) => {
+  const input = args[0];
+  const requestUrl = typeof input === 'string' ? input : input?.url || '';
+  let shouldTrack = false;
+  try {
+    const url = new URL(requestUrl, window.location.href);
+    shouldTrack = url.origin === window.location.origin
+      && url.pathname.startsWith('/api/')
+      && url.pathname !== '/api/runtime';
+  } catch (_) {}
+  if (!shouldTrack) return nativeFetch(...args);
+  trackedApiRequests += 1;
+  syncPageProgress();
+  return nativeFetch(...args).finally(() => {
+    trackedApiRequests = Math.max(0, trackedApiRequests - 1);
+    syncPageProgress();
+  });
+};
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&': '&amp;',
   '<': '&lt;',
@@ -39,10 +69,20 @@ const fmt = value => parseFloat(value).toFixed(1).replace(/\.0$/, '');
 const slugify = value => String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const nowLabel = () => new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }) + ' EAT';
 const fmtDate = value => new Intl.DateTimeFormat('en-KE', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value + 'T00:00'));
+const fmtActivityDate = value => {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? '—' : new Intl.DateTimeFormat('en-KE', { timeZone: 'Africa/Nairobi', dateStyle: 'medium', timeStyle: 'short' }).format(parsed);
+};
+const fmtAcademicTerm = (term, year) => `${String(term || 'Current term').replace(/^TERM_/i, 'Term ')}${year ? ` · ${year}` : ''}`;
 const statusCls = status => status === 'Online' || status === 'Active' || status === 'Success' ? 'online' : status === 'Degraded' || status === 'Warning' || status === 'Due Soon' ? 'warn' : 'offline';
 
 let toastTimer;
 let installProgressTimer = null;
+let installProgressActive = false;
+let trackedApiRequests = 0;
+let progressFinishTimer = null;
+let progressStartedAt = 0;
 let runtimePollTimer = null;
 let runtimePollBusy = false;
 let pendingProvisionLeadId = null;
@@ -150,13 +190,51 @@ function setInstallProgress(value) {
   if (!wrap || !line) return;
   const pct = Math.max(0, Math.min(100, Number(value) || 0));
   line.style.width = `${pct}%`;
+  wrap.setAttribute('aria-valuenow', String(pct));
+}
+
+function syncPageProgress() {
+  const wrap = $('install-progress');
+  const line = $('install-progress-line');
+  if (!wrap || !line) return;
+  clearTimeout(progressFinishTimer);
+  progressFinishTimer = null;
+  const active = installProgressActive || trackedApiRequests > 0;
+  if (active) {
+    if (!wrap.classList.contains('active')) {
+      progressStartedAt = Date.now();
+      wrap.classList.add('active');
+      wrap.setAttribute('aria-hidden', 'false');
+    }
+    wrap.classList.toggle('indeterminate', !installProgressActive);
+    if (!installProgressActive) {
+      line.style.width = '';
+      wrap.removeAttribute('aria-valuenow');
+    }
+    return;
+  }
+
+  wrap.classList.remove('indeterminate');
+  if (!wrap.classList.contains('active')) return;
+  const delay = Math.max(0, 180 - (Date.now() - progressStartedAt));
+  progressFinishTimer = setTimeout(() => {
+    if (installProgressActive || trackedApiRequests > 0) return;
+    line.style.width = '100%';
+    wrap.setAttribute('aria-valuenow', '100');
+    setTimeout(() => {
+      if (installProgressActive || trackedApiRequests > 0) return;
+      wrap.classList.remove('active');
+      wrap.setAttribute('aria-hidden', 'true');
+      line.style.width = '0%';
+      wrap.removeAttribute('aria-valuenow');
+    }, 180);
+  }, delay);
 }
 
 function startInstallProgress() {
   const wrap = $('install-progress');
   if (!wrap) return;
-  wrap.classList.add('active');
-  wrap.setAttribute('aria-hidden', 'false');
+  installProgressActive = true;
   setInstallProgress(8);
   clearInterval(installProgressTimer);
   installProgressTimer = setInterval(() => {
@@ -165,19 +243,15 @@ function startInstallProgress() {
     const current = parseFloat(String(line.style.width || '0').replace('%', '')) || 0;
     if (current < 90) setInstallProgress(current + 4);
   }, 450);
+  syncPageProgress();
 }
 
 function finishInstallProgress(ok = true) {
-  const wrap = $('install-progress');
-  if (!wrap) return;
   clearInterval(installProgressTimer);
   installProgressTimer = null;
+  installProgressActive = false;
   setInstallProgress(ok ? 100 : 0);
-  setTimeout(() => {
-    wrap.classList.remove('active');
-    wrap.setAttribute('aria-hidden', 'true');
-    if (ok) setInstallProgress(0);
-  }, ok ? 350 : 150);
+  syncPageProgress();
 }
 
 const APP_PORT_RANGES = {
@@ -531,13 +605,15 @@ async function refreshFromRuntime() {
   try {
     const runtime = await fetchRuntimeData();
     if (runtime?.ok && Array.isArray(runtime.instances)) {
+      if (Array.isArray(runtime.appTypes)) INSTANCE_TYPE_METADATA = runtime.appTypes;
       INSTANCES = runtime.instances.map(item => ({
         ...item,
         domain: item.domain || '',
-        typeLabel: item.typeLabel || 'Managed',
+        appType: item.appType || 'other',
+        typeLabel: item.typeLabel || (item.appType ? item.appType.toUpperCase() : 'Other / unclassified'),
       }));
       selectedInstanceName = INSTANCES.find(i => i.name === selectedInstanceName)?.name || INSTANCES[0]?.name || '';
-    }
+      }
     RUNTIME_METRICS = runtime?.metrics || null;
     runtimeGeneratedAt = runtime?.generatedAt || null;
     if (Array.isArray(runtime?.deployments)) DEPLOYMENTS = runtime.deployments;
@@ -548,6 +624,128 @@ async function refreshFromRuntime() {
     runtimeGeneratedAt = null;
     liveMode = false;
   }
+}
+
+async function refreshProvisionJobs() {
+  const panel = $('provision-jobs-panel');
+  const table = $('provision-jobs-table');
+  if (!panel || !table || window.consoleUserRole !== 'super_admin') return;
+  try {
+    const response = await fetch('/api/instances/provision-jobs', { credentials: 'same-origin' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !Array.isArray(data.jobs)) throw new Error(data.error || 'Could not load provision jobs');
+    PROVISION_JOBS = data.jobs;
+    panel.hidden = !PROVISION_JOBS.length;
+    table.innerHTML = PROVISION_JOBS.map(job => `
+      <tr>
+        <td>${esc(job.createdAt ? new Intl.DateTimeFormat('en-KE', { timeZone: 'Africa/Nairobi', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(job.createdAt)) : '—')}</td>
+        <td><strong>${esc(job.name)}</strong><small style="display:block;color:var(--muted)">${esc(job.id)}</small></td>
+        <td>${esc(job.phase || job.status)}</td>
+        <td><span class="badge ${job.status === 'succeeded' ? 'online' : ['failed', 'interrupted'].includes(job.status) ? 'offline' : 'warn'}">${esc(job.status)}</span></td>
+        <td>${esc(job.error || job.warning || (job.status === 'succeeded' ? 'Provisioning completed.' : 'Running in background.'))}</td>
+      </tr>`).join('');
+  } catch (error) {
+    panel.hidden = false;
+    table.innerHTML = `<tr><td colspan="5">${esc(error.message)}</td></tr>`;
+  }
+}
+
+function assessmentActivityTooltipText(activity, schoolName = 'School') {
+  if (!activity) return `${schoolName}\nLoading assessment activity…`;
+  if (activity.state === 'unavailable') return `${schoolName}\nAssessment data unavailable\n${activity.reason || 'The school database could not be read.'}`;
+  const latest = activity.tests?.[0];
+  const termLine = `Current term · ${fmtAcademicTerm(activity.currentTerm, activity.academicYear)}`;
+  if (!latest) return `${schoolName}\n${termLine}\nNo current-term exam yet.`;
+  const examType = latest.test_type
+    ? String(latest.test_type).replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, letter => letter.toUpperCase())
+    : 'Not specified';
+  return `${schoolName}\n${termLine}\nExam · ${latest.title || 'Untitled exam'}\nUpdated · ${fmtActivityDate(latest.updated_at)}\nExam type · ${examType}`;
+}
+
+function showAssessmentActivityTooltip(button) {
+  const tooltip = $('assessment-activity-tooltip');
+  if (!tooltip || !button) return;
+  const activity = ASSESSMENT_ACTIVITY[button.dataset.assessmentActivityKey];
+  const lines = assessmentActivityTooltipText(activity, button.dataset.assessmentActivityName || 'School').split('\n');
+  tooltip.innerHTML = lines.map((line, index) => index === 0 ? `<strong>${esc(line)}</strong>` : `<span>${esc(line)}</span>`).join('');
+  tooltip.classList.add('is-visible');
+  tooltip.setAttribute('aria-hidden', 'false');
+  const rect = button.getBoundingClientRect();
+  const tipRect = tooltip.getBoundingClientRect();
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - tipRect.width - 8));
+  const top = rect.top - tipRect.height - 8 >= 8 ? rect.top - tipRect.height - 8 : Math.min(window.innerHeight - tipRect.height - 8, rect.bottom + 8);
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${Math.max(8, top)}px`;
+}
+
+function hideAssessmentActivityTooltip() {
+  const tooltip = $('assessment-activity-tooltip');
+  if (!tooltip) return;
+  tooltip.classList.remove('is-visible');
+  tooltip.setAttribute('aria-hidden', 'true');
+}
+
+async function refreshAssessmentActivity(force = false) {
+  if (window.consoleUserRole !== 'super_admin') return;
+  if (assessmentActivityRequest) return assessmentActivityRequest;
+  if (!force && Date.now() - assessmentActivityFetchedAt < 60_000) return;
+  assessmentActivityRequest = (async () => {
+    try {
+      const response = await fetch('/api/instances/assessment-activity', { credentials: 'same-origin' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !Array.isArray(data.activities)) throw new Error(data.error || 'Could not load assessment activity');
+      ASSESSMENT_ACTIVITY = Object.fromEntries(data.activities.map(activity => [activity.key, { ...activity, generatedAt: data.generatedAt }]));
+      assessmentActivityFetchedAt = Date.now();
+      renderInstances();
+    } catch (error) {
+      console.warn('[assessment-activity] Could not refresh activity:', error.message);
+    } finally {
+      assessmentActivityRequest = null;
+    }
+  })();
+  return assessmentActivityRequest;
+}
+
+function openAssessmentActivity(key, schoolName = 'School') {
+  const activity = ASSESSMENT_ACTIVITY[key];
+  const overlay = $('assessment-activity-overlay');
+  const title = $('assessment-activity-title');
+  const summary = $('assessment-activity-summary');
+  const list = $('assessment-activity-list');
+  if (!overlay || !title || !summary || !list) return;
+  title.textContent = `${schoolName} · Assessment activity`;
+  if (!activity) {
+    summary.innerHTML = '<div class="assessment-activity-empty">Assessment activity is loading. Please try again in a moment.</div>';
+    list.innerHTML = '';
+  } else if (activity.state === 'unavailable') {
+    summary.innerHTML = `<div class="assessment-activity-empty">${esc(activity.reason || 'Assessment data could not be read.')}</div>`;
+    list.innerHTML = '';
+  } else {
+    const tests = Array.isArray(activity.tests) ? activity.tests : [];
+    summary.innerHTML = `<div class="assessment-activity-current-term">${esc(fmtAcademicTerm(activity.currentTerm, activity.academicYear))}</div><div class="assessment-activity-kpi"><span>Tests this term</span><strong>${Number(activity.testCount || 0)}</strong></div><div class="assessment-activity-kpi"><span>Active tests</span><strong>${Number(activity.activeTestCount || 0)}</strong></div><div class="assessment-activity-kpi"><span>Recent tests shown</span><strong>${tests.length}</strong></div><div class="assessment-activity-updated">Snapshot updated ${esc(fmtActivityDate(activity.generatedAt || new Date().toISOString()))}</div>`;
+    list.innerHTML = tests.length ? tests.map(test => `<article class="assessment-test-card">
+      <div class="assessment-test-heading"><strong>${esc(test.title || 'Untitled test')}</strong><span class="assessment-status-tag ${test.active ? 'is-active' : ''}">${esc(test.status || (test.active ? 'ACTIVE' : 'INACTIVE'))}</span></div>
+      <div class="assessment-test-meta">${esc(test.learning_area || 'Learning area not set')} · Grade ${esc(test.grade || '—')} · ${esc(test.term || '—')} ${esc(test.academic_year || '')}</div>
+      <div class="assessment-test-stats"><span>${Number(test.result_count || 0)} results recorded</span><span>Test updated ${esc(fmtActivityDate(test.updated_at))}</span><span>Last result ${esc(fmtActivityDate(test.last_result_at))}</span><span>Test date ${esc(test.test_date ? fmtActivityDate(test.test_date) : '—')}</span></div>
+    </article>`).join('') : '<div class="assessment-activity-empty">No tests have been created for this term yet.</div>';
+  }
+  overlay.classList.add('open');
+  overlay.setAttribute('aria-hidden', 'false');
+  $('assessment-activity-close')?.focus();
+  if (!activity) {
+    void refreshAssessmentActivity(true).then(() => {
+      if (!overlay.classList.contains('open')) return;
+      if (ASSESSMENT_ACTIVITY[key]) openAssessmentActivity(key, schoolName);
+      else if (summary) summary.innerHTML = '<div class="assessment-activity-empty">Could not load assessment activity. Close and try again.</div>';
+    });
+  }
+}
+
+function closeAssessmentActivity() {
+  const overlay = $('assessment-activity-overlay');
+  if (!overlay) return;
+  overlay.classList.remove('open');
+  overlay.setAttribute('aria-hidden', 'true');
 }
 
 function renderRuntimeStamp(label = liveMode ? 'Live' : 'Fallback') {
@@ -571,6 +769,7 @@ async function pollRuntimeAndRender() {
   runtimePollBusy = true;
   try {
     await refreshFromRuntime();
+    await refreshAssessmentActivity();
     renderEverything();
     renderRuntimeStamp();
   } catch (_) {
@@ -602,12 +801,13 @@ function containerRows(instance) {
 
 async function loadBillingData() {
   try {
-    const [customersResponse, contractsResponse, schoolsResponse, quotesResponse, invoicesResponse, emailStatusResponse] = await Promise.all([
+    const [customersResponse, contractsResponse, schoolsResponse, quotesResponse, invoicesResponse, paymentsResponse, emailStatusResponse] = await Promise.all([
       fetch('/api/billing/customers', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/contracts', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/schools', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/quotes', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/invoices', { credentials: 'same-origin' }).catch(() => null),
+      fetch('/api/billing/payments', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/email-status', { credentials: 'same-origin' }).catch(() => null),
     ]);
     const [customersData, contractsData] = await Promise.all([
@@ -622,17 +822,22 @@ async function loadBillingData() {
     BILLING_SCHOOLS = schoolsData.schools || [];
     const quotesData = quotesResponse?.ok ? await quotesResponse.json().catch(() => ({})) : {};
     const invoicesData = invoicesResponse?.ok ? await invoicesResponse.json().catch(() => ({})) : {};
+    const paymentsData = paymentsResponse?.ok ? await paymentsResponse.json().catch(() => ({})) : {};
     const emailData = emailStatusResponse?.ok ? await emailStatusResponse.json().catch(() => ({})) : {};
     BILLING_DATA_STATUS.quotes = quotesResponse?.ok && Array.isArray(quotesData.quotes) ? 'ready' : 'unavailable';
     BILLING_DATA_STATUS.invoices = invoicesResponse?.ok && Array.isArray(invoicesData.invoices) ? 'ready' : 'unavailable';
     BILLING_QUOTES = quotesData.quotes || [];
     BILLING_INVOICES = invoicesData.invoices || [];
+    BILLING_PAYMENTS = paymentsData.payments || [];
+    BILLING_PAYMENTS_STATUS = paymentsResponse?.ok && Array.isArray(paymentsData.payments) ? 'ready' : 'unavailable';
     BILLING_DELIVERIES = quotesData.deliveries || [];
+    BILLING_INVOICE_DELIVERIES = invoicesData.deliveries || [];
     BILLING_EMAIL_STATUS = emailStatusResponse?.ok ? (emailData.configured === true ? 'ready' : 'unconfigured') : 'unavailable';
     renderBillingRegistry();
   } catch (error) {
     Object.keys(BILLING_DATA_STATUS).forEach(key => { BILLING_DATA_STATUS[key] = 'unavailable'; });
     BILLING_EMAIL_STATUS = 'unavailable';
+    BILLING_PAYMENTS_STATUS = 'unavailable';
     if ($('billing-customers-table')) $('billing-customers-table').innerHTML = `<tr><td colspan="7">${esc(error.message || 'Billing data is unavailable.')}</td></tr>`;
     if ($('billing-contracts-table')) $('billing-contracts-table').innerHTML = '<tr><td colspan="7">Billing contracts are unavailable.</td></tr>';
     ['billing-kpi-customers', 'billing-kpi-open-quotes', 'billing-kpi-accepted', 'billing-kpi-drafts'].forEach(id => { if ($(id)) $(id).textContent = 'Unavailable'; });
@@ -641,6 +846,8 @@ async function loadBillingData() {
     if ($('billing-attention-list')) $('billing-attention-list').innerHTML = '<div class="billing-empty">Billing records could not be loaded. Refresh to try again.</div>';
     if ($('billing-recent-list')) $('billing-recent-list').innerHTML = '<div class="billing-empty">Recent billing records are unavailable.</div>';
     renderBillingSettings();
+    renderBillingPayments();
+    renderBillingReports();
   }
 }
 
@@ -689,14 +896,80 @@ function renderBillingRegistry() {
   renderBillingQuotes();
   renderBillingOverview();
   renderBillingSettings();
+  renderBillingPayments();
+  renderBillingReports();
   document.querySelectorAll('[data-super-admin-only]').forEach(element => {
     if (window.consoleUserRole) element.hidden = window.consoleUserRole !== 'super_admin';
   });
   updateBillingActionVisibility();
 }
 
+function billingEmailPreviewHtml(draft) {
+  const body = String(draft.message || '').split(/\r?\n/).map(line => line ? `<p style="margin:0 0 14px">${esc(line)}</p>` : '<div style="height:8px"></div>').join('');
+  const kind = draft.kind === 'quote';
+  const label = kind ? 'QUOTATION' : draft.isDraftInvoice ? 'DRAFT INVOICE · REVIEW COPY' : 'COMMERCIAL INVOICE';
+  const amount = formatBillingKsh(draft.amountKsh);
+  return `<!doctype html><html><body style="margin:0;background:#f1f4f9;font-family:Arial,Helvetica,sans-serif;color:#172033"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f1f4f9;padding:24px 10px"><tr><td align="center"><table role="presentation" width="620" cellspacing="0" cellpadding="0" style="max-width:620px;width:100%;background:#fff;border:1px solid #dce3ee;border-radius:14px;overflow:hidden"><tr><td style="padding:24px 30px;border-bottom:1px solid #e7ebf2"><img src="${esc(draft.logoUrl)}" alt="TrendSCORE" width="150" style="display:block;max-width:150px;height:auto"><div style="margin-top:10px;color:#61708b;font-size:12px;letter-spacing:1.4px;font-weight:bold">BUSINESS SERVICES</div></td></tr><tr><td style="padding:28px 30px 10px"><span style="display:inline-block;padding:7px 10px;background:#eef2ff;color:#18258b;font-size:11px;font-weight:bold;letter-spacing:1px;border-radius:4px">${label}</span><h1 style="margin:16px 0 5px;color:#101b36;font-size:22px;line-height:1.3">${esc(draft.documentNumber)}</h1><div style="color:#66748d;font-size:13px">Prepared for ${esc(draft.customerName)}</div></td></tr><tr><td style="padding:8px 30px 22px;color:#34415a;font-size:14px;line-height:1.75">${body}</td></tr><tr><td style="padding:0 30px 26px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f7f9fc;border:1px solid #e5eaf2;border-radius:8px"><tr><td style="padding:14px 16px;color:#60708b;font-size:12px">${esc(draft.documentName)} · PDF</td><td align="right" style="padding:14px 16px;color:#111c39;font-size:14px;font-weight:bold">${esc(amount)}</td></tr></table></td></tr><tr><td style="padding:20px 30px;background:#f7f9fc;color:#172033;border-top:1px solid #e7ebf2"><img src="${esc(draft.logoUrl)}" alt="TrendSCORE" width="112" style="display:block;max-width:112px;height:auto;margin-bottom:12px"><div style="font-size:13px;font-weight:bold">${esc(draft.senderName || 'TrendSCORE')}</div><div style="font-size:12px;color:#5f6f89;margin-top:5px">Questions? Reply to this email or reach us at ${esc(draft.senderEmail || '')}.</div><div style="font-size:11px;color:#7a879b;margin-top:14px">TrendSCORE · School operations, made clearer.</div></td></tr></table><div style="max-width:620px;padding:14px 8px;color:#7a879b;font-size:11px;line-height:1.5;text-align:center">This message and its attached document were prepared for ${esc(draft.customerName)}.</div></td></tr></table></body></html>`;
+}
+
+async function openBillingEmailComposer(kind, id) {
+  const overlay = $('billing-mail-overlay');
+  const send = $('billing-mail-send');
+  if (!overlay) return;
+  $('billing-mail-tab-email')?.classList.add('active');
+  $('billing-mail-tab-email')?.setAttribute('aria-selected', 'true');
+  $('billing-mail-tab-pdf')?.classList.remove('active');
+  $('billing-mail-tab-pdf')?.setAttribute('aria-selected', 'false');
+  $('billing-mail-preview-email').hidden = false;
+  $('billing-mail-preview-pdf').hidden = true;
+  if (send) { send.disabled = true; send.textContent = 'Loading…'; }
+  overlay.classList.add('open');
+  $('billing-mail-meta').textContent = 'Preparing your message and branded document preview…';
+  try {
+    const response = await fetch(`/api/billing/${kind === 'quote' ? 'quotes' : 'invoices'}/${encodeURIComponent(id)}/email-preview`, { credentials: 'same-origin' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || 'Could not prepare the email preview');
+    BILLING_MAIL_DRAFT = { ...payload.draft, id };
+    $('billing-mail-id').value = id;
+    $('billing-mail-kind').value = kind;
+    $('billing-mail-title').textContent = kind === 'quote' ? 'Send quotation' : payload.draft.isDraftInvoice ? 'Send draft invoice review copy' : 'Send commercial invoice';
+    $('billing-mail-meta').textContent = `${kind === 'quote' ? 'Quotation' : 'Review copy'} · ${payload.draft.documentNumber} · To ${payload.draft.customerName}`;
+    $('billing-mail-to').value = payload.draft.recipient || '';
+    $('billing-mail-subject').value = payload.draft.subject || '';
+    $('billing-mail-message').value = payload.draft.message || '';
+    $('billing-mail-filename').textContent = payload.draft.documentName || 'Branded PDF';
+    $('billing-mail-sender').textContent = `From ${payload.draft.senderName} <${payload.draft.senderEmail}>`;
+    $('billing-mail-preview-pdf').src = payload.draft.pdfUrl;
+    updateBillingEmailPreview();
+    if (send) { send.disabled = false; send.textContent = kind === 'quote' ? 'Send quotation' : payload.draft.isDraftInvoice ? 'Send review copy' : 'Send invoice'; }
+    $('billing-mail-to').focus();
+  } catch (error) {
+    overlay.classList.remove('open');
+    toast(error.message || 'Could not prepare the email');
+    if (send) { send.disabled = false; send.textContent = 'Send email'; }
+  }
+}
+
+function updateBillingEmailPreview() {
+  if (!BILLING_MAIL_DRAFT) return;
+  BILLING_MAIL_DRAFT.recipient = $('billing-mail-to')?.value || '';
+  BILLING_MAIL_DRAFT.subject = $('billing-mail-subject')?.value || '';
+  BILLING_MAIL_DRAFT.message = $('billing-mail-message')?.value || '';
+  const iframe = $('billing-mail-preview-email');
+  if (iframe) iframe.srcdoc = billingEmailPreviewHtml(BILLING_MAIL_DRAFT);
+}
+
+['billing-mail-to', 'billing-mail-subject', 'billing-mail-message'].forEach(id => {
+  $(id)?.addEventListener('input', updateBillingEmailPreview);
+});
+
 function formatBillingKsh(amount) {
   return `KSh ${Number(amount || 0).toLocaleString('en-KE')}`;
+}
+
+function billingTodayDate() {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date()).map(part => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 function renderBillingQuotes() {
@@ -706,7 +979,7 @@ function renderBillingQuotes() {
   if (!quotesBody || !invoicesBody) return;
   if (emailStatus) {
     emailStatus.textContent = BILLING_EMAIL_STATUS === 'ready'
-      ? 'Quote email is configured. Sending attaches the quote PDF and includes the summary in the email.'
+      ? 'Email is configured. Quotes and clearly labelled draft invoice review copies include their branded PDF attachment.'
       : BILLING_EMAIL_STATUS === 'unconfigured'
         ? 'Quote email is not configured. Add the required server-side Resend key and sender address.'
         : 'Quote email readiness could not be checked.';
@@ -731,8 +1004,11 @@ function renderBillingQuotes() {
       const existingInvoice = BILLING_INVOICES.find(invoice => invoice.quoteId === quote.id);
       const deliveryCount = BILLING_DELIVERIES.find(item => item.quoteId === quote.id)?.attempts?.length || 0;
       const actions = [`<a class="btn sm" href="/api/billing/quotes/${encodeURIComponent(quote.id)}/pdf" target="_blank" rel="noopener">PDF</a>`];
+      if (quote.status === 'draft' && !quote.sentAt) actions.push(`<button class="btn sm" data-quote-edit="${esc(quote.id)}" data-super-admin-only type="button">Edit</button>`);
       if (['draft', 'sent'].includes(quote.status)) actions.push(`<button class="btn sm" data-quote-send="${esc(quote.id)}" data-super-admin-only type="button">${quote.status === 'sent' ? 'Resend email' : 'Send email'}</button>`);
       if (['draft', 'sent'].includes(quote.status)) actions.push(`<button class="btn sm" data-quote-accept="${esc(quote.id)}" data-super-admin-only type="button">Record accepted</button>`);
+      if (['draft', 'sent', 'accepted'].includes(quote.status)) actions.push(`<button class="btn sm" data-quote-cancel="${esc(quote.id)}" data-super-admin-only type="button">Cancel</button>`);
+      if (quote.status === 'draft' && !quote.sentAt && !deliveryCount && !existingInvoice) actions.push(`<button class="btn sm danger" data-quote-delete="${esc(quote.id)}" data-super-admin-only type="button">Delete</button>`);
       if (quote.status === 'accepted') actions.push(`<button class="btn sm" data-quote-convert="${esc(quote.id)}" data-super-admin-only type="button">Create draft invoice</button>`);
       if (quote.status === 'converted' && existingInvoice) actions.push(`<span class="table-sub">${esc(existingInvoice.invoiceNumber)}</span>`);
       return `<tr><td><strong>${esc(quote.quoteNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${Number(quote.enrollmentCount).toLocaleString('en-KE')}</td><td>${formatBillingKsh(quote.subtotalKsh)}</td><td>${esc(quote.expiresOn || 'No expiry')}</td><td>${esc(quote.status)}${deliveryCount ? `<div class="table-sub">${deliveryCount} email attempt${deliveryCount === 1 ? '' : 's'}</div>` : ''}</td><td><div class="billing-action-row">${actions.join('')}</div></td></tr>`;
@@ -757,12 +1033,99 @@ function renderBillingQuotes() {
       const customer = BILLING_CUSTOMERS.find(item => item.id === invoice.customerId) || {};
       const quote = BILLING_QUOTES.find(item => item.id === invoice.quoteId);
       const pdfUrl = `/api/billing/invoices/${encodeURIComponent(invoice.id)}/pdf`;
-      return `<tr><td><strong>${esc(invoice.invoiceNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${esc(quote?.quoteNumber || '')}</td><td>${formatBillingKsh(invoice.amountKsh)}</td><td>${esc(invoice.status)}</td><td>${esc(String(invoice.createdAt || '').slice(0, 10))}</td><td><a class="btn sm" href="${pdfUrl}" target="_blank" rel="noopener">PDF preview</a></td></tr>`;
+      const attempts = BILLING_INVOICE_DELIVERIES.find(item => item.invoiceId === invoice.id)?.attempts || [];
+      const actions = [`<a class="btn sm" href="${pdfUrl}" target="_blank" rel="noopener">PDF preview</a>`];
+      if (invoice.status === 'draft') actions.push(`<button class="btn sm" data-invoice-send-review="${esc(invoice.id)}" data-super-admin-only type="button">${attempts.length ? 'Resend review copy' : 'Email review copy'}</button>`);
+      if (['issued', 'sent', 'paid'].includes(invoice.status)) actions.push(`<button class="btn sm" data-invoice-send-review="${esc(invoice.id)}" data-super-admin-only type="button">${attempts.length ? 'Resend invoice' : 'Email invoice'}</button>`);
+      if (invoice.status === 'draft') actions.push(`<button class="btn sm primary" data-invoice-issue="${esc(invoice.id)}" data-super-admin-only type="button">Issue commercial invoice</button>`);
+      if (invoice.status === 'draft') actions.push(`<button class="btn sm" data-invoice-edit="${esc(invoice.id)}" data-super-admin-only type="button">Edit</button>`);
+      if (invoice.status === 'draft') actions.push(`<button class="btn sm danger-btn" data-invoice-cancel="${esc(invoice.id)}" data-super-admin-only type="button">Cancel</button>`);
+      if (attempts.length) actions.push(`<small class="table-sub">${attempts.length} email attempt${attempts.length === 1 ? '' : 's'}</small>`);
+      const today = billingTodayDate();
+      const status = invoice.status === 'void' ? 'cancelled' : invoice.paymentStatus === 'partially_paid' ? 'partially paid' : invoice.balanceKsh > 0 && invoice.invoiceSnapshot?.dueDate && invoice.invoiceSnapshot.dueDate < today && ['issued', 'sent'].includes(invoice.status) ? 'overdue' : esc(invoice.status);
+      const amountCell = invoice.paidAmountKsh > 0 ? `${formatBillingKsh(invoice.amountKsh)}<div class="table-sub">Paid ${formatBillingKsh(invoice.paidAmountKsh)} · Due ${formatBillingKsh(invoice.balanceKsh)}</div>` : formatBillingKsh(invoice.amountKsh);
+      return `<tr><td><strong>${esc(invoice.invoiceNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${esc(quote?.quoteNumber || '')}</td><td>${amountCell}</td><td>${status}</td><td>${esc(String(invoice.invoiceSnapshot?.issuedAt || invoice.createdAt || '').slice(0, 10))}</td><td><div class="billing-action-row">${actions.join('')}</div></td></tr>`;
     }).join('');
   }
   document.querySelectorAll('[data-super-admin-only]').forEach(element => {
     if (window.consoleUserRole) element.hidden = window.consoleUserRole !== 'super_admin';
   });
+}
+
+function renderBillingPayments() {
+  const history = $('billing-payments-table');
+  const open = $('billing-open-invoices-table');
+  if (!history || !open) return;
+  if (BILLING_PAYMENTS_STATUS !== 'ready' || BILLING_DATA_STATUS.invoices !== 'ready') {
+    history.innerHTML = '<tr><td colspan="8">Payment records could not be loaded. Refresh to try again.</td></tr>';
+    open.innerHTML = '<tr><td colspan="8">Invoice balances are unavailable.</td></tr>';
+    ['billing-kpi-payment-count', 'billing-kpi-collected', 'billing-kpi-outstanding'].forEach(id => { if ($(id)) $(id).textContent = 'Unavailable'; });
+    return;
+  }
+  const collected = BILLING_PAYMENTS.reduce((total, item) => total + Number(item.amountKsh || 0), 0);
+  const receivables = BILLING_INVOICES.filter(invoice => ['issued', 'sent', 'paid'].includes(invoice.status));
+  const outstanding = receivables.reduce((total, invoice) => total + Number(invoice.balanceKsh ?? invoice.amountKsh ?? 0), 0);
+  $('billing-kpi-payment-count').textContent = BILLING_PAYMENTS.length.toLocaleString('en-KE');
+  $('billing-kpi-collected').textContent = formatBillingKsh(collected);
+  $('billing-kpi-outstanding').textContent = formatBillingKsh(outstanding);
+  history.innerHTML = BILLING_PAYMENTS.length ? BILLING_PAYMENTS.map(payment => {
+    const invoice = BILLING_INVOICES.find(item => item.id === payment.invoiceId);
+    const customer = BILLING_CUSTOMERS.find(item => item.id === invoice?.customerId) || {};
+    const methods = { mpesa: 'M-Pesa', bank_transfer: 'Bank transfer', cash: 'Cash', cheque: 'Cheque', other: 'Other' };
+    return `<tr><td>${esc(payment.paymentDate)}</td><td><strong>${esc(invoice?.invoiceNumber || 'Invoice unavailable')}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${esc(methods[payment.method] || payment.method)}</td><td>${esc(payment.reference || '—')}</td><td>${formatBillingKsh(payment.amountKsh)}</td><td>${esc(payment.recordedBy || '—')}</td><td><a class="btn sm" href="/api/billing/payments/${encodeURIComponent(payment.id)}/receipt">PDF receipt</a></td></tr>`;
+  }).join('') : '<tr><td colspan="8">No payments recorded yet. Payments will appear here after a verified receipt is allocated to an issued invoice.</td></tr>';
+  const openInvoices = receivables.filter(invoice => Number(invoice.balanceKsh || 0) > 0);
+  open.innerHTML = openInvoices.length ? openInvoices.map(invoice => {
+    const customer = BILLING_CUSTOMERS.find(item => item.id === invoice.customerId) || {};
+    const dueDate = invoice.invoiceSnapshot?.dueDate || '';
+    const overdue = dueDate && dueDate < billingTodayDate();
+    return `<tr><td><strong>${esc(invoice.invoiceNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${esc(String(invoice.invoiceSnapshot?.issuedAt || '').slice(0, 10) || '—')}</td><td>${esc(dueDate || 'On receipt')}</td><td>${formatBillingKsh(invoice.amountKsh)}</td><td>${formatBillingKsh(invoice.paidAmountKsh)}</td><td><strong>${formatBillingKsh(invoice.balanceKsh)}</strong></td><td>${overdue ? 'Overdue' : invoice.paymentStatus === 'partially_paid' ? 'Partially paid' : 'Unpaid'}</td></tr>`;
+  }).join('') : '<tr><td colspan="8">No outstanding issued invoices.</td></tr>';
+}
+
+function renderBillingReports() {
+  if (BILLING_PAYMENTS_STATUS !== 'ready' || BILLING_DATA_STATUS.invoices !== 'ready') {
+    ['billing-report-issued', 'billing-report-value', 'billing-report-collected', 'billing-report-balance'].forEach(id => { if ($(id)) $(id).textContent = 'Unavailable'; });
+    if ($('billing-report-months')) $('billing-report-months').innerHTML = '<tr><td colspan="3">Payment or invoice records could not be loaded.</td></tr>';
+    return;
+  }
+  const issued = BILLING_INVOICES.filter(invoice => ['issued', 'sent', 'paid'].includes(invoice.status));
+  const totalValue = issued.reduce((total, invoice) => total + Number(invoice.amountKsh || 0), 0);
+  const collected = BILLING_PAYMENTS.reduce((total, payment) => total + Number(payment.amountKsh || 0), 0);
+  const balance = issued.reduce((total, invoice) => total + Number(invoice.balanceKsh || 0), 0);
+  $('billing-report-issued').textContent = issued.length.toLocaleString('en-KE');
+  $('billing-report-value').textContent = formatBillingKsh(totalValue);
+  $('billing-report-collected').textContent = formatBillingKsh(collected);
+  $('billing-report-balance').textContent = formatBillingKsh(balance);
+  const months = new Map();
+  for (const payment of BILLING_PAYMENTS) {
+    const month = String(payment.paymentDate || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(month)) continue;
+    const entry = months.get(month) || { count: 0, amount: 0 };
+    entry.count += 1;
+    entry.amount += Number(payment.amountKsh || 0);
+    months.set(month, entry);
+  }
+  const rows = [...months.entries()].sort(([a], [b]) => b.localeCompare(a)).slice(0, 12);
+  $('billing-report-months').innerHTML = rows.length ? rows.map(([month, item]) => `<tr><td>${esc(new Intl.DateTimeFormat('en-KE', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${month}-01T00:00:00Z`)))}</td><td>${item.count}</td><td>${formatBillingKsh(item.amount)}</td></tr>`).join('') : '<tr><td colspan="3">No recorded collections yet.</td></tr>';
+}
+
+function openBillingPayment() {
+  const select = $('bp-invoice');
+  const eligible = BILLING_INVOICES.filter(invoice => ['issued', 'sent'].includes(invoice.status) && Number(invoice.balanceKsh || 0) > 0);
+  select.innerHTML = '<option value="">Choose invoice</option>' + eligible.map(invoice => {
+    const customer = BILLING_CUSTOMERS.find(item => item.id === invoice.customerId);
+    return `<option value="${esc(invoice.id)}">${esc(invoice.invoiceNumber)} · ${esc(customer?.name || 'Customer')} · balance ${esc(formatBillingKsh(invoice.balanceKsh))}</option>`;
+  }).join('');
+  $('bp-amount').value = '';
+  $('bp-amount').max = '';
+  $('bp-date').value = billingTodayDate();
+  $('bp-method').value = 'mpesa';
+  $('bp-reference').value = '';
+  $('bp-notes').value = '';
+  $('bp-balance-help').textContent = eligible.length ? 'Only issued invoices with an outstanding balance are shown.' : 'No issued invoice has a balance available for payment allocation.';
+  $('billing-payment-save').disabled = !eligible.length;
+  $('billing-payment-overlay')?.classList.add('open');
 }
 
 function openBillingCustomer(customer = null) {
@@ -859,24 +1222,30 @@ $('bc-name')?.addEventListener('input', event => {
   renderBillingCustomerSuggestions(input.value);
 });
 
-function openBillingQuote() {
+function openBillingQuote(quote = null) {
   const select = $('bq-customer');
   select.innerHTML = '<option value="">Select a billing customer</option>' + BILLING_CUSTOMERS
     .filter(customer => customer.status === 'active')
     .map(customer => `<option value="${esc(customer.id)}">${esc(customer.name)}${customer.tenantKey ? ` — ${esc(customer.tenantKey)}` : ''}</option>`)
     .join('');
-  $('bq-students').value = '';
-  $('bq-pricing-model').value = 'rate_by_band';
-  $('bq-cadence').value = 'termly';
-  $('bq-setup').value = '';
-  $('bq-expires').value = '';
-  $('bq-communications').checked = false;
-  $('bq-extras').value = '';
-  $('bq-extra-cadence').value = 'termly';
-  $('bq-notes').value = '';
+  const snapshot = quote?.quoteSnapshot || {};
+  $('bq-id').value = quote?.id || '';
+  $('billing-quote-overlay').querySelector('.modal-title').textContent = quote ? `Edit ${quote.quoteNumber}` : 'New school quote';
+  $('billing-quote-save').textContent = quote ? 'Save quote changes' : 'Save draft quote';
+  $('bq-customer').value = quote?.customerId || '';
+  $('bq-students').value = quote?.enrollmentCount || '';
+  $('bq-pricing-model').value = quote?.pricingModel || 'rate_by_band';
+  $('bq-cadence').value = quote?.billingCadence || 'termly';
+  $('bq-setup').value = quote ? snapshot.setupFeeKsh : '';
+  $('bq-expires').value = quote?.expiresOn || '';
+  $('bq-communications').checked = snapshot.communicationsIncluded === true;
+  $('bq-extras').value = (snapshot.extraModules || []).join('\n');
+  $('bq-extra-cadence').value = snapshot.extraCadence || 'termly';
+  $('bq-notes').value = quote?.notes || '';
   $('billing-quote-preview').textContent = 'Enter the student count and setup fee to calculate a quote preview.';
   $('billing-quote-overlay')?.classList.add('open');
-  if (!BILLING_CUSTOMERS.some(customer => customer.status === 'active')) toast('Add or select a billing customer before creating a quote.');
+  if (quote) updateBillingQuotePreview();
+  else if (!BILLING_CUSTOMERS.some(customer => customer.status === 'active')) toast('Add or select a billing customer before creating a quote.');
 }
 
 function closeBillingQuote() { $('billing-quote-overlay')?.classList.remove('open'); }
@@ -968,6 +1337,385 @@ function renderBillingSettings() {
   status.className = `billing-email-status ${BILLING_EMAIL_STATUS === 'ready' ? 'ready' : BILLING_EMAIL_STATUS === 'unconfigured' ? 'unready' : ''}`;
 }
 
+async function loadCommunicationsSettings() {
+  const status = $('communications-email-status');
+  try {
+    const response = await fetch('/api/settings/communications/email', { credentials: 'same-origin' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Could not load email settings.');
+    if ($('communications-from-email')) $('communications-from-email').value = data.fromEmail || '';
+    if ($('communications-from-name')) $('communications-from-name').value = data.fromName || 'TrendSCORE';
+    if ($('communications-key-hint')) $('communications-key-hint').textContent = data.keyConfigured
+      ? 'A key is saved on the server and hidden here. Leave blank to keep it, or paste a new key to replace it.'
+      : 'No key is saved yet. Paste a Resend API key to enable email delivery.';
+    if (status) {
+      status.textContent = data.keyConfigured
+        ? `Resend key saved${data.fromEmail ? ` · sender ${data.fromEmail}` : ''}. Validate the connection before sending.`
+        : 'Resend is not configured. Add an API key and sender address, then save.';
+      status.className = `billing-email-status ${data.keyConfigured ? 'ready' : 'unready'}`;
+    }
+  } catch (error) {
+    if (status) {
+      status.textContent = error.message || 'Email settings could not be loaded.';
+      status.className = 'billing-email-status unready';
+    }
+  }
+}
+
+async function saveCommunicationsSettings(event) {
+  event?.preventDefault();
+  const button = $('communications-email-save');
+  if (button) { button.disabled = true; button.textContent = 'Saving…'; }
+  try {
+    const response = await fetch('/api/settings/communications/email', {
+      method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        apiKey: $('communications-resend-key')?.value || '',
+        fromEmail: $('communications-from-email')?.value || '',
+        fromName: $('communications-from-name')?.value || '',
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Could not save email settings.');
+    if ($('communications-resend-key')) $('communications-resend-key').value = '';
+    toast('Email settings saved on the server. The key stays hidden.');
+    await loadCommunicationsSettings();
+  } catch (error) {
+    toast(error.message || 'Could not save email settings.');
+  } finally {
+    if (button) { button.disabled = false; button.textContent = 'Save email settings'; }
+  }
+}
+
+async function validateCommunicationsSettings() {
+  const button = $('communications-email-test');
+  const status = $('communications-email-status');
+  if (button) { button.disabled = true; button.textContent = 'Checking Resend…'; }
+  if (status) { status.textContent = 'Checking the saved API key and sender domain…'; status.className = 'billing-email-status'; }
+  try {
+    const response = await fetch('/api/settings/communications/email/test', { method: 'POST', credentials: 'same-origin' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Resend validation failed.');
+    if (status) {
+      status.textContent = data.verified
+        ? `Resend connection verified · ${data.domain} is ready to send from ${data.fromEmail}. No email was sent.`
+        : `Resend accepted the API key, but ${data.domain || 'the sender domain'} is not verified for sending yet.`;
+      status.className = `billing-email-status ${data.verified ? 'ready' : 'unready'}`;
+    }
+  } catch (error) {
+    if (status) { status.textContent = error.message || 'Resend validation failed.'; status.className = 'billing-email-status unready'; }
+  } finally {
+    if (button) { button.disabled = false; button.textContent = 'Validate Resend connection'; }
+  }
+}
+
+$('communications-email-form')?.addEventListener('submit', saveCommunicationsSettings);
+$('communications-email-test')?.addEventListener('click', validateCommunicationsSettings);
+
+// ── Users (Phase 0) ────────────────────────────────────────────────
+let USERS = [];
+let USERS_STATUS = 'loading';
+
+async function loadUsersData() {
+  USERS_STATUS = 'loading';
+  renderUsersTable();
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch('/api/users', { credentials: 'same-origin', signal: controller.signal });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      const message = response.status === 403
+        ? 'Your account is not permitted to manage console users.'
+        : response.status === 401
+          ? 'Your session has expired. Sign in again to load console users.'
+          : data.error || `Could not load users (HTTP ${response.status}).`;
+      throw new Error(message);
+    }
+    USERS = data.users || [];
+    USERS_STATUS = 'ready';
+  } catch (error) {
+    USERS_STATUS = 'error';
+    toast(error.name === 'AbortError' ? 'Loading users timed out. Check the console connection and retry.' : error.message || 'Could not load users.');
+  } finally {
+    window.clearTimeout(timeout);
+  }
+  renderUsersTable();
+}
+
+function renderUsersTable() {
+  const tbody = $('users-table');
+  if (!tbody) return;
+  if (USERS_STATUS === 'loading') { tbody.innerHTML = '<tr><td colspan="7">Loading users…</td></tr>'; return; }
+  if (USERS_STATUS === 'error') { tbody.innerHTML = '<tr><td colspan="7">Users could not be loaded. <button class="btn sm" id="users-retry" type="button">Retry</button></td></tr>'; return; }
+  if (!USERS.length) { tbody.innerHTML = '<tr><td colspan="7">No console users yet.</td></tr>'; return; }
+  tbody.innerHTML = USERS.map(user => {
+    const remaining = Number(user.backupCodesRemaining || 0);
+    const mfaLabel = user.totpEnabled ? `Enabled · ${remaining} backup code${remaining === 1 ? '' : 's'} left` : 'Not enabled';
+    const actions = [
+      `<button class="btn sm" data-user-edit="${esc(user.id)}" type="button">Edit</button>`,
+      `<button class="btn sm" data-user-password="${esc(user.id)}" type="button">Reset password</button>`,
+    ];
+    if (user.totpEnabled) actions.push(`<button class="btn sm danger" data-user-mfa-disable="${esc(user.id)}" type="button">Disable MFA</button>`);
+    return `<tr>
+      <td>${esc(user.name || '—')}</td>
+      <td>${esc(user.email)}</td>
+      <td>${user.role === 'super_admin' ? 'Super admin' : 'Platform owner'}</td>
+      <td><span class="billing-status-chip ${user.active ? '' : 'unready'}">${user.active ? 'Active' : 'Inactive'}</span></td>
+      <td>${esc(mfaLabel)}</td>
+      <td>${user.lastLoginAt ? esc(new Date(user.lastLoginAt).toLocaleString('en-KE')) : 'Never'}</td>
+      <td>${actions.join(' ')}</td>
+    </tr>`;
+  }).join('');
+}
+
+function openUserModal(userId = null) {
+  const user = userId ? USERS.find(u => u.id === userId) : null;
+  if ($('user-modal-title')) $('user-modal-title').textContent = user ? 'Edit user' : 'Add user';
+  if ($('u-id')) $('u-id').value = user?.id || '';
+  if ($('u-email')) { $('u-email').value = user?.email || ''; $('u-email').disabled = Boolean(user); }
+  if ($('u-name')) $('u-name').value = user?.name || '';
+  if ($('u-role')) $('u-role').value = user?.role || 'platform_owner';
+  if ($('u-active')) $('u-active').checked = user ? user.active : true;
+  if ($('u-password-row')) $('u-password-row').style.display = user ? 'none' : '';
+  if ($('u-active-row')) $('u-active-row').style.display = user ? '' : 'none';
+  if ($('u-password')) $('u-password').value = '';
+  $('user-overlay')?.classList.add('open');
+}
+
+async function saveUser() {
+  const id = $('u-id')?.value || '';
+  const email = $('u-email')?.value.trim();
+  const name = $('u-name')?.value.trim();
+  const role = $('u-role')?.value;
+  try {
+    if (id) {
+      const active = $('u-active')?.checked;
+      const response = await fetch(`/api/users/${encodeURIComponent(id)}`, {
+        method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, role, active }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Could not update user.');
+      toast('User updated.');
+    } else {
+      const password = $('u-password')?.value || '';
+      const response = await fetch('/api/users', {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, name, role, password }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Could not create user.');
+      toast('User created.');
+    }
+    $('user-overlay')?.classList.remove('open');
+    await loadUsersData();
+  } catch (error) {
+    toast(error.message || 'Could not save user.');
+  }
+}
+
+function openUserPasswordModal(userId) {
+  if ($('up-id')) $('up-id').value = userId;
+  if ($('up-password')) $('up-password').value = '';
+  $('user-password-overlay')?.classList.add('open');
+}
+
+async function saveUserPassword() {
+  const id = $('up-id')?.value;
+  const password = $('up-password')?.value || '';
+  try {
+    const response = await fetch(`/api/users/${encodeURIComponent(id)}/password`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Could not reset password.');
+    toast('Password reset.');
+    $('user-password-overlay')?.classList.remove('open');
+  } catch (error) {
+    toast(error.message || 'Could not reset password.');
+  }
+}
+
+function openUserMfaDisableModal(userId) {
+  if ($('umd-id')) $('umd-id').value = userId;
+  if ($('umd-reason')) $('umd-reason').value = '';
+  $('user-mfa-disable-overlay')?.classList.add('open');
+}
+
+async function saveUserMfaDisable() {
+  const id = $('umd-id')?.value;
+  const reason = $('umd-reason')?.value.trim();
+  if (!reason) { toast('Enter a reason.'); return; }
+  try {
+    const response = await fetch(`/api/users/${encodeURIComponent(id)}/mfa/disable`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Could not disable MFA.');
+    toast('MFA disabled for that account.');
+    $('user-mfa-disable-overlay')?.classList.remove('open');
+    await loadUsersData();
+  } catch (error) {
+    toast(error.message || 'Could not disable MFA.');
+  }
+}
+
+$('user-add')?.addEventListener('click', () => openUserModal(null));
+$('user-close')?.addEventListener('click', () => $('user-overlay')?.classList.remove('open'));
+$('user-cancel')?.addEventListener('click', () => $('user-overlay')?.classList.remove('open'));
+$('user-save')?.addEventListener('click', saveUser);
+$('user-password-close')?.addEventListener('click', () => $('user-password-overlay')?.classList.remove('open'));
+$('user-password-cancel')?.addEventListener('click', () => $('user-password-overlay')?.classList.remove('open'));
+$('user-password-save')?.addEventListener('click', saveUserPassword);
+$('user-mfa-disable-close')?.addEventListener('click', () => $('user-mfa-disable-overlay')?.classList.remove('open'));
+$('user-mfa-disable-cancel')?.addEventListener('click', () => $('user-mfa-disable-overlay')?.classList.remove('open'));
+$('user-mfa-disable-save')?.addEventListener('click', saveUserMfaDisable);
+
+$('users-table')?.addEventListener('click', event => {
+  if (event.target.closest('#users-retry')) { loadUsersData(); return; }
+  const editId = event.target.closest('[data-user-edit]')?.dataset.userEdit;
+  if (editId) { openUserModal(editId); return; }
+  const pwId = event.target.closest('[data-user-password]')?.dataset.userPassword;
+  if (pwId) { openUserPasswordModal(pwId); return; }
+  const mfaId = event.target.closest('[data-user-mfa-disable]')?.dataset.userMfaDisable;
+  if (mfaId) { openUserMfaDisableModal(mfaId); return; }
+});
+
+// ── My account / self-service MFA (Phase 0) ────────────────────────────────
+let ACCOUNT_ME = null;
+let accountMfaPendingAction = null; // 'disable' | 'regenerate'
+
+function resetAccountMfaPanels() {
+  if ($('account-mfa-enroll-panel')) $('account-mfa-enroll-panel').hidden = true;
+  if ($('account-mfa-backup-panel')) $('account-mfa-backup-panel').hidden = true;
+  if ($('account-mfa-password-panel')) $('account-mfa-password-panel').hidden = true;
+  if ($('account-mfa-password')) $('account-mfa-password').value = '';
+}
+
+function renderAccountMfaStatus() {
+  const enabled = Boolean(ACCOUNT_ME?.mfa?.enabled);
+  const remaining = Number(ACCOUNT_ME?.mfa?.backupCodesRemaining || 0);
+  if ($('account-identity')) {
+    $('account-identity').textContent = `${ACCOUNT_ME?.user?.name || ACCOUNT_ME?.user?.email || ''} · ${ACCOUNT_ME?.user?.role === 'super_admin' ? 'Super admin' : 'Platform owner'}`;
+  }
+  if ($('account-mfa-status')) {
+    $('account-mfa-status').textContent = enabled
+      ? `Two-factor authentication is enabled. ${remaining} backup code${remaining === 1 ? '' : 's'} remaining.`
+      : 'Two-factor authentication is not enabled on this account.';
+  }
+  if ($('account-mfa-enrolled-actions')) $('account-mfa-enrolled-actions').style.display = enabled ? '' : 'none';
+  if ($('account-mfa-enroll-start')) $('account-mfa-enroll-start').style.display = enabled ? 'none' : '';
+  resetAccountMfaPanels();
+}
+
+async function openAccountModal() {
+  $('account-overlay')?.classList.add('open');
+  try {
+    const response = await fetch('/api/me', { credentials: 'same-origin' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error('Could not load your account.');
+    ACCOUNT_ME = data;
+    renderAccountMfaStatus();
+  } catch (error) {
+    toast(error.message || 'Could not load your account.');
+  }
+}
+
+async function startAccountMfaEnroll() {
+  try {
+    const response = await fetch('/api/me/mfa/enroll', { method: 'POST', credentials: 'same-origin' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Could not start enrollment.');
+    if ($('account-mfa-secret')) $('account-mfa-secret').value = data.secret;
+    if ($('account-mfa-code')) $('account-mfa-code').value = '';
+    const qrHost = $('account-mfa-qr');
+    if (qrHost) {
+      qrHost.innerHTML = '';
+      if (typeof qrcode === 'function') {
+        const qr = qrcode(0, 'M');
+        qr.addData(data.otpauthUrl);
+        qr.make();
+        qrHost.innerHTML = qr.createSvgTag(4);
+      } else {
+        qrHost.textContent = 'QR rendering unavailable — enter the code manually below.';
+      }
+    }
+    if ($('account-mfa-enroll-start')) $('account-mfa-enroll-start').style.display = 'none';
+    if ($('account-mfa-enroll-panel')) $('account-mfa-enroll-panel').hidden = false;
+  } catch (error) {
+    toast(error.message || 'Could not start enrollment.');
+  }
+}
+
+async function confirmAccountMfaEnroll() {
+  const code = $('account-mfa-code')?.value.trim();
+  if (!code) { toast('Enter the 6-digit code.'); return; }
+  try {
+    const response = await fetch('/api/me/mfa/confirm', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Invalid code.');
+    if ($('account-mfa-enroll-panel')) $('account-mfa-enroll-panel').hidden = true;
+    if ($('account-mfa-backup-codes')) $('account-mfa-backup-codes').textContent = (data.backupCodes || []).join('\n');
+    if ($('account-mfa-backup-panel')) $('account-mfa-backup-panel').hidden = false;
+    toast('Two-factor authentication enabled.');
+  } catch (error) {
+    toast(error.message || 'Could not confirm code.');
+  }
+}
+
+async function finishAccountMfaBackupView() {
+  if ($('account-mfa-backup-panel')) $('account-mfa-backup-panel').hidden = true;
+  await openAccountModal();
+}
+
+function requestAccountMfaPassword(action, label) {
+  accountMfaPendingAction = action;
+  resetAccountMfaPanels();
+  if ($('account-mfa-password-confirm')) $('account-mfa-password-confirm').textContent = label;
+  if ($('account-mfa-password-panel')) $('account-mfa-password-panel').hidden = false;
+}
+
+async function submitAccountMfaPassword() {
+  const password = $('account-mfa-password')?.value || '';
+  if (!password) { toast('Enter your password.'); return; }
+  const endpoint = accountMfaPendingAction === 'disable' ? '/api/me/mfa/disable' : '/api/me/mfa/backup-codes/regenerate';
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Request failed.');
+    if (accountMfaPendingAction === 'regenerate') {
+      if ($('account-mfa-password-panel')) $('account-mfa-password-panel').hidden = true;
+      if ($('account-mfa-backup-codes')) $('account-mfa-backup-codes').textContent = (data.backupCodes || []).join('\n');
+      if ($('account-mfa-backup-panel')) $('account-mfa-backup-panel').hidden = false;
+      toast('Backup codes regenerated.');
+    } else {
+      toast('Two-factor authentication disabled.');
+      await openAccountModal();
+    }
+  } catch (error) {
+    toast(error.message || 'Request failed.');
+  }
+}
+
+$('account-close')?.addEventListener('click', () => $('account-overlay')?.classList.remove('open'));
+$('account-close-footer')?.addEventListener('click', () => $('account-overlay')?.classList.remove('open'));
+$('account-mfa-enroll-btn')?.addEventListener('click', startAccountMfaEnroll);
+$('account-mfa-confirm-btn')?.addEventListener('click', confirmAccountMfaEnroll);
+$('account-mfa-backup-done')?.addEventListener('click', finishAccountMfaBackupView);
+$('account-mfa-disable')?.addEventListener('click', () => requestAccountMfaPassword('disable', 'Disable two-factor authentication'));
+$('account-mfa-regenerate')?.addEventListener('click', () => requestAccountMfaPassword('regenerate', 'Regenerate backup codes'));
+$('account-mfa-password-confirm')?.addEventListener('click', submitAccountMfaPassword);
+$('user-chip')?.addEventListener('click', openAccountModal);
+
 const BILLING_TABS = ['overview', 'customers', 'quotes', 'invoices', 'payments', 'catalogue', 'reports', 'settings'];
 function selectBillingTab(tab, focus = false) {
   const selected = BILLING_TABS.includes(tab) ? tab : 'overview';
@@ -1021,6 +1769,15 @@ document.querySelectorAll('[data-billing-tab]').forEach(button => {
   });
 });
 selectBillingTab('overview');
+
+$('bp-invoice')?.addEventListener('change', () => {
+  const invoice = BILLING_INVOICES.find(item => item.id === $('bp-invoice').value);
+  const balance = Number(invoice?.balanceKsh || 0);
+  $('bp-amount').max = balance || '';
+  $('bp-balance-help').textContent = invoice
+    ? `Outstanding balance: ${formatBillingKsh(balance)}. Amount cannot exceed this balance.`
+    : 'Only issued invoices with an outstanding balance are shown.';
+});
 
 function scheduleBillingQuotePreview() {
   clearTimeout(billingQuotePreviewTimer);
@@ -1123,8 +1880,7 @@ function renderRunningInstances() {
           <span class="ri-meta-val" style="font-family:var(--mono)">${esc(instance.version)}</span>
         </div>
         <div class="ri-actions">
-          <button class="tbl-btn primary" data-action="Restart" data-school="${esc(instance.name)}">Restart</button>
-          <button class="tbl-btn" data-action="Logs" data-school="${esc(instance.name)}">Logs</button>
+          <button class="instance-manage-button" type="button" data-open-instance-drawer="${esc(inferGroupKey(instance))}" aria-label="Manage ${esc(instance.displayName || instance.name)}" title="Manage ${esc(instance.displayName || instance.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg><span>Manage</span></button>
         </div>
       </div>
     </div>`;
@@ -1132,9 +1888,8 @@ function renderRunningInstances() {
 }
 
 // ── Space & Usage panel ───────────────────────────────────────────────────
-const TOTAL_DISK = 80;
 function totalDiskGb() {
-  return Number(RUNTIME_METRICS?.diskTotalGb || TOTAL_DISK);
+  return Number(RUNTIME_METRICS?.diskTotalGb || 0);
 }
 
 function renderSpaceUsage() {
@@ -1148,8 +1903,9 @@ function renderSpaceUsage() {
 
   const diskTotal = totalDiskGb();
   const hostUsed      = Number(RUNTIME_METRICS.diskUsedGb || 0);
+  const dockerAvailable = RUNTIME_METRICS.dockerUsageAvailable === true;
   const dockerUsed    = Number(RUNTIME_METRICS.storageUsedGb || 0);
-  const schoolVolumes = INSTANCES.reduce((sum, instance) => sum + Number(instance.storage || 0), 0);
+  const managedVolumes = Number(RUNTIME_METRICS.managedInstanceVolumesGb || 0);
   const freeSpace     = Math.max(0, diskTotal - hostUsed);
   const usedPct       = Math.round(hostUsed / Math.max(diskTotal, 1) * 100);
 
@@ -1173,8 +1929,8 @@ function renderSpaceUsage() {
         <div class="su-stat-label">Disk Utilisation</div>
       </div>
       <div class="su-summary-stat">
-        <div class="su-stat-val">${fmt(dockerUsed)} <span class="su-stat-unit">GB</span></div>
-        <div class="su-stat-label">Docker storage used</div>
+        <div class="su-stat-val">${dockerAvailable ? `${fmt(dockerUsed)} <span class="su-stat-unit">GB</span>` : '—'}</div>
+        <div class="su-stat-label">Docker storage${dockerAvailable ? '' : ' unavailable'}</div>
       </div>
     </div>
 
@@ -1194,10 +1950,10 @@ function renderSpaceUsage() {
     </div>
 
     <div class="su-breakdown-grid">
-      ${[
+      ${(dockerAvailable ? [
         { label: 'Docker storage', value: dockerUsed, color: '#030b82' },
-        { label: 'Volumes attributed to running school projects', value: schoolVolumes, color: '#059669' },
-      ].map(s => {
+        { label: 'Managed instance volumes (subset of Docker volumes)', value: managedVolumes, color: '#059669' },
+      ] : []).map(s => {
         const pct = Math.round(s.value / Math.max(diskTotal, 1) * 100);
         return `<div class="su-breakdown-item">
           <div class="su-b-row">
@@ -1221,7 +1977,7 @@ function renderSpaceUsage() {
               <span class="su-pi-total">${fmt(inst.storage)} GB</span>
             </div>
             <div class="su-meter" style="margin:6px 0 4px"><div class="su-meter-fill" style="width:${instPct}%;background:var(--brand)"></div></div>
-            <div class="su-pi-rows"><div class="su-pi-row"><span>Attributed Docker volumes</span><span>${fmt(inst.storage)} GB</span></div></div>
+            <div class="su-pi-rows"><div class="su-pi-row"><span>Attributed Docker storage</span><span>${fmt(inst.storage)} GB</span></div></div>
           </div>`;
         }).join('')}
       </div>
@@ -1403,15 +2159,18 @@ function toggleCrmMetrics() {
 
 // Rendering
 function renderInstanceRow(instance, mode = 'compact') {
-  const extraCols = mode === 'full'
-    ? `<td><span class="version-chip">${esc(instance.typeLabel)}</span></td>
-       <td><span class="version-chip">Not connected</span></td>`
-    : '';
-
+  const activityKey = instance.composeProject || instance.key || '';
+  const activity = instance.appType === 'school' ? ASSESSMENT_ACTIVITY[activityKey] : null;
+  const activityCount = Number(activity?.activeTestCount || 0);
+  const termTestCount = Number(activity?.testCount || 0);
+  const activityPill = instance.appType === 'school' ? `<button type="button" class="assessment-activity-pill ${activity?.state === 'unavailable' ? 'is-unavailable' : activityCount > 0 ? 'has-active' : 'has-none'}" data-assessment-activity-key="${esc(activityKey)}" data-assessment-activity-name="${esc(instance.displayName || instance.name)}" aria-label="View assessment activity for ${esc(instance.displayName || instance.name)}" aria-describedby="assessment-activity-tooltip" aria-haspopup="dialog" title="${esc(assessmentActivityTooltipText(activity, instance.displayName || instance.name))}">
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 13.5h12M3.5 11V7.5M7 11V4.5M10.5 11V6M14 11V2.5"/></svg><span>Activity</span><span class="assessment-activity-count">${activity?.state === 'unavailable' ? '—' : activity ? termTestCount : '…'}</span>
+        </button>` : '';
+  const manageButton = `<button class="instance-manage-button" type="button" data-open-instance-drawer="${esc(inferGroupKey(instance))}" aria-label="Manage ${esc(instance.displayName || instance.name)}" title="Manage ${esc(instance.displayName || instance.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg></button>`;
   return `<tr>
     <td><div class="cell-school"><strong>${esc(instance.name)}</strong><div class="cell-domain">${esc(instance.domain)}</div></div></td>
+    <td><span class="instance-category-chip">${esc(instance.typeLabel || 'Other / unclassified')}</span></td>
     <td><span class="badge ${statusCls(instance.status)}">${esc(instance.status)}</span></td>
-    ${extraCols}
     <td>${fmtDate(instance.created)}</td>
     <td><span class="version-chip">${esc(instance.version)}</span></td>
     <td><div class="port-list">FE :${instance.fe}<br>BE :${instance.be}<br>${esc(instance.db)}</div></td>
@@ -1421,11 +2180,8 @@ function renderInstanceRow(instance, mode = 'compact') {
     </td>
     <td>
       <div class="action-row">
-        <button class="tbl-btn primary" data-action="Restart" data-school="${esc(instance.name)}">Restart</button>
-        <button class="tbl-btn" data-action="Logs" data-school="${esc(instance.name)}">Logs</button>
-        <button class="tbl-btn" data-action="Redeploy" data-school="${esc(instance.name)}">Redeploy</button>
-        <button class="tbl-btn danger" data-action="Stop" data-school="${esc(instance.name)}">Stop</button>
-        <button class="tbl-btn danger" data-action="Drop" data-school="${esc(instance.name)}">Drop</button>
+        ${activityPill}
+        ${manageButton}
       </div>
     </td>
   </tr>`;
@@ -1442,6 +2198,12 @@ function inferComponent(instance) {
 }
 
 function inferGroupKey(instance) {
+  // Compose project is the deployment boundary for every product type and
+  // avoids merging unrelated services that happen to share similar names.
+  if (instance.composeProject) return String(instance.composeProject).toLowerCase();
+  if (instance.appType && !['school', 'other', 'platform'].includes(instance.appType)) {
+    return slugify(instance.key || instance.name || instance.domain || instance.appType);
+  }
   const fromDomain = String(instance.domain || '').split('.')[0].toLowerCase();
   const fromName = slugify(instance.name || '');
   const base = (fromDomain || fromName)
@@ -1453,7 +2215,8 @@ function inferGroupKey(instance) {
 }
 
 function prettyGroupName(groupKey) {
-  return groupKey
+  const cleanKey = String(groupKey || '').replace(/^zawadijrn$/i, 'jrn').replace(/^zawadi-/i, '');
+  return cleanKey
     .split('-')
     .filter(Boolean)
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
@@ -1471,7 +2234,9 @@ function groupInstances(instances) {
     if (!map.has(groupKey)) {
       map.set(groupKey, {
         key: groupKey,
-        name: prettyGroupName(groupKey),
+        name: instance.displayName || prettyGroupName(groupKey),
+        appType: instance.appType || 'other',
+        typeLabel: instance.typeLabel || 'Other / unclassified',
         items: [],
         hasFrontend: false,
         hasBackend: false,
@@ -1480,6 +2245,9 @@ function groupInstances(instances) {
       });
     }
     const group = map.get(groupKey);
+    if (!group.name || group.name === prettyGroupName(groupKey)) {
+      group.name = instance.displayName || group.name;
+    }
     group.items.push(instance);
     group.storage += Number(instance.storage || 0);
     const component = inferComponent(instance);
@@ -1497,6 +2265,164 @@ function groupInstances(instances) {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+const INSTANCE_CATEGORY_OPEN = { education: true };
+const INSTANCE_GROUP_OPEN = {};
+let activeInstanceDrawerKey = '';
+
+function getRuntimeInstanceForGroup(groupKey) {
+  const group = groupInstances(INSTANCES).find(item => item.key === groupKey);
+  if (!group) return null;
+  return group.items.find(item => Number(item.fe) > 0) || group.items[0] || null;
+}
+
+function renderInstanceDrawer(instance) {
+  if (!instance) return;
+  $('instance-drawer-title').textContent = instance.displayName || instance.name;
+  $('instance-drawer-domain').textContent = instance.domain || 'Domain not configured';
+  const details = [
+    ['Status', instance.status || 'Unknown'],
+    ['Application', instance.typeLabel || instance.appType || 'Unknown'],
+    ['Frontend', instance.fe ? `Port ${instance.fe}` : 'Not assigned'],
+    ['Backend', instance.be ? `Port ${instance.be}` : 'Not assigned'],
+    ['Version', instance.version || 'Unknown'],
+    ['Storage', `${fmt(instance.storage)} GB`],
+    ['Containers', `${Number(instance.runningContainers) || 0} of ${Number(instance.containers) || 0} running`],
+  ];
+  $('instance-drawer-details').innerHTML = details.map(([label, value]) => `<div class="instance-drawer-detail"><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join('');
+  document.querySelectorAll('[data-instance-drawer-action]').forEach(button => {
+    button.dataset.instanceKey = instance.key || instance.name;
+    if (button.dataset.instanceDrawerAction === 'activity') {
+      button.hidden = instance.appType !== 'school';
+      button.dataset.activityKey = instance.composeProject || instance.key || '';
+    }
+  });
+  $('instance-drawer-release-section').hidden = instance.appType !== 'school';
+}
+
+async function loadInstanceDrawerReleases(instance) {
+  const select = $('instance-drawer-release-tag');
+  if (!select) return;
+  select.innerHTML = '<option value="">Loading releases…</option>';
+  $('instance-drawer-release-custom').value = '';
+  $('instance-drawer-release-status').textContent = '';
+  try {
+    const [tagsResponse, targetsResponse] = await Promise.all([
+      fetch('/api/deploy/releases?segment=school', { credentials: 'same-origin' }),
+      fetch('/api/deploy/targets', { credentials: 'same-origin' }),
+    ]);
+    const tagsData = await tagsResponse.json().catch(() => ({}));
+    const targetsData = await targetsResponse.json().catch(() => ({}));
+    if (!tagsResponse.ok) throw new Error(tagsData.error || 'Could not load available releases.');
+    if (targetsResponse.ok && Array.isArray(targetsData.targets)) DEPLOY_TARGETS = targetsData.targets.filter(target => target.selectable !== false);
+    fillDeployTagSelect(select, tagsData.tags);
+    if (!select.options.length) select.innerHTML = '<option value="">No releases available</option>';
+    const target = DEPLOY_TARGETS.find(item => item.composeProject === (instance.composeProject || instance.key));
+    if (!target) throw new Error('This school is not configured as a promotable release target.');
+  } catch (error) {
+    select.innerHTML = '<option value="">Release list unavailable</option>';
+    $('instance-drawer-release-status').textContent = error.message;
+  }
+}
+
+async function openInstanceDrawer(groupKey) {
+  const instance = getRuntimeInstanceForGroup(groupKey);
+  if (!instance) return;
+  activeInstanceDrawerKey = groupKey;
+  selectedInstanceName = instance.name;
+  renderInstanceDrawer(instance);
+  $('instance-drawer-log-section').hidden = true;
+  $('instance-drawer-log').textContent = 'Select View logs to fetch recent output.';
+  $('instance-drawer-overlay').classList.add('open');
+  $('instance-drawer-overlay').setAttribute('aria-hidden', 'false');
+  $('instance-drawer-close')?.focus();
+  if (instance.appType === 'school') await loadInstanceDrawerReleases(instance);
+}
+
+function closeInstanceDrawer() {
+  $('instance-drawer-overlay')?.classList.remove('open');
+  $('instance-drawer-overlay')?.setAttribute('aria-hidden', 'true');
+  activeInstanceDrawerKey = '';
+}
+
+async function handleInstanceDrawerAction(action, instanceKey) {
+  const instance = getRuntimeInstanceForGroup(activeInstanceDrawerKey);
+  if (!instance) return;
+  selectedInstanceName = instance.name;
+  if (action === 'activity') {
+    openAssessmentActivity(instance.composeProject || instance.key || '', instance.displayName || instance.name);
+    return;
+  }
+  if (action === 'logs') {
+    $('instance-drawer-log-section').hidden = false;
+    $('instance-drawer-log').textContent = 'Fetching recent logs…';
+    try {
+      const response = await fetch(`/api/instances/${encodeURIComponent(instanceKey || instance.key || instance.name)}/logs`, { credentials: 'same-origin' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Could not fetch logs.');
+      $('instance-drawer-log').textContent = String(data.logs || 'No recent log output.').split(/\r?\n/).slice(-120).join('\n');
+    } catch (error) {
+      $('instance-drawer-log').textContent = error.message;
+    }
+    return;
+  }
+  const labels = { start: 'Start', restart: 'Restart', stop: 'Stop', health: 'Health check' };
+  if (!labels[action]) return;
+  await handleControlButton({ dataset: { ctrl: action, label: labels[action] } });
+}
+
+function promoteFromInstanceDrawer() {
+  const instance = getRuntimeInstanceForGroup(activeInstanceDrawerKey);
+  if (!instance || instance.appType !== 'school') return;
+  const target = DEPLOY_TARGETS.find(item => item.composeProject === (instance.composeProject || instance.key));
+  const imageTag = $('instance-drawer-release-custom').value.trim() || $('instance-drawer-release-tag').value.trim();
+  if (!target) {
+    $('instance-drawer-release-status').textContent = 'This school is not configured as a promotable release target.';
+    return;
+  }
+  if (!imageTag) {
+    $('instance-drawer-release-status').textContent = 'Choose a release image tag first.';
+    return;
+  }
+  const isDemo = target.tier === 'demo';
+  openConfirm({
+    title: 'Promote release to this school',
+    body: `Deploy ${imageTag} to ${target.label}? The deployment runs backup, migration, restart, and health checks.`,
+    confirmLabel: 'Promote release',
+    onConfirm: async () => {
+      const status = $('instance-drawer-release-status');
+      const button = $('instance-drawer-promote');
+      button.disabled = true;
+      status.textContent = `Promoting ${imageTag} to ${target.label}…`;
+      try {
+        const response = await fetch('/api/deploy/promote', {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageTag, allSchools: false, includeDemo: isDemo, schoolIds: isDemo ? [] : [target.id] }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Release promotion failed.');
+        const details = (data.results || []).map(result => `${result.target}: ${result.ok ? 'complete' : 'failed'}${result.durationSec ? ` (${result.durationSec}s)` : ''}`).join(' · ');
+        status.textContent = `Promotion complete. ${details}`;
+        await refreshFromRuntime();
+        renderEverything();
+        const updatedInstance = getRuntimeInstanceForGroup(activeInstanceDrawerKey);
+        if (updatedInstance) renderInstanceDrawer(updatedInstance);
+        toast(`Promoted ${imageTag} to ${target.label}.`);
+      } catch (error) {
+        status.textContent = error.message;
+        toast(error.message);
+      } finally {
+        button.disabled = false;
+      }
+    },
+  });
+}
+
+function categoryForAppType(appType) {
+  const metadata = INSTANCE_TYPE_METADATA.find(type => type.id === appType) || INSTANCE_TYPE_METADATA.find(type => type.id === 'other');
+  return metadata ? { key: slugify(metadata.category), label: metadata.category, icon: metadata.categoryIcon || '📦', order: Number(metadata.categoryOrder || 99) }
+    : { key: 'other', label: 'Other', icon: '📦', order: 99 };
+}
+
 function resolveServerIp() {
   const rows = Array.from(document.querySelectorAll('.sb-footer-row'));
   for (const row of rows) {
@@ -1509,8 +2435,48 @@ function resolveServerIp() {
   return '';
 }
 
+let TENANTS = [];
+let TENANTS_BY_COMPOSE_PROJECT = new Map();
+
+async function loadTenants() {
+  try {
+    const response = await fetch('/api/tenants', { credentials: 'same-origin' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) return;
+    TENANTS = data.tenants || [];
+    TENANTS_BY_COMPOSE_PROJECT = new Map(TENANTS.filter(t => t.composeProject).map(t => [String(t.composeProject).toLowerCase(), t]));
+  } catch (_) {
+    // Instances view still works without tenant status — fail quietly.
+    return;
+  }
+  renderInstances();
+}
+
+// Phase 2: tenant lifecycle status badge + actions, rendered onto the
+// existing group header rather than a separate lifecycle UI — keeps the
+// working Instances view intact.
+function tenantStatusBadge(group) {
+  const tenant = TENANTS_BY_COMPOSE_PROJECT.get(String(group.key || '').toLowerCase());
+  if (!tenant) return '';
+  const labels = { active: 'Active', suspended: 'Suspended', decommissioned: 'Decommissioned' };
+  const badgeClass = tenant.status === 'active' ? '' : 'unready';
+  const badge = `<span class="billing-status-chip ${badgeClass}" title="Tenant record · ${esc(tenant.slug)}">${labels[tenant.status] || tenant.status}</span>`;
+  const actions = [];
+  if (tenant.status === 'active') actions.push(`<button class="btn sm" data-tenant-suspend="${esc(tenant.id)}" type="button">Suspend</button>`);
+  if (tenant.status === 'suspended') actions.push(`<button class="btn sm" data-tenant-reactivate="${esc(tenant.id)}" type="button">Reactivate</button>`);
+  if (tenant.status !== 'decommissioned') actions.push(`<button class="btn sm danger" data-tenant-decommission="${esc(tenant.id)}" type="button">Decommission</button>`);
+  return `<span style="margin-left:12px;display:inline-flex;align-items:center;gap:6px">${badge}${actions.join('')}</span>`;
+}
+
 function renderInstances() {
   const groups = groupInstances(INSTANCES);
+  const categoryGroups = new Map();
+  groups.forEach(group => {
+    const category = categoryForAppType(group.appType);
+    if (!categoryGroups.has(category.key)) categoryGroups.set(category.key, { ...category, groups: [] });
+    categoryGroups.get(category.key).groups.push(group);
+  });
+  const categories = Array.from(categoryGroups.values()).sort((a, b) => a.order - b.order);
   const serverIp = resolveServerIp();
 
   const renderGroupHeader = group => {
@@ -1521,61 +2487,65 @@ function renderInstances() {
     const openDomainUrl = domain ? `https://${domain}` : '';
     const domainLink = openDomainUrl ? `<a class="group-open-link group-open-domain-link" href="${esc(openDomainUrl)}" target="_blank" rel="noopener noreferrer" title="Open domain" style="margin-left:8px;display:inline-flex;align-items:center;text-decoration:none;">↗</a>` : '';
     const ipLink = openIpUrl ? `<a class="group-open-link group-open-ip-link" href="${esc(openIpUrl)}" target="_blank" rel="noopener noreferrer" title="Open IP endpoint" style="margin-left:8px;display:inline-flex;align-items:center;text-decoration:none;">↗</a>` : '';
-    return `<tr class="group-head" data-group="${esc(group.key)}" style="background:#f6f8ff;cursor:pointer">
-      <td colspan="7">
+    const category = categoryForAppType(group.appType);
+    const categoryOpen = INSTANCE_CATEGORY_OPEN[category.key] === true;
+    const groupOpen = INSTANCE_GROUP_OPEN[group.key] === true;
+    const manageButton = `<button class="instance-manage-button" type="button" data-open-instance-drawer="${esc(group.key)}" aria-label="Manage ${esc(group.name)}" title="Manage ${esc(group.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg></button>`;
+    return `<tr class="group-head category-child" data-category-owner="${esc(category.key)}" data-group="${esc(group.key)}" style="display:${categoryOpen ? '' : 'none'};background:#f6f8ff;cursor:pointer">
+      <td colspan="8">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
           <div>
             <strong>${esc(group.name)}</strong>
             <span style="margin-left:14px;color:var(--muted);font-size:12px">${esc(domain)}</span>${domainLink}
             <span style="margin-left:12px;color:var(--muted);font-size:12px">|</span>
-            <span style="margin-left:12px;font-family:var(--mono);font-size:12px;color:var(--muted)">FE ${esc(feLabel)}</span>${ipLink}
+            <span style="margin-left:12px;font-family:var(--mono);font-size:12px;color:var(--muted)">FE ${esc(feLabel)}</span>${ipLink}${tenantStatusBadge(group)}
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
-            <span class="group-chevron" style="font-size:16px;line-height:1">▸</span>
+            ${manageButton}
+            <span class="group-chevron" style="font-size:16px;line-height:1">${groupOpen ? '▾' : '▸'}</span>
           </div>
         </div>
       </td>
     </tr>`;
   };
 
-  const renderGroupedBody = mode => groups.map(group => {
+  const renderCategoryHeader = category => {
+    const count = category.groups.length;
+    const healthy = category.groups.filter(group => group.items.some(item => item.status === 'Online')).length;
+    const isOpen = INSTANCE_CATEGORY_OPEN[category.key] === true;
+    return `<tr class="instance-category-head"><td colspan="8"><button class="instance-category-toggle" type="button" data-instance-category-toggle="${esc(category.key)}" aria-expanded="${isOpen}"><span class="instance-category-icon" aria-hidden="true">${category.icon}</span><span class="instance-category-name">${esc(category.label)}</span><span class="instance-category-count">${count} deployments · ${healthy} online</span><span class="instance-category-chevron">${isOpen ? '▾' : '▸'}</span></button></td></tr>`;
+  };
+
+  const renderGroupedBody = mode => categories.map(category => {
+    const categoryOpen = INSTANCE_CATEGORY_OPEN[category.key] === true;
+    const groupsHtml = category.groups.map(group => {
     const rows = group.items.map(instance =>
-      renderInstanceRow(instance, mode).replace('<tr>', `<tr class="group-row" data-group="${esc(group.key)}" style="display:none">`)
+      renderInstanceRow(instance, mode).replace('<tr>', `<tr class="group-row category-child" data-category-owner="${esc(category.key)}" data-group="${esc(group.key)}" style="display:${categoryOpen && INSTANCE_GROUP_OPEN[group.key] === true ? '' : 'none'}">`)
     ).join('');
     return `${renderGroupHeader(group)}${rows}`;
+    }).join('');
+    return `${renderCategoryHeader(category)}${groupsHtml}`;
   }).join('');
 
   const overview = $('instance-table');
-  if (overview) overview.innerHTML = groups.length ? renderGroupedBody('compact') : '<tr><td colspan="7">No runtime instances are available.</td></tr>';
+  if (overview) overview.innerHTML = groups.length ? renderGroupedBody('compact') : '<tr><td colspan="8">No runtime instances are available.</td></tr>';
 
   const full = $('instance-table-full');
-  if (full) full.innerHTML = groups.length ? renderGroupedBody('full') : '<tr><td colspan="9">No runtime instances are available.</td></tr>';
+  if (full) full.innerHTML = groups.length ? renderGroupedBody('full') : '<tr><td colspan="8">No runtime instances are available.</td></tr>';
 }
 
 function renderMetrics() {
-  const totalStorage = INSTANCES.reduce((sum, instance) => sum + instance.storage, 0);
   const healthy = INSTANCES.filter(instance => instance.status === 'Online').reduce((sum, instance) => sum + instance.containers, 0);
   const total = INSTANCES.reduce((sum, instance) => sum + instance.containers, 0);
-  const schoolGroups = groupInstances(INSTANCES).filter(group => group.complete).length;
 
-  if ($('m-schools')) $('m-schools').textContent = liveMode ? (Number.isFinite(Number(RUNTIME_METRICS?.liveSchools)) ? RUNTIME_METRICS.liveSchools : schoolGroups) : '—';
+  if ($('m-instances')) $('m-instances').textContent = liveMode ? (Number.isFinite(Number(RUNTIME_METRICS?.liveInstances)) ? RUNTIME_METRICS.liveInstances : INSTANCES.length) : '—';
   if ($('m-containers')) $('m-containers').textContent = liveMode ? (RUNTIME_METRICS?.containersHealthy || `${healthy}/${total}`) : '—';
-  if ($('m-storage')) $('m-storage').textContent = liveMode ? `${fmt(Number(RUNTIME_METRICS?.storageUsedGb ?? totalStorage))} GB` : '—';
+  if ($('m-storage')) $('m-storage').textContent = liveMode && RUNTIME_METRICS?.dockerUsageAvailable ? `${fmt(Number(RUNTIME_METRICS.storageUsedGb || 0))} GB` : '—';
 
-  const latestDeploy = DEPLOYMENTS[0];
-  if ($('m-deploy')) {
-    $('m-deploy').textContent = latestDeploy?.imageTag || latestDeploy?.title?.replace(/^Promoted /, '')?.slice(0, 12) || '—';
-  }
-  if ($('m-deploy-sub')) {
-    $('m-deploy-sub').textContent = latestDeploy?.copy || 'No deployment record is available.';
-  }
-  if ($('m-deploy-badge')) {
-    $('m-deploy-badge').textContent = latestDeploy?.time || 'No deployment yet';
-  }
   if ($('overview-sub')) {
     $('overview-sub').textContent = liveMode
-      ? 'Live snapshot of all managed school instances'
-      : 'Live snapshot of all managed school instances · waiting for live metrics';
+      ? 'Live snapshot of all managed instances'
+      : 'Live snapshot of all managed instances · waiting for live metrics';
   }
 }
 
@@ -1586,14 +2556,22 @@ function renderTimeline(elId, maxItems = 99) {
     el.innerHTML = '<div class="tl-item"><div class="tl-copy">No deployment history is available.</div></div>';
     return;
   }
-  el.innerHTML = DEPLOYMENTS.slice(0, maxItems).map(item => `
+  el.innerHTML = DEPLOYMENTS.slice(0, maxItems).map(item => {
+    const status = String(item.status || (/fail|error/i.test(item.title || '') ? 'Failed' : 'Success'));
+    const failed = /fail|error/i.test(status);
+    const rawTitle = String(item.title || 'Deployment');
+    const title = /^deploy failed|^promoted\b/i.test(rawTitle)
+      ? 'School release'
+      : (/^console\b/i.test(rawTitle) ? 'Admin console' : rawTitle);
+    return `
     <div class="tl-item">
       <div class="tl-time">${esc(item.time)}</div>
       <div class="tl-body">
-        <div class="tl-title">${esc(item.title)}</div>
-        <div class="tl-copy">${esc(item.copy)}</div>
+        <span class="tl-status ${failed ? 'failed' : 'success'}">${failed ? 'Failed' : 'Complete'}</span>
+        <div class="tl-title" title="${esc(title)}">${esc(title)}</div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function renderCapacity() {
@@ -1606,61 +2584,75 @@ function renderCapacity() {
   }
 
   const diskTotal = totalDiskGb();
-  if (capacitySub) capacitySub.textContent = `VPS disk allocation \u00b7 ${fmt(diskTotal)} GB total`;
-  const totalStorage = INSTANCES.reduce((sum, instance) => sum + instance.storage, 0);
-  const imagesUsed = Number(RUNTIME_METRICS?.imagesGb || 0);
-  const volumesUsed = Number(RUNTIME_METRICS?.volumesGb || 0);
-  const runtimeUsed = Number(RUNTIME_METRICS?.storageUsedGb || 0);
-  const stackUsed = Math.max(0, runtimeUsed - totalStorage);
-  const freeUsed = Math.max(0, diskTotal - Number(RUNTIME_METRICS.diskUsedGb || 0));
+  if (capacitySub) capacitySub.textContent = `Detected host filesystem \u00b7 ${fmt(diskTotal)} GB total`;
+  const hostUsed = Number(RUNTIME_METRICS.diskUsedGb || 0);
+  const freeUsed = Math.max(0, diskTotal - hostUsed);
+  const dockerAvailable = RUNTIME_METRICS.dockerUsageAvailable === true;
   const items = [
-    { label: 'Images', used: imagesUsed, total: diskTotal, color: 'brand', meta: 'Docker images stored on this server' },
-    { label: 'Volumes', used: volumesUsed, total: diskTotal, color: 'teal', meta: 'Persistent Docker volumes' },
-    { label: 'Other Docker storage', used: stackUsed, total: diskTotal, color: 'amber', meta: 'Docker usage not attributed to school project volumes' },
-    { label: 'School project volumes', used: totalStorage, total: diskTotal, color: 'teal', meta: 'Docker volumes attributed to runtime school projects' },
-    { label: 'Host free space', used: freeUsed, total: diskTotal, color: 'green', meta: 'Filesystem free space, including non-Docker files' },
+    { label: 'Host disk used', used: hostUsed, total: diskTotal, color: 'brand', meta: 'Filesystem usage, including Docker data and other files' },
+    { label: 'Host disk available', used: freeUsed, total: diskTotal, color: 'green', meta: 'Free space on the detected root filesystem' },
   ];
+  if (dockerAvailable) {
+    items.push(
+      { label: 'Docker images', used: Number(RUNTIME_METRICS.imagesGb || 0), total: diskTotal, color: 'teal', meta: 'Image layer storage; included in host disk used' },
+      { label: 'Docker volumes', used: Number(RUNTIME_METRICS.volumesGb || 0), total: diskTotal, color: 'amber', meta: 'All Docker volumes; includes the two subsets below' },
+      { label: 'Managed instance volumes', used: Number(RUNTIME_METRICS.managedInstanceVolumesGb || 0), total: diskTotal, color: 'teal', meta: 'Subset of volumes mapped to detected instance projects' },
+      { label: 'Unassigned Docker volumes', used: Number(RUNTIME_METRICS.unassignedVolumesGb || 0), total: diskTotal, color: 'amber', meta: 'Volume data not mapped to a detected instance project' },
+      { label: 'Container writable layers', used: Number(RUNTIME_METRICS.containerWritableGb || 0), total: diskTotal, color: 'brand', meta: 'Container-local changes; included in Docker storage and host disk used' },
+      { label: 'Docker build cache', used: Number(RUNTIME_METRICS.buildCacheGb || 0), total: diskTotal, color: 'amber', meta: 'Build cache; included in Docker storage and host disk used' },
+    );
+  } else {
+    items.push({ label: 'Docker storage details', used: null, total: diskTotal, color: 'amber', meta: 'Detailed Docker usage is unavailable from the host.' });
+  }
   if (!el) return;
   el.innerHTML = items.map(item => {
-    const pct = Math.round(Math.max(0, item.used) / Math.max(item.total, 1) * 100);
+    const hasValue = item.used !== null && item.used !== undefined && Number.isFinite(Number(item.used));
+    const pct = hasValue ? Math.round(Math.max(0, item.used) / Math.max(item.total, 1) * 100) : null;
     return `<div class="capacity-item">
-      <div class="cap-row"><span class="cap-name">${esc(item.label)}</span><span class="cap-val">${fmt(item.used)} GB</span></div>
-      <div class="meter"><div class="meter-fill ${item.color}" style="width:${pct}%"></div></div>
-      <div class="cap-meta">${esc(item.meta)} · ${pct}% of ${fmt(item.total)} GB</div>
+      <div class="cap-row"><span class="cap-name">${esc(item.label)}</span><span class="cap-val">${hasValue ? `${fmt(item.used)} GB` : '—'}</span></div>
+      <div class="meter"><div class="meter-fill ${item.color}" style="width:${pct ?? 0}%"></div></div>
+      <div class="cap-meta">${esc(item.meta)}${pct === null ? '' : ` · ${pct}% of ${fmt(item.total)} GB host disk`}</div>
     </div>`;
   }).join('');
 }
 
 function renderStorageSection() {
   if (!liveMode || !RUNTIME_METRICS) {
-    if ($('s-total')) $('s-total').textContent = '—';
+    if ($('s-host-total')) $('s-host-total').textContent = '—';
+    if ($('s-docker-total')) $('s-docker-total').textContent = '—';
+    if ($('s-instance-volumes')) $('s-instance-volumes').textContent = '—';
     if ($('disk-breakdown')) $('disk-breakdown').innerHTML = '<div class="capacity-item">Live storage metrics are unavailable.</div>';
     if ($('per-instance-storage')) $('per-instance-storage').innerHTML = '<div class="storage-item">No instance storage figures are shown without live metrics.</div>';
     return;
   }
 
-  const total = INSTANCES.reduce((sum, instance) => sum + instance.storage, 0);
-  if ($('s-total')) $('s-total').textContent = fmt(total) + ' GB';
+  if ($('s-host-total')) $('s-host-total').textContent = `${fmt(totalDiskGb())} GB`;
+  if ($('s-docker-total')) $('s-docker-total').textContent = RUNTIME_METRICS.dockerUsageAvailable ? `${fmt(Number(RUNTIME_METRICS.storageUsedGb || 0))} GB` : '—';
+  if ($('s-instance-volumes')) $('s-instance-volumes').textContent = RUNTIME_METRICS.dockerUsageAvailable ? `${fmt(Number(RUNTIME_METRICS.managedInstanceVolumesGb || 0))} GB` : '—';
 
   const disk = $('disk-breakdown');
   if (disk) {
     const diskTotal = totalDiskGb();
-    const runtimeUsed = Number(RUNTIME_METRICS?.storageUsedGb || 0);
-    const imagesUsed = Number(RUNTIME_METRICS?.imagesGb || 0);
-    const volumesUsed = Number(RUNTIME_METRICS?.volumesGb || 0);
-    const otherDockerUsed = Math.max(0, runtimeUsed - imagesUsed - volumesUsed);
     const rows = [
-      { label: 'Docker images', used: imagesUsed, total: diskTotal, color: 'brand' },
-      { label: 'Docker volumes', used: volumesUsed, total: diskTotal, color: 'green' },
-      { label: 'Other Docker layers', used: otherDockerUsed, total: diskTotal, color: 'amber' },
-      { label: 'School project volumes (subset of volumes)', used: total, total: diskTotal, color: 'teal' },
+      { label: 'Host disk used (includes Docker)', used: Number(RUNTIME_METRICS.diskUsedGb || 0), total: diskTotal, color: 'brand' },
+      { label: 'Host disk available', used: Math.max(0, diskTotal - Number(RUNTIME_METRICS.diskUsedGb || 0)), total: diskTotal, color: 'green' },
     ];
+    if (RUNTIME_METRICS.dockerUsageAvailable) rows.push(
+      { label: 'Docker images', used: Number(RUNTIME_METRICS.imagesGb || 0), total: diskTotal, color: 'brand' },
+      { label: 'Docker volumes (includes subsets below)', used: Number(RUNTIME_METRICS.volumesGb || 0), total: diskTotal, color: 'green' },
+      { label: 'Managed instance volumes', used: Number(RUNTIME_METRICS.managedInstanceVolumesGb || 0), total: diskTotal, color: 'teal' },
+      { label: 'Unassigned Docker volumes', used: Number(RUNTIME_METRICS.unassignedVolumesGb || 0), total: diskTotal, color: 'amber' },
+      { label: 'Container writable layers', used: Number(RUNTIME_METRICS.containerWritableGb || 0), total: diskTotal, color: 'amber' },
+      { label: 'Docker build cache', used: Number(RUNTIME_METRICS.buildCacheGb || 0), total: diskTotal, color: 'amber' },
+    );
+    else rows.push({ label: 'Docker usage details unavailable', used: null, total: diskTotal, color: 'amber' });
     disk.innerHTML = rows.map(row => {
-      const pct = Math.round(row.used / row.total * 100);
+      const hasValue = Number.isFinite(Number(row.used)) && row.used !== null;
+      const pct = hasValue ? Math.round(row.used / row.total * 100) : null;
       return `<div class="capacity-item">
-        <div class="cap-row"><span class="cap-name">${esc(row.label)}</span><span class="cap-val">${fmt(row.used)} GB</span></div>
-        <div class="meter"><div class="meter-fill ${row.color}" style="width:${pct}%"></div></div>
-        <div class="cap-meta">${pct}% of ${row.total} GB total disk</div>
+        <div class="cap-row"><span class="cap-name">${esc(row.label)}</span><span class="cap-val">${hasValue ? `${fmt(row.used)} GB` : '—'}</span></div>
+        <div class="meter"><div class="meter-fill ${row.color}" style="width:${pct ?? 0}%"></div></div>
+        <div class="cap-meta">${pct === null ? 'Metric not reported by Docker.' : `${pct}% of ${row.total} GB host disk`}</div>
       </div>`;
     }).join('');
   }
@@ -1670,7 +2662,7 @@ function renderStorageSection() {
     perInstance.innerHTML = INSTANCES.map(instance => `
       <div class="storage-item">
         <div class="sto-row"><span class="sto-name">${esc(instance.name)}</span><span class="sto-size">${fmt(instance.storage)} GB</span></div>
-        <div class="sto-meta">Attributed Docker volume/container storage; DB, uploads, and backups are not separately measured.</div>
+        <div class="sto-meta">Attributed Docker volume or writable-layer usage; database, uploads, and backups are not measured separately.</div>
       </div>`).join('');
   }
 }
@@ -2022,14 +3014,16 @@ function runConsoleDeploy() {
 }
 
 // Navigation
-const SECTIONS = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'logs', 'leads'];
+const SECTIONS = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'communications', 'users', 'logs', 'leads'];
 const SECTION_LABELS = {
   overview: 'Overview',
   instances: 'Instances',
   storage: 'Storage',
-  deployments: 'Promote Release',
-  controls: 'Controls',
+  deployments: 'Releases',
+  controls: 'General Settings',
   billing: 'Billing & Invoices',
+  communications: 'Communications Settings',
+  users: 'Users',
   logs: 'Audit Log',
   leads: 'Leads & CRM',
 };
@@ -2054,6 +3048,11 @@ function showSection(id, options = {}) {
     refreshDeployPanel(options.deployPrefill || null);
   }
   if (targetSection === 'billing') loadBillingData();
+  if (targetSection === 'communications') loadCommunicationsSettings();
+  // The initial hash is rendered before login.js finishes checking the
+  // session. Do not hit the protected endpoint until authentication has
+  // populated the role; console:authenticated reloads this section afterward.
+  if (targetSection === 'users' && window.consoleUserRole === 'super_admin') loadUsersData();
 
   if (!options.skipHashUpdate) {
     const nextHash = `#${targetSection}`;
@@ -2076,6 +3075,8 @@ window.addEventListener('hashchange', () => {
 
 window.addEventListener('console:authenticated', () => {
   if (sectionFromHash() === 'billing') loadBillingData();
+  if (sectionFromHash() === 'communications') loadCommunicationsSettings();
+  if (sectionFromHash() === 'users') loadUsersData();
 });
 
 function setSidebarCollapsed(collapsed) {
@@ -2159,6 +3160,40 @@ async function callControlApi(action, instanceKey = '') {
   }
 }
 
+function renderInstanceTypePicker(types) {
+  const host = $('instance-type-options');
+  if (!host) return;
+  const grouped = new Map();
+  for (const type of types.filter(item => item.inProvisionPicker !== false)) {
+    if (!grouped.has(type.category)) grouped.set(type.category, []);
+    grouped.get(type.category).push(type);
+  }
+  const icons = { school: '🎓', sacco: '🏦', hospital: '🏥', hotel: '🏨', organization: '🏢', odoo: '🧩', wordpress: '🌐', platform: '⚙️' };
+  const isSuperAdmin = window.consoleUserRole === 'super_admin';
+  host.innerHTML = Array.from(grouped.entries()).map(([category, items]) => `<section class="instance-type-group"><h3>${esc(category)}</h3><div class="instance-type-grid">${items.map(type => {
+    const canChoose = type.provisionable && isSuperAdmin;
+    const status = type.provisionable ? (isSuperAdmin ? 'Available' : 'Super Admin only') : 'Setup recipe needed';
+    const tag = type.provisionable ? 'ready' : 'planned';
+    return `<button class="instance-type-card ${canChoose ? '' : 'is-unavailable'}" type="button" data-instance-type="${esc(type.id)}" ${canChoose ? '' : 'disabled'}><span class="instance-type-icon" aria-hidden="true">${icons[type.id] || '📦'}</span><span class="instance-type-card-main"><strong>${esc(type.label)}</strong><small>${esc(type.description)}</small><span class="instance-type-status ${tag}">${esc(status)}</span></span><span class="instance-type-arrow" aria-hidden="true">${canChoose ? '→' : '·'}</span></button>`;
+  }).join('')}</div></section>`).join('');
+}
+
+async function openNewInstanceTypePicker() {
+  $('instance-type-overlay')?.classList.add('open');
+  const host = $('instance-type-options');
+  if (host) host.innerHTML = '<div class="billing-empty">Loading available instance types…</div>';
+  try {
+    const response = await fetch('/api/instances/types', { credentials: 'same-origin' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !Array.isArray(data.types)) throw new Error(data.error || 'Could not load instance types');
+    renderInstanceTypePicker(data.types);
+  } catch (error) {
+    if (host) host.innerHTML = `<div class="billing-empty">${esc(error.message)}. Refresh the console and try again.</div>`;
+  }
+}
+
+function closeInstanceTypePicker() { $('instance-type-overlay')?.classList.remove('open'); }
+
 async function runControl(action, label, options = {}) {
   const instance = selectedInstance();
   const target = options.global ? 'All Instances' : instance.name;
@@ -2179,12 +3214,20 @@ async function runControl(action, label, options = {}) {
   const result = await callControlApi(mappedAction, options.global ? '' : instance.key || instance.name);
   if (!result.ok) {
     renderLogs([{ type: 'error', text: result.error }]);
+    if (activeInstanceDrawerKey) {
+      $('instance-drawer-log-section').hidden = false;
+      $('instance-drawer-log').textContent = result.error;
+    }
     toast(result.error);
     return;
   }
 
   await refreshFromRuntime();
   renderEverything();
+  if (activeInstanceDrawerKey) {
+    const drawerInstance = getRuntimeInstanceForGroup(activeInstanceDrawerKey);
+    if (drawerInstance) renderInstanceDrawer(drawerInstance);
+  }
   toast(`${label} completed for ${target}.`);
 }
 
@@ -2253,20 +3296,104 @@ function exportLogsCsv() {
 // Event wiring
 document.body.addEventListener('click', event => {
   if (!event.target.closest('#bc-name, #bc-customer-suggestions')) hideBillingCustomerSuggestions();
+  if (event.target.closest('#instance-drawer-close, #instance-drawer-close-footer') || event.target.id === 'instance-drawer-overlay') {
+    closeInstanceDrawer();
+    return;
+  }
+  const drawerOpenButton = event.target.closest('[data-open-instance-drawer]');
+  if (drawerOpenButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    void openInstanceDrawer(drawerOpenButton.dataset.openInstanceDrawer);
+    return;
+  }
+  const drawerActionButton = event.target.closest('[data-instance-drawer-action]');
+  if (drawerActionButton) {
+    void handleInstanceDrawerAction(drawerActionButton.dataset.instanceDrawerAction, drawerActionButton.dataset.instanceKey);
+    return;
+  }
+  if (event.target.closest('#instance-drawer-promote')) {
+    promoteFromInstanceDrawer();
+    return;
+  }
+  const activityButton = event.target.closest('[data-assessment-activity-key]');
+  if (activityButton) {
+    openAssessmentActivity(activityButton.dataset.assessmentActivityKey, activityButton.dataset.assessmentActivityName || 'School');
+    return;
+  }
+  if (event.target.closest('#assessment-activity-close, #assessment-activity-close-footer') || event.target.id === 'assessment-activity-overlay') {
+    closeAssessmentActivity();
+    return;
+  }
   if (event.target.closest('.group-open-link')) {
+    return;
+  }
+
+  const tenantSuspendBtn = event.target.closest('[data-tenant-suspend]');
+  if (tenantSuspendBtn) {
+    const reason = window.prompt('Reason for suspending this tenant:');
+    if (reason && reason.trim()) {
+      fetch(`/api/tenants/${encodeURIComponent(tenantSuspendBtn.dataset.tenantSuspend)}/suspend`, {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason.trim() }),
+      }).then(r => r.json().catch(() => ({}))).then(data => {
+        if (data.ok) { toast('Tenant suspended.'); loadTenants(); } else toast(data.error || 'Could not suspend tenant.');
+      }).catch(() => toast('Could not suspend tenant.'));
+    }
+    return;
+  }
+  const tenantReactivateBtn = event.target.closest('[data-tenant-reactivate]');
+  if (tenantReactivateBtn) {
+    fetch(`/api/tenants/${encodeURIComponent(tenantReactivateBtn.dataset.tenantReactivate)}/reactivate`, {
+      method: 'POST', credentials: 'same-origin',
+    }).then(r => r.json().catch(() => ({}))).then(data => {
+      if (data.ok) { toast('Tenant reactivated.'); loadTenants(); } else toast(data.error || 'Could not reactivate tenant.');
+    }).catch(() => toast('Could not reactivate tenant.'));
+    return;
+  }
+  const tenantDecommissionBtn = event.target.closest('[data-tenant-decommission]');
+  if (tenantDecommissionBtn) {
+    const reason = window.prompt('Reason for decommissioning this tenant (this is permanent):');
+    if (reason && reason.trim()) {
+      fetch(`/api/tenants/${encodeURIComponent(tenantDecommissionBtn.dataset.tenantDecommission)}/decommission`, {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason.trim() }),
+      }).then(r => r.json().catch(() => ({}))).then(data => {
+        if (data.ok) { toast('Tenant decommissioned.'); loadTenants(); } else toast(data.error || 'Could not decommission tenant.');
+      }).catch(() => toast('Could not decommission tenant.'));
+    }
+    return;
+  }
+
+  const categoryToggle = event.target.closest('[data-instance-category-toggle]');
+  if (categoryToggle) {
+    const categoryKey = categoryToggle.dataset.instanceCategoryToggle;
+    const isOpen = INSTANCE_CATEGORY_OPEN[categoryKey] !== true;
+    INSTANCE_CATEGORY_OPEN[categoryKey] = isOpen;
+    document.querySelectorAll(`.instance-category-toggle[data-instance-category-toggle="${categoryKey}"]`).forEach(button => {
+      button.setAttribute('aria-expanded', String(isOpen));
+      const chevron = button.querySelector('.instance-category-chevron');
+      if (chevron) chevron.textContent = isOpen ? '▾' : '▸';
+    });
+    document.querySelectorAll(`.category-child[data-category-owner="${categoryKey}"]`).forEach(row => {
+      const groupOpen = INSTANCE_GROUP_OPEN[row.dataset.group] === true;
+      row.style.display = !isOpen ? 'none' : row.classList.contains('group-row') && !groupOpen ? 'none' : '';
+    });
     return;
   }
 
   const groupHead = event.target.closest('.group-head');
   if (groupHead) {
     const groupKey = groupHead.dataset.group;
+    const categoryKey = groupHead.dataset.categoryOwner;
     const rows = document.querySelectorAll(`.group-row[data-group="${groupKey}"]`);
-    const chevron = groupHead.querySelector('.group-chevron');
-    const isClosed = Array.from(rows).every(row => row.style.display === 'none');
+    const isClosed = INSTANCE_GROUP_OPEN[groupKey] !== true;
+    INSTANCE_GROUP_OPEN[groupKey] = isClosed;
+    groupHead.style.display = INSTANCE_CATEGORY_OPEN[categoryKey] === true ? '' : 'none';
     rows.forEach(row => {
-      row.style.display = isClosed ? '' : 'none';
+      row.style.display = INSTANCE_CATEGORY_OPEN[categoryKey] === true && isClosed ? '' : 'none';
     });
-    if (chevron) chevron.textContent = isClosed ? '▾' : '▸';
+    document.querySelectorAll(`.group-head[data-group="${groupKey}"] .group-chevron`).forEach(chevron => { chevron.textContent = isClosed ? '▾' : '▸'; });
     return;
   }
 
@@ -2286,34 +3413,25 @@ document.body.addEventListener('click', event => {
   }
 
   const id = btn.id;
+  if (id === 'btn-new-instance-overview' || id === 'btn-new-instance-list') {
+    openNewInstanceTypePicker();
+    return;
+  }
+  if (id === 'instance-type-close' || id === 'instance-type-cancel') {
+    closeInstanceTypePicker();
+    return;
+  }
+  const selectedInstanceType = btn.dataset.instanceType;
+  if (selectedInstanceType) {
+    closeInstanceTypePicker();
+    openModal(selectedInstanceType);
+    return;
+  }
   const billingPickKind = btn.dataset.billingPickKind;
   if (billingPickKind) {
     selectBillingCustomerSuggestion(billingPickKind, btn.dataset.billingPickId);
     return;
   }
-  const createButtonMap = {
-    'btn-create-school': 'school',
-    'btn-create2-school': 'school',
-    'btn-create3-school': 'school',
-    'btn-create2-odoo': 'odoo',
-    'btn-create3-odoo': 'odoo',
-    'btn-create2-wordpress': 'wordpress',
-    'btn-create3-wordpress': 'wordpress',
-    'btn-create2-sacco': 'sacco',
-    'btn-create3-sacco': 'sacco',
-    'btn-create2-hospital': 'hospital',
-    'btn-create3-hospital': 'hospital',
-    'btn-create2-hotel': 'hotel',
-    'btn-create3-hotel': 'hotel',
-    'btn-create2-organization': 'organization',
-    'btn-create3-organization': 'organization',
-  };
-
-  if (createButtonMap[id]) {
-    openModal(createButtonMap[id]);
-    return;
-  }
-
   if (id === 'btn-refresh') {
     (async () => {
       await refreshFromRuntime();
@@ -2347,6 +3465,65 @@ document.body.addEventListener('click', event => {
     openBillingQuote();
     return;
   }
+  if (id === 'billing-invoice-close' || id === 'billing-invoice-cancel') {
+    $('billing-invoice-overlay')?.classList.remove('open');
+    return;
+  }
+  if (id === 'billing-payment-close' || id === 'billing-payment-cancel') {
+    $('billing-payment-overlay')?.classList.remove('open');
+    return;
+  }
+  if (id === 'billing-payment-add') {
+    openBillingPayment();
+    return;
+  }
+  if (id === 'billing-mail-close' || id === 'billing-mail-cancel') {
+    $('billing-mail-overlay')?.classList.remove('open');
+    BILLING_MAIL_DRAFT = null;
+    return;
+  }
+  if (btn.dataset.billingMailTab) {
+    const showPdf = btn.dataset.billingMailTab === 'pdf';
+    $('billing-mail-tab-email')?.classList.toggle('active', !showPdf);
+    $('billing-mail-tab-email')?.setAttribute('aria-selected', String(!showPdf));
+    $('billing-mail-tab-pdf')?.classList.toggle('active', showPdf);
+    $('billing-mail-tab-pdf')?.setAttribute('aria-selected', String(showPdf));
+    $('billing-mail-preview-email').hidden = showPdf;
+    $('billing-mail-preview-pdf').hidden = !showPdf;
+    return;
+  }
+  if (id === 'billing-mail-send') {
+    if (!BILLING_MAIL_DRAFT) return;
+    const kind = $('billing-mail-kind').value;
+    const isDraftInvoice = BILLING_MAIL_DRAFT.isDraftInvoice === true;
+    const mailId = $('billing-mail-id').value;
+    const sendButton = $('billing-mail-send');
+    sendButton.disabled = true;
+    sendButton.textContent = 'Sending…';
+    (async () => {
+      try {
+        const endpoint = kind === 'quote'
+          ? `/api/billing/quotes/${encodeURIComponent(mailId)}/send`
+          : `/api/billing/invoices/${encodeURIComponent(mailId)}/send-review-email`;
+        const response = await fetch(endpoint, {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipient: $('billing-mail-to').value, subject: $('billing-mail-subject').value, message: $('billing-mail-message').value }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not send email');
+        $('billing-mail-overlay')?.classList.remove('open');
+        BILLING_MAIL_DRAFT = null;
+        await loadBillingData();
+        toast(kind === 'quote' ? 'Quotation email sent with the reviewed PDF attached.' : isDraftInvoice ? 'Draft invoice review copy sent. It remains unissued.' : 'Commercial invoice emailed with the PDF attached.');
+      } catch (error) {
+        toast(error.message || 'Could not send email');
+      } finally {
+        sendButton.disabled = false;
+        sendButton.textContent = kind === 'quote' ? 'Send quotation' : 'Send review copy';
+      }
+    })();
+    return;
+  }
   if (id === 'billing-quote-close' || id === 'billing-quote-cancel') {
     closeBillingQuote();
     return;
@@ -2363,6 +3540,85 @@ document.body.addEventListener('click', event => {
   const customerEditId = btn.dataset.billingCustomerEdit;
   if (customerEditId) {
     openBillingCustomer(BILLING_CUSTOMERS.find(item => item.id === customerEditId));
+    return;
+  }
+  const quoteEditId = btn.dataset.quoteEdit;
+  if (quoteEditId) {
+    const quote = BILLING_QUOTES.find(item => item.id === quoteEditId);
+    if (quote) openBillingQuote(quote);
+    return;
+  }
+  const quoteDeleteId = btn.dataset.quoteDelete;
+  if (quoteDeleteId) {
+    const quote = BILLING_QUOTES.find(item => item.id === quoteDeleteId);
+    if (!quote || !window.confirm(`Permanently delete unsent draft ${quote.quoteNumber}? This is only available before any email attempt.`)) return;
+    (async () => {
+      try {
+        const response = await fetch(`/api/billing/quotes/${encodeURIComponent(quoteDeleteId)}`, { method: 'DELETE', credentials: 'same-origin' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not delete quote');
+        await loadBillingData(); toast('Unsent draft quote deleted.');
+      } catch (error) { toast(error.message); }
+    })();
+    return;
+  }
+  const quoteCancelId = btn.dataset.quoteCancel;
+  if (quoteCancelId) {
+    const reason = window.prompt('Reason for cancelling this quote (required):');
+    if (!reason?.trim()) return;
+    (async () => {
+      try {
+        const response = await fetch(`/api/billing/quotes/${encodeURIComponent(quoteCancelId)}/cancel`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not cancel quote');
+        await loadBillingData(); toast('Quote cancelled and retained in the audit history.');
+      } catch (error) { toast(error.message); }
+    })();
+    return;
+  }
+  const invoiceEditId = btn.dataset.invoiceEdit;
+  if (invoiceEditId) {
+    const invoice = BILLING_INVOICES.find(item => item.id === invoiceEditId);
+    if (!invoice) return;
+    $('bi-id').value = invoice.id;
+    $('bi-due-date').value = invoice.invoiceSnapshot?.dueDate || '';
+    $('bi-terms').value = invoice.invoiceSnapshot?.termsNote || '';
+    $('billing-invoice-overlay')?.classList.add('open');
+    return;
+  }
+  const invoiceCancelId = btn.dataset.invoiceCancel;
+  if (invoiceCancelId) {
+    const invoice = BILLING_INVOICES.find(item => item.id === invoiceCancelId);
+    const reason = window.prompt(`Reason for cancelling draft ${invoice?.invoiceNumber || ''} (required):`);
+    if (!reason?.trim()) return;
+    (async () => {
+      try {
+        const response = await fetch(`/api/billing/invoices/${encodeURIComponent(invoiceCancelId)}/cancel`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not cancel draft invoice');
+        await loadBillingData(); toast('Draft invoice cancelled and retained in the register.');
+      } catch (error) { toast(error.message); }
+    })();
+    return;
+  }
+  const invoiceIssueId = btn.dataset.invoiceIssue;
+  if (invoiceIssueId) {
+    const invoice = BILLING_INVOICES.find(item => item.id === invoiceIssueId);
+    if (!invoice || !window.confirm(`Issue ${invoice.invoiceNumber} as a commercial invoice? This action makes it payable and changes its reference. It is not an eTIMS tax invoice.`)) return;
+    (async () => {
+      try {
+        const response = await fetch(`/api/billing/invoices/${encodeURIComponent(invoiceIssueId)}/issue`, { method: 'POST', credentials: 'same-origin' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not issue the invoice');
+        await loadBillingData();
+        toast(`Commercial invoice ${payload.invoice.invoiceNumber} issued. You can now email it or record payments.`);
+      } catch (error) { toast(error.message); }
+    })();
+    return;
+  }
+  const invoiceSendReviewId = btn.dataset.invoiceSendReview;
+  if (invoiceSendReviewId) {
+    openBillingEmailComposer('invoice', invoiceSendReviewId);
     return;
   }
   const contractAddCustomerId = btn.dataset.billingContractAdd;
@@ -2398,33 +3654,62 @@ document.body.addEventListener('click', event => {
   if (id === 'billing-quote-save') {
     (async () => {
       try {
-        const response = await fetch('/api/billing/quotes', {
-          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        const quoteId = $('bq-id').value;
+        const response = await fetch(quoteId ? `/api/billing/quotes/${encodeURIComponent(quoteId)}` : '/api/billing/quotes', {
+          method: quoteId ? 'PUT' : 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(billingQuotePayload()),
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.error || 'Could not save quote');
         closeBillingQuote();
         await loadBillingData();
-        toast(`Draft ${payload.quote.quoteNumber} saved. Download the PDF or email it from the Quotes table.`);
+        toast(`${quoteId ? 'Draft changes saved for' : 'Draft'} ${payload.quote.quoteNumber}. Download the PDF or email it from the Quotes table.`);
       } catch (error) { toast(error.message); }
+    })();
+    return;
+  }
+
+  if (id === 'billing-invoice-save') {
+    (async () => {
+      try {
+        const invoiceId = $('bi-id').value;
+        const response = await fetch(`/api/billing/invoices/${encodeURIComponent(invoiceId)}`, {
+          method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dueDate: $('bi-due-date').value, termsNote: $('bi-terms').value }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not save invoice details');
+        $('billing-invoice-overlay')?.classList.remove('open');
+        await loadBillingData(); toast('Draft invoice details saved.');
+      } catch (error) { toast(error.message); }
+    })();
+    return;
+  }
+
+  if (id === 'billing-payment-save') {
+    const saveButton = $('billing-payment-save');
+    saveButton.disabled = true;
+    saveButton.textContent = 'Recording…';
+    (async () => {
+      try {
+        const response = await fetch('/api/billing/payments', {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ invoiceId: $('bp-invoice').value, amountKsh: Number($('bp-amount').value), paymentDate: $('bp-date').value, method: $('bp-method').value, reference: $('bp-reference').value, notes: $('bp-notes').value }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not record payment');
+        $('billing-payment-overlay')?.classList.remove('open');
+        await loadBillingData();
+        toast(`Payment of ${formatBillingKsh(payload.payment.amountKsh)} recorded against ${payload.invoice.invoiceNumber}.`);
+      } catch (error) { toast(error.message); }
+      finally { saveButton.disabled = false; saveButton.textContent = 'Record payment'; }
     })();
     return;
   }
 
   const quoteSendId = btn.dataset.quoteSend;
   if (quoteSendId) {
-    (async () => {
-      btn.disabled = true;
-      try {
-        const response = await fetch(`/api/billing/quotes/${encodeURIComponent(quoteSendId)}/send`, { method: 'POST', credentials: 'same-origin' });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error || 'Could not send quote');
-        await loadBillingData();
-        toast('Quote email sent with PDF attachment.');
-      } catch (error) { toast(error.message); }
-      finally { btn.disabled = false; }
-    })();
+    openBillingEmailComposer('quote', quoteSendId);
     return;
   }
 
@@ -2502,6 +3787,30 @@ document.body.addEventListener('click', event => {
   }
 });
 
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && $('instance-drawer-overlay')?.classList.contains('open')) closeInstanceDrawer();
+});
+
+document.body.addEventListener('pointerover', event => {
+  const button = event.target.closest('[data-assessment-activity-key]');
+  if (button) showAssessmentActivityTooltip(button);
+});
+document.body.addEventListener('pointerout', event => {
+  const button = event.target.closest('[data-assessment-activity-key]');
+  if (button && !button.contains(event.relatedTarget) && !button.matches(':focus')) hideAssessmentActivityTooltip();
+});
+document.body.addEventListener('focusin', event => {
+  const button = event.target.closest('[data-assessment-activity-key]');
+  if (button) showAssessmentActivityTooltip(button);
+});
+document.body.addEventListener('focusout', event => {
+  const button = event.target.closest('[data-assessment-activity-key]');
+  if (button && !button.contains(event.relatedTarget)) hideAssessmentActivityTooltip();
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && $('assessment-activity-overlay')?.classList.contains('open')) closeAssessmentActivity();
+});
+
 document.body.addEventListener('change', event => {
   const toggle = event.target.closest('input[data-module]');
   if (!toggle) return;
@@ -2518,6 +3827,9 @@ document.body.addEventListener('change', event => {
 });
 
 function bindModalEvents() {
+  $('instance-type-close')?.addEventListener('click', closeInstanceTypePicker);
+  $('instance-type-cancel')?.addEventListener('click', closeInstanceTypePicker);
+  $('instance-type-overlay')?.addEventListener('click', event => { if (event.target === $('instance-type-overlay')) closeInstanceTypePicker(); });
   $('modal-close')?.addEventListener('click', closeModal);
   $('modal-cancel')?.addEventListener('click', closeModal);
   $('modal-overlay')?.addEventListener('click', event => { if (event.target === $('modal-overlay')) closeModal(); });
@@ -2569,6 +3881,7 @@ function bindModalEvents() {
       try {
         setProvisionSubmitBusy(true);
         startInstallProgress();
+        let provisionJob = null;
         setInstallProgress(20);
         const preflightResponse = await fetch('/api/instances/preflight', {
           method: 'POST',
@@ -2628,11 +3941,10 @@ function bindModalEvents() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        setInstallProgress(92);
-
+        const createData = await response.json().catch(() => ({}));
         if (!response.ok) {
           finishInstallProgress(false);
-          const message = await readApiError(response, `Create ${app.label} instance failed.`);
+          const message = createData.error || `Create ${app.label} instance failed.`;
           addAudit({
             action: `Provision ${app.label} Failed`,
             instance: payload.name,
@@ -2643,11 +3955,37 @@ function bindModalEvents() {
           return;
         }
 
+        provisionJob = createData.job;
+        if (!provisionJob?.id) throw new Error('Provision request was accepted without a tracking ID. Check the provision jobs panel before retrying.');
+
+        // The server returns immediately; polling this durable job prevents an
+        // upstream gateway timeout from obscuring a successful deployment.
+        let job = provisionJob;
+        while (['queued', 'running'].includes(job.status)) {
+          setInstallProgress(job.status === 'queued' ? 55 : 72);
+          await new Promise(resolve => setTimeout(resolve, 2500));
+          const statusResponse = await fetch(`/api/instances/provision-jobs/${encodeURIComponent(job.id)}`, { credentials: 'same-origin' });
+          const statusData = await statusResponse.json().catch(() => ({}));
+          if (!statusResponse.ok) throw new Error(statusData.error || `Could not read provision status for job ${job.id}.`);
+          job = statusData.job;
+          if (!job) throw new Error(`Provision job ${provisionJob.id} returned no status.`);
+        }
+
+        if (job.status !== 'succeeded') {
+          finishInstallProgress(false);
+          const message = `Provisioning failed during ${job.phase || 'deployment'}: ${job.error || 'Unknown failure'}. Job ID: ${job.id}`;
+          renderLogs([{ type: 'error', text: `${message}\n${job.output || ''}` }]);
+          toast(message);
+          return;
+        }
+
+        setInstallProgress(92);
+
         addAudit({
           action: `Provision ${app.label}`,
           instance: payload.name,
-          details: `${app.label} ${payload.version} requested (${payload.image})`,
-          status: 'Warning',
+          details: `${app.label} ${payload.version} provisioned (${payload.image}); job ${provisionJob.id}`,
+          status: 'Success',
         });
         if (pendingProvisionLeadId) {
           const leadIdx = LEADS.findIndex(l => l.id === pendingProvisionLeadId);
@@ -2677,11 +4015,11 @@ function bindModalEvents() {
         renderEverything();
         closeModal();
         finishInstallProgress(true);
-        toast(`Provisioning "${name}" (${app.label}) started.`);
+        toast(`${app.label} "${name}" is provisioned. Its configured service health checks passed.`);
         return;
       } catch (error) {
         finishInstallProgress(false);
-        const message = error?.message || 'Provision endpoint unreachable.';
+        const message = error?.message || 'Provision endpoint unreachable. The request may still be running; inspect provision jobs before retrying.';
         addAudit({
           action: `Provision ${app.label} Failed`,
           instance: payload.name,
@@ -2694,6 +4032,8 @@ function bindModalEvents() {
       }
     })();
   });
+
+  $('provision-jobs-refresh')?.addEventListener('click', refreshProvisionJobs);
 
   $('confirm-close')?.addEventListener('click', closeConfirm);
   $('confirm-cancel')?.addEventListener('click', closeConfirm);
@@ -2716,6 +4056,7 @@ function bindModalEvents() {
 function renderEverything() {
   renderMetrics();
   renderInstances();
+  void refreshAssessmentActivity();
   renderRunningInstances();
   renderCapacity();
   renderTimeline('timeline-mini', 3);
@@ -2723,6 +4064,7 @@ function renderEverything() {
   renderStorageSection();
   renderSpaceUsage();
   renderAuditLog();
+  void refreshProvisionJobs();
   renderControlInstances();
   renderModuleToggles();
   if(typeof renderPipeline === 'function') renderPipeline();
@@ -2841,15 +4183,6 @@ function bindDeployEvents() {
   const openPromote = () => openPromoteDeploy();
   $('deploy-promote-btn')?.addEventListener('click', runPromoteDeploy);
   $('btn-deploy-open-promote')?.addEventListener('click', runPromoteDeploy);
-  $('btn-header-promote')?.addEventListener('click', openPromote);
-  $('btn-overview-promote')?.addEventListener('click', openPromote);
-  $('metric-last-deploy')?.addEventListener('click', openPromote);
-  $('metric-last-deploy')?.addEventListener('keydown', event => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      openPromote();
-    }
-  });
   $('btn-deploy-clear-log')?.addEventListener('click', () => clearDeployLog());
   $('deploy-console-btn')?.addEventListener('click', runConsoleDeploy);
   $('deploy-select-all')?.addEventListener('click', () => {
@@ -2875,9 +4208,16 @@ async function init() {
   bindModalEvents();
   bindDeployEvents();
   initSidebarToggle();
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(() => { /* PWA install is optional; ignore failures */ });
+    });
+  }
   showSection(sectionFromHash(), { skipHashUpdate: true });
   await loadLeadsFromApi();
   await refreshFromRuntime();
+  await loadTenants();
   renderEverything();
   renderLogs();
   renderRuntimeStamp();
