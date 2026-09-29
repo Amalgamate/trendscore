@@ -322,7 +322,7 @@ router.get(
 
 router.post(
   '/invoices/learner/:learnerId/email',
-  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN', 'RECEPTIONIST']),
   rateLimit({ windowMs: 60_000, maxRequests: 20 }),
   auditLog('EMAIL_FEE_STATEMENT'),
   asyncHandler(feeController.emailStatement.bind(feeController))
@@ -330,7 +330,7 @@ router.post(
 
 router.post(
   '/invoices',
-  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN', 'RECEPTIONIST']),
   rateLimit({ windowMs: 60_000, maxRequests: 30 }),
   auditLog('CREATE_INVOICE'),
   asyncHandler(feeController.createInvoice.bind(feeController))
@@ -352,7 +352,7 @@ router.post(
 
 router.post(
   '/invoices/mark-paid/bulk',
-  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN', 'RECEPTIONIST']),
   rateLimit({ windowMs: 60_000, maxRequests: 10 }),
   validate(bulkMarkInvoicesPaidSchema),
   auditLog('BULK_MARK_INVOICES_PAID'),
@@ -361,7 +361,7 @@ router.post(
 
 router.post(
   '/invoices/:id/mark-paid',
-  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN', 'RECEPTIONIST']),
   rateLimit({ windowMs: 60_000, maxRequests: 30 }),
   validate(markInvoicePaidSchema),
   auditLog('MARK_INVOICE_PAID'),
@@ -424,14 +424,14 @@ router.post(
 
 router.post(
   '/invoices/:id/remind',
-  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN', 'RECEPTIONIST']),
   rateLimit({ windowMs: 60_000, maxRequests: 50 }),
   asyncHandler(feeController.sendInvoiceReminder.bind(feeController))
 );
 
 router.post(
   '/invoices/remind/bulk',
-  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN', 'RECEPTIONIST']),
   rateLimit({ windowMs: 60_000, maxRequests: 10 }),
   asyncHandler(feeController.bulkSendReminders.bind(feeController))
 );
@@ -462,7 +462,7 @@ router.get(
 
 router.post(
   '/invoices/:id/comments',
-  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN', 'RECEPTIONIST']),
   rateLimit({ windowMs: 60_000, maxRequests: 50 }),
   auditLog('ADD_FEE_COMMENT'),
   asyncHandler(feeCommentsController.addComment.bind(feeCommentsController))
@@ -470,7 +470,7 @@ router.post(
 
 router.post(
   '/invoices/:id/pledges',
-  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN', 'RECEPTIONIST']),
   rateLimit({ windowMs: 60_000, maxRequests: 30 }),
   auditLog('RECORD_FEE_PLEDGE'),
   asyncHandler(feeCommentsController.addPledge.bind(feeCommentsController))
@@ -478,7 +478,7 @@ router.post(
 
 router.patch(
   '/pledges/:pledgeId/cancel',
-  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN', 'RECEPTIONIST']),
   rateLimit({ windowMs: 60_000, maxRequests: 20 }),
   auditLog('CANCEL_FEE_PLEDGE'),
   asyncHandler(feeCommentsController.cancelPledge.bind(feeCommentsController))
@@ -486,7 +486,7 @@ router.patch(
 
 router.patch(
   '/pledges/:pledgeId/fulfil',
-  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN', 'RECEPTIONIST']),
   rateLimit({ windowMs: 60_000, maxRequests: 20 }),
   auditLog('FULFIL_FEE_PLEDGE'),
   asyncHandler(feeCommentsController.fulfilPledge.bind(feeCommentsController))
