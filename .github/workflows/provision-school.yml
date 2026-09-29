@@ -339,10 +339,18 @@ jobs:
 
           # Never rewrite migration history as part of provisioning. A failed or
           # partially initialized database requires the dedicated repair workflow.
-          MIGRATION_STATE="$(sudo docker exec "${DB_CONTAINER}" \
+          HAS_MIGRATION_TABLE="$(sudo docker exec "${DB_CONTAINER}" \
             psql -U zawadi -d "${ACTUAL_DB}" -tAc \
-            "SELECT CASE WHEN to_regclass('public._prisma_migrations') IS NULL THEN 'fresh' WHEN EXISTS (SELECT 1 FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL) THEN 'failed' ELSE 'ready' END" \
+            "SELECT to_regclass('public._prisma_migrations') IS NOT NULL" \
             2>/dev/null)"
+          if [ "${HAS_MIGRATION_TABLE}" != "t" ]; then
+            MIGRATION_STATE="fresh"
+          else
+            MIGRATION_STATE="$(sudo docker exec "${DB_CONTAINER}" \
+              psql -U zawadi -d "${ACTUAL_DB}" -tAc \
+              "SELECT CASE WHEN EXISTS (SELECT 1 FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL) THEN 'failed' ELSE 'ready' END" \
+              2>/dev/null)"
+          fi
           echo "[migrate] Current migration state: ${MIGRATION_STATE}"
           if [ "${MIGRATION_STATE}" = "failed" ]; then
             echo "A failed migration record exists. Stop and use the reviewed migration repair workflow."
