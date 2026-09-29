@@ -86,3 +86,12 @@ jobs:
               --format "{{.Label \"com.docker.compose.project\"}}|{{.Label \"com.docker.compose.project.environment_file\"}}" \
               | sort
           '
+
+      - name: Query Trevor migration state without changing data
+        run: |
+          ssh production 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          sudo docker exec zawadi-trevorsacaemy-db-1 psql \
+            -U zawadi -d zawadi_trevorsacaemy -tAc \
+            "SELECT CASE WHEN to_regclass('public._prisma_migrations') IS NULL THEN 'fresh' WHEN EXISTS (SELECT 1 FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL) THEN 'failed' ELSE 'ready' END"
+          REMOTE
