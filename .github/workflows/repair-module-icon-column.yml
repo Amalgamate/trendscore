@@ -1,0 +1,74 @@
+name: Repair School Module Icon Column (One-Shot)
+
+on:
+  workflow_dispatch:
+    inputs:
+      school_slug:
+        description: 'Active production school id from deploy/instances.manifest.json'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    name: Widen module icon column for selected school
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Back up and widen module icon column
+        env:
+          SCHOOL_ID: ${{ inputs.school_slug }}
+        run: |
+          set -euo pipefail
+          ssh production "SCHOOL_ID='${SCHOOL_ID}' bash -s" <<'REMOTE'
+          set -euo pipefail
+          manifest=/srv/zawadi/apps/deploy/instances.manifest.json
+          instance="$(jq -c --arg id "$SCHOOL_ID" '.instances[] | select(.id == $id)' "$manifest")"
+          [[ -n "$instance" ]] || { echo "Unknown school id: $SCHOOL_ID"; exit 1; }
+          [[ "$(jq -r '.active' <<<"$instance")" == true ]] || { echo "School is not active: $SCHOOL_ID"; exit 1; }
+          [[ "$(jq -r '.deployment_allowed' <<<"$instance")" == true ]] || { echo "Deployment is not allowed: $SCHOOL_ID"; exit 1; }
+          [[ "$(jq -r '.tier' <<<"$instance")" == production ]] || { echo "Only production schools are allowed: $SCHOOL_ID"; exit 1; }
+
+          project="$(jq -r '.compose_project // empty' <<<"$instance")"
+          db_container="$(sudo docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=db' --format '{{.Names}}' | head -n1)"
+          [[ -n "$db_container" ]] || { echo "Database container not found for $SCHOOL_ID ($project)"; exit 1; }
+
+          backup_dir="/srv/zawadi/backups/$SCHOOL_ID"
+          backup_file="$backup_dir/${SCHOOL_ID}-module-icon-$(date -u +%Y%m%dT%H%M%SZ).dump"
+          sudo mkdir -p "$backup_dir"
+          sudo chmod 700 "$backup_dir"
+          sudo docker exec "$db_container" sh -lc 'pg_dump --no-owner --no-acl -Fc -U "$POSTGRES_USER" -d "$POSTGRES_DB"' | sudo tee "$backup_file" >/dev/null
+          sudo chmod 600 "$backup_file"
+          [[ -s "$backup_file" ]] || { echo "Database backup is empty: $backup_file"; exit 1; }
+          echo "Database backup saved: $backup_file ($(sudo stat -c %s "$backup_file") bytes)"
+
+          sudo docker exec -i "$db_container" sh -lc 'psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
+          ALTER TABLE public.apps ALTER COLUMN icon TYPE TEXT USING icon::TEXT;
+          SQL
+          sudo docker exec -i "$db_container" sh -lc 'psql -X -v ON_ERROR_STOP=1 -A -t -F "|" -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL' | grep -Fx 'text|t'
+          SELECT data_type, character_maximum_length IS NULL
+            FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = 'apps' AND column_name = 'icon';
+          SQL
+          echo "Module icon column verified for $SCHOOL_ID."
+          REMOTE
+
+      - name: Report success
+        if: success()
+        run: echo "## Module icon column repaired for `${{ inputs.school_slug }}` (database backed up first)." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report failure
+        if: failure()
+        run: echo "## Module icon column repair failed for `${{ inputs.school_slug }}`. Check the log and preserved backup before retrying." >> "$GITHUB_STEP_SUMMARY"
