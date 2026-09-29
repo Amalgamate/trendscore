@@ -496,7 +496,7 @@ router.patch(
 
 router.post(
   '/payments',
-  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN', 'RECEPTIONIST']),
   rateLimit({ windowMs: 60_000, maxRequests: 30 }),
   validate(processPaymentSchema),
   auditLog('RECORD_PAYMENT'),
