@@ -29,6 +29,7 @@ function createUsersStore(dataDir) {
       name TEXT NOT NULL DEFAULT '',
       role TEXT NOT NULL CHECK (role IN ('super_admin', 'platform_owner')),
       active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+      session_version INTEGER NOT NULL DEFAULT 0,
       totp_secret TEXT NOT NULL DEFAULT '',
       totp_enabled INTEGER NOT NULL DEFAULT 0 CHECK (totp_enabled IN (0, 1)),
       created_at TEXT NOT NULL,
@@ -49,15 +50,66 @@ function createUsersStore(dataDir) {
       ON console_user_backup_codes(user_id);
   `);
 
+  const userColumnNames = new Set(db.prepare('PRAGMA table_info(console_users)').all().map(column => column.name));
+  if (!userColumnNames.has('session_version')) {
+    db.exec('ALTER TABLE console_users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
+  }
+
+  // One-time migration from the JSON user store used by the previous
+  // production console release. Retain the JSON file as a recoverable copy.
+  db.exec(`CREATE TABLE IF NOT EXISTS console_store_migrations (
+    name TEXT PRIMARY KEY,
+    completed_at TEXT NOT NULL
+  )`);
+  const migrationName = 'import_console_users_json_v1';
+  const imported = db.prepare('SELECT 1 FROM console_store_migrations WHERE name = ?').get(migrationName);
+  const legacyUsersPath = path.join(dataDir, 'console-users.store.json');
+  if (!imported && fs.existsSync(legacyUsersPath)) {
+    const parsed = JSON.parse(fs.readFileSync(legacyUsersPath, 'utf8'));
+    if (!Array.isArray(parsed)) throw new Error('Legacy console user store must contain a JSON array.');
+    const insertLegacyUser = db.prepare(`
+      INSERT OR IGNORE INTO console_users (
+        id, email, password_hash, name, role, active, session_version,
+        totp_secret, totp_enabled, created_at, updated_at, last_login_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const user of parsed) {
+        const id = String(user?.id || '').trim();
+        const email = String(user?.email || '').trim().toLowerCase();
+        const role = String(user?.role || '');
+        const passwordHash = String(user?.passwordHash || '');
+        if (!id || !email || !passwordHash || !['super_admin', 'platform_owner'].includes(role)) {
+          throw new Error('Legacy console user record is incomplete or has an invalid role.');
+        }
+        insertLegacyUser.run(
+          id, email, passwordHash, String(user.name || ''), role, user.active === false ? 0 : 1,
+          Math.max(0, Number(user.sessionVersion) || 0), String(user.totpSecret || ''), user.totpEnabled ? 1 : 0,
+          String(user.createdAt || new Date().toISOString()), String(user.updatedAt || new Date().toISOString()),
+          String(user.lastLoginAt || ''),
+        );
+      }
+      db.prepare('INSERT INTO console_store_migrations (name, completed_at) VALUES (?, ?)')
+        .run(migrationName, new Date().toISOString());
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   const nowIso = () => new Date().toISOString();
 
   const userColumns = `id, email, password_hash AS passwordHash, name, role, active,
+    session_version AS sessionVersion,
     totp_secret AS totpSecret, totp_enabled AS totpEnabled,
     created_at AS createdAt, updated_at AS updatedAt, last_login_at AS lastLoginAt`;
 
   const decodeUser = row => row && ({
     ...row,
     active: Boolean(row.active),
+    sessionVersion: Number(row.sessionVersion) || 0,
     totpEnabled: Boolean(row.totpEnabled),
   });
 
@@ -105,10 +157,12 @@ function createUsersStore(dataDir) {
     };
     if (!['super_admin', 'platform_owner'].includes(next.role)) throw new Error('role must be super_admin or platform_owner');
 
+    const credentialsChanged = next.role !== existing.role || next.active !== existing.active;
     db.prepare(`
-      UPDATE console_users SET name = ?, role = ?, active = ?, updated_at = ?
+      UPDATE console_users SET name = ?, role = ?, active = ?,
+        session_version = session_version + ?, updated_at = ?
       WHERE id = ?
-    `).run(next.name, next.role, next.active ? 1 : 0, nowIso(), String(id));
+    `).run(next.name, next.role, next.active ? 1 : 0, credentialsChanged ? 1 : 0, nowIso(), String(id));
 
     return getUser(id);
   }
@@ -116,8 +170,10 @@ function createUsersStore(dataDir) {
   function setUserActive(id, active) {
     const existing = getUser(id);
     if (!existing) throw new Error('User not found');
-    db.prepare(`UPDATE console_users SET active = ?, updated_at = ? WHERE id = ?`)
-      .run(active ? 1 : 0, nowIso(), String(id));
+    const nextActive = Boolean(active);
+    db.prepare(`UPDATE console_users SET active = ?,
+      session_version = session_version + ?, updated_at = ? WHERE id = ?`)
+      .run(nextActive ? 1 : 0, nextActive !== existing.active ? 1 : 0, nowIso(), String(id));
     return getUser(id);
   }
 
@@ -125,7 +181,8 @@ function createUsersStore(dataDir) {
     const existing = getUser(id);
     if (!existing) throw new Error('User not found');
     if (!passwordHash) throw new Error('passwordHash is required');
-    db.prepare(`UPDATE console_users SET password_hash = ?, updated_at = ? WHERE id = ?`)
+    db.prepare(`UPDATE console_users SET password_hash = ?, session_version = session_version + 1,
+      updated_at = ? WHERE id = ?`)
       .run(passwordHash, nowIso(), String(id));
     return getUser(id);
   }
@@ -156,16 +213,17 @@ function createUsersStore(dataDir) {
     const existing = getUser(id);
     if (!existing) throw new Error('User not found');
     if (enabled && !existing.totpSecret) throw new Error('Cannot enable TOTP without a secret set first');
-    db.prepare(`UPDATE console_users SET totp_enabled = ?, updated_at = ? WHERE id = ?`)
-      .run(enabled ? 1 : 0, nowIso(), String(id));
+    db.prepare(`UPDATE console_users SET totp_enabled = ?, session_version = session_version + ?, updated_at = ? WHERE id = ?`)
+      .run(enabled ? 1 : 0, Boolean(enabled) !== existing.totpEnabled ? 1 : 0, nowIso(), String(id));
     return getUser(id);
   }
 
   function disableTotp(id) {
     const existing = getUser(id);
     if (!existing) throw new Error('User not found');
-    db.prepare(`UPDATE console_users SET totp_secret = '', totp_enabled = 0, updated_at = ? WHERE id = ?`)
-      .run(nowIso(), String(id));
+    db.prepare(`UPDATE console_users SET totp_secret = '', totp_enabled = 0,
+      session_version = session_version + ?, updated_at = ? WHERE id = ?`)
+      .run(existing.totpEnabled ? 1 : 0, nowIso(), String(id));
     db.prepare(`DELETE FROM console_user_backup_codes WHERE user_id = ?`).run(String(id));
     return getUser(id);
   }

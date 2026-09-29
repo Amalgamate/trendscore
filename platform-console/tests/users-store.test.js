@@ -56,6 +56,57 @@ test('createUser / getUser / getUserByEmail round-trip', () => {
   assert.equal(byEmail.id, user.id, 'lookup is case-insensitive');
 });
 
+test('imports existing console JSON users once and preserves account/session data', () => {
+  const legacyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'users-store-legacy-test-'));
+  const legacyPath = path.join(legacyDir, 'console-users.store.json');
+  const salt = '0123456789abcdef0123456789abcdef';
+  const passwordHash = `scrypt$${salt}$${crypto.scryptSync('legacy-password', salt, 64).toString('hex')}`;
+  const legacyUser = {
+    id: 'legacy-super-admin-id', email: 'LEGACY@EXAMPLE.TEST', name: 'Legacy Admin',
+    role: 'super_admin', active: true, passwordHash, sessionVersion: 4,
+    createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-02-01T00:00:00.000Z',
+    lastLoginAt: '2026-03-01T00:00:00.000Z',
+  };
+  fs.writeFileSync(legacyPath, JSON.stringify([legacyUser]));
+
+  const migratedStore = createUsersStore(legacyDir);
+  try {
+    const migrated = migratedStore.getUserByEmail('legacy@example.test');
+    assert.equal(migrated.id, legacyUser.id);
+    assert.equal(migrated.email, 'legacy@example.test');
+    assert.equal(migrated.passwordHash, passwordHash);
+    assert.equal(migrated.sessionVersion, 4);
+    assert.equal(migrated.lastLoginAt, legacyUser.lastLoginAt);
+    migratedStore.setPassword(migrated.id, 'bcrypt-hash');
+    assert.equal(migratedStore.getUser(migrated.id).sessionVersion, 5);
+    assert.equal(JSON.parse(fs.readFileSync(legacyPath, 'utf8'))[0].passwordHash, passwordHash, 'legacy source remains recoverable');
+  } finally {
+    migratedStore.close();
+    fs.rmSync(legacyDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
+test('role, active-state, password and MFA changes revoke prior sessions', () => {
+  const user = store.createUser({ email: 'session-version@example.test', passwordHash: 'h', role: 'platform_owner' });
+  assert.equal(user.sessionVersion, 0);
+
+  const promoted = store.updateUser(user.id, { role: 'super_admin' });
+  assert.equal(promoted.sessionVersion, 1);
+  const renamed = store.updateUser(user.id, { name: 'Updated Name' });
+  assert.equal(renamed.sessionVersion, 1, 'name-only edits do not revoke access');
+
+  const withSecret = store.setTotpSecret(user.id, 'BASE32SECRETVALUE');
+  assert.equal(withSecret.sessionVersion, 1);
+  const withMfa = store.setTotpEnabled(user.id, true);
+  assert.equal(withMfa.sessionVersion, 2);
+  const withoutMfa = store.disableTotp(user.id);
+  assert.equal(withoutMfa.sessionVersion, 3);
+  const disabled = store.setUserActive(user.id, false);
+  assert.equal(disabled.sessionVersion, 4);
+  const passwordChanged = store.setPassword(user.id, 'new-hash');
+  assert.equal(passwordChanged.sessionVersion, 5);
+});
+
 test('setUserActive toggles active flag', () => {
   const user = store.createUser({
     email: 'toggle@example.test',

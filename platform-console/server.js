@@ -853,13 +853,27 @@ app.get('/health', (_req, res) => {
 function requireAuth(req, res, next) {
   const token = req.cookies?.[COOKIE_NAME];
   if (!token) return res.status(401).json({ error: 'Unauthenticated' });
+  let claims;
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
-    next();
+    claims = jwt.verify(token, JWT_SECRET);
   } catch {
     res.clearCookie(COOKIE_NAME);
     return res.status(401).json({ error: 'Session expired' });
   }
+  const user = claims.sub ? usersStore.getUser(claims.sub) : usersStore.getUserByEmail(claims.email);
+  if (!user || !user.active || Number(claims.sessionVersion || 0) !== Number(user.sessionVersion || 0)) {
+    res.clearCookie(COOKIE_NAME);
+    return res.status(401).json({ error: 'Your account or permissions changed. Please sign in again.' });
+  }
+  req.user = {
+    ...claims,
+    sub: user.id,
+    email: user.email,
+    role: user.role,
+    name: user.name,
+    sessionVersion: Number(user.sessionVersion || 0),
+  };
+  next();
 }
 
 function requireRole(...allowedRoles) {
@@ -888,6 +902,14 @@ const LOGIN_LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
 // active account. Replaces the old raw sha256+timingSafeEqual approach
 // now that bcrypt is the actual compare target.
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync('trends-core-unknown-account-dummy-compare-target', BCRYPT_COST);
+const DUMMY_SCRYPT_HASH = `scrypt$${'0'.repeat(32)}$${crypto.scryptSync('trends-core-unknown-account-dummy-compare-target', '0'.repeat(32), 64).toString('hex')}`;
+function verifyScryptPassword(password, encodedHash) {
+  const [algorithm, salt, expectedHex] = String(encodedHash || '').split('$');
+  if (algorithm !== 'scrypt' || !/^[a-f0-9]{32}$/i.test(salt || '') || !/^[a-f0-9]{128}$/i.test(expectedHex || '')) return false;
+  const expected = Buffer.from(expectedHex, 'hex');
+  const actual = crypto.scryptSync(String(password), salt, expected.length);
+  return crypto.timingSafeEqual(actual, expected);
+}
 const loginAttempts = new Map(); // normalized email -> { count, firstAttemptAt, lockedUntil }
 
 function isLoginLockedOut(normalizedEmail) {
@@ -913,7 +935,13 @@ function clearLoginAttempts(normalizedEmail) {
 }
 
 function issueSessionCookie(res, user) {
-  const payload = { email: user.email, role: user.role, name: user.name };
+  const payload = {
+    sub: user.id,
+    email: user.email,
+    role: user.role,
+    name: user.name,
+    sessionVersion: Number(user.sessionVersion || 0),
+  };
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
   const tokenClaims = jwt.decode(token);
   const sessionExpiresAt = Number(tokenClaims?.exp) * 1000;
@@ -943,13 +971,19 @@ app.post('/api/login', async (req, res) => {
     return res.status(429).json({ error: 'Too many failed attempts. Try again in a few minutes.' });
   }
 
-  const user = usersStore.getUserByEmail(normalizedEmail);
-  // Always bcrypt.compare against a real hash — the user's real hash if
-  // they exist and are active, otherwise the fixed dummy hash — so an
-  // unknown email or a deactivated account takes the same code path and
-  // roughly the same time as a wrong-password attempt on a real account.
-  const targetHash = (user && user.active) ? user.passwordHash : DUMMY_PASSWORD_HASH;
-  const passwordMatches = await bcrypt.compare(password, targetHash);
+  let user = usersStore.getUserByEmail(normalizedEmail);
+  const usableUser = user && user.active;
+  const storedPasswordHash = usableUser ? user.passwordHash : '';
+  // Always do one bcrypt and one scrypt comparison. The scrypt fallback
+  // keeps accounts imported from the current JSON-backed release usable;
+  // successful legacy hashes are transparently upgraded to bcrypt.
+  const bcryptTarget = /^\$2[aby]\$/.test(storedPasswordHash) ? storedPasswordHash : DUMMY_PASSWORD_HASH;
+  const scryptTarget = storedPasswordHash.startsWith('scrypt$') ? storedPasswordHash : DUMMY_SCRYPT_HASH;
+  const [bcryptMatches, scryptMatches] = await Promise.all([
+    bcrypt.compare(password, bcryptTarget),
+    Promise.resolve(verifyScryptPassword(password, scryptTarget)),
+  ]);
+  const passwordMatches = bcryptMatches || scryptMatches;
 
   if (!user || !user.active || !passwordMatches) {
     recordFailedLogin(normalizedEmail);
@@ -957,6 +991,11 @@ app.post('/api/login', async (req, res) => {
   }
 
   clearLoginAttempts(normalizedEmail);
+
+  if (scryptMatches) {
+    usersStore.setPassword(user.id, bcrypt.hashSync(password, BCRYPT_COST));
+    user = usersStore.getUser(user.id);
+  }
 
   if (user.totpEnabled) {
     // Short-lived MFA-pending token — never set as the session cookie,
