@@ -6,7 +6,13 @@
 <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32x32.png"/>
 <link rel="icon" type="image/png" sizes="16x16" href="./favicon-16x16.png"/>
 <link rel="apple-touch-icon" href="./apple-touch-icon.png"/>
-<title>The Silicone Sahara — Control Panel</title>
+<link rel="manifest" href="./manifest.json"/>
+<meta name="theme-color" content="#0c1220"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Trends CORE ERP"/>
+<title>Trends CORE ERP</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="./styles.css"/>
@@ -16,57 +22,61 @@
 <body>
 
 <!-- ══ LOGIN OVERLAY ══════════════════════════════════════════════════════ -->
-<div id="login-overlay" aria-modal="true" role="dialog" aria-label="Sign in to The Silicone Sahara Control Panel">
+<div id="login-overlay" aria-modal="true" role="dialog" aria-label="Sign in to Trends CORE ERP">
   <div class="login-glass">
 
     <div class="lg-header">
       <div class="lg-mark">TC</div>
       <div>
-        <div class="lg-title">The Silicone Sahara</div>
-        <div class="lg-sub">Control Panel · v1 · Restricted access</div>
+        <div class="lg-title">Trends CORE ERP</div>
+        <div class="lg-sub">ERP Administration · Restricted access</div>
       </div>
     </div>
 
     <div class="lg-body">
       <div class="lg-error" id="lg-error"></div>
 
-      <div class="lg-row">
-        <label class="lg-label" for="lg-email">Email address</label>
-        <input class="lg-input" id="lg-email" type="email" placeholder="admin@trendscore.app" autocomplete="email"/>
-      </div>
-
-      <div class="lg-row">
-        <label class="lg-label" for="lg-password">Password</label>
-        <div class="lg-password-wrap">
-          <input class="lg-input" id="lg-password" type="password" placeholder="••••••••••••" autocomplete="current-password"/>
-          <button class="lg-password-toggle" id="lg-password-toggle" type="button" aria-label="Show password" aria-pressed="false">
-            <svg class="icon-eye" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/>
-              <circle cx="12" cy="12" r="3"/>
-            </svg>
-            <svg class="icon-eye-off" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M3 3l18 18"/>
-              <path d="M10.6 10.6A3 3 0 0 0 13.4 13.4"/>
-              <path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a17.9 17.9 0 0 1-3.1 4"/>
-              <path d="M6.5 6.5C3.7 8.4 2 12 2 12s3.5 7 10 7c1.7 0 3.2-.5 4.5-1.2"/>
-            </svg>
-          </button>
+      <div id="lg-step-credentials">
+        <div class="lg-row">
+          <label class="lg-label" for="lg-email">Email address</label>
+          <input class="lg-input" id="lg-email" type="email" placeholder="admin@trendscore.app" autocomplete="email"/>
         </div>
-      </div>
 
-      <div style="margin-bottom:20px">
-        <div class="lg-label" style="margin-bottom:8px">Signing in as</div>
-        <div class="lg-roles">
-          <button class="lg-role-btn active" data-role="super_admin" type="button">Super admin</button>
-          <button class="lg-role-btn" data-role="platform_owner" type="button">Platform owner</button>
+        <div class="lg-row">
+          <label class="lg-label" for="lg-password">Password</label>
+          <div class="lg-password-wrap">
+            <input class="lg-input" id="lg-password" type="password" placeholder="••••••••••••" autocomplete="current-password"/>
+            <button class="lg-password-toggle" id="lg-password-toggle" type="button" aria-label="Show password" aria-pressed="false">
+              <svg class="icon-eye" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+              <svg class="icon-eye-off" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 3l18 18"/>
+                <path d="M10.6 10.6A3 3 0 0 0 13.4 13.4"/>
+                <path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a17.9 17.9 0 0 1-3.1 4"/>
+                <path d="M6.5 6.5C3.7 8.4 2 12 2 12s3.5 7 10 7c1.7 0 3.2-.5 4.5-1.2"/>
+              </svg>
+            </button>
+          </div>
         </div>
+
+        <button class="lg-submit" id="lg-submit" type="button">Sign in to control panel</button>
       </div>
 
-      <button class="lg-submit" id="lg-submit" type="button">Sign in to control panel</button>
+      <div id="lg-step-mfa" hidden>
+        <div class="lg-row">
+          <label class="lg-label" for="lg-mfa-code" id="lg-mfa-code-label">Authenticator code</label>
+          <input class="lg-input" id="lg-mfa-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456"/>
+        </div>
+        <button type="button" id="lg-mfa-toggle-mode" style="background:none;border:none;color:inherit;opacity:.7;font-size:12px;padding:0 0 18px;cursor:pointer;text-decoration:underline;display:block">Use a backup code instead</button>
+        <button class="lg-submit" id="lg-mfa-submit" type="button">Verify and sign in</button>
+        <button type="button" id="lg-mfa-back" style="background:none;border:none;color:inherit;opacity:.7;font-size:12px;padding:14px 0 0;cursor:pointer;text-decoration:underline;display:block;text-align:center;width:100%">&larr; Back</button>
+      </div>
     </div>
 
     <div class="lg-footer">
-      <span>The Silicone Sahara v1 · Production</span>
+      <span>Trends CORE ERP · Production</span>
       <a class="lg-footer-link" href="mailto:admin@trendscore.app">Need access? -></a>
     </div>
 
@@ -80,37 +90,45 @@
     <div class="sb-logo">
       <div class="logo-mark">TC</div>
       <div>
-        <div class="logo-text">The Silicone Sahara</div>
-        <div class="logo-sub">Control Panel · v1</div>
+        <div class="logo-text">Trends CORE ERP</div>
+        <div class="logo-sub">Administration</div>
       </div>
     </div>
 
     <div class="nav-section-label">Operations</div>
-    <a class="nav-item active" data-section="overview" href="#">
-      <span class="nav-icon">📊</span> Overview
+    <a class="nav-item active" data-section="overview" href="#overview" title="Overview" aria-label="Overview">
+      <span class="nav-icon"><i data-lucide="layout-dashboard"></i></span> Overview
     </a>
-    <a class="nav-item" data-section="leads" href="#">
-      <span class="nav-icon">👥</span> Leads &amp; CRM
+    <a class="nav-item" data-section="leads" href="#leads" title="Leads & CRM" aria-label="Leads & CRM">
+      <span class="nav-icon"><i data-lucide="users"></i></span> Leads &amp; CRM
     </a>
-    <a class="nav-item" data-section="instances" href="#">
-      <span class="nav-icon">🏫</span> Instances
+    <a class="nav-item" data-section="instances" href="#instances" title="Instances" aria-label="Instances">
+      <span class="nav-icon"><i data-lucide="school"></i></span> Instances
     </a>
-    <a class="nav-item" data-section="storage" href="#">
-      <span class="nav-icon">💾</span> Storage
+    <a class="nav-item" data-section="storage" href="#storage" title="Storage" aria-label="Storage">
+      <span class="nav-icon"><i data-lucide="hard-drive"></i></span> Storage
     </a>
-    <a class="nav-item" data-section="deployments" href="#">
-      <span class="nav-icon">🚀</span> Promote Release
+    <a class="nav-item" data-section="deployments" href="#deployments" title="Releases" aria-label="Releases">
+      <span class="nav-icon"><i data-lucide="rocket"></i></span> Releases
     </a>
 
     <div class="nav-section-label">Platform</div>
-    <a class="nav-item" data-section="controls" href="#">
-      <span class="nav-icon">⚙️</span> Controls
+    <a class="nav-item" data-section="billing" href="#billing" title="Billing & Invoices" aria-label="Billing & Invoices">
+      <span class="nav-icon"><i data-lucide="credit-card"></i></span> Billing &amp; Invoices
     </a>
-          <a class="nav-item" data-section="billing" href="#">
-            <span class="nav-icon">💳</span> Billing &amp; Invoices
+    <a class="nav-item" data-section="communications" href="#communications" title="Communications" aria-label="Communications">
+      <span class="nav-icon"><i data-lucide="mail"></i></span> Communications
     </a>
-    <a class="nav-item" data-section="logs" href="#">
-      <span class="nav-icon">📋</span> Audit Log
+    <a class="nav-item" data-section="users" data-super-admin-only href="#users" title="Users" aria-label="Users">
+      <span class="nav-icon"><i data-lucide="user-cog"></i></span> Users
+    </a>
+    <a class="nav-item" data-section="logs" href="#logs" title="Audit Log" aria-label="Audit Log">
+      <span class="nav-icon"><i data-lucide="clipboard-list"></i></span> Audit Log
+    </a>
+
+    <div class="nav-section-label">Administration</div>
+    <a class="nav-item" data-section="controls" href="#controls" title="General Settings" aria-label="General Settings">
+      <span class="nav-icon"><i data-lucide="settings"></i></span> General Settings
     </a>
 
     <div class="sb-footer">
@@ -142,10 +160,6 @@
       <div class="topbar-right">
         <div class="topbar-meta">
           <span class="topbar-live" id="last-updated" title="Data freshness">Loading…</span>
-          <span class="topbar-session" id="session-timer-pill" hidden>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-            <span id="session-timer-label">8h 00m</span>
-          </span>
         </div>
         <div class="topbar-user" id="user-chip">
           <span class="topbar-user-avatar" id="user-chip-avatar" aria-hidden="true">—</span>
@@ -154,14 +168,10 @@
             <span class="topbar-user-role" id="user-chip-role"></span>
           </span>
         </div>
-        <button class="topbar-btn topbar-btn--promote" id="btn-header-promote" type="button">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-          Promote
-        </button>
         <button class="topbar-btn topbar-btn--logout" id="btn-logout" type="button">Sign out</button>
       </div>
     </header>
-    <div class="install-progress" id="install-progress" aria-live="polite" aria-hidden="true">
+    <div class="install-progress" id="install-progress" role="progressbar" aria-label="Page activity" aria-valuemin="0" aria-valuemax="100" aria-valuetext="In progress" aria-hidden="true">
       <div class="install-progress-line" id="install-progress-line"></div>
     </div>
 
@@ -172,67 +182,64 @@
       <div id="section-overview" class="section-visible">
         <div class="page-header">
           <div>
-            <div class="page-eyebrow">The Silicone Sahara · v1</div>
             <div class="page-title">Platform Overview</div>
-            <div class="page-sub" id="overview-sub">Live snapshot of all managed school instances</div>
-          </div>
-          <div class="page-actions">
-            <button class="btn teal" id="btn-overview-promote" type="button">🚀 Promote Release</button>
+            <div class="page-sub" id="overview-sub">Live snapshot of all managed instances</div>
           </div>
         </div>
 
-        <div class="metric-row">
-          <div class="metric-card">
-            <div class="m-label">Live Schools</div>
-            <div class="m-value" id="m-schools">3</div>
-            <div class="m-sub">Instances under management</div>
-            <div class="m-badge up">↑ Active</div>
+        <div class="metric-row overview-metric-row">
+          <div class="metric-card indigo">
+            <div class="m-label">Managed Instances</div>
+            <div class="m-value" id="m-instances">—</div>
+            <div class="m-sub">All application categories</div>
           </div>
           <div class="metric-card teal">
-            <div class="m-label">Healthy Containers</div>
-            <div class="m-value" id="m-containers">9/9</div>
-            <div class="m-sub">Frontend · Backend · Database</div>
-            <div class="m-badge up">All green</div>
+            <div class="m-label">Running Containers</div>
+            <div class="m-value" id="m-containers">—</div>
+            <div class="m-sub">Running / total containers</div>
           </div>
           <div class="metric-card green">
-            <div class="m-label">Storage Used</div>
-            <div class="m-value" id="m-storage">5.0 GB</div>
-            <div class="m-sub">DB · Uploads · Backups</div>
-            <div class="m-badge up">+1.2 GB</div>
-          </div>
-          <div class="metric-card amber" id="metric-last-deploy" role="button" tabindex="0" title="Open Promote Release">
-            <div class="m-label">Last Deploy</div>
-            <div class="m-value mono" id="m-deploy">—</div>
-            <div class="m-sub" id="m-deploy-sub">Click to promote a release</div>
-            <div class="m-badge warn" id="m-deploy-badge">Promote →</div>
+            <div class="m-label">Docker Storage</div>
+            <div class="m-value" id="m-storage">—</div>
+            <div class="m-sub">Images · volumes · containers · build cache</div>
           </div>
         </div>
 
         <div class="panel" style="margin-bottom:14px">
           <div class="panel-header">
             <div>
-              <div class="panel-title">School Instances</div>
-              <div class="panel-sub">All active deployments on this server</div>
+              <div class="panel-title">Managed Instances</div>
+              <div class="panel-sub">Live applications grouped by category</div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button class="btn teal" id="btn-create2-school" type="button">+ New School</button>
-              <button class="btn" id="btn-create2-odoo" type="button">+ Odoo</button>
-              <button class="btn" id="btn-create2-wordpress" type="button">+ WordPress</button>
-              <button class="btn sacco" id="btn-create2-sacco" type="button">+ New Sacco</button>
-              <button class="btn hospital" id="btn-create2-hospital" type="button">+ New Hospital</button>
-              <button class="btn hotel" id="btn-create2-hotel" type="button">+ New Hotel</button>
-              <button class="btn organization" id="btn-create2-organization" type="button">+ New Organization</button>
+              <button class="btn teal" id="btn-new-instance-overview" data-super-admin-only type="button">+ New instance</button>
             </div>
           </div>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>School</th><th>Status</th><th>Created</th>
+                  <th>Instance</th><th>Category</th><th>Status</th><th>Created</th>
                   <th>Version</th><th>Ports</th><th>Storage</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody id="instance-table"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel" id="provision-jobs-panel" style="margin-bottom:14px" hidden>
+          <div class="panel-header">
+            <div>
+              <div class="panel-title">Provisioning jobs</div>
+              <div class="panel-sub">Recent requests and their final result</div>
+            </div>
+            <button class="btn" id="provision-jobs-refresh" type="button">Refresh jobs</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Started</th><th>Instance</th><th>Phase</th><th>Status</th><th>Details</th></tr></thead>
+              <tbody id="provision-jobs-table"></tbody>
             </table>
           </div>
         </div>
@@ -242,7 +249,7 @@
             <div class="panel-header">
               <div>
                 <div class="panel-title">Server Capacity</div>
-                <div class="panel-sub" id="capacity-sub">VPS disk allocation · 80 GB total</div>
+                <div class="panel-sub" id="capacity-sub">Reading host filesystem capacity…</div>
               </div>
             </div>
             <div id="capacity-items"></div>
@@ -254,7 +261,7 @@
                 <div class="panel-sub">Automated release events</div>
               </div>
             </div>
-            <div class="timeline" id="timeline-mini"></div>
+            <div class="timeline timeline-compact" id="timeline-mini"></div>
           </div>
         </div>
       </div>
@@ -263,20 +270,11 @@
       <div id="section-instances" class="section-hidden">
         <div class="page-header">
           <div>
-            <div class="page-eyebrow">The Silicone Sahara · v1</div>
-            <div class="page-title">School Instances</div>
-            <div class="page-sub">Full management view for all deployed instances</div>
+            <div class="page-title">Instances</div>
+            <div class="page-sub">All managed applications grouped by product category</div>
           </div>
           <div class="page-actions">
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button class="btn teal" id="btn-create3-school" type="button">+ New School</button>
-              <button class="btn" id="btn-create3-odoo" type="button">+ Odoo</button>
-              <button class="btn" id="btn-create3-wordpress" type="button">+ WordPress</button>
-              <button class="btn sacco" id="btn-create3-sacco" type="button">+ New Sacco</button>
-              <button class="btn hospital" id="btn-create3-hospital" type="button">+ New Hospital</button>
-              <button class="btn hotel" id="btn-create3-hotel" type="button">+ New Hotel</button>
-              <button class="btn organization" id="btn-create3-organization" type="button">+ New Organization</button>
-            </div>
+            <button class="btn teal" id="btn-new-instance-list" data-super-admin-only type="button">+ New instance</button>
           </div>
         </div>
         <div class="panel">
@@ -284,7 +282,7 @@
             <table>
               <thead>
                 <tr>
-              <th>School</th><th>Status</th><th>Institution Type</th><th>Billing</th><th>Created</th>
+                  <th>Instance</th><th>Category</th><th>Status</th><th>Created</th>
                   <th>Version</th><th>Ports</th><th>Storage</th><th>Actions</th>
                 </tr>
               </thead>
@@ -298,34 +296,33 @@
       <div id="section-storage" class="section-hidden">
         <div class="page-header">
           <div>
-            <div class="page-eyebrow">The Silicone Sahara · v1</div>
             <div class="page-title">Storage</div>
             <div class="page-sub">Per-instance and total server storage breakdown</div>
           </div>
         </div>
-        <div class="metric-row" style="grid-template-columns:repeat(3,1fr)">
+        <div class="metric-row storage-summary-row">
           <div class="metric-card">
-            <div class="m-label">Total VPS Disk</div>
-            <div class="m-value">80 GB</div>
-            <div class="m-sub">Root volume provisioned</div>
+            <div class="m-label">Host Disk Total</div>
+            <div class="m-value" id="s-host-total">—</div>
+            <div class="m-sub">Detected root filesystem capacity</div>
           </div>
           <div class="metric-card teal">
-            <div class="m-label">App Stack Used</div>
-            <div class="m-value">36.8 GB</div>
-            <div class="m-sub">Docker images + volumes</div>
+            <div class="m-label">Docker Storage</div>
+            <div class="m-value" id="s-docker-total">—</div>
+            <div class="m-sub">Images + volumes + containers + build cache</div>
           </div>
           <div class="metric-card green">
-            <div class="m-label">School Data</div>
-            <div class="m-value" id="s-total">5.0 GB</div>
-            <div class="m-sub">DB + uploads + backups</div>
+            <div class="m-label">Managed Instance Volumes</div>
+            <div class="m-value" id="s-instance-volumes">—</div>
+            <div class="m-sub">Subset of Docker volume storage</div>
           </div>
         </div>
         <div class="two-col">
           <div class="panel">
             <div class="panel-header">
               <div>
-                <div class="panel-title">Disk Allocation</div>
-                <div class="panel-sub">80 GB root volume breakdown</div>
+                <div class="panel-title">Host &amp; Docker Storage</div>
+                <div class="panel-sub">Host disk usage includes Docker data; Docker rows below are components of host usage.</div>
               </div>
             </div>
             <div id="disk-breakdown"></div>
@@ -334,7 +331,7 @@
             <div class="panel-header">
               <div>
                 <div class="panel-title">Per-Instance Storage</div>
-                <div class="panel-sub">Database · Uploads · Backups</div>
+                <div class="panel-sub">Attributed Docker volumes or writable container layers where available</div>
               </div>
             </div>
             <div class="panel-body" id="per-instance-storage"></div>
@@ -347,7 +344,7 @@
         <div class="page-header">
           <div>
             <div class="page-eyebrow">Release operations</div>
-            <div class="page-title">Promote release</div>
+            <div class="page-title">Releases</div>
             <div class="page-sub">School apps (frontend + backend) and the admin console deploy separately — same tag family, different targets</div>
           </div>
         </div>
@@ -428,7 +425,7 @@
         <div class="two-col-lower" style="margin-top:14px">
           <div class="panel">
             <div class="panel-header"><div class="panel-title">Release history</div></div>
-            <div class="timeline" id="timeline-full"></div>
+            <div class="timeline timeline-compact" id="timeline-full"></div>
           </div>
           <div class="panel" style="align-self:start">
             <div class="panel-header"><div class="panel-title">Workflow</div></div>
@@ -443,121 +440,25 @@
         </div>
       </div>
 
-      <!-- ── CONTROLS section ── -->
+      <!-- ── GENERAL SETTINGS section ── -->
       <div id="section-controls" class="section-hidden">
         <div class="page-header">
           <div>
-            <div class="page-eyebrow">The Silicone Sahara · v1</div>
-            <div class="page-title">Instance Controls</div>
-            <div class="page-sub">Select an instance and run audited operations</div>
+            <div class="page-title">General Settings</div>
+            <div class="page-sub">Platform-wide configuration and defaults</div>
           </div>
         </div>
-
-        <div class="panel" style="margin-bottom:14px">
-          <div class="panel-header">
-            <div class="panel-title">Select Instance</div>
-            <div class="ctrl-instance-tabs" id="ctrl-instance-tabs"></div>
-          </div>
-          <div class="ctrl-instance-info" id="ctrl-instance-info"></div>
-        </div>
-
-        <div class="controls-layout">
-          <div class="panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Quick Actions</div>
-                <div class="panel-sub">Targeted at selected instance</div>
-              </div>
-            </div>
-            <div class="ctrl-grid">
-              <button class="ctrl-btn primary" type="button" data-ctrl="start" data-label="Start Instance"><span class="ctrl-icon">▶️</span>Start Instance</button>
-              <button class="ctrl-btn warn-ctrl" type="button" data-ctrl="stop" data-label="Stop Instance"><span class="ctrl-icon">⏹️</span>Stop Instance</button>
-              <button class="ctrl-btn" type="button" data-ctrl="restart" data-label="Restart Containers"><span class="ctrl-icon">🔄</span>Restart Containers</button>
-              <button class="ctrl-btn teal-ctrl" type="button" data-ctrl="redeploy" data-label="Promote Release"><span class="ctrl-icon">🚀</span>Promote Release</button>
-              <button class="ctrl-btn" type="button" data-ctrl="health" data-label="Health Check"><span class="ctrl-icon">❤️</span>Health Check</button>
-              <button class="ctrl-btn" type="button" data-ctrl="backup" data-label="Create Backup"><span class="ctrl-icon">💾</span>Create Backup</button>
-              <button class="ctrl-btn" type="button" data-ctrl="restore" data-label="Restore Backup"><span class="ctrl-icon">📦</span>Restore Backup…</button>
-              <button class="ctrl-btn danger-ctrl" type="button" data-ctrl="reset" data-label="Factory Reset"><span class="ctrl-icon">⚠️</span>Factory Reset…</button>
-            </div>
-          </div>
-          <div class="panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Global Actions</div>
-                <div class="panel-sub">Applied to all instances</div>
-              </div>
-            </div>
-            <div class="ctrl-grid" style="grid-template-columns:1fr">
-              <button class="ctrl-btn primary" type="button" data-ctrl="start-all" data-label="Start All Instances"><span class="ctrl-icon">▶️</span>Start All Instances</button>
-              <button class="ctrl-btn warn-ctrl" type="button" data-ctrl="stop-all" data-label="Stop All Instances"><span class="ctrl-icon">⏹️</span>Stop All Instances</button>
-              <button class="ctrl-btn teal-ctrl" type="button" data-ctrl="redeploy-all" data-label="Promote All Schools"><span class="ctrl-icon">🚀</span>Promote All Schools</button>
-              <button class="ctrl-btn" type="button" data-ctrl="backup-all" data-label="Backup All Instances"><span class="ctrl-icon">💾</span>Backup All Instances</button>
-              <button class="ctrl-btn" type="button" data-ctrl="health-all" data-label="Global Health Check"><span class="ctrl-icon">❤️</span>Global Health Check</button>
-            </div>
-          </div>
-          <div class="panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Module Toggles</div>
-                <div class="panel-sub">Enable / disable features per instance</div>
-              </div>
-            </div>
-            <div class="module-toggle-list" id="module-toggle-list"></div>
-          </div>
-          <div class="panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Live Logs</div>
-                <div class="panel-sub">Streamed container output</div>
-              </div>
-              <div style="display:flex;gap:6px">
-                <button class="btn" type="button" id="btn-clear-logs">Clear</button>
-                <button class="btn teal" type="button" data-ctrl="logs" data-label="Fetch Logs">Fetch Logs</button>
-              </div>
-            </div>
-            <div class="log-viewer" id="log-viewer"><span class="log-placeholder">Select an instance and click Fetch Logs →</span></div>
-          </div>
-        </div>
-
-        <div class="panel danger-zone" style="margin-top:14px">
-          <div class="panel-header">
-            <div>
-              <div class="panel-title" style="color:var(--red)">⚠️ Danger Zone</div>
-              <div class="panel-sub">These actions are irreversible. Requires confirmation.</div>
-            </div>
-          </div>
-          <div class="danger-grid">
-            <div class="danger-item">
-              <div>
-                <div class="danger-item-title">Purge Instance Data</div>
-                <div class="danger-item-sub">Delete all database records and uploaded files for the selected instance. Containers remain.</div>
-              </div>
-              <button class="btn danger-btn" type="button" data-ctrl="purge" data-label="Purge Instance Data">Purge Data…</button>
-            </div>
-            <div class="danger-item">
-              <div>
-                <div class="danger-item-title">Remove Instance</div>
-                <div class="danger-item-sub">Stop containers, delete volumes, and remove the instance from the platform entirely.</div>
-              </div>
-              <button class="btn danger-btn" type="button" data-ctrl="remove" data-label="Remove Instance">Remove…</button>
-            </div>
-            <div class="danger-item">
-              <div>
-                <div class="danger-item-title">Factory Reset Instance</div>
-                <div class="danger-item-sub">Wipe data and reconfigure from scratch. Super admin credentials are reset.</div>
-              </div>
-              <button class="btn danger-btn" type="button" data-ctrl="reset" data-label="Factory Reset Instance">Reset…</button>
-            </div>
-          </div>
+        <div class="panel general-settings-empty">
+          <div class="panel-header"><div><div class="panel-title">Platform defaults</div><div class="panel-sub">This workspace is reserved for settings that apply across all instances.</div></div></div>
+          <div class="panel-body">School-specific actions, logs, assessment activity, and release promotion are available from the management drawer on each instance.</div>
         </div>
       </div>
-      <!-- ── END CONTROLS ── -->
+      <!-- ── END GENERAL SETTINGS ── -->
 
       <!-- ── BILLING section ── -->
       <div id="section-billing" class="section-hidden">
         <div class="page-header">
           <div>
-            <div class="page-eyebrow">The Silicone Sahara · v1</div>
             <div class="page-title">Billing</div>
             <div class="page-sub">Manage customer quotes and invoice records in one finance workspace.</div>
           </div>
@@ -612,7 +513,7 @@
 
         <section class="billing-tab-panel" id="billing-panel-quotes" role="tabpanel" aria-labelledby="billing-tab-quotes" tabindex="0" hidden>
           <div class="panel">
-            <div class="panel-header"><div><div class="panel-title">Quotes</div><div class="panel-sub">Prepare a quote, send its PDF, record the customer decision, and convert accepted quotes into draft invoices.</div></div><div class="billing-register-filters"><input class="form-input billing-filter" id="billing-quote-search" type="search" placeholder="Search quote or customer" aria-label="Search quotes"><select class="form-input billing-filter" id="billing-quote-status" aria-label="Filter quotes by status"><option value="">All statuses</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="declined">Declined</option><option value="expired">Expired</option><option value="converted">Converted</option></select></div></div>
+            <div class="panel-header"><div><div class="panel-title">Quotes</div><div class="panel-sub">Prepare a quote, send its PDF, record the customer decision, and convert accepted quotes into draft invoices. Sent quotes are kept as history.</div></div><div class="billing-register-filters"><input class="form-input billing-filter" id="billing-quote-search" type="search" placeholder="Search quote or customer" aria-label="Search quotes"><select class="form-input billing-filter" id="billing-quote-status" aria-label="Filter quotes by status"><option value="">All statuses</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="declined">Declined</option><option value="expired">Expired</option><option value="converted">Converted</option><option value="cancelled">Cancelled</option></select></div></div>
             <div id="billing-email-status" class="billing-email-status" role="status"></div>
             <div class="table-wrap"><table><thead><tr><th>Quote</th><th>Customer</th><th>Students</th><th>Quoted total</th><th>Valid until</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody id="billing-quotes-table"><tr><td colspan="7">Loading quotes…</td></tr></tbody></table></div>
@@ -621,46 +522,105 @@
 
         <section class="billing-tab-panel" id="billing-panel-invoices" role="tabpanel" aria-labelledby="billing-tab-invoices" tabindex="0" hidden>
           <div class="panel">
-            <div class="panel-header"><div><div class="panel-title">Invoice register</div><div class="panel-sub">Draft documents from accepted quotes. Issuing, emailing, and payment tracking are not available yet.</div></div><div class="billing-register-filters"><input class="form-input billing-filter" id="billing-invoice-search" type="search" placeholder="Search invoice or customer" aria-label="Search invoices"><select class="form-input billing-filter" id="billing-invoice-status" aria-label="Filter invoices by status"><option value="">All statuses</option><option value="draft">Draft</option></select></div></div>
-            <div class="billing-register-note">Draft PDF previews are for review only. They are not issued invoices or tax invoices.</div>
+            <div class="panel-header"><div><div class="panel-title">Invoice register</div><div class="panel-sub">Review draft invoices, issue commercial invoices, send them, and monitor allocated payments.</div></div><div class="billing-register-filters"><input class="form-input billing-filter" id="billing-invoice-search" type="search" placeholder="Search invoice or customer" aria-label="Search invoices"><select class="form-input billing-filter" id="billing-invoice-status" aria-label="Filter invoices by status"><option value="">All statuses</option><option value="draft">Draft</option><option value="issued">Issued</option><option value="sent">Sent</option><option value="paid">Paid</option><option value="void">Cancelled</option></select></div></div>
+            <div class="billing-register-note">Issue creates a commercial invoice that can be emailed and paid. It does not create or submit an eTIMS tax invoice.</div>
             <div class="table-wrap"><table><thead><tr><th>Draft reference</th><th>Customer</th><th>Source quote</th><th>Amount</th><th>Status</th><th>Created</th><th>Document</th></tr></thead>
               <tbody id="billing-invoices-table"><tr><td colspan="7">Loading invoices…</td></tr></tbody></table></div>
           </div>
         </section>
 
         <section class="billing-tab-panel" id="billing-panel-payments" role="tabpanel" aria-labelledby="billing-tab-payments" tabindex="0" hidden>
-          <div class="panel billing-future-panel"><div class="billing-future-icon" aria-hidden="true">KSh</div><div><div class="panel-title">Payment tracking is not available yet</div><p>Record payments, allocate partial amounts, issue receipts, and reconcile bank or M-Pesa references here once the invoice ledger and payment controls are ready.</p><span class="billing-future-status">Planned after invoice issuance</span></div></div>
+          <div class="billing-kpis" aria-label="Payment totals"><div class="billing-kpi"><span>Payments recorded</span><strong id="billing-kpi-payment-count">—</strong><small>Manual entries in the ledger</small></div><div class="billing-kpi"><span>Collected</span><strong id="billing-kpi-collected">—</strong><small>Payments allocated to invoices</small></div><div class="billing-kpi"><span>Outstanding</span><strong id="billing-kpi-outstanding">—</strong><small>Issued invoices less payments</small></div></div>
+          <div class="panel"><div class="panel-header"><div><div class="panel-title">Payment history</div><div class="panel-sub">Record verified bank, M-Pesa, cheque, or cash payments against issued invoices. Entries are kept in the ledger.</div></div><button class="btn primary" id="billing-payment-add" data-super-admin-only type="button">+ Record payment</button></div><div class="billing-register-note">Record a payment only after confirming receipt in your bank or payment provider. This does not initiate or verify a transfer.</div><div class="table-wrap"><table><thead><tr><th>Payment date</th><th>Invoice</th><th>Customer</th><th>Method</th><th>Reference</th><th>Amount</th><th>Recorded by</th><th>Receipt</th></tr></thead><tbody id="billing-payments-table"><tr><td colspan="8">Loading payments…</td></tr></tbody></table></div></div>
+          <div class="panel billing-subpanel"><div class="panel-header"><div><div class="panel-title">Open invoice balances</div><div class="panel-sub">Only issued invoices can receive payment allocations.</div></div></div><div class="table-wrap"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Issued</th><th>Due</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody id="billing-open-invoices-table"><tr><td colspan="8">Loading invoices…</td></tr></tbody></table></div></div>
         </section>
 
         <section class="billing-tab-panel" id="billing-panel-catalogue" role="tabpanel" aria-labelledby="billing-tab-catalogue" tabindex="0" hidden>
-          <div class="panel billing-future-panel"><div class="billing-future-icon" aria-hidden="true">PR</div><div><div class="panel-title">Products and approved pricing</div><p>The quote builder uses the current configured pricing assumptions. Versioned price approval, contract price selection, and effective dates are not available yet.</p><ul><li>Confirm flat-tier versus progressive student pricing.</li><li>Confirm the one-off school setup amount and add-on cadence.</li><li>Confirm SMS usage and charges beyond the included allowance.</li></ul><span class="billing-future-status">Pricing decisions pending approval</span></div></div>
+          <div class="panel"><div class="panel-header"><div><div class="panel-title">School platform rate card</div><div class="panel-sub">Current quoted student rate is selected by the school's total enrollment. This rate card applies to new quotes; each saved quote retains its pricing snapshot.</div></div><span class="billing-status-chip">KES · Current rate card</span></div><div class="table-wrap"><table><thead><tr><th>Enrolled students</th><th>Rate per student</th><th>Cadence</th></tr></thead><tbody><tr><td>1–300</td><td>KSh 50</td><td>Selected quote cadence</td></tr><tr><td>301–500</td><td>KSh 40</td><td>Selected quote cadence</td></tr><tr><td>501–1,000</td><td>KSh 35</td><td>Selected quote cadence</td></tr><tr><td>1,001+</td><td>KSh 30</td><td>Selected quote cadence</td></tr></tbody></table></div><div class="billing-price-extras"><article><span>School setup</span><strong>One-off · customer-specific</strong><small>Entered and shown separately on each quote.</small></article><article><span>Communications module</span><strong>KSh 10,000 per term</strong><small>Sender ID and 1,000 SMS included each term.</small></article><article><span>Additional module</span><strong>KSh 5,000 per module</strong><small>Charge cadence is selected on each quote.</small></article></div><div class="billing-register-note">The quote form offers flat-tier pricing (one rate applied to all students based on total enrollment) or progressive pricing (each rate applies only to students in that band). The selected method is saved with the quote. Tax is not included; existing quotes keep their original rate snapshots.</div></div>
         </section>
 
         <section class="billing-tab-panel" id="billing-panel-reports" role="tabpanel" aria-labelledby="billing-tab-reports" tabindex="0" hidden>
-          <div class="panel billing-future-panel"><div class="billing-future-icon" aria-hidden="true">R</div><div><div class="panel-title">Finance reports will appear here</div><p>Customer statements, receivables aging, and payment reconciliation require issued invoices and recorded payments. The console will not show estimated or sample financial totals.</p><span class="billing-future-status">Available after ledger workflow</span></div></div>
+          <div class="billing-kpis" aria-label="Billing report totals"><div class="billing-kpi"><span>Invoices issued</span><strong id="billing-report-issued">—</strong><small>Commercial invoices only</small></div><div class="billing-kpi"><span>Invoice value</span><strong id="billing-report-value">—</strong><small>Issued invoice totals</small></div><div class="billing-kpi"><span>Cash collected</span><strong id="billing-report-collected">—</strong><small>Recorded payments</small></div><div class="billing-kpi"><span>Open balance</span><strong id="billing-report-balance">—</strong><small>Outstanding on issued invoices</small></div></div><div class="panel"><div class="panel-header"><div><div class="panel-title">Collections by month</div><div class="panel-sub">Based on payment dates entered in the billing ledger.</div></div></div><div class="table-wrap"><table><thead><tr><th>Month</th><th>Payments</th><th>Collected</th></tr></thead><tbody id="billing-report-months"><tr><td colspan="3">Reports will populate from the ledger.</td></tr></tbody></table></div></div><div class="billing-register-note">These are management totals from manually recorded commercial invoices and payments, not audited accounts, bank reconciliation, or eTIMS tax reporting.</div>
         </section>
 
         <section class="billing-tab-panel" id="billing-panel-settings" role="tabpanel" aria-labelledby="billing-tab-settings" tabindex="0" hidden>
           <div class="panel">
             <div class="panel-header"><div><div class="panel-title">Billing configuration readiness</div><div class="panel-sub">Configuration values are shown as readiness only; credentials are never displayed.</div></div></div>
             <div id="billing-settings-email-status" class="billing-email-status" role="status">Checking email configuration…</div>
-            <div class="billing-settings-grid">
-              <div class="billing-setting-row"><span>Seller legal identity and tax details</span><strong>Needs confirmation</strong></div>
-              <div class="billing-setting-row"><span>Invoice numbering policy</span><strong>Needs confirmation</strong></div>
-              <div class="billing-setting-row"><span>Payment instructions and due terms</span><strong>Needs confirmation</strong></div>
-              <div class="billing-setting-row"><span>eTIMS setup and integration route</span><strong>Not configured</strong></div>
-            </div>
-            <div class="billing-register-note">These settings are intentionally read-only until the finance owner confirms the legal and accounting requirements.</div>
+            <div class="billing-settings-grid"><div class="billing-setting-row"><span>Invoice status</span><strong>Commercial invoice issuance enabled</strong></div><div class="billing-setting-row"><span>Invoice numbering</span><strong>INV- prefix · based on quote reference</strong></div><div class="billing-setting-row"><span>Payments</span><strong>Manual recording · allocation to issued invoices</strong></div><div class="billing-setting-row"><span>Tax invoice / eTIMS integration</span><strong>Not configured</strong></div><div class="billing-setting-row"><span>Seller legal identity and tax details</span><strong>Confirm before tax invoice use</strong></div><div class="billing-setting-row"><span>Payment instructions</span><strong>Use customer-approved terms and verified references</strong></div></div><div class="billing-register-note">The issue action creates a commercial invoice and does not certify tax compliance or submit anything to eTIMS. Configure seller tax identity and an approved eTIMS route before treating these as tax invoices. Email sender credentials are managed in Communications.</div>
           </div>
         </section>
       </div>
       <!-- ── END BILLING ── -->
 
+      <!-- ── COMMUNICATIONS SETTINGS ── -->
+      <div id="section-communications" class="section-hidden">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Communications Settings</div>
+            <div class="page-sub">Configure the email provider used for customer quotes and draft invoice review copies.</div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><div><div class="panel-title">Email delivery · Resend</div><div class="panel-sub">The API key is stored on the production server, never returned to the browser, and never written to the Git repository.</div></div></div>
+          <div class="panel-body">
+            <div id="communications-email-status" class="billing-email-status" role="status" aria-live="polite">Checking email configuration…</div>
+            <form id="communications-email-form" class="communications-settings-form" autocomplete="off">
+              <div class="form-group">
+                <label class="form-label" for="communications-resend-key">Resend API key</label>
+                <input class="form-input" id="communications-resend-key" name="resendApiKey" type="password" autocomplete="new-password" placeholder="Paste a new Resend API key to replace the stored key" />
+                <div class="form-hint" id="communications-key-hint">The current key is hidden. Leave this blank to keep the saved key.</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="communications-from-email">Sender email address</label>
+                <input class="form-input" id="communications-from-email" name="fromEmail" type="email" autocomplete="email" placeholder="billing@your-verified-domain" required />
+                <div class="form-hint">Use an address on a domain that Resend reports as verified with sending enabled.</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="communications-from-name">Sender display name</label>
+                <input class="form-input" id="communications-from-name" name="fromName" type="text" maxlength="120" autocomplete="organization" placeholder="TrendSCORE" />
+              </div>
+              <div class="communications-settings-actions">
+                <button class="btn" id="communications-email-save" type="submit">Save email settings</button>
+                <button class="btn secondary" id="communications-email-test" type="button">Validate Resend connection</button>
+              </div>
+            </form>
+            <div class="billing-register-note">Validation checks the API key and sender-domain status without sending an email. After validation, test delivery using a quote or the draft invoice review-copy action.</div>
+          </div>
+        </div>
+      </div>
+      <!-- ── END COMMUNICATIONS SETTINGS ── -->
+
+      <!-- ── USERS section ── -->
+      <div id="section-users" class="section-hidden">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Users</div>
+            <div class="page-sub">Console accounts and their multi-factor authentication status</div>
+          </div>
+          <div class="page-actions">
+            <button class="btn primary" id="user-add" type="button">+ New user</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>MFA</th><th>Last login</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="users-table"><tr><td colspan="7">Loading users…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <!-- ── END USERS ── -->
+
       <!-- ── LOGS section ── -->
       <div id="section-logs" class="section-hidden">
         <div class="page-header">
           <div>
-            <div class="page-eyebrow">The Silicone Sahara · v1</div>
             <div class="page-title">Audit Log</div>
             <div class="page-sub">All platform-level actions are recorded here</div>
           </div>
@@ -693,7 +653,6 @@
       <div id="section-leads" class="section-hidden">
         <div class="page-header">
           <div>
-            <div class="page-eyebrow">The Silicone Sahara · v1</div>
             <div class="page-title">Leads &amp; CRM</div>
             <div class="page-sub">Track prospective schools through the sales pipeline</div>
           </div>
@@ -776,6 +735,14 @@
 </div><!-- /shell -->
 
 <!-- CREATE SCHOOL MODAL -->
+<div class="overlay" id="instance-type-overlay" aria-modal="true" role="dialog" aria-labelledby="instance-type-title">
+  <div class="modal instance-type-modal">
+    <div class="modal-header"><div><div class="modal-title" id="instance-type-title">What would you like to provision?</div><div class="panel-sub">Choose a product type to open its setup form.</div></div><button class="modal-close" id="instance-type-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body"><div class="instance-type-groups" id="instance-type-options" aria-live="polite"><div class="billing-empty">Loading available instance types…</div></div><div class="instance-type-footnote">Unavailable types appear here so you can see what is planned. They become selectable when their provisioning recipe is ready.</div></div>
+    <div class="modal-footer"><button class="btn" id="instance-type-cancel" type="button">Cancel</button></div>
+  </div>
+</div>
+
 <div class="overlay" id="modal-overlay" aria-modal="true" role="dialog">
   <div class="modal">
     <div class="modal-header">
@@ -799,6 +766,7 @@
       <div class="form-row">
         <label class="form-label" for="f-domain">Subdomain</label>
         <input class="form-input" id="f-domain" placeholder="e.g. sunshine -> sunshine.trendscore.co.ke" type="text"/>
+        <small class="form-help">The provisioner checks the domain format and assigns ports. DNS binding and SSL certificate issuance still require the separate domain workflow.</small>
       </div>
       <div class="form-row" id="f-type-row">
         <label class="form-label" for="f-type">Institution Type</label>
@@ -868,7 +836,7 @@
     <div class="modal-header logout-modal-header">
       <div class="logout-modal-icon">🔒</div>
       <div>
-        <div class="modal-title">Sign out of The Silicone Sahara?</div>
+        <div class="modal-title">Sign out of Trends CORE ERP?</div>
         <div class="logout-modal-sub">Your session will be terminated and you'll need to sign in again.</div>
       </div>
     </div>
@@ -982,6 +950,91 @@
 </div>
 <!-- END LEAD MODAL -->
 
+<!-- USER MODAL -->
+<div class="overlay" id="user-overlay" aria-modal="true" role="dialog">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header"><div class="modal-title" id="user-modal-title">Add user</div><button class="modal-close" id="user-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <input id="u-id" type="hidden"/>
+      <div class="form-row"><label class="form-label" for="u-email">Email *</label><input class="form-input" id="u-email" type="email" maxlength="254" autocomplete="off"/></div>
+      <div class="form-row"><label class="form-label" for="u-name">Name</label><input class="form-input" id="u-name" maxlength="160"/></div>
+      <div class="form-row"><label class="form-label" for="u-role">Role *</label><select class="form-select" id="u-role"><option value="platform_owner">Platform owner</option><option value="super_admin">Super admin</option></select></div>
+      <div class="form-row" id="u-password-row"><label class="form-label" for="u-password">Password *</label><input class="form-input" id="u-password" type="password" autocomplete="new-password" minlength="12"/><small class="form-help">At least 12 characters.</small></div>
+      <div class="form-row" id="u-active-row" style="margin-bottom:0"><label class="billing-option"><input id="u-active" type="checkbox" checked/><span><strong>Active</strong><small>Inactive accounts cannot sign in.</small></span></label></div>
+    </div>
+    <div class="modal-footer"><button class="btn" id="user-cancel" type="button">Cancel</button><button class="btn primary" id="user-save" type="button">Save user</button></div>
+  </div>
+</div>
+
+<!-- USER PASSWORD RESET MODAL -->
+<div class="overlay" id="user-password-overlay" aria-modal="true" role="dialog">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><div class="modal-title">Reset password</div><button class="modal-close" id="user-password-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <input id="up-id" type="hidden"/>
+      <div class="form-row" style="margin-bottom:0"><label class="form-label" for="up-password">New password *</label><input class="form-input" id="up-password" type="password" autocomplete="new-password" minlength="12"/><small class="form-help">At least 12 characters. The user is not notified automatically — share it through a separate secure channel.</small></div>
+    </div>
+    <div class="modal-footer"><button class="btn" id="user-password-cancel" type="button">Cancel</button><button class="btn primary" id="user-password-save" type="button">Reset password</button></div>
+  </div>
+</div>
+
+<!-- USER MFA FORCE-DISABLE MODAL -->
+<div class="overlay" id="user-mfa-disable-overlay" aria-modal="true" role="dialog">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><div class="modal-title">Disable MFA</div><button class="modal-close" id="user-mfa-disable-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <input id="umd-id" type="hidden"/>
+      <p style="font-size:13px;color:var(--muted);line-height:1.6">This removes the account's authenticator enrollment and all backup codes. Use this only when the user has lost their device.</p>
+      <div class="form-row" style="margin-bottom:0"><label class="form-label" for="umd-reason">Reason *</label><input class="form-input" id="umd-reason" maxlength="500" placeholder="e.g. Lost phone, reported by user via email"/></div>
+    </div>
+    <div class="modal-footer"><button class="btn" id="user-mfa-disable-cancel" type="button">Cancel</button><button class="btn danger-btn" id="user-mfa-disable-save" type="button">Disable MFA</button></div>
+  </div>
+</div>
+
+<!-- MY ACCOUNT / SELF-SERVICE MFA MODAL -->
+<div class="overlay" id="account-overlay" aria-modal="true" role="dialog">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header"><div class="modal-title">My account</div><button class="modal-close" id="account-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <div class="form-row"><span class="form-label">Signed in as</span><div id="account-identity" style="font-size:14px;color:var(--ink)"></div></div>
+
+      <div class="form-section-divider"><span class="form-section-label">Two-factor authentication</span></div>
+      <div id="account-mfa-status" style="font-size:13px;color:var(--muted);margin-bottom:12px"></div>
+
+      <div id="account-mfa-enrolled-actions">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn" id="account-mfa-regenerate" type="button">Regenerate backup codes</button>
+          <button class="btn danger-btn" id="account-mfa-disable" type="button">Disable MFA</button>
+        </div>
+      </div>
+
+      <div id="account-mfa-enroll-start">
+        <button class="btn primary" id="account-mfa-enroll-btn" type="button">Enable two-factor authentication</button>
+      </div>
+
+      <div id="account-mfa-enroll-panel" hidden>
+        <p style="font-size:13px;color:var(--muted);line-height:1.6">Scan this code in an authenticator app (Google Authenticator, Authy, etc.), then enter the 6-digit code it shows to finish.</p>
+        <div id="account-mfa-qr" style="display:flex;justify-content:center;padding:12px;background:#fff;border-radius:8px;margin-bottom:10px"></div>
+        <div class="form-row"><label class="form-label" for="account-mfa-secret">Can't scan? Enter manually</label><input class="form-input" id="account-mfa-secret" readonly/></div>
+        <div class="form-row"><label class="form-label" for="account-mfa-code">6-digit code</label><input class="form-input" id="account-mfa-code" inputmode="numeric" maxlength="10" placeholder="123456"/></div>
+        <button class="btn primary" id="account-mfa-confirm-btn" type="button">Confirm and enable</button>
+      </div>
+
+      <div id="account-mfa-backup-panel" hidden>
+        <p style="font-size:13px;color:var(--muted);line-height:1.6">Save these one-time backup codes somewhere safe. Each works once if you lose access to your authenticator app. They will not be shown again.</p>
+        <pre class="code-block" id="account-mfa-backup-codes" style="white-space:pre-wrap"></pre>
+        <button class="btn primary" id="account-mfa-backup-done" type="button">I've saved these codes</button>
+      </div>
+
+      <div id="account-mfa-password-panel" hidden>
+        <div class="form-row" style="margin-bottom:0"><label class="form-label" for="account-mfa-password">Confirm your password</label><input class="form-input" id="account-mfa-password" type="password" autocomplete="current-password"/></div>
+        <button class="btn danger-btn" id="account-mfa-password-confirm" type="button" style="margin-top:10px"></button>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn" id="account-close-footer" type="button">Close</button></div>
+  </div>
+</div>
+
 <!-- BILLING CUSTOMER MODAL -->
 <div class="overlay" id="billing-customer-overlay" aria-modal="true" role="dialog">
   <div class="modal" style="max-width:650px">
@@ -1010,6 +1063,7 @@
   <div class="modal" style="max-width:760px">
     <div class="modal-header"><div class="modal-title">New school quote</div><button class="modal-close" id="billing-quote-close" type="button" aria-label="Close">×</button></div>
     <div class="modal-body">
+      <input id="bq-id" type="hidden"/>
       <div class="billing-quote-grid">
         <div class="form-row"><label class="form-label" for="bq-customer">Customer *</label><select class="form-select" id="bq-customer"><option value="">Select a billing customer</option></select></div>
         <div class="form-row"><label class="form-label" for="bq-students">Billable student count *</label><input class="form-input" id="bq-students" type="number" min="1" max="100000" step="1" placeholder="Enrollment snapshot"/></div>
@@ -1028,6 +1082,64 @@
       <div class="form-help">The total adds all listed lines; recurring periods are shown per line. Each quote stores the selected pricing rule and enrollment snapshot. Tax is not added to this quote.</div>
     </div>
     <div class="modal-footer"><button class="btn" id="billing-quote-cancel" type="button">Cancel</button><button class="btn primary" id="billing-quote-save" data-super-admin-only type="button">Save draft quote</button></div>
+  </div>
+</div>
+
+<!-- BILLING INVOICE DETAILS MODAL -->
+<div class="overlay" id="billing-invoice-overlay" aria-modal="true" role="dialog">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header"><div class="modal-title">Edit draft invoice details</div><button class="modal-close" id="billing-invoice-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <input id="bi-id" type="hidden"/>
+      <div class="form-row"><label class="form-label" for="bi-due-date">Payment due date</label><input class="form-input" id="bi-due-date" type="date"/><small class="form-help">When blank, the issued commercial invoice is payable on receipt.</small></div>
+      <div class="form-row"><label class="form-label" for="bi-terms">Payment terms / notes</label><textarea class="form-input" id="bi-terms" rows="4" maxlength="1000" placeholder="Optional terms for review"></textarea></div>
+    </div>
+    <div class="modal-footer"><button class="btn" id="billing-invoice-cancel" type="button">Close</button><button class="btn primary" id="billing-invoice-save" data-super-admin-only type="button">Save details</button></div>
+  </div>
+</div>
+
+<!-- BILLING PAYMENT MODAL -->
+<div class="overlay" id="billing-payment-overlay" aria-modal="true" role="dialog" aria-labelledby="billing-payment-title">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-header"><div class="modal-title" id="billing-payment-title">Record a received payment</div><button class="modal-close" id="billing-payment-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <div class="form-row"><label class="form-label" for="bp-invoice">Issued invoice *</label><select class="form-select" id="bp-invoice" required><option value="">Choose invoice</option></select><small class="form-help" id="bp-balance-help">Only issued invoices with an outstanding balance are shown.</small></div>
+      <div class="billing-quote-grid"><div class="form-row"><label class="form-label" for="bp-amount">Amount received (KSh) *</label><input class="form-input" id="bp-amount" type="number" min="1" step="1" required/></div><div class="form-row"><label class="form-label" for="bp-date">Payment date *</label><input class="form-input" id="bp-date" type="date" required/></div></div>
+      <div class="billing-quote-grid"><div class="form-row"><label class="form-label" for="bp-method">Payment method *</label><select class="form-select" id="bp-method" required><option value="mpesa">M-Pesa</option><option value="bank_transfer">Bank transfer</option><option value="cash">Cash</option><option value="cheque">Cheque</option><option value="other">Other</option></select></div><div class="form-row"><label class="form-label" for="bp-reference">Provider / bank reference</label><input class="form-input" id="bp-reference" maxlength="120" placeholder="e.g. M-Pesa receipt code"/></div></div>
+      <div class="form-row"><label class="form-label" for="bp-notes">Notes</label><textarea class="form-input" id="bp-notes" rows="2" maxlength="500"></textarea></div>
+      <div class="billing-register-note">This records a payment you have already verified. The ledger entry cannot currently be edited or deleted; check the invoice, amount, date, and reference before saving.</div>
+    </div>
+    <div class="modal-footer"><button class="btn" id="billing-payment-cancel" type="button">Cancel</button><button class="btn primary" id="billing-payment-save" data-super-admin-only type="button">Record payment</button></div>
+  </div>
+</div>
+
+<!-- PREMIUM BILLING EMAIL COMPOSER -->
+<div class="overlay billing-mail-overlay" id="billing-mail-overlay" aria-modal="true" role="dialog" aria-labelledby="billing-mail-title" aria-describedby="billing-mail-description">
+  <div class="modal billing-mail-modal">
+    <div class="modal-header billing-mail-header">
+      <div><div class="modal-title" id="billing-mail-title">Review email before sending</div><div class="billing-mail-subtitle" id="billing-mail-description">Personalize the message, review the branded email and PDF, then send.</div></div>
+      <button class="modal-close" id="billing-mail-close" type="button" aria-label="Close">×</button>
+    </div>
+    <div class="billing-mail-meta" id="billing-mail-meta">Loading message…</div>
+    <div class="billing-mail-layout">
+      <div class="billing-mail-compose">
+        <input id="billing-mail-id" type="hidden" />
+        <input id="billing-mail-kind" type="hidden" />
+        <div class="form-row"><label class="form-label" for="billing-mail-to">To</label><input class="form-input" id="billing-mail-to" type="email" autocomplete="email" required /></div>
+        <div class="form-row"><label class="form-label" for="billing-mail-subject">Subject</label><input class="form-input" id="billing-mail-subject" type="text" maxlength="180" required /></div>
+        <div class="form-row"><label class="form-label" for="billing-mail-message">Message</label><textarea class="form-input billing-mail-message" id="billing-mail-message" rows="13" maxlength="5000" spellcheck="true"></textarea><small class="form-help">The branded footer and attached PDF are included automatically.</small></div>
+        <div class="billing-mail-attachment" id="billing-mail-attachment"><span aria-hidden="true">▤</span><div><strong id="billing-mail-filename">PDF attachment</strong><small>Branded PDF · attached to the email</small></div></div>
+      </div>
+      <div class="billing-mail-preview-wrap">
+        <div class="billing-mail-preview-tabs" role="tablist" aria-label="Email and attachment preview">
+          <button type="button" class="billing-mail-preview-tab active" id="billing-mail-tab-email" data-billing-mail-tab="email" role="tab" aria-selected="true" aria-controls="billing-mail-preview-email">Email preview</button>
+          <button type="button" class="billing-mail-preview-tab" id="billing-mail-tab-pdf" data-billing-mail-tab="pdf" role="tab" aria-selected="false" aria-controls="billing-mail-preview-pdf">PDF attachment</button>
+        </div>
+        <iframe class="billing-mail-preview-frame" id="billing-mail-preview-email" title="Rendered email preview" sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe>
+        <iframe class="billing-mail-preview-frame" id="billing-mail-preview-pdf" title="Attached PDF preview" hidden></iframe>
+      </div>
+    </div>
+    <div class="modal-footer billing-mail-footer"><span class="billing-mail-sender" id="billing-mail-sender"></span><div><button class="btn" id="billing-mail-cancel" type="button">Cancel</button><button class="btn primary" id="billing-mail-send" type="button" data-super-admin-only>Send email</button></div></div>
   </div>
 </div>
 
@@ -1052,7 +1164,63 @@
   </div>
 </div>
 
+<!-- SCHOOL ASSESSMENT ACTIVITY -->
+<div class="overlay" id="assessment-activity-overlay" aria-modal="true" role="dialog" aria-labelledby="assessment-activity-title" aria-hidden="true">
+  <section class="modal assessment-activity-modal">
+    <div class="modal-header"><div class="modal-title" id="assessment-activity-title">Assessment activity</div><button class="modal-close" id="assessment-activity-close" type="button" aria-label="Close assessment activity">×</button></div>
+    <div class="modal-body">
+      <div class="assessment-activity-summary" id="assessment-activity-summary"></div>
+      <div class="assessment-activity-list" id="assessment-activity-list"></div>
+    </div>
+    <div class="modal-footer"><button class="btn" id="assessment-activity-close-footer" type="button">Close</button></div>
+  </section>
+</div>
+<div class="assessment-activity-tooltip" id="assessment-activity-tooltip" role="tooltip" aria-hidden="true"></div>
+
+<!-- INSTANCE MANAGEMENT DRAWER -->
+<div class="instance-drawer-overlay" id="instance-drawer-overlay" aria-hidden="true">
+  <aside class="instance-drawer" role="dialog" aria-modal="true" aria-labelledby="instance-drawer-title">
+    <header class="instance-drawer-header">
+      <div><div class="page-eyebrow">Instance management</div><h2 id="instance-drawer-title">School</h2><div id="instance-drawer-domain" class="instance-drawer-domain"></div></div>
+      <button class="instance-drawer-close" id="instance-drawer-close" type="button" aria-label="Close instance controls">×</button>
+    </header>
+    <div class="instance-drawer-body">
+      <section class="instance-drawer-section">
+        <h3>Instance details</h3>
+        <div class="instance-drawer-details" id="instance-drawer-details"></div>
+      </section>
+      <section class="instance-drawer-section">
+        <h3>Operations</h3>
+        <div class="instance-drawer-actions">
+          <button class="btn primary" type="button" data-instance-drawer-action="start">Start</button>
+          <button class="btn" type="button" data-instance-drawer-action="restart">Restart</button>
+          <button class="btn danger-btn" type="button" data-instance-drawer-action="stop">Stop</button>
+          <button class="btn" type="button" data-instance-drawer-action="health">Health check</button>
+          <button class="btn" type="button" data-instance-drawer-action="logs">View logs</button>
+          <button class="btn" type="button" data-instance-drawer-action="activity" hidden>Assessment activity</button>
+        </div>
+      </section>
+      <section class="instance-drawer-section" id="instance-drawer-release-section">
+        <h3>Promote release to this school</h3>
+        <p class="instance-drawer-help">Promote a school application release to this school only. This runs the deployment backup, migration, restart, and health checks.</p>
+        <label class="form-label" for="instance-drawer-release-tag">Release image tag</label>
+        <select class="form-select" id="instance-drawer-release-tag"><option value="">Loading releases…</option></select>
+        <input class="form-input" id="instance-drawer-release-custom" placeholder="Or enter an image tag" autocomplete="off" />
+        <button class="btn teal" id="instance-drawer-promote" type="button">Promote to this school</button>
+        <div class="instance-drawer-release-status" id="instance-drawer-release-status" aria-live="polite"></div>
+      </section>
+      <section class="instance-drawer-section instance-drawer-log-section" id="instance-drawer-log-section" hidden>
+        <div class="instance-drawer-section-heading"><h3>Recent logs</h3><button class="btn" type="button" data-instance-drawer-action="logs">Refresh</button></div>
+        <pre class="instance-drawer-log" id="instance-drawer-log">Select View logs to fetch recent output.</pre>
+      </section>
+    </div>
+    <footer class="instance-drawer-footer"><button class="btn" id="instance-drawer-close-footer" type="button">Close</button></footer>
+  </aside>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@latest"></script>
 <script src="./app.js"></script>
 <script src="./login.js"></script>
 </body>
