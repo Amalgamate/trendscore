@@ -242,6 +242,19 @@
       "env_file": "/srv/zawadi/apps/env/.zawadi-trevorsacaemy.env",
       "public_domain": "trevorsacaemy.trendscore.co.ke",
       "notes": "Registered 2026-09-28; DNS verified against defaults.public_ipv4."
+    },
+    {
+      "id": "bluefalcon",
+      "label": "BLUE FALCON SCHOOL UTAWALA",
+      "tier": "production",
+      "active": true,
+      "deployment_allowed": true,
+      "auto_deploy_on_main": false,
+      "kind": "stack",
+      "compose_project": "zawadi-bluefalcon",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-bluefalcon.env",
+      "public_domain": "bluefalcon.trendscore.co.ke",
+      "notes": "Provisioning prepared with pinned release image sha-bd2c489a07137e309622a7a5c8848070dc8d72dd; DNS verified 2026-10-01."
     }
   ],
   "discovery": {
