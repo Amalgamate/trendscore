@@ -42,6 +42,11 @@ on:
         required: false
         type: string
         default: 'admin@trendscore.app'
+      image_tag:
+        description: 'Existing published frontend/backend image tag to install'
+        required: true
+        type: string
+        default: 'sha-bd2c489a07137e309622a7a5c8848070dc8d72dd'
 
 permissions:
   contents: read
@@ -59,10 +64,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Validate registry, DNS, and administrator credential
         env:
           SCHOOL_SLUG: ${{ inputs.school_slug }}
           SUPER_ADMIN_PASSWORD: ${{ secrets.SCHOOL_INITIAL_ADMIN_PASSWORD }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           set -euo pipefail
           node -e '
@@ -76,6 +89,11 @@ jobs:
             console.log(`Manifest target: ${school.id} (${school.public_domain})`);
           '
           [[ -n "$SUPER_ADMIN_PASSWORD" ]] || { echo "SCHOOL_INITIAL_ADMIN_PASSWORD must be set in the protected environment"; exit 1; }
+          [[ "$IMAGE_TAG" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Invalid image tag"; exit 1; }
+          for image in ghcr.io/amalgamate/zawadi-frontend ghcr.io/amalgamate/zawadi-backend; do
+            docker manifest inspect "${image}:${IMAGE_TAG}" >/dev/null
+          done
+          echo "Provisioning image tag: ${IMAGE_TAG}"
           domain="$(node -e 'const m=require("./deploy/instances.manifest.json"); console.log(m.instances.find(x=>x.id===process.env.SCHOOL_SLUG).public_domain)')"
           echo "PUBLIC_DOMAIN=${domain}" >> "$GITHUB_ENV"
           expected_ip="$(node -e 'const m=require("./deploy/instances.manifest.json"); console.log(m.defaults.public_ipv4 || "")')"
@@ -189,6 +207,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REKOGNITION_LIVENESS_ROLE_ARN: ${{ vars.AWS_REKOGNITION_LIVENESS_ROLE_ARN }}
           BIOMETRIC_ENCRYPTION_KEY: ${{ secrets.BIOMETRIC_ENCRYPTION_KEY }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           set -euo pipefail
 
@@ -230,6 +249,7 @@ jobs:
           ENC_K="${ENC_K}"
           BIO_KEY="${BIO_KEY}"
           ADMIN_EMAIL="${ADMIN_EMAIL}"
+          IMAGE_TAG="${IMAGE_TAG}"
           AWS_REGION="${AWS_REGION:-ap-south-1}"
           AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-}"
           AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-}"
@@ -246,14 +266,16 @@ jobs:
             }
             echo "Resuming the matching in-progress setup; preserving its generated DB/JWT/biometric secrets and ports."
             sudo sed -i "s/^SUPER_ADMIN_PASSWORD=.*/SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD}/" "${ENV_FILE}"
+            sudo sed -i "s|^FRONTEND_IMAGE=.*|FRONTEND_IMAGE=ghcr.io/amalgamate/zawadi-frontend:${IMAGE_TAG}|" "${ENV_FILE}"
+            sudo sed -i "s|^BACKEND_IMAGE=.*|BACKEND_IMAGE=ghcr.io/amalgamate/zawadi-backend:${IMAGE_TAG}|" "${ENV_FILE}"
           else
             echo "✅ Creating env file: ${ENV_FILE}"
             sudo tee "${ENV_FILE}" > /dev/null <<ENVEOF
           SCHOOL_CODE=${SCHOOL_SLUG}
           SCHOOL_NAME=${SCHOOL_NAME}
           SCHOOL_INSTITUTION_TYPE=${SCHOOL_INSTITUTION_TYPE}
-          FRONTEND_IMAGE=ghcr.io/amalgamate/zawadi-frontend:latest
-          BACKEND_IMAGE=ghcr.io/amalgamate/zawadi-backend:latest
+          FRONTEND_IMAGE=ghcr.io/amalgamate/zawadi-frontend:${IMAGE_TAG}
+          BACKEND_IMAGE=ghcr.io/amalgamate/zawadi-backend:${IMAGE_TAG}
           FRONTEND_PORT=${FRONTEND_PORT}
           BACKEND_PORT=${BACKEND_PORT}
           DB_USER=zawadi
@@ -288,7 +310,7 @@ jobs:
             echo "✅ Env file written"
           fi
 
-          echo "=== Pulling latest images ==="
+          echo "=== Pulling pinned release images (${IMAGE_TAG}) ==="
           sudo docker compose --env-file "${ENV_FILE}" -p "${PROJECT}" -f "${COMPOSE_FILE}" pull
 
           echo "=== Starting database and cache ==="
@@ -369,7 +391,7 @@ jobs:
           REMOTE
 
           ssh production \
-            "PROJECT='${PROJECT}' ENV_FILE='${ENV_FILE}' COMPOSE_FILE='${COMPOSE_FILE}' SCHOOL_SLUG='${SCHOOL_SLUG}' SCHOOL_NAME_B64='${SCHOOL_NAME_B64}' SCHOOL_INSTITUTION_TYPE='${SCHOOL_INSTITUTION_TYPE}' PUBLIC_DOMAIN_B64='${PUBLIC_DOMAIN_B64}' SUPER_ADMIN_PASSWORD_B64='${SUPER_ADMIN_PASSWORD_B64}' FRONTEND_PORT='${FRONTEND_PORT}' BACKEND_PORT='${BACKEND_PORT}' DB_PASSWORD='${DB_PASSWORD}' DB_NAME='${DB_NAME}' JWT_S='${JWT_S}' JWT_R='${JWT_R}' ENC_K='${ENC_K}' BIO_KEY='${BIO_KEY}' ADMIN_EMAIL='${ADMIN_EMAIL}' AWS_REGION='${AWS_REGION:-ap-south-1}' AWS_ACCESS_KEY_ID='${AWS_ACCESS_KEY_ID:-}' AWS_SECRET_ACCESS_KEY='${AWS_SECRET_ACCESS_KEY:-}' AWS_REKOGNITION_LIVENESS_ROLE_ARN='${AWS_REKOGNITION_LIVENESS_ROLE_ARN:-}' VAPID_PUBLIC_KEY='${VAPID_PUBLIC_KEY:-}' VAPID_PRIVATE_KEY='${VAPID_PRIVATE_KEY:-}' bash -s" < /tmp/provision-school.sh
+            "PROJECT='${PROJECT}' ENV_FILE='${ENV_FILE}' COMPOSE_FILE='${COMPOSE_FILE}' SCHOOL_SLUG='${SCHOOL_SLUG}' SCHOOL_NAME_B64='${SCHOOL_NAME_B64}' SCHOOL_INSTITUTION_TYPE='${SCHOOL_INSTITUTION_TYPE}' PUBLIC_DOMAIN_B64='${PUBLIC_DOMAIN_B64}' SUPER_ADMIN_PASSWORD_B64='${SUPER_ADMIN_PASSWORD_B64}' FRONTEND_PORT='${FRONTEND_PORT}' BACKEND_PORT='${BACKEND_PORT}' DB_PASSWORD='${DB_PASSWORD}' DB_NAME='${DB_NAME}' JWT_S='${JWT_S}' JWT_R='${JWT_R}' ENC_K='${ENC_K}' BIO_KEY='${BIO_KEY}' ADMIN_EMAIL='${ADMIN_EMAIL}' IMAGE_TAG='${IMAGE_TAG}' AWS_REGION='${AWS_REGION:-ap-south-1}' AWS_ACCESS_KEY_ID='${AWS_ACCESS_KEY_ID:-}' AWS_SECRET_ACCESS_KEY='${AWS_SECRET_ACCESS_KEY:-}' AWS_REKOGNITION_LIVENESS_ROLE_ARN='${AWS_REKOGNITION_LIVENESS_ROLE_ARN:-}' VAPID_PUBLIC_KEY='${VAPID_PUBLIC_KEY:-}' VAPID_PRIVATE_KEY='${VAPID_PRIVATE_KEY:-}' bash -s" < /tmp/provision-school.sh
 
       - name: Report
         if: success()
