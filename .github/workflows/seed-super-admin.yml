@@ -66,5 +66,5 @@ jobs:
             echo "## Seed succeeded"
             echo ""
             echo "SUPER_ADMIN user seeded into \`${{ inputs.compose_project }}\`."
-            echo "Login with phone \`0713612141\` and password \`Admin@123!\`."
+            echo "Use the permanent super-admin policy documented in `docs/SCHOOL_PROVISIONING.md`."
           } >> "$GITHUB_STEP_SUMMARY"

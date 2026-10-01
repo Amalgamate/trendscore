@@ -12,7 +12,9 @@ COPY auth-config.js billing-store.js billing-documents.js server.js ./
 COPY public/ ./public/
 COPY deploy/deploy-release.sh ./deploy/deploy-release.sh
 COPY deploy/instances.manifest.json ./deploy/instances.manifest.json
+COPY scripts/ ./scripts/
 RUN chmod +x ./deploy/deploy-release.sh
+RUN chmod +x ./scripts/provision-instance.sh
 
 EXPOSE 3100
 

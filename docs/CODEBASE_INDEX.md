@@ -319,7 +319,7 @@ Separate path: `DEPLOY_CONSOLE_ONLY=true bash deploy-release.sh` → pulls `zawa
 
 ### 9.10 First boot / superadmin
 
-Set `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` in the school env file (or `server/.env` locally) to bootstrap the superadmin on first run. Defaults in compose/provision are `admin@trendscore.app` / `Admin@123!` — change in production.
+School provisioning and permanent super-admin access follow [`SCHOOL_PROVISIONING.md`](SCHOOL_PROVISIONING.md), with shared defaults in `server/src/config/superAdminAccess.json`.
 
 ---
 

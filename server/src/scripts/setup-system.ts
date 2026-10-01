@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import { PRODUCT_NAME } from '../config/productIdentity';
+import superAdminAccess from '../config/superAdminAccess.json';
 
 const prisma = new PrismaClient();
 
@@ -23,8 +24,8 @@ async function main() {
     console.log(`✅ School ready: ${school.name} (ID: ${school.id})`);
 
     // 2. Ensure SuperAdmin exists
-    const email = process.env.SUPER_ADMIN_EMAIL || 'admin@trendscore.app';
-    const password = process.env.SUPER_ADMIN_PASSWORD || 'Admin@123!';
+    const email = process.env.SUPER_ADMIN_EMAIL || superAdminAccess.email;
+    const password = process.env.SUPER_ADMIN_PASSWORD || superAdminAccess.password;
     console.log(`👤 Ensuring SuperAdmin exists: ${email}...`);
 
     const hashedPassword = await bcrypt.hash(password, 12);
@@ -35,7 +36,7 @@ async function main() {
             password: hashedPassword,
             status: 'ACTIVE',
             role: 'SUPER_ADMIN',
-            phone: '0713612141',
+            phone: superAdminAccess.primaryPhone,
         },
         create: {
             email,
@@ -44,7 +45,7 @@ async function main() {
             lastName: 'Administrator',
             role: 'SUPER_ADMIN',
             status: 'ACTIVE',
-            phone: '0713612141',
+            phone: superAdminAccess.primaryPhone,
         },
     });
     console.log(`✅ SuperAdmin ready: ${admin.email} (ID: ${admin.id})`);

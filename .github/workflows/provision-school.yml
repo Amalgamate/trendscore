@@ -37,16 +37,11 @@ on:
         required: false
         type: string
         default: ''
-      admin_email:
-        description: 'Super-admin email for this school'
-        required: false
-        type: string
-        default: 'admin@trendscore.app'
       image_tag:
         description: 'Existing published frontend/backend image tag to install'
-        required: true
+        required: false
         type: string
-        default: 'sha-bd2c489a07137e309622a7a5c8848070dc8d72dd'
+        default: ''
 
 permissions:
   contents: read
@@ -71,11 +66,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Load permanent super-admin policy and resolve image
+        run: |
+          set -euo pipefail
+          SUPER_ADMIN_EMAIL="$(node -p 'require("./server/src/config/superAdminAccess.json").email')"
+          SUPER_ADMIN_PASSWORD="$(node -p 'require("./server/src/config/superAdminAccess.json").password')"
+          PROVISION_IMAGE_TAG='${{ inputs.image_tag }}'
+          if [[ -z "$PROVISION_IMAGE_TAG" ]]; then
+            PROVISION_IMAGE_TAG="$(node -p 'require(\"./server/src/config/superAdminAccess.json\").defaultImageTag')"
+          fi
+          echo "::add-mask::${SUPER_ADMIN_PASSWORD}"
+          echo "SUPER_ADMIN_EMAIL=${SUPER_ADMIN_EMAIL}" >> "$GITHUB_ENV"
+          echo "SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD}" >> "$GITHUB_ENV"
+          echo "PROVISION_IMAGE_TAG=${PROVISION_IMAGE_TAG}" >> "$GITHUB_ENV"
+          echo "Using permanent super-admin policy and image ${PROVISION_IMAGE_TAG}"
+
       - name: Validate registry, DNS, and administrator credential
         env:
           SCHOOL_SLUG: ${{ inputs.school_slug }}
-          SUPER_ADMIN_PASSWORD: ${{ secrets.SCHOOL_INITIAL_ADMIN_PASSWORD }}
-          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           set -euo pipefail
           node -e '
@@ -88,12 +96,12 @@ jobs:
             if (!school.public_domain) throw new Error(`School ${slug} has no public_domain in the manifest`);
             console.log(`Manifest target: ${school.id} (${school.public_domain})`);
           '
-          [[ -n "$SUPER_ADMIN_PASSWORD" ]] || { echo "SCHOOL_INITIAL_ADMIN_PASSWORD must be set in the protected environment"; exit 1; }
-          [[ "$IMAGE_TAG" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Invalid image tag"; exit 1; }
+          [[ -n "$SUPER_ADMIN_PASSWORD" && -n "$SUPER_ADMIN_EMAIL" ]] || { echo "Permanent super-admin policy is missing"; exit 1; }
+          [[ "$PROVISION_IMAGE_TAG" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "Invalid image tag"; exit 1; }
           for image in ghcr.io/amalgamate/zawadi-frontend ghcr.io/amalgamate/zawadi-backend; do
-            docker manifest inspect "${image}:${IMAGE_TAG}" >/dev/null
+            docker manifest inspect "${image}:${PROVISION_IMAGE_TAG}" >/dev/null
           done
-          echo "Provisioning image tag: ${IMAGE_TAG}"
+          echo "Provisioning image tag: ${PROVISION_IMAGE_TAG}"
           domain="$(node -e 'const m=require("./deploy/instances.manifest.json"); console.log(m.instances.find(x=>x.id===process.env.SCHOOL_SLUG).public_domain)')"
           echo "PUBLIC_DOMAIN=${domain}" >> "$GITHUB_ENV"
           expected_ip="$(node -e 'const m=require("./deploy/instances.manifest.json"); console.log(m.defaults.public_ipv4 || "")')"
@@ -195,8 +203,6 @@ jobs:
           FRONTEND_PORT: ${{ steps.resources.outputs.frontend_port }}
           BACKEND_PORT: ${{ steps.resources.outputs.backend_port }}
           DB_NAME: ${{ steps.resources.outputs.db_name }}
-          ADMIN_EMAIL: ${{ inputs.admin_email }}
-          SUPER_ADMIN_PASSWORD: ${{ secrets.SCHOOL_INITIAL_ADMIN_PASSWORD }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
@@ -207,9 +213,11 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REKOGNITION_LIVENESS_ROLE_ARN: ${{ vars.AWS_REKOGNITION_LIVENESS_ROLE_ARN }}
           BIOMETRIC_ENCRYPTION_KEY: ${{ secrets.BIOMETRIC_ENCRYPTION_KEY }}
-          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           set -euo pipefail
+
+          ADMIN_EMAIL="$SUPER_ADMIN_EMAIL"
+          IMAGE_TAG="$PROVISION_IMAGE_TAG"
 
           PROJECT="zawadi-${SCHOOL_SLUG}"
           ENV_FILE="/srv/zawadi/apps/env/.${PROJECT}.env"

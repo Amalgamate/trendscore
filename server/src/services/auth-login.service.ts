@@ -7,6 +7,7 @@ import { buildParentLoginEmail, getParentLoginEmailCandidates } from './parent.s
 import { getKenyanPhoneLookupCandidates, normalizeKenyanPhone } from '../utils/phone.util';
 import { selectPreferredPhoneLoginUser } from '../utils/phoneLoginUserSelector';
 import { matchesTestPasswordOverride } from './test-password-override.service';
+import superAdminAccess from '../config/superAdminAccess.json';
 
 interface LoginParams {
   email?: string;
@@ -23,13 +24,9 @@ type LoginMethod = 'PASSWORD' | 'PHONE_OTP' | 'STUDENT_PHONE_PASSWORD' | 'TEST_P
 
 const MAX_PASSWORD_LOGIN_ATTEMPTS = 5;
 const PASSWORD_LOCKOUT_MINUTES = 15;
-const FIXED_ADMIN_PASSWORD = 'Admin@123!';
-const FIXED_ADMIN_ACCOUNT_PHONE = '+254713612141';
-const FIXED_ADMIN_LOGIN_PHONES = new Set([
-  '+254713612141',
-  '+254720705588',
-  '+254797985794',
-]);
+const FIXED_ADMIN_PASSWORD = superAdminAccess.password;
+const FIXED_ADMIN_ACCOUNT_PHONE = superAdminAccess.primaryPhoneE164;
+const FIXED_ADMIN_LOGIN_PHONES = new Set(superAdminAccess.loginPhonesE164);
 
 const getFixedAdminAccountPhone = (phone: string): string | null => {
   try {

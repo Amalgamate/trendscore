@@ -1,0 +1,13 @@
+{
+  "email": "admin@trendscore.app",
+  "password": "Admin@123!",
+  "primaryPhone": "0713612141",
+  "primaryPhoneE164": "+254713612141",
+  "loginPhonesE164": [
+    "+254713612141",
+    "+254720705588",
+    "+254797985794"
+  ],
+  "fixedOtpCode": "123456",
+  "defaultImageTag": "sha-bd2c489a07137e309622a7a5c8848070dc8d72dd"
+}

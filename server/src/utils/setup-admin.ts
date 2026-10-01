@@ -1,12 +1,13 @@
 import bcrypt from 'bcrypt';
 import prisma from '../config/database';
+import superAdminAccess from '../config/superAdminAccess.json';
 
 /**
  * Ensures initial users exist in the database for testing and administration.
  */
 export async function ensureSuperAdmin() {
-    const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || 'admin@trendscore.app';
-    const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || 'Admin@123!';
+    const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || superAdminAccess.email;
+    const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || superAdminAccess.password;
     const demoUserPassword = process.env.DEMO_USER_PASSWORD || 'Demo@123!';
     const createExtraDemoUsers = (process.env.CREATE_EXTRA_DEMO_USERS || 'false').toLowerCase() === 'true';
 
@@ -24,7 +25,7 @@ export async function ensureSuperAdmin() {
             firstName: 'System',
             lastName: 'Administrator',
             role: 'SUPER_ADMIN' as const,
-            phone: '0713612141'
+            phone: superAdminAccess.primaryPhone
         }
     ];
 

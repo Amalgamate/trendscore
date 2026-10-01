@@ -98,6 +98,7 @@ jobs:
           mkdir -p platform-console/scripts
           cp scripts/deploy-release.sh platform-console/deploy/deploy-release.sh
           cp scripts/provision-instance.sh platform-console/scripts/provision-instance.sh
+          cp server/src/config/superAdminAccess.json platform-console/scripts/superAdminAccess.json
           cp deploy/instances.manifest.json platform-console/deploy/instances.manifest.json
 
       - name: Build and publish console

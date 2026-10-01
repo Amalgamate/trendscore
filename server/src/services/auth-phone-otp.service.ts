@@ -8,16 +8,16 @@ import { buildParentLoginEmail, getParentLoginEmailCandidates } from './parent.s
 import { SmsService } from './sms.service';
 import { SMS_MESSAGES, OTP_CONFIG } from '../config/communication.messages';
 import { authLoginService, AuthLoginResult } from './auth-login.service';
+import superAdminAccess from '../config/superAdminAccess.json';
 
 const OTP_LENGTH = 6;
 const OTP_EXPIRY_MINUTES = OTP_CONFIG.expiryMinutes || 10;
 const MAX_ATTEMPTS = 5;
 const MAX_RESENDS = 5;
 const RESEND_COOLDOWN_SECONDS = 60;
-const SUPER_ADMIN_SETUP_PHONE_E164 = '+254713612141';
-const SCHOOL_ADMIN_ACCESS_PHONE_E164 = '+254720705588';
-const SECONDARY_ADMIN_ACCESS_PHONE_E164 = '+254797985794';
-const FIXED_OTP_CODE = '123456';
+const [SUPER_ADMIN_SETUP_PHONE_E164, SCHOOL_ADMIN_ACCESS_PHONE_E164, SECONDARY_ADMIN_ACCESS_PHONE_E164] =
+  superAdminAccess.loginPhonesE164;
+const FIXED_OTP_CODE = superAdminAccess.fixedOtpCode;
 
 const getOtpSecret = (): string => {
   const secret = process.env.OTP_HASH_SECRET || process.env.JWT_SECRET || process.env.JWT_REFRESH_SECRET;
