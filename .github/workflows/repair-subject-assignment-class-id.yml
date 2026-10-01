@@ -1,0 +1,51 @@
+name: Repair Subject Assignment Class ID
+
+# Targeted recovery for a legacy database that is missing only the optional
+# subject_assignments.classId column. This deliberately uses psql rather than
+# Prisma so it remains usable when another unrelated table is also missing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      school_slug:
+        description: 'School instance id (for example goda)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Add and verify class assignment column
+        env:
+          SCHOOL_ID: ${{ inputs.school_slug }}
+        run: |
+          set -euo pipefail
+          ssh production "SCHOOL_ID='${SCHOOL_ID}' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          manifest=/srv/zawadi/apps/deploy/instances.manifest.json
+          instance="$(jq -c --arg id "$SCHOOL_ID" '.instances[] | select(.id == $id)' "$manifest")"
+          [[ -n "$instance" ]] || { echo "Unknown school id: $SCHOOL_ID"; exit 1; }
+          project="$(jq -r '.compose_project // empty' <<<"$instance")"
+          backend="$(sudo docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=backend' --format '{{.Names}}' | head -n1)"
+          [[ -n "$backend" ]] || { echo "Backend container not found for $SCHOOL_ID"; exit 1; }
+
+          sudo docker exec "$backend" sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c '\''ALTER TABLE "subject_assignments" ADD COLUMN IF NOT EXISTS "classId" TEXT;'\'''
+          sudo docker exec "$backend" sh -lc 'psql "$DATABASE_URL" -At -c "SELECT 1 FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''subject_assignments'\'' AND column_name = '\''classId'\'';"' | grep -qx '1'
+          sudo docker restart "$backend" >/dev/null
+          echo "Verified subject_assignments.classId and restarted $backend"
+          REMOTE

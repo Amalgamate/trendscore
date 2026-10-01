@@ -1,0 +1,85 @@
+name: Repair School Report Engine Schema (All Production)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_all_production:
+        description: 'Set true to add the missing reportEngine schema to every active production school database'
+        required: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    name: Repair report engine columns across active production schools
+    if: inputs.confirm_all_production == true
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Apply additive schema repair to active production schools
+        run: |
+          set -euo pipefail
+          ssh production 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          manifest=/srv/zawadi/apps/deploy/instances.manifest.json
+          [[ -f "$manifest" ]] || { echo "Production manifest not found"; exit 1; }
+
+          mapfile -t instances < <(jq -r '.instances[] | select(.active == true and .tier == "production" and .kind == "stack") | [.id, .compose_project] | @tsv' "$manifest")
+          ((${#instances[@]} > 0)) || { echo "No active production school stacks found"; exit 1; }
+
+          cat >/tmp/repair-report-engine-schema.sql <<'SQL'
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ReportEngine') THEN
+              CREATE TYPE "ReportEngine" AS ENUM ('LEGACY', 'NEW');
+            END IF;
+          END $$;
+
+          DO $$
+          DECLARE labels TEXT[];
+          BEGIN
+            SELECT array_agg(enumlabel ORDER BY enumsortorder)
+              INTO labels
+              FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+             WHERE t.typname = 'ReportEngine';
+            IF labels IS DISTINCT FROM ARRAY['LEGACY', 'NEW']::TEXT[] THEN
+              RAISE EXCEPTION 'Unexpected ReportEngine enum labels: %', labels;
+            END IF;
+          END $$;
+
+          ALTER TABLE "schools"
+            ADD COLUMN IF NOT EXISTS "reportEngine" "ReportEngine" NOT NULL DEFAULT 'LEGACY',
+            ADD COLUMN IF NOT EXISTS "reportTemplateId" TEXT;
+          SQL
+
+          echo "Targeting ${#instances[@]} active production school databases."
+          for row in "${instances[@]}"; do
+            IFS=$'\t' read -r school_id project <<<"$row"
+            [[ -n "$school_id" && -n "$project" ]] || { echo "Invalid manifest entry"; exit 1; }
+            backend="$(sudo docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=backend' --format '{{.Names}}' | head -n1)"
+            [[ -n "$backend" ]] || { echo "Backend container missing for $school_id ($project); stopping without skipping."; exit 1; }
+            echo "Applying report-engine schema to $school_id"
+            sudo docker cp /tmp/repair-report-engine-schema.sql "$backend:/tmp/repair-report-engine-schema.sql"
+            sudo docker exec "$backend" sh -lc 'DB_URL="$(node -e '\''const u=new URL(process.env.DATABASE_URL); u.searchParams.delete("schema"); process.stdout.write(u.toString())'\'')"; psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/repair-report-engine-schema.sql >/dev/null'
+            verified="$(sudo docker exec "$backend" sh -lc 'DB_URL="$(node -e '\''const u=new URL(process.env.DATABASE_URL); u.searchParams.delete("schema"); process.stdout.write(u.toString())'\'')"; psql "$DB_URL" -At -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''schools'\'' AND column_name IN ('\''reportEngine'\'', '\''reportTemplateId'\'');"')"
+            [[ "$verified" == "2" ]] || { echo "Schema verification failed for $school_id"; exit 1; }
+            echo "Verified $school_id"
+          done
+          echo "All active production school databases verified. No application containers were restarted."
+          REMOTE
+
+      - name: Summary
+        if: success()
+        run: echo 'Additive report-engine schema repair completed and verified across all active production school databases.' >> "$GITHUB_STEP_SUMMARY"

@@ -10,6 +10,7 @@
     "backend_image": "ghcr.io/amalgamate/zawadi-backend",
     "console_image": "ghcr.io/amalgamate/zawadi-console",
     "health_host": "127.0.0.1",
+    "public_ipv4": "185.127.16.124",
     "static_publish_dir": "/srv/zawadi/apps/zawadijrn/build"
   },
   "instances": [
@@ -200,6 +201,18 @@
       "compose_project": "zawadi-memu-school",
       "env_file": "/srv/zawadi/apps/env/.zawadi-memu-school.env",
       "public_domain": "memu.trendscore.co.ke"
+    },
+    {
+      "id": "trevorsacaemy",
+      "label": "Trevor's Academy",
+      "tier": "production",
+      "active": true,
+      "deployment_allowed": true,
+      "kind": "stack",
+      "compose_project": "zawadi-trevorsacaemy",
+      "env_file": "/srv/zawadi/apps/env/.zawadi-trevorsacaemy.env",
+      "public_domain": "trevorsacaemy.trendscore.co.ke",
+      "notes": "Registered 2026-09-28; DNS verified against defaults.public_ipv4."
     }
   ],
   "discovery": {
@@ -213,6 +226,6 @@
       "zawadi-zayan-electricals",
       "ibse"
     ],
-    "notes": "Discovery disabled — all production schools are explicitly listed above. ibse excluded until its database is baselined (Prisma P3005)."
+    "notes": "Discovery disabled — all production schools are explicitly listed above."
   }
 }

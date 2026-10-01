@@ -7,6 +7,12 @@ on:
         description: 'Active school id from deploy/instances.manifest.json (for example mwangaza-cs)'
         required: true
         type: string
+  workflow_call:
+    inputs:
+      school_slug:
+        description: 'Active school id from deploy/instances.manifest.json'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -17,6 +23,24 @@ jobs:
     environment: deploy-production-school
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify school DNS points to deployment host
+        env:
+          SCHOOL_ID: ${{ inputs.school_slug }}
+        run: |
+          set -euo pipefail
+          domain="$(jq -r --arg id "$SCHOOL_ID" '.instances[] | select(.id == $id and .active == true and .archived != true) | .public_domain' deploy/instances.manifest.json)"
+          expected_ip="$(jq -r '.defaults.public_ipv4 // empty' deploy/instances.manifest.json)"
+          [[ -n "$domain" && "$domain" != "null" ]] || { echo "No active school domain found for $SCHOOL_ID"; exit 1; }
+          [[ -n "$expected_ip" ]] || { echo "defaults.public_ipv4 is required in the deployment manifest"; exit 1; }
+          resolved="$(dig +short A "$domain" | sort -u)"
+          echo "Domain: $domain"
+          echo "Expected IPv4: $expected_ip"
+          echo "Resolved IPv4: ${resolved:-<none>}"
+          printf '%s\n' "$resolved" | grep -Fxq "$expected_ip" || {
+            echo "DNS must resolve to $expected_ip before certificate issuance.";
+            exit 1;
+          }
 
       - name: Configure SSH
         env:
@@ -83,9 +107,39 @@ jobs:
           command -v certbot >/dev/null 2>&1 || { apt-get update; apt-get install -y certbot python3-certbot-nginx; }
           certbot --nginx --non-interactive --agree-tos --email admin@trendscore.app --redirect -d "$domain"
           curl -fsSI --resolve "$domain:443:127.0.0.1" "https://$domain/"
+
+          env_file="$(jq -r '.env_file // empty' <<<"$instance")"
+          [[ -n "$env_file" && -f "$env_file" ]] || { echo "School env file not found: $env_file"; exit 1; }
+          set_env() {
+            local key="$1" value="$2"
+            if grep -q "^${key}=" "$env_file"; then
+              sed -i "s|^${key}=.*|${key}=${value}|" "$env_file"
+            else
+              printf '%s=%s\n' "$key" "$value" >> "$env_file"
+            fi
+          }
+          set_env HTTPS_ONLY true
+          set_env SECURE_COOKIES true
+          set_env NODE_ENV production
+          compose_file="/srv/zawadi/apps/$(jq -r '.defaults.stack_compose_file' "$manifest")"
+          sudo docker compose --env-file "$env_file" -p "$project" -f "$compose_file" up -d --no-deps --force-recreate backend
           REMOTE
 
       - name: Verify public HTTPS
+        env:
+          SCHOOL_ID: ${{ inputs.school_slug }}
         run: |
+          set -euo pipefail
+          DOMAIN="$(jq -r --arg id "$SCHOOL_ID" '.instances[] | select(.id == $id) | .public_domain' deploy/instances.manifest.json)"
+          [[ -n "$DOMAIN" && "$DOMAIN" != "null" ]] || { echo "No public domain found for $SCHOOL_ID"; exit 1; }
           curl --fail --show-error --silent --location --max-time 30 --output /dev/null \
-            --write-out 'HTTPS %{http_code}\n' https://${{ inputs.school_slug }}.trendscore.co.ke/
+            --write-out 'HTTPS %{http_code}\n' "https://${DOMAIN}/"
+
+      - name: Verify certificate hostname and expiry
+        env:
+          SCHOOL_ID: ${{ inputs.school_slug }}
+        run: |
+          set -euo pipefail
+          DOMAIN="$(jq -r --arg id "$SCHOOL_ID" '.instances[] | select(.id == $id) | .public_domain' deploy/instances.manifest.json)"
+          openssl s_client -connect "${DOMAIN}:443" -servername "$DOMAIN" </dev/null 2>/dev/null \
+            | openssl x509 -noout -checkhost "$DOMAIN" -enddate
