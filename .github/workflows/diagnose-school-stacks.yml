@@ -27,50 +27,35 @@ jobs:
         run: |
           ssh production '
             set -euo pipefail
-            echo "=== All running containers (project | service | image | ports) ==="
-            sudo docker ps --format "table {{.Label \"com.docker.compose.project\"}}\t{{.Label \"com.docker.compose.service\"}}\t{{.Image}}\t{{.Ports}}" | sort
+            manifest=/srv/zawadi/apps/deploy/instances.manifest.json
+            [[ -f "$manifest" ]] || { echo "Manifest not found: $manifest"; exit 1; }
+
+            echo "=== Running containers (project | service | image | ports) ==="
+            sudo docker ps --format "{{.Label \"com.docker.compose.project\"}}|{{.Label \"com.docker.compose.service\"}}|{{.Image}}|{{.Ports}}" | sort
 
             echo ""
-            echo "=== Docker image inventory (CONTAINERS=0 means no container references the image) ==="
-            sudo docker system df -v
+            echo "=== Active production schools from manifest ==="
+            jq -r '.instances[] | select(.active == true and .tier == "production") | [.id, .label, .kind, (.compose_project // "-"), (.public_domain // "-")] | @tsv' "$manifest" \
+              | while IFS="$(printf '\t')" read -r id label kind project domain; do
+                  if [[ "$kind" == "main" ]]; then
+                    backend=zawadi-backend
+                    db=zawadi-db
+                  else
+                    backend="$(sudo docker ps --filter "label=com.docker.compose.project=$project" --filter "label=com.docker.compose.service=backend" --format "{{.Names}}" | head -n1)"
+                    db="$(sudo docker ps --filter "label=com.docker.compose.project=$project" --filter "label=com.docker.compose.service=db" --format "{{.Names}}" | head -n1)"
+                  fi
+                  frontend="$(sudo docker ps --filter "label=com.docker.compose.project=$project" --filter "label=com.docker.compose.service=frontend" --format "{{.Names}}" | head -n1)"
+                  [[ -n "$backend" ]] || backend="MISSING"
+                  [[ -n "$db" ]] || db="MISSING"
+                  [[ -n "$frontend" ]] || frontend="MISSING"
+                  printf "school=%s | label=%s | domain=%s | project=%s | backend=%s | db=%s | frontend=%s\n" "$id" "$label" "$domain" "$project" "$backend" "$db" "$frontend"
+                done
 
             echo ""
-            echo "=== All containers (including stopped; image IDs and references) ==="
-            sudo docker ps -a --no-trunc --format "table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.ID}}"
+            echo "=== Manifest production school IDs (explicit check includes Goda) ==="
+            jq -r '.instances[] | select(.active == true and .tier == "production") | .id' "$manifest" | sort
 
             echo ""
-            echo "=== Trevor's Academy PostgreSQL startup log ==="
-            sudo docker logs --tail 80 zawadi-trevorsacaemy-db-1 2>&1 || true
-
-            echo ""
-            echo "=== Trevor's Academy databases ==="
-            sudo docker exec zawadi-trevorsacaemy-db-1 \
-              psql -U zawadi -d postgres -Atc "SELECT datname FROM pg_database ORDER BY datname" 2>&1 || true
-
-            echo ""
-            echo "=== All env files in /srv/zawadi/apps/env/ ==="
-            ls -la /srv/zawadi/apps/env/ 2>/dev/null || echo "(dir missing)"
-
-            echo ""
-            echo "=== Root-level env files in /srv/zawadi/apps/ ==="
-            ls -la /srv/zawadi/apps/.env.* 2>/dev/null || echo "(none)"
-
-            echo ""
-            echo "=== Goda-related containers (any) ==="
-            sudo docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -i "goda" || echo "(none found)"
-
-            echo ""
-            echo "=== Goda-related volumes ==="
-            sudo docker volume ls | grep -i "goda" || echo "(none found)"
-
-            echo ""
-            echo "=== All used host ports ==="
-            sudo docker ps --format "{{.Ports}}" | grep -oE "[0-9]+->5000|[0-9]+->3000" | sort -t: -k1 -n || echo "(none)"
-
-            echo ""
-            echo "=== Compose projects with stack compose file ==="
-            sudo docker ps \
-              --filter "label=com.docker.compose.service=frontend" \
-              --format "{{.Label \"com.docker.compose.project\"}}|{{.Label \"com.docker.compose.project.environment_file\"}}" \
-              | sort
+            echo "=== Goda volumes ==="
+            sudo docker volume ls --filter "name=zawadi-goda" --format "{{.Name}}" || true
           '
