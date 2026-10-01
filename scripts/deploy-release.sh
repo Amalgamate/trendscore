@@ -504,6 +504,7 @@ backup_database() {
     db_name="${db_name:-zawadi_sms}"
     docker_cmd compose exec -T db pg_dump -U "${db_user}" "${db_name}" < /dev/null \
       | run_as_root tee "${dest}/database.sql" >/dev/null
+    [[ -s "${dest}/database.sql" ]] || { log "Backup is empty for ${id}"; return 1; }
     echo "${dest}/database.sql" | run_as_root tee "${dest}/LATEST" >/dev/null
     prune_backup_snapshots "${id}"
     return 0
@@ -513,11 +514,14 @@ backup_database() {
   local db_user db_name
   db_user="$(read_env_value "${env_file}" DB_USER)"
   db_name="$(read_env_value "${env_file}" DB_NAME)"
-  db_user="${db_user:-postgres}"
-  db_name="${db_name:-postgres}"
+  if [[ -z "${db_user}" || -z "${db_name}" ]]; then
+    log "DB_USER and DB_NAME must be configured in ${env_file} for a verified backup"
+    return 1
+  fi
   docker_cmd compose --env-file "${env_file}" -p "${project}" -f "${STACK_COMPOSE_FILE}" \
     exec -T db pg_dump -U "${db_user}" "${db_name}" < /dev/null \
     | run_as_root tee "${dest}/database.sql" >/dev/null
+  [[ -s "${dest}/database.sql" ]] || { log "Backup is empty for ${id}"; return 1; }
   echo "${dest}/database.sql" | run_as_root tee "${dest}/LATEST" >/dev/null
   prune_backup_snapshots "${id}"
 }
@@ -681,8 +685,11 @@ run_migrations() {
         c.connect()
           .then(() => c.query(\"SELECT COUNT(*)::int AS n FROM \\"_prisma_migrations\\" WHERE finished_at IS NOT NULL\"))
           .then(r => { console.log(r.rows[0].n); c.end(); })
-          .catch(() => { console.log(0); c.end(); });
+          .catch(e => { console.error(e.message); process.exitCode = 1; c.end(); });
       " 2>/dev/null || echo 0)
+      case "${migration_count}" in
+        ''|*[!0-9]*) echo "  [baseline] could not read migration history; refusing to baseline" >&2; exit 1 ;;
+      esac
       if [ "${migration_count}" -gt 0 ]; then
         echo "  [baseline] ${migration_count} migration(s) recorded - skipping baseline"
       else
