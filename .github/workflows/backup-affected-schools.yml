@@ -1,0 +1,59 @@
+name: Backup Affected School Databases
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Create and verify fresh database backups
+        run: |
+          set -euo pipefail
+          ssh production 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          manifest=/srv/zawadi/apps/deploy/instances.manifest.json
+          backup_root=/srv/zawadi/backups
+          schools=(malkagalla gamachu-school memu-school trevorsacaemy demo)
+
+          for id in "${schools[@]}"; do
+            instance="$(jq -c --arg id "$id" '.instances[] | select(.id == $id or (.aliases // [] | index($id)))' "$manifest")"
+            [[ -n "$instance" ]] || { echo "Unknown school in manifest: $id" >&2; exit 1; }
+            project="$(jq -r '.compose_project // empty' <<<"$instance")"
+            [[ -n "$project" ]] || { echo "No compose project for $id" >&2; exit 1; }
+            db="$(sudo docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=db' --format '{{.Names}}' | head -n1)"
+            [[ -n "$db" ]] || { echo "DB container is not running for $id ($project)" >&2; exit 1; }
+            db_user="$(sudo docker exec "$db" printenv POSTGRES_USER)"
+            db_name="$(sudo docker exec "$db" printenv POSTGRES_DB)"
+            [[ -n "$db_user" && -n "$db_name" ]] || { echo "Database credentials missing in container $db" >&2; exit 1; }
+
+            stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+            dir="$backup_root/$id/$stamp"
+            sudo mkdir -p "$dir"
+            tmp="$dir/database.sql.tmp"
+            dest="$dir/database.sql"
+            echo "Backing up $id using container-configured role/database ($db_user / $db_name)"
+            sudo docker exec "$db" pg_dump -U "$db_user" "$db_name" | sudo tee "$tmp" >/dev/null
+            sudo test -s "$tmp"
+            sudo grep -q '^-- PostgreSQL database dump' "$tmp"
+            sudo mv "$tmp" "$dest"
+            echo "$dest" | sudo tee "$dir/LATEST" >/dev/null
+            sudo sha256sum "$dest"
+            sudo wc -c "$dest"
+            echo "Verified backup: $id"
+          done
+          REMOTE
