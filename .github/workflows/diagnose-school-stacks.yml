@@ -25,13 +25,13 @@ jobs:
 
       - name: List all stacks, ports and env files
         run: |
-          ssh production '
+          ssh production "bash -s" <<'REMOTE'
             set -euo pipefail
             manifest=/srv/zawadi/apps/deploy/instances.manifest.json
             [[ -f "$manifest" ]] || { echo "Manifest not found: $manifest"; exit 1; }
 
             echo "=== Running containers (project | service | image | ports) ==="
-            sudo docker ps --format "{{.Label \"com.docker.compose.project\"}}|{{.Label \"com.docker.compose.service\"}}|{{.Image}}|{{.Ports}}" | sort
+            sudo docker ps --format '{{.Label "com.docker.compose.project"}}|{{.Label "com.docker.compose.service"}}|{{.Image}}|{{.Ports}}' | sort
 
             echo ""
             echo "=== Active production schools from manifest ==="
@@ -58,4 +58,4 @@ jobs:
             echo ""
             echo "=== Goda volumes ==="
             sudo docker volume ls --filter "name=zawadi-goda" --format "{{.Name}}" || true
-          '
+          REMOTE
