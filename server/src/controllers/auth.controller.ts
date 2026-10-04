@@ -135,10 +135,11 @@ export class AuthController {
     // so an unapproved phone cannot use login as a password oracle.
     const deviceId = typeof req.body?.deviceId === 'string' ? req.body.deviceId.trim() : '';
     if (deviceId) {
-      if (!req.body?.driverCode) {
+      const schoolCode = req.body?.schoolCode || req.body?.driverCode;
+      if (!schoolCode) {
         throw new ApiError(400, 'A school code is required when signing in from the driver app.');
       }
-      await driverConnectionService.assertDeviceApproved(req.body.driverCode, deviceId, req.hostname);
+      await driverConnectionService.assertDeviceApproved(schoolCode, deviceId, req.hostname);
     }
 
     const result = await authLoginService.loginWithPassword({

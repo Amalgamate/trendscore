@@ -21,7 +21,13 @@ import { loginSchema } from '../utils/validation.util';
 describe('loginSchema — driver device fields', () => {
   const base = { email: 'driver@school.test', password: 'pw' };
 
-  it('PRESERVES deviceId and driverCode instead of stripping them', () => {
+  it('preserves deviceId and the shared schoolCode', () => {
+    const parsed = loginSchema.parse({ ...base, schoolCode: 'zawadi', deviceId: 'dev-1' });
+    expect(parsed.deviceId).toBe('dev-1');
+    expect(parsed.schoolCode).toBe('zawadi');
+  });
+
+  it('continues to accept driverCode from already-installed APKs', () => {
     // The whole point: if this ever returns undefined, login() cannot gate.
     const parsed = loginSchema.parse({ ...base, driverCode: 'zawadi', deviceId: 'dev-1' });
     expect(parsed.deviceId).toBe('dev-1');

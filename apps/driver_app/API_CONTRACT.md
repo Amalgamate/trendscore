@@ -86,7 +86,8 @@ The app polls this on launch and before sign-in. Only `APPROVED` may proceed.
 
 ## 4. Login is gated on approval
 
-**Existing** `POST /api/auth/login` gains one rejection case:
+**Existing** `POST /api/auth/login` gains one rejection case. New clients send the shared
+`schoolCode` field; the server accepts the legacy `driverCode` alias during rollout:
 
 | Status | Meaning | App must show |
 |---|---|---|

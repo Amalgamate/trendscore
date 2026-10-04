@@ -31,7 +31,7 @@ class AuthRepository {
         phone: phone,
         password: password,
         rememberMe: rememberMe,
-        driverCode: _api.schoolCode,
+        schoolCode: _api.schoolCode,
         deviceId: _api.deviceId,
       ),
     );
@@ -71,14 +71,14 @@ class AuthRepository {
   static Map<String, dynamic> buildLoginRequest({
     required String phone,
     required String password,
-    required String driverCode,
+    required String schoolCode,
     required String deviceId,
     bool rememberMe = true,
   }) => {
     'phone': phone.trim(),
     'password': password,
     'rememberMe': rememberMe,
-    'driverCode': driverCode,
+    'schoolCode': schoolCode,
     'deviceId': deviceId,
   };
 }
