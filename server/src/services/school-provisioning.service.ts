@@ -4,6 +4,7 @@ import { EmailService } from './email-resend.service';
 import { applyModulePackageToSchool, normalizePackageId } from './moduleCatalog.service';
 import { DEFAULT_REPORT_TEMPLATE_KEY } from './reportTemplate.service';
 import { resolveCurrentSchool } from './school-resolver.service';
+import { normalizeSchoolCode, isReservedSubdomain } from '../config/schoolDomains';
 
 export interface SchoolProvisioningData {
   schoolName: string;
@@ -39,6 +40,10 @@ export async function provisionNewSchool(data: SchoolProvisioningData): Promise<
   const tempPassword = generateTempPassword();
   const hashedPassword = await bcrypt.hash(tempPassword, 10);
   const packageId = normalizePackageId(data.packageId || 'starter');
+  const configuredSchoolCode = normalizeSchoolCode(process.env.SCHOOL_CODE);
+  const schoolCode = configuredSchoolCode && !isReservedSubdomain(configuredSchoolCode)
+    ? configuredSchoolCode
+    : undefined;
 
   const result = await prisma.$transaction(async (tx) => {
     const existingSchool = await resolveCurrentSchool(tx);
@@ -59,6 +64,7 @@ export async function provisionNewSchool(data: SchoolProvisioningData): Promise<
     const school = await tx.school.create({
       data: {
         name: data.schoolName,
+        ...(schoolCode ? { schoolCode } : {}),
         admissionFormatType: 'NO_BRANCH',
         registrationNo: data.registrationNo,
         address: data.address,

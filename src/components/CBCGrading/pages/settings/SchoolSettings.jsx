@@ -3,7 +3,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { School, Save, Upload, X, AlertTriangle, MapPin, Loader2, Image as ImageIcon, Info, Phone, Mail, MessageSquare, ShieldCheck, Wifi, Clock, FileText, Eye, CheckCircle2, Layers } from 'lucide-react';
+import { School, Save, Upload, X, AlertTriangle, MapPin, Loader2, Image as ImageIcon, Info, Phone, Mail, MessageSquare, ShieldCheck, Wifi, Clock, FileText, Eye, CheckCircle2, Layers, Copy } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useNotifications } from '../../hooks/useNotifications';
 import axiosInstance from '../../../../services/api/axiosConfig';
@@ -98,6 +98,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
   // State for school settings - Unified Hub
   const [settings, setSettings] = useState({
     schoolName: cleanSchoolName(brandingSettings?.schoolName),
+    schoolCode: '',
     address: brandingSettings?.address || '',
     phone: brandingSettings?.phone || '',
     email: brandingSettings?.email || '',
@@ -151,6 +152,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
   const [savedState, setSavedState] = useState({
     settings: {
       schoolName: cleanSchoolName(brandingSettings?.schoolName),
+      schoolCode: '',
       address: brandingSettings?.address || '',
       phone: brandingSettings?.phone || '',
       email: brandingSettings?.email || '',
@@ -218,6 +220,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
         if (school) {
           const fetchedSettings = {
             schoolName: cleanSchoolName(school.name || school.schoolName),
+            schoolCode: school.schoolCode || '',
             address: school.address || '',
             phone: school.phone || '',
             email: school.email || '',
@@ -621,6 +624,37 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition"
                     placeholder={`e.g. ${PRODUCT_DISPLAY_NAME} Academy`}
                   />
+                </div>
+
+                <div className="md:col-span-2 rounded-lg border border-blue-100 bg-blue-50 p-4">
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Shared School Code</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={settings.schoolCode || 'Not configured'}
+                      readOnly
+                      className="w-full rounded-lg border border-blue-100 bg-white px-4 py-2.5 font-mono text-sm text-blue-900"
+                      aria-label="Shared School Code"
+                    />
+                    <button
+                      type="button"
+                      disabled={!settings.schoolCode}
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(settings.schoolCode);
+                          toast.success('School code copied');
+                        } catch {
+                          toast.error('Could not copy the school code');
+                        }
+                      }}
+                      className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Copy size={15} /> Copy
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-gray-600">
+                    Give this code to staff connecting any TrendSCORE app. It identifies this school; the app securely finds the correct server. This code follows the school deployment and cannot be changed here.
+                  </p>
                 </div>
 
                 <div>

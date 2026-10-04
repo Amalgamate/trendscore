@@ -97,7 +97,8 @@ class _SchoolCodeScreenState extends State<SchoolCodeScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Enter the school code provided by your school. Do not enter a website address.',
+                  'Enter the shared school code provided by your school. '
+                  'Use the same code for TrendSCORE apps. Do not enter a website address.',
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),

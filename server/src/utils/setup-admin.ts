@@ -102,7 +102,11 @@ export async function ensureSuperAdmin() {
 
         // Ensure every fresh tenant DB has a resolvable active school context
         // without overwriting an already-provisioned school.
-        const schoolCode = (process.env.SCHOOL_CODE || 'school').trim().toLowerCase();
+        const configuredSchoolCode = (process.env.SCHOOL_CODE || '').trim().toLowerCase();
+        const schoolCode = configuredSchoolCode || 'school';
+        const validSchoolCode = Boolean(configuredSchoolCode)
+            && /^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])$/.test(schoolCode)
+            && !['www', 'api', 'mail', 'admin', 'support', 'blog', 'contact', 'help', 'docs', 'status'].includes(schoolCode);
         const schoolNameRaw = (process.env.SCHOOL_NAME || '').trim();
         const schoolName = schoolNameRaw || schoolCode
             .split(/[-_]+/)
@@ -122,6 +126,15 @@ export async function ensureSuperAdmin() {
         });
 
         if (existingActiveSchool) {
+            // SCHOOL_CODE is the tenant subdomain and the one shared app code.
+            // Fill only an empty value: never overwrite an assigned school code.
+            if (validSchoolCode && !existingActiveSchool.schoolCode) {
+                await prisma.school.update({
+                    where: { id: existingActiveSchool.id },
+                    data: { schoolCode },
+                });
+                console.log(`✅ Shared school code configured: ${schoolCode}`);
+            }
             console.log(`✅ School context ready: ${existingActiveSchool.id} (${existingActiveSchool.name})`);
         } else {
             await prisma.school.upsert({
@@ -129,6 +142,7 @@ export async function ensureSuperAdmin() {
                 create: {
                     id: schoolCode,
                     name: schoolName,
+                    ...(validSchoolCode ? { schoolCode } : {}),
                     active: true,
                     status: 'ACTIVE',
                     archived: false,

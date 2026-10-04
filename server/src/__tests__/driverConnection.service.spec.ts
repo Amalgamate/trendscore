@@ -108,7 +108,7 @@ describe('driverConnectionService.resolve', () => {
 
   it('uses the isolated tenant school when the verified subdomain is its code', async () => {
     db.school.findFirst.mockResolvedValueOnce(null);
-    db.school.findMany.mockResolvedValueOnce([{ ...SCHOOL, driverCode: null }]);
+    db.school.findMany.mockResolvedValueOnce([{ ...SCHOOL, schoolCode: null }]);
     const result = await driverConnectionService.resolve('ibse', 'ibse.trendscore.co.ke');
     expect(result.schoolCode).toBe('ibse');
     expect(result.apiOrigin).toBe('https://ibse.trendscore.co.ke/api');
@@ -121,11 +121,11 @@ describe('driverConnectionService.resolve', () => {
     expect(db.school.findFirst).not.toHaveBeenCalled();
   });
 
-  it('only ever matches on driverCode + active', async () => {
+  it('only ever matches on the shared schoolCode + active', async () => {
     db.school.findFirst.mockResolvedValueOnce(null);
     await driverConnectionService.resolve('zawadi').catch(() => {});
     expect(db.school.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { driverCode: 'zawadi', active: true } }),
+      expect.objectContaining({ where: { schoolCode: 'zawadi', active: true } }),
     );
   });
 });

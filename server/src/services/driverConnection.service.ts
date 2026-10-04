@@ -64,7 +64,7 @@ export const driverConnectionService = {
     }
 
     const configuredSchool = await prisma.school.findFirst({
-      where: { driverCode: code, active: true },
+      where: { schoolCode: code, active: true },
       select: {
         id: true,
         name: true,
@@ -77,7 +77,7 @@ export const driverConnectionService = {
     if (configuredSchool) return { code, school: configuredSchool };
 
     // Separate school stacks commonly contain just one active School row and
-    // have no driverCode configured yet. The verified host is the tenant key.
+    // have no persisted schoolCode configured yet. The verified host is the tenant key.
     if (hostname) {
       const tenantSchools = await prisma.school.findMany({
         where: { active: true },
@@ -88,10 +88,10 @@ export const driverConnectionService = {
           motto: true,
           logoUrl: true,
           brandColor: true,
-          driverCode: true,
+          schoolCode: true,
         },
       });
-      if (tenantSchools.length === 1 && !tenantSchools[0].driverCode) {
+      if (tenantSchools.length === 1 && !tenantSchools[0].schoolCode) {
         return { code, school: tenantSchools[0] };
       }
       return null;

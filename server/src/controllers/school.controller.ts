@@ -10,6 +10,7 @@ import { clearSchoolCache } from '../middleware/schoolContext.middleware';
 import { applyModulePackageToSchool, normalizePackageId } from '../services/moduleCatalog.service';
 import { buildInstalledAppName } from '../utils/pwa.util';
 import { resolveCurrentSchool } from '../services/school-resolver.service';
+import { normalizeSchoolCode, isReservedSubdomain } from '../config/schoolDomains';
 
 import logger from '../utils/logger';
 const VALID_INSTITUTION_TYPES = new Set(['PRIMARY_CBC', 'SECONDARY', 'TERTIARY']);
@@ -31,6 +32,11 @@ const VALID_REPORT_ENGINES = new Set(['LEGACY', 'NEW']);
 
 const isDataUri = (value: unknown): value is string =>
   typeof value === 'string' && value.startsWith('data:');
+
+const getConfiguredSchoolCode = (): string | null => {
+  const code = normalizeSchoolCode(process.env.SCHOOL_CODE);
+  return code && !isReservedSubdomain(code) ? code : null;
+};
 
 const resolveBrandingAssetUrl = (assetType: 'logo' | 'favicon' | 'stamp' | 'pwa-logo', value: string | null | undefined, updatedAt?: Date) => {
   if (!value) return value;
@@ -150,7 +156,12 @@ export const getPublicBranding = async (req: Request, res: Response) => {
 export const getSchool = async (req: AuthRequest, res: Response) => {
   const school = await resolveCurrentSchool();
   if (!school) throw new ApiError(404, 'School not found');
-  res.status(200).json({ success: true, data: optimizeSchoolPayload(school) });
+  const configuredCode = getConfiguredSchoolCode();
+  const sharedSchoolCode = school.schoolCode || configuredCode;
+  res.status(200).json({
+    success: true,
+    data: optimizeSchoolPayload({ ...school, schoolCode: sharedSchoolCode }),
+  });
 };
 
 export const getPublicBrandingAsset = async (req: Request, res: Response) => {
@@ -195,6 +206,7 @@ export const getPublicBrandingAsset = async (req: Request, res: Response) => {
 export const updateSchool = async (req: AuthRequest, res: Response) => {
   const school = await resolveCurrentSchool();
   const updatePayload = normalizeSchoolUpdatePayload(req.body);
+  const configuredCode = getConfiguredSchoolCode();
 
   // TRENDSCORE_EREPORT_ENGINE_CHECKLIST.md — Phase 7 (School-Level Engine Selection)
   // Validate reportEngine/reportTemplateId the same way institutionType is
@@ -223,6 +235,7 @@ export const updateSchool = async (req: AuthRequest, res: Response) => {
     const created = await prisma.school.create({
       data: {
         ...updatePayload,
+        ...(configuredCode ? { schoolCode: configuredCode } : {}),
         name: updatePayload.name || PRODUCT_DISPLAY_NAME, // Ensure a name exists
         motto: updatePayload.motto || 'School Management System',
         logoUrl: updatePayload.logoUrl || '/branding/logo.png',

@@ -56,6 +56,8 @@ export const loginSchema = z.object({
   // from this schema is STRIPPED before authController.login runs. Without
   // them the gate in login() silently never sees a deviceId and every driver
   // phone would be let in regardless of approval status.
+  schoolCode: z.string().trim().min(1).max(32).optional(),
+  // Backward compatibility for already-installed driver APKs.
   driverCode: z.string().trim().min(1).max(32).optional(),
   deviceId: z.string().trim().min(1).max(128).optional(),
 }).refine((data) => Boolean(data.email || data.phone), {

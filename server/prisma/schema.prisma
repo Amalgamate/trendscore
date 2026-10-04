@@ -227,14 +227,11 @@ model School {
   brandColor                             String?
   welcomeMessage                         String?
 
-  // ── Driver app onboarding ────────────────────────────────────────────────
-  // Short, human-typable code a driver enters on first launch to select this
-  // school, e.g. "zawadi". Nullable and unique: most schools never onboard a
-  // driver app, and leaving it null keeps them out of the public directory.
-  // Deliberately NOT the school name or subdomain: those are operational, and
-  // a driver must never be handed a URL. The app resolves this code through the
-  // server-owned domain pattern, never by accepting a URL from the device.
-  driverCode                             String?                    @unique
+  // Shared connection code used by every TrendsCORE app. It matches the
+  // tenant's configured SCHOOL_CODE/subdomain and is resolved server-side.
+  // Preserve the existing DB column with @map so this rename requires no
+  // data-moving migration and does not alter live school records.
+  schoolCode                             String?                    @unique @map("driverCode")
 
   driverDevices                          DriverDevice[]
   welcomeTitle                           String?
