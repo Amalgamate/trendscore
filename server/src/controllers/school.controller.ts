@@ -168,11 +168,17 @@ export const getSchool = async (req: AuthRequest, res: Response) => {
   const sharedSchoolCode = school.schoolCode || configuredCode || getSchoolCodeFromHostname(req.hostname);
   if (!school.schoolCode && sharedSchoolCode) {
     // Safe one-time backfill: only populate a blank code; never replace one
-    // already associated with the school's app connections.
-    await prisma.school.updateMany({
-      where: { id: school.id, schoolCode: null },
-      data: { schoolCode: sharedSchoolCode },
-    });
+    // already associated with the school's app connections. A conflict must
+    // not prevent school settings from being read; the hostname-derived code
+    // is still returned to this tenant's portal.
+    try {
+      await prisma.school.updateMany({
+        where: { id: school.id, schoolCode: null },
+        data: { schoolCode: sharedSchoolCode },
+      });
+    } catch (error) {
+      logger.warn({ err: error, schoolId: school.id }, '[SchoolSettings] Could not persist shared school code');
+    }
   }
   res.status(200).json({
     success: true,

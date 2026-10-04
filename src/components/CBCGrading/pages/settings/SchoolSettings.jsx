@@ -15,6 +15,17 @@ import { buildSampleReportData } from '../../templates/reportTemplates/sampleRep
 
 const cleanSchoolName = (value) => String(value || '').trim();
 
+const getTenantSchoolCode = () => {
+  const host = typeof window === 'undefined' ? '' : window.location.hostname.toLowerCase();
+  const suffix = '.trendscore.co.ke';
+  if (!host.endsWith(suffix)) return '';
+  const code = host.slice(0, -suffix.length);
+  return /^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])$/.test(code)
+    && !['www', 'api', 'mail', 'admin', 'support', 'blog', 'contact', 'help', 'docs', 'status'].includes(code)
+    ? code
+    : '';
+};
+
 const traceRoundedRect = (context, x, y, width, height, radius) => {
   const safeRadius = Math.min(radius, width / 2, height / 2);
   context.beginPath();
@@ -220,7 +231,7 @@ const SchoolSettings = ({ brandingSettings, setBrandingSettings }) => {
         if (school) {
           const fetchedSettings = {
             schoolName: cleanSchoolName(school.name || school.schoolName),
-            schoolCode: school.schoolCode || '',
+            schoolCode: school.schoolCode || getTenantSchoolCode(),
             address: school.address || '',
             phone: school.phone || '',
             email: school.email || '',
