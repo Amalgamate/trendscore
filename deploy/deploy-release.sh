@@ -836,6 +836,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS "summative_tests_series_unique_key"
 SQL
       npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-presence-monitoring.sql
 
+      # 6. Repair the eReport school columns for databases that were
+      # auto-baselined after being provisioned with db push. Baseline marks
+      # every migration applied, even when a later additive migration never
+      # physically ran. Keep this repair additive so live school data is
+      # preserved; the regular migration remains the source of truth on clean
+      # installs.
+      cat >/tmp/repair-school-report-engine.sql <<'SQL'
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ReportEngine') THEN
+    CREATE TYPE "ReportEngine" AS ENUM ('LEGACY', 'NEW');
+  END IF;
+END $$;
+
+ALTER TABLE "schools"
+  ADD COLUMN IF NOT EXISTS "reportEngine" "ReportEngine" NOT NULL DEFAULT 'LEGACY',
+  ADD COLUMN IF NOT EXISTS "reportTemplateId" TEXT;
+SQL
+      npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-school-report-engine.sql
+
       # 7. Apply any pending migrations
       npx prisma migrate deploy
 REMOTE
