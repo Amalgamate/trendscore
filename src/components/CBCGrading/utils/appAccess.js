@@ -127,6 +127,7 @@ const PAGE_APP_REQUIREMENTS = {
   'transport-routes': 'transport',
   'transport-tracking': 'transport',
   'transport-drivers': 'transport',
+  'driver-app-devices': 'transport',
   'transport-students': 'transport',
   'hostel-fees': 'transport',
   'transport-reports': 'transport',

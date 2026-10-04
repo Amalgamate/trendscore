@@ -44,6 +44,17 @@ export const transportAPI = {
             body: JSON.stringify(data)
         }),
 
+    /**
+     * Assign the staff account that drives this vehicle.
+     * Pass null to unassign. The server re-syncs driverName/driverPhone from the
+     * linked user and rejects a driver already assigned to another live vehicle.
+     */
+    assignVehicleDriver: (id, driverId) =>
+        fetchWithAuth(`/transport/vehicles/${id}/driver`, {
+            method: 'PATCH',
+            body: JSON.stringify({ driverId })
+        }),
+
     deleteVehicle: (id) =>
         fetchWithAuth(`/transport/vehicles/${id}`, { method: 'DELETE' }),
 
@@ -86,5 +97,28 @@ export const transportAPI = {
         }),
 
     deleteAssignment: (id) =>
-        fetchWithAuth(`/transport/assignments/${id}`, { method: 'DELETE' })
+        fetchWithAuth(`/transport/assignments/${id}`, { method: 'DELETE' }),
+
+    // ── Driver app devices (universal APK onboarding) ────────────────────────
+    // A phone running the one universal driver APK identifies its school by
+    // CODE, never by URL. Until an administrator approves it here, the app is
+    // refused at /api/auth/login with 403 DEVICE_NOT_APPROVED — so this list is
+    // the only thing standing between a guessed school code and a real school's
+    // routes and learner list.
+
+    listDriverDevices: (status) =>
+        fetchWithAuth(`/driver-devices${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+
+    approveDriverDevice: (id) =>
+        fetchWithAuth(`/driver-devices/${id}/approve`, {
+            method: 'POST',
+            body: JSON.stringify({})
+        }),
+
+    revokeDriverDevice: (id) =>
+        fetchWithAuth(`/driver-devices/${id}/revoke`, {
+            method: 'POST',
+            body: JSON.stringify({})
+        }),
+
 };

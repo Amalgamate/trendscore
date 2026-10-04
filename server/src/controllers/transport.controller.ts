@@ -72,6 +72,66 @@ async function getOrCreateFeeStructure(academicYear: number, term: string, grade
 export class TransportController {
 
     // ============================================
+    // DRIVER ASSIGNMENT HELPERS
+    // ============================================
+
+    /**
+     * Validate a driverId and return the linked user.
+     *
+     * A vehicle stores the driver twice: `driverId` (the real identity the
+     * driver app signs in with) and `driverName`/`driverPhone` (denormalised
+     * display, kept for the existing admin UI). This resolves the user and
+     * hands back the values used to keep the denormalised copy in sync.
+     */
+    private async resolveDriverUser(driverId: string) {
+        const user = await prisma.user.findUnique({
+            where: { id: driverId },
+            select: {
+                id: true, firstName: true, lastName: true,
+                phone: true, role: true, roles: true,
+                status: true, archived: true,
+            },
+        });
+
+        if (!user || user.archived) throw new ApiError(404, 'Driver user not found');
+        if (user.status !== 'ACTIVE') throw new ApiError(400, 'Driver account is not active');
+
+        const roles: string[] = user.roles && user.roles.length > 0 ? user.roles : [user.role];
+        if (!roles.includes('DRIVER')) {
+            throw new ApiError(400, 'Selected user does not have the DRIVER role');
+        }
+
+        return {
+            id: user.id,
+            driverName: `${user.firstName} ${user.lastName}`.trim(),
+            driverPhone: user.phone ?? null,
+        };
+    }
+
+    /**
+     * Ensure a driver is not already assigned to another live vehicle.
+     * TransportVehicle.driverId is @unique, so this converts what would be an
+     * opaque P2002 database error into an actionable message.
+     */
+    private async assertDriverNotOnAnotherVehicle(driverId: string, currentVehicleId?: string) {
+        const conflict = await prisma.transportVehicle.findFirst({
+            where: {
+                driverId,
+                archived: false,
+                ...(currentVehicleId ? { id: { not: currentVehicleId } } : {}),
+            },
+            select: { id: true, registrationNumber: true },
+        });
+
+        if (conflict) {
+            throw new ApiError(
+                400,
+                `This driver is already assigned to vehicle ${conflict.registrationNumber}`,
+            );
+        }
+    }
+
+    // ============================================
     // VEHICLES
     // ============================================
 
@@ -79,7 +139,14 @@ export class TransportController {
         try {
             const vehicles = await prisma.transportVehicle.findMany({
                 where: { archived: false },
-                include: { _count: { select: { routes: true } } },
+                include: {
+                    _count: { select: { routes: true } },
+                    // Surface the linked account so admins see a real person
+                    // rather than a typed-in name.
+                    driver: {
+                        select: { id: true, firstName: true, lastName: true, phone: true, email: true },
+                    },
+                },
                 orderBy: { createdAt: 'desc' }
             });
             res.json({ success: true, data: vehicles });
@@ -91,11 +158,20 @@ export class TransportController {
 
     async createVehicle(req: AuthRequest, res: Response) {
         try {
-            const { registrationNumber, capacity, driverName, driverPhone } = req.body;
+            const { registrationNumber, capacity, driverName, driverPhone, driverId } = req.body;
+
+            // Resolve the driver account first. When linked, name and phone come
+            // from the user record, which both satisfies the required-field checks
+            // below and keeps the denormalised copy from drifting out of date.
+            let linked: { id: string; driverName: string; driverPhone: string | null } | null = null;
+            if (driverId) {
+                linked = await this.resolveDriverUser(String(driverId));
+                await this.assertDriverNotOnAnotherVehicle(linked.id);
+            }
 
             if (!registrationNumber?.trim()) throw new ApiError(400, 'Registration number is required');
-            if (!driverName?.trim())         throw new ApiError(400, 'Driver name is required');
-            if (!driverPhone?.trim())        throw new ApiError(400, 'Driver phone number is required');
+            if (!linked && !driverName?.trim())  throw new ApiError(400, 'Driver name is required');
+            if (!linked && !driverPhone?.trim()) throw new ApiError(400, 'Driver phone number is required');
             if (!capacity || isNaN(Number(capacity))) throw new ApiError(400, 'Valid capacity is required');
 
             const existing = await prisma.transportVehicle.findUnique({
@@ -107,8 +183,9 @@ export class TransportController {
                 data: {
                     registrationNumber: registrationNumber.trim().toUpperCase(),
                     capacity: parseInt(capacity),
-                    driverName: driverName.trim(),
-                    driverPhone: driverPhone?.trim() || null,
+                    driverName: linked ? linked.driverName : driverName.trim(),
+                    driverPhone: linked ? linked.driverPhone : (driverPhone?.trim() || null),
+                    driverId: linked ? linked.id : null,
                 }
             });
 
@@ -122,7 +199,7 @@ export class TransportController {
     async updateVehicle(req: AuthRequest, res: Response) {
         try {
             const { id } = req.params;
-            const { registrationNumber, capacity, driverName, driverPhone, status } = req.body;
+            const { registrationNumber, capacity, driverName, driverPhone, status, driverId } = req.body;
 
             const existing = await prisma.transportVehicle.findUnique({ where: { id } });
             if (!existing || existing.archived) throw new ApiError(404, 'Vehicle not found');
@@ -135,6 +212,19 @@ export class TransportController {
                 if (conflict && !conflict.archived) throw new ApiError(400, 'Registration number already in use');
             }
 
+            // driverId is deliberately tri-state:
+            //   absent     → leave the assignment untouched (back-compat: existing
+            //                admin UIs PATCH capacity/status without sending it)
+            //   null / ""  → unassign the driver, keeping the display fields
+            //   a real id   → (re)assign and re-sync name + phone from the user
+            const driverKeyProvided = Object.prototype.hasOwnProperty.call(req.body, 'driverId');
+            let linked: { id: string; driverName: string; driverPhone: string | null } | null = null;
+
+            if (driverKeyProvided && driverId) {
+                linked = await this.resolveDriverUser(String(driverId));
+                await this.assertDriverNotOnAnotherVehicle(linked.id, id);
+            }
+
             const updated = await prisma.transportVehicle.update({
                 where: { id },
                 data: {
@@ -143,6 +233,13 @@ export class TransportController {
                     ...(driverName         && { driverName: driverName.trim() }),
                     ...(driverPhone !== undefined && { driverPhone: driverPhone?.trim() || null }),
                     ...(status             && { status }),
+                    ...(driverKeyProvided && {
+                        driverId:    linked ? linked.id : null,
+                        // Unassigning keeps the last known name/phone so the
+                        // vehicle record stays readable until reassigned.
+                        driverName:  linked ? linked.driverName : (driverName?.trim() || existing.driverName),
+                        driverPhone: linked ? linked.driverPhone : (driverPhone?.trim() || existing.driverPhone),
+                    }),
                 }
             });
 
@@ -153,16 +250,73 @@ export class TransportController {
         }
     }
 
+    /**
+     * PATCH /api/transport/vehicles/:id/driver
+     *
+     * Assign, reassign, or unassign the driver for a vehicle. Send
+     * `{ "driverId": "..." }` to assign and `{ "driverId": null }` to unassign.
+     * The denormalised driverName/driverPhone are re-synced from the user record
+     * so the admin UI never shows a stale typed-in name next to a linked account.
+     */
+    async assignVehicleDriver(req: AuthRequest, res: Response) {
+        try {
+            const { id } = req.params;
+            const driverId = req.body.driverId;
+
+            const vehicle = await prisma.transportVehicle.findUnique({ where: { id } });
+            if (!vehicle || vehicle.archived) throw new ApiError(404, 'Vehicle not found');
+
+            let linked: { id: string; driverName: string; driverPhone: string | null } | null = null;
+            if (driverId) {
+                linked = await this.resolveDriverUser(String(driverId));
+                await this.assertDriverNotOnAnotherVehicle(linked.id, id);
+            }
+
+            const updated = await prisma.transportVehicle.update({
+                where: { id },
+                data: {
+                    driverId: linked ? linked.id : null,
+                    ...(linked && { driverName: linked.driverName, driverPhone: linked.driverPhone }),
+                },
+                include: {
+                    driver: {
+                        select: { id: true, firstName: true, lastName: true, phone: true, email: true },
+                    },
+                },
+            });
+
+            res.json({
+                success: true,
+                data: updated,
+                message: linked
+                    ? `Driver assigned to ${updated.registrationNumber}`
+                    : 'Driver unassigned',
+            });
+        } catch (error: any) {
+            logger.error('[TransportController] assignVehicleDriver:', error);
+            res.status(error.statusCode || 500).json({ success: false, message: error.message });
+        }
+    }
+
     async deleteVehicle(req: AuthRequest, res: Response) {
         try {
             const { id } = req.params;
+
+            // driverId is @unique across every row, archived ones included. If an
+            // archived vehicle kept holding a driver, that driver could never be
+            // assigned to a replacement vehicle — the unique constraint would
+            // reject it even though the archived row is logically gone. Release
+            // the driver on archive, but keep the denormalised name/phone so the
+            // historical record still reads correctly.
             await prisma.transportVehicle.update({
                 where: { id },
-                data: { archived: true }
+                data: { archived: true, driverId: null }
             });
+
             res.json({ success: true, message: 'Vehicle archived' });
         } catch (error: any) {
-            res.status(500).json({ success: false, message: error.message });
+            logger.error('[TransportController] deleteVehicle:', error);
+            res.status(error.statusCode || 500).json({ success: false, message: error.message });
         }
     }
 

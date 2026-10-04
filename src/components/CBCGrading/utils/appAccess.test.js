@@ -16,6 +16,7 @@ describe('appAccess', () => {
     expect(getRequiredAppForPage('assess-summative-report')).toBe('exams');
     expect(getRequiredAppForPage('assess-summary-report')).toBe('gradebook');
     expect(getRequiredAppForPage('inventory-items')).toBe('inventory');
+    expect(getRequiredAppForPage('driver-app-devices')).toBe('transport');
   });
 
   it('treats unknown pages as unrestricted', () => {

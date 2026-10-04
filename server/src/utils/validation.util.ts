@@ -50,7 +50,14 @@ export const loginSchema = z.object({
   email: optionalEmailSchema,
   phone: optionalLoginPhoneSchema,
   password: z.string().min(1, 'Password is required'),
-  rememberMe: z.boolean().optional().default(false)
+  rememberMe: z.boolean().optional().default(false),
+  // Driver-app device approval. These MUST be declared here: the `validate`
+  // middleware replaces req.body with the parsed output, so any key missing
+  // from this schema is STRIPPED before authController.login runs. Without
+  // them the gate in login() silently never sees a deviceId and every driver
+  // phone would be let in regardless of approval status.
+  driverCode: z.string().trim().min(1).max(32).optional(),
+  deviceId: z.string().trim().min(1).max(128).optional(),
 }).refine((data) => Boolean(data.email || data.phone), {
   message: 'Email or phone number is required',
   path: ['email'],
