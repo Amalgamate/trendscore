@@ -18,8 +18,8 @@ router.post('/fee-roster/bulk-bill', transportController.bulkBillLearners.bind(t
 
 // ── Vehicles ─────────────────────────────────────────────────────────────────
 router.get('/vehicles',        transportController.getVehicles);
-router.post('/vehicles',       transportController.createVehicle);
-router.patch('/vehicles/:id',  transportController.updateVehicle);
+router.post('/vehicles',       transportController.createVehicle.bind(transportController));
+router.patch('/vehicles/:id',  transportController.updateVehicle.bind(transportController));
 router.delete('/vehicles/:id', transportController.deleteVehicle);
 
 /**
@@ -29,7 +29,7 @@ router.delete('/vehicles/:id', transportController.deleteVehicle);
  * a "pick a driver from the staff list" action that carries no other changes, and
  * keeping it separate means the tri-state logic in updateVehicle stays obvious.
  */
-router.patch('/vehicles/:id/driver', transportController.assignVehicleDriver);
+router.patch('/vehicles/:id/driver', transportController.assignVehicleDriver.bind(transportController));
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 router.get('/routes',        transportController.getRoutes);
