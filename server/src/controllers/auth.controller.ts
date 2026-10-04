@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import type {} from '@prisma/client';
 import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
+import { driverConnectionService } from '../services/driverConnection.service';
 import { Role, canManageRole } from '../config/permissions';
 import { AuthRequest } from '../middleware/permissions.middleware';
 import { validatePassword, DEFAULT_PASSWORD_POLICY, PARENT_PASSWORD_POLICY } from '../utils/password.util';
@@ -128,6 +129,18 @@ export class AuthController {
   }
 
   async login(req: Request, res: Response) {
+    // Driver-app device approval (contract §4 in apps/driver_app/API_CONTRACT.md).
+    // Opt-in: only the driver app sends a deviceId, so the web/parent portals and
+    // every other client skip this entirely. Checked BEFORE any credential work
+    // so an unapproved phone cannot use login as a password oracle.
+    const deviceId = typeof req.body?.deviceId === 'string' ? req.body.deviceId.trim() : '';
+    if (deviceId) {
+      if (!req.body?.driverCode) {
+        throw new ApiError(400, 'A school code is required when signing in from the driver app.');
+      }
+      await driverConnectionService.assertDeviceApproved(req.body.driverCode, deviceId, req.hostname);
+    }
+
     const result = await authLoginService.loginWithPassword({
       email: req.body.email,
       phone: req.body.phone,

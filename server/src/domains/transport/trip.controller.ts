@@ -165,6 +165,177 @@ export class TripController {
     res.json({ success: true, data: manifest });
   }
 
+  // ── Skip pickup (confirmed not collected) ───────────────────────────────────
+
+  /**
+   * POST /api/v1/driver/trips/:tripId/skip
+   *
+   * Driver confirms a learner was not collected. Triggers the guardian alert,
+   * which is the whole point: a parent who is not told may assume their child is
+   * on the bus.
+   *
+   * Ownership is enforced, and reportedBy is forced to the signed-in driver so
+   * nobody can be framed for another driver's report.
+   */
+  async recordMySkip(req: AuthRequest, res: Response) {
+    const userId = req.user?.userId;
+    if (!userId) throw new ApiError(401, 'Authentication required');
+
+    const { learnerId, reason, note, deviceId } = req.body;
+    if (!learnerId) throw new ApiError(400, 'learnerId is required');
+
+    const allowedReasons = [
+      'NO_ANSWER', 'REFUSED', 'ABSENT', 'ALREADY_COLLECTED', 'LATE', 'OTHER',
+    ];
+    if (reason && !allowedReasons.includes(reason)) {
+      throw new ApiError(400, `reason must be one of ${allowedReasons.join(', ')}`);
+    }
+    if (reason === 'OTHER' && !note?.trim()) {
+      throw new ApiError(400, 'A note is required when reason is OTHER');
+    }
+
+    await tripService.assertDriverOwnsTrip(userId, req.params.tripId);
+
+    const result = await tripService.recordNoShow({
+      tripId:     req.params.tripId,
+      learnerId,
+      reason:     reason || 'NO_ANSWER',
+      note:       note?.trim() || undefined,
+      reportedBy: userId,
+      deviceId:   deviceId ?? undefined,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: result.noShow,
+      // The app must warn the driver when the alert did not go out, so they
+      // phone the office instead of assuming the parent was told.
+      meta: { guardianNotified: result.guardianNotified },
+    });
+  }
+
+  /**
+   * GET /api/v1/driver/trips/:tripId/skips
+   *
+   * Confirmed skips for a trip. `unnotified` counts skips whose guardian alert
+   * failed, which is what the office needs to chase.
+   */
+  async getMySkips(req: AuthRequest, res: Response) {
+    const userId = req.user?.userId;
+    if (!userId) throw new ApiError(401, 'Authentication required');
+
+    await tripService.assertDriverOwnsTrip(userId, req.params.tripId);
+    const report = await tripService.getNoShows(req.params.tripId);
+    res.json({ success: true, data: report });
+  }
+
+  // ── Driver-scoped endpoints ────────────────────────────────────────────────
+
+  /**
+   * GET /api/v1/driver/today
+   *
+   * The single call the driver app makes on launch: which vehicle am I assigned,
+   * what runs today, and how many learners are still pending. Everything is
+   * scoped to the signed-in driver rather than filtered by permission, so a
+   * driver can never see another driver's routes.
+   */
+  async getMyDay(req: AuthRequest, res: Response) {
+    const userId = req.user?.userId;
+    if (!userId) throw new ApiError(401, 'Authentication required');
+
+    const dateParam = req.query.date ? new Date(String(req.query.date)) : undefined;
+    if (dateParam && Number.isNaN(dateParam.getTime())) {
+      throw new ApiError(400, 'date must be a valid ISO date');
+    }
+
+    const day = await tripService.getDriverDay(userId, dateParam);
+    res.json({ success: true, data: day });
+  }
+
+  /**
+   * GET /api/v1/driver/vehicle
+   * The driver's own vehicle, or null when none is assigned yet.
+   */
+  async getMyVehicle(req: AuthRequest, res: Response) {
+    const userId = req.user?.userId;
+    if (!userId) throw new ApiError(401, 'Authentication required');
+
+    const vehicle = await tripService.getDriverVehicle(userId);
+    res.json({ success: true, data: vehicle });
+  }
+
+  /**
+   * GET /api/v1/driver/trips/:tripId/manifest
+   * Driver-scoped read of the boarding manifest. Ownership is enforced so a
+   * driver cannot read the manifest of a trip they do not run.
+   */
+  async getMyTripManifest(req: AuthRequest, res: Response) {
+    const userId = req.user?.userId;
+    if (!userId) throw new ApiError(401, 'Authentication required');
+
+    await tripService.assertDriverOwnsTrip(userId, req.params.tripId);
+    const manifest = await tripService.getTripManifest(req.params.tripId);
+    res.json({ success: true, data: manifest });
+  }
+
+  /**
+   * POST /api/v1/driver/trips/:tripId/board
+   * Driver-scoped boarding record. Delegates to the shared trip service so the
+   * presence event and parent notification behave exactly as they do for admins.
+   */
+  async recordMyBoarding(req: AuthRequest, res: Response) {
+    const userId = req.user?.userId;
+    if (!userId) throw new ApiError(401, 'Authentication required');
+
+    const { learnerId, eventType, method, deviceId } = req.body;
+    if (!learnerId)                throw new ApiError(400, 'learnerId is required');
+    if (!['BOARDED', 'ALIGHTED'].includes(eventType)) {
+      throw new ApiError(400, 'eventType must be BOARDED or ALIGHTED');
+    }
+
+    await tripService.assertDriverOwnsTrip(userId, req.params.tripId);
+
+    const result = await tripService.recordBoardingEvent({
+      tripId:      req.params.tripId,
+      learnerId,
+      eventType,
+      method:      method ?? 'MANUAL',
+      // Attribution is forced to the signed-in driver, never client-supplied.
+      recordedBy:  userId,
+      deviceId:    deviceId ?? undefined,
+    });
+
+    res.status(201).json({ success: true, data: result.boardingEvent });
+  }
+
+  /**
+   * PATCH /api/v1/driver/trips/:tripId/status
+   * Driver-scoped status change (DEPART / COMPLETE).
+   */
+  async updateMyTripStatus(req: AuthRequest, res: Response) {
+    const userId = req.user?.userId;
+    if (!userId) throw new ApiError(401, 'Authentication required');
+
+    const { status } = req.body;
+    const allowed = ['IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
+    if (!allowed.includes(status)) {
+      throw new ApiError(400, `status must be one of ${allowed.join(', ')}`);
+    }
+
+    await tripService.assertDriverOwnsTrip(userId, req.params.tripId);
+
+    const now = new Date();
+    const trip = await tripService.updateTripStatus(
+      req.params.tripId,
+      status,
+      status === 'IN_PROGRESS' ? { departedAt: now }
+        : status === 'COMPLETED'  ? { arrivedAt: now }
+        : undefined,
+    );
+
+    res.json({ success: true, data: trip });
+  }
+
   // ── Private helpers ────────────────────────────────────────────────────────
 
   private async resolveSchoolId(): Promise<string> {

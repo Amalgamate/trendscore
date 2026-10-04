@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import healthRoutes from './health.routes';
+import driverConnectionRoutes from './driver-connection.routes';
+import driverDevicesAdminRoutes from './driver-devices-admin.routes';
 import diagnosticsRoutes from './diagnostics.routes';
 import migrationRoutes from './migration.routes';
 import authRoutes from './auth.routes';
@@ -66,6 +68,7 @@ import teacherRoutes from './teacher.routes';
 import timetableRoutes from '../modules/timetable/timetable.routes';
 import presenceRoutes from './presence.routes';
 import tripRoutes from './trips.routes';
+import driverRoutes from './driver.routes';
 import webhookRoutes from './webhooks.routes';
 import boardingRoutes from './boarding.routes';
 import analyticsRoutes from './analytics.routes';
@@ -80,6 +83,7 @@ const router = Router();
 // PUBLIC ROUTES
 // ============================================
 router.use('/health', healthRoutes);
+router.use('/driver-connection', driverConnectionRoutes);
 router.use('/auth', authRoutes);
 router.use('/onboarding', onboardingRoutes);
 router.use('/books', bookRoutes);
@@ -150,6 +154,7 @@ router.use('/notices', requireApp('announcements'), noticeRoutes);
 router.use('/pdf', pdfRoutes);
 router.use('/id-templates', idTemplateRoutes);
 router.use('/transport', requireApp('transport'), transportRoutes);
+router.use('/driver-devices', driverDevicesAdminRoutes);
 router.use('/user-notifications', userNotificationRoutes);
 router.use('/changelogs', changelogRoutes);
 router.use('/lms', requireApp('lms-professional'), lmsRoutes);
@@ -165,6 +170,10 @@ router.use('/migrations', migrationRoutes);
 router.use('/v1/presence', presenceRoutes);
 // ── Transport Trips (v1) ────────────────────────────────────────────────────
 router.use('/v1/transport/trips', tripRoutes);
+// ── Driver App (v1) ───────────────────────────────────────────────────────────
+// Identity-scoped counterpart to the admin trip routes above. Used by the native
+// driver app; see driver.routes.ts for why ownership must be re-checked.
+router.use('/v1/driver', driverRoutes);
 // ── Boarding Module (v1) ────────────────────────────────────────────────────
 router.use('/v1/boarding', boardingRoutes);
 // ── Analytics & Intelligence (v1) ──────────────────────────────────────────

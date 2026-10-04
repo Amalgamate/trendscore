@@ -22,6 +22,15 @@ router.post('/vehicles',       transportController.createVehicle);
 router.patch('/vehicles/:id',  transportController.updateVehicle);
 router.delete('/vehicles/:id', transportController.deleteVehicle);
 
+/**
+ * Assign / reassign / unassign the driver who operates a vehicle.
+ *
+ * A dedicated verb rather than a field on the generic update: the admin UI needs
+ * a "pick a driver from the staff list" action that carries no other changes, and
+ * keeping it separate means the tri-state logic in updateVehicle stays obvious.
+ */
+router.patch('/vehicles/:id/driver', transportController.assignVehicleDriver);
+
 // ── Routes ───────────────────────────────────────────────────────────────────
 router.get('/routes',        transportController.getRoutes);
 router.post('/routes',       transportController.createRoute);

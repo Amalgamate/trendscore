@@ -37,7 +37,8 @@ export type AttendanceNotificationType =
   | 'MANUAL_ABSENT'
   | 'MANUAL_PRESENT'
   | 'BUS_BOARDED'
-  | 'BUS_ALIGHTED';
+  | 'BUS_ALIGHTED'
+  | 'BUS_SKIPPED';
 
 export interface AttendanceNotificationPayload {
   learnerId:  string;
@@ -70,6 +71,7 @@ const TRIGGER_TYPE_MAP: Record<AttendanceNotificationType, string> = {
   MANUAL_PRESENT: 'MANUAL_PRESENT',
   BUS_BOARDED:    'BUS_BOARDED',
   BUS_ALIGHTED:   'BUS_ALIGHTED',
+  BUS_SKIPPED:    'BUS_SKIPPED',
 };
 
 // ---------------------------------------------------------------------------
@@ -136,6 +138,10 @@ function buildMessage(
     case 'BUS_ALIGHTED':
       return (
         `Dear Parent, ${learnerName} (${grade}) alighted from the school bus at ${time} EAT. Please ensure they arrive home safely.`
+      );
+    case 'BUS_SKIPPED':
+      return (
+        `Dear Parent, ${learnerName} (${grade}) was not on board the school bus at pickup at ${time} EAT. Please contact the school if this is unexpected.`
       );
   }
 }

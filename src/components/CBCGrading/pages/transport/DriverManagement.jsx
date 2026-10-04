@@ -60,6 +60,8 @@ function vehiclesToDrivers(vehicles, routes) {
         vehicleId:   v.id,
         name:        v.driverName,
         phone:       v.driverPhone || '',
+        userId:      v.driver?.id || v.driverId || '',
+        loginUser:   v.driver || null,
         vehicle:     v.registrationNumber,
         vehicleObj:  v,
         routes:      assignedRoutes,
@@ -113,6 +115,10 @@ function DriverCard({ driver, onEdit, onDelete }) {
           )}
         </div>
 
+        <p className={`text-[11px] mb-3 ${driver.userId ? 'text-emerald-700' : 'text-amber-700'}`}>
+          {driver.userId ? 'Driver app account linked' : 'No driver app account linked'}
+        </p>
+
         {/* Routes */}
         <div className="space-y-1.5 mb-4">
           <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest flex items-center gap-1">
@@ -153,12 +159,13 @@ function DriverCard({ driver, onEdit, onDelete }) {
 
 // ─── edit / add modal ─────────────────────────────────────────────────────────
 
-function DriverModal({ driver, vehicles, onClose, onSave, saving }) {
+function DriverModal({ driver, vehicles, driverUsers, onClose, onSave, saving }) {
   const isNew = !driver;
   const [form, setForm] = useState({
     vehicleId:   driver?.vehicleId  || '',
     driverName:  driver?.name       || '',
     driverPhone: driver?.phone      || '',
+    driverUserId: driver?.userId    || '',
   });
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -192,6 +199,34 @@ function DriverModal({ driver, vehicles, onClose, onSave, saving }) {
               ))}
             </select>
           </FormField>
+          <FormField label="Driver sign-in account">
+            <select
+              className={inputCls}
+              value={form.driverUserId}
+              onChange={e => {
+                const driverUserId = e.target.value;
+                const account = driverUsers.find(user => user.id === driverUserId);
+                setForm(current => ({
+                  ...current,
+                  driverUserId,
+                  ...(account ? {
+                    driverName: `${account.firstName || ''} ${account.lastName || ''}`.trim(),
+                    driverPhone: account.phone || '',
+                  } : {}),
+                }));
+              }}
+            >
+              <option value="">— No app account linked —</option>
+              {driverUsers.map(user => (
+                <option key={user.id} value={user.id}>
+                  {[user.firstName, user.lastName].filter(Boolean).join(' ')}{user.phone ? ` · ${user.phone}` : ''}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-gray-500">
+              Create the driver's phone/password account first in Settings → User Management with the DRIVER role.
+            </p>
+          </FormField>
           <FormField label="Driver Full Name" required>
             <input className={inputCls} value={form.driverName}
               onChange={e => f('driverName', e.target.value)}
@@ -224,6 +259,7 @@ function DriverModal({ driver, vehicles, onClose, onSave, saving }) {
 const DriverManagement = () => {
   const [vehicles, setVehicles]     = useState([]);
   const [routes, setRoutes]         = useState([]);
+  const [driverUsers, setDriverUsers] = useState([]);
   const [loading, setLoading]       = useState(true);
   const [query, setQuery]           = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -234,12 +270,14 @@ const DriverManagement = () => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [vRes, rRes] = await Promise.all([
+      const [vRes, rRes, dRes] = await Promise.all([
         api.transport.getVehicles(),
         api.transport.getRoutes(),
+        api.users.getByRole('DRIVER'),
       ]);
       if (vRes.success) setVehicles(vRes.data);
       if (rRes.success) setRoutes(rRes.data);
+      if (dRes.success) setDriverUsers(dRes.data || []);
     } catch {
       showError('Failed to load driver data');
     } finally {
@@ -267,6 +305,12 @@ const DriverManagement = () => {
         driverPhone: form.driverPhone.trim() || null,
       });
       if (res.success) {
+        const existingUserId = existing?.userId || '';
+        if (form.driverUserId) {
+          await api.transport.assignVehicleDriver(form.vehicleId, form.driverUserId);
+        } else if (existingUserId) {
+          await api.transport.assignVehicleDriver(form.vehicleId, null);
+        }
         showSuccess(existing ? 'Driver updated' : 'Driver assigned');
         setModal(null);
         load();
@@ -466,9 +510,10 @@ const DriverManagement = () => {
 
       {/* Modal */}
       {modal && (
-        <DriverModal
-          driver={modal.driver}
-          vehicles={vehicles}
+      <DriverModal
+        driver={modal.driver}
+        vehicles={vehicles}
+        driverUsers={driverUsers}
           onClose={() => setModal(null)}
           onSave={handleSave}
           saving={saving}

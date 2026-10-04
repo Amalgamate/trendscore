@@ -41,6 +41,24 @@ export interface RecordBoardingInput {
   deviceId?:   string;
 }
 
+/// Why a learner was not collected. Reported by the driver at the stop.
+export type NoShowReason =
+  | 'NO_ANSWER'        // nobody came to the pickup point
+  | 'REFUSED'           // learner declined to board
+  | 'ABSENT'            // learner not at school / already collected
+  | 'ALREADY_COLLECTED' // someone else collected them
+  | 'LATE'
+  | 'OTHER';
+
+export interface RecordNoShowInput {
+  tripId:      string;
+  learnerId:   string;
+  reason?:     NoShowReason;
+  note?:       string;
+  reportedBy?: string;
+  deviceId?:   string;
+}
+
 // ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
@@ -270,6 +288,179 @@ export class TripService {
     return results;
   }
 
+  // ── Skip pickup (confirmed not collected) ───────────────────────────────────
+
+  /**
+   * Record that the driver confirmed a learner was NOT collected on this run.
+   *
+   * Safety-critical: a parent who is not told their child was skipped may
+   * assume the child is on the bus. So this notifies the guardian, mirroring
+   * what recordBoardingEvent does for boarding.
+   *
+   * Contradictions are rejected rather than silently reconciled — a learner
+   * cannot be both boarded and skipped on the same run, and that state means
+   * the driver made a mistake that someone must correct by hand.
+   *
+   * Idempotent on (tripId, learnerId): re-reporting updates the row and does NOT
+   * send a second SMS, so a driver retrying on a flaky connection cannot spam a
+   * parent with two alerts.
+   */
+  async recordNoShow(input: RecordNoShowInput) {
+    const trip = await prisma.transportTrip.findUnique({
+      where: { id: input.tripId },
+      include: { route: { include: { vehicle: true } } },
+    });
+
+    if (!trip || trip.archived) throw new ApiError(404, 'Trip not found');
+    if (trip.status === 'CANCELLED') {
+      throw new ApiError(422, 'Cannot report a skip on a cancelled trip');
+    }
+
+    const learner = await prisma.learner.findUnique({
+      where: { id: input.learnerId },
+      select: { id: true, firstName: true, lastName: true, grade: true },
+    });
+    if (!learner) throw new ApiError(404, 'Learner not found');
+
+    // Must actually be on this route, same rule as boarding.
+    const assignment = await prisma.transportAssignment.findFirst({
+      where: {
+        routeId:      trip.routeId,
+        passengerId:  input.learnerId,
+        passengerType: 'LEARNER',
+        archived:     false,
+      },
+    });
+    if (!assignment) {
+      throw new ApiError(
+        422,
+        `${learner.firstName} ${learner.lastName} is not assigned to this route`,
+      );
+    }
+
+    // A learner who actually boarded cannot also be "not collected".
+    const boarded = await prisma.transportBoardingEvent.findFirst({
+      where: {
+        tripId:     input.tripId,
+        learnerId:  input.learnerId,
+        eventType: 'BOARDED',
+      },
+    });
+    if (boarded) {
+      throw new ApiError(
+        409,
+        `${learner.firstName} ${learner.lastName} was already recorded as boarded. ` +
+        'Remove the boarding record before reporting a skip.',
+      );
+    }
+
+    const existing = await prisma.transportNoShow.findUnique({
+      where: { tripId_learnerId: { tripId: input.tripId, learnerId: input.learnerId } },
+    });
+
+    const noShow = existing
+      ? await prisma.transportNoShow.update({
+          where: { id: existing.id },
+          data: {
+            reason:     input.reason ?? existing.reason,
+            note:       input.note ?? existing.note,
+            reportedBy: input.reportedBy ?? existing.reportedBy,
+            reportedAt: new Date(),
+          },
+        })
+      : await prisma.transportNoShow.create({
+          data: {
+            tripId:     input.tripId,
+            learnerId:  input.learnerId,
+            reason:     input.reason ?? 'NO_ANSWER',
+            note:       input.note ?? null,
+            reportedBy: input.reportedBy ?? null,
+          },
+        });
+
+    logger.info('[TripService] Skip pickup recorded', {
+      tripId: input.tripId,
+      learnerId: input.learnerId,
+      reason: noShow.reason,
+      // true when this call did not create the row, i.e. it is a retry.
+      isUpdate: Boolean(existing),
+    });
+
+    // Only alert on first report. A retry after a dropped connection must not
+    // send the guardian a second message. It must still report the truth,
+    // though: if the first attempt stamped guardianNotifiedAt, the guardian WAS
+    // notified. Returning a hardcoded false here made the driver app warn
+    // "parent not notified" about a parent who had already been told.
+    if (existing) {
+      return { noShow, guardianNotified: Boolean(existing.guardianNotifiedAt) };
+    }
+
+    try {
+      await attendanceNotificationService.notify({
+        learnerId: input.learnerId,
+        schoolId:  trip.schoolId,
+        type:      'BUS_SKIPPED',
+        timestamp: new Date(),
+      });
+
+      const stamped = await prisma.transportNoShow.update({
+        where: { id: noShow.id },
+        data: { guardianNotifiedAt: new Date() },
+      });
+
+      return { noShow: stamped, guardianNotified: true };
+    } catch (err) {
+      // The skip is still recorded and still reportable; only the alert failed.
+      // guardianNotifiedAt stays null so it can be retried by the office.
+      logger.error('[TripService] Guardian alert failed for skip pickup', {
+        tripId: input.tripId,
+        learnerId: input.learnerId,
+        err: (err as Error)?.message,
+      });
+      return { noShow, guardianNotified: false };
+    }
+  }
+
+  /**
+   * Skips for a trip, with learner names. Used by the driver manifest and the
+   * office report.
+   */
+  async getNoShows(tripId: string) {
+    const trip = await this.getTripById(tripId);
+    const rows = await prisma.transportNoShow.findMany({
+      where: { tripId, trip: { archived: false } },
+      orderBy: { reportedAt: 'asc' },
+      include: {
+        learner: {
+          select: { id: true, firstName: true, lastName: true, grade: true },
+        },
+      },
+    });
+
+    return {
+      trip: {
+        id:         trip.id,
+        routeName:  trip.route.name,
+        direction:  trip.direction,
+        date:       trip.date,
+        status:     trip.status,
+      },
+      total:      rows.length,
+      // A skip with no guardianNotifiedAt still needs an alert sent.
+      unnotified: rows.filter(r => !r.guardianNotifiedAt).length,
+      noShows: rows.map(r => ({
+        id:            r.id,
+        learnerId:     r.learnerId,
+        name:          `${r.learner.firstName} ${r.learner.lastName}`,
+        grade:         r.learner.grade,
+        reason:        r.reason,
+        note:          r.note,
+        reportedAt:    r.reportedAt,
+        guardianNotified: Boolean(r.guardianNotifiedAt),
+      })),
+    };
+  }
+
   /**
    * Get the boarding manifest for a trip — who is on the bus right now.
    */
@@ -337,6 +528,133 @@ export class TripService {
       pending:  manifest.filter(m => m.boardingStatus === 'NOT_BOARDED').length,
       manifest,
     };
+  }
+
+  // ── Driver-scoped operations ─────────────────────────────────────────────────
+
+  /**
+   * Resolve the vehicle a driver is permanently assigned to.
+   * Returns null when no vehicle has been linked to their account yet — the app
+   * surfaces this as "ask the administrator to assign your vehicle" rather than
+   * failing, since drivers may be onboarded before a vehicle exists.
+   */
+  async getDriverVehicle(driverUserId: string) {
+    const vehicle = await prisma.transportVehicle.findFirst({
+      where: { driverId: driverUserId, archived: false },
+      select: { id: true, registrationNumber: true, capacity: true, status: true },
+    });
+
+    if (!vehicle) return null;
+
+    const activeRoutes = await prisma.transportRoute.findMany({
+      where: { vehicleId: vehicle.id, archived: false, status: 'ACTIVE' },
+      select: { id: true, name: true, description: true },
+    });
+
+    return { ...vehicle, routes: activeRoutes };
+  }
+
+  /**
+   * Everything the driver app needs for one day, scoped to the signed-in driver.
+   *
+   * Unlike the admin trip endpoints (which are permission-gated and return every
+   * route in the school), this is identity-gated: it only ever returns trips
+   * assigned to `driverUserId`. Trips are matched on driverUserId first, then
+   * fall back to the driver's vehicle so a trip left unassigned to a person still
+   * appears for whoever drives that vehicle.
+   */
+  async getDriverDay(driverUserId: string, date?: Date) {
+    const day = date ?? new Date();
+    const dateUtc = new Date(
+      Date.UTC(day.getFullYear(), day.getMonth(), day.getDate()),
+    );
+
+    const vehicle = await prisma.transportVehicle.findFirst({
+      where: { driverId: driverUserId, archived: false },
+      select: { id: true },
+    });
+
+    const or: any[] = [{ driverUserId }];
+    if (vehicle?.id) or.push({ route: { vehicleId: vehicle.id } });
+
+    const trips = await prisma.transportTrip.findMany({
+      where: {
+        archived: false,
+        date: dateUtc,
+        OR: or,
+      },
+      include: {
+        route: { include: { vehicle: true } },
+        _count: { select: { boardingEvents: true } },
+      },
+      orderBy: [{ direction: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    // Attach manifest summaries so the app can render counts without N extra calls.
+    const summaries = await Promise.all(
+      trips.map(async (trip) => {
+        const manifest = await this.getTripManifest(trip.id);
+        return {
+          trip: {
+            id: trip.id,
+            routeId:       trip.routeId,
+            routeName:     trip.route.name,
+            direction:     trip.direction,
+            status:        trip.status,
+            departedAt:    trip.departedAt,
+            arrivedAt:     trip.arrivedAt,
+            notes:         trip.notes,
+            // Is this trip explicitly assigned to the signed-in driver?
+            assignedToMe:  trip.driverUserId === driverUserId,
+          },
+          vehicle: trip.route.vehicle
+            ? {
+                id:                 trip.route.vehicle.id,
+                registrationNumber: trip.route.vehicle.registrationNumber,
+                capacity:           trip.route.vehicle.capacity,
+              }
+            : null,
+          counts: {
+            totalAssigned: manifest.totalAssigned,
+            boarded:       manifest.boarded,
+            alighted:      manifest.alighted,
+            pending:       manifest.pending,
+          },
+        };
+      }),
+    );
+
+    return {
+      date: dateUtc,
+      vehicle: await this.getDriverVehicle(driverUserId),
+      trips: summaries,
+    };
+  }
+
+  /**
+   * Assert the signed-in driver owns this trip.
+   *
+   * The trip endpoints are permission-gated, so without this a driver holding
+   * RECORD_BOARDING_EVENTS could act on any trip id in the school. Ownership is
+   * satisfied by an explicit driverUserId match OR by driving the trip's vehicle.
+   */
+  async assertDriverOwnsTrip(driverUserId: string, tripId: string) {
+    const trip = await prisma.transportTrip.findUnique({
+      where: { id: tripId },
+      include: { route: { select: { vehicleId: true, vehicle: { select: { driverId: true } } } } },
+    });
+
+    if (!trip || trip.archived) throw new ApiError(404, 'Trip not found');
+
+    const vehicleDriverId = trip.route.vehicle?.driverId ?? null;
+    const ownsByAssignment = trip.driverUserId === driverUserId;
+    const ownsByVehicle   = vehicleDriverId !== null && vehicleDriverId === driverUserId;
+
+    if (!ownsByAssignment && !ownsByVehicle) {
+      throw new ApiError(403, 'This trip is not assigned to you');
+    }
+
+    return trip;
   }
 }
 

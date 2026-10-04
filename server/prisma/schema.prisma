@@ -124,6 +124,9 @@ model User {
   createdTermConfigs         TermConfig[]
   assessedValues             ValuesAssessment[]          @relation("AssessorValues")
   pushSubscriptions          PushSubscription[]          @relation("UserPushSubscriptions")
+  // ── Transport ─────────────────────────────────────────────────────────────────
+  // A user drives at most one vehicle (TransportVehicle.driverId is @unique).
+  drivenVehicle              TransportVehicle?           @relation("VehicleDriver")
   // ── In-App Messaging ────────────────────────────────────────────────────────
   conversationParticipants   ConversationParticipant[]
   sentChatMessages           ChatMessage[]               @relation("ChatMessageSender")
@@ -223,6 +226,17 @@ model School {
   staffWorkingDays                       Json                       @default("[1,2,3,4,5]")
   brandColor                             String?
   welcomeMessage                         String?
+
+  // ── Driver app onboarding ────────────────────────────────────────────────
+  // Short, human-typable code a driver enters on first launch to select this
+  // school, e.g. "zawadi". Nullable and unique: most schools never onboard a
+  // driver app, and leaving it null keeps them out of the public directory.
+  // Deliberately NOT the school name or subdomain: those are operational, and
+  // a driver must never be handed a URL. The app resolves this code through the
+  // server-owned domain pattern, never by accepting a URL from the device.
+  driverCode                             String?                    @unique
+
+  driverDevices                          DriverDevice[]
   welcomeTitle                           String?
   onboardingMessage                      String?
   onboardingTitle                        String?
@@ -787,6 +801,9 @@ model Learner {
   @@index([status])
   @@index([grade, status, archived])
   @@index([archived])
+  // Confirmed bus skips. TransportAssignment.passengerId is a loose string
+  // reference (no FK), so this is the only hard transport FK onto Learner.
+  transportNoShows      TransportNoShow[]
   @@map("learners")
 }
 
@@ -3290,12 +3307,20 @@ model TransportVehicle {
   capacity           Int
   driverName         String
   driverPhone        String?
+  // Durable link to the staff account that drives this vehicle. driverName and
+  // driverPhone stay as denormalised display/back-compat fields: the driver app
+  // needs a real identity so a signed-in driver can resolve "which vehicle am
+  // I assigned to", and so boarding events can be attributed to a user id.
+  // One user drives at most one vehicle.
+  driverId           String?          @unique
   status             String           @default("ACTIVE")
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
   archived           Boolean          @default(false)
   routes             TransportRoute[]
+  driver             User?            @relation("VehicleDriver", fields: [driverId], references: [id], onDelete: SetNull)
 
+  @@index([driverId])
   @@map("transport_vehicles")
 }
 
@@ -3339,25 +3364,40 @@ model TransportAssignment {
 // A Trip is a single daily run of a route (morning or afternoon).
 // BoardingEvents record who boarded and alighted on each trip.
 
+// NOTE: these two models were created by migration
+// 20260804020000_phase2_transport_trips using snake_case columns, unlike every
+// other transport table (transport_vehicles / transport_routes /
+// transport_assignments), which use camelCase.
+//
+// Without the per-field @map() annotations below, Prisma looked for
+// `transport_trips.routeId` and every single trip query failed with
+// "The column transport_trips.routeId does not exist in the current database".
+// `prisma migrate status` reported "up to date" because migrations are tracked
+// in _prisma_migrations, not by comparing live schema.
+//
+// The database is the source of truth here — these tables are live on deployed
+// schools — so the schema is annotated to match rather than the reverse.
+
 model TransportTrip {
   id             String                   @id @default(uuid())
-  schoolId       String
-  routeId        String
+  schoolId       String                   @map("school_id")
+  routeId        String                   @map("route_id")
   date           DateTime                 @db.Date
   // OUTBOUND = morning (home → school)  INBOUND = afternoon (school → home)
   direction      String // OUTBOUND | INBOUND
-  departedAt     DateTime?
-  arrivedAt      DateTime?
-  driverUserId   String? // optional link to users.id
+  departedAt     DateTime?                @map("departed_at")
+  arrivedAt      DateTime?                @map("arrived_at")
+  driverUserId   String?                  @map("driver_user_id") // optional link to users.id
   status         String                   @default("SCHEDULED") // SCHEDULED | IN_PROGRESS | COMPLETED | CANCELLED
   notes          String?
   archived       Boolean                  @default(false)
-  createdAt      DateTime                 @default(now())
-  updatedAt      DateTime                 @updatedAt
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  updatedAt      DateTime                 @updatedAt @map("updated_at")
   route          TransportRoute           @relation(fields: [routeId], references: [id])
   boardingEvents TransportBoardingEvent[]
+  noShows        TransportNoShow[]
 
-  @@unique([routeId, date, direction])
+  @@unique([routeId, date, direction], map: "transport_trips_route_date_direction_unique")
   @@index([routeId, date])
   @@index([schoolId, date])
   @@map("transport_trips")
@@ -3365,21 +3405,91 @@ model TransportTrip {
 
 model TransportBoardingEvent {
   id         String        @id @default(uuid())
-  tripId     String
-  learnerId  String
+  tripId     String        @map("trip_id")
+  learnerId  String        @map("learner_id")
   // BOARDED | ALIGHTED
-  eventType  String
-  recordedAt DateTime      @default(now())
+  eventType  String        @map("event_type")
+  recordedAt DateTime      @default(now()) @map("recorded_at")
   // MANUAL | SCAN | CONFIRMED
   method     String        @default("MANUAL")
-  recordedBy String?
-  deviceId   String?
-  createdAt  DateTime      @default(now())
+  recordedBy String?       @map("recorded_by")
+  deviceId   String?       @map("device_id")
+  createdAt  DateTime      @default(now()) @map("created_at")
   trip       TransportTrip @relation(fields: [tripId], references: [id])
 
   @@index([tripId])
   @@index([learnerId, recordedAt])
   @@map("transport_boarding_events")
+}
+
+/// A learner the driver confirmed they did NOT collect on a specific run.
+///
+/// Distinct from a BoardingEvent: absence of a boarding row is ambiguous (the
+/// driver may simply have forgotten), whereas this is an explicit, deliberate
+/// statement by the driver that collection was skipped. That distinction is
+/// what makes it reportable and what triggers the parent alert.
+///
+/// Snake_case like the other transport trip tables (see TransportTrip).
+model TransportNoShow {
+  id          String    @id @default(uuid())
+  tripId      String    @map("trip_id")
+  learnerId   String    @map("learner_id")
+  // NO_ANSWER | REFUSED | ABSENT | ALREADY_COLLECTED | LATE | OTHER
+  reason      String    @default("NO_ANSWER")
+  note        String?
+  reportedBy  String?   @map("reported_by")
+  reportedAt  DateTime  @default(now()) @map("reported_at")
+  // Whether the guardian alert actually went out. Kept separate from "created"
+  // so a failed SMS can be retried without the driver having to re-report.
+  guardianNotifiedAt DateTime? @map("guardian_notified_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  trip     TransportTrip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  learner  Learner       @relation(fields: [learnerId], references: [id])
+
+  // One confirmed skip per learner per run. Re-reporting updates in place
+  // rather than spamming the guardian a second time.
+  @@unique([tripId, learnerId])
+  @@index([learnerId, reportedAt])
+  @@index([tripId])
+  @@map("transport_no_shows")
+}
+/// A physical phone that has asked to drive for this school.
+///
+/// Device approval is REQUIRED (owner decision, 2026-10-03). Knowing a school
+/// code must not be enough to use the app: the code is short and guessable, so
+/// on its own it would hand anyone a driver's view of a real school's routes,
+/// vehicle and learner list. An administrator approves the device, and only an
+/// APPROVED device can sign in.
+model DriverDevice {
+  id       String @id @default(uuid())
+  schoolId String @map("school_id")
+
+  /// Opaque id generated on the phone and kept in its secure storage. NOT an
+  /// IMEI, Android ID, or any hardware fingerprint: it must be revocable and
+  /// must not identify the handset outside this school.
+  deviceId String @map("device_id")
+
+  /// Free-text label the driver typed, e.g. "Rico's Pixel 8".
+  label    String?
+
+  // PENDING | APPROVED | REVOKED
+  status   String   @default("PENDING")
+
+  requestedAt DateTime  @default(now()) @map("requested_at")
+  approvedAt  DateTime? @map("approved_at")
+  approvedBy  String?   @map("approved_by")
+  revokedAt   DateTime? @map("revoked_at")
+  lastSeenAt  DateTime? @map("last_seen_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, deviceId])
+  @@index([schoolId, status])
+  @@map("driver_devices")
 }
 
 model LMSCourse {
