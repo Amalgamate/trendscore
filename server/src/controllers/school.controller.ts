@@ -10,7 +10,7 @@ import { clearSchoolCache } from '../middleware/schoolContext.middleware';
 import { applyModulePackageToSchool, normalizePackageId } from '../services/moduleCatalog.service';
 import { buildInstalledAppName } from '../utils/pwa.util';
 import { resolveCurrentSchool } from '../services/school-resolver.service';
-import { normalizeSchoolCode, isReservedSubdomain } from '../config/schoolDomains';
+import { DEPLOYMENT_DOMAIN, normalizeSchoolCode, isReservedSubdomain } from '../config/schoolDomains';
 
 import logger from '../utils/logger';
 const VALID_INSTITUTION_TYPES = new Set(['PRIMARY_CBC', 'SECONDARY', 'TERTIARY']);
@@ -35,6 +35,14 @@ const isDataUri = (value: unknown): value is string =>
 
 const getConfiguredSchoolCode = (): string | null => {
   const code = normalizeSchoolCode(process.env.SCHOOL_CODE);
+  return code && !isReservedSubdomain(code) ? code : null;
+};
+
+const getSchoolCodeFromHostname = (hostname: string): string | null => {
+  const host = String(hostname || '').trim().toLowerCase().replace(/:\\d+$/, '');
+  const suffix = `.${DEPLOYMENT_DOMAIN}`;
+  if (!host.endsWith(suffix)) return null;
+  const code = normalizeSchoolCode(host.slice(0, -suffix.length));
   return code && !isReservedSubdomain(code) ? code : null;
 };
 
@@ -157,7 +165,15 @@ export const getSchool = async (req: AuthRequest, res: Response) => {
   const school = await resolveCurrentSchool();
   if (!school) throw new ApiError(404, 'School not found');
   const configuredCode = getConfiguredSchoolCode();
-  const sharedSchoolCode = school.schoolCode || configuredCode;
+  const sharedSchoolCode = school.schoolCode || configuredCode || getSchoolCodeFromHostname(req.hostname);
+  if (!school.schoolCode && sharedSchoolCode) {
+    // Safe one-time backfill: only populate a blank code; never replace one
+    // already associated with the school's app connections.
+    await prisma.school.updateMany({
+      where: { id: school.id, schoolCode: null },
+      data: { schoolCode: sharedSchoolCode },
+    });
+  }
   res.status(200).json({
     success: true,
     data: optimizeSchoolPayload({ ...school, schoolCode: sharedSchoolCode }),
