@@ -541,15 +541,28 @@ export const allNavSections = [
         app: 'transport',
         permission: null,
         items: [
-            { id: 'hostel-fees',        label: 'Transport Fee Manager',path: 'hostel-fees',        permission: 'TRANSPORT_MANAGEMENT' },
-            { id: 'transport-drivers',  label: 'Driver Management',    path: 'transport-drivers',  permission: 'TRANSPORT_MANAGEMENT' },
-            { id: 'transport-runs',     label: 'Driver Run Planner',   path: 'transport-runs',     permission: 'TRANSPORT_MANAGEMENT' },
-            { id: 'driver-app-devices', label: 'Driver App Devices', path: 'driver-app-devices', permission: 'TRANSPORT_MANAGEMENT' },
-            { id: 'transport-vehicles', label: 'Fleet Vehicles',       path: 'transport-vehicles', permission: 'TRANSPORT_MANAGEMENT' },
-            { id: 'transport-routes',   label: 'Bus Routes & Roster',  path: 'transport-routes',   permission: 'TRANSPORT_MANAGEMENT' },
-            { id: 'transport-students', label: 'Transport Students',   path: 'transport-students', permission: 'TRANSPORT_MANAGEMENT' },
-            { id: 'transport-tracking', label: 'GPS Tracking',         path: 'transport-tracking', permission: 'TRANSPORT_MANAGEMENT' },
-            { id: 'transport-reports',  label: 'Transport Reports',    path: 'transport-reports',  permission: 'TRANSPORT_MANAGEMENT' }
+            {
+                id: 'transport-driver-ops', label: 'Drivers & Runs', type: 'group', icon: Truck, items: [
+                    { id: 'transport-drivers', label: 'Driver Management', path: 'transport-drivers', permission: 'TRANSPORT_MANAGEMENT' },
+                    { id: 'transport-runs', label: 'Driver Run Planner', path: 'transport-runs', permission: 'TRANSPORT_MANAGEMENT' },
+                    { id: 'driver-app-devices', label: 'Driver App Devices', path: 'driver-app-devices', permission: 'TRANSPORT_MANAGEMENT' },
+                ],
+            },
+            {
+                id: 'transport-fleet', label: 'Routes & Fleet', type: 'group', icon: Truck, items: [
+                    { id: 'transport-vehicles', label: 'Fleet Vehicles', path: 'transport-vehicles', permission: 'TRANSPORT_MANAGEMENT' },
+                    { id: 'transport-routes', label: 'Bus Routes & Roster', path: 'transport-routes', permission: 'TRANSPORT_MANAGEMENT' },
+                    { id: 'transport-tracking', label: 'GPS Tracking', path: 'transport-tracking', permission: 'TRANSPORT_MANAGEMENT' },
+                    { id: 'transport-students', label: 'Transport Students', path: 'transport-students', permission: 'TRANSPORT_MANAGEMENT' },
+                ],
+            },
+            {
+                id: 'transport-finance', label: 'Fees & Reports', type: 'group', icon: Truck, items: [
+                    { id: 'hostel-fees', label: 'Transport Fee Manager', path: 'hostel-fees', permission: 'TRANSPORT_MANAGEMENT' },
+                    { id: 'transport-reports', label: 'Transport Reports', path: 'transport-reports', permission: 'TRANSPORT_MANAGEMENT' },
+                ],
+            },
+            { id: 'hostel-allocation', label: 'Hostel Allocation', path: 'hostel-allocation', permission: 'TRANSPORT_MANAGEMENT' },
         ]
     },
     {

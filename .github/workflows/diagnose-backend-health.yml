@@ -96,6 +96,26 @@ jobs:
           sudo docker inspect "$backend" --format 'Memory limit: {{.HostConfig.Memory}} bytes (0 = unlimited)'
 
           echo ""
+          echo "## 4.5 transport_trips schema (column names and row count only)"
+          sudo docker exec -i "$backend" node - <<'NODE'
+          const { PrismaClient } = require('@prisma/client');
+          const prisma = new PrismaClient();
+          (async () => {
+            const tables = await prisma.$queryRaw`SELECT to_regclass('public.transport_trips') AS table_name`;
+            if (!tables[0]?.table_name) {
+              console.log('transport_trips table is absent');
+              return;
+            }
+            const columns = await prisma.$queryRaw`SELECT column_name, data_type, is_nullable
+              FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'transport_trips'
+              ORDER BY ordinal_position`;
+            const counts = await prisma.$queryRaw`SELECT COUNT(*)::int AS row_count FROM public.transport_trips`;
+            console.log(JSON.stringify({ columns, rowCount: counts[0]?.row_count ?? 0 }, null, 2));
+          })().catch((error) => { console.error(error); process.exitCode = 1; })
+            .finally(() => prisma.$disconnect());
+          NODE
+
           echo "## 5. Recent logs (since ${SINCE}, last ${LOG_LINES} lines)"
           sudo docker logs "$backend" --since "$SINCE" --timestamps 2>&1 | tail -n "$LOG_LINES"
 
