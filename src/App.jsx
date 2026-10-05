@@ -498,7 +498,14 @@ export default function App() {
       <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AppContent />
         <SWUpdateBanner />
-        <Toaster position="top-right" reverseOrder={false} />
+        <Toaster
+          position="top-right"
+          reverseOrder={false}
+          containerStyle={{ zIndex: 2147483647 }}
+          toastOptions={{
+            style: { zIndex: 2147483647 },
+          }}
+        />
       </HashRouter>
     </ErrorBoundary>
   );

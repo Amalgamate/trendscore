@@ -1694,7 +1694,7 @@ const UserManagement = ({ initialTab } = {}) => {
             ADD/EDIT USER MODAL
         ═══════════════════════════════════════════════════════════ */}
         {showModal && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[2147483000] p-4">
             <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
               <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 rounded-t-2xl flex justify-between items-center sticky top-0 z-10">
                 <h3 className="text-lg font-semibold text-white">
