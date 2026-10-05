@@ -2,14 +2,8 @@
  * DriverManagement.jsx
  * Full CRUD driver roster for the Transport module.
  *
- * Drivers are derived from the existing TransportVehicle records (each vehicle
- * has driverName + driverPhone). This page surfaces them as first-class driver
- * profiles, lets admins add standalone driver records even before a vehicle is
- * assigned, and shows a driver-centric view of route assignments.
- *
- * Backend note: this page reads from /transport/vehicles and /transport/routes
- * which already exist.  A standalone driver entity (/transport/drivers) can be
- * introduced later; when it exists, swap the data-fetch helpers below.
+ * User accounts with the DRIVER role are the source of truth for driver
+ * identity. This page assigns those accounts to vehicles and shows routes.
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -52,14 +46,17 @@ function StatusBadge({ status }) {
 // Build a driver list from vehicles — each vehicle's driver is one driver record
 function vehiclesToDrivers(vehicles, routes) {
   return vehicles
-    .filter(v => v.driverName)
+    .filter(v => v.driverName || v.driver)
     .map(v => {
       const assignedRoutes = routes.filter(r => r.vehicleId === v.id);
+      const accountName = v.driver
+        ? `${v.driver.firstName || ''} ${v.driver.lastName || ''}`.trim()
+        : '';
       return {
         id:          `veh-${v.id}`,
         vehicleId:   v.id,
-        name:        v.driverName,
-        phone:       v.driverPhone || '',
+        name:        accountName || v.driverName || 'Unlinked driver record',
+        phone:       v.driver?.phone || v.driverPhone || '',
         userId:      v.driver?.id || v.driverId || '',
         loginUser:   v.driver || null,
         vehicle:     v.registrationNumber,
@@ -199,24 +196,17 @@ function DriverModal({ driver, vehicles, driverUsers, onClose, onSave, saving })
               ))}
             </select>
           </FormField>
-          <FormField label="Driver sign-in account">
+          <FormField label="Driver account" required>
             <select
               className={inputCls}
               value={form.driverUserId}
               onChange={e => {
                 const driverUserId = e.target.value;
-                const account = driverUsers.find(user => user.id === driverUserId);
-                setForm(current => ({
-                  ...current,
-                  driverUserId,
-                  ...(account ? {
-                    driverName: `${account.firstName || ''} ${account.lastName || ''}`.trim(),
-                    driverPhone: account.phone || '',
-                  } : {}),
-                }));
+                setForm(current => ({ ...current, driverUserId }));
               }}
+              required
             >
-              <option value="">— No app account linked —</option>
+              <option value="">— Select an existing driver account —</option>
               {driverUsers.map(user => (
                 <option key={user.id} value={user.id}>
                   {[user.firstName, user.lastName].filter(Boolean).join(' ')}{user.phone ? ` · ${user.phone}` : ''}
@@ -224,18 +214,8 @@ function DriverModal({ driver, vehicles, driverUsers, onClose, onSave, saving })
               ))}
             </select>
             <p className="mt-1 text-[11px] text-gray-500">
-              Create the driver's phone/password account first in Settings → User Management with the DRIVER role.
+              Driver name and phone come from this account in User Management. Create or update it there; this page only assigns it to a vehicle.
             </p>
-          </FormField>
-          <FormField label="Driver Full Name" required>
-            <input className={inputCls} value={form.driverName}
-              onChange={e => f('driverName', e.target.value)}
-              placeholder="e.g. John Kamau" required />
-          </FormField>
-          <FormField label="Phone Number">
-            <input className={inputCls} value={form.driverPhone}
-              onChange={e => f('driverPhone', e.target.value)}
-              placeholder="e.g. 0712 345 678" />
           </FormField>
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose}
@@ -245,7 +225,7 @@ function DriverModal({ driver, vehicles, driverUsers, onClose, onSave, saving })
             <button type="submit" disabled={saving}
               className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-sm shadow-lg shadow-blue-600/20 transition disabled:opacity-60 flex items-center gap-2">
               {saving && <Loader2 size={14} className="animate-spin" />}
-              {isNew ? 'Add Driver' : 'Save Changes'}
+              {isNew ? 'Assign Driver' : 'Save Assignment'}
             </button>
           </div>
         </form>
@@ -299,22 +279,11 @@ const DriverManagement = () => {
   const handleSave = async (form, existing) => {
     setSaving(true);
     try {
-      // Update is patching the vehicle's driver fields
-      const res = await api.transport.updateVehicle(form.vehicleId, {
-        driverName:  form.driverName.trim(),
-        driverPhone: form.driverPhone.trim() || null,
-      });
-      if (res.success) {
-        const existingUserId = existing?.userId || '';
-        if (form.driverUserId) {
-          await api.transport.assignVehicleDriver(form.vehicleId, form.driverUserId);
-        } else if (existingUserId) {
-          await api.transport.assignVehicleDriver(form.vehicleId, null);
-        }
-        showSuccess(existing ? 'Driver updated' : 'Driver assigned');
-        setModal(null);
-        load();
-      }
+      if (!form.driverUserId) throw new Error('Select a driver account first');
+      await api.transport.assignVehicleDriver(form.vehicleId, form.driverUserId);
+      showSuccess(existing ? 'Driver assignment updated' : 'Driver assigned');
+      setModal(null);
+      load();
     } catch (err) {
       showError(err?.message || 'Failed to save driver');
     } finally {
@@ -325,8 +294,8 @@ const DriverManagement = () => {
   const handleDelete = async (driver) => {
     if (!window.confirm(`Remove ${driver.name} as driver of ${driver.vehicle}?`)) return;
     try {
-      await api.transport.updateVehicle(driver.vehicleId, { driverName: '', driverPhone: null });
-      showSuccess('Driver removed from vehicle');
+      await api.transport.assignVehicleDriver(driver.vehicleId, null);
+      showSuccess('Driver unassigned from vehicle');
       load();
     } catch {
       showError('Failed to remove driver');
@@ -458,7 +427,7 @@ const DriverManagement = () => {
           <p className="text-gray-400 text-sm mt-1">
             {query || filterStatus !== 'all'
               ? 'Try adjusting your search or filters.'
-              : 'Drivers are created when you add a vehicle with a driver name, or use the Assign Driver button above.'}
+              : 'Create the driver account with a phone number and DRIVER role in User Management, then assign that account to a vehicle here.'}
           </p>
           {!query && filterStatus === 'all' && (
             <button onClick={() => setModal({ driver: null })}
@@ -498,7 +467,7 @@ const DriverManagement = () => {
                   </div>
                 </div>
                 <button
-                  onClick={() => setModal({ driver: { vehicleId: v.id, name: '', phone: '', vehicle: v.registrationNumber, vehicleObj: v, routes: [] } })}
+                  onClick={() => setModal({ driver: { vehicleId: v.id, name: '', phone: '', userId: '', vehicle: v.registrationNumber, vehicleObj: v, routes: [] } })}
                   className="px-3.5 py-1.5 bg-blue-600 text-white rounded-xl font-semibold text-xs hover:bg-blue-700 transition flex items-center gap-1.5 shadow-lg shadow-blue-600/10">
                   <Plus size={12} /> Assign Driver
                 </button>

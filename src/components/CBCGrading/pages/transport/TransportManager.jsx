@@ -11,7 +11,7 @@ import usePageNavigation from '../../../../hooks/usePageNavigation';
 
 // ─── small helpers ────────────────────────────────────────────────────────────
 
-const EMPTY_VEHICLE = { registrationNumber: '', capacity: '', driverName: '', driverPhone: '' };
+const EMPTY_VEHICLE = { registrationNumber: '', capacity: '', driverId: '' };
 const EMPTY_ROUTE   = { name: '', description: '', amount: '', vehicleId: '' };
 
 const fmt = (n) => `KES ${Number(n ?? 0).toLocaleString('en-KE', { minimumFractionDigits: 0 })}`;
@@ -62,7 +62,7 @@ const inputErrCls = 'w-full border border-red-300 rounded-xl p-2.5 text-sm focus
 
 // ─── vehicle form ─────────────────────────────────────────────────────────────
 
-function VehicleForm({ data, onChange, errors = {} }) {
+function VehicleForm({ data, onChange, driverUsers, errors = {} }) {
     return (
         <div className="space-y-4">
             <FormField label="Registration Number" required>
@@ -78,19 +78,16 @@ function VehicleForm({ data, onChange, errors = {} }) {
                     onChange={e => onChange({ ...data, capacity: e.target.value })} />
                 {errors.capacity && <p className="text-xs text-red-500 font-medium mt-1">{errors.capacity}</p>}
             </FormField>
-            <FormField label="Driver Name" required>
-                <input className={errors.driverName ? inputErrCls : inputCls}
-                    value={data.driverName}
-                    onChange={e => onChange({ ...data, driverName: e.target.value })}
-                    placeholder="Full name of assigned driver" />
-                {errors.driverName && <p className="text-xs text-red-500 font-medium mt-1">{errors.driverName}</p>}
-            </FormField>
-            <FormField label="Driver Phone" required hint="Required — used for parent communications and emergency contact.">
-                <input className={errors.driverPhone ? inputErrCls : inputCls}
-                    value={data.driverPhone}
-                    onChange={e => onChange({ ...data, driverPhone: e.target.value })}
-                    placeholder="e.g. 0712 345 678" />
-                {errors.driverPhone && <p className="text-xs text-red-500 font-medium mt-1">{errors.driverPhone}</p>}
+            <FormField label="Driver account" hint="Optional. Driver name and phone come from the selected User Management account.">
+                <select className={inputCls} value={data.driverId}
+                    onChange={e => onChange({ ...data, driverId: e.target.value })}>
+                    <option value="">— No driver assigned —</option>
+                    {driverUsers.map(user => (
+                        <option key={user.id} value={user.id}>
+                            {[user.firstName, user.lastName].filter(Boolean).join(' ')}{user.phone ? ` · ${user.phone}` : ''}
+                        </option>
+                    ))}
+                </select>
             </FormField>
         </div>
     );
@@ -434,8 +431,6 @@ function validateVehicle(data) {
     const errors = {};
     if (!data.registrationNumber?.trim()) errors.registrationNumber = 'Registration number is required';
     if (!data.capacity || isNaN(Number(data.capacity)) || Number(data.capacity) < 1) errors.capacity = 'Enter a valid seat count';
-    if (!data.driverName?.trim()) errors.driverName = 'Driver name is required';
-    if (!data.driverPhone?.trim()) errors.driverPhone = 'Driver phone number is required — parents and emergency contacts depend on this';
     return errors;
 }
 
@@ -458,6 +453,7 @@ const TransportManager = ({ initialTab = 'vehicles' }) => {
         }
     }, [initialTab]);
     const [vehicles, setVehicles]       = useState([]);
+    const [driverUsers, setDriverUsers] = useState([]);
     const [routes, setRoutes]           = useState([]);
     const [summary, setSummary]         = useState(null);
     const [loading, setLoading]         = useState(false);
@@ -498,8 +494,12 @@ const TransportManager = ({ initialTab = 'vehicles' }) => {
     const fetchVehicles = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await api.transport.getVehicles();
+            const [res, usersRes] = await Promise.all([
+                api.transport.getVehicles(),
+                api.users.getByRole('DRIVER'),
+            ]);
             if (res.success) setVehicles(res.data);
+            if (usersRes.success) setDriverUsers(usersRes.data || []);
         } catch { showError('Failed to load vehicles'); }
         finally { setLoading(false); }
     }, []);
@@ -547,8 +547,7 @@ const TransportManager = ({ initialTab = 'vehicles' }) => {
         setVehicleForm({
             registrationNumber: v.registrationNumber,
             capacity:           String(v.capacity),
-            driverName:         v.driverName,
-            driverPhone:        v.driverPhone || ''
+            driverId:           v.driver?.id || v.driverId || '',
         });
         setVehicleErrors({});
         setVehicleModal(true);
@@ -901,7 +900,7 @@ const TransportManager = ({ initialTab = 'vehicles' }) => {
             {vehicleModal && (
                 <Modal title={editingVehicle ? 'Edit Vehicle' : 'Add Vehicle'} onClose={() => setVehicleModal(false)}>
                     <form onSubmit={saveVehicle} className="space-y-4">
-                        <VehicleForm data={vehicleForm} onChange={v => { setVehicleForm(v); setVehicleErrors({}); }} errors={vehicleErrors} />
+                        <VehicleForm data={vehicleForm} onChange={v => { setVehicleForm(v); setVehicleErrors({}); }} driverUsers={driverUsers} errors={vehicleErrors} />
                         <div className="flex justify-end gap-2 pt-2">
                             <button type="button" onClick={() => setVehicleModal(false)}
                                 className="px-4 py-2 text-gray-500 hover:bg-gray-100 font-medium rounded-xl text-sm transition">

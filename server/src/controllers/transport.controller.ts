@@ -95,6 +95,7 @@ export class TransportController {
 
         if (!user || user.archived) throw new ApiError(404, 'Driver user not found');
         if (user.status !== 'ACTIVE') throw new ApiError(400, 'Driver account is not active');
+        if (!user.phone?.trim()) throw new ApiError(400, 'Add a phone number to the driver account before assigning it');
 
         const roles: string[] = user.roles && user.roles.length > 0 ? user.roles : [user.role];
         if (!roles.includes('DRIVER')) {
@@ -158,7 +159,7 @@ export class TransportController {
 
     async createVehicle(req: AuthRequest, res: Response) {
         try {
-            const { registrationNumber, capacity, driverName, driverPhone, driverId } = req.body;
+            const { registrationNumber, capacity, driverId } = req.body;
 
             // Resolve the driver account first. When linked, name and phone come
             // from the user record, which both satisfies the required-field checks
@@ -170,8 +171,6 @@ export class TransportController {
             }
 
             if (!registrationNumber?.trim()) throw new ApiError(400, 'Registration number is required');
-            if (!linked && !driverName?.trim())  throw new ApiError(400, 'Driver name is required');
-            if (!linked && !driverPhone?.trim()) throw new ApiError(400, 'Driver phone number is required');
             if (!capacity || isNaN(Number(capacity))) throw new ApiError(400, 'Valid capacity is required');
 
             const existing = await prisma.transportVehicle.findUnique({
@@ -183,9 +182,9 @@ export class TransportController {
                 data: {
                     registrationNumber: registrationNumber.trim().toUpperCase(),
                     capacity: parseInt(capacity),
-                    driverName: linked ? linked.driverName : driverName.trim(),
-                    driverPhone: linked ? linked.driverPhone : (driverPhone?.trim() || null),
-                    driverId: linked ? linked.id : null,
+                    driverName: linked?.driverName ?? '',
+                    driverPhone: linked?.driverPhone ?? null,
+                    driverId: linked?.id ?? null,
                 }
             });
 
@@ -199,7 +198,7 @@ export class TransportController {
     async updateVehicle(req: AuthRequest, res: Response) {
         try {
             const { id } = req.params;
-            const { registrationNumber, capacity, driverName, driverPhone, status, driverId } = req.body;
+            const { registrationNumber, capacity, status, driverId } = req.body;
 
             const existing = await prisma.transportVehicle.findUnique({ where: { id } });
             if (!existing || existing.archived) throw new ApiError(404, 'Vehicle not found');
@@ -230,15 +229,13 @@ export class TransportController {
                 data: {
                     ...(registrationNumber && { registrationNumber: registrationNumber.trim().toUpperCase() }),
                     ...(capacity           && { capacity: parseInt(capacity) }),
-                    ...(driverName         && { driverName: driverName.trim() }),
-                    ...(driverPhone !== undefined && { driverPhone: driverPhone?.trim() || null }),
                     ...(status             && { status }),
                     ...(driverKeyProvided && {
                         driverId:    linked ? linked.id : null,
                         // Unassigning keeps the last known name/phone so the
                         // vehicle record stays readable until reassigned.
-                        driverName:  linked ? linked.driverName : (driverName?.trim() || existing.driverName),
-                        driverPhone: linked ? linked.driverPhone : (driverPhone?.trim() || existing.driverPhone),
+                        driverName:  linked ? linked.driverName : existing.driverName,
+                        driverPhone: linked ? linked.driverPhone : existing.driverPhone,
                     }),
                 }
             });
