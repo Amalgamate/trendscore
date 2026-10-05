@@ -461,6 +461,7 @@ export class UserController {
     await this.syncDriverVehicleIdentity(updatedUser);
 
     await redisCacheService.delete(`auth:user:${updatedUser.email}`);
+    await redisCacheService.deleteByPrefix('auth:v2:user:');
 
     res.json({
       success: true,
@@ -571,6 +572,8 @@ export class UserController {
     if (password) {
       if (password.length < 8) throw new ApiError(400, 'Password too short');
       updateData.password = await bcrypt.hash(password, 12);
+      updateData.loginAttempts = 0;
+      updateData.lockedUntil = null;
     }
 
     const updatedUser = await prisma.user.update({
@@ -598,6 +601,7 @@ export class UserController {
       role: (updateData.role as string) || targetUser.role,
       roles: Array.isArray(updateData.roles) ? updateData.roles as string[] : (targetUser.roles || []),
     });
+    await redisCacheService.deleteByPrefix('auth:v2:user:');
 
     res.json({ success: true, data: updatedUser });
   }
@@ -848,6 +852,7 @@ export class UserController {
       where: { id },
       data: { password: hashedPassword, loginAttempts: 0, lockedUntil: null }
     });
+    await redisCacheService.deleteByPrefix('auth:v2:user:');
 
     const requestedChannels = [sendWhatsApp && 'WhatsApp', sendSms && 'SMS'].filter(Boolean) as string[];
     if (requestedChannels.length === 0) {
@@ -918,6 +923,7 @@ export class UserController {
         lockedUntil: null
       }
     });
+    await redisCacheService.deleteByPrefix('auth:v2:user:');
 
     const school = await prisma.school.findFirst({ select: { name: true } });
     const schoolName = school?.name || PRODUCT_DISPLAY_NAME;

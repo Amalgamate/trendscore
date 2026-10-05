@@ -303,6 +303,8 @@ export class AuthController {
       }
     });
 
+    await redisCacheService.deleteByPrefix('auth:v2:user:');
+
     res.json({ success: true, message: 'Password reset successful' });
   }
 
