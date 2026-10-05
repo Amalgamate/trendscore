@@ -58,6 +58,26 @@ const userProfileSelect = {
 } as const;
 
 export class UserController {
+  private async syncDriverVehicleIdentity(user: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    phone: string | null;
+    role: string;
+    roles: string[];
+  }) {
+    const effectiveRoles = user.roles?.length ? user.roles : [user.role];
+    if (!effectiveRoles.includes('DRIVER')) return;
+
+    await prisma.transportVehicle.updateMany({
+      where: { driverId: user.id, archived: false },
+      data: {
+        driverName: `${user.firstName} ${user.lastName}`.trim(),
+        driverPhone: user.phone,
+      },
+    });
+  }
+
   /**
    * Get all users
    */
@@ -438,6 +458,8 @@ export class UserController {
       select: userProfileSelect
     });
 
+    await this.syncDriverVehicleIdentity(updatedUser);
+
     await redisCacheService.delete(`auth:user:${updatedUser.email}`);
 
     res.json({
@@ -564,6 +586,17 @@ export class UserController {
         status: true,
         staffId: true
       }
+    });
+
+    await this.syncDriverVehicleIdentity({
+      id: updatedUser.id,
+      firstName: updatedUser.firstName,
+      lastName: updatedUser.lastName,
+      phone: typeof updateData.phone === 'string' || updateData.phone === null
+        ? updateData.phone
+        : targetUser.phone,
+      role: (updateData.role as string) || targetUser.role,
+      roles: Array.isArray(updateData.roles) ? updateData.roles as string[] : (targetUser.roles || []),
     });
 
     res.json({ success: true, data: updatedUser });
