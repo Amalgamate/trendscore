@@ -3315,6 +3315,7 @@ model TransportVehicle {
   updatedAt          DateTime         @updatedAt
   archived           Boolean          @default(false)
   routes             TransportRoute[]
+  trips              TransportTrip[]  @relation("TripVehicle")
   driver             User?            @relation("VehicleDriver", fields: [driverId], references: [id], onDelete: SetNull)
 
   @@index([driverId])
@@ -3379,6 +3380,9 @@ model TransportTrip {
   id             String                   @id @default(uuid())
   schoolId       String                   @map("school_id")
   routeId        String                   @map("route_id")
+  // Per-run vehicle override, used for breakdowns or temporary substitutions.
+  // Null means use the route's normally assigned vehicle.
+  vehicleId      String?                  @map("vehicle_id")
   date           DateTime                 @db.Date
   // OUTBOUND = morning (home → school)  INBOUND = afternoon (school → home)
   direction      String // OUTBOUND | INBOUND
@@ -3391,14 +3395,17 @@ model TransportTrip {
   createdAt      DateTime                 @default(now()) @map("created_at")
   updatedAt      DateTime                 @updatedAt @map("updated_at")
   route          TransportRoute           @relation(fields: [routeId], references: [id])
+  vehicle        TransportVehicle?        @relation("TripVehicle", fields: [vehicleId], references: [id], onDelete: SetNull)
   boardingEvents TransportBoardingEvent[]
   noShows        TransportNoShow[]
 
   @@unique([routeId, date, direction], map: "transport_trips_route_date_direction_unique")
   @@index([routeId, date])
   @@index([schoolId, date])
+  @@index([vehicleId, date])
   @@map("transport_trips")
 }
+
 
 model TransportBoardingEvent {
   id         String        @id @default(uuid())

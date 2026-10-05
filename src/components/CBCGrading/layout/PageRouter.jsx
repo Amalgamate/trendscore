@@ -166,6 +166,7 @@ const TransportManager    = lazy(() => import('../pages/transport/TransportManag
 const TransportReports    = lazy(() => import('../pages/transport/TransportReports'));
 const GPSTracking         = lazy(() => import('../pages/transport/GPSTracking'));
 const DriverManagement    = lazy(() => import('../pages/transport/DriverManagement'));
+const DriverRunPlanner    = lazy(() => import('../pages/transport/DriverRunPlanner'));
 const DriverAppDevices    = lazy(() => import('../pages/transport/DriverAppDevices'));
 const TransportFeeManager = lazy(() => import('../pages/transport/TransportFeeManager'));
 const HostelAllocation    = lazy(() => import('../pages/transport/HostelAllocation'));
@@ -837,6 +838,7 @@ const PageRouter = ({
           case 'transport-routes':    return <TransportManager initialTab="routes" />;
           case 'transport-tracking':  return <GPSTracking />;
           case 'transport-drivers':   return <DriverManagement />;
+          case 'transport-runs':      return <DriverRunPlanner />;
           case 'driver-app-devices': return <ErrorBoundary><DriverAppDevices /></ErrorBoundary>;
           case 'transport-students':  return <TransportManager initialTab="students" />;
           case 'hostel-fees':         return <TransportFeeManager onEditLearner={handleEditLearner} onViewLearner={handleViewLearner} />;

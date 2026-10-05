@@ -29,6 +29,7 @@ export interface CreateTripInput {
   date:         Date;
   direction:    TripDirection;
   driverUserId?: string;
+  vehicleId?: string;
   notes?:       string;
 }
 
@@ -103,6 +104,7 @@ export class TripService {
         date:         dateUtc,
         direction:    input.direction,
         driverUserId: input.driverUserId ?? null,
+        vehicleId:    input.vehicleId ?? null,
         notes:        input.notes ?? null,
         status:       'SCHEDULED',
       },
@@ -128,11 +130,120 @@ export class TripService {
     });
   }
 
+  /** Create daily trip rows from one term/weekly plan; safe to submit repeatedly. */
+  async createRunPlan(input: {
+    schoolId: string; routeId: string; startDate: Date; endDate: Date;
+    directions: TripDirection[]; daysOfWeek: number[];
+    driverUserId?: string | null; vehicleId?: string | null; notes?: string | null;
+  }) {
+    const start = new Date(Date.UTC(input.startDate.getUTCFullYear(), input.startDate.getUTCMonth(), input.startDate.getUTCDate()));
+    const end = new Date(Date.UTC(input.endDate.getUTCFullYear(), input.endDate.getUTCMonth(), input.endDate.getUTCDate()));
+    const durationDays = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
+    if (durationDays < 1 || durationDays > 370) throw new ApiError(400, 'Choose a date range of 1 to 370 days');
+    const directions = [...new Set(input.directions)];
+    const weekdays = new Set(input.daysOfWeek);
+    if (!directions.length || !weekdays.size) throw new ApiError(400, 'Select at least one run direction and day');
+
+    const route = await prisma.transportRoute.findUnique({ where: { id: input.routeId }, include: { vehicle: true } });
+    if (!route || route.archived || route.status !== 'ACTIVE') throw new ApiError(404, 'Active route not found');
+    const vehicleId = input.vehicleId || route.vehicleId;
+    if (!vehicleId) throw new ApiError(400, 'Assign a vehicle to this run plan');
+    const vehicle = await prisma.transportVehicle.findFirst({ where: { id: vehicleId, archived: false, status: 'ACTIVE' } });
+    if (!vehicle) throw new ApiError(400, 'Choose an active vehicle');
+    const driverUserId = input.driverUserId || vehicle.driverId;
+    if (!driverUserId) throw new ApiError(400, 'Assign a driver account to the selected vehicle or choose a driver');
+    const driver = await prisma.user.findFirst({
+      where: { id: driverUserId, archived: false, status: 'ACTIVE', OR: [{ role: 'DRIVER' }, { roles: { has: 'DRIVER' } }] },
+      select: { id: true },
+    });
+    if (!driver) throw new ApiError(400, 'Choose an active user with the DRIVER role');
+
+    const dates: Date[] = [];
+    for (let offset = 0; offset < durationDays; offset += 1) {
+      const date = new Date(start.getTime() + offset * 86400000);
+      if (weekdays.has(date.getUTCDay())) dates.push(date);
+    }
+    if (!dates.length) throw new ApiError(400, 'The selected weekdays do not occur in this date range');
+
+    const existing = await prisma.transportTrip.findMany({
+      where: { routeId: input.routeId, date: { in: dates }, direction: { in: directions }, archived: false },
+      select: { id: true, date: true, direction: true, status: true },
+    });
+    const editable = existing.filter((trip) => trip.status === 'SCHEDULED');
+    if (editable.length) {
+      await prisma.transportTrip.updateMany({
+        where: { id: { in: editable.map((trip) => trip.id) } },
+        data: { driverUserId, vehicleId, notes: input.notes ?? null },
+      });
+    }
+
+    const existingKeys = new Set(existing.map((trip) => `${trip.date.toISOString().slice(0, 10)}:${trip.direction}`));
+    const createRows: Array<{ schoolId: string; routeId: string; date: Date; direction: string; driverUserId: string; vehicleId: string; status: string; notes: string | null }> = [];
+    for (const date of dates) for (const direction of directions) {
+      const key = `${date.toISOString().slice(0, 10)}:${direction}`;
+      if (!existingKeys.has(key)) createRows.push({ schoolId: input.schoolId, routeId: input.routeId, date, direction, driverUserId, vehicleId, status: 'SCHEDULED', notes: input.notes ?? null });
+    }
+    const created = createRows.length
+      ? await prisma.transportTrip.createMany({ data: createRows, skipDuplicates: true })
+      : { count: 0 };
+    return { scheduled: created.count + editable.length, unchanged: existing.length - editable.length, runCount: dates.length * directions.length };
+  }
+
+  async listRunTrips(input: { fromDate: Date; toDate: Date; routeId?: string }) {
+    const from = new Date(Date.UTC(input.fromDate.getUTCFullYear(), input.fromDate.getUTCMonth(), input.fromDate.getUTCDate()));
+    const to = new Date(Date.UTC(input.toDate.getUTCFullYear(), input.toDate.getUTCMonth(), input.toDate.getUTCDate()));
+    if (to < from || (to.getTime() - from.getTime()) / 86400000 > 370) throw new ApiError(400, 'Choose a valid date range of up to 370 days');
+    return prisma.transportTrip.findMany({
+      where: { archived: false, ...(input.routeId ? { routeId: input.routeId } : {}), date: { gte: from, lte: to } },
+      include: { route: { include: { vehicle: { include: { driver: { select: { id: true, firstName: true, lastName: true, phone: true } } } } }, vehicle: { include: { driver: { select: { id: true, firstName: true, lastName: true, phone: true } } } } },
+      orderBy: [{ date: 'asc' }, { direction: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  async updateRunAssignment(tripId: string, input: { driverUserId?: string | null; vehicleId?: string | null }) {
+    const trip = await prisma.transportTrip.findUnique({ where: { id: tripId }, include: { route: { include: { vehicle: true } } } });
+    if (!trip || trip.archived) throw new ApiError(404, 'Trip not found');
+    if (trip.status !== 'SCHEDULED') throw new ApiError(409, 'Only scheduled runs can be reassigned');
+    const vehicleId = input.vehicleId === undefined ? trip.vehicleId : input.vehicleId;
+    const vehicle = vehicleId
+      ? await prisma.transportVehicle.findFirst({ where: { id: vehicleId, archived: false, status: 'ACTIVE' }, select: { driverId: true } })
+      : null;
+    if (vehicleId && !vehicle) throw new ApiError(400, 'Choose an active vehicle');
+    const driverUserId = input.driverUserId === undefined
+      ? (input.vehicleId !== undefined ? vehicle?.driverId ?? null : trip.driverUserId)
+      : input.driverUserId;
+    if (driverUserId) {
+      const driver = await prisma.user.findFirst({ where: { id: driverUserId, archived: false, status: 'ACTIVE', OR: [{ role: 'DRIVER' }, { roles: { has: 'DRIVER' } }] }, select: { id: true } });
+      if (!driver) throw new ApiError(400, 'Choose an active user with the DRIVER role');
+    }
+    return prisma.transportTrip.update({ where: { id: tripId }, data: { driverUserId, vehicleId } });
+  }
+
+  async updateRunAssignments(tripIds: string[], input: { driverUserId?: string | null; vehicleId?: string | null }) {
+    const ids = [...new Set(tripIds)];
+    if (!ids.length || ids.length > 200) throw new ApiError(400, 'Select between 1 and 200 runs');
+    const trips = await prisma.transportTrip.findMany({ where: { id: { in: ids }, archived: false }, select: { id: true, status: true } });
+    if (trips.length !== ids.length) throw new ApiError(404, 'One or more runs could not be found');
+    if (trips.some((trip) => trip.status !== 'SCHEDULED')) throw new ApiError(409, 'Only scheduled runs can be reassigned');
+    const vehicleId = input.vehicleId ?? null;
+    const vehicle = vehicleId ? await prisma.transportVehicle.findFirst({ where: { id: vehicleId, archived: false, status: 'ACTIVE' }, select: { driverId: true } }) : null;
+    if (vehicleId && !vehicle) throw new ApiError(400, 'Choose an active vehicle');
+    const driverUserId = input.driverUserId === undefined ? vehicle?.driverId ?? null : input.driverUserId;
+    if (!driverUserId) throw new ApiError(400, 'Assign a driver to the replacement vehicle or choose a driver');
+    if (driverUserId) {
+      const driver = await prisma.user.findFirst({ where: { id: driverUserId, archived: false, status: 'ACTIVE', OR: [{ role: 'DRIVER' }, { roles: { has: 'DRIVER' } }] }, select: { id: true } });
+      if (!driver) throw new ApiError(400, 'Choose an active user with the DRIVER role');
+    }
+    await prisma.$transaction(ids.map((id) => prisma.transportTrip.update({ where: { id }, data: { driverUserId, vehicleId } })));
+    return { updated: ids.length };
+  }
+
   async getTripById(tripId: string) {
     const trip = await prisma.transportTrip.findUnique({
       where: { id: tripId },
       include: {
         route: { include: { vehicle: true } },
+        vehicle: true,
         boardingEvents: { orderBy: { recordedAt: 'asc' } },
       },
     });
@@ -520,7 +631,7 @@ export class TripService {
         direction: trip.direction,
         date:      trip.date,
         status:    trip.status,
-        vehicle:   trip.route.vehicle ?? null,
+        vehicle:   trip.vehicle ?? trip.route.vehicle ?? null,
       },
       totalAssigned: manifest.length,
       boarded:  manifest.filter(m => m.boardingStatus === 'BOARDED').length,
@@ -575,7 +686,10 @@ export class TripService {
     });
 
     const or: any[] = [{ driverUserId }];
-    if (vehicle?.id) or.push({ route: { vehicleId: vehicle.id } });
+    if (vehicle?.id) {
+      or.push({ driverUserId: null, vehicleId: vehicle.id });
+      or.push({ driverUserId: null, route: { vehicleId: vehicle.id } });
+    }
 
     const trips = await prisma.transportTrip.findMany({
       where: {
@@ -585,6 +699,7 @@ export class TripService {
       },
       include: {
         route: { include: { vehicle: true } },
+        vehicle: true,
         _count: { select: { boardingEvents: true } },
       },
       orderBy: [{ direction: 'asc' }, { createdAt: 'asc' }],
@@ -607,11 +722,11 @@ export class TripService {
             // Is this trip explicitly assigned to the signed-in driver?
             assignedToMe:  trip.driverUserId === driverUserId,
           },
-          vehicle: trip.route.vehicle
+          vehicle: (trip.vehicle ?? trip.route.vehicle)
             ? {
-                id:                 trip.route.vehicle.id,
-                registrationNumber: trip.route.vehicle.registrationNumber,
-                capacity:           trip.route.vehicle.capacity,
+                id:                 (trip.vehicle ?? trip.route.vehicle).id,
+                registrationNumber: (trip.vehicle ?? trip.route.vehicle).registrationNumber,
+                capacity:           (trip.vehicle ?? trip.route.vehicle).capacity,
               }
             : null,
           counts: {
@@ -624,9 +739,10 @@ export class TripService {
       }),
     );
 
+    const fallbackVehicle = summaries.find((summary) => summary.vehicle)?.vehicle;
     return {
       date: dateUtc,
-      vehicle: await this.getDriverVehicle(driverUserId),
+      vehicle: await this.getDriverVehicle(driverUserId) ?? (fallbackVehicle ? { ...fallbackVehicle, routes: [] } : null),
       trips: summaries,
     };
   }
@@ -641,16 +757,17 @@ export class TripService {
   async assertDriverOwnsTrip(driverUserId: string, tripId: string) {
     const trip = await prisma.transportTrip.findUnique({
       where: { id: tripId },
-      include: { route: { select: { vehicleId: true, vehicle: { select: { driverId: true } } } } },
+      include: { route: { select: { vehicleId: true, vehicle: { select: { driverId: true } } } }, vehicle: { select: { driverId: true } } },
     });
 
     if (!trip || trip.archived) throw new ApiError(404, 'Trip not found');
 
-    const vehicleDriverId = trip.route.vehicle?.driverId ?? null;
-    const ownsByAssignment = trip.driverUserId === driverUserId;
-    const ownsByVehicle   = vehicleDriverId !== null && vehicleDriverId === driverUserId;
+    const vehicleDriverId = (trip.vehicle ?? trip.route.vehicle)?.driverId ?? null;
+    const ownsTrip = trip.driverUserId
+      ? trip.driverUserId === driverUserId
+      : vehicleDriverId === driverUserId;
 
-    if (!ownsByAssignment && !ownsByVehicle) {
+    if (!ownsTrip) {
       throw new ApiError(403, 'This trip is not assigned to you');
     }
 

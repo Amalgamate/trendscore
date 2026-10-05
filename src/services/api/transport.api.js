@@ -2,6 +2,23 @@ import { fetchWithAuth } from './core';
 
 export const transportAPI = {
 
+    // ── Driver run planning / daily trip instances ───────────────────────────
+    createRunPlan: (data) => fetchWithAuth('/v1/transport/trips/plan', {
+        method: 'POST', body: JSON.stringify(data)
+    }),
+
+    listRunTrips: (params = {}) => {
+        const q = new URLSearchParams();
+        if (params.fromDate) q.append('fromDate', params.fromDate);
+        if (params.toDate) q.append('toDate', params.toDate);
+        if (params.routeId) q.append('routeId', params.routeId);
+        return fetchWithAuth(`/v1/transport/trips/runs?${q.toString()}`);
+    },
+
+    reassignRuns: (data) => fetchWithAuth('/v1/transport/trips/runs/assignment', {
+        method: 'PATCH', body: JSON.stringify(data)
+    }),
+
     // ── Summary & Fee Roster ──────────────────────────────────────────────────
     getSummary: () =>
         fetchWithAuth('/transport/summary'),

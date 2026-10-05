@@ -224,13 +224,27 @@ class TripCard extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(
-            trip.routeName,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.black.withValues(alpha: 0.55),
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                trip.routeName,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.black.withValues(alpha: 0.55),
+                ),
+              ),
+              if (trip.vehicle != null)
+                Text(
+                  trip.vehicle!.registrationNumber,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.black.withValues(alpha: 0.42),
+                  ),
+                ),
+            ],
           ),
         ),
         StatusPill(status: trip.status),

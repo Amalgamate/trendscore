@@ -325,6 +325,7 @@ export const secondaryNavSections = [
     items: [
       { id: 'hostel-fees',       label: 'Transport Fee Manager',     path: 'hostel-fees',        permission: 'TRANSPORT_MANAGEMENT' },
       { id: 'transport-drivers', label: 'Driver Management',         path: 'transport-drivers',  permission: 'TRANSPORT_MANAGEMENT' },
+      { id: 'transport-runs',    label: 'Driver Run Planner',        path: 'transport-runs',     permission: 'TRANSPORT_MANAGEMENT' },
       { id: 'driver-app-devices', label: 'Driver App Devices',       path: 'driver-app-devices', permission: 'TRANSPORT_MANAGEMENT' },
       { id: 'transport-vehicles',label: 'Fleet Vehicles',            path: 'transport-vehicles', permission: 'TRANSPORT_MANAGEMENT' },
       { id: 'transport-routes',  label: 'Bus Routes & Roster',       path: 'transport-routes',   permission: 'TRANSPORT_MANAGEMENT' },

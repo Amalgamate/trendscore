@@ -65,7 +65,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Sign out?'),
         content: const Text(
-          'You will need your school email and password to sign back in.',
+          'You will need your driver phone number and password to sign back in.',
         ),
         actions: [
           TextButton(
@@ -92,6 +92,34 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     ).push(MaterialPageRoute<void>(builder: (_) => ManifestScreen(trip: trip)));
     // Boarding may have changed while the manifest was open.
     if (mounted) _load();
+  }
+
+  Future<void> _changeTripStatus(DriverTrip trip, String status) async {
+    final starting = status == 'IN_PROGRESS';
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(starting ? 'Start this run?' : 'Complete this run?'),
+        content: Text(starting
+            ? 'Start ${trip.directionLabel.toLowerCase()} on ${trip.routeName}? The office will see that the vehicle has departed.'
+            : 'Mark ${trip.directionLabel.toLowerCase()} on ${trip.routeName} as complete?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(starting ? 'Start run' : 'Complete run')),
+        ],
+      ),
+    );
+    if (accepted != true || !mounted) return;
+
+    try {
+      await context.read<DriverRepository>().updateTripStatus(tripId: trip.id, status: status);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(starting ? 'Run started.' : 'Run completed.')));
+      await _load();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not update the run: $error')));
+    }
   }
 
   @override
@@ -188,7 +216,27 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           ...day.trips.map(
             (trip) => Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: TripCard(trip: trip, onTap: () => _openManifest(trip)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TripCard(trip: trip, onTap: () => _openManifest(trip)),
+                  if (trip.status == 'SCHEDULED') ...[
+                    const SizedBox(height: 8),
+                    FilledButton.icon(
+                      onPressed: () => _changeTripStatus(trip, 'IN_PROGRESS'),
+                      icon: const Icon(Icons.play_arrow_rounded),
+                      label: const Text('Start this run'),
+                    ),
+                  ] else if (trip.status == 'IN_PROGRESS') ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: () => _changeTripStatus(trip, 'COMPLETED'),
+                      icon: const Icon(Icons.flag_outlined),
+                      label: const Text('Complete this run'),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
       ],

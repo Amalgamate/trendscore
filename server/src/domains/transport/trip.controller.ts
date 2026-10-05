@@ -27,7 +27,7 @@ export class TripController {
    * Create or return the existing trip for route/date/direction.
    */
   async createOrGetTrip(req: AuthRequest, res: Response) {
-    const { routeId, date, direction, driverUserId, notes } = req.body;
+    const { routeId, date, direction, driverUserId, vehicleId, notes } = req.body;
 
     if (!routeId)    throw new ApiError(400, 'routeId is required');
     if (!date)       throw new ApiError(400, 'date is required');
@@ -44,10 +44,60 @@ export class TripController {
       date: new Date(date),
       direction,
       driverUserId: driverUserId || undefined,
+      vehicleId:    vehicleId || undefined,
       notes:        notes || undefined,
     });
 
     res.status(201).json({ success: true, data: trip });
+  }
+
+  /** Create all selected weekday/direction runs in a date range (up to one year). */
+  async createRunPlan(req: AuthRequest, res: Response) {
+    const { routeId, startDate, endDate, directions, daysOfWeek, driverUserId, vehicleId, notes } = req.body;
+    if (!routeId || !startDate || !endDate) throw new ApiError(400, 'routeId, startDate and endDate are required');
+    if (!Array.isArray(directions) || directions.some((d) => !['OUTBOUND', 'INBOUND'].includes(d))) throw new ApiError(400, 'directions must contain OUTBOUND and/or INBOUND');
+    if (!Array.isArray(daysOfWeek) || daysOfWeek.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) throw new ApiError(400, 'daysOfWeek must contain weekdays from 0 (Sunday) to 6 (Saturday)');
+    const start = new Date(`${String(startDate).slice(0, 10)}T00:00:00.000Z`);
+    const end = new Date(`${String(endDate).slice(0, 10)}T00:00:00.000Z`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) throw new ApiError(400, 'Start and end dates must be valid ISO dates');
+    const result = await tripService.createRunPlan({
+      schoolId: await this.resolveSchoolId(), routeId: String(routeId), startDate: start, endDate: end,
+      directions, daysOfWeek, driverUserId: driverUserId || null, vehicleId: vehicleId || null,
+      notes: notes ? String(notes) : null,
+    });
+    res.status(201).json({ success: true, data: result });
+  }
+
+  async listRunTrips(req: AuthRequest, res: Response) {
+    const { fromDate, toDate, routeId } = req.query;
+    if (!fromDate || !toDate) throw new ApiError(400, 'fromDate and toDate are required');
+    const from = new Date(`${String(fromDate).slice(0, 10)}T00:00:00.000Z`);
+    const to = new Date(`${String(toDate).slice(0, 10)}T00:00:00.000Z`);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) throw new ApiError(400, 'Date range must use YYYY-MM-DD');
+    const trips = await tripService.listRunTrips({ fromDate: from, toDate: to, routeId: routeId ? String(routeId) : undefined });
+    res.json({ success: true, data: trips, count: trips.length });
+  }
+
+  async updateRunAssignment(req: AuthRequest, res: Response) {
+    const { driverUserId, vehicleId } = req.body;
+    if (!Object.prototype.hasOwnProperty.call(req.body, 'driverUserId') && !Object.prototype.hasOwnProperty.call(req.body, 'vehicleId')) {
+      throw new ApiError(400, 'Provide a driverUserId and/or vehicleId');
+    }
+    const trip = await tripService.updateRunAssignment(req.params.tripId, {
+      ...(Object.prototype.hasOwnProperty.call(req.body, 'driverUserId') ? { driverUserId: driverUserId || null } : {}),
+      ...(Object.prototype.hasOwnProperty.call(req.body, 'vehicleId') ? { vehicleId: vehicleId || null } : {}),
+    });
+    res.json({ success: true, data: trip, message: 'Run assignment updated' });
+  }
+
+  async updateRunAssignments(req: AuthRequest, res: Response) {
+    const { tripIds, driverUserId, vehicleId } = req.body;
+    if (!Array.isArray(tripIds)) throw new ApiError(400, 'tripIds must be an array');
+    const result = await tripService.updateRunAssignments(tripIds.map(String), {
+      ...(Object.prototype.hasOwnProperty.call(req.body, 'driverUserId') ? { driverUserId: driverUserId || null } : {}),
+      ...(Object.prototype.hasOwnProperty.call(req.body, 'vehicleId') ? { vehicleId: vehicleId || null } : {}),
+    });
+    res.json({ success: true, data: result, message: 'Selected run assignments updated' });
   }
 
   /**

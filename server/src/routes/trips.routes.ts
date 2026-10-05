@@ -17,6 +17,24 @@ const router = Router();
 
 // All routes require authentication (registered after authenticate in index.ts)
 
+router.post(
+  '/plan',
+  requirePermission('MANAGE_TRANSPORT_TRIPS'),
+  asyncHandler(tripController.createRunPlan.bind(tripController)),
+);
+
+router.get(
+  '/runs',
+  requireAnyPermission(['MANAGE_TRANSPORT_TRIPS', 'VIEW_TRANSPORT_TRIPS']),
+  asyncHandler(tripController.listRunTrips.bind(tripController)),
+);
+
+router.patch(
+  '/runs/assignment',
+  requirePermission('MANAGE_TRANSPORT_TRIPS'),
+  asyncHandler(tripController.updateRunAssignments.bind(tripController)),
+);
+
 /**
  * @route POST /api/v1/transport/trips
  * @desc  Create or get existing trip for route/date/direction
@@ -55,6 +73,12 @@ router.patch(
   '/:tripId/status',
   requireAnyPermission(['MANAGE_TRANSPORT_TRIPS', 'RECORD_BOARDING_EVENTS']),
   asyncHandler(tripController.updateTripStatus.bind(tripController)),
+);
+
+router.patch(
+  '/:tripId/assignment',
+  requirePermission('MANAGE_TRANSPORT_TRIPS'),
+  asyncHandler(tripController.updateRunAssignment.bind(tripController)),
 );
 
 /**
