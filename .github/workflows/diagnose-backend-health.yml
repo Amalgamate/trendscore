@@ -116,6 +116,69 @@ jobs:
             .finally(() => prisma.$disconnect());
           NODE
 
+          echo "## 4.6 Driver today query (read-only Prisma reproduction)"
+          sudo docker exec -i "$backend" node - <<'NODE'
+          const { PrismaClient } = require('@prisma/client');
+          const prisma = new PrismaClient();
+          const summarize = (error) => ({
+            name: error?.name,
+            code: error?.code,
+            message: error?.message,
+            meta: error?.meta,
+          });
+          (async () => {
+            const drivers = await prisma.transportVehicle.findMany({
+              where: { archived: false, driverId: { not: null } },
+              select: { id: true, driverId: true },
+            });
+            console.log(`Linked driver vehicles: ${drivers.length}`);
+            const date = new Date();
+            const dateUtc = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+            for (const [index, vehicle] of drivers.entries()) {
+              const or = [{ driverUserId: vehicle.driverId }];
+              or.push({ driverUserId: null, vehicleId: vehicle.id });
+              or.push({ driverUserId: null, route: { vehicleId: vehicle.id } });
+              try {
+                const trips = await prisma.transportTrip.findMany({
+                  where: { archived: false, date: dateUtc, OR: or },
+                  include: {
+                    route: { include: { vehicle: true } },
+                    vehicle: true,
+                    _count: { select: { boardingEvents: true } },
+                  },
+                  orderBy: [{ direction: 'asc' }, { createdAt: 'asc' }],
+                });
+                console.log(`Vehicle ${index + 1}: trip query succeeded (${trips.length} trips)`);
+                for (const trip of trips) {
+                  try {
+                    const assignments = await prisma.transportAssignment.findMany({
+                      where: { routeId: trip.routeId, passengerType: 'LEARNER', archived: false },
+                      select: { passengerId: true, pickupPoint: true, dropoffPoint: true },
+                    });
+                    const learners = await prisma.learner.findMany({
+                      where: { id: { in: assignments.map((a) => a.passengerId) }, archived: false },
+                      select: {
+                        id: true, firstName: true, lastName: true, admissionNumber: true,
+                        grade: true, stream: true, primaryContactPhone: true, guardianPhone: true,
+                      },
+                      orderBy: [{ grade: 'asc' }, { lastName: 'asc' }],
+                    });
+                    await prisma.transportBoardingEvent.findMany({
+                      where: { tripId: trip.id }, orderBy: { recordedAt: 'desc' },
+                    });
+                    console.log(`  Manifest query succeeded (${learners.length} assigned learners)`);
+                  } catch (error) {
+                    console.log('  Manifest query failed:', JSON.stringify(summarize(error)));
+                  }
+                }
+              } catch (error) {
+                console.log(`Vehicle ${index + 1}: trip query failed:`, JSON.stringify(summarize(error)));
+              }
+            }
+          })().catch((error) => { console.error(JSON.stringify(summarize(error))); process.exitCode = 1; })
+            .finally(() => prisma.$disconnect());
+          NODE
+
           echo "## 5. Recent logs (since ${SINCE}, last ${LOG_LINES} lines)"
           sudo docker logs "$backend" --since "$SINCE" --timestamps 2>&1 | tail -n "$LOG_LINES"
 
