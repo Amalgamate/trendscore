@@ -138,4 +138,13 @@ export const transportAPI = {
             body: JSON.stringify({})
         }),
 
+    deleteRevokedDriverDevice: (id) =>
+        fetchWithAuth(`/driver-devices/${id}`, { method: 'DELETE' }),
+
+    deleteRevokedDriverDevices: (ids) =>
+        fetchWithAuth('/driver-devices', {
+            method: 'DELETE',
+            body: JSON.stringify({ ids })
+        }),
+
 };

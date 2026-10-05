@@ -17,7 +17,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Smartphone, ShieldCheck, XCircle, Loader2, RefreshCw, Clock, CheckCircle2, Ban } from 'lucide-react';
+import { Smartphone, ShieldCheck, XCircle, Loader2, RefreshCw, Clock, CheckCircle2, Ban, Trash2 } from 'lucide-react';
 import { transportAPI } from '../../../../services/api/transport.api';
 
 const unwrap = (r) => r?.data?.data || r?.data || null;
@@ -38,6 +38,8 @@ export default function DriverAppDevices() {
   const [filter, setFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
@@ -46,6 +48,7 @@ export default function DriverAppDevices() {
     try {
       const res = await transportAPI.listDriverDevices(filter || undefined);
       setDevices(unwrap(res) || []);
+      setSelectedIds([]);
     } catch (e) {
       setError(e?.message || 'Could not load driver devices.');
       setDevices([]);
@@ -71,6 +74,41 @@ export default function DriverAppDevices() {
   };
 
   const pending = devices.filter((d) => d.status === 'PENDING').length;
+  const revokedDevices = devices.filter((d) => d.status === 'REVOKED');
+  const selectedRevokedIds = selectedIds.filter((id) => revokedDevices.some((d) => d.id === id));
+
+  const toggleSelected = (id) => {
+    setSelectedIds((current) => current.includes(id)
+      ? current.filter((selectedId) => selectedId !== id)
+      : [...current, id]);
+  };
+
+  const toggleAllRevoked = () => {
+    const allSelected = revokedDevices.length > 0 && revokedDevices.every((d) => selectedIds.includes(d.id));
+    setSelectedIds(allSelected ? [] : revokedDevices.map((d) => d.id));
+  };
+
+  const deleteDevices = async (ids) => {
+    if (!ids.length) return;
+    const message = ids.length === 1
+      ? 'Permanently delete this revoked phone from the school device list?'
+      : `Permanently delete these ${ids.length} revoked phones from the school device list?`;
+    if (!window.confirm(message)) return;
+
+    setDeleting(true);
+    setError('');
+    try {
+      if (ids.length === 1) await transportAPI.deleteRevokedDriverDevice(ids[0]);
+      else await transportAPI.deleteRevokedDriverDevices(ids);
+      setSelectedIds([]);
+      await load();
+    } catch (e) {
+      setError(e?.message || 'Could not delete the revoked device records.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
 return (
     <div className="p-4 flex flex-col gap-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -121,6 +159,30 @@ return (
         </div>
       )}
 
+      {!loading && revokedDevices.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border border-slate-200 bg-white px-3 py-2">
+          <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={revokedDevices.every((d) => selectedRevokedIds.includes(d.id))}
+              onChange={toggleAllRevoked}
+              disabled={deleting}
+              aria-label="Select all revoked phones"
+            />
+            Select revoked phones ({revokedDevices.length})
+          </label>
+          <button
+            type="button"
+            onClick={() => deleteDevices(selectedRevokedIds)}
+            disabled={!selectedRevokedIds.length || deleting}
+            className="inline-flex h-9 items-center gap-1.5 border border-red-300 bg-white px-3 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            Delete selected{selectedRevokedIds.length ? ` (${selectedRevokedIds.length})` : ''}
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-slate-600 py-6">
           <Loader2 size={16} className="animate-spin" /> Loading devices…
@@ -145,6 +207,15 @@ return (
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
+                      {d.status === 'REVOKED' && (
+                        <input
+                          type="checkbox"
+                          checked={selectedRevokedIds.includes(d.id)}
+                          onChange={() => toggleSelected(d.id)}
+                          disabled={deleting}
+                          aria-label={`Select ${d.label || 'revoked phone'}`}
+                        />
+                      )}
                       <Smartphone size={15} className="text-slate-400 shrink-0" />
                       <span className="font-medium text-slate-900 truncate">
                         {d.label || 'Unnamed phone'}
@@ -179,6 +250,16 @@ return (
                         className="inline-flex h-9 items-center gap-1.5 border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                       >
                         <XCircle size={14} /> Revoke
+                      </button>
+                    )}
+                    {d.status === 'REVOKED' && (
+                      <button
+                        onClick={() => deleteDevices([d.id])}
+                        disabled={deleting}
+                        className="inline-flex h-9 items-center gap-1.5 border border-red-300 bg-white px-3 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                        Delete
                       </button>
                     )}
                   </div>
