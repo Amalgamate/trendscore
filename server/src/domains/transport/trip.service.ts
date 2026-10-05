@@ -712,6 +712,7 @@ export class TripService {
     const summaries = await Promise.all(
       trips.map(async (trip) => {
         const manifest = await this.getTripManifest(trip.id);
+        const assignedVehicle = trip.vehicle ?? trip.route.vehicle;
         return {
           trip: {
             id: trip.id,
@@ -725,11 +726,11 @@ export class TripService {
             // Is this trip explicitly assigned to the signed-in driver?
             assignedToMe:  trip.driverUserId === driverUserId,
           },
-          vehicle: (trip.vehicle ?? trip.route.vehicle)
+          vehicle: assignedVehicle
             ? {
-                id:                 (trip.vehicle ?? trip.route.vehicle).id,
-                registrationNumber: (trip.vehicle ?? trip.route.vehicle).registrationNumber,
-                capacity:           (trip.vehicle ?? trip.route.vehicle).capacity,
+                id:                 assignedVehicle.id,
+                registrationNumber: assignedVehicle.registrationNumber,
+                capacity:           assignedVehicle.capacity,
               }
             : null,
           counts: {
