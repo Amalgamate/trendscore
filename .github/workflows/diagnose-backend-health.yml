@@ -116,6 +116,28 @@ jobs:
             .finally(() => prisma.$disconnect());
           NODE
 
+          echo "## 4.55 transport_boarding_events schema (column names and row count only)"
+          sudo docker exec -i "$backend" node - <<'NODE'
+          const { PrismaClient } = require('@prisma/client');
+          const prisma = new PrismaClient();
+          (async () => {
+            const columns = await prisma.$queryRawUnsafe(`
+              SELECT column_name, data_type, is_nullable
+              FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'transport_boarding_events'
+              ORDER BY ordinal_position
+            `);
+            const rows = await prisma.$queryRawUnsafe(`
+              SELECT to_regclass('public.transport_boarding_events') IS NOT NULL AS table_exists,
+                     CASE WHEN to_regclass('public.transport_boarding_events') IS NOT NULL
+                       THEN (SELECT count(*)::int FROM public.transport_boarding_events)
+                       ELSE 0 END AS row_count
+            `);
+            console.log(JSON.stringify({ columns, ...rows[0] }, null, 2));
+          })().catch((error) => { console.error(error.message); process.exitCode = 1; })
+            .finally(() => prisma.$disconnect());
+          NODE
+
           echo "## 4.6 Driver today query (read-only Prisma reproduction)"
           sudo docker exec -i "$backend" node - <<'NODE'
           const { PrismaClient } = require('@prisma/client');
