@@ -195,7 +195,10 @@ export class TripService {
     if (to < from || (to.getTime() - from.getTime()) / 86400000 > 370) throw new ApiError(400, 'Choose a valid date range of up to 370 days');
     return prisma.transportTrip.findMany({
       where: { archived: false, ...(input.routeId ? { routeId: input.routeId } : {}), date: { gte: from, lte: to } },
-      include: { route: { include: { vehicle: { include: { driver: { select: { id: true, firstName: true, lastName: true, phone: true } } } } }, vehicle: { include: { driver: { select: { id: true, firstName: true, lastName: true, phone: true } } } } },
+      include: {
+        route: { include: { vehicle: { include: { driver: { select: { id: true, firstName: true, lastName: true, phone: true } } } } } },
+        vehicle: { include: { driver: { select: { id: true, firstName: true, lastName: true, phone: true } } } },
+      },
       orderBy: [{ date: 'asc' }, { direction: 'asc' }, { createdAt: 'asc' }],
     });
   }
