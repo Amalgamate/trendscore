@@ -101,7 +101,7 @@ jobs:
           const { PrismaClient } = require('@prisma/client');
           const prisma = new PrismaClient();
           (async () => {
-            const tables = await prisma.$queryRaw`SELECT to_regclass('public.transport_trips') AS table_name`;
+            const tables = await prisma.$queryRaw`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'transport_trips'`;
             if (!tables[0]?.table_name) {
               console.log('transport_trips table is absent');
               return;
