@@ -491,34 +491,45 @@ backup_database() {
   local ts
   ts="$(date -u +%Y%m%dT%H%M%SZ)"
   local dest="${BACKUP_DIR}/${id}/${ts}"
+  local dump_file="${dest}/database.sql"
+  local dump_command='set -eu; : "${POSTGRES_USER:?POSTGRES_USER missing}"; : "${POSTGRES_DB:?POSTGRES_DB missing}"; pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"'
+  local -a compose_prefix
   run_as_root mkdir -p "${dest}"
 
   log "━━ Backup: ${id} → ${dest} ━━"
 
   if [[ "${kind}" == "main" ]]; then
     cd "${MAIN_DIR}"
-    local db_user db_name
-    db_user="$(read_env_value "${MAIN_DIR}/.env" DB_USER)"
-    db_name="$(read_env_value "${MAIN_DIR}/.env" DB_NAME)"
-    db_user="${db_user:-postgres}"
-    db_name="${db_name:-zawadi_sms}"
-    docker_cmd compose exec -T db pg_dump -U "${db_user}" "${db_name}" < /dev/null \
-      | run_as_root tee "${dest}/database.sql" >/dev/null
-    echo "${dest}/database.sql" | run_as_root tee "${dest}/LATEST" >/dev/null
-    prune_backup_snapshots "${id}"
-    return 0
+    compose_prefix=(compose)
+  else
+    cd "${APPS_DIR}"
+    compose_prefix=(compose --env-file "${env_file}" -p "${project}" -f "${STACK_COMPOSE_FILE}")
   fi
 
-  cd "${APPS_DIR}"
-  local db_user db_name
-  db_user="$(read_env_value "${env_file}" DB_USER)"
-  db_name="$(read_env_value "${env_file}" DB_NAME)"
-  db_user="${db_user:-postgres}"
-  db_name="${db_name:-postgres}"
-  docker_cmd compose --env-file "${env_file}" -p "${project}" -f "${STACK_COMPOSE_FILE}" \
-    exec -T db pg_dump -U "${db_user}" "${db_name}" < /dev/null \
-    | run_as_root tee "${dest}/database.sql" >/dev/null
-  echo "${dest}/database.sql" | run_as_root tee "${dest}/LATEST" >/dev/null
+  # Read the active PostgreSQL role/database from inside the DB container. Do
+  # not guess "postgres": provisioned school databases use their configured
+  # POSTGRES_USER. The dump must finish successfully before the deploy proceeds.
+  if ! docker_cmd "${compose_prefix[@]}" exec -T db sh -lc "${dump_command}" < /dev/null \
+    | run_as_root tee "${dump_file}" >/dev/null; then
+    run_as_root rm -f "${dump_file}" "${dest}/database.sql.sha256"
+    log "Database backup failed for ${id}; stopping before image pull or migration"
+    return 1
+  fi
+
+  if ! run_as_root test -s "${dump_file}" \
+    || ! run_as_root grep -Fq -- '-- PostgreSQL database dump complete' "${dump_file}"; then
+    run_as_root rm -f "${dump_file}" "${dest}/database.sql.sha256"
+    log "Database backup for ${id} is incomplete; stopping before image pull or migration"
+    return 1
+  fi
+
+  if ! run_as_root sha256sum "${dump_file}" | run_as_root tee "${dest}/database.sql.sha256" >/dev/null; then
+    run_as_root rm -f "${dump_file}" "${dest}/database.sql.sha256"
+    log "Could not verify database backup for ${id}; stopping before image pull or migration"
+    return 1
+  fi
+
+  echo "${dump_file}" | run_as_root tee "${dest}/LATEST" >/dev/null
   prune_backup_snapshots "${id}"
 }
 
