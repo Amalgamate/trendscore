@@ -7,10 +7,15 @@ const os = require('os');
 const crypto = require('crypto');
 const { promisify } = require('util');
 const { execFile } = require('child_process');
+const { Writable } = require('stream');
 const Docker = require('dockerode');
 const si = require('systeminformation');
+const bcrypt = require('bcryptjs');
+const { authenticator } = require('otplib');
 const { createBillingStore } = require('./billing-store');
-const { createPdfBuffer, quotePdfLines, invoicePdfBuffer } = require('./billing-documents');
+const { createUsersStore } = require('./users-store');
+const { createTenantsStore } = require('./tenants-store');
+const { quotePdfBuffer, invoicePdfBuffer, paymentReceiptPdfBuffer } = require('./billing-documents');
 
 const execFileAsync = promisify(execFile);
 
@@ -31,12 +36,41 @@ function loadEnvFile(filePath) {
 
 loadEnvFile(path.join(__dirname, '.env'));
 
-const { USERS, JWT_SECRET, JWT_EXPIRES_IN, ROLE_ACCESS } = require('./auth-config');
+const {
+  CONSOLE_BOOTSTRAP_SUPER_ADMIN_EMAIL,
+  CONSOLE_BOOTSTRAP_SUPER_ADMIN_PASSWORD,
+  JWT_SECRET,
+  JWT_EXPIRES_IN,
+  MFA_PENDING_EXPIRES_IN,
+  ROLE_ACCESS,
+} = require('./auth-config');
 
 const app = express();
 const PORT = process.env.PORT || 3100;
+const CONSOLE_ENV_FILE = path.resolve(process.env.CONSOLE_ENV_FILE || '/srv/zawadi/apps/.env.console');
 const COOKIE_NAME = 'trends_core_token';
 const COOKIE_SECURE = process.env.CONSOLE_COOKIE_SECURE === 'true';
+// bcryptjs work factor for both the bootstrap super_admin hash and the
+// fixed dummy hash used to keep unknown-email login attempts constant-shape.
+const BCRYPT_COST = 10;
+// F-13 / PLATFORM_CONSOLE_COMPLETION_PLAN.md V-08: imageTag is user-supplied
+// and flows into shell env vars consumed by deploy-release.sh (sed -i on env
+// files, docker image refs). Restrict to the same charset Docker itself
+// allows in a tag, so nothing here can break out of that context.
+const IMAGE_TAG_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
+function isValidImageTag(tag) {
+  return typeof tag === 'string' && IMAGE_TAG_PATTERN.test(tag);
+}
+// F-02 remediation (opt-in, additive): trigger the existing GitHub Actions
+// workflow_dispatch pipelines (promote-release.yml, deploy-console.yml)
+// instead of the privileged in-container Docker/chroot path below
+// (runDeployReleaseOnHost). Disabled by default — nothing changes here
+// until this is tested against a real deploy and deliberately enabled. See
+// PLATFORM_CONSOLE_COMPLETION_PLAN.md §4, item 1 (F-02).
+const GITHUB_REPO = process.env.CONSOLE_GITHUB_REPO || 'Amalgamate/trendscore';
+const GITHUB_TOKEN = process.env.CONSOLE_GITHUB_TOKEN || '';
+const DEPLOY_VIA_GITHUB_ACTIONS = process.env.CONSOLE_DEPLOY_VIA_GITHUB_ACTIONS === 'true';
+
 const docker = process.env.DOCKER_HOST
   ? new Docker({ host: 'localhost', port: 2375, protocol: 'http' })
   : new Docker();
@@ -51,8 +85,179 @@ const CONSOLE_DATA_DIR = process.env.CONSOLE_DATA_DIR || __dirname;
 fs.mkdirSync(CONSOLE_DATA_DIR, { recursive: true });
 const LEADS_STORE_FILE = path.join(CONSOLE_DATA_DIR, 'leads.store.json');
 const AUDIT_STORE_FILE = path.join(CONSOLE_DATA_DIR, 'audit.store.json');
+const PROVISION_STORE_FILE = path.join(CONSOLE_DATA_DIR, 'provisions.store.json');
 const billingStore = createBillingStore(CONSOLE_DATA_DIR);
+const usersStore = createUsersStore(CONSOLE_DATA_DIR);
+const tenantsStore = createTenantsStore(CONSOLE_DATA_DIR);
 const MAX_AUDIT_ENTRIES = 2000;
+const MAX_PROVISION_JOBS = 100;
+const provisionLocks = new Map();
+const ASSESSMENT_ACTIVITY_CACHE_MS = 60 * 1000;
+let assessmentActivityCache = { fetchedAt: 0, activities: [] };
+
+function captureDockerStream(stream) {
+  let stdout = '';
+  let stderr = '';
+  const out = new Writable({ write(chunk, _encoding, callback) { stdout += chunk.toString('utf8'); callback(); } });
+  const err = new Writable({ write(chunk, _encoding, callback) { stderr += chunk.toString('utf8'); callback(); } });
+  const completed = new Promise((resolve, reject) => {
+    stream.once('end', resolve);
+    stream.once('error', reject);
+  });
+  docker.modem.demuxStream(stream, out, err);
+  return completed.then(() => ({ stdout, stderr }));
+}
+
+async function readSchoolAssessmentActivity(dbContainer) {
+  const sql = `WITH configured_context AS (
+      SELECT "academicYear" AS academic_year, term::text AS term
+      FROM public.term_configs
+      WHERE "isActive" = true AND archived = false
+      ORDER BY "updatedAt" DESC
+      LIMIT 1
+    ), test_fallback AS (
+      SELECT "academicYear" AS academic_year, term::text AS term
+      FROM public.summative_tests
+      WHERE archived = false
+      ORDER BY "academicYear" DESC, "updatedAt" DESC
+      LIMIT 1
+    ), school_context AS (
+      SELECT
+        COALESCE((SELECT academic_year FROM configured_context), (SELECT academic_year FROM test_fallback), EXTRACT(YEAR FROM CURRENT_DATE)::int) AS academic_year,
+        COALESCE((SELECT term FROM configured_context), (SELECT term FROM test_fallback), 'TERM_1') AS term
+    )
+    SELECT json_build_object(
+      'current_term', (SELECT term FROM school_context),
+      'academic_year', (SELECT academic_year FROM school_context),
+      'test_count', (
+        SELECT COUNT(*)::int
+        FROM public.summative_tests st CROSS JOIN school_context context
+        WHERE st.archived = false AND st."academicYear" = context.academic_year AND st.term::text = context.term
+      ),
+      'active_test_count', (
+        SELECT COUNT(*)::int
+        FROM public.summative_tests st CROSS JOIN school_context context
+        WHERE st.archived = false AND st.active = true AND st."academicYear" = context.academic_year AND st.term::text = context.term
+      ),
+      'tests', COALESCE((
+        SELECT json_agg(to_jsonb(activity) ORDER BY activity.activity_at DESC)
+        FROM (
+          SELECT st.id, st.title, st."testType"::text AS test_type,
+            st."learningArea" AS learning_area, st.grade,
+            st.term::text AS term, st."academicYear" AS academic_year,
+            st."testDate" AS test_date, st.active, st.status::text AS status,
+            st."updatedAt" AS updated_at, COALESCE(result_activity.result_count, 0)::int AS result_count,
+            result_activity.last_result_at,
+            GREATEST(st."updatedAt", COALESCE(result_activity.last_result_at, st."updatedAt")) AS activity_at
+          FROM (
+            SELECT school_test.*
+            FROM public.summative_tests school_test CROSS JOIN school_context context
+            WHERE school_test.archived = false
+              AND school_test."academicYear" = context.academic_year
+              AND school_test.term::text = context.term
+            ORDER BY school_test."updatedAt" DESC
+            LIMIT 8
+          ) st
+          LEFT JOIN LATERAL (
+            SELECT COUNT(*)::int AS result_count, MAX(sr."updatedAt") AS last_result_at
+            FROM public.summative_results sr
+            WHERE sr."testId" = st.id AND sr.archived = false
+          ) result_activity ON true
+          ORDER BY activity_at DESC
+        ) activity
+      ), '[]'::json)
+    )::text`;
+  const command = `psql -X -q -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -c ${shellQuote(sql)}`;
+  const exec = await docker.getContainer(dbContainer.Id).exec({
+    Cmd: ['sh', '-lc', command], AttachStdout: true, AttachStderr: true, Tty: false,
+  });
+  const stream = await exec.start({ hijack: true, stdin: false });
+  const captured = await captureDockerStream(stream);
+  const state = await exec.inspect();
+  if (state.ExitCode !== 0) throw new Error(captured.stderr.trim() || `psql exited ${state.ExitCode}`);
+  const parsed = JSON.parse(captured.stdout.trim() || '{}');
+  return {
+    currentTerm: String(parsed.current_term || ''),
+    academicYear: Number(parsed.academic_year) || null,
+    testCount: Math.max(0, Number(parsed.test_count) || 0),
+    activeTestCount: Math.max(0, Number(parsed.active_test_count) || 0),
+    tests: Array.isArray(parsed.tests) ? parsed.tests : [],
+  };
+}
+
+function readProvisionStore() {
+  if (!fs.existsSync(PROVISION_STORE_FILE)) return [];
+  try {
+    const parsed = JSON.parse(fs.readFileSync(PROVISION_STORE_FILE, 'utf8') || '{}');
+    return Array.isArray(parsed.jobs) ? parsed.jobs : [];
+  } catch (error) {
+    console.error('[provision] Could not read provision job store:', error.message);
+    return [];
+  }
+}
+
+function writeProvisionStore(jobs) {
+  const temporaryPath = `${PROVISION_STORE_FILE}.${process.pid}.${crypto.randomBytes(5).toString('hex')}.tmp`;
+  try {
+    fs.writeFileSync(temporaryPath, JSON.stringify({ jobs: jobs.slice(0, MAX_PROVISION_JOBS) }, null, 2), { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    fs.chmodSync(temporaryPath, 0o600);
+    fs.renameSync(temporaryPath, PROVISION_STORE_FILE);
+    fs.chmodSync(PROVISION_STORE_FILE, 0o600);
+  } catch (error) {
+    try { fs.unlinkSync(temporaryPath); } catch (_) {}
+    throw error;
+  }
+}
+
+function recoverProvisionJobsAfterRestart() {
+  let changed = false;
+  const now = new Date().toISOString();
+  const jobs = readProvisionStore().map(job => {
+    if (!['queued', 'running'].includes(job.status)) return job;
+    changed = true;
+    return { ...job, status: 'interrupted', phase: 'Interrupted by console restart',
+      error: 'The console restarted before it recorded a final result. Inspect the runtime and server logs before retrying.',
+      updatedAt: now, completedAt: now, interruptionAudited: true };
+  });
+  if (!changed) return;
+  writeProvisionStore(jobs);
+  for (const job of jobs.filter(item => item.status === 'interrupted' && item.interruptionAudited === true)) {
+    pushAudit('PROVISION_INTERRUPTED', job.name, job.requestedBy || 'system', `Provision job ${job.id} was interrupted by a console restart; inspect runtime before retrying.`, 'Warning');
+    job.interruptionAudited = 'recorded';
+  }
+  writeProvisionStore(jobs);
+}
+recoverProvisionJobsAfterRestart();
+
+function saveProvisionJob(job) {
+  const jobs = readProvisionStore();
+  const index = jobs.findIndex(item => item.id === job.id);
+  if (index >= 0) jobs[index] = job;
+  else jobs.unshift(job);
+  writeProvisionStore(jobs);
+  return job;
+}
+
+function publicProvisionJob(job) {
+  if (!job) return null;
+  const { payload, ...safeJob } = job;
+  return safeJob;
+}
+
+// Bootstrap-only seed (Stage 2, Phase 1): on first boot, create the initial
+// super_admin from env vars if no user with that email exists yet in the
+// DB. Subsequent boots leave the DB record alone even if the env password
+// later changes — rotate it via setPassword/the Users UI once the DB is
+// the source of truth, not by editing .env.
+function seedBootstrapSuperAdmin() {
+  if (!CONSOLE_BOOTSTRAP_SUPER_ADMIN_EMAIL || !CONSOLE_BOOTSTRAP_SUPER_ADMIN_PASSWORD) return;
+  const normalizedEmail = CONSOLE_BOOTSTRAP_SUPER_ADMIN_EMAIL.trim().toLowerCase();
+  if (usersStore.getUserByEmail(normalizedEmail)) return;
+  const passwordHash = bcrypt.hashSync(CONSOLE_BOOTSTRAP_SUPER_ADMIN_PASSWORD, BCRYPT_COST);
+  usersStore.createUser({ email: normalizedEmail, passwordHash, name: 'Super Admin', role: 'super_admin', active: true });
+  console.log(`[auth] Bootstrapped initial super_admin: ${normalizedEmail}`);
+}
+seedBootstrapSuperAdmin();
 
 // In-memory deployment log (ephemeral — only tracks this process session)
 const deploymentLog = [];
@@ -181,6 +386,33 @@ function buildManifestDomainIndex(manifest = {}) {
     }
   }
   return { byId, byProject };
+}
+
+function buildManifestDisplayNameIndex(manifest = {}) {
+  const byId = new Map();
+  const byProject = new Map();
+  for (const inst of manifest.instances || []) {
+    const displayName = String(inst.label || inst.id || '')
+      .replace(/^zawadi[\s_-]+/i, '')
+      .replace(/\s*[—–-]\s*zawadi$/i, '')
+      .trim();
+    if (!displayName) continue;
+    byId.set(String(inst.id || '').toLowerCase(), displayName);
+    for (const alias of inst.aliases || []) byId.set(String(alias).toLowerCase(), displayName);
+    const project = inst.compose_project
+      || (inst.kind === 'main' ? 'zawadijrn' : `zawadi-${inst.id}`);
+    byProject.set(String(project).toLowerCase(), displayName);
+  }
+  return { byId, byProject };
+}
+
+function resolveRuntimeDisplayName(instance, displayNames) {
+  const project = String(instance.composeProject || instance.key || '').trim().toLowerCase();
+  const slug = slugifyName(slugFromComposeProject(project) || instance.key || instance.name);
+  return displayNames.byProject.get(project)
+    || displayNames.byId.get(normalizeDeploySchoolId(slug))
+    || displayNames.byId.get(slug)
+    || humanizeInstanceName(project || instance.name);
 }
 
 function resolveRuntimeDomain(instance, nginxMap, manifestIndex) {
@@ -438,6 +670,40 @@ async function runDeployConsoleOnly(imageTag) {
 }
 
 // ── Audit log helpers (file-backed, survives restarts) ────────────────────
+// F-02 remediation: fire a workflow_dispatch call against an existing
+// GitHub Actions workflow (promote-release.yml, deploy-console.yml — both
+// already exist and already SSH into the real deploy host, no privileged
+// in-container access needed). GitHub's dispatch API returns 204 with no
+// run ID — there is no synchronous way to learn success/failure or stream
+// logs back through this call the way the exec-based path above does.
+// Callers only get confirmation the dispatch was *accepted*; the actual
+// run has to be watched in the GitHub Actions tab (or at runsUrl below).
+async function triggerGithubWorkflowDispatch(workflowFile, ref, inputs) {
+  if (!GITHUB_TOKEN) {
+    throw new Error('CONSOLE_GITHUB_TOKEN is not set. A GitHub token with "Actions: write" access on the repo is required to dispatch deploy workflows.');
+  }
+  const url = `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/${workflowFile}/dispatches`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${GITHUB_TOKEN}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ ref, inputs }),
+  });
+  if (response.status !== 204) {
+    let detail = '';
+    try { detail = JSON.stringify(await response.json()); } catch (_) { /* no JSON body */ }
+    throw new Error(`GitHub workflow_dispatch failed (HTTP ${response.status}): ${detail || 'no detail returned'}`);
+  }
+  return {
+    dispatched: true,
+    runsUrl: `https://github.com/${GITHUB_REPO}/actions/workflows/${workflowFile}`,
+  };
+}
+
 function ensureAuditStore() {
   if (!fs.existsSync(AUDIT_STORE_FILE)) {
     fs.writeFileSync(AUDIT_STORE_FILE, JSON.stringify({ logs: [] }, null, 2), 'utf8');
@@ -505,7 +771,19 @@ function writeLeadsStore(leads) {
 }
 
 // ── App catalog & port ranges ─────────────────────────────────────────────
-const APP_TYPE_SET = new Set(['school', 'odoo', 'wordpress', 'sacco', 'hospital', 'hotel', 'organization']);
+const APP_TYPE_METADATA = [
+  { id: 'school', label: 'School', category: 'Education', categoryIcon: '🎓', categoryOrder: 1, description: 'School management platform with frontend, backend, and database.', provisionable: true, inProvisionPicker: true },
+  { id: 'sacco', label: 'SACCO', category: 'Financial services', categoryIcon: '🏦', categoryOrder: 2, description: 'Member, savings, and lending management.', provisionable: false, inProvisionPicker: true },
+  { id: 'hospital', label: 'Hospital', category: 'Healthcare', categoryIcon: '🏥', categoryOrder: 3, description: 'Hospital operations and patient management.', provisionable: false, inProvisionPicker: true },
+  { id: 'hotel', label: 'Hotel', category: 'Hospitality', categoryIcon: '🏨', categoryOrder: 4, description: 'Hotel and guest operations.', provisionable: false, inProvisionPicker: true },
+  { id: 'organization', label: 'Organization', category: 'Organizations', categoryIcon: '🏢', categoryOrder: 5, description: 'General organization management.', provisionable: false, inProvisionPicker: true },
+  { id: 'odoo', label: 'Odoo', category: 'Business applications', categoryIcon: '🧩', categoryOrder: 6, description: 'Odoo ERP with PostgreSQL.', provisionable: true, inProvisionPicker: true },
+  { id: 'wordpress', label: 'WordPress', category: 'Business applications', categoryIcon: '🧩', categoryOrder: 6, description: 'WordPress site with MySQL.', provisionable: true, inProvisionPicker: true },
+  { id: 'platform', label: 'Platform services', category: 'Platform', categoryIcon: '⚙️', categoryOrder: 7, description: 'TrendSCORE administration and shared services.', provisionable: false, inProvisionPicker: false },
+  { id: 'other', label: 'Other / unclassified', category: 'Other', categoryIcon: '📦', categoryOrder: 8, description: 'An instance that does not match a known application image.', provisionable: false, inProvisionPicker: false },
+];
+const APP_TYPE_SET = new Set(APP_TYPE_METADATA.filter(type => type.id !== 'platform').map(type => type.id));
+const PROVISIONING_READY_APP_TYPES = new Set(APP_TYPE_METADATA.filter(type => type.provisionable).map(type => type.id));
 
 const DEFAULT_IMAGE_CATALOG = {
   school: [
@@ -562,7 +840,7 @@ function isLikelyBackendPort(port) {
 
 if (process.env.NODE_ENV === 'production') {
   if (!JWT_SECRET) throw new Error('CONSOLE_JWT_SECRET is required in production.');
-  if (USERS.length === 0) throw new Error('At least one console user must be configured in production.');
+  if (usersStore.countActiveByRole('super_admin') === 0) throw new Error('At least one active super_admin must exist in production.');
 }
 
 app.use(express.json());
@@ -575,13 +853,27 @@ app.get('/health', (_req, res) => {
 function requireAuth(req, res, next) {
   const token = req.cookies?.[COOKIE_NAME];
   if (!token) return res.status(401).json({ error: 'Unauthenticated' });
+  let claims;
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
-    next();
+    claims = jwt.verify(token, JWT_SECRET);
   } catch {
     res.clearCookie(COOKIE_NAME);
     return res.status(401).json({ error: 'Session expired' });
   }
+  const user = claims.sub ? usersStore.getUser(claims.sub) : usersStore.getUserByEmail(claims.email);
+  if (!user || !user.active || Number(claims.sessionVersion || 0) !== Number(user.sessionVersion || 0)) {
+    res.clearCookie(COOKIE_NAME);
+    return res.status(401).json({ error: 'Your account or permissions changed. Please sign in again.' });
+  }
+  req.user = {
+    ...claims,
+    sub: user.id,
+    email: user.email,
+    role: user.role,
+    name: user.name,
+    sessionVersion: Number(user.sessionVersion || 0),
+  };
+  next();
 }
 
 function requireRole(...allowedRoles) {
@@ -603,16 +895,22 @@ function requireRole(...allowedRoles) {
 // throwaway work once that DB exists.
 const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
-// Fixed-length target so a lookup for an unknown email takes the same
-// branch (and roughly the same time) as a lookup for a known one.
-const DUMMY_PASSWORD_COMPARE_TARGET = 'trends-core-unknown-account-dummy-compare-target';
-const loginAttempts = new Map(); // normalized email -> { count, firstAttemptAt, lockedUntil }
-
-function timingSafeStringsEqual(a, b) {
-  const aHash = crypto.createHash('sha256').update(String(a)).digest();
-  const bHash = crypto.createHash('sha256').update(String(b)).digest();
-  return crypto.timingSafeEqual(aHash, bHash);
+// Fixed bcrypt hash of a dummy password, computed once at module load, so
+// an unknown-email or deactivated-account login always runs a real
+// bcrypt.compare() against a real hash at the same cost factor — same
+// code path, same rough timing as a wrong-password attempt on a real
+// active account. Replaces the old raw sha256+timingSafeEqual approach
+// now that bcrypt is the actual compare target.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('trends-core-unknown-account-dummy-compare-target', BCRYPT_COST);
+const DUMMY_SCRYPT_HASH = `scrypt$${'0'.repeat(32)}$${crypto.scryptSync('trends-core-unknown-account-dummy-compare-target', '0'.repeat(32), 64).toString('hex')}`;
+function verifyScryptPassword(password, encodedHash) {
+  const [algorithm, salt, expectedHex] = String(encodedHash || '').split('$');
+  if (algorithm !== 'scrypt' || !/^[a-f0-9]{32}$/i.test(salt || '') || !/^[a-f0-9]{128}$/i.test(expectedHex || '')) return false;
+  const expected = Buffer.from(expectedHex, 'hex');
+  const actual = crypto.scryptSync(String(password), salt, expected.length);
+  return crypto.timingSafeEqual(actual, expected);
 }
+const loginAttempts = new Map(); // normalized email -> { count, firstAttemptAt, lockedUntil }
 
 function isLoginLockedOut(normalizedEmail) {
   const state = loginAttempts.get(normalizedEmail);
@@ -636,12 +934,33 @@ function clearLoginAttempts(normalizedEmail) {
   loginAttempts.delete(normalizedEmail);
 }
 
-app.post('/api/login', (req, res) => {
-  if (!JWT_SECRET || USERS.length === 0) {
+function issueSessionCookie(res, user) {
+  const payload = {
+    sub: user.id,
+    email: user.email,
+    role: user.role,
+    name: user.name,
+    sessionVersion: Number(user.sessionVersion || 0),
+  };
+  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+  const tokenClaims = jwt.decode(token);
+  const sessionExpiresAt = Number(tokenClaims?.exp) * 1000;
+  if (!Number.isFinite(sessionExpiresAt)) return null;
+  res.cookie(COOKIE_NAME, token, {
+    httpOnly: true,
+    sameSite: 'Strict',
+    secure: COOKIE_SECURE,
+    maxAge: Math.max(0, sessionExpiresAt - Date.now()),
+  });
+  return sessionExpiresAt;
+}
+
+app.post('/api/login', async (req, res) => {
+  if (!JWT_SECRET) {
     return res.status(503).json({ error: 'Console authentication is not configured.' });
   }
 
-  const { email, password } = req.body;
+  const { email, password } = req.body || {};
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required.' });
   }
@@ -652,35 +971,105 @@ app.post('/api/login', (req, res) => {
     return res.status(429).json({ error: 'Too many failed attempts. Try again in a few minutes.' });
   }
 
-  const user = USERS.find(u => u.email.toLowerCase() === normalizedEmail);
-  // Always run the comparison, even for an unknown email, against a
-  // same-shape dummy target — avoids both the string-compare timing
-  // side-channel and an early-return timing tell for "account exists".
-  const passwordMatches = timingSafeStringsEqual(password, user ? user.password : DUMMY_PASSWORD_COMPARE_TARGET);
+  let user = usersStore.getUserByEmail(normalizedEmail);
+  const usableUser = user && user.active;
+  const storedPasswordHash = usableUser ? user.passwordHash : '';
+  // Always do one bcrypt and one scrypt comparison. The scrypt fallback
+  // keeps accounts imported from the current JSON-backed release usable;
+  // successful legacy hashes are transparently upgraded to bcrypt.
+  const bcryptTarget = /^\$2[aby]\$/.test(storedPasswordHash) ? storedPasswordHash : DUMMY_PASSWORD_HASH;
+  const scryptTarget = storedPasswordHash.startsWith('scrypt$') ? storedPasswordHash : DUMMY_SCRYPT_HASH;
+  const [bcryptMatches, scryptMatches] = await Promise.all([
+    bcrypt.compare(password, bcryptTarget),
+    Promise.resolve(verifyScryptPassword(password, scryptTarget)),
+  ]);
+  const passwordMatches = bcryptMatches || scryptMatches;
 
-  if (!user || !passwordMatches) {
+  if (!user || !user.active || !passwordMatches) {
     recordFailedLogin(normalizedEmail);
     return res.status(401).json({ error: 'Invalid email or password.' });
   }
 
   clearLoginAttempts(normalizedEmail);
 
-  const payload = { email: user.email, role: user.role, name: user.name };
-  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-  const tokenClaims = jwt.decode(token);
-  const sessionExpiresAt = Number(tokenClaims?.exp) * 1000;
+  if (scryptMatches) {
+    usersStore.setPassword(user.id, bcrypt.hashSync(password, BCRYPT_COST));
+    user = usersStore.getUser(user.id);
+  }
+
+  if (user.totpEnabled) {
+    // Short-lived MFA-pending token — never set as the session cookie,
+    // only handed back to the client to be POSTed to verify-mfa. Real
+    // session issuance happens after the second factor checks out.
+    const mfaToken = jwt.sign(
+      { sub: user.id, email: user.email, mfaPending: true },
+      JWT_SECRET,
+      { expiresIn: MFA_PENDING_EXPIRES_IN },
+    );
+    return res.json({ ok: true, mfaRequired: true, mfaToken });
+  }
+
+  usersStore.recordLogin(user.id);
+  const sessionExpiresAt = issueSessionCookie(res, user);
   if (!Number.isFinite(sessionExpiresAt)) {
     return res.status(500).json({ error: 'Could not determine the console session expiry.' });
   }
 
-  res.cookie(COOKIE_NAME, token, {
-    httpOnly: true,
-    sameSite: 'Strict',
-    secure: COOKIE_SECURE,
-    maxAge: Math.max(0, sessionExpiresAt - Date.now()),
-  });
-
   pushAudit('LOGIN', 'Console', user.email, `User logged in`, 'Success');
+  return res.json({ ok: true, user: { email: user.email, role: user.role, name: user.name }, access: ROLE_ACCESS[user.role] || [], sessionExpiresAt });
+});
+
+app.post('/api/login/verify-mfa', async (req, res) => {
+  if (!JWT_SECRET) {
+    return res.status(503).json({ error: 'Console authentication is not configured.' });
+  }
+
+  const { mfaToken, code, backupCode } = req.body || {};
+  if (!mfaToken || (!code && !backupCode)) {
+    return res.status(400).json({ error: 'mfaToken and a code or backupCode are required.' });
+  }
+
+  let claims;
+  try {
+    claims = jwt.verify(mfaToken, JWT_SECRET);
+  } catch {
+    return res.status(401).json({ error: 'MFA session expired. Please log in again.' });
+  }
+  if (!claims.mfaPending) {
+    return res.status(400).json({ error: 'Invalid MFA session.' });
+  }
+
+  const normalizedEmail = String(claims.email || '').trim().toLowerCase();
+  if (isLoginLockedOut(normalizedEmail)) {
+    return res.status(429).json({ error: 'Too many failed attempts. Try again in a few minutes.' });
+  }
+
+  const user = usersStore.getUser(claims.sub);
+  if (!user || !user.active || !user.totpEnabled) {
+    return res.status(401).json({ error: 'MFA session is no longer valid.' });
+  }
+
+  let verified = false;
+  if (code) {
+    verified = authenticator.check(String(code).trim(), user.totpSecret);
+  } else if (backupCode) {
+    const hash = crypto.createHash('sha256').update(String(backupCode).trim()).digest('hex');
+    verified = usersStore.consumeBackupCode(user.id, hash);
+  }
+
+  if (!verified) {
+    recordFailedLogin(normalizedEmail);
+    return res.status(401).json({ error: 'Invalid code.' });
+  }
+
+  clearLoginAttempts(normalizedEmail);
+  usersStore.recordLogin(user.id);
+  const sessionExpiresAt = issueSessionCookie(res, user);
+  if (!Number.isFinite(sessionExpiresAt)) {
+    return res.status(500).json({ error: 'Could not determine the console session expiry.' });
+  }
+
+  pushAudit('LOGIN', 'Console', user.email, `User logged in (MFA)`, 'Success');
   return res.json({ ok: true, user: { email: user.email, role: user.role, name: user.name }, access: ROLE_ACCESS[user.role] || [], sessionExpiresAt });
 });
 
@@ -691,11 +1080,189 @@ app.post('/api/logout', requireAuth, (req, res) => {
 });
 
 app.get('/api/me', requireAuth, (req, res) => {
+  const dbUser = usersStore.getUserByEmail(req.user.email);
   return res.json({
     user: { email: req.user.email, role: req.user.role, name: req.user.name },
     access: ROLE_ACCESS[req.user.role] || [],
     sessionExpiresAt: Number.isFinite(Number(req.user.exp)) ? Number(req.user.exp) * 1000 : null,
+    mfa: dbUser ? { enabled: dbUser.totpEnabled, backupCodesRemaining: usersStore.countUnusedBackupCodes(dbUser.id) } : null,
   });
+});
+
+// ── Console user management + self-service MFA (Phase 0, API layer) ───────
+// users-store.js (CRUD + TOTP + backup codes) and the /api/login +
+// /api/login/verify-mfa login flow already existed; this section is the
+// missing piece that lets a super_admin actually create/manage accounts
+// and lets any account enroll its own TOTP MFA — TRENDSCORE_ERP_ADMIN_PLAN.md
+// Phase 0.
+const MIN_USER_PASSWORD_LENGTH = 12;
+const EMAIL_PATTERN = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
+const USER_ROLES = new Set(['super_admin', 'platform_owner']);
+const BACKUP_CODE_COUNT = 8;
+
+function publicUser(user) {
+  if (!user) return null;
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    active: user.active,
+    totpEnabled: user.totpEnabled,
+    backupCodesRemaining: usersStore.countUnusedBackupCodes(user.id),
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+    lastLoginAt: user.lastLoginAt || null,
+  };
+}
+
+function hashBackupCode(code) {
+  return crypto.createHash('sha256').update(String(code).trim()).digest('hex');
+}
+
+function generateBackupCodes(count = BACKUP_CODE_COUNT) {
+  const codes = [];
+  for (let i = 0; i < count; i += 1) {
+    const raw = crypto.randomBytes(5).toString('hex');
+    codes.push(`${raw.slice(0, 5)}-${raw.slice(5, 10)}`);
+  }
+  return codes;
+}
+
+// Refuses a role/active change that would leave zero active super_admin
+// accounts — mirrors the same invariant the production startup check
+// already enforces (usersStore.countActiveByRole('super_admin') === 0).
+function assertSuperAdminHeadroom(existing, next) {
+  const wasActiveSuperAdmin = existing.role === 'super_admin' && existing.active;
+  const staysActiveSuperAdmin = next.role === 'super_admin' && next.active;
+  if (wasActiveSuperAdmin && !staysActiveSuperAdmin && usersStore.countActiveByRole('super_admin') <= 1) {
+    throw new Error('At least one active super_admin must remain. Promote or activate another account first.');
+  }
+}
+
+app.get('/api/users', requireAuth, requireRole('super_admin'), (_req, res) => {
+  res.json({ ok: true, users: usersStore.listUsers().map(publicUser) });
+});
+
+app.post('/api/users', requireAuth, requireRole('super_admin'), (req, res) => {
+  const email = billingText(req.body?.email, 254).toLowerCase();
+  const name = billingText(req.body?.name, 160);
+  const role = billingText(req.body?.role, 20);
+  const password = String(req.body?.password || '');
+
+  if (!EMAIL_PATTERN.test(email)) return res.status(400).json({ ok: false, error: 'Enter a valid email address.' });
+  if (!USER_ROLES.has(role)) return res.status(400).json({ ok: false, error: `role must be one of: ${[...USER_ROLES].join(', ')}` });
+  if (password.length < MIN_USER_PASSWORD_LENGTH) return res.status(400).json({ ok: false, error: `Password must be at least ${MIN_USER_PASSWORD_LENGTH} characters.` });
+  if (usersStore.getUserByEmail(email)) return res.status(409).json({ ok: false, error: 'An account with that email already exists.' });
+
+  const passwordHash = bcrypt.hashSync(password, BCRYPT_COST);
+  const created = usersStore.createUser({ email, passwordHash, name, role, active: true });
+  pushAudit('USER_CREATE', created.email, req.user.email, `Created ${role} account for ${created.email}`);
+  return res.status(201).json({ ok: true, user: publicUser(created) });
+});
+
+app.put('/api/users/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+  const existing = usersStore.getUser(req.params.id);
+  if (!existing) return res.status(404).json({ ok: false, error: 'User not found' });
+
+  const name = req.body?.name !== undefined ? billingText(req.body.name, 160) : existing.name;
+  const role = req.body?.role !== undefined ? billingText(req.body.role, 20) : existing.role;
+  const active = req.body?.active !== undefined ? Boolean(req.body.active) : existing.active;
+  if (!USER_ROLES.has(role)) return res.status(400).json({ ok: false, error: `role must be one of: ${[...USER_ROLES].join(', ')}` });
+
+  try {
+    assertSuperAdminHeadroom(existing, { role, active });
+  } catch (error) {
+    return res.status(409).json({ ok: false, error: error.message });
+  }
+
+  const updated = usersStore.updateUser(existing.id, { name, role, active });
+  pushAudit('USER_UPDATE', updated.email, req.user.email, `Updated ${updated.email} (role=${updated.role}, active=${updated.active})`, active ? 'Success' : 'Warning');
+  return res.json({ ok: true, user: publicUser(updated) });
+});
+
+app.post('/api/users/:id/password', requireAuth, requireRole('super_admin'), (req, res) => {
+  const existing = usersStore.getUser(req.params.id);
+  if (!existing) return res.status(404).json({ ok: false, error: 'User not found' });
+  const password = String(req.body?.password || '');
+  if (password.length < MIN_USER_PASSWORD_LENGTH) return res.status(400).json({ ok: false, error: `Password must be at least ${MIN_USER_PASSWORD_LENGTH} characters.` });
+
+  const passwordHash = bcrypt.hashSync(password, BCRYPT_COST);
+  usersStore.setPassword(existing.id, passwordHash);
+  pushAudit('USER_PASSWORD_RESET', existing.email, req.user.email, `Reset password for ${existing.email}`, 'Warning');
+  return res.json({ ok: true });
+});
+
+app.post('/api/users/:id/mfa/disable', requireAuth, requireRole('super_admin'), (req, res) => {
+  const existing = usersStore.getUser(req.params.id);
+  if (!existing) return res.status(404).json({ ok: false, error: 'User not found' });
+  const reason = billingText(req.body?.reason, 500);
+  if (!reason) return res.status(400).json({ ok: false, error: 'Enter a reason for disabling this account\'s MFA (e.g. lost device).' });
+  if (!existing.totpEnabled) return res.status(409).json({ ok: false, error: 'MFA is not enabled on that account.' });
+
+  const updated = usersStore.disableTotp(existing.id);
+  pushAudit('USER_MFA_ADMIN_DISABLE', existing.email, req.user.email, `Force-disabled MFA for ${existing.email}: ${reason}`, 'Warning');
+  return res.json({ ok: true, user: publicUser(updated) });
+});
+
+// ── Self-service MFA (any authenticated user manages their own) ───────────
+app.post('/api/me/mfa/enroll', requireAuth, (req, res) => {
+  const user = usersStore.getUserByEmail(req.user.email);
+  if (!user) return res.status(401).json({ ok: false, error: 'Session user no longer exists.' });
+  if (user.totpEnabled) return res.status(409).json({ ok: false, error: 'MFA is already enabled. Disable it before re-enrolling.' });
+
+  const secret = authenticator.generateSecret();
+  usersStore.setTotpSecret(user.id, secret);
+  const otpauthUrl = authenticator.keyuri(user.email, 'TrendSCORE Console', secret);
+  pushAudit('USER_MFA_ENROLL_START', user.email, req.user.email, `Started MFA enrollment for ${user.email}`);
+  return res.json({ ok: true, secret, otpauthUrl });
+});
+
+app.post('/api/me/mfa/confirm', requireAuth, (req, res) => {
+  const user = usersStore.getUserByEmail(req.user.email);
+  if (!user) return res.status(401).json({ ok: false, error: 'Session user no longer exists.' });
+  if (user.totpEnabled) return res.status(409).json({ ok: false, error: 'MFA is already enabled.' });
+  if (!user.totpSecret) return res.status(400).json({ ok: false, error: 'Start enrollment first.' });
+
+  const code = String(req.body?.code || '').trim();
+  if (!code || !authenticator.check(code, user.totpSecret)) {
+    return res.status(401).json({ ok: false, error: 'Invalid code. Check your authenticator app and try again.' });
+  }
+
+  usersStore.setTotpEnabled(user.id, true);
+  const backupCodes = generateBackupCodes();
+  usersStore.replaceBackupCodes(user.id, backupCodes.map(hashBackupCode));
+  pushAudit('USER_MFA_ENABLE', user.email, req.user.email, `Enabled MFA for ${user.email}`);
+  return res.json({ ok: true, backupCodes });
+});
+
+app.post('/api/me/mfa/disable', requireAuth, async (req, res) => {
+  const user = usersStore.getUserByEmail(req.user.email);
+  if (!user) return res.status(401).json({ ok: false, error: 'Session user no longer exists.' });
+  if (!user.totpEnabled) return res.status(409).json({ ok: false, error: 'MFA is not enabled.' });
+
+  const password = String(req.body?.password || '');
+  const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+  if (!passwordMatches) return res.status(401).json({ ok: false, error: 'Incorrect password.' });
+
+  usersStore.disableTotp(user.id);
+  pushAudit('USER_MFA_DISABLE', user.email, req.user.email, `Disabled MFA for ${user.email}`, 'Warning');
+  return res.json({ ok: true });
+});
+
+app.post('/api/me/mfa/backup-codes/regenerate', requireAuth, async (req, res) => {
+  const user = usersStore.getUserByEmail(req.user.email);
+  if (!user) return res.status(401).json({ ok: false, error: 'Session user no longer exists.' });
+  if (!user.totpEnabled) return res.status(409).json({ ok: false, error: 'Enable MFA before generating backup codes.' });
+
+  const password = String(req.body?.password || '');
+  const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+  if (!passwordMatches) return res.status(401).json({ ok: false, error: 'Incorrect password.' });
+
+  const backupCodes = generateBackupCodes();
+  usersStore.replaceBackupCodes(user.id, backupCodes.map(hashBackupCode));
+  pushAudit('USER_MFA_BACKUP_REGENERATE', user.email, req.user.email, `Regenerated backup codes for ${user.email}`, 'Warning');
+  return res.json({ ok: true, backupCodes });
 });
 
 function humanizeInstanceName(raw) {
@@ -704,6 +1271,19 @@ function humanizeInstanceName(raw) {
   return clean
     .replace(/[_-]+/g, ' ')
     .replace(/\b\w/g, c => c.toUpperCase()) || raw;
+}
+
+function inferAppTypeFromImage(image = '') {
+  const normalized = String(image).toLowerCase();
+  if (/(zawadi[-_]console|trendscore[-_]console|console-app)/.test(normalized)) return 'platform';
+  if (/(^|[/:_-])school([/:_-]|$)/.test(normalized)) return 'school';
+  if (/(^|[/:_-])odoo([/:_-]|$)/.test(normalized)) return 'odoo';
+  if (/(^|[/:_-])wordpress([/:_-]|$)/.test(normalized)) return 'wordpress';
+  for (const type of ['sacco', 'hospital', 'hotel', 'organization']) {
+    if (normalized.includes(`${type}-app`) || normalized.includes(`/${type}:`) || normalized.includes(`/${type}-`)) return type;
+  }
+  if (/zawadi-(frontend|backend)|trendscore-school/.test(normalized)) return 'school';
+  return '';
 }
 
 function mapContainersToInstances(containers) {
@@ -720,6 +1300,7 @@ function mapContainersToInstances(containers) {
       grouped.set(key, {
         key,
         name: humanizeInstanceName(key),
+        appType: '',
         domain: '',
         status: 'Online',
         created: new Date((c.Created || Date.now() / 1000) * 1000).toISOString().slice(0, 10),
@@ -742,6 +1323,8 @@ function mapContainersToInstances(containers) {
     }
 
     const inst = grouped.get(key);
+    const detectedAppType = inferAppTypeFromImage(c.Image || '');
+    if (detectedAppType && (!inst.appType || inst.appType === 'other')) inst.appType = detectedAppType;
     const descriptor = `${cname} ${c.Image || ''}`.toLowerCase();
     inst.containers += 1;
     inst.containerIds.push(c.Id);
@@ -776,6 +1359,8 @@ function mapContainersToInstances(containers) {
 
   const list = Array.from(grouped.values()).map(i => ({
     ...i,
+    appType: i.appType || 'other',
+    typeLabel: APP_TYPE_METADATA.find(type => type.id === i.appType)?.label || (i.appType === 'other' ? 'Other / unclassified' : 'Platform services'),
     storage: Number(i.storage.toFixed(2)),
     dbGb: Number(i.dbGb.toFixed(2)),
     uploads: Number(i.uploads.toFixed(2)),
@@ -1022,9 +1607,12 @@ async function collectRuntime() {
 
   const instances = mapContainersToInstances(containers);
   const nginxMap = parseNginxDomainMap();
-  const manifestDomains = buildManifestDomainIndex(loadDeployManifest());
+  const manifest = loadDeployManifest();
+  const manifestDomains = buildManifestDomainIndex(manifest);
+  const manifestDisplayNames = buildManifestDisplayNameIndex(manifest);
   for (const i of instances) {
     i.domain = resolveRuntimeDomain(i, nginxMap, manifestDomains);
+    i.displayName = resolveRuntimeDisplayName(i, manifestDisplayNames);
   }
 
   if (dockerDf && Array.isArray(dockerDf.Volumes)) {
@@ -1058,18 +1646,47 @@ async function collectRuntime() {
   const usedDiskBytes = Number(rootFs?.used || 0);
 
   const imageBytes = Number(dockerDf?.LayersSize || 0);
-  const volumeBytes = Array.isArray(dockerDf?.Volumes)
-    ? dockerDf.Volumes.reduce((s, v) => s + Number(v?.UsageData?.Size || 0), 0)
-    : 0;
+  const dockerVolumes = Array.isArray(dockerDf?.Volumes) ? dockerDf.Volumes : [];
+  const dockerBuildCache = Array.isArray(dockerDf?.BuildCache) ? dockerDf.BuildCache : [];
+  const volumeBytes = dockerVolumes.reduce((s, v) => {
+    const size = Number(v?.UsageData?.Size);
+    return Number.isFinite(size) && size > 0 ? s + size : s;
+  }, 0);
+  const managedComposeProjects = new Set(instances.map(instance => String(instance.composeProject || '')).filter(Boolean));
+  const managedInstanceVolumeBytes = dockerVolumes.reduce((sum, volume) => {
+    const project = String(volume?.Labels?.['com.docker.compose.project'] || '');
+    const size = Number(volume?.UsageData?.Size);
+    return managedComposeProjects.has(project) && Number.isFinite(size) && size > 0 ? sum + size : sum;
+  }, 0);
+  const containerWritableBytes = containers.reduce((sum, container) => {
+    const size = Number(container?.SizeRw);
+    return Number.isFinite(size) && size > 0 ? sum + size : sum;
+  }, 0);
+  const buildCacheBytes = dockerBuildCache.reduce((sum, cacheEntry) => {
+    const size = Number(cacheEntry?.Size);
+    return Number.isFinite(size) && size > 0 ? sum + size : sum;
+  }, 0);
+  const dockerStorageBytes = imageBytes + volumeBytes + containerWritableBytes + buildCacheBytes;
+  const dockerUsageAvailable = Boolean(dockerDf)
+    && Number.isFinite(Number(dockerDf?.LayersSize)) && Number(dockerDf?.LayersSize) >= 0
+    && Array.isArray(dockerDf?.Volumes)
+    && Array.isArray(dockerDf?.BuildCache)
+    && dockerVolumes.every(volume => Number.isFinite(Number(volume?.UsageData?.Size)) && Number(volume?.UsageData?.Size) >= 0)
+    && dockerBuildCache.every(cacheEntry => Number.isFinite(Number(cacheEntry?.Size)) && Number(cacheEntry?.Size) >= 0)
+    && containers.every(container => Number.isFinite(Number(container?.SizeRw)) && Number(container?.SizeRw) >= 0);
 
   const metrics = {
-    liveSchools: instances.filter(i => i.hasFrontend && i.hasBackend && i.hasDatabase).length,
-    containersHealthy: `${instances.reduce((s, i) => s + i.runningContainers, 0)}/${Math.max(1, instances.reduce((s, i) => s + i.containers, 0))}`,
-    storageUsedGb: dockerDf
-      ? Number((((imageBytes + volumeBytes) / (1024 ** 3))).toFixed(2))
-      : Number(instances.reduce((s, i) => s + i.storage, 0).toFixed(2)),
+    liveInstances: instances.length,
+    liveSchools: instances.filter(i => i.appType === 'school' && i.hasFrontend && i.hasBackend && i.hasDatabase).length,
+    containersHealthy: `${containers.filter(container => container.State === 'running').length}/${containers.length}`,
+    dockerUsageAvailable,
+    storageUsedGb: Number((dockerStorageBytes / (1024 ** 3)).toFixed(2)),
     imagesGb: Number((imageBytes / (1024 ** 3)).toFixed(2)),
     volumesGb: Number((volumeBytes / (1024 ** 3)).toFixed(2)),
+    managedInstanceVolumesGb: Number((managedInstanceVolumeBytes / (1024 ** 3)).toFixed(2)),
+    unassignedVolumesGb: Number((Math.max(0, volumeBytes - managedInstanceVolumeBytes) / (1024 ** 3)).toFixed(2)),
+    containerWritableGb: Number((containerWritableBytes / (1024 ** 3)).toFixed(2)),
+    buildCacheGb: Number((buildCacheBytes / (1024 ** 3)).toFixed(2)),
     cpuLoadPercent: Math.round(load.currentLoad || 0),
     memoryUsedPercent: Math.round((mem.used / Math.max(mem.total, 1)) * 100),
     diskTotalGb: Number((totalDiskBytes / (1024 ** 3)).toFixed(1)),
@@ -1085,6 +1702,7 @@ app.get('/api/runtime', requireAuth, async (_req, res) => {
     res.json({
       ok: true,
       ...runtime,
+      appTypes: APP_TYPE_METADATA,
       deployments: readDeployStore().slice(0, 50),
       auditLogs: readAuditStore().slice(0, 200),
       mode: 'live',
@@ -1136,6 +1754,224 @@ app.post('/api/instances/suggest', requireAuth, requireRole('super_admin'), asyn
   }
 });
 
+app.get('/api/instances/types', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
+  res.json({ ok: true, types: APP_TYPE_METADATA });
+});
+
+// ── Tenants (Phase 2: Tenant/School Lifecycle Management) ────────────
+// A tenant row is a persistent business-status record (active/suspended/
+// decommissioned) independent of whatever Docker reports at request time.
+// See tenants-store.js for why this exists.
+function publicTenant(tenant) {
+  if (!tenant) return null;
+  return tenant;
+}
+
+async function backfillTenantsFromManifestAndRuntime() {
+  try {
+    const manifest = loadDeployManifest();
+    const { instances: runtimeInstances } = await collectRuntime();
+    const runtimeBySlug = new Map();
+    for (const inst of runtimeInstances) {
+      const rawSlug = slugFromComposeProject(inst.composeProject || inst.key) || slugifyName(inst.composeProject || inst.key || '');
+      const slug = normalizeDeploySchoolId(rawSlug);
+      if (slug) runtimeBySlug.set(slug, inst);
+    }
+
+    for (const inst of manifest.instances || []) {
+      const slug = normalizeDeploySchoolId(inst.id);
+      if (!slug || tenantsStore.getTenantBySlug(slug)) continue;
+      const runtimeMatch = runtimeBySlug.get(slug);
+      const confidentAppType = runtimeMatch && runtimeMatch.appType && runtimeMatch.appType !== 'other' ? runtimeMatch.appType : '';
+      const appType = confidentAppType || 'school';
+      const notes = confidentAppType
+        ? ''
+        : 'Backfilled from the deploy manifest; app type defaulted to school because no running instance could confirm it — verify and correct if this is not actually a school.';
+      try {
+        tenantsStore.createTenant({
+          slug, name: inst.label || inst.id, appType,
+          domain: inst.public_domain || '', composeProject: inst.compose_project || '',
+          source: 'backfill_manifest', notes,
+        });
+      } catch (error) {
+        console.error(`[tenants] Could not backfill manifest entry ${slug}:`, error.message);
+      }
+    }
+
+    for (const inst of runtimeInstances) {
+      if (['platform', 'other'].includes(inst.appType)) continue;
+      const rawSlug = slugFromComposeProject(inst.composeProject || inst.key) || slugifyName(inst.composeProject || inst.key || '');
+      const slug = normalizeDeploySchoolId(rawSlug);
+      if (!slug || tenantsStore.getTenantBySlug(slug)) continue;
+      try {
+        tenantsStore.createTenant({
+          slug, name: inst.displayName || inst.name || slug, appType: inst.appType,
+          domain: inst.domain || '', composeProject: inst.composeProject || '', source: 'backfill_runtime',
+        });
+      } catch (error) {
+        console.error(`[tenants] Could not backfill runtime instance ${slug}:`, error.message);
+      }
+    }
+  } catch (error) {
+    console.error('[tenants] Backfill failed (this is non-fatal — the console will still start):', error.message);
+  }
+}
+
+app.get('/api/tenants', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  const status = billingText(req.query.status, 20);
+  res.json({ ok: true, tenants: tenantsStore.listTenants(status ? { status } : {}).map(publicTenant) });
+});
+
+app.post('/api/tenants', requireAuth, requireRole('super_admin'), (req, res) => {
+  const slug = billingText(req.body?.slug, 100).toLowerCase();
+  const name = billingText(req.body?.name, 160);
+  const appType = billingText(req.body?.appType, 20);
+  const domain = billingText(req.body?.domain, 200);
+  const tenantKey = billingText(req.body?.tenantKey, 160).toLowerCase();
+  const contactEmail = billingText(req.body?.contactEmail, 254);
+  const contactPhone = billingText(req.body?.contactPhone, 40);
+  const notes = billingText(req.body?.notes, 2000);
+
+  if (!slug || !/^[a-z0-9][a-z0-9-]*$/.test(slug)) return res.status(400).json({ ok: false, error: 'Enter a slug using lowercase letters, numbers, and hyphens only.' });
+  if (!name) return res.status(400).json({ ok: false, error: 'Name is required.' });
+  if (!tenantsStore.APP_TYPES.includes(appType)) return res.status(400).json({ ok: false, error: `appType must be one of: ${tenantsStore.APP_TYPES.join(', ')}` });
+  if (domain && !isDomainLike(domain)) return res.status(400).json({ ok: false, error: 'Domain is invalid.' });
+
+  try {
+    const created = tenantsStore.createTenant({ slug, name, appType, domain, tenantKey, contactEmail, contactPhone, notes, source: 'manual' });
+    pushAudit('TENANT_CREATE', created.name, req.user.email, `Created ${created.appType} tenant ${created.slug}`);
+    return res.status(201).json({ ok: true, tenant: publicTenant(created) });
+  } catch (error) {
+    return res.status(409).json({ ok: false, error: error.message });
+  }
+});
+
+app.put('/api/tenants/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+  const existing = tenantsStore.getTenant(req.params.id);
+  if (!existing) return res.status(404).json({ ok: false, error: 'Tenant not found' });
+
+  const domain = req.body?.domain !== undefined ? billingText(req.body.domain, 200) : undefined;
+  if (domain && !isDomainLike(domain)) return res.status(400).json({ ok: false, error: 'Domain is invalid.' });
+  const appType = req.body?.appType !== undefined ? billingText(req.body.appType, 20) : undefined;
+  if (appType !== undefined && !tenantsStore.APP_TYPES.includes(appType)) return res.status(400).json({ ok: false, error: `appType must be one of: ${tenantsStore.APP_TYPES.join(', ')}` });
+
+  try {
+    const updated = tenantsStore.updateTenant(existing.id, {
+      name: req.body?.name !== undefined ? billingText(req.body.name, 160) : undefined,
+      appType,
+      domain,
+      tenantKey: req.body?.tenantKey !== undefined ? billingText(req.body.tenantKey, 160) : undefined,
+      contactEmail: req.body?.contactEmail !== undefined ? billingText(req.body.contactEmail, 254) : undefined,
+      contactPhone: req.body?.contactPhone !== undefined ? billingText(req.body.contactPhone, 40) : undefined,
+      notes: req.body?.notes !== undefined ? billingText(req.body.notes, 2000) : undefined,
+    });
+    pushAudit('TENANT_UPDATE', updated.name, req.user.email, `Updated tenant ${updated.slug}`);
+    return res.json({ ok: true, tenant: publicTenant(updated) });
+  } catch (error) {
+    return res.status(400).json({ ok: false, error: error.message });
+  }
+});
+
+app.post('/api/tenants/:id/suspend', requireAuth, requireRole('super_admin'), (req, res) => {
+  const existing = tenantsStore.getTenant(req.params.id);
+  if (!existing) return res.status(404).json({ ok: false, error: 'Tenant not found' });
+  const reason = billingText(req.body?.reason, 500);
+  if (!reason) return res.status(400).json({ ok: false, error: 'Enter a reason for suspending this tenant.' });
+  try {
+    const updated = tenantsStore.suspendTenant(existing.id, reason);
+    pushAudit('TENANT_SUSPEND', updated.name, req.user.email, `Suspended tenant ${updated.slug}: ${reason}`, 'Warning');
+    return res.json({ ok: true, tenant: publicTenant(updated) });
+  } catch (error) {
+    return res.status(409).json({ ok: false, error: error.message });
+  }
+});
+
+app.post('/api/tenants/:id/reactivate', requireAuth, requireRole('super_admin'), (req, res) => {
+  const existing = tenantsStore.getTenant(req.params.id);
+  if (!existing) return res.status(404).json({ ok: false, error: 'Tenant not found' });
+  try {
+    const updated = tenantsStore.reactivateTenant(existing.id);
+    pushAudit('TENANT_REACTIVATE', updated.name, req.user.email, `Reactivated tenant ${updated.slug}`);
+    return res.json({ ok: true, tenant: publicTenant(updated) });
+  } catch (error) {
+    return res.status(409).json({ ok: false, error: error.message });
+  }
+});
+
+app.post('/api/tenants/:id/decommission', requireAuth, requireRole('super_admin'), (req, res) => {
+  const existing = tenantsStore.getTenant(req.params.id);
+  if (!existing) return res.status(404).json({ ok: false, error: 'Tenant not found' });
+  const reason = billingText(req.body?.reason, 500);
+  if (!reason) return res.status(400).json({ ok: false, error: 'Enter a reason for decommissioning this tenant.' });
+  try {
+    const updated = tenantsStore.decommissionTenant(existing.id, reason);
+    pushAudit('TENANT_DECOMMISSION', updated.name, req.user.email, `Decommissioned tenant ${updated.slug}: ${reason}`, 'Warning');
+    return res.json({ ok: true, tenant: publicTenant(updated) });
+  } catch (error) {
+    return res.status(409).json({ ok: false, error: error.message });
+  }
+});
+
+app.get('/api/instances/provision-jobs', requireAuth, requireRole('super_admin'), (_req, res) => {
+  const activeOrRecent = readProvisionStore().slice(0, 20).map(publicProvisionJob);
+  return res.json({ ok: true, jobs: activeOrRecent });
+});
+
+app.get('/api/instances/assessment-activity', requireAuth, requireRole('super_admin'), async (_req, res) => {
+  if (Date.now() - assessmentActivityCache.fetchedAt < ASSESSMENT_ACTIVITY_CACHE_MS) {
+    return res.json({ ok: true, generatedAt: new Date(assessmentActivityCache.fetchedAt).toISOString(), activities: assessmentActivityCache.activities });
+  }
+
+  try {
+    const containers = await docker.listContainers({ all: true });
+    const schools = mapContainersToInstances(containers).filter(instance => instance.appType === 'school');
+    const databases = new Map();
+    for (const container of containers) {
+      if (container.State !== 'running') continue;
+      const service = String(container.Labels?.['com.docker.compose.service'] || '').toLowerCase();
+      const project = container.Labels?.['com.docker.compose.project'];
+      const isPostgresDbService = ['db', 'database', 'postgres', 'postgresql'].includes(service)
+        || (/(^|[-_])(db|database|postgres|postgresql)([-_0-9]|$)/.test(service) && /postgres/i.test(container.Image || ''));
+      if (project && isPostgresDbService) databases.set(project, container);
+    }
+
+    const activities = [];
+    for (let offset = 0; offset < schools.length; offset += 4) {
+      const batch = schools.slice(offset, offset + 4);
+      const results = await Promise.all(batch.map(async school => {
+        const key = school.composeProject || school.key;
+        const dbContainer = databases.get(school.composeProject || school.key);
+        if (!dbContainer) return { key, name: school.name, state: 'unavailable', reason: 'School database is not running.' };
+        try {
+          const activity = await readSchoolAssessmentActivity(dbContainer);
+          return { key, name: school.name, state: 'available', ...activity };
+        } catch (error) {
+          console.warn(`[assessment-activity] Could not read ${key}: ${error.message}`);
+          return { key, name: school.name, state: 'unavailable', reason: 'Assessment data could not be read.' };
+        }
+      }));
+      activities.push(...results);
+    }
+
+    assessmentActivityCache = { fetchedAt: Date.now(), activities };
+    return res.json({ ok: true, generatedAt: new Date(assessmentActivityCache.fetchedAt).toISOString(), activities });
+  } catch (error) {
+    return res.status(502).json({ ok: false, error: `Could not load assessment activity: ${error.message}` });
+  }
+});
+
+app.get('/api/instances/provision-jobs/:id/logs', requireAuth, requireRole('super_admin'), (req, res) => {
+  const job = readProvisionStore().find(item => item.id === req.params.id);
+  if (!job) return res.status(404).json({ ok: false, error: 'Provision job not found' });
+  return res.json({ ok: true, status: job.status, phase: job.phase, output: job.output || '', error: job.error || null });
+});
+
+app.get('/api/instances/provision-jobs/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+  const job = readProvisionStore().find(item => item.id === req.params.id);
+  if (!job) return res.status(404).json({ ok: false, error: 'Provision job not found' });
+  return res.json({ ok: true, job: publicProvisionJob(job) });
+});
+
 app.post('/api/instances/preflight', requireAuth, requireRole('super_admin'), async (req, res) => {
   const {
     appType = 'school',
@@ -1151,6 +1987,8 @@ app.post('/api/instances/preflight', requireAuth, requireRole('super_admin'), as
 
   if (!APP_TYPE_SET.has(normalizedAppType)) {
     issues.push('Unsupported app type.');
+  } else if (!PROVISIONING_READY_APP_TYPES.has(normalizedAppType)) {
+    issues.push(`Provisioning for ${normalizedAppType} is not available yet because its deployment recipe is not configured.`);
   }
 
   if (!String(name || '').trim()) issues.push('Instance name is required.');
@@ -1167,6 +2005,15 @@ app.post('/api/instances/preflight', requireAuth, requireRole('super_admin'), as
   let suggested = null;
   try {
     const { instances } = await collectRuntime();
+    if (!issues.length) {
+      const requestedSlug = slugifyName(name);
+      const existing = instances.find(instance =>
+        slugifyName(instance.name) === requestedSlug
+          || String(instance.composeProject || '').toLowerCase() === `zawadi-${requestedSlug}`
+          || String(instance.key || '').toLowerCase() === `zawadi-${requestedSlug}`,
+      );
+      if (existing) issues.push(`An instance named ${name} already exists in runtime (${existing.status}).`);
+    }
     if (!issues.length) {
       suggested = await buildAutoAllocation({
         name,
@@ -1188,6 +2035,11 @@ app.post('/api/instances/preflight', requireAuth, requireRole('super_admin'), as
   } catch (error) {
     warnings.push(`Live runtime preflight unavailable: ${error.message}`);
   }
+
+  const pendingJob = readProvisionStore().find(job => job.slug === slugifyName(name) && ['queued', 'running'].includes(job.status));
+  if (pendingJob) issues.push(`Provisioning for ${name} already has job ${pendingJob.id} (${pendingJob.status}).`);
+  const previousAttempt = readProvisionStore().find(job => job.slug === slugifyName(name) && ['failed', 'interrupted'].includes(job.status));
+  if (previousAttempt) issues.push(`Previous provision job ${previousAttempt.id} ended ${previousAttempt.status}; inspect its logs and partial resources before retrying.`);
 
   return res.json({
     ok: true,
@@ -1281,8 +2133,22 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
     return res.status(400).json({ error: 'Unsupported appType.' });
   }
 
+  if (!PROVISIONING_READY_APP_TYPES.has(normalizedAppType)) {
+    return res.status(409).json({ error: `Provisioning for ${normalizedAppType} is not available yet because its deployment recipe is not configured.` });
+  }
+
   if (!name) {
     return res.status(400).json({ error: 'name is required' });
+  }
+
+  const normalizedName = String(name).trim();
+  const provisioningSlug = slugifyName(normalizedName);
+  if (!normalizedName || normalizedName.length > 100 || !provisioningSlug || provisioningSlug.length > 60) {
+    return res.status(400).json({ ok: false, error: 'Instance name must produce a 1–60 character lowercase slug.' });
+  }
+  const requestedDbName = String(db || `${normalizedAppType}_${provisioningSlug.replace(/-/g, '_')}`);
+  if (!/^[a-zA-Z0-9_]{1,63}$/.test(requestedDbName)) {
+    return res.status(400).json({ ok: false, error: 'Database name must contain only letters, numbers, and underscores (maximum 63 characters).' });
   }
 
   const requestedDomain = String(domain || '').trim().toLowerCase();
@@ -1297,6 +2163,39 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
     });
   }
 
+  const slug = provisioningSlug;
+  if (provisionLocks.has(slug)) {
+    const existing = readProvisionStore().find(job => job.id === provisionLocks.get(slug));
+    return res.status(409).json({ ok: false, error: `Provisioning for ${name} is already ${existing?.status || 'in progress'}.`, job: publicProvisionJob(existing) });
+  }
+
+  const existingJobs = readProvisionStore();
+  const unfinished = existingJobs.find(job => job.slug === slug && ['queued', 'running'].includes(job.status));
+  if (unfinished) {
+    provisionLocks.set(slug, unfinished.id);
+    return res.status(409).json({ ok: false, error: `Provisioning for ${name} is already ${unfinished.status}.`, job: publicProvisionJob(unfinished) });
+  }
+  const previousAttempt = existingJobs.find(job => job.slug === slug && ['failed', 'interrupted'].includes(job.status));
+  if (previousAttempt) {
+    return res.status(409).json({ ok: false, error: `A previous provision job ${previousAttempt.id} ended ${previousAttempt.status}. Inspect its logs and any partial resources before retrying.`, job: publicProvisionJob(previousAttempt) });
+  }
+  // Reserve the slug before any asynchronous runtime/Docker calls. This closes
+  // the double-submit race where both requests pass checks before a stack exists.
+  const job = {
+    id: crypto.randomUUID(), slug, name: String(name).trim(), appType: normalizedAppType,
+    domain: requestedDomain || '', fePort: 0, bePort: 0,
+    status: 'queued', phase: 'Preparing', requestedBy: req.user.email,
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    output: '', error: null, payload: '',
+  };
+  provisionLocks.set(slug, job.id);
+  try {
+    saveProvisionJob(job);
+  } catch (error) {
+    provisionLocks.delete(slug);
+    return res.status(500).json({ ok: false, error: `Could not persist provision job: ${error.message}` });
+  }
+
   let autoAssigned;
   try {
     const { instances } = await collectRuntime();
@@ -1308,7 +2207,42 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
       preferredDomain: requestedDomain,
     });
   } catch (error) {
+    provisionLocks.delete(slug);
+    job.status = 'failed';
+    job.phase = 'Preflight failed';
+    job.error = `Auto-assignment failed: ${error.message}`;
+    job.updatedAt = job.completedAt = new Date().toISOString();
+    try { saveProvisionJob(job); } catch (storeError) { console.error('[provision] Could not persist preflight failure:', storeError.message); }
+    pushAudit('PROVISION_FAILED', name, req.user.email, `Provision job ${job.id} failed during preflight: ${job.error}`, 'Warning');
     return res.status(400).json({ error: `Auto-assignment failed: ${error.message}` });
+  }
+
+  let runtimeInstances;
+  try {
+    runtimeInstances = (await collectRuntime()).instances;
+  } catch (error) {
+    provisionLocks.delete(slug);
+    job.status = 'failed';
+    job.phase = 'Runtime check failed';
+    job.error = `Runtime preflight failed: ${error.message}`;
+    job.updatedAt = job.completedAt = new Date().toISOString();
+    try { saveProvisionJob(job); } catch (storeError) { console.error('[provision] Could not persist runtime failure:', storeError.message); }
+    pushAudit('PROVISION_FAILED', name, req.user.email, `Provision job ${job.id} failed during runtime check: ${job.error}`, 'Warning');
+    return res.status(503).json({ ok: false, error: `Runtime preflight failed: ${error.message}` });
+  }
+  const existingInstance = runtimeInstances.find(instance =>
+    slugifyName(instance.name) === slug
+      || String(instance.composeProject || '').toLowerCase() === `zawadi-${slug}`
+      || String(instance.key || '').toLowerCase() === `zawadi-${slug}`,
+  );
+  if (existingInstance) {
+    provisionLocks.delete(slug);
+    job.status = 'failed';
+    job.phase = 'Duplicate runtime instance';
+    job.error = `An instance named ${name} already exists in runtime (${existingInstance.status}).`;
+    job.updatedAt = job.completedAt = new Date().toISOString();
+    try { saveProvisionJob(job); } catch (storeError) { console.error('[provision] Could not persist duplicate result:', storeError.message); }
+    return res.status(409).json({ ok: false, error: `An instance named ${name} already exists in runtime (${existingInstance.status}). Refresh runtime and inspect it before retrying.` });
   }
 
   const payload = JSON.stringify({
@@ -1323,17 +2257,67 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
     notes,
     fePort: autoAssigned.fePort,
     bePort: appRange.requireBe ? autoAssigned.bePort : 0,
-    db,
+    db: requestedDbName,
     requestedBy: req.user.email,
   });
-
-  try {
-    const { stdout, stderr } = await execFileAsync(INSTANCE_PROVISION_SCRIPT, [payload], { timeout: 8 * 60 * 1000 });
-    pushAudit('PROVISION', name, req.user.email, `Provision script executed for ${name} (${normalizedAppType})`, 'Warning');
-    res.json({ ok: true, output: stdout?.trim(), warning: stderr?.trim() || null });
-  } catch (error) {
-    res.status(500).json({ error: `Provision failed: ${error.message}` });
+  Object.assign(job, {
+    domain: autoAssigned.domain, fePort: autoAssigned.fePort,
+    bePort: appRange.requireBe ? autoAssigned.bePort : 0,
+    phase: 'Queued', payload,
+    updatedAt: new Date().toISOString(),
+  });
+  try { saveProvisionJob(job); } catch (error) {
+    provisionLocks.delete(slug);
+    return res.status(500).json({ ok: false, error: `Could not persist provision job: ${error.message}` });
   }
+
+  pushAudit('PROVISION_QUEUED', name, req.user.email, `Provision job ${job.id} queued for ${normalizedAppType}`, 'Warning');
+  res.status(202).json({ ok: true, job: publicProvisionJob(job) });
+
+  setImmediate(async () => {
+    job.status = 'running';
+    job.phase = 'Provisioning';
+    job.startedAt = new Date().toISOString();
+    job.updatedAt = job.startedAt;
+    try { saveProvisionJob(job); } catch (error) { console.error('[provision] Could not persist job start:', error.message); }
+    try {
+      const { stdout, stderr } = await execFileAsync(INSTANCE_PROVISION_SCRIPT, [job.payload], {
+        timeout: 45 * 60 * 1000,
+        maxBuffer: 20 * 1024 * 1024,
+      });
+      job.status = 'succeeded';
+      job.phase = 'Complete';
+      job.output = String(stdout || '').trim().slice(-12000);
+      job.warning = String(stderr || '').trim().slice(-3000) || null;
+      job.completedAt = new Date().toISOString();
+      job.updatedAt = job.completedAt;
+      saveProvisionJob(job);
+      try {
+        if (!tenantsStore.getTenantBySlug(job.slug)) {
+          tenantsStore.createTenant({
+            slug: job.slug, name: job.name, appType: job.appType, domain: job.domain,
+            source: 'provisioning', provisionJobId: job.id,
+          });
+        }
+      } catch (tenantError) {
+        console.error(`[tenants] Could not create tenant record for provisioned ${job.slug}:`, tenantError.message);
+      }
+      pushAudit('PROVISION_SUCCESS', job.name, job.requestedBy, `Provision job ${job.id} completed (${job.appType})`);
+      console.log(`[provision] job ${job.id} completed for ${job.name}`);
+    } catch (error) {
+      job.status = 'failed';
+      job.phase = 'Failed';
+      job.error = String(error.message || 'Provision failed').slice(0, 2000);
+      job.output = deployExecOutput(error).slice(-12000);
+      job.completedAt = new Date().toISOString();
+      job.updatedAt = job.completedAt;
+      try { saveProvisionJob(job); } catch (storeError) { console.error('[provision] Could not persist job failure:', storeError.message); }
+      pushAudit('PROVISION_FAILED', job.name, job.requestedBy, `Provision job ${job.id} failed: ${job.error}`, 'Warning');
+      console.error(`[provision] job ${job.id} failed for ${job.name}: ${job.error}`);
+    } finally {
+      if (provisionLocks.get(slug) === job.id) provisionLocks.delete(slug);
+    }
+  });
 });
 
 app.post('/api/controls/:action', requireAuth, requireRole('super_admin'), async (req, res) => {
@@ -1383,6 +2367,9 @@ app.post('/api/deploy/console', requireAuth, requireRole('super_admin'), async (
   if (!imageTag) {
     return res.status(400).json({ error: 'imageTag is required' });
   }
+  if (!isValidImageTag(imageTag)) {
+    return res.status(400).json({ error: 'imageTag may only contain letters, numbers, dots, underscores, and hyphens (max 128 chars).' });
+  }
   try {
     const started = Date.now();
     const { stdout, stderr } = await runDeployConsoleOnly(imageTag);
@@ -1423,6 +2410,9 @@ app.post('/api/deploy/promote', requireAuth, requireRole('super_admin'), async (
 
   if (!imageTag) {
     return res.status(400).json({ error: 'imageTag is required' });
+  }
+  if (!isValidImageTag(imageTag)) {
+    return res.status(400).json({ error: 'imageTag may only contain letters, numbers, dots, underscores, and hyphens (max 128 chars).' });
   }
   if (!allSchools && !includeDemo && schoolIds.length === 0) {
     return res.status(400).json({ error: 'Select at least one school, include canary, or choose all production schools' });
@@ -1514,6 +2504,93 @@ app.post('/api/deploy/promote', requireAuth, requireRole('super_admin'), async (
       results,
     });
   }
+});
+
+// F-02 remediation: promote schools via the existing promote-release.yml
+// workflow_dispatch pipeline instead of the privileged in-container
+// Docker/chroot path. Additive and opt-in — /api/deploy/promote above is
+// untouched and remains the default until CONSOLE_DEPLOY_VIA_GITHUB_ACTIONS
+// is deliberately turned on, after this has been proven against a real
+// deploy. See PLATFORM_CONSOLE_COMPLETION_PLAN.md §4, item 1 (F-02).
+app.post('/api/deploy/promote-via-actions', requireAuth, requireRole('super_admin'), async (req, res) => {
+  if (!DEPLOY_VIA_GITHUB_ACTIONS) {
+    return res.status(501).json({
+      ok: false,
+      error: 'GitHub Actions deploy path is not enabled. Set CONSOLE_DEPLOY_VIA_GITHUB_ACTIONS=true after testing this against a real deploy (see PLATFORM_CONSOLE_COMPLETION_PLAN.md F-02).',
+    });
+  }
+
+  const imageTag = String(req.body?.imageTag || '').trim();
+  const allSchools = Boolean(req.body?.allSchools);
+  const includeDemo = Boolean(req.body?.includeDemo);
+  const branch = String(req.body?.branch || 'main').trim() || 'main';
+  const schoolIds = Array.isArray(req.body?.schoolIds)
+    ? req.body.schoolIds.map(id => String(id || '').trim()).filter(Boolean)
+    : [];
+
+  if (!imageTag) {
+    return res.status(400).json({ error: 'imageTag is required' });
+  }
+  if (!isValidImageTag(imageTag)) {
+    return res.status(400).json({ error: 'imageTag may only contain letters, numbers, dots, underscores, and hyphens (max 128 chars).' });
+  }
+  if (!allSchools && !includeDemo && schoolIds.length === 0) {
+    return res.status(400).json({ error: 'Select at least one school, include canary, or choose all production schools' });
+  }
+
+  const jobs = [];
+  if (allSchools) {
+    jobs.push({ target: 'all_schools', schoolSlug: '', label: 'All production school apps' });
+  } else {
+    if (includeDemo && !schoolIds.includes('demo')) {
+      jobs.push({ target: 'school', schoolSlug: 'demo', label: 'Canary (demo school)' });
+    }
+    for (const id of schoolIds) {
+      jobs.push({ target: 'school', schoolSlug: id, label: id });
+    }
+  }
+  const seen = new Set();
+  const uniqueJobs = jobs.filter(job => {
+    const key = `${job.target}:${job.schoolSlug || 'all'}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const results = [];
+  for (const job of uniqueJobs) {
+    if (job.target === 'school' && job.schoolSlug && job.schoolSlug !== 'demo') {
+      try {
+        await assertSchoolPromotable(job.schoolSlug);
+      } catch (error) {
+        results.push({ target: job.label, dispatched: false, error: error.message });
+        continue;
+      }
+    }
+    try {
+      const dispatch = await triggerGithubWorkflowDispatch('promote-release.yml', branch, {
+        target: job.target,
+        school_slug: job.schoolSlug,
+        environment: 'production',
+        branch,
+        image_tag: imageTag,
+        confirm: job.target === 'all_schools' ? 'deploy' : '',
+      });
+      results.push({ target: job.label, dispatched: true, runsUrl: dispatch.runsUrl });
+      pushAudit('DEPLOY_DISPATCH', job.label, req.user.email, `Dispatched promote-release.yml for ${imageTag} via GitHub Actions`, 'Success');
+    } catch (error) {
+      results.push({ target: job.label, dispatched: false, error: error.message });
+      pushAudit('DEPLOY_DISPATCH_FAILED', job.label, req.user.email, error.message, 'Warning');
+    }
+  }
+
+  const allDispatched = results.length > 0 && results.every(r => r.dispatched);
+  return res.status(allDispatched ? 200 : 502).json({
+    ok: allDispatched,
+    imageTag,
+    results,
+    note: 'Each result confirms the GitHub Actions dispatch was accepted, not that the deploy itself succeeded — check the linked Actions run for real status and logs.',
+  });
 });
 
 app.get('/api/deployments', requireAuth, (_req, res) => {
@@ -1736,39 +2813,65 @@ function calculateQuote(body = {}) {
   };
 }
 
-function buildQuoteEmail(quote) {
-  const snapshot = quote.quoteSnapshot;
-  const customer = quote.customerSnapshot;
-  const money = amount => `KSh ${Number(amount || 0).toLocaleString('en-KE')}`;
-  const safe = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-  const text = [
-    `Hello ${customer.name},`,
-    '',
-    `Please find quotation ${quote.quoteNumber} attached.`,
-    `Enrollment used: ${quote.enrollmentCount} students.`,
-    ...snapshot.lines.map(item => `- ${item.description}: ${item.quantity} x ${money(item.unitPriceKsh)} = ${money(item.amountKsh)}`),
-    `Quoted total: ${money(quote.subtotalKsh)}`,
-    snapshot.taxNote,
-    `Valid until: ${quote.expiresOn || 'As agreed'}`,
-    '',
-    'This quotation is not a tax invoice.',
-    snapshot.notes ? `Notes: ${snapshot.notes}` : '',
-    '',
-    'Regards,\nTrendSCORE',
-  ].filter(Boolean).join('\n');
-  const rows = snapshot.lines.map(item => `<tr><td>${safe(item.description)}</td><td>${item.quantity}</td><td>${money(item.unitPriceKsh)}</td><td>${money(item.amountKsh)}</td></tr>`).join('');
-  const html = `<div style="font-family:Arial,sans-serif;color:#172033;line-height:1.5"><p>Hello ${safe(customer.name)},</p><p>Please find quotation <strong>${safe(quote.quoteNumber)}</strong> attached. This quotation uses an enrollment snapshot of ${quote.enrollmentCount} students and is valid until ${safe(quote.expiresOn || 'as agreed')}.</p><table cellpadding="8" cellspacing="0" border="1" style="border-collapse:collapse;border-color:#d8deea"><thead><tr><th align="left">Item</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>${rows}</tbody></table><p><strong>Quoted total: ${money(quote.subtotalKsh)}</strong></p><p>${safe(snapshot.taxNote)}</p>${snapshot.notes ? `<p>Notes: ${safe(snapshot.notes)}</p>` : ''}<p>This quotation is not a tax invoice.</p><p>Regards,<br/>TrendSCORE</p></div>`;
-  return { text, html };
+const BILLING_EMAIL_LOGO_URL = process.env.BILLING_EMAIL_LOGO_URL || 'https://trendscore.co.ke/splash/new/TrendsCORE-Logo.png';
+
+function billingEmailEscape(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 }
 
-async function deliverQuoteEmail(quote, actor) {
+function billingEmailDraft(kind, record) {
+  const quote = kind === 'quote';
+  const draftInvoice = !quote && record.status === 'draft';
+  const customer = quote ? record.customerSnapshot || {} : record.invoiceSnapshot?.customerSnapshot || {};
+  const documentNumber = quote ? record.quoteNumber : record.invoiceNumber;
+  const amountKsh = quote ? record.subtotalKsh : record.amountKsh;
+  const customerName = customer.name || 'Customer';
+  const subject = quote ? `Your TrendSCORE quotation ${documentNumber}` : draftInvoice ? `Draft invoice for your review · ${documentNumber}` : `Invoice ${documentNumber} from TrendSCORE`;
+  const message = quote
+    ? `Hello ${customerName},\n\nPlease find quotation ${documentNumber} attached for your review. It is based on an enrollment snapshot of ${Number(record.enrollmentCount || 0).toLocaleString('en-KE')} students${record.expiresOn ? ` and is valid until ${record.expiresOn}` : ''}.\n\n${record.quoteSnapshot?.taxNote || 'Tax treatment is not included in this quotation and should be reviewed before invoicing.'} This quotation is not a tax invoice.\n\nPlease reply to this email if you have any questions or would like to proceed.\n\nWarm regards,\nTrendSCORE Billing Team`
+    : draftInvoice
+      ? `Hello ${customerName},\n\nPlease review the attached draft invoice ${documentNumber} for KSh ${Number(amountKsh || 0).toLocaleString('en-KE')}.\n\nThis is a review copy only. It is not an issued invoice, payment request, or tax invoice. Please reply with any corrections or approval.\n\nWarm regards,\nTrendSCORE Billing Team`
+      : `Hello ${customerName},\n\nPlease find invoice ${documentNumber} attached for KSh ${Number(amountKsh || 0).toLocaleString('en-KE')}.${record.invoiceSnapshot?.dueDate ? ` Payment is due by ${record.invoiceSnapshot.dueDate}.` : ' Payment is due upon receipt.'}\n\nPlease include the invoice number as your payment reference. This commercial invoice is not an eTIMS tax invoice.\n\nWarm regards,\nTrendSCORE Billing Team`;
+  return {
+    kind, customerName, documentNumber, recipient: customer.billingEmail || '',
+    subject, message, amountKsh, logoUrl: BILLING_EMAIL_LOGO_URL,
+    isDraftInvoice: draftInvoice,
+    documentName: `${String(documentNumber || 'document').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`,
+    pdfUrl: quote ? `/api/billing/quotes/${encodeURIComponent(record.id)}/pdf?preview=1` : `/api/billing/invoices/${encodeURIComponent(record.id)}/pdf?preview=1`,
+    senderName: process.env.BILLING_FROM_NAME || process.env.EMAIL_FROM_NAME || 'TrendSCORE',
+    senderEmail: process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM || '',
+  };
+}
+
+function renderBillingEmailHtml(draft) {
+  const safe = billingEmailEscape;
+  const message = String(draft.message || '').split(/\r?\n/).map(line => line ? `<p style="margin:0 0 14px">${safe(line)}</p>` : '<div style="height:8px"></div>').join('');
+  const isQuote = draft.kind === 'quote';
+  const label = isQuote ? 'QUOTATION' : draft.isDraftInvoice ? 'DRAFT INVOICE · REVIEW COPY' : 'COMMERCIAL INVOICE';
+  const attachment = `${safe(draft.documentName)} · PDF`;
+  const amount = `KSh ${Number(draft.amountKsh || 0).toLocaleString('en-KE')}`;
+  return `<!doctype html><html><body style="margin:0;background:#f1f4f9;font-family:Arial,Helvetica,sans-serif;color:#172033"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f1f4f9;padding:32px 12px"><tr><td align="center"><table role="presentation" width="620" cellspacing="0" cellpadding="0" style="max-width:620px;width:100%;background:#fff;border:1px solid #dce3ee;border-radius:14px;overflow:hidden"><tr><td style="padding:24px 32px;border-bottom:1px solid #e7ebf2"><img src="${safe(draft.logoUrl)}" alt="TrendSCORE" width="150" style="display:block;max-width:150px;height:auto"><div style="margin-top:10px;color:#61708b;font-size:12px;letter-spacing:1.4px;font-weight:bold">BUSINESS SERVICES</div></td></tr><tr><td style="padding:30px 32px 12px"><span style="display:inline-block;padding:7px 10px;background:#eef2ff;color:#18258b;font-size:11px;font-weight:bold;letter-spacing:1px;border-radius:4px">${label}</span><h1 style="margin:16px 0 5px;color:#101b36;font-size:22px;line-height:1.3">${safe(draft.documentNumber)}</h1><div style="color:#66748d;font-size:13px">Prepared for ${safe(draft.customerName)}</div></td></tr><tr><td style="padding:8px 32px 24px;color:#34415a;font-size:14px;line-height:1.75">${message}</td></tr><tr><td style="padding:0 32px 28px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f7f9fc;border:1px solid #e5eaf2;border-radius:8px"><tr><td style="padding:14px 16px;color:#60708b;font-size:12px">${attachment}</td><td align="right" style="padding:14px 16px;color:#111c39;font-size:14px;font-weight:bold">${amount}</td></tr></table></td></tr><tr><td style="padding:21px 32px;background:#f7f9fc;color:#172033;border-top:1px solid #e7ebf2"><img src="${safe(draft.logoUrl)}" alt="TrendSCORE" width="112" style="display:block;max-width:112px;height:auto;margin-bottom:12px"><div style="font-size:13px;font-weight:bold">${safe(draft.senderName || 'TrendSCORE')}</div><div style="font-size:12px;color:#5f6f89;margin-top:5px">Questions? Reply to this email or reach us at ${safe(draft.senderEmail || 'billing@trendscore.co.ke')}.</div><div style="font-size:11px;color:#7a879b;margin-top:14px">TrendSCORE · School operations, made clearer.</div></td></tr></table><div style="max-width:620px;padding:14px 8px;color:#7a879b;font-size:11px;line-height:1.5;text-align:center">This message and its attached document were prepared for ${safe(draft.customerName)}.</div></td></tr></table></body></html>`;
+}
+
+function normalizeBillingEmailDraft(req, defaults) {
+  const body = req.body || {};
+  const recipient = billingText(Object.prototype.hasOwnProperty.call(body, 'recipient') ? body.recipient : defaults.recipient, 254).toLowerCase();
+  const subject = billingText(Object.prototype.hasOwnProperty.call(body, 'subject') ? body.subject : defaults.subject, 180);
+  const message = String(req.body?.message ?? defaults.message).replace(/\r\n/g, '\n').trim().slice(0, 5000);
+  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(recipient)) throw new Error('Enter a valid recipient email address');
+  if (!subject) throw new Error('Email subject is required');
+  if (!message) throw new Error('Email message is required');
+  return { ...defaults, recipient, subject, message };
+}
+
+async function deliverQuoteEmail(quote, actor, draftInput = {}) {
   const apiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM;
   if (!apiKey || !fromEmail) throw new Error('Quote email is not configured. Set RESEND_API_KEY and BILLING_FROM_EMAIL (or EMAIL_FROM).');
   const customer = quote.customerSnapshot || {};
-  if (!customer.billingEmail) throw new Error('Add a billing email to this customer before sending the quote');
-  const pdf = createPdfBuffer(quotePdfLines(quote));
-  const message = buildQuoteEmail(quote);
+  if (!customer.billingEmail && !draftInput.recipient) throw new Error('Add a billing email to this customer before sending the quote');
+  const draft = normalizeBillingEmailDraft({ body: draftInput }, billingEmailDraft('quote', quote));
+  const pdf = quotePdfBuffer(quote);
   let providerMessageId = '';
   try {
     const response = await fetch('https://api.resend.com/emails', {
@@ -1776,20 +2879,48 @@ async function deliverQuoteEmail(quote, actor) {
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         from: `${process.env.BILLING_FROM_NAME || process.env.EMAIL_FROM_NAME || 'TrendSCORE'} <${fromEmail}>`,
-        to: [customer.billingEmail],
-        subject: `TrendSCORE quotation ${quote.quoteNumber}`,
-        text: message.text,
-        html: message.html,
-        attachments: [{ filename: `${quote.quoteNumber}.pdf`, content: pdf.toString('base64') }],
+        to: [draft.recipient], reply_to: process.env.BILLING_REPLY_TO || fromEmail,
+        subject: draft.subject,
+        text: draft.message,
+        html: renderBillingEmailHtml(draft),
+        attachments: [{ filename: draft.documentName, content: pdf.toString('base64') }],
       }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.message || payload.error || `Email provider returned ${response.status}`);
     providerMessageId = String(payload.id || '');
-    billingStore.recordQuoteDelivery({ id: crypto.randomUUID(), quoteId: quote.id, recipient: customer.billingEmail, actor, providerMessageId, status: 'sent', error: '' });
+    billingStore.recordQuoteDelivery({ id: crypto.randomUUID(), quoteId: quote.id, recipient: draft.recipient, actor, providerMessageId, status: 'sent', error: '' });
     return providerMessageId;
   } catch (error) {
-    billingStore.recordQuoteDelivery({ id: crypto.randomUUID(), quoteId: quote.id, recipient: customer.billingEmail, actor, providerMessageId: '', status: 'failed', error: billingText(error.message, 500) });
+    billingStore.recordQuoteDelivery({ id: crypto.randomUUID(), quoteId: quote.id, recipient: draft.recipient, actor, providerMessageId: '', status: 'failed', error: billingText(error.message, 500) });
+    throw error;
+  }
+}
+
+async function deliverDraftInvoiceEmail(invoice, actor, draftInput = {}) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM;
+  if (!apiKey || !fromEmail) throw new Error('Invoice email is not configured. Set the server-side Resend key and billing sender address.');
+  const customer = invoice.invoiceSnapshot?.customerSnapshot || {};
+  if (!customer.billingEmail && !draftInput.recipient) throw new Error('Add a billing email to this customer before sending the draft');
+  const draft = normalizeBillingEmailDraft({ body: draftInput }, billingEmailDraft('invoice', invoice));
+  const pdf = invoicePdfBuffer(invoice);
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: `${process.env.BILLING_FROM_NAME || process.env.EMAIL_FROM_NAME || 'TrendSCORE'} <${fromEmail}>`,
+        to: [draft.recipient], reply_to: process.env.BILLING_REPLY_TO || fromEmail, subject: draft.subject,
+        text: draft.message, html: renderBillingEmailHtml(draft), attachments: [{ filename: draft.documentName, content: pdf.toString('base64') }],
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.message || payload.error || `Email provider returned ${response.status}`);
+    const providerMessageId = String(payload.id || '');
+    billingStore.recordInvoiceDelivery({ id: crypto.randomUUID(), invoiceId: invoice.id, recipient: draft.recipient, actor, providerMessageId, status: 'sent', error: '' });
+    return providerMessageId;
+  } catch (error) {
+    billingStore.recordInvoiceDelivery({ id: crypto.randomUUID(), invoiceId: invoice.id, recipient: draft.recipient, actor, providerMessageId: '', status: 'failed', error: billingText(error.message, 500) });
     throw error;
   }
 }
@@ -1850,8 +2981,113 @@ app.get('/api/billing/contracts', requireAuth, requireRole('super_admin', 'platf
   res.json({ ok: true, contracts: billingStore.listContracts(customerId) });
 });
 
+function writeConsoleEmailSettings(values) {
+  const envFilePath = CONSOLE_ENV_FILE;
+  if (!fs.existsSync(envFilePath)) {
+    throw new Error('The persistent console environment file is unavailable. Ask an operator to check the production console mount.');
+  }
+  if (fs.lstatSync(envFilePath).isSymbolicLink()) {
+    throw new Error('The console environment file must not be a symbolic link.');
+  }
+
+  let lines = fs.readFileSync(envFilePath, 'utf8').split(/\r?\n/);
+  for (const [key, value] of Object.entries(values)) {
+    if (value === undefined) continue;
+    const nextLine = `${key}=${value}`;
+    lines = lines.filter(line => !new RegExp(`^\\s*${key}\\s*=`).test(line));
+    lines.push(nextLine);
+  }
+
+  const temporaryPath = `${envFilePath}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+  try {
+    fs.writeFileSync(temporaryPath, `${lines.join('\n').replace(/\n+$/, '')}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    fs.chmodSync(temporaryPath, 0o600);
+    fs.renameSync(temporaryPath, envFilePath);
+    fs.chmodSync(envFilePath, 0o600);
+    for (const [key, value] of Object.entries(values)) {
+      if (value !== undefined) process.env[key] = value;
+    }
+  } catch (error) {
+    try { fs.unlinkSync(temporaryPath); } catch (_) {}
+    throw error;
+  }
+}
+
+function currentEmailSettings() {
+  return {
+    keyConfigured: Boolean(process.env.RESEND_API_KEY),
+    fromEmail: process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM || '',
+    fromName: process.env.BILLING_FROM_NAME || process.env.EMAIL_FROM_NAME || 'TrendSCORE',
+  };
+}
+
+app.get('/api/settings/communications/email', requireAuth, requireRole('super_admin'), (_req, res) => {
+  return res.json({ ok: true, ...currentEmailSettings() });
+});
+
+app.put('/api/settings/communications/email', requireAuth, requireRole('super_admin'), (req, res) => {
+  const apiKey = String(req.body?.apiKey || '').trim();
+  const fromEmail = String(req.body?.fromEmail || '').trim();
+  const fromName = String(req.body?.fromName || 'TrendSCORE').trim();
+  if (apiKey && (!/^re_[A-Za-z0-9_-]{8,250}$/.test(apiKey) || /[\r\n]/.test(apiKey))) {
+    return res.status(400).json({ ok: false, error: 'Enter a validly formatted Resend API key beginning with re_.' });
+  }
+  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(fromEmail) || fromEmail.length > 254) {
+    return res.status(400).json({ ok: false, error: 'Enter a valid sender email address.' });
+  }
+  if (/[\r\n]/.test(fromName) || fromName.length > 120) {
+    return res.status(400).json({ ok: false, error: 'Sender name must be 120 characters or fewer on one line.' });
+  }
+  if (!apiKey && !process.env.RESEND_API_KEY) {
+    return res.status(400).json({ ok: false, error: 'Paste a Resend API key before saving the first email configuration.' });
+  }
+
+  try {
+    const values = {
+      ...(apiKey ? { RESEND_API_KEY: apiKey } : {}),
+      BILLING_FROM_EMAIL: fromEmail,
+      BILLING_FROM_NAME: fromName || 'TrendSCORE',
+    };
+    writeConsoleEmailSettings(values);
+    pushAudit('COMMUNICATIONS_EMAIL_SETTINGS', 'Communications', req.user.email, `Updated Resend sender settings for ${fromEmail}`);
+    return res.json({ ok: true, ...currentEmailSettings() });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message || 'Could not save email settings on the server.' });
+  }
+});
+
+app.post('/api/settings/communications/email/test', requireAuth, requireRole('super_admin'), async (_req, res) => {
+  const { keyConfigured, fromEmail } = currentEmailSettings();
+  if (!keyConfigured || !fromEmail) return res.status(400).json({ ok: false, error: 'Save a Resend API key and sender address first.' });
+  try {
+    const response = await fetch('https://api.resend.com/domains?limit=100', {
+      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
+      signal: AbortSignal.timeout(12000),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = response.status === 401 || response.status === 403
+        ? 'Resend rejected this API key. Replace it with a valid key.'
+        : `Resend connection check failed (HTTP ${response.status}).`;
+      return res.status(502).json({ ok: false, error });
+    }
+    const senderDomain = fromEmail.split('@').pop().toLowerCase();
+    const domainEntry = (Array.isArray(payload.data) ? payload.data : []).find(item => {
+      const domain = String(item.name || '').toLowerCase();
+      return senderDomain === domain || senderDomain.endsWith(`.${domain}`);
+    });
+    const verified = domainEntry?.status === 'verified'
+      && (!domainEntry.capabilities?.sending || domainEntry.capabilities.sending === 'enabled');
+    pushAudit('COMMUNICATIONS_EMAIL_TEST', 'Communications', 'system', `Checked Resend configuration for ${fromEmail}: ${verified ? 'verified' : 'domain needs verification'}`);
+    return res.json({ ok: true, verified, fromEmail, domain: domainEntry?.name || senderDomain, domainStatus: domainEntry?.status || 'not found' });
+  } catch (error) {
+    return res.status(502).json({ ok: false, error: error.name === 'TimeoutError' ? 'Resend validation timed out.' : 'Could not reach Resend to validate the saved configuration.' });
+  }
+});
+
 app.get('/api/billing/email-status', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
-  res.json({ ok: true, configured: Boolean(process.env.RESEND_API_KEY && (process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM)) });
+  const config = currentEmailSettings();
+  res.json({ ok: true, configured: Boolean(config.keyConfigured && config.fromEmail) });
 });
 
 app.get('/api/billing/quotes', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
@@ -1899,23 +3135,76 @@ app.post('/api/billing/quotes', requireAuth, requireRole('super_admin'), (req, r
   }
 });
 
+app.put('/api/billing/quotes/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+  try {
+    const existing = billingStore.getQuote(req.params.id);
+    if (!existing) return res.status(404).json({ ok: false, error: 'Quote not found' });
+    if (existing.status !== 'draft' || existing.sentAt || existing.cancelledAt) return res.status(409).json({ ok: false, error: 'Only an unsent draft quote can be edited. Create a revision for a quote already sent.' });
+    const customerId = billingText(req.body.customerId, 80);
+    const customer = billingStore.getCustomer(customerId);
+    if (!customer) return res.status(404).json({ ok: false, error: 'Select a saved billing customer first' });
+    if (customer.currency !== 'KES') return res.status(400).json({ ok: false, error: 'The approved school rate card is in KSh. Set this customer currency to KES before quoting.' });
+    const quoteSnapshot = calculateQuote(req.body);
+    const updated = billingStore.updateQuote(existing.id, {
+      customerId,
+      customerSnapshot: { name: customer.name, legalName: customer.legalName, tenantKey: customer.tenantKey,
+        billingEmail: customer.billingEmail, billingPhone: customer.billingPhone, billingAddress: customer.billingAddress,
+        taxIdentifier: customer.taxIdentifier, currency: customer.currency },
+      quoteSnapshot, enrollmentCount: quoteSnapshot.enrollmentCount, pricingModel: quoteSnapshot.pricingModel,
+      billingCadence: quoteSnapshot.billingCadence, subtotalKsh: quoteSnapshot.subtotalKsh,
+      expiresOn: quoteSnapshot.expiresOn, notes: quoteSnapshot.notes,
+    });
+    if (!updated) return res.status(409).json({ ok: false, error: 'This quote can no longer be edited' });
+    pushAudit('BILLING_QUOTE_UPDATE', customer.name, req.user.email, `Updated unsent draft ${updated.quoteNumber}`);
+    return res.json({ ok: true, quote: updated });
+  } catch (error) { return res.status(400).json({ ok: false, error: error.message }); }
+});
+
+app.delete('/api/billing/quotes/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+  const quote = billingStore.getQuote(req.params.id);
+  if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
+  if (!billingStore.deleteDraftQuote(quote.id)) return res.status(409).json({ ok: false, error: 'Only an unsent draft with no email attempts or invoice can be deleted. Cancel sent or accepted quotes to preserve their history.' });
+  pushAudit('BILLING_QUOTE_DELETE', quote.customerSnapshot?.name || quote.customerId, req.user.email, `Deleted unsent draft ${quote.quoteNumber}`, 'Warning');
+  return res.json({ ok: true });
+});
+
+app.post('/api/billing/quotes/:id/cancel', requireAuth, requireRole('super_admin'), (req, res) => {
+  const quote = billingStore.getQuote(req.params.id);
+  if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
+  const reason = billingText(req.body.reason, 500);
+  if (!reason) return res.status(400).json({ ok: false, error: 'Enter a reason for cancelling this quote' });
+  const cancelled = billingStore.cancelQuote(quote.id, req.user.email, reason);
+  if (!cancelled) return res.status(409).json({ ok: false, error: 'This quote cannot be cancelled after an invoice exists or after it reached a final state' });
+  pushAudit('BILLING_QUOTE_CANCEL', quote.customerSnapshot?.name || quote.customerId, req.user.email, `Cancelled ${quote.quoteNumber}: ${reason}`, 'Warning');
+  return res.json({ ok: true, quote: cancelled });
+});
+
 app.get('/api/billing/quotes/:id/pdf', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   const quote = billingStore.getQuote(req.params.id);
   if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
-  const pdf = createPdfBuffer(quotePdfLines(quote));
+  const pdf = quotePdfBuffer(quote);
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${quote.quoteNumber}.pdf"`);
+  res.setHeader('Content-Disposition', `${req.query.preview === '1' ? 'inline' : 'attachment'}; filename="${quote.quoteNumber}.pdf"`);
   res.setHeader('Content-Length', pdf.length);
   return res.send(pdf);
+});
+
+app.get('/api/billing/quotes/:id/email-preview', requireAuth, requireRole('super_admin'), (req, res) => {
+  const quote = billingStore.getQuote(req.params.id);
+  if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
+  if (!['draft', 'sent'].includes(quote.status) || quote.cancelledAt) return res.status(409).json({ ok: false, error: 'Only active draft or sent quotes can be emailed' });
+  const draft = billingEmailDraft('quote', quote);
+  return res.json({ ok: true, draft: { ...draft, html: renderBillingEmailHtml(draft) } });
 });
 
 app.post('/api/billing/quotes/:id/send', requireAuth, requireRole('super_admin'), async (req, res) => {
   const quote = billingStore.getQuote(req.params.id);
   if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
-  if (!['draft', 'sent'].includes(quote.status)) return res.status(409).json({ ok: false, error: 'Only draft or sent quotes can be emailed' });
+  if (!['draft', 'sent'].includes(quote.status) || quote.cancelledAt) return res.status(409).json({ ok: false, error: 'Only active draft or sent quotes can be emailed' });
   try {
-    await deliverQuoteEmail(quote, req.user.email);
-    pushAudit('BILLING_QUOTE_SEND', quote.customerSnapshot.name, req.user.email, `Emailed ${quote.quoteNumber} to ${quote.customerSnapshot.billingEmail}`);
+    const deliveredTo = billingText(req.body?.recipient || quote.customerSnapshot.billingEmail, 254).toLowerCase();
+    await deliverQuoteEmail(quote, req.user.email, req.body || {});
+    pushAudit('BILLING_QUOTE_SEND', quote.customerSnapshot.name, req.user.email, `Emailed ${quote.quoteNumber} to ${deliveredTo}`);
     return res.json({ ok: true, quote: billingStore.getQuote(quote.id), deliveries: billingStore.listQuoteDeliveries(quote.id) });
   } catch (error) {
     pushAudit('BILLING_QUOTE_SEND_FAILED', quote.customerSnapshot.name, req.user.email, `Email attempt failed for ${quote.quoteNumber}: ${billingText(error.message, 300)}`, 'Warning');
@@ -1926,7 +3215,7 @@ app.post('/api/billing/quotes/:id/send', requireAuth, requireRole('super_admin')
 app.post('/api/billing/quotes/:id/accept', requireAuth, requireRole('super_admin'), (req, res) => {
   const quote = billingStore.getQuote(req.params.id);
   if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
-  if (!['draft', 'sent'].includes(quote.status)) return res.status(409).json({ ok: false, error: `Quote is ${quote.status} and cannot be marked accepted` });
+  if (!['draft', 'sent'].includes(quote.status) || quote.cancelledAt) return res.status(409).json({ ok: false, error: `Quote is ${quote.status} and cannot be marked accepted` });
   if (quote.expiresOn && quote.expiresOn < new Date().toISOString().slice(0, 10)) {
     billingStore.setQuoteStatus(quote.id, 'expired');
     return res.status(409).json({ ok: false, error: 'This quote has expired. Create a new quote before recording acceptance.' });
@@ -1965,7 +3254,103 @@ app.post('/api/billing/quotes/:id/convert', requireAuth, requireRole('super_admi
 });
 
 app.get('/api/billing/invoices', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
-  res.json({ ok: true, invoices: billingStore.listInvoices() });
+  const invoices = billingStore.listInvoices();
+  res.json({ ok: true, invoices, deliveries: invoices.map(invoice => ({ invoiceId: invoice.id, attempts: billingStore.listInvoiceDeliveries(invoice.id) })) });
+});
+
+app.get('/api/billing/payments', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
+  return res.json({ ok: true, payments: billingStore.listPayments() });
+});
+
+app.get('/api/billing/payments/:id/receipt', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  const payment = billingStore.getPayment(req.params.id);
+  if (!payment) return res.status(404).json({ ok: false, error: 'Payment record not found' });
+  const invoice = billingStore.getInvoice(payment.invoiceId);
+  if (!invoice) return res.status(404).json({ ok: false, error: 'Linked invoice was not found' });
+  const receiptNumber = `RCPT-${String(payment.paymentDate || '').replace(/-/g, '')}-${String(payment.id || '').replace(/-/g, '').slice(0, 6).toUpperCase()}`;
+  const pdf = paymentReceiptPdfBuffer({ ...payment, receiptNumber }, invoice);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${receiptNumber}.pdf"`);
+  res.setHeader('Content-Length', pdf.length);
+  return res.send(pdf);
+});
+
+app.post('/api/billing/payments', requireAuth, requireRole('super_admin'), (req, res) => {
+  const invoiceId = billingText(req.body?.invoiceId, 80);
+  const amountKsh = Number(req.body?.amountKsh);
+  const paymentDate = billingText(req.body?.paymentDate, 10);
+  const method = billingText(req.body?.method, 30);
+  const reference = billingText(req.body?.reference, 120);
+  const notes = billingText(req.body?.notes, 500);
+  if (!invoiceId) return res.status(400).json({ ok: false, error: 'Select an issued invoice' });
+  if (!Number.isSafeInteger(amountKsh) || amountKsh <= 0) return res.status(400).json({ ok: false, error: 'Enter a whole amount in KSh greater than zero' });
+  const parsedPaymentDate = new Date(`${paymentDate}T00:00:00.000Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDate) || !Number.isFinite(parsedPaymentDate.getTime()) || parsedPaymentDate.toISOString().slice(0, 10) !== paymentDate) return res.status(400).json({ ok: false, error: 'Enter a valid payment date' });
+  if (!['mpesa', 'bank_transfer', 'cash', 'cheque', 'other'].includes(method)) return res.status(400).json({ ok: false, error: 'Choose a supported payment method' });
+  try {
+    const payment = billingStore.recordPayment({ id: crypto.randomUUID(), invoiceId, amountKsh, paymentDate, method, reference, notes, recordedBy: req.user.email });
+    const invoice = billingStore.getInvoice(invoiceId);
+    pushAudit('BILLING_PAYMENT_RECORD', invoice?.customerId || invoiceId, req.user.email, `Recorded KSh ${amountKsh.toLocaleString('en-KE')} payment against ${invoice?.invoiceNumber || invoiceId}${reference ? ` · reference ${reference}` : ''}`);
+    return res.status(201).json({ ok: true, payment, invoice });
+  } catch (error) {
+    return res.status(409).json({ ok: false, error: error.message || 'Could not record payment' });
+  }
+});
+
+app.put('/api/billing/invoices/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+  const dueDate = billingText(req.body.dueDate, 10); const termsNote = billingText(req.body.termsNote, 1000);
+  if (dueDate && (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || new Date(`${dueDate}T00:00:00.000Z`).toISOString().slice(0, 10) !== dueDate)) return res.status(400).json({ ok: false, error: 'Due date must be a valid date in YYYY-MM-DD format' });
+  const invoice = billingStore.updateDraftInvoice(req.params.id, { dueDate, termsNote });
+  if (!invoice) return res.status(409).json({ ok: false, error: 'Only draft invoices can be edited' });
+  pushAudit('BILLING_INVOICE_UPDATE', invoice.customerId, req.user.email, `Updated draft invoice details ${invoice.invoiceNumber}`);
+  return res.json({ ok: true, invoice });
+});
+
+app.post('/api/billing/invoices/:id/issue', requireAuth, requireRole('super_admin'), (req, res) => {
+  const existing = billingStore.getInvoice(req.params.id);
+  if (!existing) return res.status(404).json({ ok: false, error: 'Invoice not found' });
+  if (existing.status !== 'draft') return res.status(409).json({ ok: false, error: 'Only a draft invoice can be issued' });
+  const invoiceNumber = `INV-${String(existing.invoiceSnapshot?.quoteNumber || existing.invoiceNumber.replace(/^DRAFT-/, '')).replace(/^Q-/, '')}`;
+  try {
+    const invoice = billingStore.issueDraftInvoice(existing.id, invoiceNumber, new Date().toISOString());
+    if (!invoice) return res.status(409).json({ ok: false, error: 'This invoice has already been issued or changed' });
+    pushAudit('BILLING_INVOICE_ISSUE', invoice.customerId, req.user.email, `Issued commercial invoice ${invoice.invoiceNumber}; tax invoice/eTIMS is not represented`);
+    return res.json({ ok: true, invoice });
+  } catch (error) {
+    return res.status(409).json({ ok: false, error: error.message || 'Could not issue invoice' });
+  }
+});
+
+app.post('/api/billing/invoices/:id/cancel', requireAuth, requireRole('super_admin'), (req, res) => {
+  const reason = billingText(req.body.reason, 500);
+  if (!reason) return res.status(400).json({ ok: false, error: 'Enter a reason for cancelling this draft invoice' });
+  const invoice = billingStore.cancelDraftInvoice(req.params.id, req.user.email, reason);
+  if (!invoice) return res.status(409).json({ ok: false, error: 'Only draft invoices can be cancelled' });
+  pushAudit('BILLING_INVOICE_CANCEL', invoice.customerId, req.user.email, `Cancelled draft ${invoice.invoiceNumber}: ${reason}`, 'Warning');
+  return res.json({ ok: true, invoice });
+});
+
+app.get('/api/billing/invoices/:id/email-preview', requireAuth, requireRole('super_admin'), (req, res) => {
+  const invoice = billingStore.getInvoice(req.params.id);
+  if (!invoice) return res.status(404).json({ ok: false, error: 'Invoice not found' });
+  if (!['draft', 'issued', 'sent', 'paid'].includes(invoice.status)) return res.status(409).json({ ok: false, error: 'This invoice cannot be emailed in its current status' });
+  const draft = billingEmailDraft('invoice', invoice);
+  return res.json({ ok: true, draft: { ...draft, html: renderBillingEmailHtml(draft) } });
+});
+
+app.post('/api/billing/invoices/:id/send-review-email', requireAuth, requireRole('super_admin'), async (req, res) => {
+  const invoice = billingStore.getInvoice(req.params.id);
+  if (!invoice) return res.status(404).json({ ok: false, error: 'Invoice not found' });
+  if (!['draft', 'issued', 'sent', 'paid'].includes(invoice.status)) return res.status(409).json({ ok: false, error: 'This invoice cannot be emailed in its current status' });
+  try {
+    const deliveredTo = billingText(req.body?.recipient || invoice.invoiceSnapshot?.customerSnapshot?.billingEmail, 254).toLowerCase();
+    await deliverDraftInvoiceEmail(invoice, req.user.email, req.body || {});
+    pushAudit(invoice.status === 'draft' ? 'BILLING_INVOICE_REVIEW_SEND' : 'BILLING_INVOICE_SEND', invoice.customerId, req.user.email, `Emailed ${invoice.status === 'draft' ? 'draft review copy' : 'commercial invoice'} ${invoice.invoiceNumber} to ${deliveredTo}`);
+    return res.json({ ok: true, deliveries: billingStore.listInvoiceDeliveries(invoice.id) });
+  } catch (error) {
+    pushAudit('BILLING_INVOICE_SEND_FAILED', invoice.customerId, req.user.email, `Invoice email failed for ${invoice.invoiceNumber}: ${billingText(error.message, 300)}`, 'Warning');
+    return res.status(502).json({ ok: false, error: error.message || 'Could not send invoice email', deliveries: billingStore.listInvoiceDeliveries(invoice.id) });
+  }
 });
 
 app.get('/api/billing/invoices/:id/pdf', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
@@ -1974,7 +3359,7 @@ app.get('/api/billing/invoices/:id/pdf', requireAuth, requireRole('super_admin',
   const pdf = invoicePdfBuffer(invoice);
   const filename = String(invoice.invoiceNumber || 'draft-invoice').replace(/[^a-zA-Z0-9_-]/g, '_');
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}.pdf"`);
+  res.setHeader('Content-Disposition', `${req.query.preview === '1' ? 'inline' : 'attachment'}; filename="${filename}.pdf"`);
   res.setHeader('Content-Length', pdf.length);
   return res.send(pdf);
 });
@@ -2015,10 +3400,22 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 app.listen(PORT, () => {
   console.log(`Trends CORE Control Panel  →  http://localhost:${PORT}`);
-  console.log(`Users configured: ${USERS.map(u => `${u.email} (${u.role})`).join(', ') || 'none'}`);
+  console.log(`Users configured: ${usersStore.listUsers().map(u => `${u.email} (${u.role})`).join(', ') || 'none'}`);
   console.log(`JWT expires: ${JWT_EXPIRES_IN} · Secure cookie: ${COOKIE_SECURE}`);
   console.log(`Host metrics: ${os.hostname()} · docker host ${process.env.DOCKER_HOST ? 'tcp://localhost:2375' : '/var/run/docker.sock'}`);
   console.log(`Audit log: ${AUDIT_STORE_FILE} (persisted, max ${MAX_AUDIT_ENTRIES} entries)`);
+  backfillTenantsFromManifestAndRuntime()
+    .then(() => console.log(`Tenants: ${tenantsStore.countByStatus('active')} active, ${tenantsStore.countByStatus('suspended')} suspended, ${tenantsStore.countByStatus('decommissioned')} decommissioned`))
+    .catch(error => console.error('[tenants] Backfill on boot failed:', error.message));
 });
+
+function shutdown() {
+  try { usersStore.close(); } catch {}
+  try { billingStore.close(); } catch {}
+  try { tenantsStore.close(); } catch {}
+  process.exit(0);
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 module.exports = { requireAuth, requireRole };

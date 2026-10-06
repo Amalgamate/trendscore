@@ -13,6 +13,9 @@ const { spawn } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
+const crypto = require('node:crypto');
+const bcrypt = require('bcryptjs');
+const { createUsersStore } = require('../users-store');
 
 const TEST_PORT = process.env.CONSOLE_TEST_PORT || '3198';
 const BASE_URL = `http://127.0.0.1:${TEST_PORT}`;
@@ -21,12 +24,14 @@ const ADMIN_EMAIL = 'test-admin@example.test';
 const ADMIN_PASSWORD = 'test-password-only';
 const OWNER_EMAIL = 'test-owner@example.test';
 const OWNER_PASSWORD = 'test-owner-password-only';
+const LEGACY_ADMIN_EMAIL = 'legacy-admin@example.test';
+const LEGACY_ADMIN_PASSWORD = 'legacy-admin-password-only';
 
 let serverProcess;
 let tmpDataDir;
 let startupOutput = '';
 
-function waitForHealth(timeoutMs = 10000) {
+function waitForHealth(timeoutMs = 20000) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
     const attempt = async () => {
@@ -56,6 +61,30 @@ function login(email, password) {
 before(async () => {
   tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trendscore-console-test-'));
 
+  const legacySalt = 'abcdef0123456789abcdef0123456789';
+  const legacyHash = `scrypt$${legacySalt}$${crypto.scryptSync(LEGACY_ADMIN_PASSWORD, legacySalt, 64).toString('hex')}`;
+  fs.writeFileSync(path.join(tmpDataDir, 'console-users.store.json'), JSON.stringify([{
+    id: 'legacy-admin-id', email: LEGACY_ADMIN_EMAIL, passwordHash: legacyHash,
+    name: 'Legacy Admin', role: 'super_admin', active: true, sessionVersion: 2,
+    createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z', lastLoginAt: '',
+  }]));
+
+  // ADMIN_EMAIL (super_admin) is seeded by server.js itself from
+  // CONSOLE_SUPER_ADMIN_EMAIL/PASSWORD on first boot (Phase 1 bootstrap).
+  // platform_owner accounts are no longer created from env vars
+  // (auth-config.js, Stage 2) — seed OWNER_EMAIL directly into the same
+  // DB file the spawned server will open, the way it'd really be created
+  // (via the Users store, not .env).
+  const seedStore = createUsersStore(tmpDataDir);
+  seedStore.createUser({
+    email: OWNER_EMAIL,
+    passwordHash: bcrypt.hashSync(OWNER_PASSWORD, 10),
+    name: 'Test Owner',
+    role: 'platform_owner',
+    active: true,
+  });
+  seedStore.close();
+
   serverProcess = spawn(process.execPath, ['--experimental-sqlite', 'server.js'], {
     cwd: path.join(__dirname, '..'),
     env: {
@@ -67,8 +96,6 @@ before(async () => {
       CONSOLE_JWT_EXPIRES_IN: '8h',
       CONSOLE_SUPER_ADMIN_EMAIL: ADMIN_EMAIL,
       CONSOLE_SUPER_ADMIN_PASSWORD: ADMIN_PASSWORD,
-      CONSOLE_PLATFORM_OWNER_EMAIL: OWNER_EMAIL,
-      CONSOLE_PLATFORM_OWNER_PASSWORD: OWNER_PASSWORD,
       CONSOLE_COOKIE_SECURE: 'false',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -96,13 +123,18 @@ before(async () => {
   await waitForHealth();
 });
 
-after(() => {
+after(async () => {
   if (serverProcess && !serverProcess.killed) {
     serverProcess.__expectedExit = true;
     serverProcess.kill();
   }
+  // On Windows, kill() force-terminates the child rather than delivering a
+  // real SIGTERM, so the sqlite file handles it held open (users-store.js,
+  // billing-store.js) aren't guaranteed released the instant kill() returns.
+  // Give it a beat, then retry the delete — same fix as users-store.test.js.
+  await new Promise(r => setTimeout(r, 150));
   if (tmpDataDir && fs.existsSync(tmpDataDir)) {
-    fs.rmSync(tmpDataDir, { recursive: true, force: true });
+    fs.rmSync(tmpDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });
 
@@ -131,4 +163,35 @@ test('V-05 (proxy): unknown email and wrong password return the same response sh
 
   assert.equal(unknownRes.status, wrongPasswordRes.status);
   assert.equal(unknownBody.error, wrongPasswordBody.error);
+});
+
+test('V-06: legacy console accounts keep working and password changes revoke their sessions', async () => {
+  const migratedLogin = await login(LEGACY_ADMIN_EMAIL, LEGACY_ADMIN_PASSWORD);
+  assert.equal(migratedLogin.status, 200, 'existing scrypt account should authenticate after import');
+  const migratedCookie = String(migratedLogin.headers.get('set-cookie') || '').split(';')[0];
+  assert.ok(migratedCookie, 'successful legacy login must receive a session cookie');
+
+  const migratedStore = createUsersStore(tmpDataDir);
+  const migratedAdmin = migratedStore.getUserByEmail(LEGACY_ADMIN_EMAIL);
+  assert.match(migratedAdmin.passwordHash, /^\$2[aby]\$/, 'successful legacy login upgrades scrypt to bcrypt');
+  assert.equal(migratedAdmin.sessionVersion, 3, 'password-hash upgrade invalidates older sessions');
+  migratedStore.close();
+
+  const usersResponse = await fetch(`${BASE_URL}/api/users`, { headers: { Cookie: migratedCookie } });
+  assert.equal(usersResponse.status, 200);
+  const usersBody = await usersResponse.json();
+  const legacyAdmin = usersBody.users.find(user => user.email === LEGACY_ADMIN_EMAIL);
+  assert.ok(legacyAdmin, 'the imported administrator remains in the user registry');
+
+  const resetResponse = await fetch(`${BASE_URL}/api/users/${encodeURIComponent(legacyAdmin.id)}/password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: migratedCookie },
+    body: JSON.stringify({ password: 'legacy-admin-new-password' }),
+  });
+  assert.equal(resetResponse.status, 200);
+
+  const revokedResponse = await fetch(`${BASE_URL}/api/users`, { headers: { Cookie: migratedCookie } });
+  assert.equal(revokedResponse.status, 401, 'a password reset revokes already-issued sessions');
+  const newLogin = await login(LEGACY_ADMIN_EMAIL, 'legacy-admin-new-password');
+  assert.equal(newLogin.status, 200);
 });
