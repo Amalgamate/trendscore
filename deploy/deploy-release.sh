@@ -710,31 +710,37 @@ run_migrations() {
       #   b) migration_count == 0 AND schema tables exist → db-push DB → baseline all
       #   c) migration_count == 0 AND schema tables absent → truly fresh empty DB →
       #      skip baseline entirely; migrate deploy builds schema from scratch
-      migration_count=$(node -e "
-        const { Client } = require(\"pg\");
-        const c = new Client({ connectionString: process.env.DATABASE_URL });
-        c.connect()
-          .then(() => c.query(\"SELECT COUNT(*)::int AS n FROM \\"_prisma_migrations\\" WHERE finished_at IS NOT NULL\"))
-          .then(r => { console.log(r.rows[0].n); c.end(); })
-          .catch(() => { console.log(0); c.end(); });
-      " 2>/dev/null || echo 0)
+      migration_state=$(node -e '
+        const { PrismaClient } = require("@prisma/client");
+        const prisma = new PrismaClient();
+        (async () => {
+          const state = await prisma.$queryRaw`SELECT
+            to_regclass(${"public._prisma_migrations"}) IS NOT NULL AS history_present,
+            to_regclass(${"public.users"}) IS NOT NULL AS schema_present`;
+          let migrationCount = 0;
+          if (state[0].history_present) {
+            const rows = await prisma.$queryRaw`SELECT COUNT(*)::int AS count
+              FROM "_prisma_migrations" WHERE finished_at IS NOT NULL`;
+            migrationCount = rows[0].count;
+          }
+          console.log(JSON.stringify({
+            historyPresent: state[0].history_present,
+            schemaPresent: state[0].schema_present,
+            migrationCount,
+          }));
+        })().catch((error) => {
+          console.error(error.message);
+          process.exitCode = 1;
+        }).finally(() => prisma.$disconnect());
+      ')
+      [ -n "${migration_state}" ] || { echo "  [baseline] database state probe returned no result" >&2; exit 1; }
+      migration_count=$(jq -r '.migrationCount' <<<"${migration_state}")
+      schema_present=$(jq -r '.schemaPresent' <<<"${migration_state}")
 
       if [ "${migration_count}" -gt 0 ]; then
         echo "  [baseline] ${migration_count} migration(s) recorded - skipping baseline"
       else
-        # Check whether the schema was applied outside Prisma (db push / manual SQL).
-        # If the users table exists the schema is there but history is missing → baseline.
-        # If the users table is absent this is a brand-new empty DB → skip baseline.
-        schema_present=$(node -e "
-          const { Client } = require(\"pg\");
-          const c = new Client({ connectionString: process.env.DATABASE_URL });
-          c.connect()
-            .then(() => c.query(\"SELECT to_regclass('public.users') IS NOT NULL AS present\"))
-            .then(r => { console.log(r.rows[0].present ? '1' : '0'); c.end(); })
-            .catch(() => { console.log('0'); c.end(); });
-        " 2>/dev/null || echo 0)
-
-        if [ "${schema_present}" = "1" ]; then
+        if [ "${schema_present}" = "true" ]; then
           echo "  [baseline] no history but schema present - auto-baselining all migrations"
           count=0
           for dir in prisma/migrations/*/; do
@@ -746,7 +752,7 @@ run_migrations() {
           done
           echo "  [baseline] marked ${count} migrations as applied"
         else
-          echo "  [baseline] fresh empty DB - skipping baseline, migrate deploy will build schema from scratch"
+          echo "  [baseline] no completed history or users table - migrate deploy will establish the schema"
           # Skip directly to migrate deploy; all repair steps and SKIP handling
           # are irrelevant on an empty schema.
           npx prisma migrate deploy
