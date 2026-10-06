@@ -289,6 +289,41 @@ export class TripController {
    * scoped to the signed-in driver rather than filtered by permission, so a
    * driver can never see another driver's routes.
    */
+  async reportMyLocation(req: AuthRequest, res: Response) {
+    const userId = req.user?.userId;
+    if (!userId) throw new ApiError(401, 'Authentication required');
+
+    const { latitude, longitude, accuracyMeters, speedMps, headingDegrees, capturedAt } = req.body;
+    const lat = Number(latitude);
+    const lon = Number(longitude);
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lon) || lon < -180 || lon > 180) {
+      throw new ApiError(400, 'A valid latitude and longitude are required');
+    }
+
+    const captured = capturedAt ? new Date(capturedAt) : new Date();
+    if (Number.isNaN(captured.getTime()) || Math.abs(Date.now() - captured.getTime()) > 3 * 60 * 1000) {
+      throw new ApiError(400, 'Location timestamp must be within three minutes of now');
+    }
+    const optionalNumber = (value: unknown) => {
+      if (value === undefined || value === null || value === '') return null;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+
+    await tripService.assertDriverOwnsTrip(userId, req.params.tripId);
+    const location = await tripService.recordDriverLocation({
+      tripId: req.params.tripId,
+      driverUserId: userId,
+      latitude: lat,
+      longitude: lon,
+      accuracyMeters: optionalNumber(accuracyMeters),
+      speedMps: optionalNumber(speedMps),
+      headingDegrees: optionalNumber(headingDegrees),
+      capturedAt: captured,
+    });
+
+    res.json({ success: true, data: { receivedAt: location.updatedAt } });
+  }
   async getMyDay(req: AuthRequest, res: Response) {
     const userId = req.user?.userId;
     if (!userId) throw new ApiError(401, 'Authentication required');

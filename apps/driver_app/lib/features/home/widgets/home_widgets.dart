@@ -155,10 +155,20 @@ class TripCount extends StatelessWidget {
 
 /// A single trip card. Shows boarding progress at a glance.
 class TripCard extends StatelessWidget {
-  const TripCard({required this.trip, required this.onTap, super.key});
+  const TripCard({
+    required this.trip,
+    required this.onTap,
+    this.onStart,
+    this.onComplete,
+    this.busy = false,
+    super.key,
+  });
 
   final DriverTrip trip;
   final VoidCallback onTap;
+  final VoidCallback? onStart;
+  final VoidCallback? onComplete;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
@@ -199,6 +209,31 @@ class TripCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 _footer(),
+                if (onStart != null || onComplete != null) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: busy ? null : (onStart ?? onComplete),
+                      icon: busy
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Icon(
+                              onStart != null
+                                  ? Icons.play_arrow
+                                  : Icons.flag_outlined,
+                            ),
+                      label: Text(
+                        onStart != null
+                            ? 'Start trip and share location'
+                            : 'Finish trip',
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -224,27 +259,13 @@ class TripCard extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                trip.routeName,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.black.withValues(alpha: 0.55),
-                ),
-              ),
-              if (trip.vehicle != null)
-                Text(
-                  trip.vehicle!.registrationNumber,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.black.withValues(alpha: 0.42),
-                  ),
-                ),
-            ],
+          child: Text(
+            trip.routeName,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.black.withValues(alpha: 0.55),
+            ),
           ),
         ),
         StatusPill(status: trip.status),

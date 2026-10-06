@@ -3,10 +3,11 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
 
-    <!-- Boarding must work in a dead zone, so the app queues events locally and
-         replays them when connectivity returns. -->
+    <!-- Used only after the driver starts an active trip. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
 
     <!-- Drivers hand the phone to each other; keep the screen on during a run so
          the manifest does not lock mid-tour. -->

@@ -26,6 +26,9 @@ export const transportAPI = {
     getReports: () =>
         fetchWithAuth('/transport/reports'),
 
+    getLiveDriverLocations: () =>
+        fetchWithAuth('/transport/gps/live'),
+
     getFeeRoster: (params = {}) => {
         const q = new URLSearchParams();
         if (params.term) q.append('term', params.term);

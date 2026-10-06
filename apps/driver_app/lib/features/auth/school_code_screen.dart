@@ -3,17 +3,14 @@ import 'package:flutter/material.dart';
 import '../../core/data/school_connection_repository.dart';
 import '../../core/error/api_exception.dart';
 import '../../core/models/school_connection.dart';
-import '../../core/storage/school_connection_store.dart';
 
 class SchoolCodeScreen extends StatefulWidget {
   const SchoolCodeScreen({
-    required this.store,
     required this.repository,
     required this.onConnected,
     super.key,
   });
 
-  final SchoolConnectionStore store;
   final SchoolConnectionRepository repository;
   final ValueChanged<SchoolConnection> onConnected;
 
@@ -23,17 +20,8 @@ class SchoolCodeScreen extends StatefulWidget {
 
 class _SchoolCodeScreenState extends State<SchoolCodeScreen> {
   final _code = TextEditingController();
-  List<SchoolConnection> _saved = const [];
   bool _busy = false;
   String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.store.all().then((items) {
-      if (mounted) setState(() => _saved = items);
-    });
-  }
 
   @override
   void dispose() {
@@ -50,23 +38,6 @@ class _SchoolCodeScreenState extends State<SchoolCodeScreen> {
     });
     try {
       final connection = await widget.repository.resolve(value);
-      if (mounted) widget.onConnected(connection);
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
-    } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _select(SchoolConnection connection) async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await widget.store.activate(connection.schoolCode);
       if (mounted) widget.onConnected(connection);
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
@@ -97,8 +68,7 @@ class _SchoolCodeScreenState extends State<SchoolCodeScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Enter the shared school code provided by your school. '
-                  'Use the same code for TrendSCORE apps. Do not enter a website address.',
+                  'Enter the school code provided by your school. This app can connect to one school only.',
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
@@ -123,26 +93,6 @@ class _SchoolCodeScreenState extends State<SchoolCodeScreen> {
                       ? const CircularProgressIndicator()
                       : const Text('Connect'),
                 ),
-                if (_saved.isNotEmpty) ...[
-                  const SizedBox(height: 28),
-                  const Text(
-                    'Your schools',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  for (final school in _saved)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.school),
-                      title: Text(
-                        school.branding.name.isEmpty
-                            ? school.schoolCode
-                            : school.branding.name,
-                      ),
-                      subtitle: Text(school.schoolCode),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: _busy ? null : () => _select(school),
-                    ),
-                ],
               ],
             ),
           ),

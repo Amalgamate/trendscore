@@ -75,6 +75,33 @@ class ApiClient {
   ///
   /// Every endpoint answers with `{ success, data | message }`; the message is
   /// written for humans and is safe to show a driver.
+  String? _messageValue(Object? value) {
+    if (value is String && value.trim().isNotEmpty) return value.trim();
+    if (value is Map) {
+      for (final key in const [
+        'message',
+        'detail',
+        'description',
+        'error_description',
+        'title',
+      ]) {
+        final message = _messageValue(value[key]);
+        if (message != null) return message;
+      }
+    }
+    if (value is List) {
+      final messages = value.map(_messageValue).whereType<String>().toList();
+      if (messages.isNotEmpty) return messages.join(' ');
+    }
+    return null;
+  }
+
+  String? _codeValue(Object? value) {
+    if (value is String && value.trim().isNotEmpty) return value.trim();
+    if (value is Map) return _codeValue(value['code']);
+    return null;
+  }
+
   Map<String, dynamic> _decode(http.Response res) {
     Map<String, dynamic> body;
     try {
@@ -95,10 +122,11 @@ class ApiClient {
     throw ApiException(
       statusCode: res.statusCode,
       message:
-          (body['message'] as String?) ??
-          (body['error'] as String?) ??
+          _messageValue(body['message']) ??
+          _messageValue(body['error']) ??
+          _messageValue(body['errors']) ??
           'Request failed (${res.statusCode}).',
-      code: body['code'] as String?,
+      code: _codeValue(body['code']) ?? _codeValue(body['error']),
     );
   }
 

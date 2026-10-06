@@ -68,6 +68,29 @@ class DriverRepository {
     );
   }
 
+  /// POST /api/v1/driver/trips/:id/location — location for the active run only.
+  Future<void> reportLocation({
+    required String tripId,
+    required double latitude,
+    required double longitude,
+    double? accuracyMeters,
+    double? speedMps,
+    double? headingDegrees,
+    required DateTime capturedAt,
+  }) async {
+    await _api.post(
+      '/v1/driver/trips/$tripId/location',
+      body: {
+        'latitude': latitude,
+        'longitude': longitude,
+        'accuracyMeters': accuracyMeters,
+        'speedMps': speedMps,
+        'headingDegrees': headingDegrees,
+        'capturedAt': capturedAt.toUtc().toIso8601String(),
+      },
+    );
+  }
+
   /// POST /api/v1/driver/trips/:id/skip
   ///
   /// Confirms the driver did NOT collect a learner, which alerts the guardian.

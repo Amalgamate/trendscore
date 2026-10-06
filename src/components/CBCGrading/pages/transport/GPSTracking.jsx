@@ -1,390 +1,146 @@
-/**
- * GPSTracking.jsx
- * Live GPS Tracking page for the Transport module.
- *
- * Architecture: since there is no real GPS integration yet, the page shows
- * all active routes/vehicles with their assigned drivers and student counts,
- * gives a last-known-location placeholder, and surfaces a clear "Configure
- * GPS" CTA. When real GPS data is available the route cards auto-upgrade to
- * show live lat/lng & speed.
- */
-
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  MapPin, Navigation, Bus, Users, Wifi, WifiOff,
-  RefreshCw, Settings, AlertTriangle, CheckCircle2,
-  Clock, Phone, Milestone, Loader2, Signal, Zap
-} from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Bus, Clock, ExternalLink, Loader2, MapPin, Navigation, RefreshCw, Signal, Wifi, WifiOff } from 'lucide-react';
 import api from '../../../../services/api';
-import { useNotifications } from '../../hooks/useNotifications';
-import { KpiCard as SharedKpiCard } from '../../../../design-system/components';
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+const POLL_MS = 10000;
 
-const STATUS_META = {
-  LIVE:    { label: 'Live',        color: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500', pulse: true  },
-  PARKED:  { label: 'Parked',      color: 'bg-gray-100 text-gray-500',       dot: 'bg-gray-400',    pulse: false },
-  EN_ROUTE:{ label: 'En Route',    color: 'bg-blue-100 text-blue-700',       dot: 'bg-blue-500',    pulse: true  },
-  OFFLINE: { label: 'GPS Offline', color: 'bg-red-100 text-red-500',         dot: 'bg-red-400',     pulse: false },
-  UNKNOWN: { label: 'No Signal',   color: 'bg-amber-100 text-amber-600',     dot: 'bg-amber-400',   pulse: false },
-};
+function ageLabel(location) {
+  if (!location) return 'Waiting for phone GPS';
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(location.receivedAt).getTime()) / 1000));
+  if (!Number.isFinite(seconds)) return 'Time unavailable';
+  if (seconds < 60) return `Updated ${seconds}s ago`;
+  return `Updated ${Math.floor(seconds / 60)}m ago`;
+}
 
-function StatusBadge({ status = 'UNKNOWN' }) {
-  const meta = STATUS_META[status] || STATUS_META.UNKNOWN;
+function mapUrl(location) {
+  const lat = Number(location.latitude);
+  const lon = Number(location.longitude);
+  const padLat = 0.008;
+  const padLon = 0.008 / Math.max(0.2, Math.cos((lat * Math.PI) / 180));
+  const bbox = [lon - padLon, lat - padLat, lon + padLon, lat + padLat].join(',');
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lon}`;
+}
+
+function StatePill({ location }) {
+  const live = location && Date.now() - new Date(location.receivedAt).getTime() <= 45000;
+  const label = !location ? 'Waiting for GPS' : live ? 'Live' : 'Signal stale';
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${meta.color}`}>
-      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${meta.dot} ${meta.pulse ? 'animate-pulse' : ''}`} />
-      {meta.label}
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${live ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+      <span className={`h-2 w-2 rounded-full ${live ? 'animate-pulse bg-emerald-500' : 'bg-amber-500'}`} />{label}
     </span>
   );
 }
 
-function KpiCard({ icon: Icon, label, value, color = 'blue', sub }) {
-  const tones = { blue: 'sky', green: 'emerald', amber: 'amber', red: 'rose', purple: 'violet' };
-  return <SharedKpiCard label={label} value={value} subvalue={sub} icon={<Icon size={20} />} tone={tones[color] || 'sky'} orbPosition="top-center" />;
-}
-
-// ─── route / vehicle card ─────────────────────────────────────────────────────
-
-function VehicleCard({ route, onConfigureGPS }) {
-  const passengerCount = route._count?.assignments ?? 0;
-  // Simulate a GPS status — in production this would come from a GPS provider
-  const gpsStatus = route.vehicle?.gpsStatus || 'UNKNOWN';
-  const meta = STATUS_META[gpsStatus] || STATUS_META.UNKNOWN;
-
+function LiveRunRow({ run, selected, onSelect }) {
+  const location = run.location;
+  const speed = location?.speedMps == null ? null : Math.round(Number(location.speedMps) * 3.6);
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-      {/* Card header */}
-      <div className="px-5 py-4 border-b border-gray-50 flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
-            <Bus size={18} />
-          </div>
+    <button type="button" onClick={onSelect} className={`w-full rounded-xl border p-4 text-left transition ${selected ? 'border-blue-400 bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-200'}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="rounded-lg bg-indigo-100 p-2 text-indigo-700"><Bus size={19} /></span>
           <div className="min-w-0">
-            <p className="font-semibold text-gray-900 text-sm truncate">{route.name}</p>
-            {route.vehicle ? (
-              <p className="text-xs text-gray-400 font-medium truncate">{route.vehicle.registrationNumber}</p>
-            ) : (
-              <p className="text-xs text-amber-500 font-medium">No vehicle assigned</p>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold text-slate-900">{run.vehicle?.registrationNumber || 'Vehicle not assigned'}</span>
+              <StatePill location={location} />
+            </div>
+            <p className="mt-1 text-sm text-slate-600">{run.driverName || run.vehicle?.driverName || 'Driver'} · {run.routeName} · {run.direction === 'OUTBOUND' ? 'Morning' : 'Afternoon'}</p>
+            <p className="mt-1 text-xs text-slate-500">{ageLabel(location)}{location?.accuracyMeters != null ? ` · ±${Math.round(location.accuracyMeters)} m` : ''}{speed != null ? ` · ${speed} km/h` : ''}</p>
           </div>
         </div>
-        <StatusBadge status={gpsStatus} />
+        {location && <span className="text-xs text-blue-700">View map</span>}
       </div>
-
-      {/* Card body */}
-      <div className="px-5 py-4 space-y-3">
-        {/* Driver */}
-        {route.vehicle?.driverName ? (
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
-              <span className="text-[11px] font-semibold text-gray-500">
-                {route.vehicle.driverName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
-              </span>
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-gray-800">{route.vehicle.driverName}</p>
-              {route.vehicle.driverPhone && (
-                <p className="text-[11px] text-gray-400 flex items-center gap-1">
-                  <Phone size={10} />
-                  {route.vehicle.driverPhone}
-                </p>
-              )}
-            </div>
-          </div>
-        ) : (
-          <p className="text-xs text-gray-400 italic">No driver assigned</p>
-        )}
-
-        {/* Meta row */}
-        <div className="flex items-center gap-4 text-xs text-gray-500">
-          <span className="flex items-center gap-1.5 font-medium">
-            <Users size={12} className="text-gray-400" />
-            {passengerCount} student{passengerCount !== 1 ? 's' : ''}
-          </span>
-          {route.vehicle?.capacity && (
-            <span className="flex items-center gap-1.5 font-medium">
-              <Bus size={12} className="text-gray-400" />
-              {route.vehicle.capacity} seats
-            </span>
-          )}
-        </div>
-
-        {/* Route stops */}
-        {route.description && (
-          <div className="flex items-start gap-2">
-            <Milestone size={12} className="text-gray-300 mt-0.5 flex-shrink-0" />
-            <p className="text-[11px] text-gray-400 leading-relaxed line-clamp-2">{route.description}</p>
-          </div>
-        )}
-
-        {/* GPS data / last known */}
-        <div className={`rounded-xl p-3 ${gpsStatus === 'UNKNOWN' || gpsStatus === 'OFFLINE' ? 'bg-amber-50 border border-amber-100' : 'bg-gray-50 border border-gray-100'}`}>
-          {gpsStatus === 'UNKNOWN' || gpsStatus === 'OFFLINE' ? (
-            <div className="flex items-center gap-2 text-amber-600">
-              <WifiOff size={13} />
-              <p className="text-[11px] font-semibold">GPS unit not configured for this vehicle.</p>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-gray-500">
-                <MapPin size={12} className="text-blue-400 flex-shrink-0" />
-                <p className="text-[11px] font-medium">Last known: Near {route.name.split('–')[0]?.trim() || 'pickup zone'}</p>
-              </div>
-              <div className="flex items-center gap-4 mt-1">
-                <span className="text-[10px] text-gray-400 flex items-center gap-1">
-                  <Clock size={10} /> Updated 2 min ago
-                </span>
-                <span className="text-[10px] text-gray-400 flex items-center gap-1">
-                  <Zap size={10} /> 0 km/h
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Configure GPS CTA */}
-        {(!route.vehicle || gpsStatus === 'UNKNOWN' || gpsStatus === 'OFFLINE') && (
-          <button
-            onClick={onConfigureGPS}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-blue-200 text-blue-500 hover:border-blue-400 hover:bg-blue-50 transition text-xs font-semibold"
-          >
-            <Settings size={13} />
-            Configure GPS Integration
-          </button>
-        )}
-      </div>
-    </div>
+    </button>
   );
 }
 
-// ─── GPS config modal ─────────────────────────────────────────────────────────
+export default function GPSTracking() {
+  const [runs, setRuns] = useState([]);
+  const [selectedTripId, setSelectedTripId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [lastRefresh, setLastRefresh] = useState(null);
 
-function GPSConfigModal({ onClose }) {
-  const providers = [
-    { id: 'google',   name: 'Google Maps Platform',  desc: 'Real-time tracking via Google Fleet API', available: false },
-    { id: 'mapbox',   name: 'Mapbox Tracking',        desc: 'Open-source mapping + live telemetry',    available: false },
-    { id: 'custom',   name: 'Custom MQTT/API Bridge', desc: 'Connect any GPS hardware via webhook',    available: false },
-  ];
-  return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-        <div className="p-5 border-b border-gray-100 bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center">
-              <Navigation size={18} />
-            </div>
-            <div>
-              <h2 className="font-semibold text-base">GPS Integration Setup</h2>
-              <p className="text-blue-100 text-xs mt-0.5">Connect a provider to enable live tracking</p>
-            </div>
-          </div>
-        </div>
-        <div className="p-6 space-y-4">
-          <p className="text-sm text-gray-600 font-medium leading-relaxed">
-            Live GPS tracking requires an active integration with a GPS data provider.
-            Select a provider below to get started — full integration guides are available
-            in the developer documentation.
-          </p>
-          <div className="space-y-2">
-            {providers.map(p => (
-              <div key={p.id} className="flex items-center justify-between p-4 bg-gray-50 border border-gray-100 rounded-xl">
-                <div>
-                  <p className="font-semibold text-sm text-gray-800">{p.name}</p>
-                  <p className="text-xs text-gray-400">{p.desc}</p>
-                </div>
-                <span className="text-[10px] font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-600 ml-3 flex-shrink-0">
-                  Coming Soon
-                </span>
-              </div>
-            ))}
-          </div>
-          <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-700">
-            <p className="font-semibold mb-1">📍 What you can do now</p>
-            <ul className="space-y-1 text-xs font-medium list-disc list-inside text-blue-600">
-              <li>Assign vehicles to routes in <strong>Transport Manager</strong></li>
-              <li>Manage drivers in <strong>Driver Management</strong></li>
-              <li>Assign students to routes and manage pickups</li>
-            </ul>
-          </div>
-        </div>
-        <div className="px-6 pb-5 flex justify-end">
-          <button onClick={onClose}
-            className="px-6 py-2.5 bg-gray-900 text-white rounded-xl font-semibold text-sm hover:bg-black transition shadow-lg">
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── main component ───────────────────────────────────────────────────────────
-
-const GPSTracking = () => {
-  const [routes, setRoutes]         = useState([]);
-  const [summary, setSummary]       = useState(null);
-  const [loading, setLoading]       = useState(true);
-  const [showConfig, setShowConfig] = useState(false);
-  const [lastRefresh, setLastRefresh] = useState(new Date());
-  const { showError } = useNotifications();
-
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (showSpinner = false) => {
+    if (showSpinner) setLoading(true);
     try {
-      const [rRes, sRes] = await Promise.all([
-        api.transport.getRoutes(),
-        api.transport.getSummary(),
-      ]);
-      if (rRes.success)  setRoutes(rRes.data);
-      if (sRes.success)  setSummary(sRes.data);
+      const locationResponse = await api.transport.getLiveDriverLocations();
+      if (locationResponse?.success) {
+        const nextRuns = Array.isArray(locationResponse.data) ? locationResponse.data : [];
+        setRuns(nextRuns);
+        setSelectedTripId((current) => nextRuns.some((run) => run.tripId === current)
+          ? current
+          : nextRuns.find((run) => run.location)?.tripId || nextRuns[0]?.tripId || null);
+      }
       setLastRefresh(new Date());
-    } catch {
-      showError('Failed to load transport data');
+      setError(null);
+    } catch (e) {
+      setError(e?.message || 'Could not load live driver locations.');
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load(true);
+    const timer = window.setInterval(() => load(false), POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [load]);
 
-  // Derived KPIs
-  const totalVehicles   = summary?.vehicleCount  ?? 0;
-  const totalRoutes     = routes.length;
-  const assignedRoutes  = routes.filter(r => r.vehicleId).length;
-  const gpsEnabled      = 0; // real GPS not yet configured
+  const selectedRun = useMemo(() => runs.find((run) => run.tripId === selectedTripId) || null, [runs, selectedTripId]);
+  const liveCount = runs.filter((run) => run.location && Date.now() - new Date(run.location.receivedAt).getTime() <= 45000).length;
+  const selectedLocation = selectedRun?.location;
 
   return (
-    <div className="max-w-7xl mx-auto p-6 md:p-8 font-sans space-y-6">
-
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+    <div className="mx-auto max-w-7xl space-y-6 p-5 md:p-8">
+      <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">Transport</span>
+          <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-blue-700"><Navigation size={15} /> Transport</div>
+          <h1 className="text-2xl font-bold text-slate-900 md:text-3xl">Live Driver Tracking</h1>
+          <p className="mt-1 max-w-2xl text-sm text-slate-600">The driver’s phone reports its position while a trip is active. Updates refresh every 10 seconds.</p>
+        </div>
+        <button onClick={() => load(true)} disabled={loading} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+          {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Refresh
+        </button>
+      </header>
+
+      {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
+
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200"><div className="flex items-center gap-2 text-sm text-slate-500"><Bus size={17} /> Active trips</div><p className="mt-2 text-3xl font-bold text-slate-900">{runs.length}</p></div>
+        <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200"><div className="flex items-center gap-2 text-sm text-slate-500"><Wifi size={17} /> Live phone signals</div><p className="mt-2 text-3xl font-bold text-emerald-700">{liveCount}</p></div>
+        <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200"><div className="flex items-center gap-2 text-sm text-slate-500"><WifiOff size={17} /> Waiting or stale</div><p className="mt-2 text-3xl font-bold text-amber-700">{runs.length - liveCount}</p></div>
+      </section>
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)]">
+        <section className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
+          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            <div><h2 className="font-semibold text-slate-900">Active runs</h2><p className="text-xs text-slate-500">{lastRefresh ? `Updated ${lastRefresh.toLocaleTimeString()}` : 'Loading locations…'}</p></div>
+            <Signal size={18} className="text-blue-600" />
           </div>
-          <h1 className="text-2xl md:text-3xl font-semibold text-gray-900 tracking-tight flex items-center gap-3">
-            <Navigation className="text-blue-600" size={28} />
-            GPS Tracking
-          </h1>
-          <p className="text-gray-400 text-sm mt-0.5 font-medium">
-            Live vehicle location and route progress
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={load}
-            disabled={loading}
-            className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition disabled:opacity-50"
-          >
-            {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            Refresh
-          </button>
-          <button
-            onClick={() => setShowConfig(true)}
-            className="flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition shadow-lg shadow-blue-600/20"
-          >
-            <Settings size={14} />
-            Configure GPS
-          </button>
-        </div>
-      </div>
+          <div className="space-y-3 p-4">
+            {loading && runs.length === 0 ? <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500"><Loader2 size={18} className="animate-spin" /> Loading active trips…</div>
+              : runs.length === 0 ? <div className="py-12 text-center"><Bus size={30} className="mx-auto text-slate-300" /><p className="mt-3 font-medium text-slate-700">No active trips</p><p className="mt-1 text-sm text-slate-500">A driver’s run appears here after they start it in the app.</p></div>
+                : runs.map((run) => <LiveRunRow key={run.tripId} run={run} selected={run.tripId === selectedTripId} onSelect={() => setSelectedTripId(run.tripId)} />)}
+          </div>
+        </section>
 
-      {/* Status banner */}
-      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
-        <div className="w-8 h-8 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">
-          <AlertTriangle size={16} className="text-amber-600" />
-        </div>
-        <div>
-          <p className="font-semibold text-amber-800 text-sm">GPS integration not yet configured</p>
-          <p className="text-amber-600 text-xs mt-0.5 font-medium">
-            Vehicle cards below show route data from your fleet. Connect a GPS provider to enable
-            live location tracking, speed, ETA and geofence alerts.
-          </p>
-        </div>
-      </div>
-
-      {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard icon={Bus}         label="Fleet Vehicles"       value={totalVehicles}  color="blue"   />
-        <KpiCard icon={Milestone}       label="Active Routes"        value={totalRoutes}    color="purple" sub={`${assignedRoutes} with vehicle`} />
-        <KpiCard icon={Signal}      label="GPS-Enabled Vehicles" value={gpsEnabled}     color="green"  sub="of your fleet" />
-        <KpiCard icon={Users}       label="Transport Students"   value={summary?.transportStudentCount ?? 0} color="amber" />
-      </div>
-
-      {/* Last refresh */}
-      <div className="flex items-center gap-2 text-xs text-gray-400 font-medium -mt-2">
-        <Clock size={12} />
-        Last refreshed: {lastRefresh.toLocaleTimeString()}
-      </div>
-
-      {/* Vehicle cards */}
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className="h-64 bg-gray-100 rounded-2xl animate-pulse" />
-          ))}
-        </div>
-      ) : routes.length === 0 ? (
-        <div className="bg-white rounded-2xl border-2 border-dashed border-gray-200 p-16 text-center">
-          <Bus size={40} className="mx-auto text-gray-200 mb-3" />
-          <p className="font-semibold text-gray-500 text-base">No routes configured</p>
-          <p className="text-gray-400 text-sm mt-1">Add routes in <strong>Transport Manager</strong> first.</p>
-        </div>
-      ) : (
-        <>
-          {/* Live section header */}
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-px bg-gray-100" />
-            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-gray-400">
-              <Wifi size={12} /> {routes.length} Vehicle{routes.length !== 1 ? 's' : ''} — Awaiting GPS Signal
+        <section className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
+          <div className="border-b border-slate-200 px-5 py-4"><h2 className="font-semibold text-slate-900">Vehicle position</h2><p className="text-xs text-slate-500">{selectedRun ? `${selectedRun.vehicle?.registrationNumber || 'Vehicle'} · ${selectedRun.routeName}` : 'Select an active driver'}</p></div>
+          {selectedLocation ? <>
+            <iframe title="Selected active vehicle location" src={mapUrl(selectedLocation)} className="h-72 w-full border-0" loading="lazy" referrerPolicy="no-referrer" />
+            <div className="space-y-3 p-4">
+              <div className="flex items-start gap-2 text-sm text-slate-700"><MapPin size={17} className="mt-0.5 shrink-0 text-blue-600" /><span>{Number(selectedLocation.latitude).toFixed(6)}, {Number(selectedLocation.longitude).toFixed(6)}<span className="block text-xs text-slate-500">{ageLabel(selectedLocation)}</span></span></div>
+              <a href={`https://www.google.com/maps/search/?api=1&query=${selectedLocation.latitude},${selectedLocation.longitude}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:underline"><ExternalLink size={15} /> Open in Google Maps</a>
             </div>
-            <div className="flex-1 h-px bg-gray-100" />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {routes.map(route => (
-              <VehicleCard key={route.id} route={route} onConfigureGPS={() => setShowConfig(true)} />
-            ))}
-          </div>
-        </>
-      )}
-
-      {/* Integration guide strip */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-9 h-9 bg-indigo-50 rounded-xl flex items-center justify-center">
-            <Navigation size={16} className="text-indigo-500" />
-          </div>
-          <div>
-            <p className="font-semibold text-gray-800 text-sm">How live GPS tracking works</p>
-            <p className="text-xs text-gray-400">What each step will look like once integration is active</p>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          {[
-            { step: '01', title: 'Assign GPS Unit',    desc: 'Each vehicle gets a GPS tracker device or SIM-based unit installed.', done: false },
-            { step: '02', title: 'Configure Provider', desc: 'Enter your GPS provider API keys in the Configure GPS settings.',       done: false },
-            { step: '03', title: 'Map Routes',         desc: 'Routes and pickup stops are synced with real-world coordinates.',       done: true  },
-            { step: '04', title: 'Live Dashboard',     desc: 'This page shows real-time position, speed, ETA and student boarding.',  done: false },
-          ].map(item => (
-            <div key={item.step} className={`p-4 rounded-xl border ${item.done ? 'bg-emerald-50 border-emerald-100' : 'bg-gray-50 border-gray-100'}`}>
-              <div className="flex items-center gap-2 mb-2">
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${item.done ? 'bg-emerald-200 text-emerald-800' : 'bg-gray-200 text-gray-600'}`}>
-                  {item.step}
-                </span>
-                {item.done && <CheckCircle2 size={13} className="text-emerald-500" />}
-              </div>
-              <p className={`text-xs font-semibold mb-1 ${item.done ? 'text-emerald-700' : 'text-gray-700'}`}>{item.title}</p>
-              <p className="text-[11px] text-gray-400 leading-relaxed">{item.desc}</p>
-            </div>
-          ))}
-        </div>
+          </> : <div className="flex h-72 flex-col items-center justify-center px-6 text-center text-slate-500"><Clock size={32} className="text-amber-500" /><p className="mt-3 font-medium text-slate-800">Waiting for the phone’s first GPS update</p><p className="mt-1 text-sm">The driver must allow location access, turn on Location, and keep the trip active.</p></div>}
+        </section>
       </div>
 
-      {showConfig && <GPSConfigModal onClose={() => setShowConfig(false)} />}
+      <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+        <p className="font-semibold">Location sharing and privacy</p>
+        <p className="mt-1 text-blue-800">The driver starts sharing by starting a trip. Android shows an ongoing notification while tracking. The live point is cleared when the trip is completed or cancelled.</p>
+      </div>
     </div>
   );
-};
-
-export default GPSTracking;
+}

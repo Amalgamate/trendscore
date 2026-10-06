@@ -39,6 +39,7 @@ class _DriverAppState extends State<DriverApp> {
   }
 
   Future<void> _restore() async {
+    await _store.retainSingleSchool();
     var saved = await _store.active();
     if (saved != null) {
       try {
@@ -87,7 +88,6 @@ class _DriverAppState extends State<DriverApp> {
           colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF030B82)),
         ),
         home: SchoolCodeScreen(
-          store: _store,
           repository: _connections,
           onConnected: _connected,
         ),
@@ -156,17 +156,14 @@ class _DriverAppState extends State<DriverApp> {
             ),
           ),
         ),
-        home: _RootGate(
-          onSwitchSchool: () => setState(() => _connection = null),
-        ),
+        home: const _RootGate(),
       ),
     );
   }
 }
 
 class _RootGate extends StatefulWidget {
-  const _RootGate({required this.onSwitchSchool});
-  final VoidCallback onSwitchSchool;
+  const _RootGate();
 
   @override
   State<_RootGate> createState() => _RootGateState();
@@ -209,7 +206,14 @@ class _RootGateState extends State<_RootGate> {
         await repository.ensureDeviceRegistered(connection);
         _registered = true;
       }
-      final status = await repository.deviceStatus(connection);
+      var deviceState = await repository.deviceStatus(connection);
+      if (!deviceState.registered) {
+        // An admin may have deleted this device row. Recreate it as pending so
+        // the phone reappears in the approval queue without requiring a restart.
+        await repository.ensureDeviceRegistered(connection);
+        deviceState = await repository.deviceStatus(connection);
+      }
+      final status = deviceState.status;
       final hasSession =
           status == 'APPROVED' && await authRepository.hasSession();
       if (!mounted) {
@@ -245,13 +249,11 @@ class _RootGateState extends State<_RootGate> {
     if (_approved) {
       if (_signedIn) {
         return DriverHomeScreen(
-          onSwitchSchool: widget.onSwitchSchool,
           onSignedOut: () => setState(() => _signedIn = false),
         );
       }
       return SignInScreen(
         onSignedIn: () => setState(() => _signedIn = true),
-        onSwitchSchool: widget.onSwitchSchool,
         beforeSignIn: _check,
       );
     }
@@ -263,13 +265,6 @@ class _RootGateState extends State<_RootGate> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Device approval'),
-        actions: [
-          IconButton(
-            onPressed: widget.onSwitchSchool,
-            icon: const Icon(Icons.swap_horiz),
-            tooltip: 'Switch school',
-          ),
-        ],
       ),
       body: Center(
         child: Padding(

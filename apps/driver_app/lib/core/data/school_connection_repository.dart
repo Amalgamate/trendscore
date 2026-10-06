@@ -6,34 +6,47 @@ import '../error/api_exception.dart';
 import '../models/school_connection.dart';
 import '../storage/school_connection_store.dart';
 
-/// Resolves school codes against their fixed school subdomain and handles device approval.
+/// Resolves school codes against the school's API and handles device approval.
 class SchoolConnectionRepository {
   SchoolConnectionRepository({
     required SchoolConnectionStore store,
     http.Client? client,
-    this.resolverOrigin,
   }) : _store = store,
        _http = client ?? http.Client();
 
   final SchoolConnectionStore _store;
   final http.Client _http;
-  /// Optional override for tests. Production origins are derived from a strict
-  /// school code and the fixed TrendsCORE domain; drivers never enter a URL.
-  final String? resolverOrigin;
 
   Future<SchoolConnection> resolve(String code) async {
     final normalized = code.trim().toLowerCase();
-    if (!RegExp(r'^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])$').hasMatch(normalized)) {
+    if (!RegExp(r'^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])$')
+        .hasMatch(normalized)) {
       throw const ApiException(
         statusCode: 400,
         message: 'That is not a valid school code.',
       );
     }
-    final resolver = resolverOrigin ?? 'https://$normalized.trendscore.co.ke/api';
+
+    final lockedCode = await _store.lockedSchoolCode();
+    if (lockedCode != null && lockedCode != normalized) {
+      throw ApiException(
+        statusCode: 409,
+        message: 'This app is connected to $lockedCode. It can connect to only one school.',
+      );
+    }
+
+    // School API origins are independently hosted. The apex website redirects
+    // POSTs to www (307), where the API route does not exist. Contact the
+    // school subdomain directly; the resolver still validates the code and
+    // returns the authoritative origin, which SchoolConnection validates.
+    final resolverUri = Uri.https(
+      '$normalized.trendscore.co.ke',
+      '/api/driver-connection/resolve',
+    );
     try {
       final response = await _http
           .post(
-            Uri.parse('$resolver/driver-connection/resolve'),
+            resolverUri,
             headers: const {
               'Accept': 'application/json',
               'Content-Type': 'application/json',
@@ -87,7 +100,7 @@ class SchoolConnectionRepository {
           body: jsonEncode({
             'code': connection.schoolCode,
             'deviceId': id,
-            'label': 'Android driver phone',
+            'label': 'Android driver phone · ${id.substring(id.length - 6).toUpperCase()}',
           }),
         )
         .timeout(const Duration(seconds: 20));
@@ -95,7 +108,9 @@ class SchoolConnectionRepository {
     return id;
   }
 
-  Future<String> deviceStatus(SchoolConnection connection) async {
+  Future<({String status, bool registered})> deviceStatus(
+    SchoolConnection connection,
+  ) async {
     final id = await _store.deviceId();
     final uri = Uri.parse(
       '${connection.apiOrigin}/driver-connection/devices/status',
@@ -110,8 +125,12 @@ class SchoolConnectionRepository {
     if (!const {'PENDING', 'APPROVED', 'REVOKED'}.contains(status)) {
       throw const FormatException('Unexpected device approval status.');
     }
-    await _store.save(connection.withStatus(status!));
-    return status;
+    final validatedStatus = status!;
+    await _store.save(connection.withStatus(validatedStatus));
+    return (
+      status: validatedStatus,
+      registered: data is Map ? data['registered'] != false : true,
+    );
   }
 
   Map<String, dynamic> _decode(http.Response response) {

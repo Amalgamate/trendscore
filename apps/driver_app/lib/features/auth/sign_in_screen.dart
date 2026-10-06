@@ -13,13 +13,11 @@ import '../../core/models/school_connection.dart';
 class SignInScreen extends StatefulWidget {
   const SignInScreen({
     required this.onSignedIn,
-    required this.onSwitchSchool,
     required this.beforeSignIn,
     super.key,
   });
 
   final VoidCallback onSignedIn;
-  final VoidCallback onSwitchSchool;
   final Future<bool> Function() beforeSignIn;
 
   @override
@@ -158,10 +156,6 @@ class _SignInScreenState extends State<SignInScreen> {
                     const SizedBox(height: 24),
                     _buildSubmit(brand),
                     const SizedBox(height: 8),
-                    TextButton(
-                      onPressed: _busy ? null : widget.onSwitchSchool,
-                      child: const Text('Switch school'),
-                    ),
                     const SizedBox(height: 20),
                     Text(
                       'Having trouble signing in? Contact the school office.',

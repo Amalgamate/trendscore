@@ -3398,7 +3398,7 @@ model TransportTrip {
   vehicle        TransportVehicle?        @relation("TripVehicle", fields: [vehicleId], references: [id], onDelete: SetNull)
   boardingEvents TransportBoardingEvent[]
   noShows        TransportNoShow[]
-
+  liveLocation   TransportTripLiveLocation?
   @@unique([routeId, date, direction], map: "transport_trips_route_date_direction_unique")
   @@index([routeId, date])
   @@index([schoolId, date])
@@ -3406,7 +3406,25 @@ model TransportTrip {
   @@map("transport_trips")
 }
 
+model TransportTripLiveLocation {
+  id              String        @id @default(uuid())
+  tripId           String        @unique @map("trip_id")
+  driverUserId     String        @map("driver_user_id")
+  vehicleId        String?       @map("vehicle_id")
+  latitude         Float
+  longitude        Float
+  accuracyMeters   Float?        @map("accuracy_meters")
+  speedMps         Float?        @map("speed_mps")
+  headingDegrees   Float?        @map("heading_degrees")
+  capturedAt       DateTime      @map("captured_at")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+  trip             TransportTrip @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
+  @@index([driverUserId])
+  @@index([capturedAt])
+  @@map("transport_trip_live_locations")
+}
 model TransportBoardingEvent {
   id         String        @id @default(uuid())
   tripId     String        @map("trip_id")

@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import { transportController } from '../controllers/transport.controller';
 import { authenticate } from '../middleware/auth.middleware';
+import { requireAnyPermission } from '../middleware/permissions.middleware';
 
 const router = Router();
+const TRANSPORT_READ = requireAnyPermission(['MANAGE_TRANSPORT_TRIPS', 'VIEW_TRANSPORT_TRIPS']);
 
 // Base PATH: /api/transport
 router.use(authenticate);
@@ -10,6 +12,7 @@ router.use(authenticate);
 // ── Summary / Stats ─────────────────────────────────────────────────────────
 router.get('/summary', transportController.getSummary.bind(transportController));
 router.get('/reports', transportController.getReports.bind(transportController));
+router.get('/gps/live', TRANSPORT_READ, transportController.getLiveDriverLocations.bind(transportController));
 
 // ── Fee Roster & Invoicing ──────────────────────────────────────────────────
 router.get('/fee-roster',           transportController.getFeeRoster.bind(transportController));

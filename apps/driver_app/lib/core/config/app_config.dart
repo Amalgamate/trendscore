@@ -18,8 +18,8 @@ class AppConfig {
         : connection.branding.name,
     apiBaseUrl: connection.apiOrigin,
     primaryColorValue: connection.branding.primaryColor ?? 0xFF030B82,
-    version: const String.fromEnvironment('APP_VERSION', defaultValue: '1.0.2'),
-    buildNumber: const String.fromEnvironment('APP_BUILD', defaultValue: '3'),
+    version: const String.fromEnvironment('APP_VERSION', defaultValue: '1.0.6'),
+    buildNumber: const String.fromEnvironment('APP_BUILD', defaultValue: '7'),
   );
 
   final String schoolCode;

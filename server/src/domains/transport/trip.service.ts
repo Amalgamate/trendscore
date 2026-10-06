@@ -266,14 +266,54 @@ export class TripService {
     const trip = await prisma.transportTrip.findUnique({ where: { id: tripId } });
     if (!trip || trip.archived) throw new ApiError(404, 'Trip not found');
 
-    return prisma.transportTrip.update({
+    const updated = await prisma.transportTrip.update({
       where: { id: tripId },
       data: {
         status,
         ...(timestamps?.departedAt && { departedAt: timestamps.departedAt }),
-        ...(timestamps?.arrivedAt  && { arrivedAt:  timestamps.arrivedAt }),
+        ...(timestamps?.arrivedAt  && { arrivedAt:  timestamps.arrivedAt  }),
       },
       include: { route: { include: { vehicle: true } } },
+    });
+
+    if (status === 'COMPLETED' || status === 'CANCELLED') {
+      await prisma.transportTripLiveLocation.deleteMany({ where: { tripId } });
+    }
+    return updated;
+  }
+
+  async recordDriverLocation(input: {
+    tripId: string;
+    driverUserId: string;
+    latitude: number;
+    longitude: number;
+    accuracyMeters?: number | null;
+    speedMps?: number | null;
+    headingDegrees?: number | null;
+    capturedAt: Date;
+  }) {
+    const trip = await prisma.transportTrip.findUnique({
+      where: { id: input.tripId },
+      include: { route: { select: { vehicleId: true } } },
+    });
+    if (!trip || trip.archived) throw new ApiError(404, 'Trip not found');
+    if (trip.status !== 'IN_PROGRESS') throw new ApiError(409, 'Location is accepted only during an active trip');
+
+    const data = {
+      driverUserId: input.driverUserId,
+      vehicleId: trip.vehicleId ?? trip.route.vehicleId,
+      latitude: input.latitude,
+      longitude: input.longitude,
+      accuracyMeters: input.accuracyMeters ?? null,
+      speedMps: input.speedMps ?? null,
+      headingDegrees: input.headingDegrees ?? null,
+      capturedAt: input.capturedAt,
+    };
+
+    return prisma.transportTripLiveLocation.upsert({
+      where: { tripId: input.tripId },
+      create: { tripId: input.tripId, ...data },
+      update: data,
     });
   }
 

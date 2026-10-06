@@ -6,15 +6,12 @@ Owner decisions locked 2026-10-03: one universal APK (one `applicationId`, one i
 
 ## Why this exists
 Each school runs its own Docker stack on its own origin with its own database. The app
-uses the typed school code to contact the matching fixed TrendsCORE subdomain, then
-requires that tenant server to confirm the code and return its origin and branding.
-**The app must never accept a typed or pasted URL.**
+must therefore learn which origin to talk to at runtime. That is safe only if the
+origin comes from the server. **The app must never accept a typed or pasted URL.**
 
-## Domain pattern (fixed by the app and server)
-The app accepts only a school code, then contacts `https://{code}.trendscore.co.ke/api`.
-The server checks that the request reached that exact hostname and returns the API origin.
-Codes are matched case-insensitively against `^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])$`
-and rejected if in `SUBDOMAIN_RESERVED_WORDS`.
+## Domain pattern (server-owned)
+Built from `DEPLOYMENT_DOMAIN` (default `trendscore.co.ke`):
+`https://{code}.{DEPLOYMENT_DOMAIN}` — API at `.../api`.
 Codes are matched case-insensitively against `^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])$`
 and rejected if in `SUBDOMAIN_RESERVED_WORDS`.
 
@@ -51,7 +48,7 @@ Failures
 | `400` | malformed code | "That is not a valid school code." |
 | `404` | no school with that code | "No school found for that code." |
 
-`404` must be the response for unknown codes or a hostname/code mismatch — do **not** leak the school list.
+`404` must be the response for unknown codes — do **not** leak the school list.
 
 ---
 
@@ -59,10 +56,12 @@ Failures
 
 Request
 ```json
-{ "code": "zawadi", "deviceId": "opaque-client-uuid", "label": "Rico's Pixel 8" }
+{ "code": "zawadi", "deviceId": "android-app-scoped-id", "label": "Android driver phone · A1B2C3" }
 ```
 
-Success `200` — **idempotent** on `(schoolId, deviceId)`
+Success `200` — **idempotent** on `(schoolId, deviceId)`. Android uses an app-scoped
+identifier that remains stable across reinstall when the app signing key, Android
+user, and device are unchanged. Existing installs retain their saved identifier.
 ```json
 { "success": true, "data": { "status": "PENDING", "requestedAt": "2026-10-03T10:00:00Z" } }
 ```
@@ -77,8 +76,12 @@ Success `200` — **idempotent** on `(schoolId, deviceId)`
 ## 3. `GET /api/driver-connection/devices/status?code=&deviceId=` — public
 
 ```json
-{ "success": true, "data": { "status": "PENDING" } }   // PENDING | APPROVED | REVOKED
+{ "success": true, "data": { "status": "PENDING", "registered": false } }
 ```
+
+`status` is `PENDING | APPROVED | REVOKED`. `registered` is `false` when the
+device record was deleted; the app must register it again so the phone returns
+to the approval queue as pending.
 
 The app polls this on launch and before sign-in. Only `APPROVED` may proceed.
 
@@ -86,8 +89,7 @@ The app polls this on launch and before sign-in. Only `APPROVED` may proceed.
 
 ## 4. Login is gated on approval
 
-**Existing** `POST /api/auth/login` gains one rejection case. New clients send the shared
-`schoolCode` field; the server accepts the legacy `driverCode` alias during rollout:
+**Existing** `POST /api/auth/login` gains one rejection case:
 
 | Status | Meaning | App must show |
 |---|---|---|

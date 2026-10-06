@@ -71,6 +71,55 @@ async function getOrCreateFeeStructure(academicYear: number, term: string, grade
 
 export class TransportController {
 
+    /** Live phone-reported positions for active transport runs. */
+    async getLiveDriverLocations(_req: AuthRequest, res: Response) {
+        try {
+            const trips = await prisma.transportTrip.findMany({
+                where: { status: 'IN_PROGRESS', archived: false },
+                include: {
+                    route: { include: { vehicle: true } },
+                    vehicle: true,
+                    liveLocation: true,
+                },
+                orderBy: { departedAt: 'desc' },
+            });
+            const now = Date.now();
+            const data = trips.map((trip) => {
+                const location = trip.liveLocation;
+                const ageSeconds = location ? Math.max(0, Math.floor((now - location.updatedAt.getTime()) / 1000)) : null;
+                const vehicle = trip.vehicle ?? trip.route.vehicle;
+                return {
+                    tripId: trip.id,
+                    routeName: trip.route.name,
+                    direction: trip.direction,
+                    departedAt: trip.departedAt,
+                    vehicle: vehicle ? {
+                        id: vehicle.id,
+                        registrationNumber: vehicle.registrationNumber,
+                        driverId: trip.driverUserId,
+                        driverName: vehicle.driverName,
+                        driverPhone: vehicle.driverPhone,
+                    } : null,
+                    location: location ? {
+                        latitude: location.latitude,
+                        longitude: location.longitude,
+                        accuracyMeters: location.accuracyMeters,
+                        speedMps: location.speedMps,
+                        headingDegrees: location.headingDegrees,
+                        capturedAt: location.capturedAt,
+                        receivedAt: location.updatedAt,
+                        ageSeconds,
+                        status: ageSeconds! <= 45 ? 'LIVE' : 'STALE',
+                    } : null,
+                };
+            });
+            res.json({ success: true, data, count: data.length });
+        } catch (error: any) {
+            logger.error('[TransportController] getLiveDriverLocations:', error);
+            res.status(error.statusCode || 500).json({ success: false, message: error.message });
+        }
+    }
+
     // ============================================
     // DRIVER ASSIGNMENT HELPERS
     // ============================================

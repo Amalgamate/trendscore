@@ -1,7 +1,6 @@
 import 'dart:convert';
-import 'dart:math';
-
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/school_connection.dart';
@@ -10,6 +9,9 @@ class SchoolConnectionStore {
   static const _activeKey = 'driver_active_school_v1';
   static const _connectionsKey = 'driver_school_connections_v1';
   static const _deviceIdKey = 'driver_device_id_v1';
+  static const _identityChannel = MethodChannel(
+    'co.trendscore.driver/device_identity',
+  );
 
   Future<List<SchoolConnection>> all() async {
     final prefs = await SharedPreferences.getInstance();
@@ -36,9 +38,24 @@ class SchoolConnectionStore {
     return null;
   }
 
+  Future<String?> lockedSchoolCode() async {
+    final prefs = await SharedPreferences.getInstance();
+    final activeCode = prefs.getString(_activeKey);
+    if (activeCode != null) return activeCode;
+    final saved = await all();
+    return saved.isEmpty ? null : saved.first.schoolCode;
+  }
+
   Future<void> save(SchoolConnection connection, {bool activate = true}) async {
     final prefs = await SharedPreferences.getInstance();
     final list = await all();
+    final activeCode = prefs.getString(_activeKey);
+    final lockedCode = activeCode ?? (list.isEmpty ? null : list.first.schoolCode);
+    if (lockedCode != null && lockedCode != connection.schoolCode) {
+      throw StateError(
+        'This app is connected to $lockedCode and cannot connect to another school.',
+      );
+    }
     final updated = [
       for (final item in list)
         if (item.schoolCode != connection.schoolCode) item,
@@ -51,24 +68,32 @@ class SchoolConnectionStore {
     if (activate) await prefs.setString(_activeKey, connection.schoolCode);
   }
 
-  Future<void> activate(String code) async {
-    final found = (await all()).any((e) => e.schoolCode == code);
-    if (!found) throw StateError('School connection not found.');
+  /// Cleans up older multi-school state and permanently keeps the active
+  /// connection as this installation's one school.
+  Future<void> retainSingleSchool() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_activeKey, code);
+    final list = await all();
+    if (list.isEmpty) return;
+    final activeCode = prefs.getString(_activeKey);
+    final retained = list.firstWhere(
+      (item) => item.schoolCode == activeCode,
+      orElse: () => list.first,
+    );
+    await prefs.setString(_activeKey, retained.schoolCode);
+    await prefs.setString(_connectionsKey, jsonEncode([retained.toJson()]));
   }
 
   Future<String> deviceId() async {
     const secure = FlutterSecureStorage();
     final existing = await secure.read(key: _deviceIdKey);
     if (existing != null && existing.isNotEmpty) return existing;
-    final random = Random.secure();
-    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    final hex = bytes.map((e) => e.toRadixString(16).padLeft(2, '0')).join();
-    final id =
-        '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+    final stableId = await _identityChannel.invokeMethod<String>(
+      'deviceScopedId',
+    );
+    if (stableId == null || !RegExp(r'^[a-f0-9]{64}$').hasMatch(stableId)) {
+      throw StateError('Could not read this Android installation’s device id.');
+    }
+    final id = 'android-$stableId';
     await secure.write(key: _deviceIdKey, value: id);
     return id;
   }

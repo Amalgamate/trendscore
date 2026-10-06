@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/config/app_config.dart';
 import '../../core/data/auth_repository.dart';
 import '../../core/data/driver_repository.dart';
+import '../../core/data/driver_location_tracker.dart';
 import '../../core/error/api_exception.dart';
 import '../../core/models/driver_models.dart';
 import '../manifest/manifest_screen.dart';
@@ -14,13 +17,8 @@ import 'widgets/home_widgets.dart';
 /// Backed by a single call, `GET /api/v1/driver/today`, which the server scopes
 /// to the signed-in driver.
 class DriverHomeScreen extends StatefulWidget {
-  const DriverHomeScreen({
-    required this.onSwitchSchool,
-    required this.onSignedOut,
-    super.key,
-  });
+  const DriverHomeScreen({required this.onSignedOut, super.key});
 
-  final VoidCallback onSwitchSchool;
   final VoidCallback onSignedOut;
 
   @override
@@ -31,11 +29,23 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   DriverDay? _day;
   bool _loading = true;
   String? _error;
+  String? _trackingError;
+  final Set<String> _busyTrips = {};
+  late final DriverLocationTracker _locationTracker;
 
   @override
   void initState() {
     super.initState();
+    _locationTracker = DriverLocationTracker(
+      repository: context.read<DriverRepository>(),
+    );
     _load();
+  }
+
+  @override
+  void dispose() {
+    unawaited(_locationTracker.stop());
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -48,6 +58,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       final day = await context.read<DriverRepository>().fetchToday();
       if (!mounted) return;
       setState(() => _day = day);
+      await _syncActiveTrip(day);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);
@@ -59,13 +70,64 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     }
   }
 
+  Future<void> _syncActiveTrip(DriverDay day) async {
+    final activeTrip = day.trips
+        .where((trip) => trip.status == 'IN_PROGRESS')
+        .firstOrNull;
+    if (activeTrip == null) {
+      await _locationTracker.stop();
+      if (mounted && _trackingError != null) {
+        setState(() => _trackingError = null);
+      }
+      return;
+    }
+    try {
+      await _locationTracker.start(activeTrip.id);
+      if (mounted) setState(() => _trackingError = null);
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () =>
+              _trackingError = error.toString().replaceFirst('Bad state: ', ''),
+        );
+      }
+    }
+  }
+
+  Future<void> _changeTripStatus(DriverTrip trip, String status) async {
+    final repository = context.read<DriverRepository>();
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busyTrips.add(trip.id));
+    try {
+      if (status == 'IN_PROGRESS') await _locationTracker.requestAccess();
+      await repository.updateTripStatus(tripId: trip.id, status: status);
+      if (status == 'COMPLETED' || status == 'CANCELLED') {
+        await _locationTracker.stop();
+      } else {
+        await _locationTracker.start(trip.id);
+      }
+      if (mounted) await _load();
+    } catch (error) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Bad state: ', '')),
+          backgroundColor: const Color(0xFFB91C1C),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _busyTrips.remove(trip.id));
+    }
+  }
+
   Future<void> _signOut() async {
+    final authRepository = context.read<AuthRepository>();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Sign out?'),
         content: const Text(
-          'You will need your driver phone number and password to sign back in.',
+          'You will need your school phone number and password to sign back in. This app will remain connected to this school.',
         ),
         actions: [
           TextButton(
@@ -81,7 +143,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     );
 
     if (confirmed != true || !mounted) return;
-    await context.read<AuthRepository>().signOut();
+    await _locationTracker.stop();
+    await authRepository.signOut();
     if (!mounted) return;
     widget.onSignedOut();
   }
@@ -92,34 +155,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     ).push(MaterialPageRoute<void>(builder: (_) => ManifestScreen(trip: trip)));
     // Boarding may have changed while the manifest was open.
     if (mounted) _load();
-  }
-
-  Future<void> _changeTripStatus(DriverTrip trip, String status) async {
-    final starting = status == 'IN_PROGRESS';
-    final accepted = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(starting ? 'Start this run?' : 'Complete this run?'),
-        content: Text(starting
-            ? 'Start ${trip.directionLabel.toLowerCase()} on ${trip.routeName}? The office will see that the vehicle has departed.'
-            : 'Mark ${trip.directionLabel.toLowerCase()} on ${trip.routeName} as complete?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(starting ? 'Start run' : 'Complete run')),
-        ],
-      ),
-    );
-    if (accepted != true || !mounted) return;
-
-    try {
-      await context.read<DriverRepository>().updateTripStatus(tripId: trip.id, status: status);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(starting ? 'Run started.' : 'Run completed.')));
-      await _load();
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not update the run: $error')));
-    }
   }
 
   @override
@@ -151,11 +186,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             onPressed: _signOut,
             icon: const Icon(Icons.logout),
             tooltip: 'Sign out',
-          ),
-          IconButton(
-            onPressed: widget.onSwitchSchool,
-            icon: const Icon(Icons.swap_horiz),
-            tooltip: 'Switch school',
           ),
         ],
       ),
@@ -216,27 +246,25 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           ...day.trips.map(
             (trip) => Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  TripCard(trip: trip, onTap: () => _openManifest(trip)),
-                  if (trip.status == 'SCHEDULED') ...[
-                    const SizedBox(height: 8),
-                    FilledButton.icon(
-                      onPressed: () => _changeTripStatus(trip, 'IN_PROGRESS'),
-                      icon: const Icon(Icons.play_arrow_rounded),
-                      label: const Text('Start this run'),
-                    ),
-                  ] else if (trip.status == 'IN_PROGRESS') ...[
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: () => _changeTripStatus(trip, 'COMPLETED'),
-                      icon: const Icon(Icons.flag_outlined),
-                      label: const Text('Complete this run'),
-                    ),
-                  ],
-                ],
+              child: TripCard(
+                trip: trip,
+                onTap: () => _openManifest(trip),
+                onStart: trip.status == 'SCHEDULED'
+                    ? () => _changeTripStatus(trip, 'IN_PROGRESS')
+                    : null,
+                onComplete: trip.status == 'IN_PROGRESS'
+                    ? () => _changeTripStatus(trip, 'COMPLETED')
+                    : null,
+                busy: _busyTrips.contains(trip.id),
               ),
+            ),
+          ),
+        if (_trackingError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Trip is active, but location sharing is off: $_trackingError',
+              style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 12),
             ),
           ),
       ],

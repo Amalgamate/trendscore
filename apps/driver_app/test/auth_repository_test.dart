@@ -6,7 +6,7 @@ void main() {
     final body = AuthRepository.buildLoginRequest(
       phone: '  0766543212 ',
       password: 'secret',
-      schoolCode: 'zawadi',
+      driverCode: 'zawadi',
       deviceId: 'device-uuid',
     );
 
@@ -14,7 +14,7 @@ void main() {
       'phone': '0766543212',
       'password': 'secret',
       'rememberMe': true,
-      'schoolCode': 'zawadi',
+      'driverCode': 'zawadi',
       'deviceId': 'device-uuid',
     });
   });

@@ -65,6 +65,10 @@ router.post(
  * @route PATCH /api/v1/driver/trips/:tripId/status
  * @desc  Mark the trip IN_PROGRESS (departed) or COMPLETED (arrived)
  */
+router.post(
+  '/trips/:tripId/location',
+  asyncHandler(tripController.reportMyLocation.bind(tripController)),
+);
 router.patch(
   '/trips/:tripId/status',
   asyncHandler(tripController.updateMyTripStatus.bind(tripController)),
