@@ -2,7 +2,8 @@
 /* Read-only per-school database audit. Runs inside the deployed backend image. */
 const fs = require('node:fs');
 const path = require('node:path');
-const { Prisma, PrismaClient } = require('@prisma/client');
+const prismaClientPath = require.resolve('@prisma/client', { paths: [process.cwd(), '/app'] });
+const { Prisma, PrismaClient } = require(prismaClientPath);
 
 const prisma = new PrismaClient({ log: [] });
 const quote = (value) => `"${String(value).replaceAll('"', '""')}"`;

@@ -4,12 +4,12 @@ set -euo pipefail
 MANIFEST=/srv/zawadi/apps/deploy/instances.manifest.json
 AUDITOR="/tmp/trendscore-db-audit-${AUDIT_RUN_ID:?}.cjs"
 REPORT="/tmp/trendscore-db-audit-${AUDIT_RUN_ID}.jsonl"
-trap 'rm -f "$AUDITOR" "$REPORT"' EXIT
+trap 'sudo rm -f "$AUDITOR" "$REPORT"' EXIT
 
 [[ -f "$MANIFEST" ]] || { echo "Missing server deployment manifest" >&2; exit 2; }
 [[ -f /tmp/audit-school-db.cjs ]] || { echo "Missing uploaded audit program" >&2; exit 2; }
 sudo install -m 0644 /tmp/audit-school-db.cjs "$AUDITOR"
-rm -f /tmp/audit-school-db.cjs
+sudo rm -f /tmp/audit-school-db.cjs
 : >"$REPORT"
 
 total=0
@@ -47,17 +47,18 @@ while IFS= read -r instance; do
         row="$(jq -c --arg tier "$tier" '. + {tier:$tier}' <<<"$row")"
       fi
     fi
-    sudo docker exec "$backend" rm -f /tmp/audit-school-db.cjs >/dev/null 2>&1 || true
+    sudo docker exec -u 0 "$backend" rm -f /tmp/audit-school-db.cjs >/dev/null 2>&1 || true
   fi
 
   backup_status=INVALID_OR_MISSING
   backup_dir="/srv/zawadi/backups/$id"
-  if [[ -f "$backup_dir/LATEST" ]]; then
-    backup_file="$(head -n1 "$backup_dir/LATEST")"
-    backup_resolved="$(readlink -f "$backup_file" 2>/dev/null || true)"
-    backup_expected_root="$(readlink -f "$backup_dir" 2>/dev/null || true)"
-    if [[ -n "$backup_expected_root" && "$backup_resolved" == "$backup_expected_root"/* && -s "$backup_resolved" ]] \
-      && grep -q '^-- PostgreSQL database dump' "$backup_resolved"; then
+  if sudo test -f "$backup_dir/LATEST"; then
+    backup_file="$(sudo head -n1 "$backup_dir/LATEST" 2>/dev/null || true)"
+    backup_resolved="$(sudo readlink -f "$backup_file" 2>/dev/null || true)"
+    backup_expected_root="$(sudo readlink -f "$backup_dir" 2>/dev/null || true)"
+    if [[ -n "$backup_expected_root" && "$backup_resolved" == "$backup_expected_root"/* ]] \
+      && sudo test -s "$backup_resolved" \
+      && sudo grep -q '^-- PostgreSQL database dump' "$backup_resolved"; then
       backup_status=VALID
     fi
   fi
