@@ -496,29 +496,38 @@ backup_database() {
 
   log "━━ Backup: ${id} → ${dest} ━━"
 
+  local compose_args=()
   if [[ "${kind}" == "main" ]]; then
     cd "${MAIN_DIR}"
-    local db_user db_name
-    db_user="$(read_env_value "${MAIN_DIR}/.env" DB_USER)"
-    db_name="$(read_env_value "${MAIN_DIR}/.env" DB_NAME)"
-    db_user="${db_user:-postgres}"
-    db_name="${db_name:-zawadi_sms}"
-    docker_cmd compose exec -T db pg_dump -U "${db_user}" "${db_name}" < /dev/null \
-      | run_as_root tee "${dest}/database.sql" >/dev/null
-    echo "${dest}/database.sql" | run_as_root tee "${dest}/LATEST" >/dev/null
-    prune_backup_snapshots "${id}"
-    return 0
+    compose_args=(compose)
+  else
+    cd "${APPS_DIR}"
+    compose_args=(compose --env-file "${env_file}" -p "${project}" -f "${STACK_COMPOSE_FILE}")
   fi
 
-  cd "${APPS_DIR}"
-  local db_user db_name
-  db_user="$(read_env_value "${env_file}" DB_USER)"
-  db_name="$(read_env_value "${env_file}" DB_NAME)"
-  db_user="${db_user:-postgres}"
-  db_name="${db_name:-postgres}"
-  docker_cmd compose --env-file "${env_file}" -p "${project}" -f "${STACK_COMPOSE_FILE}" \
-    exec -T db pg_dump -U "${db_user}" "${db_name}" < /dev/null \
-    | run_as_root tee "${dest}/database.sql" >/dev/null
+  # Read the database identity from the running Postgres container. The env
+  # files are not a reliable source of DB_USER/DB_NAME (some were provisioned
+  # without those optional keys), and defaulting to "postgres" can silently
+  # target a role that does not exist. Never publish a LATEST pointer unless
+  # pg_dump has completed and produced a recognizable, non-empty SQL dump.
+  local db_identity db_user db_name
+  db_identity="$(docker_cmd "${compose_args[@]}" exec -T db sh -c 'printf "%s\n%s\n" "$POSTGRES_USER" "$POSTGRES_DB"' < /dev/null)" \
+    || fail "Could not read database identity for backup of ${id}"
+  db_user="$(sed -n '1p' <<<"${db_identity}")"
+  db_name="$(sed -n '2p' <<<"${db_identity}")"
+  [[ -n "${db_user}" && -n "${db_name}" ]] || fail "Postgres container did not report POSTGRES_USER/POSTGRES_DB for ${id}"
+
+  if ! docker_cmd "${compose_args[@]}" exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' < /dev/null \
+    | run_as_root tee "${dest}/database.sql" >/dev/null; then
+    run_as_root rm -f "${dest}/database.sql"
+    fail "Database backup failed for ${id}; deployment stopped before migrations or restart"
+  fi
+  if ! run_as_root test -s "${dest}/database.sql" \
+    || ! run_as_root grep -q '^-- PostgreSQL database dump' "${dest}/database.sql"; then
+    run_as_root rm -f "${dest}/database.sql"
+    fail "Database backup for ${id} is empty or invalid; deployment stopped before migrations or restart"
+  fi
+
   echo "${dest}/database.sql" | run_as_root tee "${dest}/LATEST" >/dev/null
   prune_backup_snapshots "${id}"
 }
