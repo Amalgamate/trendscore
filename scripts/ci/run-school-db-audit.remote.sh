@@ -4,18 +4,29 @@ set -euo pipefail
 MANIFEST=/srv/zawadi/apps/deploy/instances.manifest.json
 AUDITOR="/tmp/trendscore-db-audit-${AUDIT_RUN_ID:?}.cjs"
 REPORT="/tmp/trendscore-db-audit-${AUDIT_RUN_ID}.jsonl"
-trap 'rm -f "$AUDITOR" "$REPORT"' EXIT
+trap 'sudo rm -f "$AUDITOR" "$REPORT"' EXIT
 
 [[ -f "$MANIFEST" ]] || { echo "Missing server deployment manifest" >&2; exit 2; }
 [[ -f /tmp/audit-school-db.cjs ]] || { echo "Missing uploaded audit program" >&2; exit 2; }
 sudo install -m 0644 /tmp/audit-school-db.cjs "$AUDITOR"
-rm -f /tmp/audit-school-db.cjs
+sudo rm -f /tmp/audit-school-db.cjs
 : >"$REPORT"
 
 total=0
 ok=0
 warnings=0
 failed=0
+instances="$(jq -c '.instances[] | select(.active == true and .archived != true)' "$MANIFEST")"
+known_projects="$(jq -r '.instances[] | select(.active == true and .archived != true) | .compose_project // empty' "$MANIFEST" | sort -u)"
+while IFS= read -r project; do
+  [[ -n "$project" ]] || continue
+  if ! grep -Fxq "$project" <<<"$known_projects"; then
+    id="${project#zawadi-}"
+    discovered="$(jq -cn --arg id "$id" --arg project "$project" '{id:$id,tier:"unregistered",kind:"stack",compose_project:$project,unregistered:true}')"
+    instances+=$'\n'"$discovered"
+  fi
+done < <(sudo docker ps --filter 'label=com.docker.compose.service=backend' --format '{{.Label "com.docker.compose.project"}}' | sort -u)
+
 while IFS= read -r instance; do
   id="$(jq -r '.id' <<<"$instance")"
   kind="$(jq -r '.kind // "stack"' <<<"$instance")"
@@ -47,17 +58,18 @@ while IFS= read -r instance; do
         row="$(jq -c --arg tier "$tier" '. + {tier:$tier}' <<<"$row")"
       fi
     fi
-    sudo docker exec "$backend" rm -f /tmp/audit-school-db.cjs >/dev/null 2>&1 || true
+    sudo docker exec -u 0 "$backend" rm -f /tmp/audit-school-db.cjs >/dev/null 2>&1 || true
   fi
 
   backup_status=INVALID_OR_MISSING
   backup_dir="/srv/zawadi/backups/$id"
-  if [[ -f "$backup_dir/LATEST" ]]; then
-    backup_file="$(head -n1 "$backup_dir/LATEST")"
-    backup_resolved="$(readlink -f "$backup_file" 2>/dev/null || true)"
-    backup_expected_root="$(readlink -f "$backup_dir" 2>/dev/null || true)"
-    if [[ -n "$backup_expected_root" && "$backup_resolved" == "$backup_expected_root"/* && -s "$backup_resolved" ]] \
-      && grep -q '^-- PostgreSQL database dump' "$backup_resolved"; then
+  if sudo test -f "$backup_dir/LATEST"; then
+    backup_file="$(sudo head -n1 "$backup_dir/LATEST" 2>/dev/null || true)"
+    backup_resolved="$(sudo readlink -f "$backup_file" 2>/dev/null || true)"
+    backup_expected_root="$(sudo readlink -f "$backup_dir" 2>/dev/null || true)"
+    if [[ -n "$backup_expected_root" && "$backup_resolved" == "$backup_expected_root"/* ]] \
+      && sudo test -s "$backup_resolved" \
+      && sudo grep -q '^-- PostgreSQL database dump' "$backup_resolved"; then
       backup_status=VALID
     fi
   fi
@@ -68,6 +80,13 @@ while IFS= read -r instance; do
         | .issues = ((.issues // {critical:[],warnings:[],info:[]})
           | .warnings = ((.warnings // []) + ["latest database backup pointer is missing or invalid"]))
       else . end' <<<"$row")"
+  if [[ "$(jq -r '.unregistered // false' <<<"$instance")" == "true" ]]; then
+    row="$(jq -c '
+      .status = (if .status == "OK" then "WARN" else .status end)
+      | .unregistered = true
+      | .issues = ((.issues // {critical:[],warnings:[],info:[]})
+        | .warnings = ((.warnings // []) + ["running school backend stack is missing from instances.manifest.json"]))' <<<"$row")"
+  fi
 
   printf '%s\n' "$row" | tee -a "$REPORT"
   status="$(jq -r '.status' <<<"$row")"
