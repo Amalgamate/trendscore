@@ -16,6 +16,17 @@ total=0
 ok=0
 warnings=0
 failed=0
+instances="$(jq -c '.instances[] | select(.active == true and .archived != true)' "$MANIFEST")"
+known_projects="$(jq -r '.instances[] | select(.active == true and .archived != true) | .compose_project // empty' "$MANIFEST" | sort -u)"
+while IFS= read -r project; do
+  [[ -n "$project" ]] || continue
+  if ! grep -Fxq "$project" <<<"$known_projects"; then
+    id="${project#zawadi-}"
+    discovered="$(jq -cn --arg id "$id" --arg project "$project" '{id:$id,tier:"unregistered",kind:"stack",compose_project:$project,unregistered:true}')"
+    instances+=$'\n'"$discovered"
+  fi
+done < <(sudo docker ps --filter 'label=com.docker.compose.service=backend' --format '{{.Label "com.docker.compose.project"}}' | sort -u)
+
 while IFS= read -r instance; do
   id="$(jq -r '.id' <<<"$instance")"
   kind="$(jq -r '.kind // "stack"' <<<"$instance")"
@@ -69,6 +80,13 @@ while IFS= read -r instance; do
         | .issues = ((.issues // {critical:[],warnings:[],info:[]})
           | .warnings = ((.warnings // []) + ["latest database backup pointer is missing or invalid"]))
       else . end' <<<"$row")"
+  if [[ "$(jq -r '.unregistered // false' <<<"$instance")" == "true" ]]; then
+    row="$(jq -c '
+      .status = (if .status == "OK" then "WARN" else .status end)
+      | .unregistered = true
+      | .issues = ((.issues // {critical:[],warnings:[],info:[]})
+        | .warnings = ((.warnings // []) + ["running school backend stack is missing from instances.manifest.json"]))' <<<"$row")"
+  fi
 
   printf '%s\n' "$row" | tee -a "$REPORT"
   status="$(jq -r '.status' <<<"$row")"
