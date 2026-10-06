@@ -265,6 +265,18 @@ async function main() {
     status,
     migrations: { expected: expectedMigrationCount, applied: applied.size, pending: pending.length, failed: failed.length, checksumMismatch: checksumMismatch.length },
     schema: { models: models.length, tables: tableNames.size, missingTables: missingTables.length, missingColumns: missingColumns.length, extraTables: extraTables.length, extraColumns: extraColumns.length, nullabilityMismatches: nullabilityMismatches.length, typeMismatches: typeMismatches.length, enumIssues: missingEnumValues.length, missingForeignKeys: missingForeignKeys.length, unvalidatedForeignKeys: unvalidated.length, missingPrimaryOrUniqueIndexes: missingIndexes.length },
+    schemaDetails: {
+      missingTables,
+      missingColumns,
+      extraTables,
+      extraColumns,
+      nullabilityMismatches,
+      typeMismatches,
+      missingEnumValues,
+      missingForeignKeys,
+      unvalidatedForeignKeys: unvalidated.map((fk) => fk.name),
+      missingIndexes: missingIndexes.map((index) => `${index.table}(${index.columns.join(',')})`),
+    },
     rowCounts,
     issues,
   }));

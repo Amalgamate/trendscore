@@ -65,7 +65,12 @@ while IFS= read -r instance; do
   backup_dir="/srv/zawadi/backups/$id"
   if sudo test -f "$backup_dir/LATEST"; then
     backup_file="$(sudo head -n1 "$backup_dir/LATEST" 2>/dev/null || true)"
-    backup_resolved="$(sudo readlink -f "$backup_file" 2>/dev/null || true)"
+    if [[ "$backup_file" = /* ]]; then
+      backup_candidate="$backup_file"
+    else
+      backup_candidate="$backup_dir/$backup_file"
+    fi
+    backup_resolved="$(sudo readlink -f "$backup_candidate" 2>/dev/null || true)"
     backup_expected_root="$(sudo readlink -f "$backup_dir" 2>/dev/null || true)"
     if [[ -n "$backup_expected_root" && "$backup_resolved" == "$backup_expected_root"/* ]] \
       && sudo test -s "$backup_resolved" \
@@ -95,7 +100,7 @@ while IFS= read -r instance; do
     WARN) warnings=$((warnings + 1)) ;;
     *) failed=$((failed + 1)) ;;
   esac
-done < <(jq -c '.instances[] | select(.active == true and .archived != true)' "$MANIFEST")
+done <<< "$instances"
 
 echo "AUDIT_TOTALS total=$total ok=$ok warnings=$warnings failed=$failed"
 [[ "$total" -gt 0 ]] || { echo "No active instances found" >&2; exit 2; }
