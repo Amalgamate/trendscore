@@ -245,7 +245,7 @@ export class LMSAssignmentService {
       }),
     ]);
 
-    if (!scheduled && !subjectAssigned && targetClass.teacherId !== teacherId && !targetClass.teacherAssignments.some((assignment) => assignment.teacherId === teacherId)) {
+    if (!scheduled && !subjectAssigned && targetClass.teacherId !== teacherId && !(targetClass.teacherAssignments ?? []).some((assignment) => assignment.teacherId === teacherId)) {
       throw new ApiError(403, 'You are not assigned to teach this learning area for the selected class')
         .withCode('LMS_ASSIGNMENT_OUTSIDE_WORKLOAD');
     }
