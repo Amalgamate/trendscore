@@ -83,7 +83,7 @@ export const registerSchema = z.object({
     .regex(/^\+?[1-9]\d{1,14}$/, 'Invalid phone number format')
     .optional(),
   role: z.enum([
-    'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 
+    'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM',
     'TEACHER', 'PARENT', 'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN', 
     'NURSE', 'SECURITY', 'DRIVER', 'COOK', 'CLEANER', 
     'GROUNDSKEEPER', 'IT_SUPPORT', 'STUDENT'
@@ -98,14 +98,14 @@ export const createUserSchema = z.object({
   lastName: z.string().min(2).max(50),
   phone: z.string().optional().nullable(),
   role: z.enum([
-    'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 
+    'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM',
     'TEACHER', 'PARENT', 'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN', 
     'NURSE', 'SECURITY', 'DRIVER', 'COOK', 'CLEANER', 
     'GROUNDSKEEPER', 'IT_SUPPORT', 'STUDENT'
   ]),
   roles: z.array(
     z.enum([
-      'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM',
+      'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM',
       'TEACHER', 'PARENT', 'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
       'NURSE', 'SECURITY', 'DRIVER', 'COOK', 'CLEANER',
       'GROUNDSKEEPER', 'IT_SUPPORT', 'STUDENT'
@@ -124,14 +124,14 @@ export const updateUserSchema = z.object({
   lastName: z.string().min(2).max(50).optional(),
   phone: z.string().optional().nullable(),
   role: z.enum([
-    'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 
+    'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM',
     'TEACHER', 'PARENT', 'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN', 
     'NURSE', 'SECURITY', 'DRIVER', 'COOK', 'CLEANER', 
     'GROUNDSKEEPER', 'IT_SUPPORT', 'STUDENT'
   ]).optional(),
   roles: z.array(
     z.enum([
-      'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM',
+      'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM',
       'TEACHER', 'PARENT', 'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN',
       'NURSE', 'SECURITY', 'DRIVER', 'COOK', 'CLEANER',
       'GROUNDSKEEPER', 'IT_SUPPORT', 'STUDENT'

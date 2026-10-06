@@ -339,7 +339,9 @@ const LearnersList = ({
   const canTeacherModify = (learner) => {
     if (!isTeacher) return true; // Admins etc can always modify
     const isCreator = learner.createdBy === user?.id;
-    const isClassTeacher = learner.enrollments?.some(e => e.class?.teacherId === user?.id);
+    const isClassTeacher = learner.enrollments?.some(e =>
+      e.class?.teacherId === user?.id || e.class?.teacherAssignments?.some(assignment => assignment.teacherId === user?.id)
+    );
     return isCreator || isClassTeacher;
   };
 

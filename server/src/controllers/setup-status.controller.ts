@@ -43,7 +43,7 @@ export const getSetupStatus = async (req: AuthRequest, res: Response) => {
     }),
     prisma.attendance.count({ where: { archived: false } }),
     prisma.attendance.findFirst({ where: { archived: false }, orderBy: { date: 'asc' }, select: { date: true } }),
-    userId ? prisma.class.count({ where: { teacherId: userId, active: true, archived: false } }) : Promise.resolve(0),
+    userId ? prisma.class.count({ where: { active: true, archived: false, OR: [{ teacherId: userId }, { teacherAssignments: { some: { teacherId: userId } } }] } }) : Promise.resolve(0),
     userId ? prisma.attendance.count({ where: { markedBy: userId, archived: false } }) : Promise.resolve(0),
     userId ? prisma.summativeTest.count({ where: { createdBy: userId, archived: false } }) : Promise.resolve(0),
     userId ? prisma.summativeResult.count({ where: { recordedBy: userId, archived: false } }) : Promise.resolve(0),

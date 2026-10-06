@@ -69,6 +69,7 @@ model User {
   changeHistory              ChangeHistory[]
   schedules                  ClassSchedule[]             @relation("TeacherSchedules")
   classesAsTeacher           Class[]                     @relation("ClassTeacher")
+  classTeacherAssignments    ClassTeacherAssignment[]
   recordedCoCurricular       CoCurricularActivity[]      @relation("RecorderCoCurricular")
   createdContactGroups       ContactGroup[]              @relation("CreatedContactGroups")
   assessedCoreCompetencies   CoreCompetency[]            @relation("AssessorCoreCompetencies")
@@ -355,6 +356,7 @@ model Class {
   timetableEntries    TimetableEntry[]
   timetableChangeRequests TimetableChangeRequest[]
   teacher             User?                @relation("ClassTeacher", fields: [teacherId], references: [id])
+  teacherAssignments  ClassTeacherAssignment[]
   // ── LMS Digital Learning Hub ────────────────────────────────────────────────
   learningLessons     LearningLesson[]
   learningAssignments LearningAssignment[]
@@ -366,6 +368,21 @@ model Class {
   @@index([teacherId])
   @@index([grade, stream])
   @@map("classes")
+}
+
+/// Additional class-teacher assignments. Class.teacherId remains the primary
+/// teacher for older consumers; this table stores every assigned teacher and
+/// is backfilled from that legacy column.
+model ClassTeacherAssignment {
+  classId   String
+  teacherId String
+  createdAt DateTime @default(now())
+  class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacher   User     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@id([classId, teacherId])
+  @@index([teacherId])
+  @@map("class_teacher_assignments")
 }
 
 model ClassSchedule {
@@ -3997,6 +4014,7 @@ enum UserRole {
   SUPER_ADMIN
   ADMIN
   HEAD_TEACHER
+  DEPUTY_HEAD_TEACHER
   TEACHER
   PARENT
   ACCOUNTANT

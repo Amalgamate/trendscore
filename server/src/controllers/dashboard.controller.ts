@@ -1747,10 +1747,12 @@ export class DashboardController {
                         institutionType,
                         OR: [
                             { teacherId: userId },
+                            { teacherAssignments: { some: { teacherId: userId } } },
                             { schedules: { some: { teacherId: userId, active: true, archived: false } } },
                         ],
                     },
                     include: {
+                        teacherAssignments: { select: { teacherId: true } },
                         schedules: {
                             where: { active: true, archived: false },
                             select: {
@@ -2036,7 +2038,7 @@ export class DashboardController {
             ]);
 
             // Determine if this teacher is a class (homeroom) teacher
-            const classTeacherRecord = myClassesWithOccupancy.find(cls => cls.teacherId === userId);
+            const classTeacherRecord = myClassesWithOccupancy.find(cls => cls.teacherId === userId || cls.teacherAssignments?.some((assignment: any) => assignment.teacherId === userId));
             const isClassTeacher = !!classTeacherRecord;
             const classTeacherOf = classTeacherRecord
                 ? {

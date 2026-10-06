@@ -260,12 +260,14 @@ const OverviewTab = ({ classData, onAssignTeacher }) => (
         {/* Right Column */}
         <div className="space-y-4">
           <div>
-            <p className="text-xs font-medium text-gray-600 uppercase">Class Teacher</p>
+            <p className="text-xs font-medium text-gray-600 uppercase">Class Teachers</p>
             <div className="flex items-center justify-between">
               <p className="text-lg font-medium text-gray-900 mt-1">
-                {classData.teacher
-                  ? `${classData.teacher.firstName} ${classData.teacher.lastName}`
-                  : 'Unassigned'}
+                {(classData.teacherAssignments?.length
+                  ? classData.teacherAssignments.map(({ teacher }) => teacher).filter(Boolean)
+                  : [classData.teacher].filter(Boolean))
+                  .map((teacher) => `${teacher.firstName} ${teacher.lastName}`)
+                  .join(', ') || 'Unassigned'}
               </p>
               <Button
                 variant="outline"
@@ -273,7 +275,7 @@ const OverviewTab = ({ classData, onAssignTeacher }) => (
                 onClick={onAssignTeacher}
                 className="text-xs h-7 border-brand-purple text-brand-purple hover:bg-brand-purple/10"
               >
-                {classData.teacher ? 'Change' : 'Assign'}
+                {classData.teacher || classData.teacherAssignments?.length ? 'Manage' : 'Assign'}
               </Button>
             </div>
             {classData.teacher?.phone && <p className="text-xs text-gray-500 mt-1">{classData.teacher.phone}</p>}

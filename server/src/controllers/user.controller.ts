@@ -72,7 +72,7 @@ export class UserController {
     }
 
     if (currentUserRole === 'HEAD_TEACHER' || currentUserRole === 'HEAD_OF_CURRICULUM') {
-      whereClause.role = { in: ['TEACHER', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'] };
+      whereClause.role = { in: ['TEACHER', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM'] };
     }
 
     if (role && typeof role === 'string' && !['HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].includes(currentUserRole)) {
@@ -246,7 +246,7 @@ export class UserController {
     const hashedPassword = await bcrypt.hash(password, 12);
 
     let staffId = req.body.staffId ? String(req.body.staffId).trim() : null;
-    const staffRoles: Role[] = ['ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST'];
+    const staffRoles: Role[] = ['ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST'];
 
     if (!staffId && staffRoles.includes(role as Role)) {
       staffId = await generateStaffId();

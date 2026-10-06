@@ -38,13 +38,28 @@ const createClassSchema = z.object({
   ]),
   stream: z.string().trim().min(1),
   classTeacherId: z.string().min(1).optional(),
+  teacherId: z.string().min(1).optional(),
+  teacherIds: z.array(z.string().min(1)).max(20).optional(),
   capacity: z.coerce.number().int().min(1).optional()
 });
 
 const updateClassSchema = z.object({
   name: z.string().min(2).max(100).optional(),
   classTeacherId: z.string().min(1).optional(),
-  capacity: z.coerce.number().int().min(1).optional()
+  teacherId: z.string().min(1).nullable().optional(),
+  teacherIds: z.array(z.string().min(1)).max(20).optional(),
+  capacity: z.coerce.number().int().min(1).optional(),
+  room: z.string().nullable().optional(),
+  active: z.boolean().optional(),
+});
+
+const assignTeachersSchema = z.object({
+  classId: z.string().min(1),
+  teacherId: z.string().min(1).optional(),
+  teacherIds: z.array(z.string().min(1)).max(20).optional(),
+  attendanceLockExempt: z.boolean().optional(),
+}).refine((body) => body.teacherId || Array.isArray(body.teacherIds), {
+  message: 'Provide a teacherId or teacherIds array',
 });
 
 // authenticate is applied in index.ts — do NOT add authenticate here
@@ -94,6 +109,7 @@ router.put(
   '/:id',
   requireSchoolContext,
   requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
+  validate(updateClassSchema),
   auditLog('UPDATE_CLASS'),
   asyncHandler(classController.updateClass.bind(classController))
 );
@@ -140,6 +156,7 @@ router.post(
   '/assign-teacher',
   requireSchoolContext,
   requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM']),
+  validate(assignTeachersSchema),
   auditLog('ASSIGN_TEACHER'),
   asyncHandler(classController.assignTeacher.bind(classController))
 );

@@ -32,6 +32,11 @@ export const classAPI = {
     cacheDelPrefix('teacher-workload:');
     return result;
   },
+  assignTeachers: async (classId, teacherIds, attendanceLockExempt = false) => {
+    const result = await fetchWithAuth('/classes/assign-teacher', { method: 'POST', body: JSON.stringify({ classId, teacherIds, attendanceLockExempt }) });
+    cacheDelPrefix('teacher-workload:');
+    return result;
+  },
   unassignTeacher: async (classId) => {
     const result = await fetchWithAuth('/classes/unassign-teacher', { method: 'POST', body: JSON.stringify({ classId }) });
     cacheDelPrefix('teacher-workload:');

@@ -63,7 +63,7 @@ async function isTeacherExemptForClass(
 ): Promise<boolean> {
   if (role === 'TEACHER' && classId) {
     const cls = await prisma.class.findFirst({
-      where: { id: classId, teacherId: userId },
+      where: { id: classId, OR: [{ teacherId: userId }, { teacherAssignments: { some: { teacherId: userId } } }] },
       select: { attendanceLockExempt: true },
     });
     return cls?.attendanceLockExempt === true;
@@ -74,7 +74,7 @@ async function isTeacherExemptForClass(
 export class AttendanceController {
   private async getTeacherAssignedClassIds(userId: string): Promise<string[]> {
     const assignedClasses = await prisma.class.findMany({
-      where: { teacherId: userId, active: true, archived: false },
+      where: { active: true, archived: false, OR: [{ teacherId: userId }, { teacherAssignments: { some: { teacherId: userId } } }] },
       select: { id: true },
       orderBy: { createdAt: 'asc' },
     });
@@ -113,7 +113,14 @@ export class AttendanceController {
     const exemptClassId = (classId as string | undefined) ||
       (currentUserRole === 'TEACHER'
         ? (await prisma.class.findFirst({
-            where: { teacherId: currentUserId, active: true, archived: false },
+            where: {
+              active: true,
+              archived: false,
+              OR: [
+                { teacherId: currentUserId },
+                { teacherAssignments: { some: { teacherId: currentUserId } } },
+              ],
+            },
             select: { id: true },
             orderBy: { createdAt: 'asc' },
           }))?.id
@@ -538,7 +545,7 @@ export class AttendanceController {
 
     if (currentUserRole === 'TEACHER') {
       const teacherClasses = await prisma.class.findMany({
-        where: { teacherId: currentUserId },
+        where: { OR: [{ teacherId: currentUserId }, { teacherAssignments: { some: { teacherId: currentUserId } } }] },
         select: { id: true, grade: true, stream: true },
       });
       const validLearner = await prisma.learner.findFirst({
@@ -602,7 +609,12 @@ export class AttendanceController {
 
     const classObj = currentUserRole === 'TEACHER'
       ? await prisma.class.findFirst({
-          where: { id: classId as string, teacherId: currentUserId, active: true, archived: false },
+          where: {
+            id: classId as string,
+            active: true,
+            archived: false,
+            OR: [{ teacherId: currentUserId }, { teacherAssignments: { some: { teacherId: currentUserId } } }],
+          },
         })
       : await prisma.class.findFirst({ where: { id: classId as string } });
 

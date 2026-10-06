@@ -230,7 +230,11 @@ export class ResourceAccessControl {
               learnerId: String(learnerId),
               active: true,
               archived: false,
-              class: { teacherId: userId, active: true, archived: false },
+              class: {
+                active: true,
+                archived: false,
+                OR: [{ teacherId: userId }, { teacherAssignments: { some: { teacherId: userId } } }],
+              },
             },
             select: { id: true },
           });

@@ -227,6 +227,7 @@ function getRoleAccessOverrides() {
 }
 
 function getEffectiveRolePermissions(role) {
+  if (role === 'DEPUTY_HEAD_TEACHER') role = 'HEAD_TEACHER';
   const overrides = getRoleAccessOverrides();
   if (Array.isArray(overrides[role])) return overrides[role];
   return Object.entries(PERMISSIONS)
@@ -266,6 +267,8 @@ export function getRolePermissions(role) {
  */
 export function canManageRole(managerRole, targetRole) {
   if (!managerRole || !targetRole) return false;
+  if (managerRole === 'DEPUTY_HEAD_TEACHER') managerRole = 'HEAD_TEACHER';
+  if (targetRole === 'DEPUTY_HEAD_TEACHER') targetRole = 'HEAD_TEACHER';
   return ROLE_HIERARCHY[managerRole] > ROLE_HIERARCHY[targetRole];
 }
 
