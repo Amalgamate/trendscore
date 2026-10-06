@@ -70,16 +70,23 @@ export class TeacherContextController {
       });
     }
 
-    const cacheKey = `teacher:context:v1:${userId}`;
+    const cacheKey = `teacher:context:v2:${userId}`;
     const cached = await redisCacheService.get<any>(cacheKey);
     if (cached) {
       return res.json({ success: true, data: cached, _cached: true });
     }
 
     try {
-      // 1. Find the class where this teacher is the homeroom (class) teacher
-      const classTeacherOf = await prisma.class.findFirst({
-        where: { teacherId: userId, archived: false, active: true },
+      // 1. Find every class where this teacher is assigned as a homeroom teacher.
+      const classTeacherClasses = await prisma.class.findMany({
+        where: {
+          archived: false,
+          active: true,
+          OR: [
+            { teacherId: userId },
+            { teacherAssignments: { some: { teacherId: userId } } },
+          ],
+        },
         select: {
           id: true,
           name: true,
@@ -88,6 +95,8 @@ export class TeacherContextController {
           _count: { select: { enrollments: { where: { active: true } } } },
         },
       });
+
+      const classTeacherOf = classTeacherClasses[0] ?? null;
 
       // 2. Find all classes where this teacher has any timetable slot (subject teacher)
       const scheduleClasses = await prisma.classSchedule.findMany({
@@ -150,21 +159,21 @@ export class TeacherContextController {
 
       // Collect unique class IDs and grades
       const assignedClassIds = new Set<string>();
-      if (classTeacherOf) assignedClassIds.add(classTeacherOf.id);
+      for (const assignedClass of classTeacherClasses) assignedClassIds.add(assignedClass.id);
       for (const s of scheduleClasses) {
         if (s.class?.id) assignedClassIds.add(s.class.id);
       }
 
       const assignedGrades = Array.from(
         new Set([
-          ...(classTeacherOf ? [classTeacherOf.grade] : []),
+          ...classTeacherClasses.map((assignedClass) => assignedClass.grade),
           ...Array.from(subjectMap.values()).map((v) => v.grade),
         ])
       );
 
       const payload = {
         restricted: true,
-        isClassTeacher: classTeacherOf !== null,
+        isClassTeacher: classTeacherClasses.length > 0,
         classTeacherOf: classTeacherOf
           ? {
               id: classTeacherOf.id,
@@ -176,6 +185,13 @@ export class TeacherContextController {
               learnerCount: classTeacherOf._count.enrollments,
             }
           : null,
+        classTeacherOfs: classTeacherClasses.map((assignedClass) => ({
+          id: assignedClass.id,
+          name: assignedClass.name || [assignedClass.grade, assignedClass.stream].filter(Boolean).join(' '),
+          grade: assignedClass.grade,
+          stream: assignedClass.stream ?? null,
+          learnerCount: assignedClass._count.enrollments,
+        })),
         subjectAssignments: Array.from(subjectMap.values()),
         assignedClassIds: Array.from(assignedClassIds),
         assignedGrades,
@@ -187,7 +203,7 @@ export class TeacherContextController {
         {
           teacherId: userId,
           isClassTeacher: payload.isClassTeacher,
-          classId: classTeacherOf?.id,
+          classIds: classTeacherClasses.map((assignedClass) => assignedClass.id),
           subjectCount: payload.subjectAssignments.length,
           classCount: payload.assignedClassIds.length,
         },

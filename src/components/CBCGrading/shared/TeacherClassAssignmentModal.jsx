@@ -22,6 +22,7 @@ const TeacherClassAssignmentModal = ({
     const [classes, setClasses] = useState([]);
     const [teachers, setTeachers] = useState([]);
     const [selectedId, setSelectedId] = useState('');
+    const [selectedTeacherIds, setSelectedTeacherIds] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(false);
     const [submitting, setSubmitting] = useState(false);
@@ -45,6 +46,8 @@ const TeacherClassAssignmentModal = ({
 
     const resetState = () => {
         setSelectedId('');
+        const existingIds = (classData?.teacherAssignments || []).map((assignment) => assignment.teacherId || assignment.teacher?.id).filter(Boolean);
+        setSelectedTeacherIds(Array.from(new Set(existingIds.length ? existingIds : [classData?.teacherId || classData?.teacher?.id].filter(Boolean))));
         setSearchTerm('');
         setError(null);
         setWarning(null);
@@ -105,12 +108,12 @@ const TeacherClassAssignmentModal = ({
 
         if (mode === 'TEACHER_CENTRIC') {
             const selectedClass = classes.find(c => c.id === id);
-            if (selectedClass?.teacher) {
-                if (selectedClass.teacher.id === teacher.id) {
-                    setWarning([`This teacher is already assigned to ${selectedClass.name}.`]);
-                } else {
-                    setWarning([`This will replace ${selectedClass.teacher.firstName} ${selectedClass.teacher.lastName} as the class teacher.`]);
-                }
+            const teacherAlreadyAssigned = selectedClass?.teacherAssignments?.some((assignment) => (assignment.teacherId || assignment.teacher?.id) === teacher.id)
+                || selectedClass?.teacherId === teacher.id;
+            if (teacherAlreadyAssigned) {
+                setWarning([`This teacher is already assigned to ${selectedClass.name}.`]);
+            } else if (selectedClass?.teacher || selectedClass?.teacherAssignments?.length) {
+                setWarning(['This adds the teacher to the class. Existing class teachers remain assigned.']);
             }
         } else {
             // CLASS_CENTRIC warnings
@@ -121,7 +124,7 @@ const TeacherClassAssignmentModal = ({
     };
 
     const handleSubmit = async () => {
-        if (!selectedId) return;
+        if (mode === 'TEACHER_CENTRIC' && !selectedId) return;
 
         const classId = mode === 'TEACHER_CENTRIC' ? selectedId : classData.id;
         const teacherId = mode === 'TEACHER_CENTRIC' ? teacher.id : selectedId;
@@ -130,7 +133,9 @@ const TeacherClassAssignmentModal = ({
             setSubmitting(true);
             setError(null);
 
-            const response = await api.classes.assignTeacher(classId, teacherId, attendanceLockExempt);
+            const response = mode === 'TEACHER_CENTRIC'
+                ? await api.classes.assignTeacher(classId, teacherId, attendanceLockExempt)
+                : await api.classes.assignTeachers(classId, selectedTeacherIds, attendanceLockExempt);
 
             if (response.success || response.id) {
                 setSuccess(true);
@@ -152,6 +157,12 @@ const TeacherClassAssignmentModal = ({
     const filteredItems = mode === 'TEACHER_CENTRIC'
         ? classes.filter(c => c.name?.toLowerCase().includes(searchTerm.toLowerCase()) || c.grade?.toLowerCase().includes(searchTerm.toLowerCase()))
         : teachers.filter(t => `${t.firstName} ${t.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) || t.teacherId?.toLowerCase().includes(searchTerm.toLowerCase()));
+    const initialAssignedTeacherIds = Array.from(new Set(
+        (classData?.teacherAssignments || []).map((assignment) => assignment.teacherId || assignment.teacher?.id).filter(Boolean).length
+            ? (classData?.teacherAssignments || []).map((assignment) => assignment.teacherId || assignment.teacher?.id).filter(Boolean)
+            : [classData?.teacherId || classData?.teacher?.id].filter(Boolean)
+    )).sort();
+    const classTeacherSelectionChanged = initialAssignedTeacherIds.join('|') !== [...selectedTeacherIds].sort().join('|');
 
     if (!isOpen) return null;
 
@@ -163,7 +174,7 @@ const TeacherClassAssignmentModal = ({
                     <div>
                         <h3 className="text-xl font-semibold flex items-center gap-2">
                             {mode === 'TEACHER_CENTRIC' ? <BookOpen size={24} /> : <User size={24} />}
-                            {mode === 'TEACHER_CENTRIC' ? 'Assign Class to Teacher' : 'Assign Teacher to Class'}
+                            {mode === 'TEACHER_CENTRIC' ? 'Assign Class to Teacher' : 'Manage Class Teachers'}
                         </h3>
                         <p className="text-xs text-brand-purple-light opacity-80 mt-1 uppercase tracking-widest font-medium">
                             Teacher-Class Management
@@ -239,7 +250,7 @@ const TeacherClassAssignmentModal = ({
                     {/* Selection Area */}
                     <div className="space-y-3">
                         <p className="text-sm font-semibold text-gray-800">
-                            {mode === 'TEACHER_CENTRIC' ? 'Select Class' : 'Select Teacher'}
+                            {mode === 'TEACHER_CENTRIC' ? 'Select Class' : 'Select one or more teachers'}
                         </p>
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
@@ -258,15 +269,18 @@ const TeacherClassAssignmentModal = ({
                                 </div>
                             ) : filteredItems.length > 0 ? (
                                 filteredItems.map(item => {
-                                    const isSelected = selectedId === item.id;
+                                    const isSelected = mode === 'TEACHER_CENTRIC' ? selectedId === item.id : selectedTeacherIds.includes(item.id);
                                     const isCurrent = mode === 'TEACHER_CENTRIC'
-                                        ? item.teacherId === teacher?.id
-                                        : item.id === classData?.teacherId || item.id === classData?.teacher?.id;
+                                        ? item.teacherId === teacher?.id || item.teacherAssignments?.some((assignment) => (assignment.teacherId || assignment.teacher?.id) === teacher?.id)
+                                        : ((classData?.teacherAssignments || []).some((assignment) => (assignment.teacherId || assignment.teacher?.id) === item.id)
+                                            || (!(classData?.teacherAssignments || []).length && item.id === (classData?.teacherId || classData?.teacher?.id)));
 
                                     return (
                                         <div
                                             key={item.id}
-                                            onClick={() => handleSelectionChange(item.id)}
+                                            onClick={() => mode === 'TEACHER_CENTRIC'
+                                                ? handleSelectionChange(item.id)
+                                                : setSelectedTeacherIds((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id])}
                                             className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between group 
                                                 ${isSelected
                                                     ? 'border-brand-purple bg-brand-purple/5 shadow-sm'
@@ -311,7 +325,7 @@ const TeacherClassAssignmentModal = ({
                 {/* Footer */}
                 <div className="p-6 pt-0 border-t border-gray-100 bg-white mt-auto">
                     {/* Attendance lock exemption toggle — shown once a selection is made */}
-                    {selectedId && (
+                    {(selectedId || selectedTeacherIds.length > 0) && (
                         <label className="flex items-start gap-3 mb-4 p-3 rounded-lg border border-gray-200 bg-gray-50 cursor-pointer hover:bg-brand-purple/5 hover:border-brand-purple/30 transition-colors">
                             <input
                                 type="checkbox"
@@ -333,7 +347,7 @@ const TeacherClassAssignmentModal = ({
                         </Button>
                         <Button
                             onClick={handleSubmit}
-                            disabled={!selectedId || submitting || success}
+                            disabled={(mode === 'TEACHER_CENTRIC' ? !selectedId : !classTeacherSelectionChanged) || submitting || success}
                             className="bg-brand-purple hover:bg-brand-purple/90 text-white font-semibold min-w-[140px]"
                         >
                             {submitting ? (
@@ -341,7 +355,7 @@ const TeacherClassAssignmentModal = ({
                             ) : (
                                 <Save className="mr-2" size={18} />
                             )}
-                            {success ? 'Assigned!' : 'Save Assignment'}
+                            {success ? 'Saved!' : mode === 'TEACHER_CENTRIC' ? 'Save Assignment' : 'Save Class Teachers'}
                         </Button>
                     </div>
                 </div>

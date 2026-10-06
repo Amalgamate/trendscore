@@ -82,13 +82,17 @@ export class ClassController {
     // Scope teachers to only their assigned class(es) so the frontend
     // never needs to do its own fragile ID-matching filter.
     if (req.user?.role === 'TEACHER') {
-      whereClause.teacherId = req.user.userId;
+      whereClause.OR = [
+        { teacherId: req.user.userId },
+        { teacherAssignments: { some: { teacherId: req.user.userId } } },
+      ];
     }
 
     let classes = await prisma.class.findMany({
       where: whereClause,
       include: {
         teacher: { select: { id: true, firstName: true, lastName: true, email: true } },
+        teacherAssignments: { include: { teacher: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } } },
         _count: { select: { enrollments: { where: { active: true } } } },
       },
       orderBy: [{ grade: 'asc' }, { stream: 'asc' }],
@@ -115,6 +119,7 @@ export class ClassController {
           where: fallbackWhere,
           include: {
             teacher: { select: { id: true, firstName: true, lastName: true, email: true } },
+            teacherAssignments: { include: { teacher: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } } },
             _count: { select: { enrollments: { where: { active: true } } } },
           },
           orderBy: [{ grade: 'asc' }, { stream: 'asc' }],
@@ -158,6 +163,7 @@ export class ClassController {
       where: { id, institutionType },
       include: {
         teacher: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+        teacherAssignments: { include: { teacher: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } } },
         enrollments: {
           where: { active: true },
           include: {
@@ -199,7 +205,9 @@ export class ClassController {
   }
 
   async createClass(req: AuthRequest, res: Response) {
-    const { name, grade, stream, teacherId, academicYear, term, capacity = 40, room } = req.body;
+    const { name, grade, stream, academicYear, term, capacity = 40, room } = req.body;
+    const requestedTeacherIds = req.body.teacherIds ?? [req.body.teacherId ?? req.body.classTeacherId].filter(Boolean);
+    const teacherIds = Array.from(new Set(requestedTeacherIds as string[]));
     const institutionType = getInstitutionType(req);
 
     if (!grade || !String(stream || '').trim()) throw new ApiError(400, 'Grade and stream are required. Configure the stream first.');
@@ -212,13 +220,7 @@ export class ClassController {
       finalTerm = finalTerm || context.term;
     }
 
-    if (teacherId) {
-      const teacher = await prisma.user.findUnique({
-        where: { id: teacherId },
-        select: { id: true, role: true, firstName: true, lastName: true }
-      });
-      if (!teacher || (teacher.role !== 'TEACHER' && teacher.role !== 'HEAD_TEACHER')) throw new ApiError(400, 'Invalid teacher');
-    }
+    await this.validateClassTeachers(teacherIds);
 
     const finalStream = String(stream).trim();
     const configuredStream = await prisma.stream.findFirst({
@@ -235,8 +237,16 @@ export class ClassController {
 
     const classCode = await this.generateClassCode();
     const newClass = await prisma.class.create({
-      data: { classCode, name: finalName, grade: grade as string, institutionType, stream: finalStream as any, teacherId, academicYear: finalYear, term: finalTerm as Term, capacity: this.normalizeCapacity(capacity), room },
-      include: { teacher: { select: { id: true, firstName: true, lastName: true } } }
+      data: {
+        classCode, name: finalName, grade: grade as string, institutionType, stream: finalStream as any,
+        teacherId: teacherIds[0] ?? null, academicYear: finalYear, term: finalTerm as Term,
+        capacity: this.normalizeCapacity(capacity), room,
+        teacherAssignments: { create: teacherIds.map((teacherId) => ({ teacherId })) },
+      },
+      include: {
+        teacher: { select: { id: true, firstName: true, lastName: true } },
+        teacherAssignments: { include: { teacher: { select: { id: true, firstName: true, lastName: true } } } },
+      }
     });
 
     res.status(201).json({ success: true, data: newClass });
@@ -245,13 +255,44 @@ export class ClassController {
   async updateClass(req: AuthRequest, res: Response) {
     const { id } = req.params;
     const { name, teacherId, capacity, room, active } = req.body;
+    const requestedTeacherIds = req.body.teacherIds;
 
     const classData = await prisma.class.findUnique({ where: { id } });
     if (!classData) throw new ApiError(404, 'Class not found');
 
     const updateData: any = {};
     if (name) updateData.name = name;
-    if (teacherId !== undefined) updateData.teacherId = teacherId;
+    if (requestedTeacherIds !== undefined) {
+      const teacherIds = Array.from(new Set(requestedTeacherIds as string[]));
+      await this.validateClassTeachers(teacherIds);
+      updateData.teacherId = teacherIds[0] ?? null;
+      const updatedClass = await prisma.$transaction(async (tx) => {
+        await tx.classTeacherAssignment.deleteMany({ where: { classId: id } });
+        if (teacherIds.length) {
+          await tx.classTeacherAssignment.createMany({ data: teacherIds.map((assignedTeacherId) => ({ classId: id, teacherId: assignedTeacherId })) });
+        }
+        return tx.class.update({ where: { id }, data: { ...updateData, ...(teacherId !== undefined && !teacherIds.length ? { teacherId } : {}) }, include: {
+          teacher: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+          teacherAssignments: { include: { teacher: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } } },
+        } });
+      });
+      return res.json({ success: true, data: updatedClass });
+    }
+    const requestedSingleTeacherId = teacherId !== undefined ? teacherId : req.body.classTeacherId;
+    if (requestedSingleTeacherId !== undefined) {
+      const ids = requestedSingleTeacherId ? [requestedSingleTeacherId] : [];
+      await this.validateClassTeachers(ids);
+      updateData.teacherId = requestedSingleTeacherId;
+      const updatedClass = await prisma.$transaction(async (tx) => {
+        await tx.classTeacherAssignment.deleteMany({ where: { classId: id } });
+        if (ids.length) await tx.classTeacherAssignment.create({ data: { classId: id, teacherId: ids[0] } });
+        return tx.class.update({ where: { id }, data: updateData, include: {
+          teacher: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+          teacherAssignments: { include: { teacher: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } } },
+        } });
+      });
+      return res.json({ success: true, data: updatedClass });
+    }
     if (capacity !== undefined) updateData.capacity = this.normalizeCapacity(capacity, classData.capacity);
     if (room !== undefined) updateData.room = room;
     if (active !== undefined) updateData.active = active;
@@ -259,7 +300,10 @@ export class ClassController {
     const updatedClass = await prisma.class.update({
       where: { id },
       data: updateData,
-      include: { teacher: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } }
+      include: {
+        teacher: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+        teacherAssignments: { include: { teacher: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } } },
+      }
     });
 
     res.json({ success: true, data: updatedClass });
@@ -304,7 +348,7 @@ export class ClassController {
     const { learnerId } = req.params;
     const enrollment = await prisma.classEnrollment.findFirst({
       where: { learnerId, active: true },
-      include: { class: { include: { teacher: { select: { id: true, firstName: true, lastName: true } } } } },
+      include: { class: { include: { teacher: { select: { id: true, firstName: true, lastName: true } }, teacherAssignments: { include: { teacher: { select: { id: true, firstName: true, lastName: true } } } } } } },
       orderBy: { enrolledAt: 'desc' }
     });
     res.json({ success: true, data: enrollment });
@@ -322,7 +366,10 @@ export class ClassController {
 
     const classes = await prisma.class.findMany({
       where: {
-        teacherId,
+        OR: [
+          { teacherId },
+          { teacherAssignments: { some: { teacherId } } },
+        ],
         academicYear: parseInt(academicYear as string),
         term: term as Term,
         active: true,
@@ -356,20 +403,30 @@ export class ClassController {
   async assignTeacher(req: AuthRequest, res: Response) {
     const { id } = req.params;
     const { classId, teacherId, attendanceLockExempt } = req.body;
+    const requestedTeacherIds = req.body.teacherIds;
 
     const finalClassId = id || classId;
 
     if (!finalClassId) throw new ApiError(400, 'Class ID is required');
-    if (!teacherId) throw new ApiError(400, 'Teacher ID is required');
-
-    const updatedClass = await prisma.class.update({
-      where: { id: finalClassId },
-      data: {
-        teacherId,
-        // Explicitly set the exemption flag when provided; defaults to false on new assignments
-        attendanceLockExempt: typeof attendanceLockExempt === 'boolean' ? attendanceLockExempt : false,
-      },
-      include: { teacher: { select: { id: true, firstName: true, lastName: true } } }
+    if (!teacherId && !Array.isArray(requestedTeacherIds)) throw new ApiError(400, 'Teacher ID is required');
+    const current = await prisma.class.findUnique({ where: { id: finalClassId }, select: { teacherId: true } });
+    if (!current) throw new ApiError(404, 'Class not found');
+    const existingAssignments = await prisma.classTeacherAssignment.findMany({ where: { classId: finalClassId }, select: { teacherId: true } });
+    const teacherIds = Array.isArray(requestedTeacherIds)
+      ? Array.from(new Set(requestedTeacherIds as string[]))
+      : Array.from(new Set([...(current.teacherId ? [current.teacherId] : []), ...existingAssignments.map((item) => item.teacherId), teacherId].filter(Boolean) as string[]));
+    await this.validateClassTeachers(teacherIds);
+    const updatedClass = await prisma.$transaction(async (tx) => {
+      await tx.classTeacherAssignment.deleteMany({ where: { classId: finalClassId } });
+      if (teacherIds.length) await tx.classTeacherAssignment.createMany({ data: teacherIds.map((assignedTeacherId) => ({ classId: finalClassId, teacherId: assignedTeacherId })) });
+      return tx.class.update({
+        where: { id: finalClassId },
+        data: {
+          teacherId: teacherIds[0] ?? null,
+          attendanceLockExempt: typeof attendanceLockExempt === 'boolean' ? attendanceLockExempt : false,
+        },
+        include: { teacher: { select: { id: true, firstName: true, lastName: true } }, teacherAssignments: { include: { teacher: { select: { id: true, firstName: true, lastName: true } } } } }
+      });
     });
     res.json({ success: true, data: updatedClass });
   }
@@ -382,12 +439,40 @@ export class ClassController {
 
     if (!finalClassId) throw new ApiError(400, 'Class ID is required');
 
-    const updatedClass = await prisma.class.update({
-      where: { id: finalClassId },
-      data: { teacherId: null },
-      include: { teacher: { select: { id: true, firstName: true, lastName: true } } }
+    const { teacherId } = req.body;
+    const existing = await prisma.class.findUnique({ where: { id: finalClassId }, select: { teacherId: true } });
+    if (!existing) throw new ApiError(404, 'Class not found');
+    if (!teacherId) {
+      const updatedClass = await prisma.$transaction(async (tx) => {
+        await tx.classTeacherAssignment.deleteMany({ where: { classId: finalClassId } });
+        return tx.class.update({ where: { id: finalClassId }, data: { teacherId: null }, include: { teacher: { select: { id: true, firstName: true, lastName: true } }, teacherAssignments: { include: { teacher: { select: { id: true, firstName: true, lastName: true } } } } } });
+      });
+      return res.json({ success: true, data: updatedClass });
+    } else {
+      const updatedClass = await prisma.$transaction(async (tx) => {
+        await tx.classTeacherAssignment.deleteMany({ where: { classId: finalClassId, teacherId } });
+        const remaining = await tx.classTeacherAssignment.findMany({ where: { classId: finalClassId }, select: { teacherId: true }, orderBy: { createdAt: 'asc' } });
+        const nextPrimary = existing.teacherId === teacherId ? (remaining[0]?.teacherId ?? null) : existing.teacherId;
+        return tx.class.update({ where: { id: finalClassId }, data: { teacherId: nextPrimary }, include: { teacher: { select: { id: true, firstName: true, lastName: true } }, teacherAssignments: { include: { teacher: { select: { id: true, firstName: true, lastName: true } } } } } });
+      });
+      return res.json({ success: true, data: updatedClass });
+    }
+  }
+
+  private async validateClassTeachers(teacherIds: string[]) {
+    if (!teacherIds.length) return;
+    const teachers = await prisma.user.findMany({
+      where: {
+        id: { in: teacherIds },
+        archived: false,
+        OR: [
+          { role: { in: ['TEACHER', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER'] } },
+          { roles: { hasSome: ['TEACHER', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER'] } },
+        ],
+      },
+      select: { id: true },
     });
-    res.json({ success: true, data: updatedClass });
+    if (teachers.length !== teacherIds.length) throw new ApiError(400, 'One or more selected class teachers are invalid or inactive');
   }
 
   async getTeacherSchedules(req: AuthRequest, res: Response) {

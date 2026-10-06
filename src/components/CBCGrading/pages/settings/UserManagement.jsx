@@ -60,6 +60,20 @@ const ROLES_CONFIG = [
     }
   },
   {
+    value: 'DEPUTY_HEAD_TEACHER',
+    label: 'Deputy Head Teacher',
+    color: 'indigo',
+    permissions: {
+      users: { view: true, create: false, edit: false, delete: false },
+      roles: { view: true, create: false, edit: false, delete: false },
+      learners: { view: true, create: true, edit: true, delete: false },
+      assessments: { view: true, create: true, edit: true, delete: true },
+      reports: { view: true, create: true, edit: true, delete: false },
+      fees: { view: true, create: false, edit: false, delete: false },
+      settings: { view: true, create: false, edit: false, delete: false }
+    }
+  },
+  {
     value: 'HEAD_OF_CURRICULUM',
     label: 'Head of Curriculum',
     color: 'violet',
@@ -179,6 +193,14 @@ const ROLE_META = {
     tone: 'indigo',
     icon: Shield,
     created: 'Jan 10, 2024',
+  },
+  DEPUTY_HEAD_TEACHER: {
+    title: 'Deputy Head Teacher',
+    description: 'Support school leadership and academic operations',
+    detail: 'Deputy school leadership access for academic oversight, reports and learner operations.',
+    tone: 'indigo',
+    icon: Shield,
+    created: 'Oct 6, 2026',
   },
   HEAD_OF_CURRICULUM: {
     title: 'Head of Curriculum',
@@ -714,7 +736,7 @@ const UserManagement = ({ initialTab } = {}) => {
 
   // User grouping functions
   const getAdminUsers = () => users.filter(u => ['SUPER_ADMIN', 'ADMIN'].includes(u.role) && !u.archived);
-  const getTutorUsers = () => users.filter(u => ['TEACHER', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].includes(u.role) && !u.archived);
+  const getTutorUsers = () => users.filter(u => ['TEACHER', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].includes(u.role) && !u.archived);
   const getSubordinateStaffUsers = () =>
     users.filter(
       u => ['ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN', 'NURSE', 'SECURITY', 'DRIVER', 'COOK', 'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT'].includes(u.role) && !u.archived
@@ -732,7 +754,7 @@ const UserManagement = ({ initialTab } = {}) => {
     } else if (activeTab === 'admins') {
       matchesTab = ['SUPER_ADMIN', 'ADMIN'].includes(user.role) && !user.archived;
     } else if (activeTab === 'staff') {
-      matchesTab = ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN', 'NURSE', 'SECURITY', 'DRIVER', 'COOK', 'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT'].includes(user.role) && !user.archived;
+      matchesTab = ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN', 'NURSE', 'SECURITY', 'DRIVER', 'COOK', 'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT'].includes(user.role) && !user.archived;
     } else if (activeTab === 'archive') {
       matchesTab = user.archived === true;
     }
@@ -765,7 +787,7 @@ const UserManagement = ({ initialTab } = {}) => {
   const allFilteredUsersSelected = filteredUsers.length > 0 && selectedVisibleCount === filteredUsers.length;
 
   const roleAccessRows = useMemo(() => {
-    const systemRoles = ['ADMIN', 'TEACHER', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'ACCOUNTANT', 'RECEPTIONIST', 'PARENT', 'STUDENT'];
+    const systemRoles = ['ADMIN', 'TEACHER', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'ACCOUNTANT', 'RECEPTIONIST', 'PARENT', 'STUDENT'];
     const existingRoleValues = new Set(ROLES_CONFIG.map(role => role.value));
     const roleValues = [...new Set([...systemRoles, ...ROLES_CONFIG.map(role => role.value), 'SYSTEM_VIEWER'])]
       .filter(role => role === 'SYSTEM_VIEWER' || existingRoleValues.has(role));
@@ -844,7 +866,7 @@ const UserManagement = ({ initialTab } = {}) => {
   };
 
   const activeUsers = users.filter(u => !u.archived);
-  const staffRoles = ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN', 'NURSE', 'SECURITY', 'DRIVER', 'COOK', 'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT'];
+  const staffRoles = ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN', 'NURSE', 'SECURITY', 'DRIVER', 'COOK', 'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT'];
   const staffCount = activeUsers.filter(u => staffRoles.includes(u.role)).length;
 
   // ── Activity Log Helpers ──
@@ -881,7 +903,7 @@ const UserManagement = ({ initialTab } = {}) => {
       let inTab = false;
       if (activeTab === 'parents') inTab = user.role === 'PARENT' && !user.archived;
       else if (activeTab === 'students') inTab = user.role === 'STUDENT' && !user.archived;
-      else if (activeTab === 'staff') inTab = ['TEACHER', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].includes(user.role) && !user.archived;
+      else if (activeTab === 'staff') inTab = ['TEACHER', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].includes(user.role) && !user.archived;
       else if (activeTab === 'subordinate') inTab = ['ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN', 'NURSE', 'SECURITY', 'DRIVER', 'COOK', 'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT'].includes(user.role) && !user.archived;
       else if (activeTab === 'admins') inTab = ['SUPER_ADMIN', 'ADMIN'].includes(user.role) && !user.archived;
       else if (activeTab === 'archive') inTab = user.archived === true;
