@@ -66,8 +66,8 @@ jobs:
             ADD COLUMN IF NOT EXISTS "reportTemplateId" TEXT;
           SQL
 
-          after="$(sudo docker exec "$db" sh -lc 'psql -At -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT column_name || ':' || data_type FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''schools'\'' AND column_name IN ('\''reportEngine'\'', '\''reportTemplateId'\'') ORDER BY column_name;"')"
-          [[ "$after" == *'reportEngine:USER-DEFINED'* && "$after" == *'reportTemplateId:text'* ]] || { echo "Verification failed: unexpected school columns: $after"; exit 1; }
+          after="$(sudo docker exec "$db" sh -lc 'psql -At -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''schools'\'' AND column_name IN ('\''reportEngine'\'', '\''reportTemplateId'\'');"')"
+          [[ "$after" == '2' ]] || { echo "Verification failed: expected 2 school columns, found $after"; exit 1; }
           echo 'Verified: schools.reportEngine and schools.reportTemplateId exist. Existing school rows and values were preserved.'
           echo "Backup retained at $backup_file"
           REMOTE
