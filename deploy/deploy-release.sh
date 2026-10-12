@@ -741,8 +741,8 @@ run_migrations() {
         }).finally(() => prisma.$disconnect());
       ')
       [ -n "${migration_state}" ] || { echo "  [baseline] database state probe returned no result" >&2; exit 1; }
-      migration_count=$(printf '%s\n' "${migration_state}" | jq -r '.migrationCount')
-      schema_present=$(printf '%s\n' "${migration_state}" | jq -r '.schemaPresent')
+      migration_count=$(node -e 'console.log(JSON.parse(process.argv[1]).migrationCount)' "${migration_state}")
+      schema_present=$(node -e 'console.log(JSON.parse(process.argv[1]).schemaPresent)' "${migration_state}")
 
       if [ "${migration_count}" -gt 0 ]; then
         echo "  [baseline] ${migration_count} migration(s) recorded - skipping baseline"
