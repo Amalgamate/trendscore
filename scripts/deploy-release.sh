@@ -631,7 +631,7 @@ auto_baseline_if_needed() {
       const { Client } = require(\"pg\");
       const c = new Client({ connectionString: process.env.DATABASE_URL });
       c.connect()
-        .then(() => c.query(\"SELECT COUNT(*)::int AS n FROM \\\"_prisma_migrations\\\" WHERE finished_at IS NOT NULL\"))
+        .then(() => c.query(\"SELECT COUNT(*)::int AS n FROM _prisma_migrations WHERE finished_at IS NOT NULL\"))
         .then(r => { console.log(r.rows[0].n); c.end(); })
         .catch(() => { console.log(0); c.end(); });
     "' < /dev/null 2>/dev/null | grep -E '^[0-9]+$' | tail -n1 || echo "0")"
@@ -679,7 +679,7 @@ run_migrations() {
         const { Client } = require(\"pg\");
         const c = new Client({ connectionString: process.env.DATABASE_URL });
         c.connect()
-          .then(() => c.query(\"SELECT COUNT(*)::int AS n FROM \\"_prisma_migrations\\" WHERE finished_at IS NOT NULL\"))
+          .then(() => c.query(\"SELECT COUNT(*)::int AS n FROM _prisma_migrations WHERE finished_at IS NOT NULL\"))
           .then(r => { console.log(r.rows[0].n); c.end(); })
           .catch(() => { console.log(0); c.end(); });
       " 2>/dev/null || echo 0)
