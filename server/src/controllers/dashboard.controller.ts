@@ -1729,7 +1729,7 @@ export class DashboardController {
             if (!userId) throw new ApiError(400, 'User ID is required');
             const institutionType = this.getInstitutionType(req) as any;
 
-            const cacheKey = `dashboard:teacher:v5:${userId}`;
+            const cacheKey = `dashboard:teacher:v6:${userId}`;
             const cached = await redisCacheService.get<any>(cacheKey);
             if (cached) return res.json({ success: true, data: cached, _cached: true });
 
@@ -1740,6 +1740,17 @@ export class DashboardController {
             const nextWeek = new Date(today);
             nextWeek.setDate(nextWeek.getDate() + 7);
 
+            // A subject teacher needs the same class roster context for the
+            // classes/subjects they teach, even when they are not the class
+            // teacher and have no timetable entries yet.
+            const subjectAssignments = await prisma.subjectAssignment.findMany({
+                where: { teacherId: userId, active: true },
+                select: {
+                    grade: true,
+                    classId: true,
+                    learningArea: { select: { id: true, name: true, shortName: true } },
+                },
+            });
             const [myClasses, pendingAssessmentCount, pendingAssessmentItems, recentActivityRaw, recentMessagesRaw, upcomingEventsRaw] = await Promise.all([
                 prisma.class.findMany({
                     where: {
@@ -1809,7 +1820,40 @@ export class DashboardController {
                 }),
             ]);
 
-            const myClassesWithOccupancy = await Promise.all(myClasses.map(async (cls) => {
+            const subjectClassScopes = subjectAssignments.map((assignment) => (
+                assignment.classId
+                    ? { id: assignment.classId }
+                    : { grade: assignment.grade }
+            ));
+            const subjectClasses = subjectClassScopes.length > 0
+                ? await prisma.class.findMany({
+                    where: { archived: false, institutionType, OR: subjectClassScopes },
+                    include: {
+                        teacherAssignments: { select: { teacherId: true } },
+                        schedules: {
+                            where: { active: true, archived: false },
+                            select: {
+                                id: true,
+                                subject: true,
+                                day: true,
+                                startTime: true,
+                                endTime: true,
+                                room: true,
+                                teacherId: true,
+                                notes: true,
+                            },
+                        },
+                        _count: { select: { enrollments: { where: { active: true } } } },
+                    },
+                })
+                : [];
+            const myClassIds = new Set(myClasses.map((cls) => cls.id));
+            const learnerClasses = [
+                ...myClasses,
+                ...subjectClasses.filter((cls) => !myClassIds.has(cls.id)),
+            ];
+
+            const learnerClassesWithOccupancy = await Promise.all(learnerClasses.map(async (cls) => {
                 const enrollmentCount = cls._count.enrollments;
                 if (enrollmentCount > 0) return cls;
 
@@ -1828,8 +1872,10 @@ export class DashboardController {
                     _count: { ...cls._count, enrollments: occupancy },
                 };
             }));
+            const myClassesWithOccupancy = learnerClassesWithOccupancy.filter((cls) => myClassIds.has(cls.id));
 
-            const totalMyStudents = myClassesWithOccupancy.reduce((sum, cls) => sum + cls._count.enrollments, 0);
+            const totalMyStudents = learnerClassesWithOccupancy.reduce((sum, cls) => sum + cls._count.enrollments, 0);
+            const totalStudentsInMyClasses = myClassesWithOccupancy.reduce((sum, cls) => sum + cls._count.enrollments, 0);
             const classIds = myClassesWithOccupancy.map(cls => cls.id);
             const attendanceByClass = classIds.length > 0
                 ? await prisma.attendance.groupBy({
@@ -1886,7 +1932,7 @@ export class DashboardController {
             }));
 
             const normalizeSubject = (value?: string | null) => String(value || 'Class teacher').trim() || 'Class teacher';
-            const learnerAnalysisClasses = myClassesWithOccupancy.map((cls: any) => {
+            const learnerAnalysisClasses = learnerClassesWithOccupancy.map((cls: any) => {
                 const teacherSchedules = (cls.schedules || []).filter((schedule: any) =>
                     schedule.teacherId === userId || cls.teacherId === userId
                 );
@@ -1918,6 +1964,27 @@ export class DashboardController {
                     }
                     subjectMap.set(subject, existing);
                 });
+
+                subjectAssignments
+                    .filter((assignment) => (
+                        assignment.classId
+                            ? assignment.classId === cls.id
+                            : assignment.grade === cls.grade
+                    ))
+                    .forEach((assignment) => {
+                        const subject = normalizeSubject(assignment.learningArea?.name || assignment.learningArea?.shortName);
+                        if (!subjectMap.has(subject)) {
+                            subjectMap.set(subject, {
+                                subject,
+                                learnerCount: cls._count.enrollments,
+                                lessonCount: 0,
+                                weeklyMinutes: 0,
+                                days: new Set<string>(),
+                                rooms: new Set<string>(cls.room ? [cls.room] : []),
+                                nextLesson: null,
+                            });
+                        }
+                    });
 
                 if (subjectMap.size === 0) {
                     subjectMap.set('Class teacher', {
@@ -2160,14 +2227,14 @@ export class DashboardController {
 
             const payload = {
                 stats: {
-                    myStudents: totalMyStudents, myClasses: myClassesWithOccupancy.length,
+                    myStudents: totalMyStudents, myClasses: learnerClassesWithOccupancy.length,
                     pendingTasks: pendingAssessmentCount + attendanceDue.length + learnersNeedingAttention.length,
                     messages: messages.length,
                     lessonsToday: scheduleWithStatus.length,
                     isClassTeacher,
                     classTeacherOf,
                     analytics: {
-                        attendance: totalMyStudents > 0 ? Math.round(((totalMyStudents - attendanceDue.reduce((sum, item) => sum + Math.max(0, item.learners - item.marked), 0)) / totalMyStudents) * 100) : 0,
+                        attendance: totalStudentsInMyClasses > 0 ? Math.round(((totalStudentsInMyClasses - attendanceDue.reduce((sum, item) => sum + Math.max(0, item.learners - item.marked), 0)) / totalStudentsInMyClasses) * 100) : 0,
                         graded: pendingAssessmentCount === 0 ? 100 : Math.max(0, Math.round(((totalMyStudents - pendingAssessmentCount) / (totalMyStudents || 1)) * 100)),
                         completion: 0, engagement: 0,
                     },
