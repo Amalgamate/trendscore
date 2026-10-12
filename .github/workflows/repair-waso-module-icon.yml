@@ -1,8 +1,7 @@
-name: Repair Waso module icon column
+name: Repair Waso module access schema
 
-# One-school repair for the deployed module catalog schema mismatch.
-# It creates and validates a full database dump before applying the same
-# additive column widening as the Prisma migration.
+# One-school repair for the missing school-context columns blocking module
+# settings. It validates a full database dump before applying additive DDL.
 
 on:
   workflow_dispatch:
@@ -51,19 +50,28 @@ jobs:
           sudo head -n 5 "$backup_file" | grep -q 'PostgreSQL database dump'
           echo 'Backup verified: non-empty PostgreSQL dump.'
 
-          before="$(sudo docker exec "$db" sh -lc 'psql -At -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT data_type FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''apps'\'' AND column_name = '\''icon'\'';"')"
-          [[ -n "$before" ]] || { echo 'Expected public.apps.icon column was not found'; exit 1; }
-          echo "apps.icon before repair: $before"
-          if [[ "$before" != 'text' ]]; then
-            sudo docker exec "$db" sh -lc 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "ALTER TABLE public.apps ALTER COLUMN icon TYPE text USING icon::text;"'
-          fi
+          before="$(sudo docker exec "$db" sh -lc 'psql -At -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT column_name FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''schools'\'' AND column_name IN ('\''reportEngine'\'', '\''reportTemplateId'\'') ORDER BY column_name;"')"
+          echo "School report settings present before repair: ${before:-none}"
 
-          after="$(sudo docker exec "$db" sh -lc 'psql -At -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT data_type FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''apps'\'' AND column_name = '\''icon'\'';"')"
-          [[ "$after" == 'text' ]] || { echo "Verification failed: apps.icon is $after"; exit 1; }
-          echo 'Verified: public.apps.icon is text. No rows were deleted or rewritten.'
+          sudo docker exec -i "$db" sh -lc 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ReportEngine') THEN
+              CREATE TYPE "ReportEngine" AS ENUM ('LEGACY', 'NEW');
+            END IF;
+          END $$;
+
+          ALTER TABLE public.schools
+            ADD COLUMN IF NOT EXISTS "reportEngine" "ReportEngine" NOT NULL DEFAULT 'LEGACY',
+            ADD COLUMN IF NOT EXISTS "reportTemplateId" TEXT;
+          SQL
+
+          after="$(sudo docker exec "$db" sh -lc 'psql -At -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''schools'\'' AND column_name IN ('\''reportEngine'\'', '\''reportTemplateId'\'');"')"
+          [[ "$after" == '2' ]] || { echo "Verification failed: expected 2 school columns, found $after"; exit 1; }
+          echo 'Verified: schools.reportEngine and schools.reportTemplateId exist. Existing school rows and values were preserved.'
           echo "Backup retained at $backup_file"
           REMOTE
 
       - name: Report success
         if: success()
-        run: echo 'Waso module icon schema repaired and verified; backup retained on the deployment server.' >> "$GITHUB_STEP_SUMMARY"
+        run: echo 'Waso school-context columns repaired and verified; backup retained on the deployment server.' >> "$GITHUB_STEP_SUMMARY"
