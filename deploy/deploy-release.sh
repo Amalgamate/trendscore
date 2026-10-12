@@ -132,7 +132,9 @@ resolve_manifest_targets() {
 
 merge_discovered_stacks() {
   local discovery_enabled
-  discovery_enabled="$(jq -r '.discovery.enabled // true' "${MANIFEST_PATH}")"
+  # jq's // operator treats false like null, so `.enabled // true` silently
+  # re-enables discovery when the manifest explicitly disables it.
+  discovery_enabled="$(jq -r 'if .discovery.enabled == false then "false" else "true" end' "${MANIFEST_PATH}")"
   [[ "${discovery_enabled}" == "true" ]] || return 0
   [[ "${DEPLOY_TARGET}" == "all_schools" ]] || return 0
 
@@ -141,6 +143,11 @@ merge_discovered_stacks() {
 
   while IFS='|' read -r project env_file; do
     [[ -n "${project}" ]] || continue
+    # Never promote an explicitly registered non-production stack (such as
+    # the demo canary) into the production batch through discovery.
+    if jq -e --arg p "${project}" '.instances[] | select(.compose_project == $p and .tier != "production")' "${MANIFEST_PATH}" >/dev/null; then
+      continue
+    fi
     if grep -qx "${project}" <<< "${exclude_projects}"; then
       continue
     fi
@@ -734,8 +741,8 @@ run_migrations() {
         }).finally(() => prisma.$disconnect());
       ')
       [ -n "${migration_state}" ] || { echo "  [baseline] database state probe returned no result" >&2; exit 1; }
-      migration_count=$(jq -r '.migrationCount' <<<"${migration_state}")
-      schema_present=$(jq -r '.schemaPresent' <<<"${migration_state}")
+      migration_count=$(printf '%s\n' "${migration_state}" | jq -r '.migrationCount')
+      schema_present=$(printf '%s\n' "${migration_state}" | jq -r '.schemaPresent')
 
       if [ "${migration_count}" -gt 0 ]; then
         echo "  [baseline] ${migration_count} migration(s) recorded - skipping baseline"
