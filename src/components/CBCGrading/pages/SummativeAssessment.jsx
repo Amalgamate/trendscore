@@ -534,10 +534,14 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
 
   // Alert teacher if they have no assignments
   useEffect(() => {
-    if (!teacherWorkload.loading && teacherWorkload.isTeacher && !teacherWorkload.hasAnyAssignments) {
+    if (teacherWorkload.loading || !teacherWorkload.isTeacher || teacherWorkload.hasAnyAssignments) return;
+
+    if (teacherWorkload.error) {
+      toast.error('Could not verify your teaching assignments. Refresh and try again, or contact the school administrator if this continues.');
+    } else {
       toast.error('You are not currently assigned to any classes or subjects. Please consult with the Head Teacher.');
     }
-  }, [teacherWorkload.loading, teacherWorkload.isTeacher, teacherWorkload.hasAnyAssignments]);
+  }, [teacherWorkload.loading, teacherWorkload.isTeacher, teacherWorkload.hasAnyAssignments, teacherWorkload.error]);
 
   // Derived Data
   const selectedTest = useMemo(() =>
