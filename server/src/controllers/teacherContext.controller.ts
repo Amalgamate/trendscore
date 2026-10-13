@@ -60,7 +60,7 @@ export class TeacherContextController {
     // additional role while still teaching assigned subjects. Do not return an
     // empty unrestricted context for those users: the assessment UI scopes
     // primary-TEACHER accounts to their actual class and subject assignments.
-    const isPrimaryTeacher = req.user.role === 'TEACHER';
+    const isPrimaryTeacher = req.user?.role === 'TEACHER';
 
     // Privileged non-teacher roles get unrestricted context — no DB lookups needed.
     if (!isPrimaryTeacher && hasAnyRole(req.user, PRIVILEGED_ROLES as unknown as string[])) {
