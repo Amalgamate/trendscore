@@ -55,8 +55,15 @@ export class TeacherContextController {
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
-    // Privileged roles get unrestricted context — no DB lookups needed
-    if (hasAnyRole(req.user, PRIVILEGED_ROLES as unknown as string[])) {
+    // The account's primary role controls teacher-scoped assessment behavior.
+    // A staff member may also have School Admin / Head of Curriculum as an
+    // additional role while still teaching assigned subjects. Do not return an
+    // empty unrestricted context for those users: the assessment UI scopes
+    // primary-TEACHER accounts to their actual class and subject assignments.
+    const isPrimaryTeacher = req.user.role === 'TEACHER';
+
+    // Privileged non-teacher roles get unrestricted context — no DB lookups needed.
+    if (!isPrimaryTeacher && hasAnyRole(req.user, PRIVILEGED_ROLES as unknown as string[])) {
       return res.json({
         success: true,
         data: {
