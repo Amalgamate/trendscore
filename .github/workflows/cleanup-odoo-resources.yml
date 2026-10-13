@@ -1,0 +1,90 @@
+name: Remove Odoo Production Resources
+
+# Manual, narrowly scoped removal of Odoo containers, images, networks, and
+# Docker volumes. This deletes Odoo databases and attachments permanently.
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type DELETE_ODOO_DATA to remove all Odoo resources"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  remove-odoo:
+    if: ${{ inputs.confirmation == 'DELETE_ODOO_DATA' }}
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Remove Odoo containers, images, networks, and volumes
+        run: |
+          ssh production 'sudo bash -s' <<'REMOTE'
+          set -euo pipefail
+
+          echo "## Disk before Odoo cleanup"
+          df -h /
+
+          mapfile -t volumes < <(docker volume ls --format '{{.Name}}' | grep -i 'odoo' || true)
+          mapfile -t containers < <(
+            for cid in $(docker ps -aq); do
+              details=$(docker inspect -f '{{.Name}}|{{.Config.Image}}|{{index .Config.Labels "com.docker.compose.project"}}|{{range .Mounts}}{{.Name}} {{end}}' "$cid")
+              if printf '%s' "$details" | grep -qi 'odoo'; then
+                printf '%s\n' "$cid"
+              fi
+            done | sort -u
+          )
+          mapfile -t networks < <(
+            for nid in $(docker network ls -q); do
+              details=$(docker network inspect -f '{{.Name}}|{{index .Labels "com.docker.compose.project"}}' "$nid")
+              if printf '%s' "$details" | grep -qi 'odoo'; then
+                printf '%s\n' "$nid"
+              fi
+            done | sort -u
+          )
+          mapfile -t images < <(
+            docker image ls --format '{{.Repository}}:{{.Tag}} {{.ID}}' \
+              | awk 'tolower($1) ~ /odoo/ {print $2}' | sort -u
+          )
+
+          echo "## Odoo containers to remove: ${#containers[@]}"
+          for cid in "${containers[@]}"; do
+            docker inspect -f '{{.Name}} | {{.Config.Image}}' "$cid"
+          done
+          echo "## Odoo volumes to remove: ${#volumes[@]}"
+          for volume in "${volumes[@]}"; do
+            docker volume inspect -f '{{.Name}} | {{.Mountpoint}}' "$volume"
+          done
+          echo "## Odoo images to remove: ${#images[@]}"
+          printf '%s\n' "${images[@]}"
+          echo "## Odoo networks to remove: ${#networks[@]}"
+          for nid in "${networks[@]}"; do
+            docker network inspect -f '{{.Name}}' "$nid"
+          done
+
+          if ((${#containers[@]})); then docker rm -f "${containers[@]}"; fi
+          if ((${#volumes[@]})); then docker volume rm "${volumes[@]}"; fi
+          if ((${#networks[@]})); then
+            for nid in "${networks[@]}"; do docker network rm "$nid" || true; done
+          fi
+          if ((${#images[@]})); then docker image rm "${images[@]}" || true; fi
+
+          echo "## Disk after Odoo cleanup"
+          df -h /
+          echo "## Remaining Odoo-named Docker resources"
+          docker ps -a --format '{{.Names}} {{.Image}}' | grep -i odoo || true
+          docker volume ls --format '{{.Name}}' | grep -i odoo || true
+          docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -i odoo || true
+          REMOTE
