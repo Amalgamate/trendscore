@@ -1061,8 +1061,29 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
 
       </div>{/* end CONTENT BODY */}
 
+      {/* Term dates — centered in the available space above teacher remarks */}
+      <div style={{
+        marginTop: 'auto',
+        marginBottom: '16px',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: '44px',
+        color: '#475569',
+        fontSize: '10px',
+        fontWeight: '800',
+        textTransform: 'uppercase'
+      }}>
+        {['Term Closing Date', 'Next Term Opening Date'].map((label) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: '7px', whiteSpace: 'nowrap' }}>
+            <span>{label}:</span>
+            <span style={{ display: 'inline-block', width: '112px', borderBottom: '1px dotted #94a3b8', height: '14px' }} />
+          </div>
+        ))}
+      </div>
+
       {/* Class Teacher's Remarks — anchored just above the footer */}
-      <div style={{ marginTop: 'auto', marginBottom: '10px' }}>
+      <div style={{ marginBottom: '10px' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
           <span style={{ fontSize: '10px', fontWeight: '900', color: '#475569', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
             Class Teacher's Remarks:
