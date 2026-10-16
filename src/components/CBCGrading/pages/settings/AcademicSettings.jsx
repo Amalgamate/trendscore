@@ -908,7 +908,7 @@ const AcademicSettings = () => {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Start Date</label>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Term Opening / Start Date</label>
                             <input
                               type="date"
                               value={toInputDate(draft.startDate)}
@@ -918,7 +918,7 @@ const AcademicSettings = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">End Date</label>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Term Closing / End Date</label>
                             <input
                               type="date"
                               value={toInputDate(draft.endDate)}
@@ -928,6 +928,9 @@ const AcademicSettings = () => {
                             />
                           </div>
                         </div>
+                        <p className="mt-2 text-xs text-gray-500">
+                          Report cards use this term’s End Date as the closing date and the following term’s Start Date as the next opening date.
+                        </p>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 bg-white p-3 rounded border border-gray-100">
                           <div>
