@@ -55,8 +55,10 @@ export class TeacherContextController {
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
-    // Privileged roles get unrestricted context — no DB lookups needed
-    if (hasAnyRole(req.user, PRIVILEGED_ROLES as unknown as string[])) {
+    // A user who also holds TEACHER must retain their teacher assignment context
+    // for assessment entry, even when ADMIN grants broader access elsewhere.
+    const hasTeacherRole = hasAnyRole(req.user, ['TEACHER']);
+    if (hasAnyRole(req.user, PRIVILEGED_ROLES as unknown as string[]) && !hasTeacherRole) {
       return res.json({
         success: true,
         data: {

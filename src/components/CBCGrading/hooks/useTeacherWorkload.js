@@ -18,7 +18,8 @@ export const useTeacherWorkload = () => {
     const [error, setError] = useState(null);
 
     const teacherId = user?.id || user?.userId;
-    const isTeacher = user?.role === 'TEACHER';
+    const isTeacher = [user?.role, ...(Array.isArray(user?.roles) ? user.roles : [])]
+        .some((role) => String(role || '').trim().toUpperCase() === 'TEACHER');
 
     const fetchWorkload = useCallback(async () => {
         if (!teacherId || !isTeacher) {

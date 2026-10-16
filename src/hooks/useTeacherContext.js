@@ -38,8 +38,8 @@ const normalizeGradeCode = (grade) => String(grade || '').trim().replace(/\s+/g,
 
 export const useTeacherContext = () => {
   const { user } = useAuth();
-  const role = user?.role;
-  const isTeacher = role === 'TEACHER';
+  const isTeacher = [user?.role, ...(Array.isArray(user?.roles) ? user.roles : [])]
+    .some((role) => String(role || '').trim().toUpperCase() === 'TEACHER');
 
   const [context, setContext] = useState(null);
   const [loading, setLoading] = useState(isTeacher);
