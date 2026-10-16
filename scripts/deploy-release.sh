@@ -879,6 +879,7 @@ deploy_console() {
     --label com.zawadi.service=platform-console \
     --env-file "${console_env}" \
     -e CONSOLE_DATA_DIR=/app/data \
+    -e CONSOLE_INSTANCE_PROVISION_SCRIPT=/app/scripts/provision-instance.sh \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "${APPS_DIR}:${APPS_DIR}" \
     -v "${console_data}:/app/data" \

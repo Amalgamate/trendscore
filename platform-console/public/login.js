@@ -6,13 +6,13 @@
   'use strict';
 
   // ── Constants ────────────────────────────────────────────────────────────
-  const EXPIRY_WARN_MS      = 30 * 60 * 1000;      // warn when < 30 min remain
 
   // ── State ────────────────────────────────────────────────────────────────
   let currentUser     = null;
   let sessionExpiresAt = null;  // Absolute expiry issued by the server JWT
-  let selectedRole    = 'super_admin';
   let sessionTimerInterval = null;
+  let pendingMfaToken  = null;  // Short-lived token from /api/login while mfaRequired is true
+  let mfaUseBackupCode = false;
 
   // ── Element refs ─────────────────────────────────────────────────────────
   const overlay    = document.getElementById('login-overlay');
@@ -27,11 +27,15 @@
   const chipRole   = document.getElementById('user-chip-role');
   const chipAvatar = document.getElementById('user-chip-avatar');
   const logoutBtn  = document.getElementById('btn-logout');
-  const roleBtns   = document.querySelectorAll('.lg-role-btn');
 
-  // Session timer pill
-  const timerPill  = document.getElementById('session-timer-pill');
-  const timerLabel = document.getElementById('session-timer-label');
+  // MFA step (shown when /api/login responds with mfaRequired: true)
+  const stepCredentials  = document.getElementById('lg-step-credentials');
+  const stepMfa          = document.getElementById('lg-step-mfa');
+  const mfaCodeInput     = document.getElementById('lg-mfa-code');
+  const mfaCodeLabel     = document.getElementById('lg-mfa-code-label');
+  const mfaToggleModeBtn = document.getElementById('lg-mfa-toggle-mode');
+  const mfaSubmitBtn     = document.getElementById('lg-mfa-submit');
+  const mfaBackBtn       = document.getElementById('lg-mfa-back');
 
   // Logout modal
   const logoutOverlay   = document.getElementById('logout-overlay');
@@ -89,21 +93,14 @@
     });
   }
 
-  // ── Session countdown timer ──────────────────────────────────────────────
+  // ── Session expiry enforcement ──────────────────────────────────────────
   function startSessionTimer(expiresAt) {
     const deadline = Number(expiresAt);
-    if (!timerPill || !timerLabel || !Number.isFinite(deadline) || deadline <= 0) {
-      if (timerPill) timerPill.hidden = true;
-      return;
-    }
+    if (!Number.isFinite(deadline) || deadline <= 0) return;
     sessionExpiresAt = deadline;
-    timerPill.hidden = false;
 
     function tick() {
       const remaining = deadline - Date.now();
-
-      timerLabel.textContent = formatDuration(remaining);
-      timerPill.classList.toggle('is-warning', remaining < EXPIRY_WARN_MS);
 
       // Update logout modal timer display if it's open
       if (logoutTimerDisplay) {
@@ -112,7 +109,6 @@
 
       if (remaining <= 0) {
         stopSessionTimer();
-        timerLabel.textContent = 'Expired';
         lockConsole('expired');
         return;
       }
@@ -125,7 +121,6 @@
   function stopSessionTimer() {
     if (sessionTimerInterval) window.clearInterval(sessionTimerInterval);
     sessionTimerInterval = null;
-    if (timerPill) timerPill.hidden = true;
     sessionExpiresAt = null;
   }
 
@@ -144,6 +139,10 @@
     currentUser  = null;
     window.consoleUserRole = null;
     sessionExpiresAt = null;
+    pendingMfaToken = null;
+    mfaUseBackupCode = false;
+    if (stepMfa) stepMfa.hidden = true;
+    if (stepCredentials) stepCredentials.hidden = false;
 
     // Restore all nav items on lock (clean slate for next login)
     document.querySelectorAll('.nav-item').forEach(el => {
@@ -182,12 +181,12 @@
 
   // ── Role-based UI restrictions ───────────────────────────────────────────
   function applyRoleRestrictions(role, access) {
-    const allSections = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'logs'];
+    const allSections = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'communications', 'logs'];
 
     allSections.forEach(section => {
       const navItem = document.querySelector(`.nav-item[data-section="${section}"]`);
       const panel   = document.getElementById(`section-${section}`);
-      const allowed = !access || access.includes(section);
+      const allowed = !access || access.includes(section) || (section === 'communications' && role === 'super_admin');
 
       if (navItem) {
         if (!allowed) {
@@ -218,16 +217,6 @@
     }
   }
 
-  // ── Role toggle buttons ──────────────────────────────────────────────────
-  roleBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      roleBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      selectedRole = btn.dataset.role;
-      clearError();
-    });
-  });
-
   // ── Login submit ─────────────────────────────────────────────────────────
   async function attemptLogin() {
     clearError();
@@ -256,11 +245,9 @@
         return;
       }
 
-      if (data.user.role !== selectedRole) {
-        showError(
-          `This account is a ${data.user.role === 'super_admin' ? 'Super Admin' : 'Platform Owner'}, ` +
-          `not a ${selectedRole === 'super_admin' ? 'Super Admin' : 'Platform Owner'}.`
-        );
+      if (data.mfaRequired) {
+        pendingMfaToken = data.mfaToken;
+        showMfaStep();
         return;
       }
 
@@ -273,7 +260,100 @@
     }
   }
 
+  // ── MFA step ──────────────────────────────────────────────────────────────
+  // Password check passed but the account has TOTP enabled — /api/login
+  // returned { mfaRequired: true, mfaToken } instead of a session. Swap to
+  // the code-entry step and finish the login against /api/login/verify-mfa.
+  function showMfaStep() {
+    clearError();
+    mfaUseBackupCode = false;
+    updateMfaModeUi();
+    if (stepCredentials) stepCredentials.hidden = true;
+    if (stepMfa) stepMfa.hidden = false;
+    if (mfaCodeInput) { mfaCodeInput.value = ''; mfaCodeInput.focus(); }
+  }
+
+  function hideMfaStep() {
+    pendingMfaToken = null;
+    mfaUseBackupCode = false;
+    if (stepMfa) stepMfa.hidden = true;
+    if (stepCredentials) stepCredentials.hidden = false;
+    passInput.value = '';
+    clearError();
+  }
+
+  function updateMfaModeUi() {
+    if (mfaCodeLabel) mfaCodeLabel.textContent = mfaUseBackupCode ? 'Backup code' : 'Authenticator code';
+    if (mfaCodeInput) {
+      mfaCodeInput.placeholder = mfaUseBackupCode ? 'xxxxx-xxxxx' : '123456';
+      mfaCodeInput.setAttribute('inputmode', mfaUseBackupCode ? 'text' : 'numeric');
+    }
+    if (mfaToggleModeBtn) {
+      mfaToggleModeBtn.textContent = mfaUseBackupCode ? 'Use your authenticator app instead' : 'Use a backup code instead';
+    }
+  }
+
+  async function attemptMfaVerify() {
+    clearError();
+    const value = (mfaCodeInput?.value || '').trim();
+    if (!value) {
+      showError(mfaUseBackupCode ? 'Enter a backup code.' : 'Enter the 6-digit code from your authenticator app.');
+      return;
+    }
+    if (!pendingMfaToken) {
+      showError('MFA session expired. Please sign in again.');
+      hideMfaStep();
+      return;
+    }
+
+    mfaSubmitBtn.disabled = true;
+    mfaSubmitBtn.textContent = 'Verifying…';
+
+    try {
+      const res = await _origFetch('/api/login/verify-mfa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(
+          mfaUseBackupCode
+            ? { mfaToken: pendingMfaToken, backupCode: value }
+            : { mfaToken: pendingMfaToken, code: value }
+        ),
+        credentials: 'same-origin',
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showError(data.error || 'Invalid code. Please try again.');
+        return;
+      }
+
+      pendingMfaToken = null;
+      unlockConsole(data.user, data.access, data.sessionExpiresAt);
+    } catch (err) {
+      showError('Network error — is the Trends CORE server running?');
+    } finally {
+      mfaSubmitBtn.disabled = false;
+      mfaSubmitBtn.textContent = 'Verify and sign in';
+    }
+  }
+
   submitBtn.addEventListener('click', attemptLogin);
+
+  if (mfaSubmitBtn) mfaSubmitBtn.addEventListener('click', attemptMfaVerify);
+  if (mfaBackBtn) mfaBackBtn.addEventListener('click', hideMfaStep);
+  if (mfaToggleModeBtn) {
+    mfaToggleModeBtn.addEventListener('click', () => {
+      mfaUseBackupCode = !mfaUseBackupCode;
+      updateMfaModeUi();
+      if (mfaCodeInput) { mfaCodeInput.value = ''; mfaCodeInput.focus(); }
+      clearError();
+    });
+  }
+  if (mfaCodeInput) {
+    mfaCodeInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') attemptMfaVerify();
+    });
+  }
 
   [emailInput, passInput].forEach(el => {
     el.addEventListener('keydown', e => {
