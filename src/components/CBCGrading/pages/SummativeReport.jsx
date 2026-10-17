@@ -364,7 +364,6 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
   // Build a grade function from DB ranges (or defaults if not yet loaded).
   // useMemo keeps it stable across re-renders when gradingRanges hasn't changed.
   const getGrade = React.useMemo(() => makeCBCGrader(gradingRanges), [gradingRanges]);
-  const { closingDate: termClosingDate, openingDate: nextTermOpeningDate } = getTermReportDates(termConfigs, term, academicYear);
 
   // --- DATA PREPARATION LOGIC ---
   const standardAreas = getLearningAreasByGrade(learner.grade);
