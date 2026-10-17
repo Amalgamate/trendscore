@@ -236,6 +236,15 @@ router.delete(
   assessmentController.deleteSummativeTestsBulk
 );
 
+router.patch(
+  '/tests/bulk/type',
+  authenticate,
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER']),
+  rateLimit({ windowMs: 60_000, maxRequests: 10 }),
+  auditLog('UPDATE_TEST_TYPES_BULK'),
+  assessmentController.updateSummativeTestsBulkType
+);
+
 router.delete(
   '/tests/:id',
   authenticate,

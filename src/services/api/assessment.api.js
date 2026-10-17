@@ -46,6 +46,13 @@ export const assessmentAPI = {
     cacheDelPrefix('tests:');
     return fetchWithAuth('/assessments/tests/bulk', { method: 'DELETE', body: JSON.stringify({ ids }) });
   },
+  updateTestsBulk: async (ids, testType) => {
+    cacheDelPrefix('tests:');
+    return fetchWithAuth('/assessments/tests/bulk/type', {
+      method: 'PATCH',
+      body: JSON.stringify({ ids, testType }),
+    });
+  },
 
   recordResult: async (resultData) => {
     cacheDel(`results:${resultData.testId}`);
