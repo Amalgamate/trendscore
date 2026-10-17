@@ -360,34 +360,7 @@ const CATEGORY_KEYWORDS = {
 // ============================================================================
 // LEARNER REPORT TEMPLATE COMPONENT (Reusable for Bulk Print)
 // ============================================================================
-const formatReportDate = (value) => {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
-};
-
-const getTermReportDates = (termConfigs, term, academicYear) => {
-  const termOrder = ['TERM_1', 'TERM_2', 'TERM_3'];
-  const closingConfig = (termConfigs || []).find(config =>
-    String(config.term).toUpperCase() === String(term).toUpperCase() &&
-    Number(config.academicYear) === Number(academicYear)
-  );
-  const currentIndex = termOrder.indexOf(String(term || '').toUpperCase());
-  const nextTerm = currentIndex >= 0 && currentIndex < termOrder.length - 1
-    ? termOrder[currentIndex + 1]
-    : currentIndex === termOrder.length - 1 ? termOrder[0] : null;
-  const nextYear = currentIndex === termOrder.length - 1 ? Number(academicYear) + 1 : Number(academicYear);
-  const openingConfig = nextTerm && (termConfigs || []).find(config =>
-    String(config.term).toUpperCase() === nextTerm && Number(config.academicYear) === nextYear
-  );
-  return {
-    closingDate: closingConfig?.endDate || null,
-    openingDate: openingConfig?.startDate || null
-  };
-};
-
-const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, academicYear, termConfigs, classPosition, classSize, streamPosition, streamSize, brandingSettings, user, streamConfigs, remarks, commentData, gradingRanges, categoryAverages }) => {
+const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, academicYear, classPosition, classSize, streamPosition, streamSize, brandingSettings, user, streamConfigs, remarks, commentData, gradingRanges, categoryAverages }) => {
   // Build a grade function from DB ranges (or defaults if not yet loaded).
   // useMemo keeps it stable across re-renders when gradingRanges hasn't changed.
   const getGrade = React.useMemo(() => makeCBCGrader(gradingRanges), [gradingRanges]);
@@ -610,9 +583,9 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
         fontFamily: "'Raleway', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
         lineHeight: '1.2',
         width: '794px',    // 210mm at 96 DPI
-        minHeight: '1123px', // ensure card is never shorter than A4
-        // height is intentionally omitted — html2canvas reads scrollHeight,
-        // so reports with many subjects expand instead of clipping.
+        height: '1123px',
+        maxHeight: '1123px',
+        overflow: 'hidden',
         padding: '30px 40px 30px 40px',
         boxSizing: 'border-box',
         display: 'flex',
@@ -1093,7 +1066,7 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
 
       </div>{/* end CONTENT BODY */}
 
-      {/* Term dates — left aligned above teacher remarks */}
+      {/* Manual opening date and fee balance fields above teacher remarks */}
       <div style={{
         marginTop: 'auto',
         marginBottom: '16px',
@@ -1106,15 +1079,14 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
         fontWeight: '800',
         textTransform: 'uppercase'
       }}>
-        {[
-          ['Term Closing Date', termClosingDate],
-          ['Next Term Opening Date', nextTermOpeningDate]
-        ].map(([label, value]) => (
-          <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: '7px', whiteSpace: 'nowrap' }}>
-            <span>{label}:</span>
-            <span style={{ display: 'inline-block', minWidth: '112px', borderBottom: value ? 'none' : '1px dotted #94a3b8', height: '14px' }}>{formatReportDate(value)}</span>
-          </div>
-        ))}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '7px', whiteSpace: 'nowrap' }}>
+          <span>Opening Date:</span>
+          <span style={{ display: 'inline-block', minWidth: '150px', borderBottom: '1px dotted #94a3b8', height: '14px' }} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '7px', whiteSpace: 'nowrap' }}>
+          <span>Fee Balance:</span>
+          <span style={{ display: 'inline-block', minWidth: '150px', borderBottom: '1px dotted #94a3b8', height: '14px' }} />
+        </div>
       </div>
 
       {/* Class Teacher's Remarks — anchored just above the footer */}
@@ -4619,7 +4591,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
               <div
                 key={`bulk-${row.learner.id}-${index}`}
                 className="pdf-report-page"
-                style={{ pageBreakAfter: index === bulkDownloadData.length - 1 ? 'auto' : 'always' }}
+                style={{ width: '794px', height: '1123px', maxHeight: '1123px', overflow: 'hidden', boxSizing: 'border-box', pageBreakAfter: index === bulkDownloadData.length - 1 ? 'auto' : 'always' }}
               >
                 <LearnerReportTemplate
                   learner={row.learner}
@@ -4977,7 +4949,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
         {bulkDownloadData && bulkDownloadData.length > 0 && (
           <div id="bulk-print-content" style={{ display: 'flex', flexDirection: 'column' }}>
             {bulkDownloadData.map((row, idx) => (
-              <div key={idx} className="pdf-report-page" style={{ width: '794px', minHeight: '1123px', overflow: 'visible', backgroundColor: '#fff' }}>
+              <div key={idx} className="pdf-report-page" style={{ width: '794px', height: '1123px', maxHeight: '1123px', overflow: 'hidden', boxSizing: 'border-box', backgroundColor: '#fff', pageBreakAfter: idx === bulkDownloadData.length - 1 ? 'auto' : 'always' }}>
                 <LearnerReportTemplate
                   learner={row.learner}
                   results={row.results || []}
