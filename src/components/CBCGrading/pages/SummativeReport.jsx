@@ -361,6 +361,7 @@ const CATEGORY_KEYWORDS = {
 // LEARNER REPORT TEMPLATE COMPONENT (Reusable for Bulk Print)
 // ============================================================================
 const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, academicYear, classPosition, classSize, streamPosition, streamSize, brandingSettings, user, streamConfigs, remarks, commentData, gradingRanges, categoryAverages }) => {
+  const hidePositionsForZawadi = typeof window !== 'undefined' && window.location.hostname.toLowerCase() === 'zawadi.trendscore.co.ke';
   // Build a grade function from DB ranges (or defaults if not yet loaded).
   // useMemo keeps it stable across re-renders when gradingRanges hasn't changed.
   const getGrade = React.useMemo(() => makeCBCGrader(gradingRanges), [gradingRanges]);
@@ -705,7 +706,7 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
               <div style={{ fontWeight: pdfTypeWeight.bold, color: '#0f172a' }}>{learner.stream || 'A'}</div>
             </div>
             {/* RIGHT: Assessment Summary */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gridTemplateRows: '1fr 1fr', height: '100%' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: hidePositionsForZawadi ? '1fr 1fr' : '1fr 1fr 1fr', gridTemplateRows: '1fr 1fr', height: '100%' }}>
               <div style={{ padding: '8px 4px', textAlign: 'center', borderRight: '1.2px solid #e2e8f0', borderBottom: '1.2px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center', backgroundColor: '#f8fafc', gap: '2px' }}>
                 <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#64748b', textTransform: 'uppercase' }}>Subjects</div>
                 <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#0f172a' }}>{tableRows.length}</div>
@@ -714,10 +715,10 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
                 <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#64748b', textTransform: 'uppercase' }}>Points</div>
                 <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#0f172a' }}>{pointRows.length > 0 ? totalPoints : '—'}</div>
               </div>
-              <div style={{ padding: '8px 4px', textAlign: 'center', borderBottom: '1.2px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center', backgroundColor: '#f8fafc', gap: '2px' }}>
+              {!hidePositionsForZawadi && <div style={{ padding: '8px 4px', textAlign: 'center', borderBottom: '1.2px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center', backgroundColor: '#f8fafc', gap: '2px' }}>
                 <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#64748b', textTransform: 'uppercase' }}>Class Position</div>
                 <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#0f172a' }}>{classPosition ? `${classPosition} / ${classSize}` : '—'}</div>
-              </div>
+              </div>}
               <div style={{ padding: '8px 4px', textAlign: 'center', borderRight: '1.2px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px' }}>
                 <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#64748b', textTransform: 'uppercase' }}>Average</div>
                 <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#0f172a' }}>{avgPct}%</div>
@@ -726,10 +727,10 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
                 <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#1e40af', textTransform: 'uppercase' }}>Grade</div>
                 <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#1e40af' }}>{overallGrade}</div>
               </div>
-              <div style={{ padding: '8px 4px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', backgroundColor: '#f1f5f9', gap: '2px' }}>
+              {!hidePositionsForZawadi && <div style={{ padding: '8px 4px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', backgroundColor: '#f1f5f9', gap: '2px' }}>
                 <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#1e40af', textTransform: 'uppercase' }}>Stream Position</div>
                 <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#1e40af' }}>{streamPosition ? `${streamPosition} / ${streamSize}` : '—'}</div>
-              </div>
+              </div>}
             </div>
           </div>
         );
