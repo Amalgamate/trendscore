@@ -1069,7 +1069,8 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
       {/* Manual opening date and fee balance fields above teacher remarks */}
       <div style={{
         marginTop: 'auto',
-        marginBottom: '16px',
+        paddingTop: '20px',
+        marginBottom: '18px',
         display: 'flex',
         justifyContent: 'flex-start',
         alignItems: 'center',
@@ -1089,21 +1090,17 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
         </div>
       </div>
 
-      {/* Class Teacher's Remarks — anchored just above the footer */}
-      <div style={{ marginBottom: '10px' }}>
+      {/* Class Teacher's Remarks — two ruled lines for handwritten comments */}
+      <div style={{ marginTop: '2px', marginBottom: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
           <span style={{ fontSize: '10px', fontWeight: '900', color: '#475569', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
             Class Teacher's Remarks:
           </span>
-          <div style={{ flex: 1, borderBottom: '1px dotted #cbd5e1', paddingBottom: '2px', minHeight: '32px' }}>
-            {/* Blank for handwriting as requested */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ height: '14px', borderBottom: '1px dotted #cbd5e1' }} />
+            <div style={{ height: '14px', borderBottom: '1px dotted #cbd5e1' }} />
           </div>
         </div>
-      </div>
-
-      {/* Footer Disclaimer - Absolute Bottom */}
-      <div className="report-footer-note" style={{ position: 'absolute', bottom: '6mm', left: '8mm', right: '8mm', textAlign: 'center', fontSize: '10px', color: '#64748b', fontWeight: '400' }}>
-        This is an official summative assessment report. Verified by School Administration System. © {new Date().getFullYear()} {getSchoolDisplayName(brandingSettings?.schoolName, user?.school?.name, user?.schoolName, { fallback: 'School' })}.
       </div>
     </div >
   );
