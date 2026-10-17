@@ -9,6 +9,7 @@ import { Response } from 'express';
 import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
 import { AuthRequest } from '../middleware/permissions.middleware';
+import { redisCacheService } from '../services/redis-cache.service';
 
 // Roles allowed for subject allocation — mirrors UserRole enum in Prisma schema
 const ALLOWED_TEACHER_ROLES = [
@@ -134,6 +135,11 @@ export class SubjectAssignmentController {
             }
         }
 
+        // Assessment access is scoped from this cached context. Clear it as
+        // soon as an allocation is created or restored so the teacher does
+        // not have to wait for the two-minute cache TTL or sign in again.
+        await redisCacheService.delete(`teacher:context:v2:${teacherId}`);
+
         res.status(201).json({ success: true, data: assignment });
     }
 
@@ -143,7 +149,12 @@ export class SubjectAssignmentController {
     async removeAssignment(req: AuthRequest, res: Response) {
         const { id } = req.params;
 
-        await prisma.subjectAssignment.delete({ where: { id } });
+        const removedAssignment = await prisma.subjectAssignment.delete({
+            where: { id },
+            select: { teacherId: true },
+        });
+
+        await redisCacheService.delete(`teacher:context:v2:${removedAssignment.teacherId}`);
 
         res.json({ success: true, message: 'Assignment removed successfully' });
     }

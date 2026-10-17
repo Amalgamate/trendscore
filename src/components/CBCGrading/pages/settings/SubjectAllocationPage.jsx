@@ -204,11 +204,11 @@ const SubjectAllocationPage = () => {
       return gradeAreas.map((area) => {
         // 1. Look for a class-scoped assignment first
         const classAssignment = assignments.find(
-          (a) => a.learningAreaId === area.id && a.classId === cls.id,
+          (a) => a.learningAreaId === area.id && a.classId === cls.id && a.active !== false,
         );
         // 2. Fall back to a legacy grade-level assignment (classId = null)
         const gradeAssignment = assignments.find(
-          (a) => a.learningAreaId === area.id && a.grade === cls.grade && !a.classId,
+          (a) => a.learningAreaId === area.id && a.grade === cls.grade && !a.classId && a.active !== false,
         );
         const activeAssignment = classAssignment || gradeAssignment || null;
 

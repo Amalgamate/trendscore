@@ -23,22 +23,39 @@ export const useTeacherWorkload = () => {
 
     const fetchWorkload = useCallback(async () => {
         if (!teacherId || !isTeacher) {
+            setWorkload(null);
+            setSchedules([]);
+            setTeacherContext(null);
+            setError(null);
             setLoading(false);
             return;
         }
 
         try {
             setLoading(true);
-            const [workloadResp, schedulesResp, contextResp] = await Promise.all([
+            setError(null);
+            const results = await Promise.allSettled([
                 classAPI.getTeacherWorkload(teacherId),
                 classAPI.getTeacherSchedules(teacherId),
                 teacherAPI.getMyContext()
             ]);
 
-            setWorkload(workloadResp.data || workloadResp);
-            setSchedules(schedulesResp.data || schedulesResp || []);
-            setTeacherContext(contextResp.data || contextResp || null);
-            setError(null);
+            const [workloadResult, schedulesResult, contextResult] = results;
+            const failures = results.filter((result) => result.status === 'rejected');
+
+            setWorkload(workloadResult.status === 'fulfilled'
+                ? workloadResult.value?.data || workloadResult.value
+                : null);
+            setSchedules(schedulesResult.status === 'fulfilled'
+                ? schedulesResult.value?.data || schedulesResult.value || []
+                : []);
+            setTeacherContext(contextResult.status === 'fulfilled'
+                ? contextResult.value?.data || contextResult.value || null
+                : null);
+            if (failures.length > 0) {
+                console.error('Some teacher assignment lookups failed:', failures.map((result) => result.reason));
+                setError(failures[0].reason);
+            }
         } catch (err) {
             console.error('Error fetching teacher workload:', err);
             setError(err);
@@ -81,9 +98,12 @@ export const useTeacherWorkload = () => {
         // Class teachers can assess all subjects for their own class/grade.
         // The mark-entry screen still shows a warning when they enter a subject
         // where they are not the named subject teacher.
-        const isClassTeacher = teacherContext?.classTeacherOf
-            ? normalizeGradeCode(teacherContext.classTeacherOf.grade) === normalizedGrade
-            : false;
+        const classTeacherGrades = (teacherContext?.classTeacherOfs || [])
+            .map((classAssignment) => normalizeGradeCode(classAssignment?.grade));
+        if (teacherContext?.classTeacherOf) {
+            classTeacherGrades.push(normalizeGradeCode(teacherContext.classTeacherOf.grade));
+        }
+        const isClassTeacher = classTeacherGrades.includes(normalizedGrade);
         if (isClassTeacher) {
             return null;
         }
@@ -121,8 +141,9 @@ export const useTeacherWorkload = () => {
 
     // Check if the teacher has any assignments at all
     const hasAnyAssignments = useMemo(() => {
-        return assignedGrades.length > 0 || schedules.length > 0;
-    }, [assignedGrades, schedules]);
+        const hasExplicitSubjectAssignments = (teacherContext?.subjectAssignments || []).length > 0;
+        return assignedGrades.length > 0 || schedules.length > 0 || hasExplicitSubjectAssignments;
+    }, [assignedGrades, schedules, teacherContext]);
 
     // Primary Assignment for auto-prefill
     const primaryGrade = useMemo(() => assignedGrades[0] || null, [assignedGrades]);
