@@ -388,6 +388,7 @@ const getTermReportDates = (termConfigs, term, academicYear) => {
 };
 
 const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, academicYear, termConfigs, classPosition, classSize, streamPosition, streamSize, brandingSettings, user, streamConfigs, remarks, commentData, gradingRanges, categoryAverages }) => {
+  const hideKambiReportFields = user?.schoolId === 'kambigarba-cs' || user?.school?.id === 'kambigarba-cs';
   // Build a grade function from DB ranges (or defaults if not yet loaded).
   // useMemo keeps it stable across re-renders when gradingRanges hasn't changed.
   const getGrade = React.useMemo(() => makeCBCGrader(gradingRanges), [gradingRanges]);
@@ -1093,8 +1094,8 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
 
       </div>{/* end CONTENT BODY */}
 
-      {/* Term dates — left aligned above teacher remarks */}
-      <div style={{
+      {/* Term dates — hidden for Kambi's report card */}
+      {!hideKambiReportFields && <div style={{
         marginTop: 'auto',
         marginBottom: '16px',
         display: 'flex',
@@ -1115,10 +1116,10 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
             <span style={{ display: 'inline-block', minWidth: '112px', borderBottom: value ? 'none' : '1px dotted #94a3b8', height: '14px' }}>{formatReportDate(value)}</span>
           </div>
         ))}
-      </div>
+      </div>}
 
-      {/* Class Teacher's Remarks — anchored just above the footer */}
-      <div style={{ marginBottom: '10px' }}>
+      {/* Class Teacher's Remarks — hidden for Kambi's report card */}
+      {!hideKambiReportFields && <div style={{ marginBottom: '10px' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
           <span style={{ fontSize: '10px', fontWeight: '900', color: '#475569', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
             Class Teacher's Remarks:
@@ -1127,7 +1128,7 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
             {/* Blank for handwriting as requested */}
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* Footer Disclaimer - Absolute Bottom */}
       <div className="report-footer-note" style={{ position: 'absolute', bottom: '6mm', left: '8mm', right: '8mm', textAlign: 'center', fontSize: '10px', color: '#64748b', fontWeight: '400' }}>
