@@ -26,6 +26,7 @@
 export function buildReportTemplateProps(reportData, { user, brandingSettings } = {}) {
   return {
     ...reportData,
+    hideReportDates: user?.schoolId === 'kambigarba-cs' || user?.school?.id === 'kambigarba-cs',
     schoolName: user?.school?.name || brandingSettings?.schoolName,
     schoolAddress: user?.school?.location || brandingSettings?.address,
     schoolPhone: user?.school?.phone || brandingSettings?.phone,

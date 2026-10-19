@@ -189,7 +189,7 @@ const ModernReportTemplate = ({ reportData, id = 'termly-report-content' }) => {
                         </p>
                     )}
                     <p className="text-center text-[8px] font-medium text-gray-300 mt-3">
-                        Valid only with official school stamp and signatures. Generated via {PRODUCT_DISPLAY_NAME} on {new Date().toLocaleDateString()}.
+                        Valid only with official school stamp and signatures.{!reportData.hideReportDates && ` Generated via ${PRODUCT_DISPLAY_NAME} on ${new Date().toLocaleDateString()}.`}
                     </p>
                 </div>
             </div>

@@ -214,7 +214,7 @@ const TermlyReportTemplate = ({ reportData, id = "termly-report-content" }) => {
                             {reportData.schoolSlogan || 'Excellence in Knowledge and Character'}
                         </p>
                         <p className="text-[8px] font-medium opacity-60">
-                            Valid only with official school stamp and signatures. Generated via {PRODUCT_DISPLAY_NAME} on {new Date().toLocaleDateString()}.
+                            Valid only with official school stamp and signatures.{!reportData.hideReportDates && ` Generated via ${PRODUCT_DISPLAY_NAME} on ${new Date().toLocaleDateString()}.`}
                         </p>
                     </div>
                 </div>
