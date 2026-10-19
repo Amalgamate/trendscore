@@ -234,7 +234,6 @@ export const allNavSections = [
                 label: 'Formative',
                 type: 'group',
                 icon: Sparkles,
-                hidden: true,
                 items: [
                     { id: 'assess-formative',        label: 'Record Assessment',  path: 'assess-formative',        permission: 'ACCESS_ASSESSMENT_MODULE', icon: Sparkles },
                     { id: 'assess-formative-report', label: 'Formative Progress', path: 'assess-formative-report', permission: 'ACCESS_ASSESSMENT_MODULE', icon: TrendingUp },
@@ -245,7 +244,6 @@ export const allNavSections = [
                 label: 'Holistic Development',
                 type: 'group',
                 icon: Star,
-                hidden: true,
                 items: [
                     { id: 'assess-holistic-summary',  label: 'Development Summary', path: 'assess-holistic-summary',  permission: 'ACCESS_ASSESSMENT_MODULE', icon: Activity },
                     { id: 'assess-core-competencies', label: 'Core Competencies', path: 'assess-core-competencies', permission: 'ACCESS_ASSESSMENT_MODULE', icon: Star },
