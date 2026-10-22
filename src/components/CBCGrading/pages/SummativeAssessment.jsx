@@ -723,22 +723,34 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
         .map((grade) => grade.replace(/\s+/g, '_').toUpperCase())
     )];
 
+    // The score-entry page loads teacher context independently of the class
+    // workload/schedule requests. Include both assignment sources so a partial
+    // workload response cannot hide grades that are explicitly assigned to a
+    // subject teacher.
+    const assignedGrades = teacherWorkload.isTeacher
+      ? [
+          ...(teacherWorkload.assignedGrades || []),
+          ...(teacherCtx.assignedGrades || []),
+          ...(teacherCtx.subjectAssignments || []).map((assignment) => assignment?.grade),
+        ]
+      : [];
+
     let mergedGrades = [...new Set(
-      [...(availableGrades || []), ...(fallbackGrades || []), ...gradesFromTests, ...(teacherWorkload.isTeacher ? teacherWorkload.assignedGrades : [])]
+      [...(availableGrades || []), ...(fallbackGrades || []), ...gradesFromTests, ...assignedGrades]
         .map(toCanonicalGrade)
     )];
     mergedGrades = mergedGrades.filter((g) => (isSecondaryPortal ? isSecondaryGrade(g) : isJuniorGrade(g)));
 
     let grades = !teacherWorkload.isTeacher
       ? mergedGrades
-      : mergedGrades.filter(g => teacherWorkload.assignedGrades.some(assignedGrade => toCanonicalGrade(assignedGrade) === g));
+      : mergedGrades.filter(g => assignedGrades.some(assignedGrade => toCanonicalGrade(assignedGrade) === g));
 
     // Sort by portal-specific grade order
     return grades.sort((a, b) => {
       if (isSecondaryPortal) return SECONDARY_GRADES.indexOf(a) - SECONDARY_GRADES.indexOf(b);
       return JUNIOR_GRADE_ORDER.indexOf(a) - JUNIOR_GRADE_ORDER.indexOf(b);
     });
-  }, [availableGrades, fallbackGrades, tests, teacherWorkload.isTeacher, teacherWorkload.assignedGrades, isSecondaryPortal]);
+  }, [availableGrades, fallbackGrades, tests, teacherWorkload.isTeacher, teacherWorkload.assignedGrades, teacherCtx.assignedGrades, teacherCtx.subjectAssignments, isSecondaryPortal]);
 
   const handleBack = useCallback(() => {
     if (window.history.length > 1) {
