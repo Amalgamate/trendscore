@@ -18,7 +18,6 @@ import { Response } from 'express';
 import prisma from '../config/database';
 import { AuthRequest } from '../middleware/permissions.middleware';
 import { redisCacheService } from '../services/redis-cache.service';
-import { hasAnyRole } from '../utils/roleNormalizer';
 import logger from '../utils/logger';
 
 /** Roles that bypass all teacher-scoping restrictions */
@@ -63,8 +62,12 @@ export class TeacherContextController {
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
-    // Privileged roles get unrestricted context — no DB lookups needed
-    if (hasAnyRole(req.user, PRIVILEGED_ROLES as unknown as string[])) {
+    // Context must follow the active primary role used by the frontend. A
+    // teacher account can retain a secondary legacy role (for example ADMIN)
+    // in `roles`; treating that as active here would return an unrestricted,
+    // empty context and hide the teacher's assigned grades from score entry.
+    const activeRole = String(req.user.role || '').trim().toUpperCase();
+    if (PRIVILEGED_ROLES.includes(activeRole as (typeof PRIVILEGED_ROLES)[number])) {
       return res.json({
         success: true,
         data: {
