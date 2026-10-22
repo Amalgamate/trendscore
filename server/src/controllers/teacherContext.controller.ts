@@ -50,6 +50,14 @@ export class TeacherContextController {
    * ```
    */
   async getMyContext(req: AuthRequest, res: Response) {
+    // This response is scoped to the authenticated user and is used to decide
+    // which grades and subjects they can assess. Browsers/proxies must not
+    // revalidate it to a body-less 304 because Axios consumers require the
+    // current JSON context to build the teacher's selectors.
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     const userId = req.user?.userId;
     if (!userId) {
       return res.status(401).json({ success: false, message: 'Authentication required' });
