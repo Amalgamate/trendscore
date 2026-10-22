@@ -66,7 +66,7 @@ export class TeacherContextController {
     // teacher account can retain a secondary legacy role (for example ADMIN)
     // in `roles`; treating that as active here would return an unrestricted,
     // empty context and hide the teacher's assigned grades from score entry.
-    const activeRole = String(req.user.role || '').trim().toUpperCase();
+    const activeRole = String(req.user?.role || '').trim().toUpperCase();
     if (PRIVILEGED_ROLES.includes(activeRole as (typeof PRIVILEGED_ROLES)[number])) {
       return res.json({
         success: true,
