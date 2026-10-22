@@ -724,7 +724,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     )];
 
     let mergedGrades = [...new Set(
-      [...(availableGrades || []), ...(fallbackGrades || []), ...gradesFromTests]
+      [...(availableGrades || []), ...(fallbackGrades || []), ...gradesFromTests, ...(teacherWorkload.isTeacher ? teacherWorkload.assignedGrades : [])]
         .map(toCanonicalGrade)
     )];
     mergedGrades = mergedGrades.filter((g) => (isSecondaryPortal ? isSecondaryGrade(g) : isJuniorGrade(g)));
